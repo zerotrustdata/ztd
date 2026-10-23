@@ -23,6 +23,8 @@ import (
 )
 
 func TestParseLogLevel(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -41,6 +43,8 @@ func TestParseLogLevel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			level, err := parseLogLevel(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
@@ -54,6 +58,8 @@ func TestParseLogLevel(t *testing.T) {
 }
 
 func TestNewStdoutLogger(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		logLevel string
@@ -68,6 +74,8 @@ func TestNewStdoutLogger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			logger, err := NewStdoutLogger(tt.logLevel)
 			if tt.wantErr {
 				require.Error(t, err)
@@ -81,6 +89,7 @@ func TestNewStdoutLogger(t *testing.T) {
 }
 
 func TestNewLogger_InfoLevelWritesToAllOutputs(t *testing.T) {
+	t.Parallel()
 	var fileOutput bytes.Buffer
 	var stderrOutput bytes.Buffer
 	logger, err := NewLogger("info", io.MultiWriter(&fileOutput, &stderrOutput))
@@ -96,6 +105,7 @@ func TestNewLogger_InfoLevelWritesToAllOutputs(t *testing.T) {
 }
 
 func TestLogger_ComponentAttributeIsStructured(t *testing.T) {
+	t.Parallel()
 	var output bytes.Buffer
 	logger, err := NewLogger("info", &output)
 	require.NoError(t, err)
@@ -107,7 +117,9 @@ func TestLogger_ComponentAttributeIsStructured(t *testing.T) {
 }
 
 func TestLogHandler_Handle(t *testing.T) {
+	t.Parallel()
 	t.Run("formats message with timestamp and level", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -122,6 +134,7 @@ func TestLogHandler_Handle(t *testing.T) {
 	})
 
 	t.Run("formats error level", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -134,6 +147,7 @@ func TestLogHandler_Handle(t *testing.T) {
 	})
 
 	t.Run("formats debug level", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelDebug)
 
@@ -146,6 +160,7 @@ func TestLogHandler_Handle(t *testing.T) {
 	})
 
 	t.Run("appends string and int attributes as indented lines", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -165,6 +180,7 @@ func TestLogHandler_Handle(t *testing.T) {
 	})
 
 	t.Run("filters records below handler level", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelError)
 
@@ -174,6 +190,7 @@ func TestLogHandler_Handle(t *testing.T) {
 	})
 
 	t.Run("logger respects level filter end-to-end", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelError)
 		logger := slog.New(handler)
@@ -185,7 +202,11 @@ func TestLogHandler_Handle(t *testing.T) {
 }
 
 func TestLogHandler_WithAttrs(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns a new distinct handler instance", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelDebug)
 
@@ -195,6 +216,8 @@ func TestLogHandler_WithAttrs(t *testing.T) {
 	})
 
 	t.Run("pre-attached attrs appear in every record", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 		withAttrs := handler.WithAttrs([]slog.Attr{slog.String("component", "ztdo")})
@@ -208,6 +231,8 @@ func TestLogHandler_WithAttrs(t *testing.T) {
 	})
 
 	t.Run("original handler is not mutated", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 		_ = handler.WithAttrs([]slog.Attr{slog.String("key", "value")})
@@ -220,6 +245,8 @@ func TestLogHandler_WithAttrs(t *testing.T) {
 	})
 
 	t.Run("empty attrs slice returns new handler without panicking", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 		newHandler := handler.WithAttrs([]slog.Attr{})
@@ -228,7 +255,11 @@ func TestLogHandler_WithAttrs(t *testing.T) {
 }
 
 func TestLogHandler_WithGroup(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns a new distinct handler instance", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -238,6 +269,8 @@ func TestLogHandler_WithGroup(t *testing.T) {
 	})
 
 	t.Run("original handler is not mutated", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 		_ = handler.WithGroup("requests")
@@ -246,6 +279,8 @@ func TestLogHandler_WithGroup(t *testing.T) {
 	})
 
 	t.Run("group name is stored on returned handler", func(t *testing.T) {
+		t.Parallel()
+
 		var buf bytes.Buffer
 		handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -257,7 +292,9 @@ func TestLogHandler_WithGroup(t *testing.T) {
 }
 
 func TestNewLogger(t *testing.T) {
+	t.Parallel()
 	t.Run("writes to provided output", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		logger, err := NewLogger("info", &buf)
 		require.NoError(t, err)
@@ -271,6 +308,7 @@ func TestNewLogger(t *testing.T) {
 	})
 
 	t.Run("invalid level returns error and nil logger", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		logger, err := NewLogger("trace", &buf)
 
@@ -280,6 +318,7 @@ func TestNewLogger(t *testing.T) {
 	})
 
 	t.Run("debug level allows debug messages", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		logger, err := NewLogger("debug", &buf)
 		require.NoError(t, err)
@@ -290,6 +329,7 @@ func TestNewLogger(t *testing.T) {
 	})
 
 	t.Run("error level filters info and debug", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		logger, err := NewLogger("error", &buf)
 		require.NoError(t, err)
@@ -304,12 +344,15 @@ func TestNewLogger(t *testing.T) {
 }
 
 func TestParseLogLevel_ErrorsIs(t *testing.T) {
+	t.Parallel()
+
 	_, err := parseLogLevel("bogus")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInvalidLogLevel, "error should wrap constants.ErrInvalidLogLevel")
 }
 
 func TestLogHandler_Handle_NoAttrs(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -323,6 +366,7 @@ func TestLogHandler_Handle_NoAttrs(t *testing.T) {
 }
 
 func TestLogHandler_Handle_WriteError(t *testing.T) {
+	t.Parallel()
 	handler := newLogHandler(&failingWriter{}, slog.LevelInfo)
 
 	record := slog.NewRecord(time.Now(), slog.LevelInfo, "msg", 0)
@@ -333,6 +377,7 @@ func TestLogHandler_Handle_WriteError(t *testing.T) {
 }
 
 func TestLogHandler_Handle_VariousAttrTypes(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -357,6 +402,7 @@ func TestLogHandler_Handle_VariousAttrTypes(t *testing.T) {
 }
 
 func TestLogHandler_Handle_PreAttachedAndRecordAttrs(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 	withPre := handler.WithAttrs([]slog.Attr{slog.String("svc", "ztdo")})
@@ -374,6 +420,8 @@ func TestLogHandler_Handle_PreAttachedAndRecordAttrs(t *testing.T) {
 }
 
 func TestLogHandler_Handle_TimestampFormat(t *testing.T) {
+	t.Parallel()
+
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -390,6 +438,7 @@ func TestLogHandler_Handle_TimestampFormat(t *testing.T) {
 }
 
 func TestLogHandler_Enabled_Boundary(t *testing.T) {
+	t.Parallel()
 	handler := newLogHandler(&bytes.Buffer{}, slog.LevelInfo)
 
 	assert.True(t, handler.Enabled(context.Background(), slog.LevelInfo))
@@ -398,6 +447,7 @@ func TestLogHandler_Enabled_Boundary(t *testing.T) {
 }
 
 func TestLogHandler_WithAttrs_Chaining(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelDebug)
 
@@ -416,6 +466,7 @@ func TestLogHandler_WithAttrs_Chaining(t *testing.T) {
 }
 
 func TestLogHandler_WithAttrs_PreservesLevelAndOutput(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelError)
 	derived := handler.WithAttrs([]slog.Attr{slog.String("k", "v")})
@@ -427,6 +478,7 @@ func TestLogHandler_WithAttrs_PreservesLevelAndOutput(t *testing.T) {
 }
 
 func TestLogHandler_WithGroup_Chaining(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 
@@ -439,6 +491,7 @@ func TestLogHandler_WithGroup_Chaining(t *testing.T) {
 }
 
 func TestLogHandler_WithGroup_PreservesLevelOutputAndAttrs(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelDebug)
 	withAttrs := handler.WithAttrs([]slog.Attr{slog.String("x", "y")})
@@ -453,6 +506,7 @@ func TestLogHandler_WithGroup_PreservesLevelOutputAndAttrs(t *testing.T) {
 }
 
 func TestLogHandler_Handle_WithGroup(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 	grouped := handler.WithGroup("requests")
@@ -468,6 +522,7 @@ func TestLogHandler_Handle_WithGroup(t *testing.T) {
 }
 
 func TestLogHandler_Handle_WithGroupChained(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	handler := newLogHandler(&buf, slog.LevelInfo)
 	grouped := handler.WithGroup("svc").WithGroup("http")

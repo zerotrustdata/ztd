@@ -134,12 +134,18 @@ var directWardenSentinels = []struct {
 }
 
 func TestClassifyGovernanceRejection(t *testing.T) {
+	t.Parallel()
+
 	t.Run("nil rejection is UNSPECIFIED", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED, ClassifyGovernanceRejection(nil))
 	})
 
 	for _, tc := range rejectionCodeCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tc.code, ClassifyGovernanceRejection(tc.sentinel), "bare sentinel")
 			assert.Equal(t, tc.code, ClassifyGovernanceRejection(fmt.Errorf("ctx: %w", tc.sentinel)), "single-wrapped sentinel")
 			assert.Equal(t, tc.code, ClassifyGovernanceRejection(fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", tc.sentinel))), "double-wrapped sentinel")
@@ -147,10 +153,14 @@ func TestClassifyGovernanceRejection(t *testing.T) {
 	}
 
 	t.Run("unknown error is UNCLASSIFIED", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED, ClassifyGovernanceRejection(errors.New("something unrelated")))
 	})
 
 	t.Run("wrapped unknown error is UNCLASSIFIED", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED, ClassifyGovernanceRejection(fmt.Errorf("l4 warden: reserve nonce: %w", errors.New("db closed"))))
 	})
 }
@@ -158,6 +168,8 @@ func TestClassifyGovernanceRejection(t *testing.T) {
 // TestClassifyGovernanceRejectionTableCoversEveryEntry fails when a classifier
 // entry has no row in the explicit case table, so the table cannot drift.
 func TestClassifyGovernanceRejectionTableCoversEveryEntry(t *testing.T) {
+	t.Parallel()
+
 	require.Len(t, rejectionCodeCases, len(governanceRejectionCodes), "table rows must match classifier entries one-to-one")
 	for _, entry := range governanceRejectionCodes {
 		found := false
@@ -176,8 +188,12 @@ func TestClassifyGovernanceRejectionTableCoversEveryEntry(t *testing.T) {
 // specific code. A failure here names a sentinel missing from
 // governanceRejectionCodes.
 func TestClassifyGovernanceRejectionCoversDirectWardenSentinels(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range directWardenSentinels {
 		t.Run(tc.source+"/"+tc.sentinel.Error(), func(t *testing.T) {
+			t.Parallel()
+
 			code := ClassifyGovernanceRejection(fmt.Errorf("%w", tc.sentinel))
 			assert.NotEqual(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED, code,
 				"sentinel returned from %s must have a classifier entry", tc.source)
@@ -187,6 +203,7 @@ func TestClassifyGovernanceRejectionCoversDirectWardenSentinels(t *testing.T) {
 }
 
 func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
+	t.Parallel()
 	verifyErr := fmt.Errorf("verify: %w: 3s ago", constants.ErrTxTransactionExpired)
 	rejected := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
@@ -213,6 +230,7 @@ func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
 }
 
 func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
+	t.Parallel()
 	providerErr := fmt.Errorf("dispatch: %w", constants.ErrInferenceBackendUnavailable)
 	failed := &operatorv1.ActionReceipt{
 		TransactionId: "tx-failed",
@@ -241,6 +259,7 @@ func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
 }
 
 func TestRejectionResponseUnmappedErrorRendersReceiptCode(t *testing.T) {
+	t.Parallel()
 	rejected := &operatorv1.ActionReceipt{
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,

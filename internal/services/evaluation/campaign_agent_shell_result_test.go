@@ -17,6 +17,7 @@ import (
 )
 
 func TestShellCommandFailure(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		summary string
@@ -34,6 +35,7 @@ func TestShellCommandFailure(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			failure, err := shellCommandFailure(tc.summary)
 			require.NoError(t, err)
 			if tc.want == "" {
@@ -48,6 +50,7 @@ func TestShellCommandFailure(t *testing.T) {
 }
 
 func TestShellCommandFailure_RejectsUntypedResult(t *testing.T) {
+	t.Parallel()
 	_, err := shellCommandFailure("completed")
 	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 }

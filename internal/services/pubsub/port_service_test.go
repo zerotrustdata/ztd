@@ -21,8 +21,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestNewPortService(t *testing.T) {
-	t.Parallel()
+func TestNewPortService(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -30,7 +30,7 @@ func TestNewPortService(t *testing.T) {
 	scrubber := mustNewScrubbingSvc(t, logger)
 
 	t.Run("binds every dependency", func(t *testing.T) {
-		t.Parallel()
+
 		svc, err := NewPortService(cfg, logger, client, scrubber, auditStore)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
@@ -53,9 +53,9 @@ func TestNewPortService(t *testing.T) {
 		{name: "disabled scrubber", cfg: cfg, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
 		{name: "nil audit store", cfg: cfg, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			t.Parallel()
+
 			svc, err := NewPortService(tt.cfg, logger, client, tt.scrubber, tt.auditStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)

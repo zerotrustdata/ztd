@@ -76,6 +76,7 @@ func TestMaterializeCampaignSpec_RejectsMissingInputs(t *testing.T) {
 }
 
 func TestMemoryCampaignPublicationStateStore_LoadSaveCloneIsolation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := NewMemoryCampaignPublicationStateStore()
 
@@ -103,6 +104,7 @@ func TestMemoryCampaignPublicationStateStore_LoadSaveCloneIsolation(t *testing.T
 }
 
 func TestMemoryCampaignPublicationStateStore_RejectsMissingFields(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := NewMemoryCampaignPublicationStateStore()
 

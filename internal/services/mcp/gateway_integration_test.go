@@ -35,7 +35,9 @@ import (
 // through envelope processing to receipt generation, verifying that the
 // envelope is properly constructed and processed.
 func TestMCPGatewayEndToEndIntegration(t *testing.T) {
+	t.Parallel()
 	// Setup: Create a real envelope processor that will verify the envelope
+
 	processorCalled := false
 	var receivedEnvelope *commonv1.GovernanceEnvelope
 
@@ -111,6 +113,7 @@ func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload 
 // TestReceiptIntegration tests that a receipt is properly returned by the
 // envelope processor after MCP gateway processing.
 func TestReceiptIntegration(t *testing.T) {
+	t.Parallel()
 	processor := &fakeEnvelopeProcessor{
 		receipt: &operatorv1.ActionReceipt{
 			TransactionId:    "tx-1",
@@ -162,6 +165,7 @@ func TestReceiptIntegration(t *testing.T) {
 // TestCanonicalizationIntegration tests that the canonical form used for receipt
 // signing is deterministic and does not include gateway_signed (deleted concept).
 func TestCanonicalizationIntegration(t *testing.T) {
+	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:    "tx-1",
 		TransactionHash:  "hash-1",
@@ -195,6 +199,7 @@ func TestCanonicalizationIntegration(t *testing.T) {
 
 // TestCircuitBreakerIntegration tests circuit breaker state transitions
 func TestCircuitBreakerIntegration(t *testing.T) {
+	t.Parallel()
 
 	// Circuit breaker is only triggered on downstream proxy failures (tools/list, resources/list, prompts/list)
 	// not on envelope processor failures. Test through tools/list with a failing downstream URL.
@@ -254,6 +259,7 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 
 // TestGatewayErrorCodesIntegration tests gateway-specific error code mapping
 func TestGatewayErrorCodesIntegration(t *testing.T) {
+	t.Parallel()
 
 	testCases := []struct {
 		name          string
@@ -291,6 +297,7 @@ func TestGatewayErrorCodesIntegration(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			processor := &errorReturningProcessor{
 				err: tc.errorToReturn,
 			}
@@ -326,9 +333,11 @@ func TestGatewayErrorCodesIntegration(t *testing.T) {
 
 // TestNativeToolExecutionIntegration tests native tool execution within gateway
 func TestNativeToolExecutionIntegration(t *testing.T) {
+	t.Parallel()
 
 	// Native tools bypass envelope processing but still need envProc set for the gateway
 	// This test verifies the gateway correctly identifies native tools
+
 	pubKey, privKey, _ := ed25519.GenerateKey(nil)
 	_ = pubKey
 
@@ -383,9 +392,11 @@ func (e *errorReturningProcessor) ProcessEnvelope(ctx context.Context, payload [
 
 // TestReadFieldIntegration tests the read_field tool with field path registry and L3 validation
 func TestReadFieldIntegration(t *testing.T) {
+	t.Parallel()
 
 	// Setup fake DB service with map-based data
 	// Use "investigations" collection which exists in field_paths.json schema
+
 	dbService := &integrationTestDBService{
 		data: map[string]map[string]interface{}{
 			"investigations": {
@@ -445,6 +456,7 @@ func TestReadFieldIntegration(t *testing.T) {
 	// With a fake processor, the receipt summary is what's returned — field value
 	// extraction and audit logging happen inside the pipeline, not before it.
 	t.Run("routes through pipeline", func(t *testing.T) {
+		t.Parallel()
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_field","arguments":{"collection":"investigations","document_id":"investigation-123","field_path":"status","operator_session_id":"valid-session-123"}}}`
 		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody))
 		w := httptest.NewRecorder()
@@ -469,6 +481,7 @@ func TestReadFieldIntegration(t *testing.T) {
 // pattern detection, and successful reads. These validations run inside the pipeline
 // (DispatchToDownstream), so they cannot be tested via callTool with a fake processor.
 func TestHandleReadField(t *testing.T) {
+	t.Parallel()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	fieldPathRegistry, err := NewFieldPathRegistry(logger)
@@ -505,6 +518,7 @@ func TestHandleReadField(t *testing.T) {
 	}
 
 	t.Run("successful read", func(t *testing.T) {
+		t.Parallel()
 		args, _ := json.Marshal(map[string]string{
 			"collection":          "investigations",
 			"document_id":         "investigation-123",
@@ -524,6 +538,7 @@ func TestHandleReadField(t *testing.T) {
 	})
 
 	t.Run("invalid session", func(t *testing.T) {
+		t.Parallel()
 		args, _ := json.Marshal(map[string]string{
 			"collection":          "investigations",
 			"document_id":         "investigation-123",
@@ -536,6 +551,7 @@ func TestHandleReadField(t *testing.T) {
 	})
 
 	t.Run("forbidden pattern in field value", func(t *testing.T) {
+		t.Parallel()
 		args, _ := json.Marshal(map[string]string{
 			"collection":          "investigations",
 			"document_id":         "investigation-456",
@@ -614,6 +630,7 @@ func (f *integrationTestAuditLogger) LogFieldRead(operatorSessionID, collection,
 // audit record (the L5 signed receipt), not double-auditing with a raw event.
 // This test verifies the removal of the double-audit block from DispatchToDownstream.
 func TestNativeToolSingleAudit(t *testing.T) {
+	t.Parallel()
 
 	processor := &fakeEnvelopeProcessor{
 		receipt: &operatorv1.ActionReceipt{
@@ -660,6 +677,7 @@ func TestNativeToolSingleAudit(t *testing.T) {
 // executes the tool locally and returns the receipts as a textual summary
 // without forwarding to a downstream MCP server.
 func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
+	t.Parallel()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
@@ -697,6 +715,7 @@ func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 // TestAuditReceiptGetTool_DispatchToDownstream verifies the governed native
 // tool dispatch path for audit_receipt_get.
 func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
+	t.Parallel()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	rec := sampleReceiptRecord("tx-get-1", "sess-1", "DOCUMENT_UPDATE", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
@@ -732,6 +751,7 @@ func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
 // closed when no AuditReceiptQuery is wired, proving the audit receipt tools
 // cannot bypass governance to return ungoverned data.
 func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
+	t.Parallel()
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)

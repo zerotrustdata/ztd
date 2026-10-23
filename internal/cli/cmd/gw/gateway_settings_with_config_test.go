@@ -23,7 +23,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestGatewaySettingsCmdWithConfig_ConfigLoadError(t *testing.T) {
+func TestGatewaySettingsCmdWithConfig_ConfigLoadError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	failLoader := func(string) (*config.Config, error) {
 		return nil, fmt.Errorf("config load error")
 	}
@@ -38,7 +39,8 @@ func TestGatewaySettingsCmdWithConfig_ConfigLoadError(t *testing.T) {
 	assert.Contains(t, err.Error(), "load config")
 }
 
-func TestGatewaySettingsCmdWithConfig_ClientCreationError(t *testing.T) {
+func TestGatewaySettingsCmdWithConfig_ClientCreationError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -52,7 +54,8 @@ func TestGatewaySettingsCmdWithConfig_ClientCreationError(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInternal)
 }
 
-func TestGatewaySettingsCmdWithConfig_GetRequestError(t *testing.T) {
+func TestGatewaySettingsCmdWithConfig_GetRequestError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -67,7 +70,8 @@ func TestGatewaySettingsCmdWithConfig_GetRequestError(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrHTTPRequestExecuteFailed)
 }
 
-func TestGatewaySettingsCmdWithConfig_ValidResponsePrintsSettings(t *testing.T) {
+func TestGatewaySettingsCmdWithConfig_ValidResponsePrintsSettings(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	settingsJSON := []byte(`{"posture":"consensus","port":8443,"log_level":"info"}`)

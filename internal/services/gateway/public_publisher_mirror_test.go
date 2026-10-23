@@ -14,6 +14,8 @@ import (
 )
 
 func TestProofIndexPendingAfter_ResumesOnlyMatchingPrefixes(t *testing.T) {
+	t.Parallel()
+
 	index := newPublicProofIndex()
 	index.commit(models.PublicProofManifestSegment{SegmentIndex: 1, ProofRootSHA256: "root-1"}, 0, 10)
 	index.commit(models.PublicProofManifestSegment{SegmentIndex: 2, ProofRootSHA256: "root-2"}, 10, 20)
@@ -33,6 +35,8 @@ func TestProofIndexPendingAfter_ResumesOnlyMatchingPrefixes(t *testing.T) {
 		{name: "negative index", root: models.PublicProofRootResponse{SegmentIndex: -1}, wantErr: constants.ErrPublicFeedProofSegmentOutOfOrder},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			pending, err := index.pendingAfter(tc.root)
 			require.ErrorIs(t, err, tc.wantErr)
 			if tc.wantErr != nil {
@@ -46,6 +50,8 @@ func TestProofIndexPendingAfter_ResumesOnlyMatchingPrefixes(t *testing.T) {
 }
 
 func TestProofIndexCheck_EnforcesMirrorChainRules(t *testing.T) {
+	t.Parallel()
+
 	const idA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const idB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	index := newPublicProofIndex()
@@ -75,6 +81,8 @@ func TestProofIndexCheck_EnforcesMirrorChainRules(t *testing.T) {
 		{name: "next link", segment: models.PublicProofManifestSegment{SegmentIndex: 3, PreviousRoot: "root-2", Entries: []models.PublicProofCatalogEntry{{ArtifactID: idB}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			assert.ErrorIs(t, index.check(tc.segment), tc.wantErr)
 		})
 	}

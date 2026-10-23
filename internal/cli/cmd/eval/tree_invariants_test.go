@@ -19,6 +19,8 @@ import (
 // TestEvalTreeInvariants verifies the structure and naming conventions of the
 // eval command tree.
 func TestEvalTreeInvariants(t *testing.T) {
+	t.Parallel()
+
 	deps := nativeEvalDeps{}
 	cmd := evalCmdWithConfig(deps)
 
@@ -169,6 +171,8 @@ func walkCommandsRecursive(path []string, cmd *cobra.Command, fn func(path []str
 // TestEvalCmd_ContainsExpectedGroups verifies the eval command tree has the
 // expected top-level groups (in alphabetical order as Cobra sorts them).
 func TestEvalCmd_ContainsExpectedGroups(t *testing.T) {
+	t.Parallel()
+
 	deps := nativeEvalDeps{}
 	cmd := evalCmdWithConfig(deps)
 

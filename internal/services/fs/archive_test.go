@@ -19,7 +19,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestArchiveRuntime_RenamesInsteadOfDeleting(t *testing.T) {
+func TestArchiveRuntime_RenamesInsteadOfDeleting(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 	require.NoError(t, svc.WriteFile(ctx, "data/keep.txt", []byte("evidence"), constants.PermFilePrivate))
@@ -35,7 +36,8 @@ func TestArchiveRuntime_RenamesInsteadOfDeleting(t *testing.T) {
 	assert.Equal(t, "evidence", string(data))
 }
 
-func TestArchiveRuntime_MissingRuntimeIsNoOp(t *testing.T) {
+func TestArchiveRuntime_MissingRuntimeIsNoOp(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 
 	archived, err := svc.ArchiveRuntime(context.Background(), time.Now())
@@ -43,7 +45,8 @@ func TestArchiveRuntime_MissingRuntimeIsNoOp(t *testing.T) {
 	assert.Empty(t, archived)
 }
 
-func TestArchiveRuntime_NeverOverwritesAnExistingArchive(t *testing.T) {
+func TestArchiveRuntime_NeverOverwritesAnExistingArchive(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 	now := time.Date(2026, time.September, 30, 14, 1, 0, 0, time.UTC)
@@ -61,7 +64,8 @@ func TestArchiveRuntime_NeverOverwritesAnExistingArchive(t *testing.T) {
 	assert.FileExists(t, filepath.Join(second, "second.txt"))
 }
 
-func TestArchiveRuntime_HonorsCancelledContext(t *testing.T) {
+func TestArchiveRuntime_HonorsCancelledContext(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

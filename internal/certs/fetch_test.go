@@ -22,6 +22,7 @@ func fetchTestClient() *http.Client {
 }
 
 func TestFetchTrustBundle_UnreachableURL(t *testing.T) {
+	t.Parallel()
 	pem, err := FetchTrustBundle(context.Background(), "https://127.0.0.1:19999/.well-known/ztd/pki/ca-bundle", "", fetchTestClient())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to fetch CA certificate")
@@ -29,6 +30,7 @@ func TestFetchTrustBundle_UnreachableURL(t *testing.T) {
 }
 
 func TestFetchTrustBundle_InvalidURL(t *testing.T) {
+	t.Parallel()
 	pem, err := FetchTrustBundle(context.Background(), "://invalid-url", "", fetchTestClient())
 	require.Error(t, err)
 	assert.Nil(t, pem)
@@ -37,6 +39,7 @@ func TestFetchTrustBundle_InvalidURL(t *testing.T) {
 // TestFetchTrustBundle_NilClientReturnsError confirms a nil client is
 // rejected rather than panicking.
 func TestFetchTrustBundle_NilClientReturnsError(t *testing.T) {
+	t.Parallel()
 	_, err := FetchTrustBundle(context.Background(), "https://127.0.0.1:1/x", "", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil client")

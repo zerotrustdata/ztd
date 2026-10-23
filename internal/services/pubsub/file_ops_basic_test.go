@@ -25,8 +25,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestHandleFsListRequest_UnknownSessionMarksTheResultFailed(t *testing.T) {
-	t.Parallel()
+func TestHandleFsListRequest_UnknownSessionMarksTheResultFailed(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -49,8 +49,8 @@ func TestHandleFsListRequest_UnknownSessionMarksTheResultFailed(t *testing.T) {
 	assert.NotEmpty(t, result.ErrorMessage)
 }
 
-func TestHandleFsListRequest_ValidPath(t *testing.T) {
-	t.Parallel()
+func TestHandleFsListRequest_ValidPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	require.NoError(t, os.WriteFile(filepath.Join(cfg.WorkDir, "listed.txt"), []byte("x"), constants.PermFilePrivate))
 
@@ -89,8 +89,8 @@ func TestHandleFsListRequest_ValidPath(t *testing.T) {
 // every published entry carries its own path, because a listing without it
 // cannot be attributed to a file.
 
-func TestHandleFsGrepRequest_ValidPath(t *testing.T) {
-	t.Parallel()
+func TestHandleFsGrepRequest_ValidPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	require.NoError(t, os.WriteFile(filepath.Join(cfg.WorkDir, "test.txt"), []byte("hello world\ntest line\n"), constants.PermFilePrivate))
 
@@ -116,8 +116,8 @@ func TestHandleFsGrepRequest_ValidPath(t *testing.T) {
 	assert.Contains(t, result.Matches[0].Content, "hello")
 }
 
-func TestHandleFsReadRequest_ValidPath(t *testing.T) {
-	t.Parallel()
+func TestHandleFsReadRequest_ValidPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("file content"), 0644); err != nil {
@@ -146,8 +146,8 @@ func TestHandleFsReadRequest_ValidPath(t *testing.T) {
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, readResult.Status)
 }
 
-func TestHandleFsReadRequest_NonExistentPath(t *testing.T) {
-	t.Parallel()
+func TestHandleFsReadRequest_NonExistentPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -169,8 +169,8 @@ func TestHandleFsReadRequest_NonExistentPath(t *testing.T) {
 	assert.NotEmpty(t, result.ErrorMessage)
 }
 
-func TestHandleFileEditRequest_InvalidOperation(t *testing.T) {
-	t.Parallel()
+func TestHandleFileEditRequest_InvalidOperation(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -193,8 +193,8 @@ func TestHandleFileEditRequest_InvalidOperation(t *testing.T) {
 	assert.Zero(t, client.PublishedCount())
 }
 
-func TestHandleFsListRequest_InvalidPath(t *testing.T) {
-	t.Parallel()
+func TestHandleFsListRequest_InvalidPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -257,8 +257,8 @@ func TestPayloadToFileEditRequest_WithTaskID(t *testing.T) {
 	assert.Equal(t, "task-123", editReq.TaskID)
 }
 
-func TestHandleFsReadRequest_ScrubbingRedactsSecrets(t *testing.T) {
-	t.Parallel()
+func TestHandleFsReadRequest_ScrubbingRedactsSecrets(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "secret.txt")
 	require.NoError(t, os.WriteFile(testFile, []byte("password=secret123 api_key=ghp_test_token"), 0644))
@@ -293,8 +293,8 @@ func TestHandleFsReadRequest_ScrubbingRedactsSecrets(t *testing.T) {
 	assert.NotContains(t, readResult.Content, "ghp_test_token", "api key must be redacted")
 }
 
-func TestHandleFsReadRequest_TruncatesLargeFile(t *testing.T) {
-	t.Parallel()
+func TestHandleFsReadRequest_TruncatesLargeFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tmpDir := testutil.OperatorDir(t)
 	testFile := filepath.Join(tmpDir, "large.txt")
 	largeContent := strings.Repeat("A", 2048)

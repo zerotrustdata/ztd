@@ -107,11 +107,13 @@ func (f *ksiHistoryImporterFixture) replaceHistory(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_SourceID(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	assert.Equal(t, "ksi-history", NewKSIHistoryImporter(fixture.reader, fixture.binding).SourceID())
 }
 
 func TestKSIHistoryImporter_Import_LoadsChronologicalSnapshots(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	nodes, err := NewKSIHistoryImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)
@@ -137,6 +139,7 @@ func TestKSIHistoryImporter_Import_LoadsChronologicalSnapshots(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	tests := []struct {
 		name     string
@@ -153,6 +156,7 @@ func TestKSIHistoryImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -161,6 +165,7 @@ func TestKSIHistoryImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	fixture.binding.Reference = constants.KSIHistoryReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
 	_, err := NewKSIHistoryImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -169,6 +174,7 @@ func TestKSIHistoryImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_Import_RejectsMalformedCanonicalJSONL(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ksiHistoryImporterFixture)
@@ -183,6 +189,7 @@ func TestKSIHistoryImporter_Import_RejectsMalformedCanonicalJSONL(t *testing.T) 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			fixture := newKSIHistoryImporterFixture(t)
 			test.mutate(fixture)
 			fixture.reader.files[fixture.binding.Path] = fixture.body
@@ -195,6 +202,7 @@ func TestKSIHistoryImporter_Import_RejectsMalformedCanonicalJSONL(t *testing.T) 
 }
 
 func TestKSIHistoryImporter_Import_RejectsInvalidSnapshotBindings(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ksiHistoryImporterFixture)
@@ -244,6 +252,7 @@ func TestKSIHistoryImporter_Import_RejectsInvalidSnapshotBindings(t *testing.T) 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			fixture := newKSIHistoryImporterFixture(t)
 			test.mutate(fixture)
 			fixture.replaceHistory(t)
@@ -255,6 +264,7 @@ func TestKSIHistoryImporter_Import_RejectsInvalidSnapshotBindings(t *testing.T) 
 }
 
 func TestKSIHistoryImporter_Import_RejectsSnapshotOutsideImporterAssertionAssessmentScope(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliance.AssertionAssessmentScope)
@@ -266,6 +276,7 @@ func TestKSIHistoryImporter_Import_RejectsSnapshotOutsideImporterAssertionAssess
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			fixture := newKSIHistoryImporterFixture(t)
 			test.mutate(&fixture.binding.AssertionAssessments)
 			_, err := NewKSIHistoryImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -276,6 +287,7 @@ func TestKSIHistoryImporter_Import_RejectsSnapshotOutsideImporterAssertionAssess
 }
 
 func TestKSIHistoryImporter_Import_EnforcesSnapshotLimit(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	binding := fixture.snapshots[0].Binding
 	fixture.snapshots = make([]compliance.KSIResultSet, constants.KSIHistoryMaxSnapshots+1)
@@ -289,6 +301,7 @@ func TestKSIHistoryImporter_Import_EnforcesSnapshotLimit(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_Import_WrapsReadFailure(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	readErr := fmt.Errorf("KSI history source unavailable")
 	_, err := NewKSIHistoryImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
@@ -298,6 +311,7 @@ func TestKSIHistoryImporter_Import_WrapsReadFailure(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_Import_RespectsCancellation(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -306,6 +320,7 @@ func TestKSIHistoryImporter_Import_RespectsCancellation(t *testing.T) {
 }
 
 func TestKSIHistoryImporter_Import_ProducesValidGraph(t *testing.T) {
+	t.Parallel()
 	fixture := newKSIHistoryImporterFixture(t)
 	nodes, err := NewKSIHistoryImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)

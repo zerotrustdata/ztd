@@ -20,7 +20,7 @@ import (
 
 // Fail-closed: with no vault key on the runtime, reports cannot unlock the store and fail
 // instead of exporting metadata-only output.
-func TestReportAllCmd_WithoutVaultKeyFailsClosed(t *testing.T) {
+func TestReportAllCmd_WithoutVaultKeyFailsClosed(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	cmdtest.ChdirTemp(t)
 
 	cmd := reportAllCmd()
@@ -33,7 +33,7 @@ func TestReportAllCmd_WithoutVaultKeyFailsClosed(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrReportVaultUnavailable)
 }
 
-func TestReportVerifyCmd_WithoutVaultKeyFailsClosed(t *testing.T) {
+func TestReportVerifyCmd_WithoutVaultKeyFailsClosed(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	cmdtest.ChdirTemp(t)
 
 	cmd := reportVerifyCmd()
@@ -47,6 +47,8 @@ func TestReportVerifyCmd_WithoutVaultKeyFailsClosed(t *testing.T) {
 }
 
 func TestReportFlags_AddFlags_RegistersAllFlags(t *testing.T) {
+	t.Parallel()
+
 	cmd := reportAllCmd()
 	expectedFlags := []string{"out", "data-dir", "runtime-dir", "ledger-dir"}
 	for _, flagName := range expectedFlags {
@@ -56,6 +58,8 @@ func TestReportFlags_AddFlags_RegistersAllFlags(t *testing.T) {
 }
 
 func TestReportVerifyCmd_AddFlags_RegistersAllFlags(t *testing.T) {
+	t.Parallel()
+
 	cmd := reportVerifyCmd()
 	expectedFlags := []string{"out", "data-dir", "runtime-dir", "ledger-dir"}
 	for _, flagName := range expectedFlags {
@@ -65,6 +69,8 @@ func TestReportVerifyCmd_AddFlags_RegistersAllFlags(t *testing.T) {
 }
 
 func TestReportAllCmd_OutDirFlagCanBeSet(t *testing.T) {
+	t.Parallel()
+
 	cmd := reportAllCmd()
 	require.NoError(t, cmd.Flags().Set("out", "/tmp/custom-reports"))
 	flag := cmd.Flags().Lookup("out")
@@ -72,6 +78,8 @@ func TestReportAllCmd_OutDirFlagCanBeSet(t *testing.T) {
 }
 
 func TestReportAllCmd_DataDirFlagCanBeSet(t *testing.T) {
+	t.Parallel()
+
 	cmd := reportAllCmd()
 	require.NoError(t, cmd.Flags().Set("data-dir", "/tmp/custom-data"))
 	flag := cmd.Flags().Lookup("data-dir")

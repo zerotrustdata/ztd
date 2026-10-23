@@ -69,6 +69,7 @@ func TestFinalResponseDiagnosis_GradesClaimsInsteadOfIncidentalWording(t *testin
 		{"empty impact", diagnosis, "Moderate.", "We are investigating.", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			output := "Diagnosis: " + tc.diagnosis + "\nConfidence: " + tc.confidence +
 				"\nRecommended action: Investigate checkout and upstream telemetry before assigning a cause.\nCustomer-safe summary: " + tc.summary
 			passed, detail := evaluateFinalResponseDiagnosis(output, blueprint.Input, blueprint.Gold.ContentCheck.DiagnosisRubric)

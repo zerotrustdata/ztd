@@ -59,6 +59,7 @@ func toolsList(t *testing.T, names ...string) json.RawMessage {
 }
 
 func TestMCPStdioHandshakeThenToolsCall(t *testing.T) {
+	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{TransactionHash: "tx-read", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	require.NoError(t, err)
@@ -97,6 +98,7 @@ func TestMCPStdioHandshakeThenToolsCall(t *testing.T) {
 // TestMCPStdioDenyIsRejection checks that the typed rejection the bridge returns
 // for a denied approval is observed as a REJECTION.
 func TestMCPStdioDenyIsRejection(t *testing.T) {
+	t.Parallel()
 	denied := &operatorv1.ActionReceipt{
 		TransactionHash: "tx-deny",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -129,6 +131,7 @@ func TestMCPStdioDenyIsRejection(t *testing.T) {
 }
 
 func TestMCPStdioCallToolReturnsTypedResult(t *testing.T) {
+	t.Parallel()
 	var call mcp.CallToolRequest
 	m, err := stdioBridge(t, func(_ context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
 		resp := mcptransport.JSONRPCResponse{JSONRPC: constants.JSONRPCVersion, ID: req.ID, Result: json.RawMessage(`{}`)}
@@ -160,6 +163,7 @@ func TestMCPStdioCallToolReturnsTypedResult(t *testing.T) {
 }
 
 func TestMCPStdioHandshakeFailsWithoutNativeTools(t *testing.T) {
+	t.Parallel()
 	_, err := stdioBridge(t, func(_ context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
 		resp := mcptransport.JSONRPCResponse{JSONRPC: constants.JSONRPCVersion, ID: req.ID, Result: json.RawMessage(`{}`)}
 		if req.Method == "tools/list" {
@@ -171,6 +175,7 @@ func TestMCPStdioHandshakeFailsWithoutNativeTools(t *testing.T) {
 }
 
 func TestMCPStdioHandshakeFailsOnInitializeError(t *testing.T) {
+	t.Parallel()
 	_, err := stdioBridge(t, func(_ context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
 		return mcptransport.JSONRPCResponse{JSONRPC: constants.JSONRPCVersion, ID: req.ID,
 			Error: &mcptransport.JSONRPCError{Code: -32603, Message: "gateway proxy error"}}, nil
@@ -179,6 +184,7 @@ func TestMCPStdioHandshakeFailsOnInitializeError(t *testing.T) {
 }
 
 func TestMCPStdioRejectsMissingBridge(t *testing.T) {
+	t.Parallel()
 	_, err := StartMCPStdio(context.Background(), nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	_, err = ConnectMCPStdio(context.Background(), nil, nil, nil)

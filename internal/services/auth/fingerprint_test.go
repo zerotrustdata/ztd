@@ -292,6 +292,7 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("differentiates by capabilities", func(t *testing.T) {
+		t.Parallel()
 		fpInference, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference}})
 		require.NoError(t, err)
 
@@ -314,6 +315,7 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 	})
 
 	t.Run("differentiates by local dir", func(t *testing.T) {
+		t.Parallel()
 		fpDir1, err := GenerateOperatorFingerprint(logger, FingerprintOptions{LocalDir: "/var/run/op1"})
 		require.NoError(t, err)
 
@@ -324,6 +326,7 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 	})
 
 	t.Run("differentiates by account", func(t *testing.T) {
+		t.Parallel()
 		fpUser1, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Account: "alice"})
 		require.NoError(t, err)
 
@@ -334,6 +337,7 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 	})
 
 	t.Run("differentiates by port", func(t *testing.T) {
+		t.Parallel()
 		fpPort1, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Port: 8443})
 		require.NoError(t, err)
 
@@ -344,6 +348,7 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 	})
 
 	t.Run("combines system info with local dir, account, port, and capabilities", func(t *testing.T) {
+		t.Parallel()
 		fpFull, err := GenerateOperatorFingerprint(logger, FingerprintOptions{
 			LocalDir:     "/data/ztd/operators/inference",
 			Account:      "service-inference",

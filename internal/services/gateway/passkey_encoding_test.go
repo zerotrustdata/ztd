@@ -14,6 +14,7 @@ import (
 )
 
 func TestEncodeCredIDMatchesRawURLEncoding(t *testing.T) {
+	t.Parallel()
 
 	input := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0xfe, 0xff}
 	encoded := encodeCredID(input)

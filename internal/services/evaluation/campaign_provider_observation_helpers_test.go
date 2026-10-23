@@ -16,12 +16,14 @@ import (
 )
 
 func TestAppendUniqueStrings(t *testing.T) {
+	t.Parallel()
 	values := appendUniqueStrings([]string{"a"}, "b")
 	assert.Equal(t, []string{"a", "b"}, values)
 	assert.Equal(t, []string{"a", "b"}, appendUniqueStrings(values, "b"))
 }
 
 func TestMaxUint32Ptr(t *testing.T) {
+	t.Parallel()
 	first := maxUint32Ptr(nil, 5)
 	requireUint32(t, 5, first)
 	second := maxUint32Ptr(first, 3)
@@ -31,6 +33,7 @@ func TestMaxUint32Ptr(t *testing.T) {
 }
 
 func TestPublicVerdictStatus(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "pass", publicVerdictStatus(evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS))
 	assert.Equal(t, "fail", publicVerdictStatus(evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL))
 	assert.Equal(t, "unspecified", publicVerdictStatus(evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED))

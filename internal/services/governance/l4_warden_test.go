@@ -304,6 +304,7 @@ func TestL4Warden_EmptyPayload(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, tc.actionType, nil, privKey, constants.PostureDoctrine)
 
@@ -364,6 +365,7 @@ func signedEnvelopeWithAppID(t *testing.T, actionType constants.ActionType, payl
 // stage is emitted.
 func TestL4Warden_PreDoctrineRejectionEmitsNoL1Stage(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name    string
 		mutate  func(env *govtypes.GovernanceEnvelope)
@@ -383,6 +385,7 @@ func TestL4Warden_PreDoctrineRejectionEmitsNoL1Stage(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, constants.PostureDoctrine)
 			// No rehash: both mutations are rejected before the hash check, and

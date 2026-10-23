@@ -21,6 +21,7 @@ import (
 
 func TestHasCampaignAuthority(t *testing.T) {
 	t.Parallel()
+
 	variants := []*operatorv1.InferenceModelVariant{{Model: "m", Digest: strings.Repeat("a", 64)}}
 	tests := []struct {
 		name       string
@@ -37,6 +38,7 @@ func TestHasCampaignAuthority(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+
 			assert.Equal(t, test.want, HasCampaignAuthority(test.campaignID, test.digest, test.registry))
 		})
 	}
@@ -44,6 +46,7 @@ func TestHasCampaignAuthority(t *testing.T) {
 
 func TestVerifyModelRegistryBinding(t *testing.T) {
 	t.Parallel()
+
 	const campaignID = "campaign-1"
 	digestA := strings.Repeat("a", 64)
 	digestB := strings.Repeat("b", 64)
@@ -81,6 +84,7 @@ func TestVerifyModelRegistryBinding(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+
 			err := VerifyModelRegistryBinding(campaignID, test.registryDigest, test.model, test.modelDigest, test.registry)
 			if test.wantErr == nil {
 				assert.NoError(t, err)

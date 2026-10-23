@@ -15,6 +15,7 @@ import (
 )
 
 func TestOperatorCapabilitiesValidateNormalizeAndRejectUnknownValues(t *testing.T) {
+	t.Parallel()
 	var capabilities OperatorCapabilities
 	require.NoError(t, capabilities.Set("observer,data,inference"))
 	require.NoError(t, capabilities.Set("provenance,data"))
@@ -32,6 +33,7 @@ func TestOperatorCapabilitiesValidateNormalizeAndRejectUnknownValues(t *testing.
 }
 
 func TestOperatorCapabilitiesWithEmbeddedBaselineAddsDataAndInference(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, OperatorCapabilities{OperatorCapabilityData, OperatorCapabilityInference}, OperatorCapabilities{}.WithEmbeddedBaseline())
 	require.Equal(t, OperatorCapabilities{OperatorCapabilityData, OperatorCapabilityInference, OperatorCapabilityObserver}, OperatorCapabilities{OperatorCapabilityObserver, OperatorCapabilityData}.WithEmbeddedBaseline())
 }

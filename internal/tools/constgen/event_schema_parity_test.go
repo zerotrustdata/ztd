@@ -58,6 +58,7 @@ func sortedCopy(in []string) []string {
 // and constgen's Go checks disagree on any enum, required list, or pattern.
 // Changing one side without the other is a test failure, not silent drift.
 func TestEventRegistrySchema_PinsConstgenChecks(t *testing.T) {
+	t.Parallel()
 	root, err := findRepoRoot()
 	require.NoError(t, err)
 	data, err := os.ReadFile(filepath.Join(root, relPathEventSchema))
@@ -67,27 +68,35 @@ func TestEventRegistrySchema_PinsConstgenChecks(t *testing.T) {
 	props := schema.Properties
 
 	t.Run("kind enum", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, sortedMapKeys(allowedKinds), sortedCopy(props.Kind.allowed()))
 	})
 	t.Run("transport enum", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, sortedMapKeys(allowedTransport), sortedCopy(props.Transport.allowed()))
 	})
 	t.Run("producers enum", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, sortedMapKeys(allowedProducers), sortedCopy(props.Producers.allowed()))
 	})
 	t.Run("persistence enum", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, sortedMapKeys(allowedPersistence), sortedCopy(props.Persistence.allowed()))
 	})
 	t.Run("entry required fields", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, sortedCopy(requiredEventFields), sortedCopy(schema.Required))
 	})
 	t.Run("governance required fields", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, sortedCopy(requiredGovernanceFields), sortedCopy(props.Governance.Required))
 	})
 	t.Run("_go_const pattern", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, goConstPat.String(), props.GoConst.Pattern)
 	})
 	t.Run("wire value pattern", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, wirePattern.String(), props.Value.Pattern)
 	})
 }

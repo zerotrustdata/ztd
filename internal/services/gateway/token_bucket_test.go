@@ -16,6 +16,7 @@ import (
 )
 
 func TestNewTokenBucket_InitialCapacity(t *testing.T) {
+	t.Parallel()
 	tb := newTokenBucket(10, 5)
 	assert.Equal(t, 5, tb.burst)
 	assert.InDelta(t, 5.0, tb.tokens, 0)
@@ -23,6 +24,7 @@ func TestNewTokenBucket_InitialCapacity(t *testing.T) {
 }
 
 func TestTokenBucket_AllowWithinBurst(t *testing.T) {
+	t.Parallel()
 	tb := newTokenBucket(100, 3)
 	for i := 0; i < 3; i++ {
 		assert.True(t, tb.Allow(), "call %d should be allowed within burst", i)
@@ -31,6 +33,7 @@ func TestTokenBucket_AllowWithinBurst(t *testing.T) {
 }
 
 func TestTokenBucket_RefillOverTime(t *testing.T) {
+	t.Parallel()
 	tb := newTokenBucket(100, 1)
 	assert.True(t, tb.Allow(), "first call consumes the only token")
 	assert.False(t, tb.Allow(), "second call denied immediately")
@@ -40,6 +43,7 @@ func TestTokenBucket_RefillOverTime(t *testing.T) {
 }
 
 func TestTokenBucket_RefillCappedAtBurst(t *testing.T) {
+	t.Parallel()
 	tb := newTokenBucket(100, 2)
 	tb.tokens = 0
 	tb.last = tb.last.Add(-1 * time.Hour)
@@ -49,6 +53,7 @@ func TestTokenBucket_RefillCappedAtBurst(t *testing.T) {
 }
 
 func TestTokenBucket_ConcurrentAllow(t *testing.T) {
+	t.Parallel()
 	tb := newTokenBucket(0, 100)
 	done := make(chan bool, 200)
 	allowed := 0
@@ -75,6 +80,7 @@ func TestTokenBucket_ConcurrentAllow(t *testing.T) {
 }
 
 func TestTokenBucket_ZeroRate(t *testing.T) {
+	t.Parallel()
 	tb := newTokenBucket(0, 1)
 	assert.True(t, tb.Allow(), "first call uses initial token")
 	assert.False(t, tb.Allow(), "second call denied (no refill at 0 rate)")

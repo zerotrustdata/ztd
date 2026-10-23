@@ -28,7 +28,11 @@ import (
 )
 
 func TestActuatorPublicKeyExport(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
+
 		tmpDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
 		require.NoError(t, err)
@@ -51,6 +55,8 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 	})
 
 	t.Run("NilLogger", func(t *testing.T) {
+		t.Parallel()
+
 		tmpDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
 		require.NoError(t, err)
@@ -66,6 +72,8 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 	})
 
 	t.Run("OverwriteExisting", func(t *testing.T) {
+		t.Parallel()
+
 		tmpDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
 		require.NoError(t, err)
@@ -91,6 +99,8 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 	})
 
 	t.Run("FilePermissions", func(t *testing.T) {
+		t.Parallel()
+
 		tmpDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
 		require.NoError(t, err)

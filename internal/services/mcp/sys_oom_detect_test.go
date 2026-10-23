@@ -23,6 +23,7 @@ import (
 )
 
 func TestSysOOMDetectTool_Metadata(t *testing.T) {
+	t.Parallel()
 	tool := &SysOOMDetectTool{}
 	assert.Equal(t, "sys_oom_detect", tool.Name())
 	assert.NotEmpty(t, tool.Description())
@@ -35,6 +36,7 @@ func TestSysOOMDetectTool_Metadata(t *testing.T) {
 }
 
 func TestSysOOMDetectTool_Execute(t *testing.T) {
+	t.Parallel()
 	tempDir := testutil.TempDir(t)
 
 	// Create a mock log file with OOM events that match the improved regexes
@@ -91,6 +93,7 @@ func TestSysOOMDetectTool_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tool := &SysOOMDetectTool{}
 			result, err := tool.Execute(tt.ctx, json.RawMessage(tt.args))
 
@@ -136,6 +139,7 @@ func TestSysOOMDetectTool_Execute(t *testing.T) {
 }
 
 func TestSysOOMDetectTool_Execute_DefaultPath(t *testing.T) {
+	t.Parallel()
 	tool := &SysOOMDetectTool{}
 	result, err := tool.Execute(testutil.Context(t), json.RawMessage(`{}`))
 	if runtime.GOOS != "linux" {
@@ -152,6 +156,7 @@ func TestSysOOMDetectTool_Execute_DefaultPath(t *testing.T) {
 }
 
 func TestSysOOMDetectTool_Execute_NoEvents(t *testing.T) {
+	t.Parallel()
 	tempDir := testutil.TempDir(t)
 	logPath := filepath.Join(tempDir, "clean_dmesg")
 	err := os.WriteFile(logPath, []byte("system boot successful\nno errors found"), 0644)

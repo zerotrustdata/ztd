@@ -36,6 +36,7 @@ func writeProfile(t *testing.T, fileSvc fs.RuntimeFileService, cfg serve.Gateway
 }
 
 func TestValidateRequestedPosture(t *testing.T) {
+	t.Parallel()
 	for _, ok := range []constants.Posture{"", constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		require.NoError(t, validateRequestedPosture(ok), "%q", ok)
 	}
@@ -45,6 +46,7 @@ func TestValidateRequestedPosture(t *testing.T) {
 }
 
 func TestResolveGatewayLaunchConfig(t *testing.T) {
+	t.Parallel()
 	existing := serve.GatewayConfig{
 		Posture:          constants.PostureConsensus,
 		HTTPPort:         8080,
@@ -68,6 +70,7 @@ func TestResolveGatewayLaunchConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			fileSvc := newPostureTestFileSvc(t)
 			if tt.profile != nil {
 				writeProfile(t, fileSvc, *tt.profile)
@@ -87,6 +90,7 @@ func TestResolveGatewayLaunchConfig(t *testing.T) {
 }
 
 func TestResolveGatewayLaunchConfig_CorruptProfileFailsClosed(t *testing.T) {
+	t.Parallel()
 	fileSvc := newPostureTestFileSvc(t)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorLaunchProfileFilename), []byte(`{not json`), constants.PermFilePrivate))
 
@@ -95,7 +99,9 @@ func TestResolveGatewayLaunchConfig_CorruptProfileFailsClosed(t *testing.T) {
 }
 
 func TestRunningGatewayPosture(t *testing.T) {
+	t.Parallel()
 	t.Run("no explicit request returns the profile posture", func(t *testing.T) {
+		t.Parallel()
 		fileSvc := newPostureTestFileSvc(t)
 		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: constants.PostureRatify, LogLevel: "info"})
 		posture, err := runningGatewayPosture(fileSvc, "")
@@ -104,6 +110,7 @@ func TestRunningGatewayPosture(t *testing.T) {
 	})
 
 	t.Run("matching profile passes", func(t *testing.T) {
+		t.Parallel()
 		fileSvc := newPostureTestFileSvc(t)
 		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: constants.PostureNotary, LogLevel: "info"})
 		posture, err := runningGatewayPosture(fileSvc, constants.PostureNotary)
@@ -112,6 +119,7 @@ func TestRunningGatewayPosture(t *testing.T) {
 	})
 
 	t.Run("different posture fails closed", func(t *testing.T) {
+		t.Parallel()
 		fileSvc := newPostureTestFileSvc(t)
 		writeProfile(t, fileSvc, serve.GatewayConfig{Posture: constants.PostureDoctrine, LogLevel: "info"})
 		_, err := runningGatewayPosture(fileSvc, constants.PostureNotary)
@@ -119,12 +127,14 @@ func TestRunningGatewayPosture(t *testing.T) {
 	})
 
 	t.Run("unverifiable requested posture fails closed", func(t *testing.T) {
+		t.Parallel()
 		_, err := runningGatewayPosture(newPostureTestFileSvc(t), constants.PostureNotary)
 		require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
 		require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
 	})
 
 	t.Run("unknown posture without a request fails closed", func(t *testing.T) {
+		t.Parallel()
 		_, err := runningGatewayPosture(newPostureTestFileSvc(t), "")
 		require.ErrorIs(t, err, constants.ErrGatewayPostureUnknown)
 		require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
@@ -132,6 +142,7 @@ func TestRunningGatewayPosture(t *testing.T) {
 }
 
 func TestAgentRunCmd_ExposesPostureFlagWithNoHardcodedDefault(t *testing.T) {
+	t.Parallel()
 	flag := agentRunCmd().Flags().Lookup("posture")
 	require.NotNil(t, flag)
 	assert.Empty(t, flag.DefValue, "the default comes from the previous gateway or the platform default, not the flag")

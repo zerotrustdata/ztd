@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestContext_ExpiresAndCancelsWithTheTest(t *testing.T) {
+func TestContext_ExpiresAndCancelsWithTheTest(t *testing.T) { //nolint:tparallel // the parent observes cancellation after the subtest returns
 	t.Parallel()
 
 	canceled := make(chan error, 1)

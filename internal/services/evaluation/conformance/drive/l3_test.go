@@ -44,11 +44,13 @@ func withoutL3(env *commonv1.GovernanceEnvelope) *commonv1.GovernanceEnvelope {
 // Once governance.l3 is cleared, the envelope must equal the baseline: nothing else
 // moved, and the transaction hash and id are the baseline's.
 func TestL3MutatorsChangeOnlyGovernanceL3(t *testing.T) {
+	t.Parallel()
 	set := L3Mutators()
 	require.Len(t, set, len(l3Faults), "L3Mutators must own exactly the three L3 faults")
 
 	for _, fault := range l3Faults {
 		t.Run(string(fault), func(t *testing.T) {
+			t.Parallel()
 			m, ok := set[fault]
 			require.True(t, ok, "L3Mutators has no mutator for %s", fault)
 
@@ -68,9 +70,11 @@ func TestL3MutatorsChangeOnlyGovernanceL3(t *testing.T) {
 // TestL3MutatorsLeaveTheHashValid proves L3 is outside the hash: after each mutator
 // the recomputed hash still equals the transaction hash, so L4 reaches the L3 check.
 func TestL3MutatorsLeaveTheHashValid(t *testing.T) {
+	t.Parallel()
 	set := L3Mutators()
 	for _, fault := range l3Faults {
 		t.Run(string(fault), func(t *testing.T) {
+			t.Parallel()
 			a := testAttempt(fault, cases.ActionMutation)
 			env, err := Baseline(a, testIdentity(), "root-1", time.Now())
 			require.NoError(t, err)
@@ -86,6 +90,7 @@ func TestL3MutatorsLeaveTheHashValid(t *testing.T) {
 // TestL3MissingRemovesProofAndKeepsL2 is the negative side of row 20: the missing
 // fault must leave no L3 proof, and an L2 proof already on the envelope survives.
 func TestL3MissingRemovesProofAndKeepsL2(t *testing.T) {
+	t.Parallel()
 	a := testAttempt(cases.FaultL3Missing, cases.ActionMutation)
 	env, err := Baseline(a, testIdentity(), "root-1", time.Now())
 	require.NoError(t, err)
@@ -105,8 +110,10 @@ func TestL3MissingRemovesProofAndKeepsL2(t *testing.T) {
 // proof), carry a credential, an authenticator data blob and a 64-byte signature,
 // and name the envelope's transaction hash in its client data challenge.
 func TestL3InvalidProofIsPresentAndForged(t *testing.T) {
+	t.Parallel()
 	for _, fault := range []cases.Fault{cases.FaultL3Invalid, cases.FaultL3Garbage} {
 		t.Run(string(fault), func(t *testing.T) {
+			t.Parallel()
 			a := testAttempt(fault, cases.ActionMutation)
 			env, err := Baseline(a, testIdentity(), "root-1", time.Now())
 			require.NoError(t, err)
@@ -142,6 +149,7 @@ func TestL3InvalidProofIsPresentAndForged(t *testing.T) {
 // TestL3InvalidProofIsFreshPerAttempt is the negative side of the forgery: two
 // attempts never share credential material, so no run can replay a proof.
 func TestL3InvalidProofIsFreshPerAttempt(t *testing.T) {
+	t.Parallel()
 	first, err := invalidL3Proof("tx-hash-1")
 	require.NoError(t, err)
 	second, err := invalidL3Proof("tx-hash-1")
@@ -153,6 +161,7 @@ func TestL3InvalidProofIsFreshPerAttempt(t *testing.T) {
 // TestL3InvalidProofNamesTheTransactionHash is the negative side of the challenge:
 // a proof built for one transaction must not name another transaction's hash.
 func TestL3InvalidProofNamesTheTransactionHash(t *testing.T) {
+	t.Parallel()
 	proof, err := invalidL3Proof("tx-hash-A")
 	require.NoError(t, err)
 	var clientData webAuthnClientData

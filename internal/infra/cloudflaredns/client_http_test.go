@@ -71,7 +71,9 @@ func writeAPIError(t *testing.T, w http.ResponseWriter, status int, message stri
 }
 
 func TestNewClient(t *testing.T) {
+	t.Parallel()
 	t.Run("rejects empty and whitespace-only tokens", func(t *testing.T) {
+		t.Parallel()
 		for _, token := range []string{"", "   ", "\t\n"} {
 			client, err := NewClient(token)
 			require.ErrorIs(t, err, constants.ErrMissingRequiredField, "token %q", token)
@@ -80,6 +82,7 @@ func TestNewClient(t *testing.T) {
 	})
 
 	t.Run("trims surrounding whitespace and sets a request timeout", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewClient("  secret-token \n")
 		require.NoError(t, err)
 		assert.Equal(t, "secret-token", client.token)
@@ -89,6 +92,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestZoneNameForHostname_Table(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		hostname string
@@ -106,6 +110,7 @@ func TestZoneNameForHostname_Table(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := zoneNameForHostname(tt.hostname)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -119,6 +124,7 @@ func TestZoneNameForHostname_Table(t *testing.T) {
 }
 
 func TestDNSRecordName_Table(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		hostname string
@@ -132,6 +138,7 @@ func TestDNSRecordName_Table(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, dnsRecordName(tt.hostname))
 		})
 	}

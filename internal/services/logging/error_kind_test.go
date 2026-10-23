@@ -21,6 +21,8 @@ import (
 )
 
 func TestErrorKind_ClassifiesWrappedProviderFailuresWithoutContent(t *testing.T) {
+	t.Parallel()
+
 	for _, test := range []struct {
 		name string
 		err  error
@@ -35,6 +37,8 @@ func TestErrorKind_ClassifiesWrappedProviderFailuresWithoutContent(t *testing.T)
 		{"empty file content", constants.ErrFileEditContentRequired, "invalid_input"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := &url.Error{Op: "Post", URL: "http://private.example/private", Err: fmt.Errorf("private data: %w", test.err)}
 			assert.Equal(t, test.want, ErrorKind(err).Value.String())
 			assert.Equal(t, test.want, ErrorKindValue(err))

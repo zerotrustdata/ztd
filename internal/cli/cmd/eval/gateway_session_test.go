@@ -19,6 +19,7 @@ import (
 )
 
 func TestEvalRejectSharedRuntimeTribunalL2(t *testing.T) {
+	t.Parallel()
 	shared := evaluation.CampaignOperatorTopology{
 		Inference: evaluation.CampaignOperatorRuntime{OperatorID: "operator-a", OperatorSessionID: "session-a"},
 		Data:      evaluation.CampaignOperatorRuntime{OperatorID: "operator-a", OperatorSessionID: "session-a"},
@@ -41,6 +42,7 @@ func TestEvalRejectSharedRuntimeTribunalL2(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := evalRejectSharedRuntimeTribunalL2(tt.health, tt.topology)
 			if tt.wantErr {
 				require.ErrorIs(t, err, constants.ErrEvaluationSharedRuntimeTribunalL2)
@@ -52,6 +54,7 @@ func TestEvalRejectSharedRuntimeTribunalL2(t *testing.T) {
 }
 
 func TestEvalGatewayGovernanceReady(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		health    *models.HealthResponse
@@ -125,6 +128,7 @@ func TestEvalGatewayGovernanceReady(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := evalGatewayGovernanceReady(tt.health)
 			if tt.wantErr == nil {
 				require.NoError(t, err)

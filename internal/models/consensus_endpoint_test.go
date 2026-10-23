@@ -15,11 +15,13 @@ import (
 )
 
 func TestValidateConsensusEndpoint(t *testing.T) {
+	t.Parallel()
 	for _, endpoint := range []string{"https://app.example/deliberate", "https://[::1]:8443/deliberate?version=1"} {
 		require.NoError(t, ValidateConsensusEndpoint(endpoint))
 	}
 	for _, endpoint := range []string{"", "/deliberate", "http://app.example", "https:///deliberate", "https://:8443", "https://user:password@app.example", "https://app.example#fragment", "https:app.example", "https://app.example:invalid"} {
 		t.Run(endpoint, func(t *testing.T) {
+			t.Parallel()
 			require.ErrorIs(t, ValidateConsensusEndpoint(endpoint), constants.ErrConsensusEndpointInvalid)
 		})
 	}

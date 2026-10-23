@@ -16,68 +16,84 @@ import (
 // --- nextStep ---
 
 func TestNextStep_NetworkToPosture(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepPosture, nextStep(StepNetwork))
 }
 
 func TestNextStep_PostureToRouting(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepRouting, nextStep(StepPosture))
 }
 
 func TestNextStep_RoutingToReview(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepReview, nextStep(StepRouting))
 }
 
 func TestNextStep_ReviewToDone(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepDone, nextStep(StepReview))
 }
 
 func TestNextStep_DoneStaysDone(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepDone, nextStep(StepDone))
 }
 
 // --- prevStep ---
 
 func TestPrevStep_NetworkStaysNetwork(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepNetwork, prevStep(StepNetwork))
 }
 
 func TestPrevStep_PostureToNetwork(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepNetwork, prevStep(StepPosture))
 }
 
 func TestPrevStep_RoutingToPosture(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepPosture, prevStep(StepRouting))
 }
 
 func TestPrevStep_ReviewToRouting(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, StepRouting, prevStep(StepReview))
 }
 
 // --- stepNumber ---
 
 func TestStepNumber_NetworkIsOne(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 1, stepNumber(StepNetwork))
 }
 
 func TestStepNumber_PostureIsTwo(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 2, stepNumber(StepPosture))
 }
 
 func TestStepNumber_RoutingIsThree(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 3, stepNumber(StepRouting))
 }
 
 func TestStepNumber_ReviewIsFour(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 4, stepNumber(StepReview))
 }
 
 func TestStepNumber_DoneIsZero(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 0, stepNumber(StepDone))
 }
 
 // --- stepDefs completeness ---
 
 func TestStepDefs_AllStepsPresent(t *testing.T) {
+	t.Parallel()
+
 	for _, s := range stepOrder {
 		def, ok := stepDefs[s]
 		assert.True(t, ok, "stepDefs should contain step %d", s)
@@ -87,21 +103,25 @@ func TestStepDefs_AllStepsPresent(t *testing.T) {
 }
 
 func TestStepDefs_NetworkTitle(t *testing.T) {
+	t.Parallel()
 	def := stepDefs[StepNetwork]
 	assert.Equal(t, "Network & Identity", def.title)
 }
 
 func TestStepDefs_PostureTitle(t *testing.T) {
+	t.Parallel()
 	def := stepDefs[StepPosture]
 	assert.Equal(t, "Security & Governance Posture", def.title)
 }
 
 func TestStepDefs_RoutingTitle(t *testing.T) {
+	t.Parallel()
 	def := stepDefs[StepRouting]
 	assert.Equal(t, "Agent Tooling & Routing", def.title)
 }
 
 func TestStepDefs_ReviewTitle(t *testing.T) {
+	t.Parallel()
 	def := stepDefs[StepReview]
 	assert.Equal(t, "Review & Confirm", def.title)
 }
@@ -109,6 +129,7 @@ func TestStepDefs_ReviewTitle(t *testing.T) {
 // --- stepOrder ---
 
 func TestStepOrder_Sequence(t *testing.T) {
+	t.Parallel()
 	assert.Len(t, stepOrder, 4)
 	assert.Equal(t, StepNetwork, stepOrder[0])
 	assert.Equal(t, StepPosture, stepOrder[1])
@@ -117,6 +138,8 @@ func TestStepOrder_Sequence(t *testing.T) {
 }
 
 func TestStepOrder_ExcludesDone(t *testing.T) {
+	t.Parallel()
+
 	for _, s := range stepOrder {
 		assert.NotEqual(t, StepDone, s, "stepOrder should not include StepDone")
 	}

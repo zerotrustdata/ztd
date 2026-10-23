@@ -19,8 +19,10 @@ import (
 )
 
 func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing.T) {
+	t.Parallel()
 	// D11: Grade Gold.Players through persona/ for the roles that actually ran.
 	// Absent roles are ungraded, not failed.
+
 	gold := ScenarioGoldCriteria{
 		SchemaVersion:    "1.0.0",
 		ScenarioID:       "test-player-grading",
@@ -69,6 +71,7 @@ func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing
 	}
 
 	t.Run("present roles pass, absent roles are not graded", func(t *testing.T) {
+		t.Parallel()
 		trace := &AgentTrace{
 			RunID:               "run-player-test",
 			AssignmentID:        "assign-player-test",
@@ -135,6 +138,7 @@ func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing
 	})
 
 	t.Run("present role failing persona expectations fails with class", func(t *testing.T) {
+		t.Parallel()
 		trace := &AgentTrace{
 			RunID:               "run-player-test",
 			AssignmentID:        "assign-player-test",
@@ -175,6 +179,7 @@ func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing
 	})
 
 	t.Run("nil players leaves all players ungraded", func(t *testing.T) {
+		t.Parallel()
 		noPlayerReq := req
 		noPlayerReq.ScenarioGold.Players = nil
 		trace := &AgentTrace{
@@ -205,6 +210,7 @@ func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing
 	})
 
 	t.Run("empty steps leaves all players ungraded", func(t *testing.T) {
+		t.Parallel()
 		trace := &AgentTrace{
 			RunID:               "run-player-test",
 			AssignmentID:        "assign-player-test",

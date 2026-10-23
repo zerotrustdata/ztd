@@ -19,6 +19,7 @@ import (
 )
 
 func TestOperatorAuditReceiptListResult_ProtoJSONSerialization(t *testing.T) {
+	t.Parallel()
 	orig := OperatorAuditReceiptListResult{
 		Count:           1,
 		OperatorID:      "op-test",
@@ -66,7 +67,9 @@ func TestOperatorAuditReceiptListResult_ProtoJSONSerialization(t *testing.T) {
 }
 
 func TestOperatorAuditReceiptListResult_AcceptsNumericEnum(t *testing.T) {
+	t.Parallel()
 	// Backward compatibility: test unmarshaling legacy JSON with numeric enum encoding
+
 	rawJSON := `{
 		"count": 1,
 		"operator_id": "op-test",
@@ -91,7 +94,9 @@ func TestOperatorAuditReceiptListResult_AcceptsNumericEnum(t *testing.T) {
 }
 
 func TestOperatorAuditReceiptListResult_NilAndEmptyReceipts(t *testing.T) {
+	t.Parallel()
 	// Nil receipts slice
+
 	nilResult := OperatorAuditReceiptListResult{
 		Count:           0,
 		OperatorID:      "op-1",

@@ -28,6 +28,7 @@ func repoRootForEnvTest(t *testing.T) string {
 }
 
 func TestValidateEnvRegistries_CommittedRegistriesAgree(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, validateEnvRegistries(repoRootForEnvTest(t)))
 }
 
@@ -87,6 +88,7 @@ func mutateFixture(t *testing.T, root, rel, old, replacement string) {
 }
 
 func TestValidateEnvRegistries_FailsOnMalformedRegistryEntry(t *testing.T) {
+	t.Parallel()
 	root := newEnvFixture(t)
 	mutateFixture(t, root, relPathEnvVars,
 		`"value": "ZTD_EXAMPLE_TOKEN",
@@ -98,6 +100,7 @@ func TestValidateEnvRegistries_FailsOnMalformedRegistryEntry(t *testing.T) {
 }
 
 func TestValidateEnvRegistries_FailsWhenRequiredEnvExampleEntryIsMissing(t *testing.T) {
+	t.Parallel()
 	root := newEnvFixture(t)
 	mutateFixture(t, root, relPathEnvExample,
 		"# ZTD_EXAMPLE_TOKEN=example-token\n", "")
@@ -107,6 +110,7 @@ func TestValidateEnvRegistries_FailsWhenRequiredEnvExampleEntryIsMissing(t *test
 }
 
 func TestValidateEnvRegistries_FailsWhenEnvExampleEntryLacksPurpose(t *testing.T) {
+	t.Parallel()
 	root := newEnvFixture(t)
 	mutateFixture(t, root, relPathEnvExample,
 		"# Purpose: Fixture secret for the registry validation tests.\n", "")
@@ -116,6 +120,7 @@ func TestValidateEnvRegistries_FailsWhenEnvExampleEntryLacksPurpose(t *testing.T
 }
 
 func TestValidateEnvRegistries_FailsOnUnregisteredEnvExampleKey(t *testing.T) {
+	t.Parallel()
 	root := newEnvFixture(t)
 	mutateFixture(t, root, relPathEnvExample,
 		"# ZTD_EXAMPLE_TOKEN=example-token\n", "# ZTD_EXAMPLE_TOKEN=example-token\nZTD_NOT_REGISTERED=localhost\n")

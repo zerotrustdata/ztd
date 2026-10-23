@@ -44,6 +44,7 @@ func countingBackup(calls *int, err error) *PreCleanBackup {
 }
 
 func TestConfirmDestructive_DeclineAbortsWithoutBackup(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("n\n")
 	calls := 0
 
@@ -57,6 +58,7 @@ func TestConfirmDestructive_DeclineAbortsWithoutBackup(t *testing.T) {
 }
 
 func TestConfirmDestructive_EndOfInputAborts(t *testing.T) {
+	t.Parallel()
 	cmd, _ := destructiveCmd("")
 	calls := 0
 
@@ -68,6 +70,7 @@ func TestConfirmDestructive_EndOfInputAborts(t *testing.T) {
 }
 
 func TestConfirmDestructive_BackupPromptDefaultsToYes(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("y\n\n")
 	calls := 0
 
@@ -81,6 +84,7 @@ func TestConfirmDestructive_BackupPromptDefaultsToYes(t *testing.T) {
 }
 
 func TestConfirmDestructive_DecliningBackupStillProceeds(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("y\nn\n")
 	calls := 0
 
@@ -93,6 +97,7 @@ func TestConfirmDestructive_DecliningBackupStillProceeds(t *testing.T) {
 }
 
 func TestConfirmDestructive_EndOfInputAtBackupPromptSkipsBackup(t *testing.T) {
+	t.Parallel()
 	cmd, _ := destructiveCmd("y\n")
 	calls := 0
 
@@ -104,6 +109,7 @@ func TestConfirmDestructive_EndOfInputAtBackupPromptSkipsBackup(t *testing.T) {
 }
 
 func TestConfirmDestructive_AssumeYesStillBacksUp(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("")
 	calls := 0
 
@@ -116,6 +122,7 @@ func TestConfirmDestructive_AssumeYesStillBacksUp(t *testing.T) {
 }
 
 func TestConfirmDestructive_SkipBackupOptsOut(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("y\n")
 	calls := 0
 
@@ -128,6 +135,7 @@ func TestConfirmDestructive_SkipBackupOptsOut(t *testing.T) {
 }
 
 func TestConfirmDestructive_BackupFailureAborts(t *testing.T) {
+	t.Parallel()
 	cmd, _ := destructiveCmd("")
 	calls := 0
 
@@ -143,6 +151,7 @@ type failingReader struct{ err error }
 func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestConfirmDestructive_ListsEveryEffectUnderTheWarning(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("n\n")
 
 	_, err := ConfirmDestructive(cmd, DestructiveOptions{Effects: []string{"drop the vault", "delete the ledger"}})
@@ -152,8 +161,10 @@ func TestConfirmDestructive_ListsEveryEffectUnderTheWarning(t *testing.T) {
 }
 
 func TestConfirmDestructive_AcceptedAnswersProceed(t *testing.T) {
+	t.Parallel()
 	for _, answer := range []string{"y\n", "Y\n", "yes\n", "YES\n", "  yes  \n", "y"} {
 		t.Run(strconv.Quote(answer), func(t *testing.T) {
+			t.Parallel()
 			cmd, _ := destructiveCmd(answer)
 
 			proceed, err := ConfirmDestructive(cmd, DestructiveOptions{})
@@ -165,8 +176,10 @@ func TestConfirmDestructive_AcceptedAnswersProceed(t *testing.T) {
 }
 
 func TestConfirmDestructive_UnrecognisedOrNegativeAnswersAbort(t *testing.T) {
+	t.Parallel()
 	for _, answer := range []string{"n\n", "no\n", "maybe\n", "yep\n", "\n", "yes please\n"} {
 		t.Run(strconv.Quote(answer), func(t *testing.T) {
+			t.Parallel()
 			cmd, out := destructiveCmd(answer)
 
 			proceed, err := ConfirmDestructive(cmd, DestructiveOptions{})
@@ -179,6 +192,7 @@ func TestConfirmDestructive_UnrecognisedOrNegativeAnswersAbort(t *testing.T) {
 }
 
 func TestConfirmDestructive_ContinuePromptDefaultsToNo(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("\n")
 
 	proceed, err := ConfirmDestructive(cmd, DestructiveOptions{})
@@ -189,6 +203,7 @@ func TestConfirmDestructive_ContinuePromptDefaultsToNo(t *testing.T) {
 }
 
 func TestConfirmDestructive_ReadErrorOnStdinCountsAsNo(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("")
 	cmd.SetIn(failingReader{err: errors.New("stdin closed")})
 
@@ -200,6 +215,7 @@ func TestConfirmDestructive_ReadErrorOnStdinCountsAsNo(t *testing.T) {
 }
 
 func TestConfirmDestructive_NoBackupConfiguredProceedsWithoutBackupPrompt(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("y\n")
 
 	proceed, err := ConfirmDestructive(cmd, DestructiveOptions{})
@@ -210,6 +226,7 @@ func TestConfirmDestructive_NoBackupConfiguredProceedsWithoutBackupPrompt(t *tes
 }
 
 func TestConfirmDestructive_AssumeYesWithoutBackupNeverReadsInput(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("")
 	cmd.SetIn(failingReader{err: errors.New("stdin must not be read")})
 
@@ -221,6 +238,7 @@ func TestConfirmDestructive_AssumeYesWithoutBackupNeverReadsInput(t *testing.T) 
 }
 
 func TestConfirmDestructive_BackupFailureKeepsTheCauseReachable(t *testing.T) {
+	t.Parallel()
 	cmd, _ := destructiveCmd("")
 	cause := errors.New("disk full")
 
@@ -231,6 +249,7 @@ func TestConfirmDestructive_BackupFailureKeepsTheCauseReachable(t *testing.T) {
 }
 
 func TestConfirmDestructive_BackupRunsWithTheCommandContext(t *testing.T) {
+	t.Parallel()
 	cmd, _ := destructiveCmd("")
 	type ctxKey struct{}
 	cmd.SetContext(context.WithValue(context.Background(), ctxKey{}, "from-command"))
@@ -253,6 +272,7 @@ func TestConfirmDestructive_BackupRunsWithTheCommandContext(t *testing.T) {
 }
 
 func TestConfirmDestructive_SkipBackupWinsEvenWhenAssumeYesIsSet(t *testing.T) {
+	t.Parallel()
 	cmd, _ := destructiveCmd("")
 	calls := 0
 
@@ -264,6 +284,7 @@ func TestConfirmDestructive_SkipBackupWinsEvenWhenAssumeYesIsSet(t *testing.T) {
 }
 
 func TestAddSkipBackupFlag_RegistersABooleanFlagDefaultingToFalse(t *testing.T) {
+	t.Parallel()
 	cmd := &cobra.Command{Use: "clean"}
 	var skip bool
 
@@ -280,6 +301,7 @@ func TestAddSkipBackupFlag_RegistersABooleanFlagDefaultingToFalse(t *testing.T) 
 }
 
 func TestDefaultEvalBackupDir_IsUnderTheProjectRootOutsideTheRuntimeTree(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{ProjectRoot: filepath.Join(string(filepath.Separator), "work", "project"), RuntimeDir: filepath.Join(string(filepath.Separator), "work", "project", ".ztd")}
 
 	got := DefaultEvalBackupDir(cfg)
@@ -289,6 +311,7 @@ func TestDefaultEvalBackupDir_IsUnderTheProjectRootOutsideTheRuntimeTree(t *test
 }
 
 func TestConfirmDestructive_EmptyEvidenceIsNotAFailure(t *testing.T) {
+	t.Parallel()
 	cmd, out := destructiveCmd("")
 	calls := 0
 

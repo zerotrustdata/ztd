@@ -25,7 +25,9 @@ import (
 )
 
 func TestGetBinaryName(t *testing.T) {
+	t.Parallel()
 	t.Run("returns ./ztd on non-Windows platforms", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("Skipping non-Windows test on Windows")
 		}
@@ -33,6 +35,7 @@ func TestGetBinaryName(t *testing.T) {
 	})
 
 	t.Run("returns ./ztd.exe on Windows", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS != "windows" {
 			t.Skip("Skipping Windows test on non-Windows platform")
 		}
@@ -41,7 +44,9 @@ func TestGetBinaryName(t *testing.T) {
 }
 
 func TestResolveStartConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("uses CLI flag values when no environment variables set", func(t *testing.T) {
+		t.Parallel()
 		cfg := resolveGatewayFlags(GatewayFlags{
 			Posture:          "doctrine",
 			HTTPPort:         8080,
@@ -76,17 +81,21 @@ func TestResolveStartConfig(t *testing.T) {
 }
 
 func TestDetectIdentity(t *testing.T) {
+	t.Parallel()
 	t.Run("detectIdentity requires integration testing with real network detector", func(t *testing.T) {
+		t.Parallel()
 		// detectIdentity uses network.NewDetector which performs real network detection.
 		// This function requires integration testing with the //go:build integration tag
 		// to test actual network identity detection behavior.
 		// Unit tests for this function would require mocking the network.Detector struct,
 		// which is not an interface and cannot be easily mocked without refactoring.
+
 		t.Skip("detectIdentity requires integration testing - see internal/services/network/identity_test.go for network detector tests")
 	})
 }
 
-func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
+func TestReExecArgsMatchStartCmdFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tmpDir := testutil.TempDir(t)
 	fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
 	require.NoError(t, err)

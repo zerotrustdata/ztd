@@ -16,6 +16,7 @@ import (
 // --- View: step routing ---
 
 func TestView_NetworkStep_Renders(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	s := m.View()
 	assert.Contains(t, s, "Network & Identity")
@@ -23,6 +24,7 @@ func TestView_NetworkStep_Renders(t *testing.T) {
 }
 
 func TestView_PostureStep_Renders(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepPosture
 	s := m.View()
@@ -30,6 +32,7 @@ func TestView_PostureStep_Renders(t *testing.T) {
 }
 
 func TestView_RoutingStep_Renders(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	s := m.View()
@@ -37,6 +40,7 @@ func TestView_RoutingStep_Renders(t *testing.T) {
 }
 
 func TestView_ReviewStep_Renders(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			PublicBaseURL: "https://demo.zerotrustdata.io",
@@ -51,6 +55,7 @@ func TestView_ReviewStep_Renders(t *testing.T) {
 }
 
 func TestView_Quitting_RendersCancelled(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.quitting = true
 	s := m.View()
@@ -58,6 +63,7 @@ func TestView_Quitting_RendersCancelled(t *testing.T) {
 }
 
 func TestView_UnknownStep_ReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepDone
 	s := m.View()
@@ -67,6 +73,7 @@ func TestView_UnknownStep_ReturnsEmpty(t *testing.T) {
 // --- View: cert mode focus indicator (Bug #1) ---
 
 func TestView_CertModeFocusIndicatorAtFocusIndexOne(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 1
@@ -75,6 +82,7 @@ func TestView_CertModeFocusIndicatorAtFocusIndexOne(t *testing.T) {
 }
 
 func TestView_CertModeNoFocusIndicatorAtFocusIndexZero(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 0
@@ -85,6 +93,7 @@ func TestView_CertModeNoFocusIndicatorAtFocusIndexZero(t *testing.T) {
 // --- View: conditional rendering — web frontend / CORS ---
 
 func TestView_WebFrontendNo_CorsFieldHidden(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.needsWebFrontend = false
@@ -93,6 +102,7 @@ func TestView_WebFrontendNo_CorsFieldHidden(t *testing.T) {
 }
 
 func TestView_WebFrontendYes_CorsFieldShown(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.needsWebFrontend = true
@@ -103,6 +113,7 @@ func TestView_WebFrontendYes_CorsFieldShown(t *testing.T) {
 // --- View: conditional rendering — routing toggles ---
 
 func TestView_RoutingMCPDisabled_MCPInputHidden(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToMCP = false
@@ -111,6 +122,7 @@ func TestView_RoutingMCPDisabled_MCPInputHidden(t *testing.T) {
 }
 
 func TestView_RoutingMCPEnabled_MCPInputShown(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToMCP = true
@@ -119,6 +131,7 @@ func TestView_RoutingMCPEnabled_MCPInputShown(t *testing.T) {
 }
 
 func TestView_RoutingA2ADisabled_A2AInputHidden(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = false
@@ -127,6 +140,7 @@ func TestView_RoutingA2ADisabled_A2AInputHidden(t *testing.T) {
 }
 
 func TestView_RoutingA2AEnabled_A2AInputShown(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = true
@@ -137,6 +151,7 @@ func TestView_RoutingA2AEnabled_A2AInputShown(t *testing.T) {
 // --- View: review shows actual config, not stale ---
 
 func TestView_ReviewShowsActualConfig(t *testing.T) {
+	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepReview
 	m.publicBaseURLInput.SetValue("https://actual.example.com")
@@ -149,22 +164,26 @@ func TestView_ReviewShowsActualConfig(t *testing.T) {
 // --- renderChoice ---
 
 func TestRenderChoice_FocusedShowsDoubleIndicator(t *testing.T) {
+	t.Parallel()
 	s := renderChoice([]string{"A", "B"}, 0, true)
 	assert.Contains(t, s, "▶▶")
 }
 
 func TestRenderChoice_NotFocusedShowsSingleIndicator(t *testing.T) {
+	t.Parallel()
 	s := renderChoice([]string{"A", "B"}, 0, false)
 	assert.Contains(t, s, "▶ ")
 	assert.NotContains(t, s, "▶▶")
 }
 
 func TestRenderChoice_SelectedItemHighlighted(t *testing.T) {
+	t.Parallel()
 	s := renderChoice([]string{"First", "Second"}, 1, false)
 	assert.Contains(t, s, "Second")
 }
 
 func TestRenderChoice_UnselectedItemMuted(t *testing.T) {
+	t.Parallel()
 	s := renderChoice([]string{"First", "Second"}, 1, false)
 	assert.Contains(t, s, "First")
 }
@@ -172,21 +191,25 @@ func TestRenderChoice_UnselectedItemMuted(t *testing.T) {
 // --- renderToggle ---
 
 func TestRenderToggle_FocusedShowsIndicator(t *testing.T) {
+	t.Parallel()
 	s := renderToggle("Test Label", true, true)
 	assert.Contains(t, s, "▶")
 }
 
 func TestRenderToggle_NotFocusedNoIndicator(t *testing.T) {
+	t.Parallel()
 	s := renderToggle("Test Label", true, false)
 	assert.NotContains(t, s, "▶ Test Label")
 }
 
 func TestRenderToggle_YesValueHighlighted(t *testing.T) {
+	t.Parallel()
 	s := renderToggle("Test Label", true, false)
 	assert.Contains(t, s, "Yes")
 }
 
 func TestRenderToggle_NoValueHighlighted(t *testing.T) {
+	t.Parallel()
 	s := renderToggle("Test Label", false, false)
 	assert.Contains(t, s, "No")
 }
@@ -194,41 +217,50 @@ func TestRenderToggle_NoValueHighlighted(t *testing.T) {
 // --- certModeLabel ---
 
 func TestCertModeLabel_Full(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "Full Network", certModeLabel("full"))
 }
 
 func TestCertModeLabel_Localhost(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "Local Development Only", certModeLabel("localhost"))
 }
 
 func TestCertModeLabel_UnknownDefaultsToLocal(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "Local Development Only", certModeLabel("unknown"))
 }
 
 func TestCertModeLabel_EmptyDefaultsToLocal(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "Local Development Only", certModeLabel(""))
 }
 
 // --- joinOrNone ---
 
 func TestJoinOrNone_EmptyReturnsNone(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "(none)", joinOrNone(nil))
 }
 
 func TestJoinOrNone_SingleValue(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "https://example.com", joinOrNone([]string{"https://example.com"}))
 }
 
 func TestJoinOrNone_MultipleValues(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "a, b, c", joinOrNone([]string{"a", "b", "c"}))
 }
 
 // --- orNone ---
 
 func TestOrNone_EmptyReturnsNone(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "(none)", orNone(""))
 }
 
 func TestOrNone_NonEmptyReturnsValue(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "https://example.com", orNone("https://example.com"))
 }

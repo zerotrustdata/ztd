@@ -23,6 +23,8 @@ import (
 // with ErrMissingRequiredField so a CLI can never persist an unbound
 // credential set.
 func TestValidateLocalCLI_OperatorBindingRequired(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		source    EnrollmentSource
@@ -38,6 +40,8 @@ func TestValidateLocalCLI_OperatorBindingRequired(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			artifacts := buildTestArtifacts(t, tt.source)
 			artifacts.OperatorSessionID = tt.sessionID
 			artifacts.OperatorID = tt.opID

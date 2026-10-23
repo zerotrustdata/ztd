@@ -52,8 +52,10 @@ func (n *recordingProvenanceNotifier) NotifyAttemptFinalize(_ context.Context, _
 }
 
 func TestDispatchInference_PerAttemptProvenanceWithoutPreflight(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []string{"completed", "begin undelivered", "finalize undelivered"} {
 		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
 			req := baseRequest()
 			configureCampaignRequest(t, &req)
 			dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
@@ -97,11 +99,13 @@ func TestDispatchInference_PerAttemptProvenanceWithoutPreflight(t *testing.T) {
 // non-campaign attempts both reach the provider unattested, and no FINALIZE is
 // sent for a window that never opened.
 func TestDispatchInference_ZeroProvenanceOperatorProceedsUnattested(t *testing.T) {
+	t.Parallel()
 	notFound := fmt.Errorf("provenance observation: %w", constants.ErrProvenanceOperatorNotFound)
 	lister := &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}
 
 	for _, campaign := range []bool{true, false} {
 		t.Run(fmt.Sprintf("campaign=%t", campaign), func(t *testing.T) {
+			t.Parallel()
 			req := baseRequest()
 			if campaign {
 				configureCampaignRequest(t, &req)
@@ -125,6 +129,7 @@ func TestDispatchInference_ZeroProvenanceOperatorProceedsUnattested(t *testing.T
 	// A provenance Operator that is connected but fails FINALIZE is not an absent
 	// one: the failure surfaces for a non-campaign attempt too.
 	t.Run("non-campaign finalize failure surfaces", func(t *testing.T) {
+		t.Parallel()
 		req := baseRequest()
 		req.ModelDigest = strings.Repeat("a", 64)
 		dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}

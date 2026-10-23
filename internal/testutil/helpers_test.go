@@ -22,7 +22,8 @@ import (
 // NewTestConfig
 // ---------------------------------------------------------------------------
 
-func TestNewTestConfig(t *testing.T) {
+func TestNewTestConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tests := []struct {
 		name string
 		test func(t *testing.T, cfg *config.Config)
@@ -66,22 +67,25 @@ func TestNewTestConfig(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			cfg := NewTestConfig(t)
 			tt.test(t, cfg)
 		})
 	}
 }
 
-func TestNewTestConfig_HasUniqueIDs(t *testing.T) {
+func TestNewTestConfig_HasUniqueIDs(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg1 := NewTestConfig(t)
 	cfg2 := NewTestConfig(t)
 	assert.NotEqual(t, cfg1.OperatorID, cfg2.OperatorID)
 	assert.NotEqual(t, cfg1.OperatorSessionId, cfg2.OperatorSessionId)
 }
 
-func TestNewTestConfig_ParallelUnique(t *testing.T) {
+func TestNewTestConfig_ParallelUnique(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	const n = 10
 	ids := make([]string, n)
 	for i := 0; i < n; i++ {
@@ -99,6 +103,7 @@ func TestNewTestConfig_ParallelUnique(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNewTestLogger(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		test func(t *testing.T, logger *slog.Logger)
@@ -126,6 +131,7 @@ func TestNewTestLogger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			logger := NewTestLogger()
 			tt.test(t, logger)
 		})
@@ -137,6 +143,7 @@ func TestNewTestLogger(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNewVerboseTestLogger(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		test func(t *testing.T, logger *slog.Logger)
@@ -162,6 +169,7 @@ func TestNewVerboseTestLogger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			logger := NewVerboseTestLogger(t)
 			tt.test(t, logger)
 		})
@@ -173,6 +181,7 @@ func TestNewVerboseTestLogger(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetTestOperatorDirectURL(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		test func(t *testing.T, url string)
@@ -202,6 +211,7 @@ func TestGetTestOperatorDirectURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			url := GetTestOperatorDirectURL()
 			tt.test(t, url)
 		})

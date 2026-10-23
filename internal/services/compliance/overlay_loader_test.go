@@ -56,6 +56,7 @@ func testOverlayCatalog() *OverlayCatalog {
 
 // TestOverlayCatalog_Validate_EmptyVersion returns an error for empty version.
 func TestOverlayCatalog_Validate_EmptyVersion(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Version = ""
 	err := cat.Validate()
@@ -66,6 +67,7 @@ func TestOverlayCatalog_Validate_EmptyVersion(t *testing.T) {
 
 // TestOverlayCatalog_Validate_EmptySource returns an error for empty source.
 func TestOverlayCatalog_Validate_EmptySource(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Source = ""
 	err := cat.Validate()
@@ -76,6 +78,7 @@ func TestOverlayCatalog_Validate_EmptySource(t *testing.T) {
 
 // TestOverlayCatalog_Validate_NoOverlays returns an error for empty overlays.
 func TestOverlayCatalog_Validate_NoOverlays(t *testing.T) {
+	t.Parallel()
 	cat := &OverlayCatalog{Version: "v1", Source: "src", Overlays: nil}
 	err := cat.Validate()
 	require.Error(t, err)
@@ -85,6 +88,7 @@ func TestOverlayCatalog_Validate_NoOverlays(t *testing.T) {
 
 // TestOverlayCatalog_Validate_DuplicateID returns an error for duplicate IDs.
 func TestOverlayCatalog_Validate_DuplicateID(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Overlays[1].ID = cat.Overlays[0].ID
 	err := cat.Validate()
@@ -95,6 +99,7 @@ func TestOverlayCatalog_Validate_DuplicateID(t *testing.T) {
 
 // TestOverlayCatalog_Validate_EmptyID returns an error for empty overlay ID.
 func TestOverlayCatalog_Validate_EmptyID(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Overlays[0].ID = ""
 	err := cat.Validate()
@@ -105,6 +110,7 @@ func TestOverlayCatalog_Validate_EmptyID(t *testing.T) {
 
 // TestOverlayCatalog_Validate_EmptyTitle returns an error for empty title.
 func TestOverlayCatalog_Validate_EmptyTitle(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Overlays[0].Title = ""
 	err := cat.Validate()
@@ -115,6 +121,7 @@ func TestOverlayCatalog_Validate_EmptyTitle(t *testing.T) {
 
 // TestOverlayCatalog_Validate_EmptyUseCase returns an error for empty use_case.
 func TestOverlayCatalog_Validate_EmptyUseCase(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Overlays[0].UseCase = ""
 	err := cat.Validate()
@@ -125,6 +132,7 @@ func TestOverlayCatalog_Validate_EmptyUseCase(t *testing.T) {
 
 // TestOverlayCatalog_Validate_EmptyStatus returns an error for empty status.
 func TestOverlayCatalog_Validate_EmptyStatus(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	cat.Overlays[0].Status = ""
 	err := cat.Validate()
@@ -135,6 +143,7 @@ func TestOverlayCatalog_Validate_EmptyStatus(t *testing.T) {
 
 // TestOverlayCatalog_FindOverlay returns the overlay for a known ID.
 func TestOverlayCatalog_FindOverlay(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	ov := cat.FindOverlay("COSAiS-TEST-01")
 	require.NotNil(t, ov)
@@ -143,12 +152,14 @@ func TestOverlayCatalog_FindOverlay(t *testing.T) {
 
 // TestOverlayCatalog_FindOverlay_NotFound returns nil for unknown ID.
 func TestOverlayCatalog_FindOverlay_NotFound(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	assert.Nil(t, cat.FindOverlay("COSAiS-NONEXISTENT-99"))
 }
 
 // TestOverlayCatalog_HasOverlay returns true/false correctly.
 func TestOverlayCatalog_HasOverlay(t *testing.T) {
+	t.Parallel()
 	cat := testOverlayCatalog()
 	assert.True(t, cat.HasOverlay("COSAiS-TEST-01"))
 	assert.False(t, cat.HasOverlay("COSAiS-NONEXISTENT-99"))
@@ -156,6 +167,7 @@ func TestOverlayCatalog_HasOverlay(t *testing.T) {
 
 // TestLoadOverlaysFromDir_EmptyDir returns an empty catalog for an empty directory.
 func TestLoadOverlaysFromDir_EmptyDir(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	cat, err := LoadOverlaysFromDir(dir)
 	require.NoError(t, err)
@@ -165,6 +177,7 @@ func TestLoadOverlaysFromDir_EmptyDir(t *testing.T) {
 
 // TestLoadOverlaysFromDir_EmptyPath returns an empty catalog for empty path.
 func TestLoadOverlaysFromDir_EmptyPath(t *testing.T) {
+	t.Parallel()
 	cat, err := LoadOverlaysFromDir("")
 	require.NoError(t, err)
 	require.NotNil(t, cat)
@@ -173,6 +186,7 @@ func TestLoadOverlaysFromDir_EmptyPath(t *testing.T) {
 
 // TestLoadOverlaysFromDir_NonexistentDir returns an error for a missing directory.
 func TestLoadOverlaysFromDir_NonexistentDir(t *testing.T) {
+	t.Parallel()
 	_, err := LoadOverlaysFromDir("/nonexistent/overlay/dir")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrOverlayReadFailed)
@@ -180,6 +194,7 @@ func TestLoadOverlaysFromDir_NonexistentDir(t *testing.T) {
 
 // TestLoadOverlaysFromDir_SingleFile loads one overlay JSON file.
 func TestLoadOverlaysFromDir_SingleFile(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	writeOverlayFile(t, dir, "overlays.json", testOverlayCatalog())
 
@@ -191,6 +206,7 @@ func TestLoadOverlaysFromDir_SingleFile(t *testing.T) {
 
 // TestLoadOverlaysFromDir_MultipleFiles merges overlay files in lexical order.
 func TestLoadOverlaysFromDir_MultipleFiles(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 
 	cat1 := &OverlayCatalog{
@@ -219,6 +235,7 @@ func TestLoadOverlaysFromDir_MultipleFiles(t *testing.T) {
 
 // TestLoadOverlaysFromDir_DuplicateAcrossFiles returns an error for duplicate IDs.
 func TestLoadOverlaysFromDir_DuplicateAcrossFiles(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 
 	cat1 := &OverlayCatalog{
@@ -245,6 +262,7 @@ func TestLoadOverlaysFromDir_DuplicateAcrossFiles(t *testing.T) {
 
 // TestLoadOverlaysFromDir_IgnoresNonJSON ignores non-JSON files.
 func TestLoadOverlaysFromDir_IgnoresNonJSON(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	writeOverlayFile(t, dir, "overlays.json", testOverlayCatalog())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# Overlays"), 0o644))
@@ -257,6 +275,7 @@ func TestLoadOverlaysFromDir_IgnoresNonJSON(t *testing.T) {
 
 // TestLoadOverlaysFromDir_InvalidFile returns an error for malformed JSON.
 func TestLoadOverlaysFromDir_InvalidFile(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{broken"), 0o644))
 
@@ -268,6 +287,7 @@ func TestLoadOverlaysFromDir_InvalidFile(t *testing.T) {
 // TestValidateOverlayRefs_AllPresent returns no dangling refs when all overlay
 // IDs referenced by KSIs exist in the catalog.
 func TestValidateOverlayRefs_AllPresent(t *testing.T) {
+	t.Parallel()
 	ksiCat := &KSICatalog{
 		Version: "v1",
 		Source:  "src",
@@ -284,6 +304,7 @@ func TestValidateOverlayRefs_AllPresent(t *testing.T) {
 // TestValidateOverlayRefs_DanglingRef returns dangling refs when a KSI
 // references an overlay ID not in the catalog.
 func TestValidateOverlayRefs_DanglingRef(t *testing.T) {
+	t.Parallel()
 	ksiCat := &KSICatalog{
 		Version: "v1",
 		Source:  "src",
@@ -301,6 +322,7 @@ func TestValidateOverlayRefs_DanglingRef(t *testing.T) {
 
 // TestValidateOverlayRefs_NoOverlayRefs returns empty when KSIs have no overlay refs.
 func TestValidateOverlayRefs_NoOverlayRefs(t *testing.T) {
+	t.Parallel()
 	ksiCat := &KSICatalog{
 		Version: "v1",
 		Source:  "src",
@@ -317,6 +339,7 @@ func TestValidateOverlayRefs_NoOverlayRefs(t *testing.T) {
 // TestOverlayJSON_RoundTrip verifies that an OverlayCatalog serializes and
 // deserializes correctly via JSON.
 func TestOverlayJSON_RoundTrip(t *testing.T) {
+	t.Parallel()
 	original := testOverlayCatalog()
 	data, err := json.Marshal(original)
 	require.NoError(t, err)

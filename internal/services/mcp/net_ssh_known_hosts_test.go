@@ -21,6 +21,7 @@ import (
 )
 
 func TestNetSSHKnownHostsTool_Metadata(t *testing.T) {
+	t.Parallel()
 	tool := &NetSSHKnownHostsTool{}
 	assert.Equal(t, "net_ssh_known_hosts", tool.Name())
 	assert.NotEmpty(t, tool.Description())
@@ -28,16 +29,19 @@ func TestNetSSHKnownHostsTool_Metadata(t *testing.T) {
 }
 
 func TestNetSSHKnownHostsTool_Execute_Validation(t *testing.T) {
+	t.Parallel()
 	tool := &NetSSHKnownHostsTool{}
 	ctx := context.Background()
 
 	t.Run("invalid json", func(t *testing.T) {
+		t.Parallel()
 		_, err := tool.Execute(ctx, []byte(`{invalid}`))
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
 	})
 
 	t.Run("dangerous path config", func(t *testing.T) {
+		t.Parallel()
 		args, _ := json.Marshal(NetSSHKnownHostsRequest{
 			SSHConfigPath: "../dangerous",
 		})
@@ -47,6 +51,7 @@ func TestNetSSHKnownHostsTool_Execute_Validation(t *testing.T) {
 	})
 
 	t.Run("dangerous path known_hosts", func(t *testing.T) {
+		t.Parallel()
 		args, _ := json.Marshal(NetSSHKnownHostsRequest{
 			KnownHostsPath: "/etc/passwd\x00",
 		})
@@ -57,6 +62,7 @@ func TestNetSSHKnownHostsTool_Execute_Validation(t *testing.T) {
 }
 
 func TestNetSSHKnownHostsTool_Execute_Success(t *testing.T) {
+	t.Parallel()
 	tool := &NetSSHKnownHostsTool{}
 	ctx := context.Background()
 
@@ -142,6 +148,7 @@ github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...
 }
 
 func TestNetSSHKnownHostsTool_Execute_Defaults(t *testing.T) {
+	t.Parallel()
 	tool := &NetSSHKnownHostsTool{}
 	ctx := context.Background()
 
@@ -163,6 +170,7 @@ func TestNetSSHKnownHostsTool_Execute_Defaults(t *testing.T) {
 }
 
 func TestNetSSHKnownHostsTool_Execute_MissingFiles(t *testing.T) {
+	t.Parallel()
 	tool := &NetSSHKnownHostsTool{}
 	ctx := context.Background()
 

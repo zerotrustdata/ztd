@@ -33,6 +33,7 @@ func TestValidateServedModelTag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateServedModelTag(tt.tag)
 			if tt.ok {
 				require.NoError(t, err)
@@ -67,6 +68,7 @@ func TestValidateWitnessCommand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			capabilities := ResolveOperatorCapabilities(tt.cfg)
 			commandErr := ValidateWitnessCommand(capabilities, "ollama ps")
 			nativeToolErr := ValidateWitnessNativeTool(capabilities, constants.MCPToolRunShellCommand)

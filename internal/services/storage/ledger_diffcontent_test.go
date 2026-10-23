@@ -24,6 +24,7 @@ import (
 
 func TestLedgerService_GetDiffContent_EmptyHashesFailClosed(t *testing.T) {
 	t.Parallel()
+
 	lms, _ := setupTestLedger(t)
 
 	_, err := lms.GetDiffContent("", "", "/some/file.txt", "")
@@ -32,6 +33,7 @@ func TestLedgerService_GetDiffContent_EmptyHashesFailClosed(t *testing.T) {
 
 func TestLedgerService_GetDiffContent_BetweenTwoCommits(t *testing.T) {
 	t.Parallel()
+
 	lms, tempDir := setupTestLedger(t)
 
 	testFile := filepath.Join(tempDir, "diffcontent_test.txt")
@@ -64,6 +66,7 @@ func TestLedgerService_GetDiffContent_BetweenTwoCommits(t *testing.T) {
 
 func TestLedgerService_GetDiffContent_SameHashReturnsEmpty(t *testing.T) {
 	t.Parallel()
+
 	lms, tempDir := setupTestLedger(t)
 
 	testFile := filepath.Join(tempDir, "same_hash.txt")
@@ -84,6 +87,7 @@ func TestLedgerService_GetDiffContent_SameHashReturnsEmpty(t *testing.T) {
 
 func TestLedgerService_GetDiffContent_InvalidHashesFailClosed(t *testing.T) {
 	t.Parallel()
+
 	lms, _ := setupTestLedger(t)
 
 	_, err := lms.GetDiffContent("deadbeef", "cafebabe", "/some/file.txt", "")
@@ -92,6 +96,7 @@ func TestLedgerService_GetDiffContent_InvalidHashesFailClosed(t *testing.T) {
 
 func TestLedgerService_GetDiffContent_PlaintextFromEncryptedSnapshots(t *testing.T) {
 	t.Parallel()
+
 	lms, tempDir := setupTestLedger(t)
 
 	testFile := filepath.Join(tempDir, "plaintext_diff.txt")
@@ -119,6 +124,7 @@ func TestLedgerService_GetDiffContent_PlaintextFromEncryptedSnapshots(t *testing
 
 func TestLedgerService_GetDiff_LockedVaultReturnsNothing(t *testing.T) {
 	t.Parallel()
+
 	lms, _ := setupTestLedgerLocked(t)
 
 	ledgerDir := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname))

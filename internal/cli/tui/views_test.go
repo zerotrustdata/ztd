@@ -46,6 +46,8 @@ func enrollmentsFixture() EnrollmentsMsg {
 }
 
 func TestViewSwitching(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	assert.Equal(t, viewOverview, m.view)
 
@@ -66,6 +68,8 @@ func TestViewSwitching(t *testing.T) {
 }
 
 func TestHelpOverlay(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m, _ = press(t, m, runeKey('?'))
 	require.True(t, m.showHelp)
@@ -79,6 +83,8 @@ func TestHelpOverlay(t *testing.T) {
 }
 
 func TestApprovalsViewKeys(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{
 		ApprovalURL: func(tx string) string { return "https://gw/approve/" + tx },
 		OpenBrowser: func(string) error { return nil },
@@ -98,6 +104,8 @@ func TestApprovalsViewKeys(t *testing.T) {
 }
 
 func TestOperatorsViewKeys(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{Identity: Identity{OperatorID: "op-2"}}).applyOperatorsMsg(OperatorsMsg{Operators: []*operatorv1.OperatorDocument{
 		{Id: "op-1", CurrentHostname: "alpha", Status: string(constants.OperatorStatusActive)},
 		{Id: "op-2", CurrentHostname: "bravo", Status: string(constants.OperatorStatusActive)},
@@ -112,6 +120,8 @@ func TestOperatorsViewKeys(t *testing.T) {
 }
 
 func TestOperatorDetailsView(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{}).applyOperatorsMsg(OperatorsMsg{Operators: []*operatorv1.OperatorDocument{
 		{
 			Id:                "op-detail",
@@ -158,6 +168,8 @@ func TestOperatorDetailsView(t *testing.T) {
 }
 
 func TestAuditView(t *testing.T) {
+	t.Parallel()
+
 	session := &testSession{auditVerifyJSON: `{"success":true,"ok":true,"verified_from_seq":7,"head_seq":12,"head_hash":"hash-12"}`}
 	m := NewModel(Options{Session: session})
 	m, cmd := press(t, m, runeKey('5'))
@@ -208,6 +220,8 @@ func TestAuditView(t *testing.T) {
 }
 
 func TestGatewayStatusView(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{Identity: Identity{UserID: "user-1", CLISessionID: "cli-1", OperatorID: "op-1"}}).
 		applyHealthMsg(HealthMsg{Health: models.HealthResponse{
 			Status:          constants.GatewayModeStatusOK,
@@ -236,6 +250,8 @@ func TestGatewayStatusView(t *testing.T) {
 }
 
 func TestRecoveryView(t *testing.T) {
+	t.Parallel()
+
 	session := &testSession{}
 	m := NewModel(Options{Session: session})
 	m, cmd := press(t, m, runeKey('8'))
@@ -281,7 +297,11 @@ func TestRecoveryView(t *testing.T) {
 }
 
 func TestEnrollmentsView(t *testing.T) {
+	t.Parallel()
+
 	t.Run("new pending requests are announced after the first listing", func(t *testing.T) {
+		t.Parallel()
+
 		m := NewModel(Options{}).applyEnrollmentsMsg(EnrollmentsMsg{})
 		before := len(m.ledger)
 		m = m.applyEnrollmentsMsg(enrollmentsFixture())
@@ -290,12 +310,16 @@ func TestEnrollmentsView(t *testing.T) {
 	})
 
 	t.Run("the first listing is not announced", func(t *testing.T) {
+		t.Parallel()
+
 		m := NewModel(Options{}).applyEnrollmentsMsg(enrollmentsFixture())
 		assert.Empty(t, m.ledger)
 		assert.Equal(t, " (2)", m.viewCount(viewEnrollments))
 	})
 
 	t.Run("selection follows the selected request across refreshes", func(t *testing.T) {
+		t.Parallel()
+
 		m := NewModel(Options{}).applyEnrollmentsMsg(enrollmentsFixture())
 		m.enrollPendingSelected = 1
 		fixture := enrollmentsFixture()
@@ -306,6 +330,8 @@ func TestEnrollmentsView(t *testing.T) {
 	})
 
 	t.Run("a listing error is shown in place of the lists", func(t *testing.T) {
+		t.Parallel()
+
 		m := NewModel(Options{}).applyEnrollmentsMsg(EnrollmentsMsg{Err: &api.StatusError{StatusCode: http.StatusForbidden, Body: "owner only"}})
 		m, _ = press(t, m, runeKey('6'))
 		assert.Contains(t, m.View(), "unavailable:")
@@ -313,6 +339,8 @@ func TestEnrollmentsView(t *testing.T) {
 	})
 
 	t.Run("detail shows the selected request's fingerprints", func(t *testing.T) {
+		t.Parallel()
+
 		m := NewModel(Options{}).applyEnrollmentsMsg(enrollmentsFixture())
 		m, _ = press(t, m, runeKey('6'))
 		out := m.View()
@@ -322,6 +350,8 @@ func TestEnrollmentsView(t *testing.T) {
 }
 
 func TestEnrollmentDecision(t *testing.T) {
+	t.Parallel()
+
 	setup := func(t *testing.T) (Model, *testSession) {
 		t.Helper()
 		session := &testSession{}
@@ -331,6 +361,8 @@ func TestEnrollmentDecision(t *testing.T) {
 	}
 
 	t.Run("approve asks first and posts only on y", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		m, cmd := press(t, m, runeKey('a'))
 		assert.Nil(t, cmd)
@@ -358,6 +390,8 @@ func TestEnrollmentDecision(t *testing.T) {
 	})
 
 	t.Run("deny targets the selected request", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		m, _ = press(t, m, runeKey('j'))
 		m, _ = press(t, m, runeKey('d'))
@@ -370,6 +404,8 @@ func TestEnrollmentDecision(t *testing.T) {
 	})
 
 	t.Run("n and esc cancel without posting", func(t *testing.T) {
+		t.Parallel()
+
 		for _, key := range []tea.KeyMsg{runeKey('n'), keyEsc} {
 			m, session := setup(t)
 			m, _ = press(t, m, runeKey('a'))
@@ -382,6 +418,8 @@ func TestEnrollmentDecision(t *testing.T) {
 	})
 
 	t.Run("other keys are swallowed while confirming", func(t *testing.T) {
+		t.Parallel()
+
 		m, _ := setup(t)
 		m, _ = press(t, m, runeKey('a'))
 		m, cmd := press(t, m, runeKey('q'))
@@ -391,6 +429,8 @@ func TestEnrollmentDecision(t *testing.T) {
 	})
 
 	t.Run("a failed decision is reported and re-lists", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		session.postErr = &api.StatusError{StatusCode: http.StatusUnauthorized}
 		m, _ = press(t, m, runeKey('a'))
@@ -403,6 +443,8 @@ func TestEnrollmentDecision(t *testing.T) {
 	})
 
 	t.Run("approve needs a selected pending request", func(t *testing.T) {
+		t.Parallel()
+
 		m, _ := setup(t)
 		m, _ = press(t, m, keyTab) // enrolled section
 		m, _ = press(t, m, runeKey('a'))
@@ -412,6 +454,8 @@ func TestEnrollmentDecision(t *testing.T) {
 }
 
 func TestEnrollmentRevoke(t *testing.T) {
+	t.Parallel()
+
 	session := &testSession{}
 	m := NewModel(Options{Session: session}).applyEnrollmentsMsg(enrollmentsFixture())
 	m, _ = press(t, m, runeKey('6'))
@@ -431,6 +475,8 @@ func TestEnrollmentRevoke(t *testing.T) {
 	assert.Equal(t, models.PlatformEnrollmentRevokeRequest{RequestID: "req-done-1"}, session.posted[0])
 
 	t.Run("an already revoked enrollment is not offered", func(t *testing.T) {
+		t.Parallel()
+
 		m, _ := press(t, m, runeKey('j'))
 		m, _ = press(t, m, runeKey('x'))
 		assert.Nil(t, m.confirm)
@@ -439,6 +485,8 @@ func TestEnrollmentRevoke(t *testing.T) {
 }
 
 func TestOperatorStop(t *testing.T) {
+	t.Parallel()
+
 	setup := func(t *testing.T) (Model, *testSession) {
 		t.Helper()
 		session := &testSession{}
@@ -451,6 +499,8 @@ func TestOperatorStop(t *testing.T) {
 	}
 
 	t.Run("s asks first and posts the shutdown only on y", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		m, _ = press(t, m, runeKey('j'))
 		m, cmd := press(t, m, runeKey('s'))
@@ -477,6 +527,8 @@ func TestOperatorStop(t *testing.T) {
 	})
 
 	t.Run("the embedded Operator is refused without asking", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		m, cmd := press(t, m, runeKey('s'))
 		assert.Nil(t, cmd)
@@ -486,6 +538,8 @@ func TestOperatorStop(t *testing.T) {
 	})
 
 	t.Run("n cancels without posting", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		m, _ = press(t, m, runeKey('j'))
 		m, _ = press(t, m, runeKey('s'))
@@ -495,6 +549,8 @@ func TestOperatorStop(t *testing.T) {
 	})
 
 	t.Run("nothing selected", func(t *testing.T) {
+		t.Parallel()
+
 		m := NewModel(Options{Session: &testSession{}})
 		m, _ = press(t, m, runeKey('3'))
 		m, _ = press(t, m, runeKey('s'))
@@ -503,6 +559,8 @@ func TestOperatorStop(t *testing.T) {
 	})
 
 	t.Run("a failed stop is reported and a 401 marks the session expired", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		session.postErr = &api.StatusError{StatusCode: http.StatusUnauthorized}
 		m, _ = press(t, m, runeKey('j'))
@@ -515,6 +573,8 @@ func TestOperatorStop(t *testing.T) {
 	})
 
 	t.Run("an unsuccessful response is an error", func(t *testing.T) {
+		t.Parallel()
+
 		m, session := setup(t)
 		session.stopJSON = `{"success":false}`
 		m, _ = press(t, m, runeKey('j'))
@@ -526,6 +586,8 @@ func TestOperatorStop(t *testing.T) {
 }
 
 func TestOperatorBindAndUnbindRotateSession(t *testing.T) {
+	t.Parallel()
+
 	oldSession := &testSession{}
 	var rebuiltSession *testSession
 	m := NewModel(Options{
@@ -575,6 +637,8 @@ func TestOperatorBindAndUnbindRotateSession(t *testing.T) {
 // TestViews_FitTerminalExactly checks every view and overlay fills the
 // terminal exactly, as TestView_FitsTerminalExactly does for the overview.
 func TestViews_FitTerminalExactly(t *testing.T) {
+	t.Parallel()
+
 	base := NewModel(Options{Session: &testSession{}, Version: "v2.3.1", Identity: Identity{UserID: strings.Repeat("u", 36), CLISessionID: "session", OperatorID: "op-1"}}).
 		applyPendingApprovalsMsg(pendingTxs(strings.Repeat("a", 64), "tx-2")).
 		applyOperatorsMsg(OperatorsMsg{Operators: []*operatorv1.OperatorDocument{{Id: "op-1", CurrentHostname: strings.Repeat("h", 80), Status: string(constants.OperatorStatusActive), LocalDir: strings.Repeat("/d", 60)}}}).

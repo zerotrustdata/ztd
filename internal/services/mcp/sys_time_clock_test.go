@@ -18,17 +18,20 @@ import (
 )
 
 func TestSysTimeClockTool_Name(t *testing.T) {
+	t.Parallel()
 	tool := &SysTimeClockTool{}
 	assert.Equal(t, "sys_time_clock", tool.Name())
 }
 
 func TestSysTimeClockTool_Description(t *testing.T) {
+	t.Parallel()
 	tool := &SysTimeClockTool{}
 	assert.NotEmpty(t, tool.Description())
 	assert.Contains(t, tool.Description(), "time")
 }
 
 func TestSysTimeClockTool_InputSchema(t *testing.T) {
+	t.Parallel()
 	tool := &SysTimeClockTool{}
 	schema := tool.InputSchema()
 
@@ -37,6 +40,7 @@ func TestSysTimeClockTool_InputSchema(t *testing.T) {
 }
 
 func TestFormatOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		offset   int
 		expected string
@@ -58,6 +62,7 @@ func TestFormatOffset(t *testing.T) {
 }
 
 func TestParseTimedatectlOutput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		output   string
@@ -121,6 +126,7 @@ System clock synchronized: yes
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseTimedatectlOutput(tt.output)
 			assert.Equal(t, tt.expected, got)
 		})
@@ -128,6 +134,7 @@ System clock synchronized: yes
 }
 
 func TestParseChronycOutput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		output   string
@@ -168,6 +175,7 @@ Leap status     : Normal`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseChronycOutput(tt.output)
 			assert.Equal(t, tt.expected, got)
 		})
@@ -175,6 +183,7 @@ Leap status     : Normal`,
 }
 
 func TestParseNtpqOutput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		output   string
@@ -225,6 +234,7 @@ func TestParseNtpqOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseNtpqOutput(tt.output)
 			assert.Equal(t, tt.expected, got)
 		})
@@ -232,6 +242,7 @@ func TestParseNtpqOutput(t *testing.T) {
 }
 
 func TestSysTimeClockTool_Execute(t *testing.T) {
+	t.Parallel()
 	tool := &SysTimeClockTool{}
 	ctx := context.Background()
 

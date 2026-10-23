@@ -19,6 +19,8 @@ import (
 // A live process that is never asked to exit keeps the wait open, so the
 // context is what ends it.
 func TestWaitForProcessExit_ContextEndsTheWaitForALiveProcess(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	require.ErrorIs(t, WaitForProcessExit(ctx, os.Getpid()), context.DeadlineExceeded)

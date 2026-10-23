@@ -31,12 +31,16 @@ func (s *captureEnvelopeSuspender) SuspendGovernanceEnvelope(_ context.Context, 
 }
 
 func TestDispatchApprovalCoordinator_CancelledOrExpiredRequestCannotResume(t *testing.T) {
+	t.Parallel()
+
 	for _, cancelRequest := range []bool{true, false} {
 		name := "approval expiry"
 		if cancelRequest {
 			name = "caller cancellation"
 		}
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			synctest.Test(t, func(t *testing.T) {
 				store := &captureEnvelopeSuspender{}
 				coordinator, err := NewDispatchApprovalCoordinator(store)
@@ -69,6 +73,8 @@ func TestDispatchApprovalCoordinator_CancelledOrExpiredRequestCannotResume(t *te
 }
 
 func TestDispatchApprovalCoordinator_DecisionMayOnlyChangeL3Metadata(t *testing.T) {
+	t.Parallel()
+
 	synctest.Test(t, func(t *testing.T) {
 		store := &captureEnvelopeSuspender{}
 		coordinator, err := NewDispatchApprovalCoordinator(store)
@@ -94,6 +100,8 @@ func TestDispatchApprovalCoordinator_DecisionMayOnlyChangeL3Metadata(t *testing.
 // A delivered decision reports hand-off with the dispatch's verified failure, so
 // the approval path retires the suspension instead of offering a retry.
 func TestDispatchApprovalCoordinator_DeliveredFailureReportsHandOff(t *testing.T) {
+	t.Parallel()
+
 	synctest.Test(t, func(t *testing.T) {
 		store := &captureEnvelopeSuspender{}
 		coordinator, err := NewDispatchApprovalCoordinator(store)

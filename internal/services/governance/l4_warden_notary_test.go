@@ -25,6 +25,7 @@ import (
 // (L3 is only required for mutations).
 func TestL4Warden_Notary_ValidNonMutationPasses(t *testing.T) {
 	t.Parallel()
+
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "notary")
 
@@ -38,6 +39,7 @@ func TestL4Warden_Notary_ValidNonMutationPasses(t *testing.T) {
 // mutation envelope with L2 and L3 passes under notary posture.
 func TestL4Warden_Notary_ValidMutationPassesWithL3(t *testing.T) {
 	t.Parallel()
+
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "notary")
 
@@ -51,6 +53,7 @@ func TestL4Warden_Notary_ValidMutationPassesWithL3(t *testing.T) {
 // from the SSOT can be decoded and verified under notary posture.
 func TestL4Warden_Notary_AllActionTypesFromSSOT(t *testing.T) {
 	t.Parallel()
+
 	allActionTypes := constants.AllActionTypes
 	if len(allActionTypes) == 0 {
 		t.Fatal("AllActionTypes() returned empty list")
@@ -59,6 +62,7 @@ func TestL4Warden_Notary_AllActionTypesFromSSOT(t *testing.T) {
 	for _, actionType := range allActionTypes {
 		t.Run(string(actionType), func(t *testing.T) {
 			t.Parallel()
+
 			if _, err := constants.RequestEventForAction(actionType); err != nil {
 				t.Skipf("no governed request event for %s", actionType)
 			}
@@ -85,6 +89,7 @@ func TestL4Warden_Notary_AllActionTypesFromSSOT(t *testing.T) {
 // proof failures are rejected under notary posture (all layers enforced).
 func TestL4Warden_Notary_FailClosedProofs(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name   string
 		mutate func(*govtypes.GovernanceEnvelope)
@@ -110,6 +115,7 @@ func TestL4Warden_Notary_FailClosedProofs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "notary")
 			tc.mutate(env)
@@ -130,6 +136,7 @@ func TestL4Warden_Notary_FailClosedProofs(t *testing.T) {
 // transport-bound — this test asserts that guarantee explicitly.
 func TestL4Warden_Notary_ForgedActingAppID_RejectedByHashBinding(t *testing.T) {
 	t.Parallel()
+
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeFileEdit, typedPayload(t, constants.ActionTypeFileEdit), privKey, "notary")
 	env.ActingAppId = "app-original"
@@ -150,6 +157,7 @@ func TestL4Warden_Notary_ForgedActingAppID_RejectedByHashBinding(t *testing.T) {
 // as a trust-boundary regression guard.
 func TestNotary_MutationRequiresRealL3Proof(t *testing.T) {
 	t.Parallel()
+
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "notary")
 
@@ -165,8 +173,10 @@ func TestNotary_MutationRequiresRealL3Proof(t *testing.T) {
 // attacks and state root mismatches are rejected under notary posture.
 func TestL4Warden_Notary_ReplayAndStateRootReject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("replayed nonce", func(t *testing.T) {
 		t.Parallel()
+
 		replayStore := testutil.NewStatefulMockReplayStore()
 		verifier, privKey := createStrictVerifier(t, replayStore, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "notary")
@@ -181,6 +191,7 @@ func TestL4Warden_Notary_ReplayAndStateRootReject(t *testing.T) {
 
 	t.Run("state root mismatch", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("other-root"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "notary")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -194,8 +205,10 @@ func TestL4Warden_Notary_ReplayAndStateRootReject(t *testing.T) {
 // missing critical verifier dependencies are rejected under notary posture.
 func TestL4Warden_Notary_MissingVerifierDependenciesReject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("missing replay store", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, nil, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "notary")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -206,6 +219,7 @@ func TestL4Warden_Notary_MissingVerifierDependenciesReject(t *testing.T) {
 
 	t.Run("missing state root provider", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), nil, testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "notary")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -216,6 +230,7 @@ func TestL4Warden_Notary_MissingVerifierDependenciesReject(t *testing.T) {
 
 	t.Run("missing l3 notary", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), nil)
 		env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "notary")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -230,6 +245,7 @@ func TestL4Warden_Notary_MissingVerifierDependenciesReject(t *testing.T) {
 // rejected as replays.
 func TestL4Warden_Notary_NonceRaceCondition(t *testing.T) {
 	t.Parallel()
+
 	replayStore := testutil.NewStatefulMockReplayStore()
 	stateRootProvider := testutil.NewMockStateRootProvider("root-1")
 	l3Notary := testutil.NewSlowMockL3Notary(50 * time.Millisecond)

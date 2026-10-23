@@ -193,6 +193,7 @@ func runComplianceReportGenerateCommand(t *testing.T, evalRuns []string) ([]byte
 }
 
 func TestComplianceReportGenerateCmdWithConfig_DefaultsToRestrictedProfile(t *testing.T) {
+	t.Parallel()
 	cmd := complianceReportGenerateCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), complianceReportSigningIdentityLoaderForTest(t), time.Now)
 
 	profile := cmd.Flags().Lookup("profile")
@@ -201,6 +202,7 @@ func TestComplianceReportGenerateCmdWithConfig_DefaultsToRestrictedProfile(t *te
 }
 
 func TestComplianceReportCmd_ContainsGenerateExportAndVerifySubcommands(t *testing.T) {
+	t.Parallel()
 	cmd := complianceReportCmd()
 	require.Len(t, cmd.Commands(), 3)
 	assert.Equal(t, "export", cmd.Commands()[0].Name())
@@ -208,7 +210,8 @@ func TestComplianceReportCmd_ContainsGenerateExportAndVerifySubcommands(t *testi
 	assert.Equal(t, "verify", cmd.Commands()[2].Name())
 }
 
-func TestComplianceReportExportCmd_RequiresReportIDAndOutput(t *testing.T) {
+func TestComplianceReportExportCmd_RequiresReportIDAndOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewEvidenceCmdTestEnv(t)
 	cmd := complianceReportExportCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 	require.NoError(t, cmd.Flags().Set("report-id", "report-1"))
@@ -219,6 +222,7 @@ func TestComplianceReportExportCmd_RequiresReportIDAndOutput(t *testing.T) {
 }
 
 func TestBuildStandaloneReportSources_ProtectsReplayableLedgerAndBuildConfigurationBytes(t *testing.T) {
+	t.Parallel()
 	root := testutil.TempDir(t)
 	commitsPath := filepath.Join(root, constants.LedgerCommitsFilename)
 	statePath := filepath.Join(root, constants.LedgerStateFilename)
@@ -251,6 +255,7 @@ func TestBuildStandaloneReportSources_ProtectsReplayableLedgerAndBuildConfigurat
 }
 
 func TestBuildOperationalReportSources_BindsProtectedAdmissionAndBundlePaths(t *testing.T) {
+	t.Parallel()
 	assessmentAsOf := time.UnixMilli(1_700_000_100_000).UTC()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -318,7 +323,8 @@ type standaloneAttestationRecord struct {
 	Signature        string   `json:"signature,omitempty"`
 }
 
-func TestBuildStandaloneReportSources_ProtectsEveryPlatformSourceClass(t *testing.T) {
+func TestBuildStandaloneReportSources_ProtectsEveryPlatformSourceClass(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	root := testutil.TempDir(t)
 	scopeID := "scope-1"
 	verifiedAt := time.Date(2026, 9, 6, 10, 30, 0, 0, time.UTC)
@@ -470,7 +476,8 @@ func TestBuildStandaloneReportSources_ProtectsEveryPlatformSourceClass(t *testin
 	assert.True(t, verificationReport.GetValid(), verificationReport.GetFailures())
 }
 
-func TestComplianceReportGenerateCmdWithConfig_RejectsUnsupportedProfile(t *testing.T) {
+func TestComplianceReportGenerateCmdWithConfig_RejectsUnsupportedProfile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	cmd := complianceReportGenerateCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), complianceReportSigningIdentityLoaderForTest(t), time.Now)
 	configureComplianceReportGenerateCommand(t, cmd)
@@ -484,7 +491,8 @@ func TestComplianceReportGenerateCmdWithConfig_RejectsUnsupportedProfile(t *test
 	assert.ErrorIs(t, err, constants.ErrBundleProfileUnsupported)
 }
 
-func TestComplianceReportGenerateCmdWithConfig_RejectsMissingEvidenceRuns(t *testing.T) {
+func TestComplianceReportGenerateCmdWithConfig_RejectsMissingEvidenceRuns(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	body, err := runComplianceReportGenerateCommand(t, nil)
 
 	require.Error(t, err)
@@ -492,7 +500,8 @@ func TestComplianceReportGenerateCmdWithConfig_RejectsMissingEvidenceRuns(t *tes
 	assert.Empty(t, body)
 }
 
-func TestComplianceReportGenerateCmdWithConfig_FailsClosedOnImporterFailure(t *testing.T) {
+func TestComplianceReportGenerateCmdWithConfig_FailsClosedOnImporterFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	body, err := runComplianceReportGenerateCommand(t, []string{"missing-eval-run"})
 
 	require.Error(t, err)
@@ -500,7 +509,8 @@ func TestComplianceReportGenerateCmdWithConfig_FailsClosedOnImporterFailure(t *t
 	assert.Empty(t, body)
 }
 
-func TestComplianceReportGenerateCmdWithConfig_RejectsIncompleteCampaignSource(t *testing.T) {
+func TestComplianceReportGenerateCmdWithConfig_RejectsIncompleteCampaignSource(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	runID := "campaign-run"
 	require.NoError(t, evaluation.NewStore(fileSvc).SaveRun(context.Background(), &evalv1.EvaluationRun{
@@ -532,13 +542,15 @@ func TestComplianceReportGenerateCmdWithConfig_RejectsIncompleteCampaignSource(t
 	assert.Contains(t, err.Error(), "campaign")
 }
 
-func TestBuildCampaignReportSource_ProtectsRecordedReleaseAndExcludesAssertions(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
+func TestBuildCampaignReportSource_ProtectsRecordedReleaseAndExcludesAssertions(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	for _, legacy := range []bool{false, true} { //nolint:paralleltest // mutates package-level state
 		name := "recorded release"
 		if legacy {
 			name = "operator assertion stays outside the bundle"
 		}
 		t.Run(name, func(t *testing.T) {
+
 			ctx := context.Background()
 			fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 			store := evaluation.NewStore(fileSvc)
@@ -592,7 +604,8 @@ func TestBuildCampaignReportSource_ProtectsRecordedReleaseAndExcludesAssertions(
 	}
 }
 
-func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *testing.T) {
+func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewEvidenceCmdTestEnv(t)
 	req := cmdtest.EvaluationTestCampaignInitRequest(t)
 	controller := evaluation.NewCampaignController(evaluation.NewStore(fileSvc), nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -689,7 +702,8 @@ func scheduleComplianceCampaignRun(t *testing.T, ctx context.Context, controller
 	return run
 }
 
-func TestComplianceReportGenerateCmdWithConfig_RejectsInvalidProtectedAssessmentWindow(t *testing.T) {
+func TestComplianceReportGenerateCmdWithConfig_RejectsInvalidProtectedAssessmentWindow(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	cmd := complianceReportGenerateCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), complianceReportSigningIdentityLoaderForTest(t), time.Now)
 	configureComplianceReportGenerateCommand(t, cmd)
@@ -711,6 +725,7 @@ func TestComplianceReportGenerateCmdWithConfig_RejectsInvalidProtectedAssessment
 }
 
 func TestComplianceReportVerifyCmdWithConfig_PrintsTypedValidReport(t *testing.T) {
+	t.Parallel()
 	verifiedAt := time.Unix(1_700_000_100, 0).UTC()
 	loaderCalled := false
 	expectedEvidenceTrust := &assessedEvidenceTrust{keys: map[string]ed25519.PublicKey{}}
@@ -750,6 +765,7 @@ func TestComplianceReportVerifyCmdWithConfig_PrintsTypedValidReport(t *testing.T
 }
 
 func TestComplianceReportVerifyCmdWithConfig_ReturnsFailureAfterPrintingInvalidReport(t *testing.T) {
+	t.Parallel()
 	verifiedAt := time.Unix(1_700_000_100, 0).UTC()
 	cmd := complianceReportVerifyCmdWithConfig(
 		func(context.Context, string, string, string) (complianceReportBundleInput, error) {
@@ -779,6 +795,7 @@ func TestComplianceReportVerifyCmdWithConfig_ReturnsFailureAfterPrintingInvalidR
 }
 
 func TestComplianceReportVerifyCmdWithConfig_PropagatesReaderCloseFailure(t *testing.T) {
+	t.Parallel()
 	closeErr := fmt.Errorf("close failed")
 	verifiedAt := time.Unix(1_700_000_100, 0).UTC()
 	cmd := complianceReportVerifyCmdWithConfig(
@@ -799,6 +816,7 @@ func TestComplianceReportVerifyCmdWithConfig_PropagatesReaderCloseFailure(t *tes
 }
 
 func TestComplianceReportVerifyCmdWithConfig_RequiresExternalTrustPolicy(t *testing.T) {
+	t.Parallel()
 	cmd := complianceReportVerifyCmdWithConfig(
 		func(context.Context, string, string, string) (complianceReportBundleInput, error) {
 			t.Fatal("loader must not run without an explicit trust policy")
@@ -814,6 +832,7 @@ func TestComplianceReportVerifyCmdWithConfig_RequiresExternalTrustPolicy(t *test
 }
 
 func TestNewAssessedEvidenceTrust_ValidatesEveryAssessedSigner(t *testing.T) {
+	t.Parallel()
 	signedAt := time.Unix(1_700_000_000, 0).UTC()
 	newPolicy := func() *compliancev1.ComplianceEvidenceTrustPolicy {
 		publicKey, _, err := ed25519.GenerateKey(rand.Reader)
@@ -871,6 +890,7 @@ func TestNewAssessedEvidenceTrust_ValidatesEveryAssessedSigner(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			policy := newPolicy()
 			if test.mutate != nil {
 				test.mutate(policy)
@@ -888,6 +908,7 @@ func TestNewAssessedEvidenceTrust_ValidatesEveryAssessedSigner(t *testing.T) {
 }
 
 func TestLoadComplianceReportBundleInput_RejectsMalformedAndOversizedInputs(t *testing.T) {
+	t.Parallel()
 	canonicalEmpty := []byte(`{}`)
 	noncanonicalEmpty := []byte("{\n}")
 	oversized := bytes.Repeat([]byte("x"), int(constants.ComplianceBundleMaxArtifactBytes)+1)
@@ -904,6 +925,7 @@ func TestLoadComplianceReportBundleInput_RejectsMalformedAndOversizedInputs(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundleRoot := testutil.TempDir(t)
 			trustRoot := testutil.TempDir(t)
 			bundlePath := filepath.Join(bundleRoot, constants.ComplianceBundleManifestPath)
@@ -924,6 +946,7 @@ func TestLoadComplianceReportBundleInput_RejectsMalformedAndOversizedInputs(t *t
 }
 
 func TestComplianceBundleRootReader_ReadFileRejectsOversizedArtifactAndPreservesCancellation(t *testing.T) {
+	t.Parallel()
 	rootPath := testutil.TempDir(t)
 	artifactPath := filepath.Join(rootPath, constants.ComplianceBundleAnalysisPath)
 	require.NoError(t, os.WriteFile(artifactPath, bytes.Repeat([]byte("x"), int(constants.ComplianceBundleMaxArtifactBytes)+1), constants.PermFilePublic))
@@ -942,6 +965,7 @@ func TestComplianceBundleRootReader_ReadFileRejectsOversizedArtifactAndPreserves
 }
 
 func TestComplianceBundleRootReader_ReadFileRejectsDirectory(t *testing.T) {
+	t.Parallel()
 	rootPath := testutil.TempDir(t)
 	require.NoError(t, os.Mkdir(filepath.Join(rootPath, constants.TestNestedDirname), constants.PermDirPrivate))
 	root, err := os.OpenRoot(rootPath)
@@ -954,6 +978,7 @@ func TestComplianceBundleRootReader_ReadFileRejectsDirectory(t *testing.T) {
 }
 
 func TestComplianceBundleRootReader_ListsNestedUnexpectedArtifact(t *testing.T) {
+	t.Parallel()
 	rootPath := testutil.TempDir(t)
 	nestedPath := filepath.Join(rootPath, constants.TestNestedDirname)
 	require.NoError(t, os.Mkdir(nestedPath, constants.PermDirPrivate))
@@ -969,6 +994,7 @@ func TestComplianceBundleRootReader_ListsNestedUnexpectedArtifact(t *testing.T) 
 }
 
 func TestComplianceBundleRootReader_RejectsSymlinkEntries(t *testing.T) {
+	t.Parallel()
 	rootPath := testutil.TempDir(t)
 	targetPath := filepath.Join(rootPath, constants.ComplianceBundleAnalysisPath)
 	require.NoError(t, os.WriteFile(targetPath, []byte(`{}`), constants.PermFilePublic))
@@ -983,6 +1009,7 @@ func TestComplianceBundleRootReader_RejectsSymlinkEntries(t *testing.T) {
 }
 
 func TestLoadComplianceReportBundleInput_RejectsInBundleAndReusedTrustPaths(t *testing.T) {
+	t.Parallel()
 	bundleRoot := testutil.TempDir(t)
 	externalRoot := testutil.TempDir(t)
 	bundlePath := filepath.Join(bundleRoot, constants.ComplianceBundleManifestPath)
@@ -1002,6 +1029,7 @@ func TestLoadComplianceReportBundleInput_RejectsInBundleAndReusedTrustPaths(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			input, err := loadComplianceReportBundleInput(context.Background(), bundlePath, test.reportTrustPath, test.evidenceTrustPath)
 
 			require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
@@ -1011,6 +1039,7 @@ func TestLoadComplianceReportBundleInput_RejectsInBundleAndReusedTrustPaths(t *t
 }
 
 func TestComplianceBundleRootReader_RejectsDirectoryDepthLimit(t *testing.T) {
+	t.Parallel()
 	rootPath := testutil.TempDir(t)
 	currentPath := rootPath
 	for range constants.ComplianceBundleMaxDirectoryDepth + 1 {
@@ -1026,7 +1055,8 @@ func TestComplianceBundleRootReader_RejectsDirectoryDepthLimit(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrEvidenceDirectoryLimitExceeded)
 }
 
-func TestCollectRuntimeSourceArtifacts_RejectsDirectoryDepthLimit(t *testing.T) {
+func TestCollectRuntimeSourceArtifacts_RejectsDirectoryDepthLimit(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	currentPath := constants.TestNestedDirname
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), currentPath, constants.PermDirPrivate))
@@ -1041,6 +1071,7 @@ func TestCollectRuntimeSourceArtifacts_RejectsDirectoryDepthLimit(t *testing.T) 
 }
 
 func TestRecursiveDirectoryBudget_EnforcesDepthAndAggregateEntryLimits(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		depth            int
@@ -1054,6 +1085,7 @@ func TestRecursiveDirectoryBudget_EnforcesDepthAndAggregateEntryLimits(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			budget := recursiveDirectoryBudget{entries: tt.currentEntries}
 
 			err := budget.consume(tt.depth, tt.newEntries)

@@ -84,6 +84,7 @@ func TestNewHandler_RequiresDependencies(t *testing.T) {
 }
 
 func TestHandler_HandleCommand(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 
@@ -165,6 +166,7 @@ func TestHandler_HandleCommand(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			handler, publisher := testProviderObserverHandler(t)
 			payload := test.setup(t, handler)
 			id, err := handler.HandleCommand(ctx, &commonv1.GovernanceEnvelope{Id: "msg-1"}, payload)
@@ -185,6 +187,7 @@ func TestHandler_HandleCommand(t *testing.T) {
 }
 
 func TestHandler_PublishFailure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	handler, publisher := testProviderObserverHandler(t)
 	publisher.err = errors.New("publish failed")

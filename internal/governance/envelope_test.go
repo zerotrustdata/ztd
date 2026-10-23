@@ -21,6 +21,7 @@ import (
 )
 
 func TestGovernanceEnvelope_GenerateMessageID(t *testing.T) {
+	t.Parallel()
 	expiresAt := timestamppb.New(time.Now().Add(5 * time.Minute))
 
 	env := &GovernanceEnvelope{
@@ -104,6 +105,7 @@ func TestGovernanceEnvelope_GenerateMessageID(t *testing.T) {
 }
 
 func TestGovernanceEnvelope_GenerateMessageID_WithIntentData(t *testing.T) {
+	t.Parallel()
 	intentData, _ := structpb.NewStruct(map[string]interface{}{
 		"command": "echo test",
 		"cwd":     "/home",
@@ -137,7 +139,9 @@ func TestGovernanceEnvelope_GenerateMessageID_WithIntentData(t *testing.T) {
 }
 
 func TestGovernanceEnvelope_GenerateMessageID_DeterministicCanonicalization(t *testing.T) {
+	t.Parallel()
 	// Create two envelopes that are logically identical but constructed differently
+
 	intent1, _ := structpb.NewStruct(map[string]interface{}{
 		"a": "1",
 		"b": "2",
@@ -206,6 +210,7 @@ func TestGovernanceEnvelope_GenerateMessageID_DeterministicCanonicalization(t *t
 }
 
 func TestGenerateMessageID_V2RequiresEventType(t *testing.T) {
+	t.Parallel()
 	env := &GovernanceEnvelope{
 		ProtocolVersion: GovernanceProtocolVersionV2,
 		ActionType:      "EXECUTE_BASH",
@@ -219,6 +224,7 @@ func TestGenerateMessageID_V2RequiresEventType(t *testing.T) {
 }
 
 func TestVerifyTransactionHash_V2Parity(t *testing.T) {
+	t.Parallel()
 	expiresAt := timestamppb.New(time.Now().Add(5 * time.Minute))
 	env := &GovernanceEnvelope{
 		ProtocolVersion: GovernanceProtocolVersionV2,
@@ -243,6 +249,7 @@ func TestVerifyTransactionHash_V2Parity(t *testing.T) {
 }
 
 func TestGovernanceEnvelope_GenerateMessageID_NilEnvelope(t *testing.T) {
+	t.Parallel()
 	_, err := GenerateMessageID(nil)
 	if err == nil {
 		t.Fatal("GenerateMessageID should return error for nil envelope")
@@ -253,6 +260,7 @@ func TestGovernanceEnvelope_GenerateMessageID_NilEnvelope(t *testing.T) {
 }
 
 func TestGovernanceEnvelope_GenerateMessageID_IDHashMismatch(t *testing.T) {
+	t.Parallel()
 	expiresAt := timestamppb.New(time.Now().Add(5 * time.Minute))
 
 	env := &GovernanceEnvelope{
@@ -282,6 +290,7 @@ func TestGovernanceEnvelope_GenerateMessageID_IDHashMismatch(t *testing.T) {
 }
 
 func TestGenerateMessageID_L3ProofNotInHash(t *testing.T) {
+	t.Parallel()
 	expiresAt := timestamppb.New(time.Now().Add(5 * time.Minute))
 
 	base := &GovernanceEnvelope{

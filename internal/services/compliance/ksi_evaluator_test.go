@@ -249,6 +249,7 @@ func testBinding(t *testing.T) EvaluationBinding {
 
 // TestKSIEvaluator_RegisterMethods binds methods to a KSI and verifies the registered method count.
 func TestKSIEvaluator_RegisterMethods(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -270,6 +271,7 @@ func TestKSIEvaluator_RegisterMethods(t *testing.T) {
 }
 
 func TestKSIEvaluator_RegisterMethods_AllowsEachIndependentMetadataDimension(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*KSIMethod)
@@ -282,6 +284,7 @@ func TestKSIEvaluator_RegisterMethods_AllowsEachIndependentMetadataDimension(t *
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			eval := NewKSIEvaluator(testCatalog())
 			first := testKSIMethod("first", KSIPropertyPresence, func(context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 				return true, nil, nil
@@ -297,6 +300,7 @@ func TestKSIEvaluator_RegisterMethods_AllowsEachIndependentMetadataDimension(t *
 }
 
 func TestKSIEvaluator_RegisterMethods_RejectsInvalidMetadataAtomically(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*KSIMethod)
@@ -320,6 +324,7 @@ func TestKSIEvaluator_RegisterMethods_RejectsInvalidMetadataAtomically(t *testin
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			eval := NewKSIEvaluator(testCatalog())
 			valid := testKSIMethod("valid", KSIPropertyPresence, func(context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 				return true, nil, nil
@@ -338,6 +343,7 @@ func TestKSIEvaluator_RegisterMethods_RejectsInvalidMetadataAtomically(t *testin
 // TestKSIEvaluator_RegisterMethods_UnknownKSI_ReturnsError verifies that registering
 // methods for an unknown KSI ID returns an error.
 func TestKSIEvaluator_RegisterMethods_UnknownKSI_ReturnsError(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -350,6 +356,7 @@ func TestKSIEvaluator_RegisterMethods_UnknownKSI_ReturnsError(t *testing.T) {
 // TestKSIEvaluator_RegisterDefaultMethods registers default methods and verifies
 // that automatable KSIs get >=2 methods while non-automatable KSIs get 0.
 func TestKSIEvaluator_RegisterDefaultMethods(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 	require.NoError(t, eval.RegisterDefaultMethods(fullDeps(t)))
@@ -363,6 +370,7 @@ func TestKSIEvaluator_RegisterDefaultMethods(t *testing.T) {
 // TestKSIEvaluator_Evaluate_AllSatisfied verifies that a fully-evidenced
 // evaluation produces all satisfied results for automatable KSIs.
 func TestKSIEvaluator_Evaluate_AllSatisfied(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 	require.NoError(t, eval.RegisterDefaultMethods(fullDeps(t)))
@@ -388,6 +396,7 @@ func TestKSIEvaluator_Evaluate_AllSatisfied(t *testing.T) {
 // TestKSIEvaluator_Evaluate_InsufficientMethods_FailClosed verifies that KSIs
 // with fewer than the minimum required methods for Class C are unverifiable.
 func TestKSIEvaluator_Evaluate_InsufficientMethods_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 	require.NoError(t, eval.RegisterDefaultMethods(fullDeps(t)))
@@ -409,6 +418,7 @@ func TestKSIEvaluator_Evaluate_InsufficientMethods_FailClosed(t *testing.T) {
 // TestKSIEvaluator_Evaluate_StaleKSI_FailClosed verifies that a stale KSI
 // (LastValidatedUnixMs beyond validation cycle) is marked not_satisfied.
 func TestKSIEvaluator_Evaluate_StaleKSI_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 
 	// Make KSI-CMT-01 stale by setting LastValidatedUnixMs to 8 days ago
@@ -437,6 +447,7 @@ func TestKSIEvaluator_Evaluate_StaleKSI_FailClosed(t *testing.T) {
 // TestKSIEvaluator_Evaluate_MethodError_FailClosed verifies that a method
 // returning an error causes the KSI to be marked not_satisfied.
 func TestKSIEvaluator_Evaluate_MethodError_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -463,6 +474,7 @@ func TestKSIEvaluator_Evaluate_MethodError_FailClosed(t *testing.T) {
 // TestKSIEvaluator_Evaluate_MethodReturnsFalse_FailClosed verifies that a
 // method returning false (but no error) causes the KSI to be not_satisfied.
 func TestKSIEvaluator_Evaluate_MethodReturnsFalse_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -487,6 +499,7 @@ func TestKSIEvaluator_Evaluate_MethodReturnsFalse_FailClosed(t *testing.T) {
 }
 
 func TestKSIEvaluator_Evaluate_SeparatesDetailedOutcomes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		configure   func(*KSICatalog, *KSIEvaluator)
@@ -549,6 +562,7 @@ func TestKSIEvaluator_Evaluate_SeparatesDetailedOutcomes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			catalog := testCatalog()
 			evaluator := NewKSIEvaluator(catalog)
 			tt.configure(catalog, evaluator)
@@ -576,6 +590,7 @@ func findKSIResult(t *testing.T, resultSet *KSIResultSet, ksiID string) KSIResul
 // TestKSIEvaluator_Evaluate_NilDeps_FailClosed verifies that nil dependency
 // fields cause methods to return false (fail-closed).
 func TestKSIEvaluator_Evaluate_NilDeps_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 	require.NoError(t, eval.RegisterDefaultMethods(EvaluatorDeps{}))
@@ -594,6 +609,7 @@ func TestKSIEvaluator_Evaluate_NilDeps_FailClosed(t *testing.T) {
 // TestKSIEvaluator_Evaluate_EmptyStores_FailClosed verifies that empty audit
 // stores and ledgers cause methods to return false.
 func TestKSIEvaluator_Evaluate_EmptyStores_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -619,6 +635,7 @@ func TestKSIEvaluator_Evaluate_EmptyStores_FailClosed(t *testing.T) {
 // TestKSIEvaluator_Evaluate_ClassB_LowerThreshold verifies that Class B
 // requires only 1 method (not 2), so KSIs with 1 method are satisfied.
 func TestKSIEvaluator_Evaluate_ClassB_LowerThreshold(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -644,6 +661,7 @@ func TestKSIEvaluator_Evaluate_ClassB_LowerThreshold(t *testing.T) {
 // minimum method requirement (MAY automate), so KSIs with 0 methods are
 // still evaluated without method-count failure.
 func TestKSIEvaluator_Evaluate_ClassA_NoMinimum(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 
 	// Add a Class A KSI
@@ -673,6 +691,7 @@ func TestKSIEvaluator_Evaluate_ClassA_NoMinimum(t *testing.T) {
 // TestKSIEvaluator_Evaluate_ContextCancellation verifies that context
 // cancellation aborts evaluation.
 func TestKSIEvaluator_Evaluate_ContextCancellation(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 	require.NoError(t, eval.RegisterDefaultMethods(fullDeps(t)))
@@ -686,6 +705,7 @@ func TestKSIEvaluator_Evaluate_ContextCancellation(t *testing.T) {
 
 // TestKSIResultSet_HasFailures verifies HasFailures detects not_satisfied results.
 func TestKSIResultSet_HasFailures(t *testing.T) {
+	t.Parallel()
 	rs := &KSIResultSet{
 		Results: []KSIResult{
 			{ID: "KSI-1", Status: KSIStatusSatisfied},
@@ -704,6 +724,7 @@ func TestKSIResultSet_HasFailures(t *testing.T) {
 
 // TestKSIResultSet_SatisfiedCount verifies SatisfiedCount counts correctly.
 func TestKSIResultSet_SatisfiedCount(t *testing.T) {
+	t.Parallel()
 	rs := &KSIResultSet{
 		Results: []KSIResult{
 			{ID: "KSI-1", Status: KSIStatusSatisfied},
@@ -717,10 +738,12 @@ func TestKSIResultSet_SatisfiedCount(t *testing.T) {
 
 // TestKSIResultSet_Validate verifies result set validation against a catalog.
 func TestKSIResultSet_Validate(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	binding := testBinding(t)
 
 	t.Run("valid result set", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{
 			Binding: binding,
 			Results: []KSIResult{
@@ -732,6 +755,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("empty result set", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{Results: []KSIResult{}}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
@@ -740,6 +764,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("missing result set binding", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{
 			Results: []KSIResult{{ID: "KSI-CMT-01", Status: KSIStatusSatisfied, Outcome: KSIOutcomeSatisfied, Binding: binding}},
 		}
@@ -750,6 +775,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("result binding mismatch", func(t *testing.T) {
+		t.Parallel()
 		mismatched := binding
 		mismatched.RunID = "other-run"
 		rs := &KSIResultSet{
@@ -762,6 +788,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("evidence scope mismatch", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{
 			Binding: binding,
 			Results: []KSIResult{{
@@ -775,6 +802,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("unknown KSI ID", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{
 			Binding: binding,
 			Results: []KSIResult{
@@ -788,6 +816,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("empty KSI ID in result", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{
 			Binding: binding,
 			Results: []KSIResult{
@@ -801,6 +830,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("missing detailed outcome", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{Binding: binding, Results: []KSIResult{{ID: "KSI-CMT-01", Status: KSIStatusNotSatisfied, Binding: binding}}}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
@@ -808,6 +838,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 	})
 
 	t.Run("status contradicts detailed outcome", func(t *testing.T) {
+		t.Parallel()
 		rs := &KSIResultSet{Binding: binding, Results: []KSIResult{{ID: "KSI-CMT-01", Status: KSIStatusSatisfied, Outcome: KSIOutcomeInvalidEvidence, Binding: binding}}}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
@@ -816,6 +847,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 }
 
 func TestEvaluationBindingValidateRequiresUniqueAssertionAssessmentScope(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*EvaluationBinding)
@@ -836,6 +868,7 @@ func TestEvaluationBindingValidateRequiresUniqueAssertionAssessmentScope(t *test
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			binding := testBinding(t)
 			test.mutate(&binding)
 			err := binding.Validate()
@@ -846,6 +879,7 @@ func TestEvaluationBindingValidateRequiresUniqueAssertionAssessmentScope(t *test
 }
 
 func TestKSIResultSetValidateRejectsEvidenceOutsideAssertionAssessmentScope(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	binding := testBinding(t)
 	validEvidence := &compliancev1.ComplianceEvidenceReference{
@@ -870,6 +904,7 @@ func TestKSIResultSetValidateRejectsEvidenceOutsideAssertionAssessmentScope(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			evidence := proto.Clone(validEvidence).(*compliancev1.ComplianceEvidenceReference)
 			test.mutate(evidence)
 			resultSet := &KSIResultSet{Binding: binding, Results: []KSIResult{{ID: "KSI-CMT-01", Status: KSIStatusSatisfied, Outcome: KSIOutcomeSatisfied, Binding: binding, Evidence: []*compliancev1.ComplianceEvidenceReference{evidence}}}}
@@ -881,6 +916,7 @@ func TestKSIResultSetValidateRejectsEvidenceOutsideAssertionAssessmentScope(t *t
 }
 
 func TestKSIResultSetValidateAcceptsEvidenceMatchingAnyAllowedAssertionAssessmentScopeValue(t *testing.T) {
+	t.Parallel()
 	binding := testBinding(t)
 	binding.AssertionAssessments = AssertionAssessmentScope{
 		AssessmentIDs: []string{"assessment-1", "assessment-2"},
@@ -897,6 +933,7 @@ func TestKSIResultSetValidateAcceptsEvidenceMatchingAnyAllowedAssertionAssessmen
 }
 
 func TestKSIEvaluatorEvaluateFailsClosedOnEvidenceOutsideAssertionAssessmentScope(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	evaluator := NewKSIEvaluator(catalog)
 	method := testKSIMethod("cross-scope", KSIPropertyPresence, func(context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
@@ -913,6 +950,7 @@ func TestKSIEvaluatorEvaluateFailsClosedOnEvidenceOutsideAssertionAssessmentScop
 // TestDefaultMethods_CommitmentChainIntact verifies that the commitment chain
 // integrity method correctly detects broken chains.
 func TestDefaultMethods_CommitmentChainIntact(t *testing.T) {
+	t.Parallel()
 	deps := fullDeps(t)
 	methods := DefaultMethods(deps)
 
@@ -956,6 +994,7 @@ func TestDefaultMethods_CommitmentChainIntact(t *testing.T) {
 // TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification verifies
 // canonical receipt and final-persistence evidence fail closed under mutation.
 func TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*mockAuditReader)
@@ -987,6 +1026,7 @@ func TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification(t *testin
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			deps := fullDeps(t)
 			audit := deps.Audit.(*mockAuditReader)
 			if tt.mutate != nil {
@@ -1005,6 +1045,7 @@ func TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification(t *testin
 // TestKSIEvaluator_Evaluate_FullIntegration verifies end-to-end evaluation
 // with all deps populated, checking evidence anchors are present.
 func TestKSIEvaluator_Evaluate_FullIntegration(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 	require.NoError(t, eval.RegisterDefaultMethods(fullDeps(t)))
@@ -1033,6 +1074,7 @@ func TestKSIEvaluator_Evaluate_FullIntegration(t *testing.T) {
 // without registering any methods produces all unverifiable results for
 // Class C (fail-closed on method count).
 func TestKSIEvaluator_Evaluate_NoMethodsRegistered(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -1052,6 +1094,7 @@ func TestKSIEvaluator_Evaluate_NoMethodsRegistered(t *testing.T) {
 // TestKSIEvaluator_Evaluate_StorageError_FailClosed verifies that storage
 // errors cause methods to return errors, which fail-closed the KSI.
 func TestKSIEvaluator_Evaluate_StorageError_FailClosed(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
@@ -1075,6 +1118,7 @@ func TestKSIEvaluator_Evaluate_StorageError_FailClosed(t *testing.T) {
 }
 
 func TestDefaultMethods_CommitmentCryptographicVerification(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*EvaluatorDeps)
@@ -1095,6 +1139,7 @@ func TestDefaultMethods_CommitmentCryptographicVerification(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			deps := fullDeps(t)
 			if tt.mutate != nil {
 				tt.mutate(&deps)
@@ -1116,6 +1161,7 @@ func TestDefaultMethods_CommitmentCryptographicVerification(t *testing.T) {
 }
 
 func TestDefaultMethods_LedgerBootstrapCommitIsNotOperationalEvidence(t *testing.T) {
+	t.Parallel()
 	deps := fullDeps(t)
 	deps.Ledger.(*mockLedgerReader).commits[0].ParentHash = ""
 	methods := DefaultMethods(deps)["KSI-CMT-03"]
@@ -1129,6 +1175,7 @@ func TestDefaultMethods_LedgerBootstrapCommitIsNotOperationalEvidence(t *testing
 }
 
 func TestDefaultMethods_LedgerMerkleRootMatchesHead(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*EvaluatorDeps)
@@ -1141,6 +1188,7 @@ func TestDefaultMethods_LedgerMerkleRootMatchesHead(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			deps := fullDeps(t)
 			if tt.mutate != nil {
 				tt.mutate(&deps)
@@ -1153,6 +1201,7 @@ func TestDefaultMethods_LedgerMerkleRootMatchesHead(t *testing.T) {
 }
 
 func TestDefaultMethods_IndependentStateObservation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*EvaluatorDeps)
@@ -1166,6 +1215,7 @@ func TestDefaultMethods_IndependentStateObservation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			deps := fullDeps(t)
 			if tt.mutate != nil {
 				tt.mutate(&deps)
@@ -1178,6 +1228,7 @@ func TestDefaultMethods_IndependentStateObservation(t *testing.T) {
 }
 
 func TestDefaultMethods_DeterministicGraderResultsVerified(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*EvaluatorDeps)
@@ -1193,6 +1244,7 @@ func TestDefaultMethods_DeterministicGraderResultsVerified(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			deps := fullDeps(t)
 			if tt.mutate != nil {
 				tt.mutate(&deps)
@@ -1205,6 +1257,7 @@ func TestDefaultMethods_DeterministicGraderResultsVerified(t *testing.T) {
 }
 
 func TestDefaultMethods_KSIHistoryFreshness(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*EvaluatorDeps)
@@ -1220,6 +1273,7 @@ func TestDefaultMethods_KSIHistoryFreshness(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			deps := fullDeps(t)
 			if tt.mutate != nil {
 				tt.mutate(&deps)

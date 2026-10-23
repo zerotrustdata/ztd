@@ -23,6 +23,8 @@ import (
 )
 
 func TestOutboundL3Notary_VerifiesPinnedCLIProofWithoutSuspendedStore(t *testing.T) {
+	t.Parallel()
+
 	txHash := strings.Repeat("a", 64)
 	cert := newGatewayCLIApprovalCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
@@ -48,6 +50,8 @@ func TestOutboundL3Notary_VerifiesPinnedCLIProofWithoutSuspendedStore(t *testing
 		{name: "mixed context", mutate: func(p *commonv1.L3Proof) { p.PasskeyContext = &commonv1.PasskeyVerificationContext{} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			proof := proto.Clone(valid).(*commonv1.L3Proof)
 			if tc.mutate != nil {
 				tc.mutate(proof)
@@ -78,6 +82,8 @@ func TestOutboundL3Notary_VerifiesPinnedCLIProofWithoutSuspendedStore(t *testing
 }
 
 func TestOutboundL3Notary_VerifiesPasskeyAssertionFromRegistrationContext(t *testing.T) {
+	t.Parallel()
+
 	txHash := strings.Repeat("c", 64)
 	key := testutil.NewSoftwarePasskey(t)
 	credential := key.Credential(t)
@@ -111,6 +117,8 @@ func TestOutboundL3Notary_VerifiesPasskeyAssertionFromRegistrationContext(t *tes
 		{name: "mixed mechanisms", mutate: func(p *commonv1.L3Proof) { p.CliSignature = "00" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			proof := proto.Clone(valid).(*commonv1.L3Proof)
 			if tc.mutate != nil {
 				tc.mutate(proof)

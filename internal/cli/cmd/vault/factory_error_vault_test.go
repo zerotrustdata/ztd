@@ -37,6 +37,7 @@ func dummyKeystoreFactory(_ fs.RuntimeFileService, _ bool) (*keystore.Keystore, 
 }
 
 func TestVaultInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := vaultInitCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), dummyKeystoreFactory)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -48,6 +49,7 @@ func TestVaultInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestVaultUnlockCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := vaultUnlockCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), dummyKeystoreFactory)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -59,6 +61,7 @@ func TestVaultUnlockCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestVaultRekeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := vaultRekeyCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), dummyKeystoreFactory)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -70,6 +73,7 @@ func TestVaultRekeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestVaultStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := vaultStatusCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -81,6 +85,7 @@ func TestVaultStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestVaultResetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := vaultResetCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.Flags().Set("confirm", "true")
 	var buf bytes.Buffer
@@ -92,7 +97,8 @@ func TestVaultResetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestVaultInitCmdWithConfig_KeystoreFactoryError(t *testing.T) {
+func TestVaultInitCmdWithConfig_KeystoreFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	cmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), failingKeystoreFactory)
 	var buf bytes.Buffer
@@ -103,7 +109,8 @@ func TestVaultInitCmdWithConfig_KeystoreFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errKeystoreFactory)
 }
 
-func TestVaultUnlockCmdWithConfig_KeystoreFactoryError(t *testing.T) {
+func TestVaultUnlockCmdWithConfig_KeystoreFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	realKS, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -119,7 +126,8 @@ func TestVaultUnlockCmdWithConfig_KeystoreFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errKeystoreFactory)
 }
 
-func TestVaultRekeyCmdWithConfig_KeystoreFactoryError(t *testing.T) {
+func TestVaultRekeyCmdWithConfig_KeystoreFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	realKS, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)

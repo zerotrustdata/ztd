@@ -27,6 +27,7 @@ import (
 // The watch reloads the run on its connect and on each run event. Here the
 // connect and two events arrive in either order, and the third reload settles.
 func TestRunsShow_WatchEmitsOnConnectAndOnStatusAndStopsOnTerminal(t *testing.T) {
+	t.Parallel()
 	stream := &runEventStream{done: make(chan struct{})}
 	reconnects := make(chan struct{}, 1)
 	events := make(chan runEvent)
@@ -60,6 +61,7 @@ func TestRunsShow_WatchEmitsOnConnectAndOnStatusAndStopsOnTerminal(t *testing.T)
 // A stream that stops on its own ends the watch with the stream's error, after
 // no further reload.
 func TestRunsShow_WatchReturnsTheStreamError(t *testing.T) {
+	t.Parallel()
 	streamErr := errors.New("gateway refused the CLI session")
 	stream := &runEventStream{done: make(chan struct{}), err: streamErr}
 	close(stream.done)
@@ -84,6 +86,7 @@ func markFirstAssignmentRunning(t *testing.T, env *runEnv) {
 }
 
 func TestResolveCampaignOllamaEndpoint_UsesExactOperatorRuntimeConfig(t *testing.T) {
+	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{{
 		Id:                "inference-1",
 		OperatorSessionId: "inference-session",
@@ -112,6 +115,7 @@ func TestRunCommands_DoNotExposeOllamaEndpointOverride(t *testing.T) {
 }
 
 func TestVerificationReportHelpers(t *testing.T) {
+	t.Parallel()
 	report := &evalv1.EvaluationVerificationReport{
 		Status:         evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
 		FailureCount:   2,

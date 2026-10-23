@@ -236,7 +236,8 @@ func TestCloudMetadataTool_Execute_InvalidOperation(t *testing.T) {
 	assert.Contains(t, payload.Error, "invalid operation")
 }
 
-func TestCloudMetadataTool_Execute_DefaultOperation(t *testing.T) {
+func TestCloudMetadataTool_Execute_DefaultOperation(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	t.Cleanup(func() { detectCloudProviderFunc = origDetect })
 	detectCloudProviderFunc = func(ctx context.Context) string { return "unknown" }
@@ -252,7 +253,8 @@ func TestCloudMetadataTool_Execute_DefaultOperation(t *testing.T) {
 	assert.Equal(t, "unknown", payload.Provider)
 }
 
-func TestCloudMetadataTool_Execute_DetectAWS(t *testing.T) {
+func TestCloudMetadataTool_Execute_DetectAWS(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	t.Cleanup(func() { detectCloudProviderFunc = origDetect })
 	detectCloudProviderFunc = func(ctx context.Context) string { return "aws" }
@@ -267,7 +269,8 @@ func TestCloudMetadataTool_Execute_DetectAWS(t *testing.T) {
 	assert.Equal(t, "aws", payload.Provider)
 }
 
-func TestCloudMetadataTool_Execute_AWSInstance(t *testing.T) {
+func TestCloudMetadataTool_Execute_AWSInstance(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -289,7 +292,8 @@ func TestCloudMetadataTool_Execute_AWSInstance(t *testing.T) {
 	assert.Equal(t, "i-1234567890abcdef0", payload.InstanceID)
 }
 
-func TestCloudMetadataTool_Execute_AWSRegion(t *testing.T) {
+func TestCloudMetadataTool_Execute_AWSRegion(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -314,7 +318,8 @@ func TestCloudMetadataTool_Execute_AWSRegion(t *testing.T) {
 	assert.Equal(t, "us-west-2", payload.Region)
 }
 
-func TestCloudMetadataTool_Execute_AWSRegionFallbackToAZ(t *testing.T) {
+func TestCloudMetadataTool_Execute_AWSRegionFallbackToAZ(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -341,7 +346,8 @@ func TestCloudMetadataTool_Execute_AWSRegionFallbackToAZ(t *testing.T) {
 	assert.Equal(t, "us-east-1", payload.Region, "region should be derived from AZ by stripping last char")
 }
 
-func TestCloudMetadataTool_Execute_AWSAvailabilityZone(t *testing.T) {
+func TestCloudMetadataTool_Execute_AWSAvailabilityZone(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -363,7 +369,8 @@ func TestCloudMetadataTool_Execute_AWSAvailabilityZone(t *testing.T) {
 	assert.Equal(t, "us-west-2a", payload.AvailabilityZone)
 }
 
-func TestCloudMetadataTool_Execute_AWSInstanceType(t *testing.T) {
+func TestCloudMetadataTool_Execute_AWSInstanceType(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -385,7 +392,8 @@ func TestCloudMetadataTool_Execute_AWSInstanceType(t *testing.T) {
 	assert.Equal(t, "t3.medium", payload.InstanceType)
 }
 
-func TestCloudMetadataTool_Execute_GCPInstance(t *testing.T) {
+func TestCloudMetadataTool_Execute_GCPInstance(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -414,7 +422,8 @@ func TestCloudMetadataTool_Execute_GCPInstance(t *testing.T) {
 	assert.Equal(t, "my-vm", payload.Name)
 }
 
-func TestCloudMetadataTool_Execute_GCPRegion(t *testing.T) {
+func TestCloudMetadataTool_Execute_GCPRegion(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -436,7 +445,8 @@ func TestCloudMetadataTool_Execute_GCPRegion(t *testing.T) {
 	assert.Equal(t, "us-central1", payload.Region, "region should be last path segment")
 }
 
-func TestCloudMetadataTool_Execute_GCPAvailabilityZone(t *testing.T) {
+func TestCloudMetadataTool_Execute_GCPAvailabilityZone(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -458,7 +468,8 @@ func TestCloudMetadataTool_Execute_GCPAvailabilityZone(t *testing.T) {
 	assert.Equal(t, "us-central1-a", payload.AvailabilityZone)
 }
 
-func TestCloudMetadataTool_Execute_GCPInstanceType(t *testing.T) {
+func TestCloudMetadataTool_Execute_GCPInstanceType(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -480,7 +491,8 @@ func TestCloudMetadataTool_Execute_GCPInstanceType(t *testing.T) {
 	assert.Equal(t, "e2-medium", payload.InstanceType)
 }
 
-func TestCloudMetadataTool_Execute_AzureInstance(t *testing.T) {
+func TestCloudMetadataTool_Execute_AzureInstance(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -501,7 +513,8 @@ func TestCloudMetadataTool_Execute_AzureInstance(t *testing.T) {
 	assert.Equal(t, "azure", payload.Provider)
 }
 
-func TestCloudMetadataTool_Execute_AzureRegion(t *testing.T) {
+func TestCloudMetadataTool_Execute_AzureRegion(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -523,7 +536,8 @@ func TestCloudMetadataTool_Execute_AzureRegion(t *testing.T) {
 	assert.Equal(t, "westus2", payload.Region)
 }
 
-func TestCloudMetadataTool_Execute_AzureRegionMissingCompute(t *testing.T) {
+func TestCloudMetadataTool_Execute_AzureRegionMissingCompute(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -545,7 +559,8 @@ func TestCloudMetadataTool_Execute_AzureRegionMissingCompute(t *testing.T) {
 	assert.Equal(t, "unknown", payload.Region)
 }
 
-func TestCloudMetadataTool_Execute_AzureAvailabilityZone(t *testing.T) {
+func TestCloudMetadataTool_Execute_AzureAvailabilityZone(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -567,7 +582,8 @@ func TestCloudMetadataTool_Execute_AzureAvailabilityZone(t *testing.T) {
 	assert.Equal(t, "2", payload.AvailabilityZone)
 }
 
-func TestCloudMetadataTool_Execute_AzureInstanceType(t *testing.T) {
+func TestCloudMetadataTool_Execute_AzureInstanceType(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -589,7 +605,8 @@ func TestCloudMetadataTool_Execute_AzureInstanceType(t *testing.T) {
 	assert.Equal(t, "Standard_D4s_v3", payload.InstanceType)
 }
 
-func TestCloudMetadataTool_Execute_AzureInstanceTypeError(t *testing.T) {
+func TestCloudMetadataTool_Execute_AzureInstanceTypeError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -611,7 +628,8 @@ func TestCloudMetadataTool_Execute_AzureInstanceTypeError(t *testing.T) {
 	assert.Contains(t, payload.Error, "connection refused")
 }
 
-func TestCloudMetadataTool_Execute_AllAWS(t *testing.T) {
+func TestCloudMetadataTool_Execute_AllAWS(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {
@@ -645,7 +663,8 @@ func TestCloudMetadataTool_Execute_AllAWS(t *testing.T) {
 	assert.Equal(t, "eu-west-1", payload.Region.Region)
 }
 
-func TestCloudMetadataTool_Execute_UnsupportedProvider(t *testing.T) {
+func TestCloudMetadataTool_Execute_UnsupportedProvider(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	origDetect := detectCloudProviderFunc
 	origGet := httpGetFunc
 	t.Cleanup(func() {

@@ -35,19 +35,23 @@ func setupSSEEventServiceTest(t *testing.T) *SSEEventService {
 }
 
 func TestSSERoute_Validate(t *testing.T) {
+	t.Parallel()
 	t.Run("Validate accepts UserID + WebSessionID", func(t *testing.T) {
+		t.Parallel()
 		route := SSERoute{UserID: "user-1", WebSessionID: "web-session-123"}
 		err := route.validate()
 		assert.NoError(t, err)
 	})
 
 	t.Run("Validate accepts UserID + CLISessionID", func(t *testing.T) {
+		t.Parallel()
 		route := SSERoute{UserID: "user-1", CLISessionID: "cli-session-456"}
 		err := route.validate()
 		assert.NoError(t, err)
 	})
 
 	t.Run("Validate rejects UserID only (no session)", func(t *testing.T) {
+		t.Parallel()
 		route := SSERoute{UserID: "user-789"}
 		err := route.validate()
 		require.Error(t, err)
@@ -55,6 +59,7 @@ func TestSSERoute_Validate(t *testing.T) {
 	})
 
 	t.Run("Validate rejects empty route (no IDs set)", func(t *testing.T) {
+		t.Parallel()
 		route := SSERoute{}
 		err := route.validate()
 		require.Error(t, err)
@@ -62,6 +67,7 @@ func TestSSERoute_Validate(t *testing.T) {
 	})
 
 	t.Run("Validate rejects both sessions set", func(t *testing.T) {
+		t.Parallel()
 		route := SSERoute{
 			UserID:       "user-1",
 			WebSessionID: "web-session-123",
@@ -73,6 +79,7 @@ func TestSSERoute_Validate(t *testing.T) {
 	})
 
 	t.Run("Validate rejects session without UserID", func(t *testing.T) {
+		t.Parallel()
 		route := SSERoute{WebSessionID: "web-session-123"}
 		err := route.validate()
 		require.Error(t, err)
@@ -81,13 +88,16 @@ func TestSSERoute_Validate(t *testing.T) {
 }
 
 func TestNullIfEmpty(t *testing.T) {
+	t.Parallel()
 
 	t.Run("nullIfEmpty returns Invalid NullString for empty string", func(t *testing.T) {
+		t.Parallel()
 		result := nullIfEmpty("")
 		assert.False(t, result.Valid)
 	})
 
 	t.Run("nullIfEmpty returns Valid NullString for non-empty", func(t *testing.T) {
+		t.Parallel()
 		result := nullIfEmpty("test-value")
 		assert.True(t, result.Valid)
 		assert.Equal(t, "test-value", result.String)
@@ -95,8 +105,11 @@ func TestNullIfEmpty(t *testing.T) {
 }
 
 func TestSSEEventService_SSEEventsAppend(t *testing.T) {
+	t.Parallel()
 
 	t.Run("SSEEventsAppend with WebSessionID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-1"}
 		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "producer-1")
@@ -109,6 +122,8 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 	})
 
 	t.Run("SSEEventsAppend with CLISessionID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", CLISessionID: "cli-session-1"}
 		_, err := sseSvc.SSEEventsAppend(route, "cli-event", `{"cli":"data"}`, "producer-2")
@@ -120,6 +135,8 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 	})
 
 	t.Run("SSEEventsAppend with empty producerID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-2"}
 		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "")
@@ -131,6 +148,8 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 	})
 
 	t.Run("SSEEventsAppend rejects invalid route", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{} // No IDs set
 		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "producer-1")
@@ -139,6 +158,8 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 	})
 
 	t.Run("SSEEventsAppend with large payload", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-3"}
 		largePayload := make([]byte, 1024*100) // 100KB
@@ -154,6 +175,8 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 	})
 
 	t.Run("SSEEventsAppend with special characters in payload", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-4"}
 		specialPayload := `{"key":"value with \n\t\r\"quotes\" and 'apostrophes'"}`
@@ -167,9 +190,80 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 	})
 }
 
+func TestSSEEventService_SSEEventsCount(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SSEEventsCount returns 0 for empty table", func(t *testing.T) {
+		t.Parallel()
+
+		sseSvc := setupSSEEventServiceTest(t)
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("SSEEventsCount returns correct count after inserts", func(t *testing.T) {
+		t.Parallel()
+
+		sseSvc := setupSSEEventServiceTest(t)
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-count"}
+		for i := 0; i < 5; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), count)
+	})
+}
+
+func TestSSEEventService_SSEEventsWipe(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SSEEventsWipe deletes all rows", func(t *testing.T) {
+		t.Parallel()
+
+		sseSvc := setupSSEEventServiceTest(t)
+		// Insert some events
+		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-wipe"}
+		for i := 0; i < 10; i++ {
+			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
+			require.NoError(t, err)
+		}
+
+		// Verify count
+		count, err := sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(10), count)
+
+		// Wipe
+		deleted, err := sseSvc.SSEEventsWipe()
+		require.NoError(t, err)
+		assert.Equal(t, int64(10), deleted)
+
+		// Verify empty
+		count, err = sseSvc.SSEEventsCount()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("SSEEventsWipe returns 0 for empty table", func(t *testing.T) {
+		t.Parallel()
+
+		sseSvc := setupSSEEventServiceTest(t)
+		deleted, err := sseSvc.SSEEventsWipe()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), deleted)
+	})
+}
+
 func TestSSEEventService_SSEEventsListSince(t *testing.T) {
+	t.Parallel()
 
 	t.Run("SSEEventsListSince with WebSessionID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route1 := SSERoute{UserID: "test-user", WebSessionID: "web-session-list-1"}
 		route2 := SSERoute{UserID: "test-user", WebSessionID: "web-session-list-2"}
@@ -192,6 +286,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince with CLISessionID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", CLISessionID: "cli-session-list"}
 		_, err := sseSvc.SSEEventsAppend(route, "cli-event", `{"cli":"data"}`, "producer")
@@ -204,6 +300,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince respects sinceID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-since"}
 		for i := 0; i < 5; i++ {
@@ -223,6 +321,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince respects limit", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-limit"}
 		for i := 0; i < 10; i++ {
@@ -236,6 +336,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince defaults limit to 200 for invalid values", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-default"}
 		for i := 0; i < 5; i++ {
@@ -260,6 +362,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince returns empty for non-existent route", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "non-existent"}
 		events, err := sseSvc.SSEEventsListSince(route, 0, 10)
@@ -268,6 +372,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince rejects invalid route", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{} // No IDs set
 		_, err := sseSvc.SSEEventsListSince(route, 0, 10)
@@ -276,6 +382,8 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListSince returns events in ascending ID order", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-order"}
 		for i := 0; i < 3; i++ {
@@ -294,8 +402,11 @@ func TestSSEEventService_SSEEventsListSince(t *testing.T) {
 }
 
 func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
+	t.Parallel()
 
 	t.Run("SSEEventsListAllSince returns events across all routes", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		// Insert events for different routes
 		route1 := SSERoute{UserID: "user-a", WebSessionID: "web-session-all-1"}
@@ -334,6 +445,8 @@ func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListAllSince respects sinceID", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-since"}
 		for i := 0; i < 5; i++ {
@@ -353,6 +466,8 @@ func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListAllSince respects limit", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-limit"}
 		for i := 0; i < 10; i++ {
@@ -366,6 +481,8 @@ func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListAllSince defaults limit to 200 for invalid values", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-default"}
 		for i := 0; i < 5; i++ {
@@ -385,6 +502,8 @@ func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListAllSince returns empty for empty table", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		events, err := sseSvc.SSEEventsListAllSince(0, 10)
 		require.NoError(t, err)
@@ -392,6 +511,8 @@ func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
 	})
 
 	t.Run("SSEEventsListAllSince returns events in ascending ID order", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-all-order"}
 		for i := 0; i < 3; i++ {
@@ -410,8 +531,11 @@ func TestSSEEventService_SSEEventsListAllSince(t *testing.T) {
 }
 
 func TestSSEEventService_RouteIsolation(t *testing.T) {
+	t.Parallel()
 
 	t.Run("Events are isolated by route type", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		webRoute := SSERoute{UserID: "user-web", WebSessionID: "web-session-iso"}
 		cliRoute := SSERoute{UserID: "user-cli", CLISessionID: "cli-session-iso"}
@@ -435,6 +559,8 @@ func TestSSEEventService_RouteIsolation(t *testing.T) {
 	})
 
 	t.Run("Events are isolated by session ID within same type", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route1 := SSERoute{UserID: "test-user", WebSessionID: "web-session-iso-1"}
 		route2 := SSERoute{UserID: "test-user", WebSessionID: "web-session-iso-2"}
@@ -457,8 +583,11 @@ func TestSSEEventService_RouteIsolation(t *testing.T) {
 }
 
 func TestSSEEventService_EventDataIntegrity(t *testing.T) {
+	t.Parallel()
 
 	t.Run("Event fields are preserved correctly", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-integrity"}
 		eventType := "test-event-type"
@@ -482,6 +611,8 @@ func TestSSEEventService_EventDataIntegrity(t *testing.T) {
 	})
 
 	t.Run("Event ID increments correctly", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-increment"}
 		var lastID int64 = 0
@@ -499,6 +630,8 @@ func TestSSEEventService_EventDataIntegrity(t *testing.T) {
 	})
 
 	t.Run("SSEEventsAppend returns sequential row IDs", func(t *testing.T) {
+		t.Parallel()
+
 		sseSvc := setupSSEEventServiceTest(t)
 		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-seq-ids"}
 

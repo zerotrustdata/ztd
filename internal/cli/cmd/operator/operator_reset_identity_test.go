@@ -23,6 +23,7 @@ import (
 )
 
 func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	path := filepath.Join(dir, constants.RuntimeDirname, constants.CliKeyFilename)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
@@ -45,6 +46,7 @@ func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 }
 
 func TestResetIdentityDeclinedDoesNotDiscoverOrDelete(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]localOperatorProcess, error) {
 		t.Fatal("discovery before confirmation")

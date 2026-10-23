@@ -16,6 +16,7 @@ import (
 )
 
 func TestDocumentResponse_GetString_AbsentField(t *testing.T) {
+	t.Parallel()
 	doc := DocumentResponse{"case_title": json.RawMessage(`"hello"`)}
 	title, ok := doc.GetString("case_title")
 	require.True(t, ok)
@@ -25,6 +26,7 @@ func TestDocumentResponse_GetString_AbsentField(t *testing.T) {
 }
 
 func TestDocumentResponse_GetBool_AbsentField(t *testing.T) {
+	t.Parallel()
 	doc := DocumentResponse{"case_flag": json.RawMessage(`true`)}
 	flag, ok := doc.GetBool("case_flag")
 	require.True(t, ok)
@@ -34,6 +36,7 @@ func TestDocumentResponse_GetBool_AbsentField(t *testing.T) {
 }
 
 func TestDocumentResponse_GetString_WrongType(t *testing.T) {
+	t.Parallel()
 	doc := DocumentResponse{"case_title": json.RawMessage(`42`), "case_flag": json.RawMessage(`"true"`)}
 	_, ok := doc.GetString("case_title")
 	assert.False(t, ok, "a number must not read as a string")
@@ -42,6 +45,7 @@ func TestDocumentResponse_GetString_WrongType(t *testing.T) {
 }
 
 func TestInvestigationUpdate_OmitsUnsetFields(t *testing.T) {
+	t.Parallel()
 	title := "Patched Title"
 	updates, err := documentUpdateStruct(InvestigationUpdate{CaseTitle: &title})
 	require.NoError(t, err)

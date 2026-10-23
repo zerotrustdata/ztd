@@ -18,6 +18,7 @@ import (
 )
 
 func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
+	t.Parallel()
 	flags := GatewayFlags{
 		Posture:          "consensus",
 		HTTPPort:         8080,
@@ -64,6 +65,7 @@ func TestGatewayFlagsToServeConfig_AllFieldsTransferred(t *testing.T) {
 }
 
 func TestGatewayFlagsToServeConfig_EmptyFlags(t *testing.T) {
+	t.Parallel()
 	flags := GatewayFlags{}
 
 	cfg := gatewayFlagsToServeConfig(flags)
@@ -90,6 +92,7 @@ func TestGatewayFlagsToServeConfig_EmptyFlags(t *testing.T) {
 }
 
 func TestAddGatewayFlags_RegistersAllFlags(t *testing.T) {
+	t.Parallel()
 	cmd := &cobra.Command{}
 	var flags GatewayFlags
 	addGatewayFlags(cmd, &flags)
@@ -133,6 +136,7 @@ func TestAddGatewayFlags_RegistersAllFlags(t *testing.T) {
 }
 
 func TestResolveGatewayFlags_FlagValuesPassThrough(t *testing.T) {
+	t.Parallel()
 	result := resolveGatewayFlags(GatewayFlags{
 		VaultDir: "/cli/vault",
 	})
@@ -149,6 +153,7 @@ func TestResolveGatewayFlags_OllamaEndpointFromEnv(t *testing.T) {
 }
 
 func TestResolveGatewayFlags_DoctrineDirFlagPassThrough(t *testing.T) {
+	t.Parallel()
 	result := resolveGatewayFlags(GatewayFlags{DoctrineDir: "/cli/doctrine"})
 
 	assert.Equal(t, "/cli/doctrine", result.DoctrineDir)

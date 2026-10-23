@@ -21,17 +21,20 @@ import (
 )
 
 func TestFSFileChecksumTool_Name(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	require.Equal(t, "fs_file_checksum", tool.Name())
 }
 
 func TestFSFileChecksumTool_Description(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "checksum")
 }
 
 func TestFSFileChecksumTool_InputSchema(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	schema := tool.InputSchema()
 
@@ -45,6 +48,7 @@ func TestFSFileChecksumTool_InputSchema(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -54,6 +58,7 @@ func TestFSFileChecksumTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_EmptyFilePath(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -67,6 +72,7 @@ func TestFSFileChecksumTool_Execute_EmptyFilePath(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_InvalidPath_Whitespace(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -80,6 +86,7 @@ func TestFSFileChecksumTool_Execute_InvalidPath_Whitespace(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_InvalidPath_PathTraversal(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -94,6 +101,7 @@ func TestFSFileChecksumTool_Execute_InvalidPath_PathTraversal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := FSFileChecksumRequest{FilePath: tt.path}
 			args, err := json.Marshal(req)
 			require.NoError(t, err)
@@ -106,6 +114,7 @@ func TestFSFileChecksumTool_Execute_InvalidPath_PathTraversal(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_InvalidPath_NullByte(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -119,6 +128,7 @@ func TestFSFileChecksumTool_Execute_InvalidPath_NullByte(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_FileNotFound(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -132,6 +142,7 @@ func TestFSFileChecksumTool_Execute_FileNotFound(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_Success(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -164,6 +175,7 @@ func TestFSFileChecksumTool_Execute_Success(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_EmptyFile(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -189,6 +201,7 @@ func TestFSFileChecksumTool_Execute_EmptyFile(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_LargeFile(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -223,6 +236,7 @@ func TestFSFileChecksumTool_Execute_LargeFile(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_BinaryFile(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -254,6 +268,7 @@ func TestFSFileChecksumTool_Execute_BinaryFile(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_UnicodeContent(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -283,6 +298,7 @@ func TestFSFileChecksumTool_Execute_UnicodeContent(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_DirectoryInsteadOfFile(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -298,6 +314,7 @@ func TestFSFileChecksumTool_Execute_DirectoryInsteadOfFile(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_AbsolutePath(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -324,7 +341,7 @@ func TestFSFileChecksumTool_Execute_AbsolutePath(t *testing.T) {
 	require.Equal(t, absPath, checksumResult.FilePath)
 }
 
-func TestFSFileChecksumTool_Execute_RelativePath(t *testing.T) {
+func TestFSFileChecksumTool_Execute_RelativePath(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 
@@ -353,6 +370,7 @@ func TestFSFileChecksumTool_Execute_RelativePath(t *testing.T) {
 }
 
 func TestFSFileChecksumTool_Execute_MultipleFiles(t *testing.T) {
+	t.Parallel()
 	tool := &FSFileChecksumTool{}
 	ctx := context.Background()
 

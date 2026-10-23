@@ -17,6 +17,7 @@ import (
 )
 
 func TestNewMockOperatorPubSubClient(t *testing.T) {
+	t.Parallel()
 	t.Run("creates mock client successfully", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -27,6 +28,7 @@ func TestNewMockOperatorPubSubClient(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_Subscribe(t *testing.T) {
+	t.Parallel()
 	t.Run("subscribes to channel successfully", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -62,6 +64,7 @@ func TestMockOperatorPubSubClient_Subscribe(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_Publish(t *testing.T) {
+	t.Parallel()
 	t.Run("records published message", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -103,6 +106,7 @@ func TestMockOperatorPubSubClient_Publish(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_InjectMessage(t *testing.T) {
+	t.Parallel()
 	t.Run("injects message to subscribers", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -134,6 +138,7 @@ func TestMockOperatorPubSubClient_InjectMessage(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_Published(t *testing.T) {
+	t.Parallel()
 	t.Run("returns all published messages", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -166,6 +171,7 @@ func TestMockOperatorPubSubClient_Published(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_PublishedCount(t *testing.T) {
+	t.Parallel()
 	t.Run("returns zero when no messages published", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -185,6 +191,7 @@ func TestMockOperatorPubSubClient_PublishedCount(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_LastPublished(t *testing.T) {
+	t.Parallel()
 	t.Run("returns nil when no messages published", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -207,6 +214,7 @@ func TestMockOperatorPubSubClient_LastPublished(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_Reset(t *testing.T) {
+	t.Parallel()
 	t.Run("clears published messages", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()
@@ -247,6 +255,7 @@ func TestMockOperatorPubSubClient_ErrorConfiguration(t *testing.T) {
 }
 
 func TestMockOperatorPubSubClient_Close(t *testing.T) {
+	t.Parallel()
 	t.Run("closes subscriber channels", func(t *testing.T) {
 		t.Parallel()
 		client := NewMockOperatorPubSubClient()

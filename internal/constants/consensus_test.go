@@ -14,6 +14,7 @@ import (
 )
 
 func TestParseConsensusProvider(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		value   string
@@ -27,6 +28,7 @@ func TestParseConsensusProvider(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := ParseConsensusProvider(tc.value)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)

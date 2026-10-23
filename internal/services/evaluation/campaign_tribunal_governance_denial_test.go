@@ -22,6 +22,7 @@ import (
 )
 
 func TestIsL2GovernanceDenialRequiresTypedFailureAndSignedReceipt(t *testing.T) {
+	t.Parallel()
 	validReceipt := &operatorv1.ActionReceipt{
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -57,6 +58,7 @@ func TestIsL2GovernanceDenialRequiresTypedFailureAndSignedReceipt(t *testing.T) 
 // a record with no provider attempt, so no observation or provenance window is
 // expected for it.
 func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testing.T) {
+	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-turn-denied",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -70,6 +72,7 @@ func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testi
 	denied := &governance.ReceiptError{Receipt: receipt, Err: constants.ErrInferenceGovernanceRejected}
 
 	t.Run("signed L2 rejection", func(t *testing.T) {
+		t.Parallel()
 		run := newTribunalAuthoringRun(t, false, &tribunalAuthoringInference{probeErr: denied}, &tribunalAuthoringTools{})
 		require.NoError(t, run.loop(context.Background()))
 		assert.Equal(t, AgentTerminalClassificationPolicyDenial, run.trace.TerminalClassification)
@@ -89,6 +92,7 @@ func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testi
 	})
 
 	t.Run("unsigned rejection remains a harness failure", func(t *testing.T) {
+		t.Parallel()
 		unsigned := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		unsigned.Signature = ""
 		run := newTribunalAuthoringRun(t, false, &tribunalAuthoringInference{probeErr: &governance.ReceiptError{Receipt: unsigned, Err: constants.ErrInferenceGovernanceRejected}}, &tribunalAuthoringTools{})

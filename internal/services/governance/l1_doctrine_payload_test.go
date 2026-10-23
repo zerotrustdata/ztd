@@ -23,6 +23,8 @@ import (
 )
 
 func TestL1Doctrine_ValidatePayload_McpCallRequested(t *testing.T) {
+	t.Parallel()
+
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -46,6 +48,8 @@ func TestL1Doctrine_ValidatePayload_McpCallRequested(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			payload := &operatorv1.McpCallRequested{
 				ToolName:      tt.toolName,
 				ArgumentsJson: "{}",
@@ -64,6 +68,8 @@ func TestL1Doctrine_ValidatePayload_McpCallRequested(t *testing.T) {
 // so doctrine must screen that line exactly as it screens EXECUTE_BASH: a
 // threat split across the command and its arguments is not a side door.
 func TestL1Doctrine_ValidatePayload_RunShellCommandScreensTheExecutedCommandLine(t *testing.T) {
+	t.Parallel()
+
 	doctrine := NewL1Doctrine()
 	tests := []struct {
 		name      string
@@ -77,6 +83,8 @@ func TestL1Doctrine_ValidatePayload_RunShellCommandScreensTheExecutedCommandLine
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			var request struct {
 				Command string   `json:"command"`
 				Args    []string `json:"args"`
@@ -100,6 +108,8 @@ func TestL1Doctrine_ValidatePayload_RunShellCommandScreensTheExecutedCommandLine
 }
 
 func TestL1Doctrine_ValidatePayload_RuntimeFileEdits(t *testing.T) {
+	t.Parallel()
+
 	doctrine := NewL1Doctrine()
 	tests := []struct {
 		name       string
@@ -114,6 +124,8 @@ func TestL1Doctrine_ValidatePayload_RuntimeFileEdits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			payloads := map[string]proto.Message{
 				"file_edit":    &operatorv1.FileEditRequested{FilePath: tt.path, Operation: "write", Content: "replacement"},
 				"restore_file": &operatorv1.RestoreFileRequested{FilePath: tt.path, CommitHash: "abc123", OperatorSessionId: "session-1"},
@@ -131,6 +143,8 @@ func TestL1Doctrine_ValidatePayload_RuntimeFileEdits(t *testing.T) {
 }
 
 func TestL1Doctrine_ValidatePayload_A2ACallRequested(t *testing.T) {
+	t.Parallel()
+
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -148,6 +162,8 @@ func TestL1Doctrine_ValidatePayload_A2ACallRequested(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			payload := &operatorv1.A2ACallRequested{
 				SkillName:   tt.skillName,
 				PayloadJson: "{}",

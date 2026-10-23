@@ -21,8 +21,10 @@ import (
 // TestRenderBeforeInit and TestInitAndRender must NOT run in parallel because
 // they share package-level template state guarded by sync.Once.
 
-func TestRenderLinuxDeployScript_BeforeInitReturnsNotInitializedError(t *testing.T) {
+func TestRenderLinuxDeployScript_BeforeInitReturnsNotInitializedError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	// Guard: if Init was already called by another test, skip this test.
+
 	if linuxTemplate != nil {
 		t.Skip("templates already initialized by a prior test")
 	}
@@ -34,7 +36,8 @@ func TestRenderLinuxDeployScript_BeforeInitReturnsNotInitializedError(t *testing
 	assert.ErrorIs(t, err, constants.ErrScriptTemplateNotInitialized)
 }
 
-func TestRenderWindowsDeployScript_BeforeInitReturnsNotInitializedError(t *testing.T) {
+func TestRenderWindowsDeployScript_BeforeInitReturnsNotInitializedError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	if windowsTemplate != nil {
 		t.Skip("templates already initialized by a prior test")
 	}
@@ -46,7 +49,8 @@ func TestRenderWindowsDeployScript_BeforeInitReturnsNotInitializedError(t *testi
 	assert.ErrorIs(t, err, constants.ErrScriptTemplateNotInitialized)
 }
 
-func TestInit_ParsesEmbeddedTemplatesSuccessfully(t *testing.T) {
+func TestInit_ParsesEmbeddedTemplatesSuccessfully(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	logger := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 
 	err := Init(logger)
@@ -57,9 +61,11 @@ func TestInit_ParsesEmbeddedTemplatesSuccessfully(t *testing.T) {
 	require.NotNil(t, windowsTemplate)
 }
 
-func TestInit_IsIdempotentViaSyncOnce(t *testing.T) {
+func TestInit_IsIdempotentViaSyncOnce(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	// sync.Once ensures Init only runs once. Calling it again should
 	// return the same (nil) error without panicking.
+
 	logger := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 
 	// Use a separate once to prove the pattern: the package-level initOnce
@@ -73,6 +79,7 @@ func TestInit_IsIdempotentViaSyncOnce(t *testing.T) {
 }
 
 func TestRenderLinuxDeployScript_SubstitutesGatewayHostAndPort(t *testing.T) {
+	t.Parallel()
 	data := TemplateData{
 		GatewayHost: "192.168.1.100",
 		GatewayPort: "8080",
@@ -86,6 +93,7 @@ func TestRenderLinuxDeployScript_SubstitutesGatewayHostAndPort(t *testing.T) {
 }
 
 func TestRenderWindowsDeployScript_SubstitutesGatewayHostAndPort(t *testing.T) {
+	t.Parallel()
 	data := TemplateData{
 		GatewayHost: "192.168.1.100",
 		GatewayPort: "8080",
@@ -99,6 +107,7 @@ func TestRenderWindowsDeployScript_SubstitutesGatewayHostAndPort(t *testing.T) {
 }
 
 func TestRenderLinuxDeployScript_EmptyDataProducesValidScript(t *testing.T) {
+	t.Parallel()
 	out, err := RenderLinuxDeployScript(TemplateData{})
 	require.NoError(t, err)
 
@@ -107,6 +116,7 @@ func TestRenderLinuxDeployScript_EmptyDataProducesValidScript(t *testing.T) {
 }
 
 func TestRenderWindowsDeployScript_EmptyDataProducesValidScript(t *testing.T) {
+	t.Parallel()
 	out, err := RenderWindowsDeployScript(TemplateData{})
 	require.NoError(t, err)
 
@@ -115,6 +125,7 @@ func TestRenderWindowsDeployScript_EmptyDataProducesValidScript(t *testing.T) {
 }
 
 func TestRenderLinuxDeployScript_TemplateContainsDeployLogic(t *testing.T) {
+	t.Parallel()
 	out, err := RenderLinuxDeployScript(TemplateData{
 		GatewayHost: "10.0.0.1",
 		GatewayPort: "8080",
@@ -126,6 +137,7 @@ func TestRenderLinuxDeployScript_TemplateContainsDeployLogic(t *testing.T) {
 }
 
 func TestRenderWindowsDeployScript_TemplateContainsDeployLogic(t *testing.T) {
+	t.Parallel()
 	out, err := RenderWindowsDeployScript(TemplateData{
 		GatewayHost: "10.0.0.1",
 		GatewayPort: "8080",

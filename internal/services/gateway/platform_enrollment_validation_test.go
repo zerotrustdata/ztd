@@ -37,6 +37,8 @@ func newPlatformEnrollmentCSR(t *testing.T) (string, *ecdsa.PrivateKey) {
 }
 
 func TestValidatePlatformEnrollmentRequestComputesTypedFingerprints(t *testing.T) {
+	t.Parallel()
+
 	appCSR, _ := newPlatformEnrollmentCSR(t)
 	request := models.PlatformEnrollmentCreateRequest{
 		TokenHash:     models.PlatformEnrollmentTokenHash("validation-token"),
@@ -54,6 +56,8 @@ func TestValidatePlatformEnrollmentRequestComputesTypedFingerprints(t *testing.T
 }
 
 func TestValidatePlatformEnrollmentRequestRejectsDuplicateOperatorKeys(t *testing.T) {
+	t.Parallel()
+
 	csr, _ := newPlatformEnrollmentCSR(t)
 	request := models.PlatformEnrollmentCreateRequest{
 		TokenHash:         models.PlatformEnrollmentTokenHash("validation-token"),
@@ -72,9 +76,13 @@ func TestValidatePlatformEnrollmentRequestRejectsDuplicateOperatorKeys(t *testin
 }
 
 func TestValidatePlatformEnrollmentRequestRejectsInvalidSigningKeys(t *testing.T) {
+	t.Parallel()
+
 	csr, _ := newPlatformEnrollmentCSR(t)
 	for _, key := range []string{"not-hex", "ab", strings.Repeat("ab", 31), strings.Repeat("ab", 33)} {
 		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := validatePlatformEnrollmentRequest(models.PlatformEnrollmentCreateRequest{
 				TokenHash: models.PlatformEnrollmentTokenHash("signing-key"), ComponentKind: models.PlatformComponentApplication,
 				AppName: "ordinary-app", InstanceID: "ordinary-app-1", Hostname: "app.local",
@@ -86,9 +94,13 @@ func TestValidatePlatformEnrollmentRequestRejectsInvalidSigningKeys(t *testing.T
 }
 
 func TestValidatePlatformEnrollmentRequestRejectsReservedAppNames(t *testing.T) {
+	t.Parallel()
+
 	csr, _ := newPlatformEnrollmentCSR(t)
 	for _, name := range []string{"ztdo", "ztdd", "ztd-ensemble", "ensemble", "admin"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := validatePlatformEnrollmentRequest(models.PlatformEnrollmentCreateRequest{
 				TokenHash: models.PlatformEnrollmentTokenHash("reserved"), ComponentKind: models.PlatformComponentApplication,
 				AppName: name, InstanceID: "app-1", Hostname: "app.local",
@@ -101,6 +113,7 @@ func TestValidatePlatformEnrollmentRequestRejectsReservedAppNames(t *testing.T) 
 }
 
 func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
+	t.Parallel()
 	operatorCSR, operatorKey := newPlatformEnrollmentCSR(t)
 	cliCSR, cliKey := newPlatformEnrollmentCSR(t)
 	request := &models.PlatformEnrollmentRequest{
@@ -144,6 +157,7 @@ func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
 }
 
 func TestPlatformEnrollmentCompletionTranscriptIsDeterministicAndBound(t *testing.T) {
+	t.Parallel()
 	request := &models.PlatformEnrollmentRequest{
 		ID:            "request-id",
 		TokenHash:     models.PlatformEnrollmentTokenHash("token"),
@@ -169,6 +183,7 @@ func TestPlatformEnrollmentCompletionTranscriptIsDeterministicAndBound(t *testin
 // test instead of failing proof-of-possession verification for app clients that
 // encode the same message independently.
 func TestPlatformEnrollmentCompletionTranscriptGoldenVector(t *testing.T) {
+	t.Parallel()
 	const goldenHex = "0a013112147265712d303132333435363738396162636465661a40" +
 		"6161616161616161616161616161616161616161616161616161616161616161" +
 		"6161616161616161616161616161616161616161616161616161616161616161" +

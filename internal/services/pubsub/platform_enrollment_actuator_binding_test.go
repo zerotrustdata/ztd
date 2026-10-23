@@ -48,6 +48,7 @@ func storedOperatorDocument(t *testing.T, id, actuatorKeyHex string) *models.Doc
 }
 
 func TestRefuseActuatorKeyChange(t *testing.T) {
+	t.Parallel()
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	other, _, err := ed25519.GenerateKey(nil)
@@ -56,11 +57,13 @@ func TestRefuseActuatorKeyChange(t *testing.T) {
 	changed := hex.EncodeToString(other)
 
 	t.Run("unknown operator id binds freely", func(t *testing.T) {
+		t.Parallel()
 		h := &PlatformEnrollmentHandler{deps: PlatformEnrollmentDeps{DocStore: &actuatorBindingDocStore{docs: map[string]*models.Document{}}}}
 		assert.NoError(t, h.refuseActuatorKeyChange(t.Context(), "op-new", bound))
 	})
 
 	t.Run("same key for a bound operator is accepted", func(t *testing.T) {
+		t.Parallel()
 		h := &PlatformEnrollmentHandler{deps: PlatformEnrollmentDeps{DocStore: &actuatorBindingDocStore{docs: map[string]*models.Document{
 			"op-1": storedOperatorDocument(t, "op-1", bound),
 		}}}}
@@ -68,6 +71,7 @@ func TestRefuseActuatorKeyChange(t *testing.T) {
 	})
 
 	t.Run("changed key for a bound operator is refused", func(t *testing.T) {
+		t.Parallel()
 		h := &PlatformEnrollmentHandler{deps: PlatformEnrollmentDeps{DocStore: &actuatorBindingDocStore{docs: map[string]*models.Document{
 			"op-1": storedOperatorDocument(t, "op-1", bound),
 		}}}}
@@ -76,6 +80,7 @@ func TestRefuseActuatorKeyChange(t *testing.T) {
 	})
 
 	t.Run("stored document without a bound key binds freely", func(t *testing.T) {
+		t.Parallel()
 		h := &PlatformEnrollmentHandler{deps: PlatformEnrollmentDeps{DocStore: &actuatorBindingDocStore{docs: map[string]*models.Document{
 			"op-1": storedOperatorDocument(t, "op-1", ""),
 		}}}}

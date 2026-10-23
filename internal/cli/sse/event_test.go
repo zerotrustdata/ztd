@@ -10,6 +10,7 @@ package sse
 import "testing"
 
 func TestDecodeEvent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name, eventType, data string
 		ok                    bool
@@ -22,6 +23,7 @@ func TestDecodeEvent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ev, ok := DecodeEvent(tt.eventType, tt.data)
 			if ok != tt.ok {
 				t.Fatalf("ok = %v, want %v", ok, tt.ok)

@@ -27,6 +27,7 @@ func loadDoctrineCorpus(t *testing.T) *doctrinecorpus.Corpus {
 
 func TestL1DoctrineCorpus_WellFormed(t *testing.T) {
 	t.Parallel()
+
 	corpus := loadDoctrineCorpus(t)
 
 	benign := 0
@@ -45,6 +46,7 @@ func TestL1DoctrineCorpus_WellFormed(t *testing.T) {
 // every miss (block expected, allowed) and every false positive (allow expected, blocked).
 func TestL1DoctrineCorpus_ExecuteBashScreening(t *testing.T) {
 	t.Parallel()
+
 	corpus := loadDoctrineCorpus(t)
 	doctrine := NewL1Doctrine()
 

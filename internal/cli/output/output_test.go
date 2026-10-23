@@ -17,23 +17,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestJSONEnabled_GlobalFlag(t *testing.T) {
+func jsonFlagCommand(t *testing.T) (*cobra.Command, *cobra.Command) {
+	t.Helper()
 	root := &cobra.Command{Use: "ztd"}
 	root.PersistentFlags().Bool("json", false, "Emit machine-readable JSON output")
 	child := &cobra.Command{Use: "child"}
 	root.AddCommand(child)
+	return root, child
+}
+
+func TestJSONEnabled_GlobalFlag(t *testing.T) {
+	t.Parallel()
 
 	t.Run("disabled by default", func(t *testing.T) {
+		t.Parallel()
+		_, child := jsonFlagCommand(t)
 		assert.False(t, JSONEnabled(child))
 	})
 
 	t.Run("enabled before subcommand", func(t *testing.T) {
+		t.Parallel()
+		root, child := jsonFlagCommand(t)
 		root.SetArgs([]string{"--json", "child"})
 		require.NoError(t, root.ParseFlags([]string{"--json"}))
 		assert.True(t, JSONEnabled(child))
 	})
 
 	t.Run("enabled after subcommand", func(t *testing.T) {
+		t.Parallel()
+		_, child := jsonFlagCommand(t)
 		child.SetArgs([]string{"--json"})
 		require.NoError(t, child.ParseFlags([]string{"--json"}))
 		assert.True(t, JSONEnabled(child))
@@ -41,6 +53,7 @@ func TestJSONEnabled_GlobalFlag(t *testing.T) {
 }
 
 func TestWriteJSON_PrettyPrints(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	err := WriteJSON(&buf, map[string]any{"operators": []any{}})
 	require.NoError(t, err)
@@ -48,6 +61,7 @@ func TestWriteJSON_PrettyPrints(t *testing.T) {
 }
 
 func TestWriteRawJSON_PrettyPrintsCompactPayload(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	err := WriteRawJSON(&buf, []byte(`{"operators":[{"id":"op-1"}]}`))
 	require.NoError(t, err)
@@ -56,6 +70,7 @@ func TestWriteRawJSON_PrettyPrintsCompactPayload(t *testing.T) {
 }
 
 func TestWriteRawJSON_InvalidJSONPassthrough(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	err := WriteRawJSON(&buf, []byte("not-json"))
 	require.NoError(t, err)

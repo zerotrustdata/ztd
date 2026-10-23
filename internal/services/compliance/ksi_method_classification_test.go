@@ -73,6 +73,7 @@ var expectedDefaultMethodMetadata = map[string]expectedMethodMetadata{
 }
 
 func TestDefaultMethods_EveryMethodHasTypedIndependenceMetadata(t *testing.T) {
+	t.Parallel()
 	registered := DefaultMethods(EvaluatorDeps{})
 	seenNames := make(map[string]bool, len(expectedDefaultMethodMetadata))
 	totalRegistered := 0
@@ -104,6 +105,7 @@ func TestDefaultMethods_EveryMethodHasTypedIndependenceMetadata(t *testing.T) {
 }
 
 func TestDefaultMethods_IncludeEvidenceBackedVerifierFamilies(t *testing.T) {
+	t.Parallel()
 	counts := make(map[KSIVerifierFamily]int)
 	for _, methods := range DefaultMethods(EvaluatorDeps{}) {
 		for _, method := range methods {
@@ -120,6 +122,7 @@ func TestDefaultMethods_IncludeEvidenceBackedVerifierFamilies(t *testing.T) {
 }
 
 func TestDefaultMethods_UnregisteredKSIsRemainUnsupported(t *testing.T) {
+	t.Parallel()
 	catalog := testCatalog()
 	registered := DefaultMethods(EvaluatorDeps{})
 	unregistered := 0

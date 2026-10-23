@@ -22,6 +22,7 @@ import (
 // types. Under the C2 inverted construction lifecycle, the circular dependency is eliminated
 // and concrete OperatorPubSubService instances are injected directly.
 func TestPubSub_NoDeletedAdapters(t *testing.T) {
+	t.Parallel()
 	dir := "."
 	entries, err := os.ReadDir(dir)
 	if err != nil {

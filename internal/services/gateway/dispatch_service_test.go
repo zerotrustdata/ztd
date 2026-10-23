@@ -61,6 +61,8 @@ func (s *stubOperatorSessionValidator) ValidateOperatorSession(_ context.Context
 // --- models.OperatorCommandRequest.Validate tests ---
 
 func TestOperatorCommandRequest_Validate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		req     models.OperatorCommandRequest
@@ -103,6 +105,8 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tt.req.Validate()
 			if tt.wantErr != nil {
 				require.Error(t, err)
@@ -117,7 +121,9 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 // --- DispatchResult.GovernedDispatchResult tests ---
 
 func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
+	t.Parallel()
 	t.Run("carries the result envelope and the final receipt", func(t *testing.T) {
+		t.Parallel()
 		env := &commonv1.GovernanceEnvelope{
 			EventType:  string(constants.Event.Operator.FsRead.Completed),
 			ActionType: string(constants.ActionTypeFsRead),
@@ -139,6 +145,7 @@ func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
 	})
 
 	t.Run("nil result envelope", func(t *testing.T) {
+		t.Parallel()
 		result := &DispatchResult{
 			TransactionID: "tx-abc-123",
 		}
@@ -248,6 +255,8 @@ func newTestDispatchService(t *testing.T, _ string, op *operatorv1.OperatorDocum
 }
 
 func TestDispatchService_Dispatch_Success(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{
 		Id:                "op-001",
 		OperatorSessionId: "sess-001",
@@ -301,6 +310,8 @@ func TestDispatchService_Dispatch_Success(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
+	t.Parallel()
+
 	svc, _ := newTestDispatchService(t, "root-abc", nil)
 
 	// Override the validator to return an error.
@@ -316,6 +327,8 @@ func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
 }
 
 func TestDispatchErrorCode_RendersRefusalNotChain(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		err     error
@@ -410,6 +423,8 @@ func TestDispatchErrorCode_RendersRefusalNotChain(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			status, refusal := dispatchErrorCode(tc.err)
 			assert.Equal(t, tc.status, status)
 			assert.Equal(t, tc.code, refusal.GetCode())
@@ -419,6 +434,8 @@ func TestDispatchErrorCode_RendersRefusalNotChain(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
@@ -446,6 +463,8 @@ func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_ZeroDeliveryFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, _ := newTestDispatchService(t, "root-abc", op)
 
@@ -461,6 +480,8 @@ func TestDispatchService_Dispatch_ZeroDeliveryFailsClosed(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_TimeoutNoResult(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -483,6 +504,8 @@ func TestDispatchService_Dispatch_TimeoutNoResult(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_RequestTimeoutOverridesDefault(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -502,6 +525,8 @@ func TestDispatchService_Dispatch_RequestTimeoutOverridesDefault(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_CallerCancelReturnsCtxErr(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -526,6 +551,8 @@ func TestDispatchService_Dispatch_CallerCancelReturnsCtxErr(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_StreamingProgressOverflowFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -581,6 +608,8 @@ func resultHandlerCount(b *GatewayWebSocketHandler, op *operatorv1.OperatorDocum
 }
 
 func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) {
+	t.Parallel()
+
 	newOp := func() *operatorv1.OperatorDocument {
 		return &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	}
@@ -604,6 +633,8 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 	}
 
 	t.Run("after success", func(t *testing.T) {
+		t.Parallel()
+
 		op := newOp()
 		svc, broker := newTestDispatchService(t, "root-abc", op)
 		unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), publishResult(t, broker, op))
@@ -619,6 +650,8 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 	})
 
 	t.Run("after timeout", func(t *testing.T) {
+		t.Parallel()
+
 		op := newOp()
 		svc, broker := newTestDispatchService(t, "root-abc", op)
 		unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, _ []byte) {})
@@ -635,6 +668,8 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 	})
 
 	t.Run("after caller cancellation", func(t *testing.T) {
+		t.Parallel()
+
 		op := newOp()
 		svc, broker := newTestDispatchService(t, "root-abc", op)
 		ctx, cancel := context.WithCancel(t.Context())
@@ -652,6 +687,8 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 	})
 
 	t.Run("after zero delivery", func(t *testing.T) {
+		t.Parallel()
+
 		op := newOp()
 		svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -666,6 +703,8 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 }
 
 func TestDispatchService_Dispatch_LateResultDiscarded(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -697,6 +736,8 @@ func TestDispatchService_Dispatch_LateResultDiscarded(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_DuplicateResultDropped(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 
@@ -734,6 +775,8 @@ func TestDispatchService_Dispatch_DuplicateResultDropped(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		receiptFirst   bool
@@ -748,6 +791,8 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 			svc, broker := newTestDispatchService(t, "root-abc", op)
 			boundPub, signPriv, signKeyID := dispatchTestActuator()
@@ -808,6 +853,8 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 // verified final receipt alone completes the dispatch. Every other action still
 // needs its result envelope and times out on a receipt alone.
 func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
+	t.Parallel()
+
 	mcpPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: `{"command":"pwd"}`, ExecutionId: "exec-mcp"})
 	require.NoError(t, err)
 	tests := []struct {
@@ -821,6 +868,8 @@ func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 			svc, broker := newTestDispatchService(t, "root-abc", op)
 			boundPub, signPriv, signKeyID := dispatchTestActuator()
@@ -861,6 +910,8 @@ func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
 // --- DispatchController.HandleDispatch tests ---
 
 func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 	pub, priv, keyID := dispatchTestActuator()
@@ -904,6 +955,8 @@ func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(
 // --- DispatchController.HandleDispatch tests ---
 
 func TestDispatchController_HandleDispatch_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	resp := response.NewWriter(logger)
 	ctrl := newDispatchController(DispatchControllerDeps{
@@ -923,6 +976,8 @@ func TestDispatchController_HandleDispatch_MethodNotAllowed(t *testing.T) {
 }
 
 func TestDispatch_InvalidJSON_ReturnsIngressRefusal(t *testing.T) {
+	t.Parallel()
+
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	resp := response.NewWriter(logger)
 	ctrl := newDispatchController(DispatchControllerDeps{
@@ -943,6 +998,8 @@ func TestDispatch_InvalidJSON_ReturnsIngressRefusal(t *testing.T) {
 }
 
 func TestDispatchController_HandleDispatch_ValidationFails(t *testing.T) {
+	t.Parallel()
+
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	resp := response.NewWriter(logger)
 	ctrl := newDispatchController(DispatchControllerDeps{
@@ -964,6 +1021,8 @@ func TestDispatchController_HandleDispatch_ValidationFails(t *testing.T) {
 }
 
 func TestDispatchController_HandleDispatch_WitnessCommandRejectedAsUnprocessableEntity(t *testing.T) {
+	t.Parallel()
+
 	observer := &operatorv1.OperatorDocument{
 		Id:                "observer-op",
 		OperatorSessionId: "observer-session",
@@ -998,7 +1057,9 @@ func TestDispatchController_HandleDispatch_WitnessCommandRejectedAsUnprocessable
 }
 
 func TestOperatorCommandResultHelpers(t *testing.T) {
+	t.Parallel()
 	t.Run("terminal command events", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, isOperatorCommandTerminalResult(&commonv1.GovernanceEnvelope{
 			EventType: string(constants.Event.Operator.Command.Completed),
 		}))
@@ -1011,6 +1072,7 @@ func TestOperatorCommandResultHelpers(t *testing.T) {
 	})
 
 	t.Run("payload from envelope bytes", func(t *testing.T) {
+		t.Parallel()
 		cmdResult := &operatorv1.CommandResult{Stdout: "hello\n", ReturnCode: 0}
 		wire, err := proto.Marshal(cmdResult)
 		require.NoError(t, err)
@@ -1018,6 +1080,7 @@ func TestOperatorCommandResultHelpers(t *testing.T) {
 	})
 
 	t.Run("ToResponse uses command result payload for completed events", func(t *testing.T) {
+		t.Parallel()
 		cmdResult := &operatorv1.CommandResult{Stdout: "hello\n", ReturnCode: 0}
 		wire, err := proto.Marshal(cmdResult)
 		require.NoError(t, err)
@@ -1034,6 +1097,8 @@ func TestOperatorCommandResultHelpers(t *testing.T) {
 }
 
 func TestDispatchService_Dispatch_ExecuteBash_WaitsForTerminalResult(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{
 		Id:                "op-001",
 		OperatorSessionId: "sess-001",
@@ -1104,6 +1169,8 @@ func TestDispatchService_Dispatch_ExecuteBash_WaitsForTerminalResult(t *testing.
 }
 
 func TestDecodeInferenceProgressEnvelope(t *testing.T) {
+	t.Parallel()
+
 	progress := &operatorv1.InferenceProgressEvent{
 		ProviderAttemptId: "attempt-1",
 		Sequence:          2,

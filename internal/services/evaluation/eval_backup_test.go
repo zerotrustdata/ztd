@@ -159,6 +159,7 @@ func objectCount(t *testing.T, backupDir string) int {
 }
 
 func TestEvalBackup_CreateCopiesEvidenceOnly(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 
 	report := f.create(t)
@@ -190,6 +191,7 @@ func TestEvalBackup_CreateCopiesEvidenceOnly(t *testing.T) {
 }
 
 func TestEvalBackup_RepeatedBackupsStoreEachContentOnce(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	first := f.create(t)
 	stored := objectCount(t, f.outRoot)
@@ -204,6 +206,7 @@ func TestEvalBackup_RepeatedBackupsStoreEachContentOnce(t *testing.T) {
 }
 
 func TestEvalBackup_CreateRejectsDestinationInsideRuntime(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 
 	for _, dest := range []string{
@@ -219,6 +222,7 @@ func TestEvalBackup_CreateRejectsDestinationInsideRuntime(t *testing.T) {
 }
 
 func TestEvalBackup_CreateRejectsSymlinkedDestinationIntoRuntime(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	link := filepath.Join(testutil.TempDir(t), "link")
 	testutil.Symlink(t, f.files.Resolve(""), link)
@@ -229,6 +233,7 @@ func TestEvalBackup_CreateRejectsSymlinkedDestinationIntoRuntime(t *testing.T) {
 }
 
 func TestEvalBackup_CreateEmptyRuntimeFails(t *testing.T) {
+	t.Parallel()
 	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, files.CreateRuntimeTree(context.Background()))
@@ -243,6 +248,7 @@ func TestEvalBackup_CreateEmptyRuntimeFails(t *testing.T) {
 }
 
 func TestEvalBackup_CreateSameSecondPreservesSnapshots(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	first := f.create(t)
 	f.write(t, backupRunReportPath, `{"run":2}`)
@@ -268,6 +274,7 @@ func TestEvalBackup_CreateSameSecondPreservesSnapshots(t *testing.T) {
 }
 
 func TestEvalBackup_CreateConcurrentSnapshots(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	type outcome struct {
 		report *EvalBackupReport
@@ -293,6 +300,7 @@ func TestEvalBackup_CreateConcurrentSnapshots(t *testing.T) {
 }
 
 func TestEvalBackup_RoundTripAfterWipe(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	ctx := context.Background()
@@ -315,6 +323,7 @@ func TestEvalBackup_RoundTripAfterWipe(t *testing.T) {
 // fresh install, the restore opens the snapshot's vault from its key chain and
 // seals the evidence under the new runtime vault.
 func TestEvalBackup_RestoreAfterRuntimeAndVaultAreRecreated(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	oldHeader := f.stored(t, constants.VaultHeaderRelPath)
@@ -340,6 +349,7 @@ func TestEvalBackup_RestoreAfterRuntimeAndVaultAreRecreated(t *testing.T) {
 
 // Evidence a vault the key store cannot open sealed is never written back.
 func TestEvalBackup_RestoreRejectsKeyChainTheKeyStoreCannotOpen(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	f.create(t)
 	f.wipeRuntime(t)
@@ -355,6 +365,7 @@ func TestEvalBackup_RestoreRejectsKeyChainTheKeyStoreCannotOpen(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreRejectsSnapshotWithoutKeyChain(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	manifestPath := filepath.Join(report.SnapshotDir, constants.EvaluationBackupManifestFilename)
@@ -373,6 +384,7 @@ func TestEvalBackup_RestoreRejectsSnapshotWithoutKeyChain(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreRequiresTheEvidenceFileService(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 
@@ -389,6 +401,7 @@ func foreignCiphertext(t *testing.T) []byte {
 }
 
 func TestEvalBackup_CreateRejectsEvidenceTheRuntimeVaultCannotOpen(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	require.NoError(t, f.raw.WriteFile(context.Background(), backupRunReportPath, foreignCiphertext(t), constants.PermFilePrivate))
 
@@ -401,6 +414,7 @@ func TestEvalBackup_CreateRejectsEvidenceTheRuntimeVaultCannotOpen(t *testing.T)
 }
 
 func TestEvalBackup_RestoreRejectsEvidenceItsKeyChainCannotOpen(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	ctx := context.Background()
@@ -435,6 +449,7 @@ func TestEvalBackup_RestoreRejectsEvidenceItsKeyChainCannotOpen(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreIsIdempotent(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 
@@ -446,6 +461,7 @@ func TestEvalBackup_RestoreIsIdempotent(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreConflictWritesNothingUnlessOverwrite(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	ctx := context.Background()
@@ -469,6 +485,7 @@ func TestEvalBackup_RestoreConflictWritesNothingUnlessOverwrite(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreRejectsTamperedFile(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	ctx := context.Background()
@@ -489,6 +506,7 @@ func TestEvalBackup_RestoreRejectsTamperedFile(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreRejectsMissingOrIncompleteManifest(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 
 	_, err := f.backup.Restore(context.Background(), filepath.Join(testutil.TempDir(t), "nothing"), false)
@@ -501,6 +519,7 @@ func TestEvalBackup_RestoreRejectsMissingOrIncompleteManifest(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	digest := evalBackupDigest([]byte("x"))
 	for _, bad := range []string{
@@ -514,6 +533,7 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 		"eval",
 	} {
 		t.Run(bad, func(t *testing.T) {
+			t.Parallel()
 			snapshot := testutil.TempDir(t)
 			raw, err := json.Marshal(EvalBackupManifest{
 				SchemaVersion: evalBackupManifestVersion,
@@ -528,6 +548,7 @@ func TestEvalBackup_RestoreRejectsManifestPathsOutsideEvidenceTrees(t *testing.T
 		})
 	}
 	t.Run("key chain path outside the vault key chain", func(t *testing.T) {
+		t.Parallel()
 		snapshot := testutil.TempDir(t)
 		raw, err := json.Marshal(EvalBackupManifest{
 			SchemaVersion: evalBackupManifestVersion,
@@ -548,6 +569,7 @@ func (f *evalBackupFixture) laterBackup(after time.Duration) *EvalBackup {
 }
 
 func TestEvalBackup_CreateIfChangedSkipsIdenticalEvidence(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	first := f.create(t)
 
@@ -564,6 +586,7 @@ func TestEvalBackup_CreateIfChangedSkipsIdenticalEvidence(t *testing.T) {
 }
 
 func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenEvidenceChanged(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	first := f.create(t)
 	f.write(t, backupRunReportPath, `{"run":2}`)
@@ -578,6 +601,7 @@ func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenEvidenceChanged(t *testing.T
 }
 
 func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenVaultChanged(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	first := f.create(t)
 	f.wipeRuntime(t)
@@ -593,6 +617,7 @@ func TestEvalBackup_CreateIfChangedKeepsSnapshotWhenVaultChanged(t *testing.T) {
 }
 
 func TestEvalBackup_CreateIfChangedCreatesFirstSnapshot(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 
 	report, err := f.backup.CreateIfChanged(context.Background(), f.outRoot)
@@ -603,6 +628,7 @@ func TestEvalBackup_CreateIfChangedCreatesFirstSnapshot(t *testing.T) {
 }
 
 func TestEvalBackup_CreateIfChangedRejectsDestinationInsideRuntime(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 
 	_, err := f.backup.CreateIfChanged(context.Background(), f.files.Resolve("backups"))
@@ -611,6 +637,7 @@ func TestEvalBackup_CreateIfChangedRejectsDestinationInsideRuntime(t *testing.T)
 }
 
 func TestLatestEvalBackupSnapshot_PicksNewestCompleteSnapshot(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	older := f.create(t)
 	newer, err := f.laterBackup(time.Minute).Create(context.Background(), f.outRoot)
@@ -626,11 +653,13 @@ func TestLatestEvalBackupSnapshot_PicksNewestCompleteSnapshot(t *testing.T) {
 }
 
 func TestLatestEvalBackupSnapshot_NoneFound(t *testing.T) {
+	t.Parallel()
 	for name, dir := range map[string]string{
 		"missing directory": filepath.Join(testutil.TempDir(t), "absent"),
 		"empty directory":   testutil.TempDir(t),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			_, err := LatestEvalBackupSnapshot(dir)
 			assert.ErrorIs(t, err, constants.ErrEvaluationBackupNone)
 		})
@@ -638,6 +667,7 @@ func TestLatestEvalBackupSnapshot_NoneFound(t *testing.T) {
 }
 
 func TestEvalBackup_CreateIfChangedComparesWithNewestSnapshot(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	older := f.create(t)
 	f.write(t, backupRunReportPath, `{"run":2}`)
@@ -654,6 +684,7 @@ func TestEvalBackup_CreateIfChangedComparesWithNewestSnapshot(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreAllMergesSnapshotsNewestWins(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	older := f.create(t)
@@ -684,6 +715,7 @@ func TestEvalBackup_RestoreAllMergesSnapshotsNewestWins(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreAllConflictWritesNothingUnlessOverwrite(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	f.create(t)
@@ -704,6 +736,7 @@ func TestEvalBackup_RestoreAllConflictWritesNothingUnlessOverwrite(t *testing.T)
 }
 
 func TestEvalBackup_RestoreAllRejectsCorruptObjectBeforeAnyWrite(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	report := f.create(t)
@@ -724,6 +757,7 @@ func TestEvalBackup_RestoreAllRejectsCorruptObjectBeforeAnyWrite(t *testing.T) {
 }
 
 func TestEvalBackup_RestoreAllWithoutSnapshotsFails(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 
 	_, err := f.backup.RestoreAll(context.Background(), f.outRoot, false)
@@ -732,6 +766,7 @@ func TestEvalBackup_RestoreAllWithoutSnapshotsFails(t *testing.T) {
 }
 
 func TestEvalBackupPurge_RemovesEntriesAndObjectsOnlyTheyReference(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	const (
@@ -787,6 +822,7 @@ func TestEvalBackupPurge_RemovesEntriesAndObjectsOnlyTheyReference(t *testing.T)
 }
 
 func TestEvalBackupPurge_RemovesTheKeyChainOfASnapshotLeftEmpty(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	require.NoError(t, f.files.RemoveAll(ctx, constants.EvaluationDirname))
@@ -803,6 +839,7 @@ func TestEvalBackupPurge_RemovesTheKeyChainOfASnapshotLeftEmpty(t *testing.T) {
 }
 
 func TestEvalBackupPurge_WithoutSnapshotsHasNothingToDo(t *testing.T) {
+	t.Parallel()
 	plan, err := planEvalBackupPurge(filepath.Join(testutil.TempDir(t), "missing"), []string{"data/eval/runs/run-1"})
 	require.NoError(t, err)
 	require.NoError(t, plan.apply())
@@ -810,6 +847,7 @@ func TestEvalBackupPurge_WithoutSnapshotsHasNothingToDo(t *testing.T) {
 }
 
 func TestEvalBackupPurge_RejectsPathsThatAreNotBeneathAnEvidenceTree(t *testing.T) {
+	t.Parallel()
 	for _, relPath := range []string{"", ".", "data/eval", "eval", "data/eval/", "data/ztd.db", "/data/eval/runs/run-1", "data/eval/../ztd.db"} {
 		_, err := planEvalBackupPurge(testutil.TempDir(t), []string{relPath})
 		assert.ErrorIs(t, err, constants.ErrEvaluationBackupPurgePathInvalid, relPath)
@@ -817,6 +855,7 @@ func TestEvalBackupPurge_RejectsPathsThatAreNotBeneathAnEvidenceTree(t *testing.
 }
 
 func TestEvalBackup_SnapshotsShareTheLockAndADeleteExcludesThem(t *testing.T) {
+	t.Parallel()
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	shared, err := f.backup.sharedLock(ctx)

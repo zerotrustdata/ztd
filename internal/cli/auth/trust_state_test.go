@@ -20,6 +20,7 @@ import (
 )
 
 func TestInspectTrustState_TrustedWithNoStaleAnchors(t *testing.T) {
+	t.Parallel()
 	installer := &mockTrustInstaller{
 		isTrusted:    true,
 		staleAnchors: []platform.StaleAnchor{},
@@ -32,6 +33,7 @@ func TestInspectTrustState_TrustedWithNoStaleAnchors(t *testing.T) {
 }
 
 func TestInspectTrustState_NotTrustedWithStaleAnchors(t *testing.T) {
+	t.Parallel()
 	stale := []platform.StaleAnchor{
 		{Fingerprint: "stale-fp-1", CommonName: "old-ztd-root", Handle: "/tmp/old.pem"},
 		{Fingerprint: "stale-fp-2", CommonName: "older-ztd-root", Handle: "/tmp/older.pem"},
@@ -49,6 +51,7 @@ func TestInspectTrustState_NotTrustedWithStaleAnchors(t *testing.T) {
 }
 
 func TestInspectTrustState_IsTrustedUnsupportedReturnsEmptyState(t *testing.T) {
+	t.Parallel()
 	installer := &mockTrustInstaller{
 		isTrustedErr: constants.ErrSystemTrustUnsupported,
 	}
@@ -60,6 +63,7 @@ func TestInspectTrustState_IsTrustedUnsupportedReturnsEmptyState(t *testing.T) {
 }
 
 func TestInspectTrustState_ListStaleAnchorsUnsupportedReturnsTrustedOnly(t *testing.T) {
+	t.Parallel()
 	installer := &mockTrustInstaller{
 		isTrusted: true,
 		staleErr:  constants.ErrSystemTrustUnsupported,
@@ -72,6 +76,8 @@ func TestInspectTrustState_ListStaleAnchorsUnsupportedReturnsTrustedOnly(t *test
 }
 
 func TestInspectTrustState_IsTrustedErrorReturnsWrappedErrSystemTrustInstallFailed(t *testing.T) {
+	t.Parallel()
+
 	installer := &mockTrustInstaller{
 		isTrustedErr: errors.New("trust store read failure"),
 	}
@@ -82,6 +88,8 @@ func TestInspectTrustState_IsTrustedErrorReturnsWrappedErrSystemTrustInstallFail
 }
 
 func TestInspectTrustState_ListStaleAnchorsErrorReturnsWrappedErrSystemTrustInstallFailed(t *testing.T) {
+	t.Parallel()
+
 	installer := &mockTrustInstaller{
 		isTrusted: true,
 		staleErr:  errors.New("trust store list failure"),

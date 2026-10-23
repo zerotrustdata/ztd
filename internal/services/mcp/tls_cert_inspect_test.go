@@ -19,6 +19,7 @@ import (
 )
 
 func TestTLSCertInspectTool_Metadata(t *testing.T) {
+	t.Parallel()
 	tool := &TLSCertInspectTool{}
 	assert.Equal(t, "tls_cert_inspect", tool.Name())
 	assert.NotEmpty(t, tool.Description())
@@ -26,6 +27,7 @@ func TestTLSCertInspectTool_Metadata(t *testing.T) {
 }
 
 func TestInspectCertificate(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Truncate(time.Second)
 	notBefore := now.Add(-24 * time.Hour)
 	notAfter := now.Add(24 * time.Hour)
@@ -72,6 +74,7 @@ func TestInspectCertificate(t *testing.T) {
 }
 
 func TestInspectCertificate_Expired(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	cert := &x509.Certificate{
 		NotAfter:     now.Add(-24 * time.Hour),
@@ -85,6 +88,7 @@ func TestInspectCertificate_Expired(t *testing.T) {
 }
 
 func TestInspectCertificate_NearExpiry(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	// 15 days from now is within the 30-day "near expiry" window
 	cert := &x509.Certificate{

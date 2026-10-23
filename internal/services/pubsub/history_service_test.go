@@ -28,8 +28,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestNewHistoryService(t *testing.T) {
-	t.Parallel()
+func TestNewHistoryService(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -38,7 +38,7 @@ func TestNewHistoryService(t *testing.T) {
 	scrubber := mustNewScrubbingSvc(t, logger)
 
 	t.Run("binds every dependency", func(t *testing.T) {
-		t.Parallel()
+
 		svc, err := NewHistoryService(cfg, logger, client, handler, scrubber, auditStore)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
@@ -64,9 +64,9 @@ func TestNewHistoryService(t *testing.T) {
 		{name: "disabled scrubber", cfg: cfg, handler: handler, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
 		{name: "nil audit store", cfg: cfg, handler: handler, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			t.Parallel()
+
 			svc, err := NewHistoryService(tt.cfg, logger, client, tt.handler, tt.scrubber, tt.auditStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
@@ -74,9 +74,10 @@ func TestNewHistoryService(t *testing.T) {
 	}
 }
 
-func TestHistoryService_HandleFetchLogsRequest(t *testing.T) {
-	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
-		t.Parallel()
+func TestHistoryService_HandleFetchLogsRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("rejects invalid protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -93,8 +94,8 @@ func TestHistoryService_HandleFetchLogsRequest(t *testing.T) {
 		assert.Contains(t, string(published.Data), "invalid request payload")
 	})
 
-	t.Run("rejects missing execution_id", func(t *testing.T) {
-		t.Parallel()
+	t.Run("rejects missing execution_id", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -116,8 +117,8 @@ func TestHistoryService_HandleFetchLogsRequest(t *testing.T) {
 	})
 }
 
-func TestHistoryService_HandleFetchLogsRequest_ReadsExecutionEvent(t *testing.T) {
-	t.Parallel()
+func TestHistoryService_HandleFetchLogsRequest_ReadsExecutionEvent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -157,9 +158,10 @@ func TestHistoryService_HandleFetchLogsRequest_ReadsExecutionEvent(t *testing.T)
 	assert.NotContains(t, string(found.Data), "failed to retrieve execution")
 }
 
-func TestHistoryService_HandleFetchHistoryRequest(t *testing.T) {
+func TestHistoryService_HandleFetchHistoryRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("rejects a request without operator_session_id", func(t *testing.T) {
-		t.Parallel()
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -178,9 +180,10 @@ func TestHistoryService_HandleFetchHistoryRequest(t *testing.T) {
 	})
 }
 
-func TestHistoryService_HandleFetchFileHistoryRequest(t *testing.T) {
+func TestHistoryService_HandleFetchFileHistoryRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
-		t.Parallel()
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -198,9 +201,10 @@ func TestHistoryService_HandleFetchFileHistoryRequest(t *testing.T) {
 	})
 }
 
-func TestHistoryService_HandleRestoreFileRequest(t *testing.T) {
+func TestHistoryService_HandleRestoreFileRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
-		t.Parallel()
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -221,7 +225,8 @@ func TestHistoryService_HandleRestoreFileRequest(t *testing.T) {
 
 // A failed restore records RESTORE_FILE.Failed as its raw execution event and is never
 // published as completed.
-func TestHistoryService_HandleRestoreFileRequest_RecordsFailedRestore(t *testing.T) {
+func TestHistoryService_HandleRestoreFileRequest_RecordsFailedRestore(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -255,9 +260,10 @@ func TestHistoryService_HandleRestoreFileRequest_RecordsFailedRestore(t *testing
 	assert.Contains(t, result.Error, "commit_hash is required")
 }
 
-func TestHistoryService_HandleFetchFileDiffRequest(t *testing.T) {
-	t.Run("rejects invalid protobuf payload when local store is available", func(t *testing.T) {
-		t.Parallel()
+func TestHistoryService_HandleFetchFileDiffRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("rejects invalid protobuf payload when local store is available", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -274,8 +280,8 @@ func TestHistoryService_HandleFetchFileDiffRequest(t *testing.T) {
 		assert.Contains(t, string(published.Data), "invalid request payload")
 	})
 
-	t.Run("rejects when neither diff_id nor operator_session_id provided", func(t *testing.T) {
-		t.Parallel()
+	t.Run("rejects when neither diff_id nor operator_session_id provided", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()

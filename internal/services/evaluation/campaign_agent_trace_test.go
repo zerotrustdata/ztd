@@ -21,6 +21,7 @@ import (
 )
 
 func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing.T) {
+	t.Parallel()
 	trace := v7EvidenceTraceWithToolCalls(t)
 	// <, > and & are escaped by encoding/json inside nested canonical bytes; the
 	// round trip must survive that.
@@ -45,6 +46,7 @@ func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing
 }
 
 func TestAgentTrace_ReceiptDecodeRejectsUnknownField(t *testing.T) {
+	t.Parallel()
 	receipt := &AgentTraceReceipt{}
 
 	err := receipt.UnmarshalJSON([]byte(`{"transaction_id":"tx-1","not_a_receipt_field":"x"}`))
@@ -53,6 +55,7 @@ func TestAgentTrace_ReceiptDecodeRejectsUnknownField(t *testing.T) {
 }
 
 func TestAgentTrace_ReceiptDecodeRejectsNonCanonicalSpelling(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	canonical, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.ActionReceipt)
 	require.NoError(t, err)
@@ -66,12 +69,14 @@ func TestAgentTrace_ReceiptDecodeRejectsNonCanonicalSpelling(t *testing.T) {
 }
 
 func TestAgentTrace_ReceiptMarshalRejectsAbsentReceipt(t *testing.T) {
+	t.Parallel()
 	_, err := AgentTraceReceipt{}.MarshalJSON()
 
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestAgentTrace_SealRejectsBracketWithAbsentSentinelReceipt(t *testing.T) {
+	t.Parallel()
 	trace := v7EvidenceTraceWithToolCalls(t)
 	trace.Bracket.Before = AgentTraceReceipt{}
 
@@ -81,6 +86,7 @@ func TestAgentTrace_SealRejectsBracketWithAbsentSentinelReceipt(t *testing.T) {
 }
 
 func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) {
+	t.Parallel()
 	trace := v7EvidenceTraceWithToolCalls(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -99,6 +105,7 @@ func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) 
 }
 
 func TestAgentTrace_SealRejectsMissingInput(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	trace.Input = nil
 
@@ -108,6 +115,7 @@ func TestAgentTrace_SealRejectsMissingInput(t *testing.T) {
 }
 
 func TestAgentTrace_SealRefusesToRestampEarlierVersion(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.SchemaVersion = agentTraceSchemaVersionV3
 
@@ -117,6 +125,7 @@ func TestAgentTrace_SealRefusesToRestampEarlierVersion(t *testing.T) {
 }
 
 func TestAgentTrace_V3TraceValidatesOnlyWithoutInput(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.Input = nil
 	trace.SchemaVersion = agentTraceSchemaVersionV3
@@ -133,6 +142,7 @@ func TestAgentTrace_V3TraceValidatesOnlyWithoutInput(t *testing.T) {
 }
 
 func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	_, err := SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -144,6 +154,7 @@ func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
 }
 
 func TestAgentTrace_V5TraceVerifiesWithoutInvestigationMetadata(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.SchemaVersion = agentTraceSchemaVersionV5
 	trace.InvestigationID = ""
@@ -163,6 +174,7 @@ func TestAgentTrace_V5TraceVerifiesWithoutInvestigationMetadata(t *testing.T) {
 }
 
 func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -175,6 +187,7 @@ func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
 }
 
 func TestDecodeAgentTrace_RejectsTamperedAndNonCanonicalBodies(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -192,6 +205,7 @@ func TestDecodeAgentTrace_RejectsTamperedAndNonCanonicalBodies(t *testing.T) {
 // in fixed order with schema_version then evidence_digest first, so the
 // digest preimage is the sealed body with only the digest value emptied.
 func TestAgentTrace_DigestPreimageIsBodyWithDigestEmptied(t *testing.T) {
+	t.Parallel()
 	trace := v7EvidenceTraceWithToolCalls(t)
 	trace.ToolCalls[0].ResultJSON = `{"stdout":"2>&1 <out> & done  "}`
 	body, err := SealAgentTrace(trace)

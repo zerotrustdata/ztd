@@ -25,6 +25,7 @@ import (
 )
 
 func TestExportOperationalEvidence_PreservesReceiptsPersistenceAndCommitments(t *testing.T) {
+	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1", PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), SignerKeyId: "signer-1"}
 	receiptBody, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: "tx-1", ExecutedAtUnixMs: executedAt.UnixMilli(), FinalPersistenceAttestation: attestation})
@@ -67,6 +68,7 @@ func TestExportOperationalEvidence_PreservesReceiptsPersistenceAndCommitments(t 
 }
 
 func TestExportOperationalEvidence_RecordsUnavailablePersistenceWithoutInventingAttestation(t *testing.T) {
+	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
 		Receipts: []storage.OperationalReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: []byte(`{"transactionId":"tx-1"}`)}},

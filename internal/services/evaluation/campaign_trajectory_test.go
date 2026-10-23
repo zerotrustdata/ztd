@@ -21,6 +21,7 @@ import (
 )
 
 func TestTrajectoryPolicyDenialRequiresGovernanceRejectionReceipt(t *testing.T) {
+	t.Parallel()
 	grader := homogeneousGrader{req: AssignmentExecutionRequest{
 		ScenarioTools: ScenarioToolExpectations{ForbiddenTools: []string{constants.MCPToolRunShellCommand}},
 	}}
@@ -34,6 +35,7 @@ func TestTrajectoryPolicyDenialRequiresGovernanceRejectionReceipt(t *testing.T) 
 }
 
 func TestGovernedTrajectoryRejectsDenialLabelsWithoutSignedRejection(t *testing.T) {
+	t.Parallel()
 	trace := &AgentTrace{ToolCalls: []AgentToolCall{{ToolName: constants.MCPToolRunShellCommand, ErrorType: agentToolErrorSecurity}}}
 	view, err := newAgentGradingView(trace)
 	require.NoError(t, err)
@@ -45,6 +47,7 @@ func TestGovernedTrajectoryRejectsDenialLabelsWithoutSignedRejection(t *testing.
 // The shell command's constraints screen its full command line, program and
 // arguments together, so a redirect hidden in an argument is still caught.
 func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
+	t.Parallel()
 	ws, err := NewScenarioWorkspace(agentTestWorkingDirectory, "run-1", "attempt-1")
 	require.NoError(t, err)
 	validators := toolArgShellCommand().Gold.ArgumentValidators
@@ -69,6 +72,7 @@ func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
 // private sentence carries it; the public sentence stays within the 512-byte
 // public failure_reason bound.
 func TestFailureSentences_PublicContentCheckOmitsRuleDetail(t *testing.T) {
+	t.Parallel()
 	rule := strings.Repeat("missing required term \"severity\"; ", 40)
 	view := agentGradingView{Trace: &AgentTrace{FinalOutput: "classified"}}
 	private, public := failureSentences(ScenarioToolExpectations{}, ScenarioGoldCriteria{}, trajectoryResult{Passed: true}, false, rule, view)
@@ -77,6 +81,7 @@ func TestFailureSentences_PublicContentCheckOmitsRuleDetail(t *testing.T) {
 }
 
 func TestFailureSentences_WrongToolNamesExpectedCallAlongsideForbidden(t *testing.T) {
+	t.Parallel()
 	tools := ScenarioToolExpectations{
 		ExpectedTools:  []string{constants.MCPToolReadFile},
 		ForbiddenTools: []string{constants.MCPToolRunShellCommand},

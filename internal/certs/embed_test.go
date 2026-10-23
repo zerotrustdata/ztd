@@ -49,11 +49,13 @@ func generateTestCAPEM(t *testing.T) []byte {
 // Tests for new DI types
 
 func TestTrustStore_GetRawCA_ReturnsStoredValue(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	assert.Nil(t, ts.GetRawCA())
 }
 
 func TestTrustStore_SetCA_StoresBytes(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	pem := []byte("fake-pem-data")
 	ts.SetCA(pem)
@@ -61,6 +63,7 @@ func TestTrustStore_SetCA_StoresBytes(t *testing.T) {
 }
 
 func TestTrustStore_SetCA_OverwritesPreviousValue(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ts.SetCA([]byte("first"))
 	ts.SetCA([]byte("second"))
@@ -68,6 +71,7 @@ func TestTrustStore_SetCA_OverwritesPreviousValue(t *testing.T) {
 }
 
 func TestTrustStore_SetCA_NilClearsValue(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ts.SetCA([]byte("some-ca"))
 	ts.SetCA(nil)
@@ -75,6 +79,7 @@ func TestTrustStore_SetCA_NilClearsValue(t *testing.T) {
 }
 
 func TestTrustStore_GetRootCAs_WhenCANotSet(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	pool, err := ts.GetRootCAs()
 	assert.Nil(t, pool)
@@ -83,6 +88,7 @@ func TestTrustStore_GetRootCAs_WhenCANotSet(t *testing.T) {
 }
 
 func TestTrustStore_GetRootCAs_InvalidPEM(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ts.SetCA([]byte("not-a-valid-pem-block"))
 	pool, err := ts.GetRootCAs()
@@ -92,6 +98,7 @@ func TestTrustStore_GetRootCAs_InvalidPEM(t *testing.T) {
 }
 
 func TestTrustStore_GetRootCAs_ValidPEM(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	caBytes := generateTestCAPEM(t)
 	ts.SetCA(caBytes)
@@ -102,6 +109,7 @@ func TestTrustStore_GetRootCAs_ValidPEM(t *testing.T) {
 }
 
 func TestClientIdentity_GetCertificate_WhenNotSet(t *testing.T) {
+	t.Parallel()
 	ci := NewClientIdentity(tls.Certificate{})
 	cert, ok := ci.GetCertificate()
 	assert.False(t, ok)
@@ -109,6 +117,7 @@ func TestClientIdentity_GetCertificate_WhenNotSet(t *testing.T) {
 }
 
 func TestClientIdentity_SetCertificate_StoresCert(t *testing.T) {
+	t.Parallel()
 	ci := NewClientIdentity(tls.Certificate{})
 	cert := tls.Certificate{Certificate: [][]byte{[]byte("test")}}
 	ci.SetCertificate(cert)
@@ -119,6 +128,7 @@ func TestClientIdentity_SetCertificate_StoresCert(t *testing.T) {
 }
 
 func TestClientIdentity_SetCertificate_Overwrites(t *testing.T) {
+	t.Parallel()
 	ci := NewClientIdentity(tls.Certificate{})
 	ci.SetCertificate(tls.Certificate{Certificate: [][]byte{[]byte("first")}})
 	ci.SetCertificate(tls.Certificate{Certificate: [][]byte{[]byte("second")}})
@@ -128,6 +138,7 @@ func TestClientIdentity_SetCertificate_Overwrites(t *testing.T) {
 }
 
 func TestTLSConfig_GetTLSConfig_WhenCANotSet(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ci := NewClientIdentity(tls.Certificate{})
 	tc := NewTLSConfig(ts, ci)
@@ -139,6 +150,7 @@ func TestTLSConfig_GetTLSConfig_WhenCANotSet(t *testing.T) {
 }
 
 func TestTLSConfig_GetTLSConfig_WithValidCA(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ci := NewClientIdentity(tls.Certificate{})
 	tc := NewTLSConfig(ts, ci)
@@ -159,6 +171,7 @@ func TestTLSConfig_GetTLSConfig_WithValidCA(t *testing.T) {
 }
 
 func TestTLSConfig_GetTLSConfig_WithClientCert(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ci := NewClientIdentity(tls.Certificate{})
 	tc := NewTLSConfig(ts, ci)
@@ -178,6 +191,7 @@ func TestTLSConfig_GetTLSConfig_WithClientCert(t *testing.T) {
 }
 
 func TestTLSConfig_GetTLSConfig_WithoutClientCert(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(nil)
 	ci := NewClientIdentity(tls.Certificate{})
 	tc := NewTLSConfig(ts, ci)
@@ -195,6 +209,7 @@ func TestTLSConfig_GetTLSConfig_WithoutClientCert(t *testing.T) {
 // A config built before a renewal presents the renewed certificate on its
 // next handshake.
 func TestTLSConfig_GetTLSConfig_PresentsRenewedCert(t *testing.T) {
+	t.Parallel()
 	ts := NewTrustStore(generateTestCAPEM(t))
 	ci := NewClientIdentity(tls.Certificate{Certificate: [][]byte{[]byte("first")}})
 	cfg, err := NewTLSConfig(ts, ci).GetTLSConfig()
@@ -209,6 +224,7 @@ func TestTLSConfig_GetTLSConfig_PresentsRenewedCert(t *testing.T) {
 }
 
 func TestClientIdentity_Updated_ClosedBySetCertificate(t *testing.T) {
+	t.Parallel()
 	ci := NewClientIdentity(tls.Certificate{})
 	updated := ci.Updated()
 	select {
@@ -237,6 +253,7 @@ func TestClientIdentity_Updated_ClosedBySetCertificate(t *testing.T) {
 // assertion covers the client (embed.go), server (gateway_certs.go), CLI
 // mTLS (cli/auth/tls.go), and bootstrap transport (bootstrap.go) paths.
 func TestFIPSCurvePreferences_ExcludesX25519(t *testing.T) {
+	t.Parallel()
 	curves := FIPSCurvePreferences()
 	assert.NotContains(t, curves, tls.X25519,
 		"tls.X25519 is excluded from Go's FIPS TLS mode and must not appear in ztd CurvePreferences")
@@ -251,6 +268,7 @@ func TestFIPSCurvePreferences_ExcludesX25519(t *testing.T) {
 // calls. This guards against replacing the fresh-slice implementation with
 // shared package-level mutable storage.
 func TestFIPSCurvePreferences_ReturnsCallerOwnedSlice(t *testing.T) {
+	t.Parallel()
 	first := FIPSCurvePreferences()
 	require.NotEmpty(t, first)
 	second := FIPSCurvePreferences()

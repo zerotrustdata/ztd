@@ -23,18 +23,24 @@ import (
 )
 
 func TestView_QuittingReturnsEmpty(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.quitting = true
 	assert.Empty(t, m.View())
 }
 
 func TestView_DefaultDimensionsWhenZero(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.View()
 	assert.NotEmpty(t, out)
 }
 
 func TestView_ExplicitDimensions(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.width = 120
 	m.height = 40
@@ -43,6 +49,8 @@ func TestView_ExplicitDimensions(t *testing.T) {
 }
 
 func TestView_MinHeightClamp(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.width = 80
 	m.height = 5
@@ -51,6 +59,8 @@ func TestView_MinHeightClamp(t *testing.T) {
 }
 
 func TestView_ContainsAllPaneHeaders(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{Version: "v1.0.0"})
 	m.width = 120
 	m.height = 40
@@ -63,6 +73,8 @@ func TestView_ContainsAllPaneHeaders(t *testing.T) {
 }
 
 func TestView_ContainsAllPipelineStages(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.width = 120
 	m.height = 40
@@ -75,6 +87,8 @@ func TestView_ContainsAllPipelineStages(t *testing.T) {
 }
 
 func TestRenderPipeline_AllStatusesRender(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		status PipelineStatus
@@ -89,6 +103,8 @@ func TestRenderPipeline_AllStatusesRender(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewModel(Options{})
 			m.pipeline[0].status = tt.status
 			m.pipeline[0].detail = tt.detail
@@ -102,6 +118,8 @@ func TestRenderPipeline_AllStatusesRender(t *testing.T) {
 }
 
 func TestRenderPipeline_BlinkToggleWaiting(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pipeline[0].status = StatusWaiting
 	m.pipeline[0].detail = "FIDO2"
@@ -116,6 +134,8 @@ func TestRenderPipeline_BlinkToggleWaiting(t *testing.T) {
 }
 
 func TestRenderPipeline_BlinkToggleFailed(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pipeline[0].status = StatusFailed
 	m.pipeline[0].detail = "blocked"
@@ -130,6 +150,8 @@ func TestRenderPipeline_BlinkToggleFailed(t *testing.T) {
 }
 
 func TestRenderPipeline_DetailFallbackToStatusString(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pipeline[0].status = StatusActive
 	m.pipeline[0].detail = ""
@@ -138,6 +160,8 @@ func TestRenderPipeline_DetailFallbackToStatusString(t *testing.T) {
 }
 
 func TestRenderPipeline_ExplicitDetailShown(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pipeline[0].status = StatusPassed
 	m.pipeline[0].detail = "actuator committed"
@@ -146,6 +170,8 @@ func TestRenderPipeline_ExplicitDetailShown(t *testing.T) {
 }
 
 func TestRenderPipeline_AllFiveStagesPresent(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.renderPipeline(60, 30)
 	assert.Contains(t, out, "L1: Doctrine")
@@ -156,12 +182,16 @@ func TestRenderPipeline_AllFiveStagesPresent(t *testing.T) {
 }
 
 func TestRenderLedger_EmptyShowsAwaitingMessage(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.renderLedger(60, 20)
 	assert.Contains(t, out, "awaiting events")
 }
 
 func TestRenderLedger_EntriesRendered(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -176,6 +206,8 @@ func TestRenderLedger_EntriesRendered(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewModel(Options{})
 			m.ledger = append(m.ledger, ledgerEntry{
 				level:   tt.level,
@@ -191,6 +223,8 @@ func TestRenderLedger_EntriesRendered(t *testing.T) {
 }
 
 func TestRenderLedger_ScrollOffsetShowsOlderEntries(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	for i := 0; i < 10; i++ {
@@ -207,6 +241,8 @@ func TestRenderLedger_ScrollOffsetShowsOlderEntries(t *testing.T) {
 }
 
 func TestRenderLedger_ScrollOffsetZeroShowsAll(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	for i := 0; i < 3; i++ {
@@ -223,6 +259,8 @@ func TestRenderLedger_ScrollOffsetZeroShowsAll(t *testing.T) {
 }
 
 func TestRenderLedger_ScrollOffsetExceedsLedgerLength(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	m.ledger = append(m.ledger, ledgerEntry{
@@ -237,6 +275,8 @@ func TestRenderLedger_ScrollOffsetExceedsLedgerLength(t *testing.T) {
 }
 
 func TestRenderLedger_TruncatesToMaxLines(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	for i := 0; i < 50; i++ {
@@ -252,6 +292,8 @@ func TestRenderLedger_TruncatesToMaxLines(t *testing.T) {
 }
 
 func TestRenderStatusBar_ConnectionStates(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		status ConnStatus
@@ -266,6 +308,8 @@ func TestRenderStatusBar_ConnectionStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewModel(Options{})
 			m.connStatus = tt.status
 			out := m.renderStatusBar(120)
@@ -275,6 +319,8 @@ func TestRenderStatusBar_ConnectionStates(t *testing.T) {
 }
 
 func TestRenderStatusBar_ConnDetailAppended(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.connStatus = ConnConnected
 	m.connDetail = "retry 3/5"
@@ -283,6 +329,8 @@ func TestRenderStatusBar_ConnDetailAppended(t *testing.T) {
 }
 
 func TestRenderStatusBar_NoConnDetailOmitsParens(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.connStatus = ConnConnected
 	m.connDetail = ""
@@ -291,6 +339,8 @@ func TestRenderStatusBar_NoConnDetailOmitsParens(t *testing.T) {
 }
 
 func TestRenderStatusBar_QuitAndScrollHints(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.renderStatusBar(120)
 	assert.Contains(t, out, "q: quit")
@@ -301,6 +351,8 @@ func TestRenderStatusBar_QuitAndScrollHints(t *testing.T) {
 }
 
 func TestRenderStatusBar_NarrowWidthDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.connStatus = ConnConnected
 	m.connDetail = "very long detail string that exceeds width"
@@ -309,6 +361,8 @@ func TestRenderStatusBar_NarrowWidthDoesNotPanic(t *testing.T) {
 }
 
 func TestRenderStatusBar_GapPadding(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{
 		Version: "v1.0.0",
 		Identity: Identity{
@@ -322,6 +376,8 @@ func TestRenderStatusBar_GapPadding(t *testing.T) {
 }
 
 func TestView_ConnStatusDisplayedInStatusBar(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.width = 120
 	m.height = 40
@@ -333,6 +389,8 @@ func TestView_ConnStatusDisplayedInStatusBar(t *testing.T) {
 }
 
 func TestView_LedgerEntriesAppearInOutput(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	m.width = 120
@@ -347,6 +405,8 @@ func TestView_LedgerEntriesAppearInOutput(t *testing.T) {
 }
 
 func TestView_PipelineStatusDetailAppearsInOutput(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.width = 120
 	m.height = 40
@@ -357,6 +417,8 @@ func TestView_PipelineStatusDetailAppearsInOutput(t *testing.T) {
 }
 
 func TestView_StatusBarPresentAtBottom(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{
 		Version: "v9.9.9",
 		Identity: Identity{
@@ -371,6 +433,8 @@ func TestView_StatusBarPresentAtBottom(t *testing.T) {
 }
 
 func TestRenderLedger_MultipleEntriesAllRendered(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	for i := 0; i < 5; i++ {
@@ -386,6 +450,8 @@ func TestRenderLedger_MultipleEntriesAllRendered(t *testing.T) {
 }
 
 func TestRenderLedger_MixedLevelsRendered(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	m.ledger = append(m.ledger,
@@ -403,18 +469,24 @@ func TestRenderLedger_MixedLevelsRendered(t *testing.T) {
 }
 
 func TestRenderPipeline_HeaderPresent(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.renderPipeline(60, 20)
 	assert.Contains(t, out, "EXECUTION PIPELINE (L1-L5)")
 }
 
 func TestRenderLedger_HeaderPresent(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.renderLedger(60, 20)
 	assert.Contains(t, out, "SOVEREIGN AUDIT LEDGER")
 }
 
 func TestView_FullLayoutIntegration(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := NewModel(Options{
 		Version: "v1.2.3",
@@ -450,6 +522,8 @@ func TestView_FullLayoutIntegration(t *testing.T) {
 }
 
 func TestRenderHeader_ContainsIdentity(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{
 		Version: "v1.0.0",
 		Identity: Identity{
@@ -468,6 +542,8 @@ func TestRenderHeader_ContainsIdentity(t *testing.T) {
 }
 
 func TestRenderHeader_BoundOperatorShown(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{
 		Version: "v1.0.0",
 		Identity: Identity{
@@ -483,6 +559,8 @@ func TestRenderHeader_BoundOperatorShown(t *testing.T) {
 }
 
 func TestRenderHeader_PostureUnknownBeforeHealth(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{
 		Version: "v1.0.0",
 		Identity: Identity{
@@ -497,6 +575,8 @@ func TestRenderHeader_PostureUnknownBeforeHealth(t *testing.T) {
 }
 
 func TestGatewayStatusLines_ConsensusRowFollowsPosture(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.health = models.HealthResponse{
 		Status:    constants.GatewayModeStatusOK,
@@ -513,6 +593,8 @@ func TestGatewayStatusLines_ConsensusRowFollowsPosture(t *testing.T) {
 }
 
 func TestRenderApprovals_EmptyState(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pending = []models.SuspendedTxResponse{}
 	out := m.renderApprovals(60)
@@ -520,7 +602,8 @@ func TestRenderApprovals_EmptyState(t *testing.T) {
 	assert.Contains(t, out, "(no pending approvals)")
 }
 
-func TestRenderApprovals_ShowsToolAndHash(t *testing.T) {
+func TestRenderApprovals_ShowsToolAndHash(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	m := NewModel(Options{})
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	m.pending = []models.SuspendedTxResponse{
@@ -541,6 +624,8 @@ func TestRenderApprovals_ShowsToolAndHash(t *testing.T) {
 }
 
 func TestRenderApprovals_AwaitingBrowserMarked(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pending = []models.SuspendedTxResponse{
 		{
@@ -554,6 +639,8 @@ func TestRenderApprovals_AwaitingBrowserMarked(t *testing.T) {
 }
 
 func TestRenderApprovals_SelectionMarkerWhenFocused(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.pending = []models.SuspendedTxResponse{
 		{ToolName: "file_write", TransactionHash: "abc123"},
@@ -565,6 +652,8 @@ func TestRenderApprovals_SelectionMarkerWhenFocused(t *testing.T) {
 }
 
 func TestRenderOperators_LoadingState(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.operatorsLoaded = false
 	out := m.renderOperators(60)
@@ -573,6 +662,8 @@ func TestRenderOperators_LoadingState(t *testing.T) {
 }
 
 func TestRenderOperators_ConnectedCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.operators = []*operatorv1.OperatorDocument{
 		{Id: "op1", Status: "healthy"},
@@ -585,6 +676,8 @@ func TestRenderOperators_ConnectedCount(t *testing.T) {
 }
 
 func TestRenderOperators_ErrorState(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.operatorsErr = "connection timeout"
 	m.operatorsLoaded = true
@@ -593,6 +686,8 @@ func TestRenderOperators_ErrorState(t *testing.T) {
 }
 
 func TestRenderOperators_BoundMarked(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.identity.OperatorID = "bound-op"
 	m.operators = []*operatorv1.OperatorDocument{
@@ -604,6 +699,7 @@ func TestRenderOperators_BoundMarked(t *testing.T) {
 }
 
 func TestListWindow_SelectionVisibleAtStart(t *testing.T) {
+	t.Parallel()
 	start, end := listWindow(10, 0)
 	assert.Equal(t, 0, start)
 	assert.Positive(t, end)
@@ -611,18 +707,22 @@ func TestListWindow_SelectionVisibleAtStart(t *testing.T) {
 }
 
 func TestListWindow_SelectionVisibleWhenScrolled(t *testing.T) {
+	t.Parallel()
 	start, end := listWindow(10, 8)
 	assert.LessOrEqual(t, start, 8)
 	assert.Less(t, 8, end)
 }
 
 func TestListWindow_BoundsListLength(t *testing.T) {
+	t.Parallel()
 	start, end := listWindow(5, 0)
 	assert.Equal(t, 0, start)
 	assert.LessOrEqual(t, end, 5)
 }
 
 func TestStageAnnotation_NoAuditWhenPostureUnknown(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.posture = ""
 	result := m.stageAnnotation(StageL2)
@@ -630,6 +730,8 @@ func TestStageAnnotation_NoAuditWhenPostureUnknown(t *testing.T) {
 }
 
 func TestStageAnnotation_AuditedWhenNotEnforced(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	// ratify audits L2 and enforces L3
 	m.posture = constants.PostureRatify
@@ -638,6 +740,8 @@ func TestStageAnnotation_AuditedWhenNotEnforced(t *testing.T) {
 }
 
 func TestStageAnnotation_NoMarkingWhenEnforced(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	// notary enforces L2 and L3
 	m.posture = constants.PostureNotary
@@ -649,6 +753,8 @@ func TestStageAnnotation_NoMarkingWhenEnforced(t *testing.T) {
 // each pane's size, so the frame is exactly the terminal and the header is
 // never scrolled off the top.
 func TestView_FitsTerminalExactly(t *testing.T) {
+	t.Parallel()
+
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	for _, size := range []struct{ width, height int }{{160, 40}, {120, 40}, {100, 30}, {80, 24}, {200, 60}} {
 		m := NewModel(Options{
@@ -687,6 +793,8 @@ func TestView_FitsTerminalExactly(t *testing.T) {
 }
 
 func TestRenderLedger_WrapsLongEntries(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	m.ledger = append(m.ledger, ledgerEntry{level: LevelInfo, message: "visit https://localhost:8443/console/approve?tx=0123456789abcdef-END", time: time.Now()})
 	out := m.renderLedger(40, 20)
@@ -694,6 +802,8 @@ func TestRenderLedger_WrapsLongEntries(t *testing.T) {
 }
 
 func TestRenderPipeline_ShortPaneShowsEveryStage(t *testing.T) {
+	t.Parallel()
+
 	m := NewModel(Options{})
 	out := m.renderPipeline(40, 13)
 	assert.Contains(t, out, "L5: Actuator", "a short pane drops spacer lines instead of the last stages")

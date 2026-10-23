@@ -24,6 +24,7 @@ import (
 )
 
 func TestCampaignQueueNextPendingSelectsFirstPendingEntry(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		queue   *CampaignQueue
@@ -52,6 +53,7 @@ func TestCampaignQueueNextPendingSelectsFirstPendingEntry(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			entry, err := test.queue.NextPending()
 			if test.wantErr != nil {
 				require.Error(t, err)
@@ -65,6 +67,7 @@ func TestCampaignQueueNextPendingSelectsFirstPendingEntry(t *testing.T) {
 }
 
 func TestCampaignQueueFindByTagOrVariantIDResolvesTrimmedQueries(t *testing.T) {
+	t.Parallel()
 	queue := &CampaignQueue{Models: []CampaignQueueModel{{
 		VariantID:      "qwen3-4b",
 		ServedModelTag: "qwen3:4b",
@@ -85,6 +88,7 @@ func TestCampaignQueueFindByTagOrVariantIDResolvesTrimmedQueries(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			entry, err := queue.FindByTagOrVariantID(test.query)
 			if test.wantErr != nil {
 				require.Error(t, err)
@@ -98,6 +102,7 @@ func TestCampaignQueueFindByTagOrVariantIDResolvesTrimmedQueries(t *testing.T) {
 }
 
 func TestCampaignIDForVariantUsesCanonicalIdentifiers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		variant *evalv1.ModelVariant
@@ -110,12 +115,14 @@ func TestCampaignIDForVariantUsesCanonicalIdentifiers(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, test.want, CampaignIDForVariant(test.variant))
 		})
 	}
 }
 
 func TestPrioritizeRolloutIntakeMovesConfiguredVariantsFirst(t *testing.T) {
+	t.Parallel()
 	variants := []*evalv1.ModelVariant{
 		{VariantId: "smollm2-135m", ServedModelTag: "smollm2:135m", ParameterCount: 134_520_000},
 		{VariantId: "qwen3-8-27b", ServedModelTag: "qwen3.8:27b", ParameterCount: 27_000_000_000},
@@ -129,6 +136,7 @@ func TestPrioritizeRolloutIntakeMovesConfiguredVariantsFirst(t *testing.T) {
 }
 
 func TestSortModelVariantsForRolloutOrdersByParameterCountAndTag(t *testing.T) {
+	t.Parallel()
 	variants := []*evalv1.ModelVariant{
 		{VariantId: "qwen3-4b", ServedModelTag: "qwen3:4b", ParameterCount: 4_000_000_000},
 		{VariantId: "qwen3-5-9b", ServedModelTag: "qwen3.5:9b", ParameterCount: 9_000_000_000},
@@ -151,6 +159,7 @@ func TestSortModelVariantsForRolloutOrdersByParameterCountAndTag(t *testing.T) {
 }
 
 func TestSaveAndLoadInitCampaignQueueRoundTrip(t *testing.T) {
+	t.Parallel()
 	fileSvc := newCampaignQueueFileService()
 	want := &CampaignQueue{Models: []CampaignQueueModel{{
 		VariantID:      "qwen3-4b",
@@ -168,6 +177,7 @@ func TestSaveAndLoadInitCampaignQueueRoundTrip(t *testing.T) {
 // template: every cell count must equal the (scenario, role) cells one model
 // scores under the built-in default suite.
 func TestBaseInitCampaignQueueCellCountsMatchSuite(t *testing.T) {
+	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	perModelCells := CatalogModelRoleCells(catalog)
@@ -188,6 +198,7 @@ func TestBaseInitCampaignQueueCellCountsMatchSuite(t *testing.T) {
 // checked-in rollout template only lists models from the base model inventory
 // it is curated from.
 func TestBaseInitCampaignQueueEntriesAreBaseInventoryModels(t *testing.T) {
+	t.Parallel()
 	inventory, err := LoadFrozenVariantsFromExternalSource(filepath.Join(constants.TestPathRepoRootFromCompliancePackage, DefaultBaseModelInventoryRelPath))
 	require.NoError(t, err)
 	require.NotEmpty(t, inventory)

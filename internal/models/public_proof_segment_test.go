@@ -20,6 +20,7 @@ import (
 )
 
 func TestPublicProofSegmentRoot_BindsEveryFieldWithoutAmbiguousConcatenation(t *testing.T) {
+	t.Parallel()
 	digest := sha256.Sum256([]byte("proof"))
 	id := hex.EncodeToString(digest[:])
 	base := PublicProofManifestSegment{
@@ -64,6 +65,7 @@ func TestPublicProofSegmentRoot_BindsEveryFieldWithoutAmbiguousConcatenation(t *
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			changed := base
 			changed.Entries = append([]PublicProofCatalogEntry(nil), base.Entries...)
 			mutate(&changed)

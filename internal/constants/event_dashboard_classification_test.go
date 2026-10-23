@@ -29,6 +29,7 @@ func protocolConstantsPath(filename string) string {
 // TestEventDashboardClassificationJSONValidity asserts the classification
 // inventory file is valid JSON and contains the expected top-level keys.
 func TestEventDashboardClassificationJSONValidity(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(protocolConstantsPath(ProtocolEventDashboardClassificationJSONFilename))
 	require.NoError(t, err)
 	assert.True(t, json.Valid(data), "event_dashboard_classification.json is valid JSON")
@@ -47,6 +48,7 @@ func TestEventDashboardClassificationJSONValidity(t *testing.T) {
 // dashboard classification inventory. This prevents silent drift when new
 // event families are registered.
 func TestEventDashboardClassificationCoversAllRegisteredFamilies(t *testing.T) {
+	t.Parallel()
 	eventsData, err := os.ReadFile(protocolConstantsPath(ProtocolEventsJSONFilename))
 	require.NoError(t, err)
 	var events struct {
@@ -88,6 +90,7 @@ func TestEventDashboardClassificationCoversAllRegisteredFamilies(t *testing.T) {
 // TestEventDashboardClassificationValues asserts that every classification
 // value in the inventory is one of the four documented categories.
 func TestEventDashboardClassificationValues(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(protocolConstantsPath(ProtocolEventDashboardClassificationJSONFilename))
 	require.NoError(t, err)
 	var raw struct {

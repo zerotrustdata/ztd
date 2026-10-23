@@ -526,6 +526,7 @@ func enrollTestOperatorRequest(state models.PlatformEnrollmentState) models.Plat
 // ---------------------------------------------------------------------------
 
 func TestProtoComponentKind_MapsEveryKnownKindAndRejectsOthers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		in      commonv1.PlatformComponentKind
@@ -540,6 +541,7 @@ func TestProtoComponentKind_MapsEveryKnownKindAndRejectsOthers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := protoComponentKind(tt.in)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -553,6 +555,7 @@ func TestProtoComponentKind_MapsEveryKnownKindAndRejectsOthers(t *testing.T) {
 }
 
 func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.T) {
+	t.Parallel()
 	for _, endpoint := range []string{
 		"http://consensus.example/deliberate",
 		"https://user:password@consensus.example/deliberate",
@@ -560,6 +563,7 @@ func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.
 		"https://consensus.example/deliberate#fragment",
 	} {
 		t.Run(endpoint, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
 				constants.EventPlatformEnrollmentBindConsensusRequested,
@@ -575,6 +579,7 @@ func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.
 }
 
 func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
+	t.Parallel()
 	for _, signer := range []models.TrustedSigner{
 		{PublicKey: strings.Repeat("ab", 32), Enabled: false},
 		{PublicKey: "invalid", Enabled: true},
@@ -605,6 +610,7 @@ func seedConsensusMember(t *testing.T, env *enrollTestEnv, appID, owner string, 
 }
 
 func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	for _, appID := range []string{"reviewer-a", "reviewer-b", "reviewer-c"} {
 		seedConsensusMember(t, env, appID, enrollTestOwnerID, true)
@@ -626,6 +632,7 @@ func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
 }
 
 func TestHandleBindConsensus_RejectsInvalidMemberSetsBeforePersistence(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		members       []string
@@ -644,6 +651,7 @@ func TestHandleBindConsensus_RejectsInvalidMemberSetsBeforePersistence(t *testin
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			for _, id := range []string{"a", "b"} {
 				if id == tc.missingPolicy {
@@ -704,6 +712,7 @@ func tribunalBindPayload(members []string, quorum uint32, endpointURL, modelTag,
 }
 
 func TestHandleBindConsensus_TribunalPersistsCanonicalPanel(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	seedTribunalConsensusMembers(t, env, enrollTestOwnerID)
 	summary, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
@@ -725,6 +734,7 @@ func TestHandleBindConsensus_TribunalPersistsCanonicalPanel(t *testing.T) {
 }
 
 func TestHandleBindConsensus_TribunalRejectsNonCanonicalBindingsBeforePersistence(t *testing.T) {
+	t.Parallel()
 	canonical := constants.TribunalConsensusMemberAppIDs()
 	reversed := []string{canonical[4], canonical[3], canonical[2], canonical[1], canonical[0]}
 	digest := strings.Repeat("cd", 32)
@@ -741,6 +751,7 @@ func TestHandleBindConsensus_TribunalRejectsNonCanonicalBindingsBeforePersistenc
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			seedTribunalConsensusMembers(t, env, enrollTestOwnerID)
 			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested, tc.payload))
@@ -751,6 +762,7 @@ func TestHandleBindConsensus_TribunalRejectsNonCanonicalBindingsBeforePersistenc
 }
 
 func TestHandleBindConsensus_TribunalRebindReplacesApplicationBinding(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	seedConsensusMember(t, env, "reviewer-a", enrollTestOwnerID, true)
 	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
@@ -775,6 +787,7 @@ func TestHandleBindConsensus_TribunalRebindReplacesApplicationBinding(t *testing
 }
 
 func TestProtoDecision_MapsApproveAndDenyAndRejectsOthers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		in      commonv1.PlatformEnrollmentDecision
@@ -788,6 +801,7 @@ func TestProtoDecision_MapsApproveAndDenyAndRejectsOthers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := protoDecision(tt.in)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -801,6 +815,7 @@ func TestProtoDecision_MapsApproveAndDenyAndRejectsOthers(t *testing.T) {
 }
 
 func TestFingerprintsFromPayload_NilYieldsZeroValueAndPopulatedCopiesAllFields(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, models.PlatformEnrollmentCSRFingerprints{}, fingerprintsFromPayload(nil))
 
 	got := fingerprintsFromPayload(&commonv1.PlatformEnrollmentFingerprints{App: "a", Operator: "o", Cli: "c"})
@@ -808,6 +823,7 @@ func TestFingerprintsFromPayload_NilYieldsZeroValueAndPopulatedCopiesAllFields(t
 }
 
 func TestFingerprintsSummary_OmitsEmptyFieldsAndKeepsStableOrder(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   models.PlatformEnrollmentCSRFingerprints
@@ -820,12 +836,14 @@ func TestFingerprintsSummary_OmitsEmptyFieldsAndKeepsStableOrder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, fingerprintsSummary(tt.in))
 		})
 	}
 }
 
 func TestCertificatePEMHelpers_ExtractSerialFingerprintExpiryAndSPIFFEID(t *testing.T) {
+	t.Parallel()
 	notAfter := time.Date(2032, 5, 6, 7, 8, 9, 0, time.UTC)
 	certPEM := enrollTestCertPEM(t, 987654321, "spiffe://ztd.test/operator/abc", notAfter)
 	block, _ := pem.Decode([]byte(certPEM))
@@ -842,12 +860,14 @@ func TestCertificatePEMHelpers_ExtractSerialFingerprintExpiryAndSPIFFEID(t *test
 }
 
 func TestCertificatePEMHelpers_MalformedInputDegradesPerContract(t *testing.T) {
+	t.Parallel()
 	notPEM := "definitely not pem"
 	badDER := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("not a certificate")}))
 	noURI := enrollTestCertPEM(t, 7, "", time.Date(2032, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	for name, input := range map[string]string{"not pem": notPEM, "pem with invalid DER": badDER} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Empty(t, serialFromPEM(input))
 			assert.Empty(t, fingerprintFromPEM(input))
 			assert.True(t, expiryFromPEM(input).IsZero())
@@ -857,6 +877,7 @@ func TestCertificatePEMHelpers_MalformedInputDegradesPerContract(t *testing.T) {
 	}
 
 	t.Run("certificate without a URI SAN has no SPIFFE ID", func(t *testing.T) {
+		t.Parallel()
 		_, err := spiffeIDFromCertificate(noURI)
 		require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidPayload)
 	})
@@ -867,6 +888,7 @@ func TestCertificatePEMHelpers_MalformedInputDegradesPerContract(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDecodePayload_RejectsMalformedProtobuf(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 
 	_, err := env.handler.decodePayload(&PubSubCommandMessage{
@@ -879,6 +901,7 @@ func TestDecodePayload_RejectsMalformedProtobuf(t *testing.T) {
 }
 
 func TestDecodePayload_RejectsEventTypeWithDifferentPayloadType(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 
 	// An empty payload decodes fine as any message; the event type decides
@@ -892,6 +915,7 @@ func TestDecodePayload_RejectsEventTypeWithDifferentPayloadType(t *testing.T) {
 }
 
 func TestDecodePayload_RejectsUnknownEventType(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 
 	_, err := env.handler.decodePayload(&PubSubCommandMessage{EventType: "not.a.real.event"})
@@ -905,6 +929,7 @@ func TestDecodePayload_RejectsUnknownEventType(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleCreate_AuditsRequestWithoutWritingToStore(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	msg := enrollTestMessage(t, constants.EventPlatformEnrollmentCreateRequested, &commonv1.PlatformEnrollmentGovernancePayload{
 		RequestId:     enrollTestRequest,
@@ -922,6 +947,7 @@ func TestHandleCreate_AuditsRequestWithoutWritingToStore(t *testing.T) {
 }
 
 func TestHandleCreate_FailsClosedOnBadInput(t *testing.T) {
+	t.Parallel()
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
 	valid := &commonv1.PlatformEnrollmentGovernancePayload{
@@ -965,6 +991,7 @@ func TestHandleCreate_FailsClosedOnBadInput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 
 			summary, err := env.handler.HandleCreate(tt.ctx, tt.msg(t))
@@ -998,6 +1025,7 @@ func (s *enrollTestDocStore) DecidePlatformEnrollments(ctx context.Context, acto
 }
 
 func TestHandleDecide_PropagatesAtomicDecisionFailure(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.store.transitionErr = constants.ErrPlatformEnrollmentAlreadyDecided
 	_, err := env.handler.HandleDecide(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentDecideRequested, &commonv1.PlatformEnrollmentGovernancePayload{
@@ -1022,6 +1050,7 @@ func issuePayload(kind commonv1.PlatformComponentKind) *commonv1.PlatformEnrollm
 }
 
 func TestHandleIssue_AppComponentSignsCSRAndCompletesRequest(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateIssuing))
 	msg := enrollTestMessage(t, constants.EventPlatformEnrollmentIssueRequested,
@@ -1064,10 +1093,12 @@ func TestHandleIssue_AppComponentSignsCSRAndCompletesRequest(t *testing.T) {
 }
 
 func TestHandleIssue_AppKindsAllUseTheAppSigner(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []models.PlatformComponentKind{
 		models.PlatformComponentDashboard, models.PlatformComponentApplication,
 	} {
 		t.Run(string(kind), func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			req := enrollTestAppRequest(models.PlatformEnrollmentStateIssuing)
 			req.ComponentKind = kind
@@ -1087,6 +1118,7 @@ func TestHandleIssue_AppKindsAllUseTheAppSigner(t *testing.T) {
 }
 
 func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
 	dashboard := commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_DASHBOARD
 
 	tests := []struct {
@@ -1165,6 +1197,7 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			if tt.seed != nil {
 				tt.seed(t, env)
@@ -1182,6 +1215,7 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 }
 
 func TestHandleIssue_SigningFailureRollsLeaseBackToApproved(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		setup func(e *enrollTestEnv)
@@ -1220,6 +1254,7 @@ func TestHandleIssue_SigningFailureRollsLeaseBackToApproved(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			env.seedRequest(t, tt.req)
 			tt.setup(env)
@@ -1238,6 +1273,7 @@ func TestHandleIssue_SigningFailureRollsLeaseBackToApproved(t *testing.T) {
 }
 
 func TestHandleIssue_RollbackFailureDoesNotMaskTheSigningError(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateIssuing))
 	env.pki.appErr = errEnrollTestBoom
@@ -1250,7 +1286,9 @@ func TestHandleIssue_RollbackFailureDoesNotMaskTheSigningError(t *testing.T) {
 }
 
 func TestHandleIssue_MissingCSRPayloadIsInvalid(t *testing.T) {
+	t.Parallel()
 	t.Run("app request without app CSR", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		req := enrollTestAppRequest(models.PlatformEnrollmentStateIssuing)
 		req.App = nil
@@ -1264,6 +1302,7 @@ func TestHandleIssue_MissingCSRPayloadIsInvalid(t *testing.T) {
 	})
 
 	t.Run("operator request without operator CSRs", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		req := enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing)
 		req.Operator = nil
@@ -1278,7 +1317,9 @@ func TestHandleIssue_MissingCSRPayloadIsInvalid(t *testing.T) {
 }
 
 func TestHandleIssue_CompletionConflictAndStoreFailure(t *testing.T) {
+	t.Parallel()
 	t.Run("lease lost before completion", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateIssuing))
 		lost := false
@@ -1293,6 +1334,7 @@ func TestHandleIssue_CompletionConflictAndStoreFailure(t *testing.T) {
 	})
 
 	t.Run("completion write fails", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateIssuing))
 		env.store.transitionErr = errEnrollTestBoom
@@ -1310,6 +1352,7 @@ func TestHandleIssue_CompletionConflictAndStoreFailure(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleIssue_OperatorSignsBothCSRsAndPersistsOwnedOperator(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing))
 
@@ -1384,6 +1427,7 @@ func TestHandleIssue_OperatorSignsBothCSRsAndPersistsOwnedOperator(t *testing.T)
 }
 
 func TestHandleIssue_OperatorIssuanceFailsClosedOnOwnerLookupProblems(t *testing.T) {
+	t.Parallel()
 	usersColl := marshaler.CollectionName(constants.CollectionUsers)
 	orgsColl := marshaler.CollectionName(constants.CollectionOrganizations)
 
@@ -1439,6 +1483,7 @@ func TestHandleIssue_OperatorIssuanceFailsClosedOnOwnerLookupProblems(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			env.seedRequest(t, enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing))
 			tt.mutate(t, env)
@@ -1454,6 +1499,7 @@ func TestHandleIssue_OperatorIssuanceFailsClosedOnOwnerLookupProblems(t *testing
 }
 
 func TestLoadPlatformEnrollmentOrganization_AcceptsListedMemberWhoIsNotTheOwner(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.store.seed(t, marshaler.CollectionName(constants.CollectionUsers), "member-1", models.User{OrganizationID: enrollTestOrgID, Status: constants.UserStatusActive})
 	env.store.seed(t, marshaler.CollectionName(constants.CollectionOrganizations), enrollTestOrgID,
@@ -1467,6 +1513,7 @@ func TestLoadPlatformEnrollmentOrganization_AcceptsListedMemberWhoIsNotTheOwner(
 }
 
 func TestLoadPlatformEnrollmentRequest_EmptyIDAndMissingDocumentYieldNil(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 
 	req, err := loadPlatformEnrollmentRequest(t.Context(), env.handler.deps, "")
@@ -1479,6 +1526,7 @@ func TestLoadPlatformEnrollmentRequest_EmptyIDAndMissingDocumentYieldNil(t *test
 }
 
 func TestLoadPlatformEnrollmentRequest_RejectsDocumentThatDoesNotDecode(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.store.put(platformEnrollmentCollection(), "corrupt", map[string]json.RawMessage{
 		"attempt_count": json.RawMessage(`"not-a-number"`),
@@ -1491,7 +1539,9 @@ func TestLoadPlatformEnrollmentRequest_RejectsDocumentThatDoesNotDecode(t *testi
 }
 
 func TestHandleIssue_OperatorPersistenceFailuresAbortAndRollBack(t *testing.T) {
+	t.Parallel()
 	t.Run("operator document write fails", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.seedRequest(t, enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing))
 		env.store.setErr = errEnrollTestBoom
@@ -1505,6 +1555,7 @@ func TestHandleIssue_OperatorPersistenceFailuresAbortAndRollBack(t *testing.T) {
 	})
 
 	t.Run("superseding prior leases fails", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.seedRequest(t, enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing))
 		env.store.queryErr = errEnrollTestBoom
@@ -1535,6 +1586,7 @@ func seedEnrollOperator(t *testing.T, env *enrollTestEnv, id, owner, fingerprint
 }
 
 func TestHandleIssue_ReEnrollmentTerminatesPriorLeaseOfTheSameIdentity(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	seedEnrollOperator(t, env, "old-op", enrollTestOwnerID, "fp-host-a", constants.OperatorStatusActive, "old-session")
 	seedEnrollOperator(t, env, "other-host", enrollTestOwnerID, "fp-host-b", constants.OperatorStatusActive, "other-session")
@@ -1557,9 +1609,11 @@ func TestHandleIssue_ReEnrollmentTerminatesPriorLeaseOfTheSameIdentity(t *testin
 }
 
 func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
+	t.Parallel()
 	opColl := marshaler.CollectionName(constants.CollectionOperators)
 
 	t.Run("empty fingerprint is a no-op and never queries", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.store.queryErr = errEnrollTestBoom // would surface if a query were issued
 		seedEnrollOperator(t, env, "op-a", enrollTestOwnerID, "", constants.OperatorStatusActive, "s")
@@ -1569,6 +1623,7 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 	})
 
 	t.Run("the replacement itself is never terminated", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		seedEnrollOperator(t, env, "new-op", enrollTestOwnerID, "fp", constants.OperatorStatusActive, "new-session")
 
@@ -1578,6 +1633,7 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 	})
 
 	t.Run("lease without a session is terminated without session deactivation", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		seedEnrollOperator(t, env, "old", enrollTestOwnerID, "fp", constants.OperatorStatusActive, "")
 
@@ -1587,6 +1643,7 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 	})
 
 	t.Run("an already-invalid operator session is tolerated", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		seedEnrollOperator(t, env, "old", enrollTestOwnerID, "fp", constants.OperatorStatusActive, "stale")
 		env.opSession.deactivateErr = constants.ErrGatewayOperatorSessionInvalid
@@ -1596,6 +1653,7 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 	})
 
 	t.Run("a real session deactivation failure aborts before termination", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		seedEnrollOperator(t, env, "old", enrollTestOwnerID, "fp", constants.OperatorStatusActive, "live")
 		env.opSession.deactivateErr = errEnrollTestBoom
@@ -1609,6 +1667,7 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 	})
 
 	t.Run("termination write failure is reported", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		seedEnrollOperator(t, env, "old", enrollTestOwnerID, "fp", constants.OperatorStatusActive, "s")
 		env.store.updErr = errEnrollTestBoom
@@ -1620,6 +1679,7 @@ func TestSupersedeOperatorLeases_BehaviorMatrix(t *testing.T) {
 	})
 
 	t.Run("corrupt operator_session_id field is reported", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.store.put(opColl, "old", map[string]json.RawMessage{
 			"user_id":             json.RawMessage(`"` + enrollTestOwnerID + `"`),
@@ -1676,6 +1736,7 @@ func newPersistPolicyEnv(t *testing.T) *enrollTestEnv {
 }
 
 func TestHandlePersistPolicy_WritesLeastPrivilegePolicyDocument(t *testing.T) {
+	t.Parallel()
 	env := newPersistPolicyEnv(t)
 
 	summary, err := env.handler.HandlePersistPolicy(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload()))
@@ -1704,6 +1765,7 @@ func TestHandlePersistPolicy_WritesLeastPrivilegePolicyDocument(t *testing.T) {
 }
 
 func TestHandlePersistPolicy_RetainsExistingPolicyInsteadOfOverwriting(t *testing.T) {
+	t.Parallel()
 	env := newPersistPolicyEnv(t)
 	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
 	env.store.seed(t, policyColl, enrollTestAppPolicyDocument, models.AppPolicy{AppID: enrollTestAppPolicyDocument, RateLimitRPS: 50, AllowedCollections: []string{"events"}})
@@ -1718,6 +1780,7 @@ func TestHandlePersistPolicy_RetainsExistingPolicyInsteadOfOverwriting(t *testin
 }
 
 func TestHandlePersistPolicy_SigningKeyFailurePropagatesAndRetryCompletesRegistration(t *testing.T) {
+	t.Parallel()
 	env := newPersistPolicyEnv(t)
 	req := committedAppIssuance(models.PlatformEnrollmentStateCompleted)
 	req.ComponentKind = models.PlatformComponentApplication
@@ -1758,6 +1821,7 @@ func TestHandlePersistPolicy_SigningKeyFailurePropagatesAndRetryCompletesRegistr
 // only authority is the issuance the owner's decision committed, so anything
 // short of that exact committed issuance must write nothing.
 func TestHandlePersistPolicy_RequiresTheCommittedIssuance(t *testing.T) {
+	t.Parallel()
 	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
 	usersColl := marshaler.CollectionName(constants.CollectionUsers)
 	tests := []struct {
@@ -1792,6 +1856,7 @@ func TestHandlePersistPolicy_RequiresTheCommittedIssuance(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			tt.seed(t, env)
 			p := persistPolicyPayload()
@@ -1817,6 +1882,7 @@ func seedAppIssuance(state models.PlatformEnrollmentState) func(t *testing.T, en
 }
 
 func TestHandlePersistPolicy_RejectsIncompletePayloads(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		mutate  func(p *commonv1.PlatformEnrollmentGovernancePayload)
@@ -1829,6 +1895,7 @@ func TestHandlePersistPolicy_RejectsIncompletePayloads(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newPersistPolicyEnv(t)
 			p := persistPolicyPayload()
 			tt.mutate(p)
@@ -1843,12 +1910,14 @@ func TestHandlePersistPolicy_RejectsIncompletePayloads(t *testing.T) {
 }
 
 func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
+	t.Parallel()
 	msgFor := func(t *testing.T) *PubSubCommandMessage {
 		t.Helper()
 		return enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload())
 	}
 
 	t.Run("existence check fails", func(t *testing.T) {
+		t.Parallel()
 		env := newPersistPolicyEnv(t)
 		env.store.getErr[marshaler.CollectionName(constants.CollectionAppPolicies)] = errEnrollTestBoom
 
@@ -1859,6 +1928,7 @@ func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 	})
 
 	t.Run("committed issuance lookup fails", func(t *testing.T) {
+		t.Parallel()
 		env := newPersistPolicyEnv(t)
 		env.store.getErr[platformEnrollmentCollection()] = errEnrollTestBoom
 
@@ -1869,6 +1939,7 @@ func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 	})
 
 	t.Run("write fails", func(t *testing.T) {
+		t.Parallel()
 		env := newPersistPolicyEnv(t)
 		env.store.setErr = errEnrollTestBoom
 
@@ -1879,6 +1950,7 @@ func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 	})
 
 	t.Run("cancelled context", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -1889,6 +1961,7 @@ func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 	})
 
 	t.Run("undecodable payload", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 
 		_, err := env.handler.HandlePersistPolicy(t.Context(), &PubSubCommandMessage{EventType: constants.EventPlatformEnrollmentPersistPolicyRequested, Payload: []byte{0xff}})
@@ -1938,6 +2011,7 @@ func newCreateSessionEnv(t *testing.T) *enrollTestEnv {
 // only authority is the issuance the owner's decision committed, so anything
 // short of that exact committed issuance must create no session.
 func TestHandleCreateSession_RequiresTheCommittedIssuance(t *testing.T) {
+	t.Parallel()
 	seedOperatorIssuance := func(state models.PlatformEnrollmentState) func(t *testing.T, env *enrollTestEnv) {
 		return func(t *testing.T, env *enrollTestEnv) {
 			t.Helper()
@@ -1971,6 +2045,7 @@ func TestHandleCreateSession_RequiresTheCommittedIssuance(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			tt.seed(t, env)
 			p := createSessionPayload()
@@ -1989,6 +2064,7 @@ func TestHandleCreateSession_RequiresTheCommittedIssuance(t *testing.T) {
 }
 
 func TestHandleCreateSession_PersistsBothSessionsBoundToTheApprovingOwner(t *testing.T) {
+	t.Parallel()
 	env := newCreateSessionEnv(t)
 
 	summary, err := env.handler.HandleCreateSession(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, createSessionPayload()))
@@ -2009,10 +2085,12 @@ func TestHandleCreateSession_PersistsBothSessionsBoundToTheApprovingOwner(t *tes
 // A redeemed completed request re-submits CREATE_SESSION. It must not
 // reactivate a session that was deactivated or superseded since issuance.
 func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *testing.T) {
+	t.Parallel()
 	cliColl := marshaler.CollectionName(constants.CollectionCLISessions)
 	opColl := marshaler.CollectionName(constants.CollectionOperatorSessions)
 
 	t.Run("both sessions exist", func(t *testing.T) {
+		t.Parallel()
 		env := newCreateSessionEnv(t)
 		env.store.seed(t, cliColl, "cli-session-1", map[string]bool{"is_active": false})
 		env.store.seed(t, opColl, "op-session-1", map[string]bool{"is_active": false})
@@ -2026,6 +2104,7 @@ func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *test
 	})
 
 	t.Run("only the cli session exists", func(t *testing.T) {
+		t.Parallel()
 		env := newCreateSessionEnv(t)
 		env.store.seed(t, cliColl, "cli-session-1", map[string]bool{"is_active": false})
 
@@ -2037,6 +2116,7 @@ func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *test
 	})
 
 	t.Run("existence check fails", func(t *testing.T) {
+		t.Parallel()
 		env := newCreateSessionEnv(t)
 		env.store.getErr[opColl] = errEnrollTestBoom
 
@@ -2047,6 +2127,7 @@ func TestHandleCreateSession_RetainsExistingSessionsInsteadOfOverwriting(t *test
 }
 
 func TestHandleCreateSession_RejectsIncompletePayloadsBeforePersisting(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		mutate  func(p *commonv1.PlatformEnrollmentGovernancePayload)
@@ -2060,6 +2141,7 @@ func TestHandleCreateSession_RejectsIncompletePayloadsBeforePersisting(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newCreateSessionEnv(t)
 			p := createSessionPayload()
 			tt.mutate(p)
@@ -2074,12 +2156,14 @@ func TestHandleCreateSession_RejectsIncompletePayloadsBeforePersisting(t *testin
 }
 
 func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
+	t.Parallel()
 	msgFor := func(t *testing.T) *PubSubCommandMessage {
 		t.Helper()
 		return enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, createSessionPayload())
 	}
 
 	t.Run("unknown owner", func(t *testing.T) {
+		t.Parallel()
 		env := newCreateSessionEnv(t)
 		delete(env.store.docs[marshaler.CollectionName(constants.CollectionUsers)], enrollTestOwnerID)
 
@@ -2090,6 +2174,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("cli session persistence fails before the operator session is written", func(t *testing.T) {
+		t.Parallel()
 		env := newCreateSessionEnv(t)
 		env.cli.persistErr = errEnrollTestBoom
 
@@ -2101,6 +2186,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("operator session persistence fails", func(t *testing.T) {
+		t.Parallel()
 		env := newCreateSessionEnv(t)
 		env.opSession.persistErr = errEnrollTestBoom
 
@@ -2111,6 +2197,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("cancelled context", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -2121,6 +2208,7 @@ func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("undecodable payload", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 
 		_, err := env.handler.HandleCreateSession(t.Context(), &PubSubCommandMessage{EventType: constants.EventPlatformEnrollmentCreateSessionRequested, Payload: []byte{0xff}})
@@ -2167,6 +2255,7 @@ func completedOperatorRequest(t *testing.T, env *enrollTestEnv) models.PlatformE
 }
 
 func TestHandleRevoke_AppComponentRevokesCertificateDeletesPolicyAndDisconnects(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, completedAppRequest())
 	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
@@ -2192,6 +2281,7 @@ func TestHandleRevoke_AppComponentRevokesCertificateDeletesPolicyAndDisconnects(
 }
 
 func TestHandleRevoke_BlankReasonDefaultsToTheRevokeIntent(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, completedAppRequest())
 	p := revokePayload()
@@ -2205,6 +2295,7 @@ func TestHandleRevoke_BlankReasonDefaultsToTheRevokeIntent(t *testing.T) {
 }
 
 func TestHandleRevoke_RequestWithoutCertificateSerialSkipsCARevocation(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	req := completedAppRequest()
 	req.CertificateSerial = ""
@@ -2218,6 +2309,7 @@ func TestHandleRevoke_RequestWithoutCertificateSerialSkipsCARevocation(t *testin
 }
 
 func TestHandleRevoke_OperatorRevokesBothCertsTerminatesOperatorAndDropsConnections(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, completedOperatorRequest(t, env))
 	seedEnrollOperator(t, env, "op-1", enrollTestOwnerID, "fp-host-a", constants.OperatorStatusActive, "op-session-1")
@@ -2243,6 +2335,7 @@ func TestHandleRevoke_OperatorRevokesBothCertsTerminatesOperatorAndDropsConnecti
 }
 
 func TestHandleRevoke_OperatorToleratesSessionsThatAreAlreadyGone(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, completedOperatorRequest(t, env))
 	seedEnrollOperator(t, env, "op-1", enrollTestOwnerID, "fp-host-a", constants.OperatorStatusActive, "op-session-1")
@@ -2263,6 +2356,7 @@ func TestHandleRevoke_OperatorToleratesSessionsThatAreAlreadyGone(t *testing.T) 
 }
 
 func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		seed    func(t *testing.T, e *enrollTestEnv)
@@ -2355,6 +2449,7 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			if tt.seed != nil {
 				tt.seed(t, env)
@@ -2382,6 +2477,7 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 }
 
 func TestHandleRevoke_RequiresConnectionDrainer(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, completedAppRequest())
 	env.handler.deps.Connections = nil
@@ -2393,6 +2489,7 @@ func TestHandleRevoke_RequiresConnectionDrainer(t *testing.T) {
 }
 
 func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		seed   func(t *testing.T, e *enrollTestEnv)
@@ -2466,6 +2563,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := newEnrollTestEnv(t)
 			tt.seed(t, env)
 			tt.setup(env)
@@ -2478,6 +2576,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 	}
 
 	t.Run("lost compare-and-set reports invalid state", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		env.seedRequest(t, completedAppRequest())
 		lost := false
@@ -2489,6 +2588,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("cancelled context", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -2499,6 +2599,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 	})
 
 	t.Run("undecodable payload", func(t *testing.T) {
+		t.Parallel()
 		env := newEnrollTestEnv(t)
 
 		_, err := env.handler.HandleRevoke(t.Context(), &PubSubCommandMessage{EventType: constants.EventPlatformEnrollmentRevokeRequested, Payload: []byte{0xff}})
@@ -2512,6 +2613,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReceiptSummaries_NeverContainCredentialMaterial(t *testing.T) {
+	t.Parallel()
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing))
 

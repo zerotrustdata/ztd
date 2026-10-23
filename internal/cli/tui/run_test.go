@@ -33,6 +33,8 @@ func headlessProgramOptions(input string) []tea.ProgramOption {
 }
 
 func TestRun_NoSessionReturnsQuickly(t *testing.T) {
+	t.Parallel()
+
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(t.Context(), Options{
@@ -49,6 +51,8 @@ func TestRun_NoSessionReturnsQuickly(t *testing.T) {
 }
 
 func TestRun_QuitViaCtrlC(t *testing.T) {
+	t.Parallel()
+
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(t.Context(), Options{
@@ -65,6 +69,8 @@ func TestRun_QuitViaCtrlC(t *testing.T) {
 }
 
 func TestRun_PassesOptionsToModel(t *testing.T) {
+	t.Parallel()
+
 	opts := Options{
 		Version:        "v1.3.6",
 		Identity:       Identity{UserID: "user-1", CLISessionID: "cli-1", OperatorID: "op-1"},
@@ -95,6 +101,8 @@ func (s *stubSession) DoRequestContext(_ context.Context, _, _ string, _ interfa
 }
 
 func TestRun_AdapterGoroutineCleanedUpOnExit(t *testing.T) {
+	t.Parallel()
+
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(t.Context(), Options{
@@ -112,6 +120,8 @@ func TestRun_AdapterGoroutineCleanedUpOnExit(t *testing.T) {
 }
 
 func TestRun_CancelledContextExits(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)

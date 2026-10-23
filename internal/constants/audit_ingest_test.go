@@ -15,6 +15,7 @@ import (
 )
 
 func TestValidateAuditRecordRequest(t *testing.T) {
+	t.Parallel()
 	recorded, err := ValidateAuditRecordRequest(EventOperatorAuditDirectCommandRecordRequested)
 	require.NoError(t, err)
 	assert.Equal(t, EventOperatorAuditDirectCommandRecorded, recorded)

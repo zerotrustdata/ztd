@@ -356,6 +356,8 @@ func (f *fakeVoteFeed) PublishLiveEvent(_ context.Context, body []byte) error {
 }
 
 func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	env.Posture = string(constants.PostureConsensus)
 	env.InvestigationId = "run-1"
@@ -393,6 +395,7 @@ func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
 }
 
 func TestNewTribunalConsensusDeliberatorRejectsMissingRequiredDependencies(t *testing.T) {
+	t.Parallel()
 	got, err := NewTribunalConsensusDeliberator(nil, fakePolicies{}, &fakeInferer{}, &fakeVoteRecorder{}, nil, slog.New(slog.DiscardHandler))
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	require.Nil(t, got)
@@ -421,6 +424,8 @@ func voteSignerIDs(votes []*commonv1.L2Vote) []string {
 }
 
 func TestTribunalConsensusAllApproveCountsEveryMember(t *testing.T) {
+	t.Parallel()
+
 	env, hash := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
@@ -481,6 +486,8 @@ func TestTribunalConsensusAllApproveCountsEveryMember(t *testing.T) {
 }
 
 func TestTribunalConsensusAllDenyCollectsAllMembers(t *testing.T) {
+	t.Parallel()
+
 	env, hash := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalDenyAnswer})}
@@ -508,6 +515,8 @@ func TestTribunalConsensusAllDenyCollectsAllMembers(t *testing.T) {
 }
 
 func TestTribunalConsensusInvalidAnswerIsSignedDeny(t *testing.T) {
+	t.Parallel()
+
 	env, hash := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: "I think this is probably fine."})}
@@ -535,6 +544,8 @@ func TestTribunalConsensusInvalidAnswerIsSignedDeny(t *testing.T) {
 }
 
 func TestTribunalConsensusInferenceErrorCastsNoVoteAndContinues(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	replies := repliesForAll(inferReply{text: tribunalApproveAnswer})
@@ -566,6 +577,8 @@ func TestTribunalConsensusInferenceErrorCastsNoVoteAndContinues(t *testing.T) {
 }
 
 func TestTribunalConsensusAsksEachBatchConcurrently(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	// Each call answers only once all three first-batch calls are in flight;
@@ -585,6 +598,8 @@ func TestTribunalConsensusAsksEachBatchConcurrently(t *testing.T) {
 }
 
 func TestTribunalConsensusStopsAskingOnceTheContextEnds(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	replies := repliesForAll(inferReply{text: tribunalApproveAnswer})
@@ -610,6 +625,8 @@ func TestTribunalConsensusStopsAskingOnceTheContextEnds(t *testing.T) {
 }
 
 func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	missing := binding.MemberAppIDs[1]
@@ -647,6 +664,8 @@ func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
 }
 
 func TestTribunalConsensusRecordsEveryMemberVote(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	env.OperatorSessionId = "session-1"
 	hash, err := govpkg.GenerateMessageID(env)
@@ -702,6 +721,8 @@ func TestTribunalConsensusRecordsEveryMemberVote(t *testing.T) {
 }
 
 func TestTribunalConsensusUnrecordedVoteDoesNotCount(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
@@ -718,6 +739,8 @@ func TestTribunalConsensusUnrecordedVoteDoesNotCount(t *testing.T) {
 }
 
 func TestTribunalConsensusHashMismatchFailsBeforeAnyWork(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	env.TargetResource = "operator://op-1/tampered"
 	binding := tribunalTestBinding()
@@ -738,6 +761,8 @@ func TestTribunalConsensusHashMismatchFailsBeforeAnyWork(t *testing.T) {
 }
 
 func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
@@ -770,6 +795,8 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 }
 
 func TestTribunalConsensusVotePromptCarriesTypedPayload(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
@@ -800,6 +827,7 @@ func TestTribunalConsensusVotePromptCarriesTypedPayload(t *testing.T) {
 
 func TestTribunalConsensusSubjectCarriesEnvelopeContext(t *testing.T) {
 	t.Parallel()
+
 	payload, err := proto.Marshal(&operatorv1.OllamaModelResidencyRequested{ExecutionId: "exec-1"})
 	require.NoError(t, err)
 	env := &commonv1.GovernanceEnvelope{
@@ -830,6 +858,8 @@ func TestTribunalConsensusSubjectCarriesEnvelopeContext(t *testing.T) {
 }
 
 func TestTribunalConsensusUndecodablePayloadFailsBeforeAnyWork(t *testing.T) {
+	t.Parallel()
+
 	env, _ := hashTribunalTestEnvelope(t, &commonv1.GovernanceEnvelope{
 		ActionType:     string(constants.ActionTypeExecuteBash),
 		TargetResource: "operator://op-1/shell",
@@ -850,6 +880,8 @@ func TestTribunalConsensusUndecodablePayloadFailsBeforeAnyWork(t *testing.T) {
 }
 
 func TestTribunalConsensusUnconfiguredBindingFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]func(*models.ConsensusPolicy){
 		"nil binding": nil,
 		"disabled": func(p *models.ConsensusPolicy) {
@@ -864,6 +896,8 @@ func TestTribunalConsensusUnconfiguredBindingFailsClosed(t *testing.T) {
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			env, _ := tribunalTestEnvelope(t)
 			var binding *models.ConsensusPolicy
 			if mutate != nil {
@@ -889,6 +923,8 @@ func TestTribunalConsensusUnconfiguredBindingFailsClosed(t *testing.T) {
 }
 
 func TestConsensusDeliberatorRouterTribunalProviderRoutesToTribunal(t *testing.T) {
+	t.Parallel()
+
 	env, hash := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
@@ -920,6 +956,8 @@ func TestConsensusDeliberatorRouterTribunalProviderRoutesToTribunal(t *testing.T
 }
 
 func TestConsensusDeliberatorRouterApplicationProviderRoutesToApplication(t *testing.T) {
+	t.Parallel()
+
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	binding.Provider = string(constants.ConsensusProviderApplication)
@@ -949,6 +987,8 @@ func TestConsensusDeliberatorRouterApplicationProviderRoutesToApplication(t *tes
 }
 
 func TestConsensusDeliberatorRouterFailsClosedWithoutBindingOrTribunal(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		binding  *models.ConsensusPolicy
 		tribunal bool
@@ -958,6 +998,8 @@ func TestConsensusDeliberatorRouterFailsClosedWithoutBindingOrTribunal(t *testin
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			env, _ := tribunalTestEnvelope(t)
 			inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 			signer := newFakeSigner(t, tribunalTestBinding().MemberAppIDs...)

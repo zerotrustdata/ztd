@@ -19,7 +19,9 @@ import (
 )
 
 func TestFetchEnrolled(t *testing.T) {
+	t.Parallel()
 	t.Run("filters completed enrollments and uses the canonical path", func(t *testing.T) {
+		t.Parallel()
 		var gotPath string
 		rows, ok := FetchEnrolled(func(path string) ([]byte, error) {
 			gotPath = path
@@ -32,6 +34,7 @@ func TestFetchEnrolled(t *testing.T) {
 	})
 
 	t.Run("reports request and decode failures", func(t *testing.T) {
+		t.Parallel()
 		rows, ok := FetchEnrolled(func(string) ([]byte, error) { return nil, errors.New("offline") })
 		assert.False(t, ok)
 		assert.Nil(t, rows)
@@ -43,6 +46,7 @@ func TestFetchEnrolled(t *testing.T) {
 }
 
 func TestCompletedEnrollments(t *testing.T) {
+	t.Parallel()
 	rows := CompletedEnrollments([]models.PlatformEnrollmentEnrolledRequest{
 		{RequestID: "one", State: models.PlatformEnrollmentStateCompleted},
 		{RequestID: "two", State: models.PlatformEnrollmentStateRevoked},

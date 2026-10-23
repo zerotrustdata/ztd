@@ -45,6 +45,7 @@ func snapshot(t *testing.T, files fs.RuntimeFileService, root string) *evalv1.Ca
 }
 
 func TestSeedCreatesFixedFilesAndEmptyCaseDirectory(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 
@@ -71,6 +72,7 @@ func TestSeedCreatesFixedFilesAndEmptyCaseDirectory(t *testing.T) {
 }
 
 func TestSeedRejectsExistingRoot(t *testing.T) {
+	t.Parallel()
 	files := newFiles(t)
 	seedRun(t, files, "run-dup")
 
@@ -80,6 +82,7 @@ func TestSeedRejectsExistingRoot(t *testing.T) {
 }
 
 func TestSeedRejectsUnsafeRunIDs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		runID string
@@ -92,6 +95,7 @@ func TestSeedRejectsUnsafeRunIDs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Seed(context.Background(), newFiles(t), tc.runID)
 			require.ErrorIs(t, err, constants.ErrConformanceCanaryInvalid)
 		})
@@ -99,6 +103,7 @@ func TestSeedRejectsUnsafeRunIDs(t *testing.T) {
 }
 
 func TestValidateAttemptIDRejectsUnsafeIDs(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, ValidateAttemptID("attempt-01.a_B"))
 	for _, attemptID := range []string{"", "../x", "x/y", "x y"} {
 		require.ErrorIs(t, ValidateAttemptID(attemptID), constants.ErrConformanceCanaryInvalid, attemptID)
@@ -106,12 +111,14 @@ func TestValidateAttemptIDRejectsUnsafeIDs(t *testing.T) {
 }
 
 func TestTargetPathIsCaseFileUnderRoot(t *testing.T) {
+	t.Parallel()
 	set := &Set{Root: "eval/targets/conformance-run-1", Files: []string{"alpha.txt"}}
 
 	assert.Equal(t, "eval/targets/conformance-run-1/cases/attempt-1.txt", set.TargetPath("attempt-1"))
 }
 
 func TestTargetRelIsCaseFileRelativeToCanaryRoot(t *testing.T) {
+	t.Parallel()
 	set := &Set{Root: "eval/targets/conformance-run-1", Files: []string{"alpha.txt"}}
 
 	assert.Equal(t, "cases/attempt-1.txt", TargetRel("attempt-1"))
@@ -119,6 +126,7 @@ func TestTargetRelIsCaseFileRelativeToCanaryRoot(t *testing.T) {
 }
 
 func TestSnapshotRecordsTargetWriteAtTargetRel(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-target-rel")
@@ -138,6 +146,7 @@ func TestSnapshotRecordsTargetWriteAtTargetRel(t *testing.T) {
 }
 
 func TestSnapshotWithoutChangeProducesEmptyDelta(t *testing.T) {
+	t.Parallel()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-stable")
 
@@ -148,6 +157,7 @@ func TestSnapshotWithoutChangeProducesEmptyDelta(t *testing.T) {
 }
 
 func TestDiffReportsAddedFile(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-add")
@@ -162,6 +172,7 @@ func TestDiffReportsAddedFile(t *testing.T) {
 }
 
 func TestDiffReportsRemovedFile(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-remove")
@@ -176,6 +187,7 @@ func TestDiffReportsRemovedFile(t *testing.T) {
 }
 
 func TestDiffReportsChangedFile(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-change")
@@ -190,6 +202,7 @@ func TestDiffReportsChangedFile(t *testing.T) {
 }
 
 func TestDiffReportsChangeInsideNestedDirectory(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-nested")
@@ -204,6 +217,7 @@ func TestDiffReportsChangeInsideNestedDirectory(t *testing.T) {
 }
 
 func TestDiffReportsAddedDirectory(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-dir")
@@ -218,6 +232,7 @@ func TestDiffReportsAddedDirectory(t *testing.T) {
 }
 
 func TestExactlyWroteAcceptsSingleNewTargetWithExpectedContent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-exact")
@@ -230,10 +245,12 @@ func TestExactlyWroteAcceptsSingleNewTargetWithExpectedContent(t *testing.T) {
 }
 
 func TestExactlyWroteRejectsWrongContentExtraFileSecondChangeAndNoChange(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	content := []byte("granted write\n")
 
 	t.Run("wrong content", func(t *testing.T) {
+		t.Parallel()
 		files := newFiles(t)
 		set := seedRun(t, files, "run-wrong")
 		before := snapshot(t, files, set.Root)
@@ -243,6 +260,7 @@ func TestExactlyWroteRejectsWrongContentExtraFileSecondChangeAndNoChange(t *test
 	})
 
 	t.Run("extra file", func(t *testing.T) {
+		t.Parallel()
 		files := newFiles(t)
 		set := seedRun(t, files, "run-extra")
 		before := snapshot(t, files, set.Root)
@@ -253,6 +271,7 @@ func TestExactlyWroteRejectsWrongContentExtraFileSecondChangeAndNoChange(t *test
 	})
 
 	t.Run("second changed file", func(t *testing.T) {
+		t.Parallel()
 		files := newFiles(t)
 		set := seedRun(t, files, "run-second")
 		before := snapshot(t, files, set.Root)
@@ -263,6 +282,7 @@ func TestExactlyWroteRejectsWrongContentExtraFileSecondChangeAndNoChange(t *test
 	})
 
 	t.Run("no change", func(t *testing.T) {
+		t.Parallel()
 		files := newFiles(t)
 		set := seedRun(t, files, "run-none")
 		before := snapshot(t, files, set.Root)
@@ -272,6 +292,7 @@ func TestExactlyWroteRejectsWrongContentExtraFileSecondChangeAndNoChange(t *test
 }
 
 func TestSnapshotRejectsSymlinkUnderRoot(t *testing.T) {
+	t.Parallel()
 	files := newFiles(t)
 	set := seedRun(t, files, "run-symlink")
 	link := filepath.Join(files.Resolve(set.Root), "link.txt")

@@ -16,19 +16,25 @@ import (
 )
 
 func TestNewEnrollModel(t *testing.T) {
+	t.Parallel()
 	m := newEnrollModel()
 	assert.False(t, m.done)
 	assert.NoError(t, m.err)
 }
 
 func TestEnrollModelInit(t *testing.T) {
+	t.Parallel()
 	m := newEnrollModel()
 	cmd := m.Init()
 	assert.NotNil(t, cmd)
 }
 
 func TestEnrollModelUpdate(t *testing.T) {
+	t.Parallel()
+
 	t.Run("tick increments counter and returns tick command", func(t *testing.T) {
+		t.Parallel()
+
 		m := newEnrollModel()
 		next, cmd := m.Update(enrollTickMsg{})
 		assert.Equal(t, 1, next.(enrollModel).tick)
@@ -36,6 +42,8 @@ func TestEnrollModelUpdate(t *testing.T) {
 	})
 
 	t.Run("passkeyRegisteredMsg sets done and quits", func(t *testing.T) {
+		t.Parallel()
+
 		m := newEnrollModel()
 		next, cmd := m.Update(passkeyRegisteredMsg{})
 		assert.True(t, next.(enrollModel).done)
@@ -45,6 +53,8 @@ func TestEnrollModelUpdate(t *testing.T) {
 	})
 
 	t.Run("enrollErrMsg sets err and quits", func(t *testing.T) {
+		t.Parallel()
+
 		testErr := fmt.Errorf("timeout")
 		m := newEnrollModel()
 		next, cmd := m.Update(enrollErrMsg{err: testErr})
@@ -55,6 +65,8 @@ func TestEnrollModelUpdate(t *testing.T) {
 	})
 
 	t.Run("q key quits", func(t *testing.T) {
+		t.Parallel()
+
 		m := newEnrollModel()
 		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 		assert.NotNil(t, cmd)
@@ -64,6 +76,8 @@ func TestEnrollModelUpdate(t *testing.T) {
 	})
 
 	t.Run("ctrl+c quits", func(t *testing.T) {
+		t.Parallel()
+
 		m := newEnrollModel()
 		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 		assert.NotNil(t, cmd)
@@ -73,6 +87,8 @@ func TestEnrollModelUpdate(t *testing.T) {
 	})
 
 	t.Run("other key is no-op", func(t *testing.T) {
+		t.Parallel()
+
 		m := newEnrollModel()
 		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 		assert.Nil(t, cmd)
@@ -81,7 +97,9 @@ func TestEnrollModelUpdate(t *testing.T) {
 }
 
 func TestEnrollModelView(t *testing.T) {
+	t.Parallel()
 	t.Run("waiting view shows spinner and pointer to the printed URL", func(t *testing.T) {
+		t.Parallel()
 		m := newEnrollModel()
 		view := m.View()
 		assert.Contains(t, view, "Waiting for passkey registration")
@@ -89,10 +107,12 @@ func TestEnrollModelView(t *testing.T) {
 	})
 
 	t.Run("waiting view never renders the token-bearing URL", func(t *testing.T) {
+		t.Parallel()
 		// bubbletea truncates every view line wider than the terminal with no
 		// ellipsis. A clicked or copied truncated URL carries a truncated
 		// one-time token that the Gateway rejects as not found, so the secret
 		// URL must only reach the user through the unabridged Out sink.
+
 		view := newEnrollModel().View()
 		assert.NotContains(t, view, "token=")
 		assert.NotContains(t, view, "#enroll")
@@ -100,6 +120,7 @@ func TestEnrollModelView(t *testing.T) {
 	})
 
 	t.Run("done view shows success", func(t *testing.T) {
+		t.Parallel()
 		m := newEnrollModel()
 		m.done = true
 		view := m.View()
@@ -107,6 +128,7 @@ func TestEnrollModelView(t *testing.T) {
 	})
 
 	t.Run("error view shows error message", func(t *testing.T) {
+		t.Parallel()
 		m := newEnrollModel()
 		m.err = fmt.Errorf("connection failed")
 		view := m.View()
@@ -116,6 +138,7 @@ func TestEnrollModelView(t *testing.T) {
 }
 
 func TestSpinnerChar(t *testing.T) {
+	t.Parallel()
 	chars := []string{"|", "/", "-", "\\"}
 	for i := 0; i < 8; i++ {
 		assert.Equal(t, chars[i%4], spinnerChar(i))

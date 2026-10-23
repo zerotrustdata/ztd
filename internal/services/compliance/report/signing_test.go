@@ -56,6 +56,7 @@ func reportSigningFixture(t *testing.T) (ed25519.PrivateKey, *compliancev1.Compl
 }
 
 func TestComplianceReportTrustPolicy_CanonicalRoundTrip(t *testing.T) {
+	t.Parallel()
 	_, _, policy, _ := reportSigningFixture(t)
 	body, err := compliancev1.MarshalCanonical(policy)
 	require.NoError(t, err)
@@ -65,6 +66,7 @@ func TestComplianceReportTrustPolicy_CanonicalRoundTrip(t *testing.T) {
 }
 
 func TestNewComplianceReportSigningIdentity_RejectsKeyMetadataMismatch(t *testing.T) {
+	t.Parallel()
 	privateKey, metadata, _, _ := reportSigningFixture(t)
 	tests := []struct {
 		name   string
@@ -83,6 +85,7 @@ func TestNewComplianceReportSigningIdentity_RejectsKeyMetadataMismatch(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := proto.Clone(metadata).(*compliancev1.ComplianceReportSigningKeyMetadata)
 			tt.mutate(candidate)
 			identity, err := NewComplianceReportSigningIdentity(candidate, privateKey)
@@ -93,6 +96,7 @@ func TestNewComplianceReportSigningIdentity_RejectsKeyMetadataMismatch(t *testin
 }
 
 func TestNewComplianceReportSigningIdentity_RejectsInvalidPrivateKey(t *testing.T) {
+	t.Parallel()
 	_, metadata, _, _ := reportSigningFixture(t)
 	identity, err := NewComplianceReportSigningIdentity(metadata, ed25519.PrivateKey("not-an-ed25519-private-key"))
 	assert.Nil(t, identity)
@@ -100,6 +104,7 @@ func TestNewComplianceReportSigningIdentity_RejectsInvalidPrivateKey(t *testing.
 }
 
 func TestComplianceReportSigningIdentity_SignsDigestWithDedicatedIdentity(t *testing.T) {
+	t.Parallel()
 	privateKey, metadata, _, _ := reportSigningFixture(t)
 	identity, err := NewComplianceReportSigningIdentity(metadata, privateKey)
 	require.NoError(t, err)
@@ -115,6 +120,7 @@ func TestComplianceReportSigningIdentity_SignsDigestWithDedicatedIdentity(t *tes
 }
 
 func TestVerifyComplianceReportSignature_RequiresAssessedTrust(t *testing.T) {
+	t.Parallel()
 	privateKey, metadata, policy, signedAt := reportSigningFixture(t)
 	identity, err := NewComplianceReportSigningIdentity(metadata, privateKey)
 	require.NoError(t, err)
@@ -178,6 +184,7 @@ func TestVerifyComplianceReportSignature_RequiresAssessedTrust(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidateSignature := proto.Clone(signature).(*compliancev1.ReportSignature)
 			candidatePolicy := proto.Clone(policy).(*compliancev1.ComplianceReportTrustPolicy)
 			scope, at := tt.mutate(candidateSignature, candidatePolicy)

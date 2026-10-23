@@ -251,6 +251,7 @@ func isNotRun(c *evalv1.ConformanceCaseEvidence) bool {
 }
 
 func TestRunOrdersEachCaseBetweenCanarySnapshotsAndSentinels(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
@@ -262,6 +263,7 @@ func TestRunOrdersEachCaseBetweenCanarySnapshotsAndSentinels(t *testing.T) {
 }
 
 func TestRunAttemptTargetRelIsCanaryRelativeCaseFile(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
@@ -281,6 +283,7 @@ func TestRunAttemptTargetRelIsCanaryRelativeCaseFile(t *testing.T) {
 }
 
 func TestRunRecordsFilledHeaderAndAnchors(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
@@ -313,6 +316,7 @@ func writeActuatorExport(t *testing.T, h *harness, ex cases.Executor, signer ora
 }
 
 func TestRunPinsOutboundAnchorToEnrollmentBindingAndExportDigest(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
@@ -330,6 +334,7 @@ func TestRunPinsOutboundAnchorToEnrollmentBindingAndExportDigest(t *testing.T) {
 }
 
 func TestRunRefusesOutboundAnchorThatDoesNotCheckAgainstItsExport(t *testing.T) {
+	t.Parallel()
 	other := oracletest.NewSigner(t)
 	tests := []struct {
 		name   string
@@ -353,6 +358,7 @@ func TestRunRefusesOutboundAnchorThatDoesNotCheckAgainstItsExport(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			h := newHarness(t)
 			tt.mutate(t, h)
 
@@ -367,6 +373,7 @@ func TestRunRefusesOutboundAnchorThatDoesNotCheckAgainstItsExport(t *testing.T) 
 }
 
 func TestRunRequiresEnrollmentBoundAnchorOnlyForOutbound(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(h *harness)
@@ -385,6 +392,7 @@ func TestRunRequiresEnrollmentBoundAnchorOnlyForOutbound(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			h := newHarness(t)
 			tt.mutate(h)
 
@@ -399,6 +407,7 @@ func TestRunRequiresEnrollmentBoundAnchorOnlyForOutbound(t *testing.T) {
 }
 
 func TestRunAbortsWhenStackIsNotQuiescent(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.extraLink[cases.ExecutorEmbedded] = true
 
@@ -411,6 +420,7 @@ func TestRunAbortsWhenStackIsNotQuiescent(t *testing.T) {
 }
 
 func TestRunAbortsWhenSentinelReceiptIsForged(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.forged[cases.ExecutorOutbound] = true
 
@@ -423,6 +433,7 @@ func TestRunAbortsWhenSentinelReceiptIsForged(t *testing.T) {
 }
 
 func TestRunRecordsAttendedCaseAsNotRunInUnattendedRun(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
@@ -456,6 +467,7 @@ func TestRunRecordsAttendedCaseAsNotRunInUnattendedRun(t *testing.T) {
 }
 
 func TestRunWithEmbeddedOperatorOnlyRunsOutboundRoleCasesOnEmbedded(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	cfg := h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, false)
 	delete(cfg.Roots, cases.ExecutorOutbound)
@@ -483,6 +495,7 @@ func TestRunWithEmbeddedOperatorOnlyRunsOutboundRoleCasesOnEmbedded(t *testing.T
 }
 
 func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(cfg *Config)
@@ -500,6 +513,7 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			h := newHarness(t)
 			cfg := h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true)
 			embedded := h.roots[cases.ExecutorEmbedded]
@@ -518,6 +532,7 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 }
 
 func TestRunAbortsWithNoRecordWhenDriverFails(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	driveErr := errors.New("transport down")
 	h.driveErr = driveErr
@@ -530,6 +545,7 @@ func TestRunAbortsWithNoRecordWhenDriverFails(t *testing.T) {
 }
 
 func TestRunAttachesExchangesOnlyToTheirOwnCase(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))

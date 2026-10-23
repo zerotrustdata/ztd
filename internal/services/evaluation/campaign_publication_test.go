@@ -184,6 +184,7 @@ func savePublicRunIdentity(t *testing.T, store *Store, runID, campaignID string)
 }
 
 func TestResetFeedPublicationIdempotencyPreservesAuditProofKeys(t *testing.T) {
+	t.Parallel()
 	publicationState := NewMemoryCampaignPublicationStateStore()
 	runID := "run-feed-reset"
 	require.NoError(t, publicationState.Save(context.Background(), &CampaignPublicationState{
@@ -329,6 +330,7 @@ func evaluationSummaries(t *testing.T, records []CampaignPublicFeedRecord) []eva
 // Before the fix, later aggregate revisions re-emitted verifier_state
 // not_applicable and erased the published result.
 func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -364,6 +366,7 @@ func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
 // later execute/publish when additional assignments settle and the bound
 // population no longer matches the persisted report.
 func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	controller, req, run := scheduledTestCampaign(t, store)
@@ -389,6 +392,7 @@ func TestPublishRunAggregatesIgnoresStalePartialVerificationOnInProgressRun(t *t
 // settled run's evidence fails closed on every publication path instead of
 // publishing a downgrade.
 func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -413,6 +417,7 @@ func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T)
 // A caller-supplied report that does not apply to a settled run is rejected
 // before catch-up exports any record.
 func TestPublishRunCatchUpWithVerificationRejectsCallerReportForSettledRun(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -429,6 +434,7 @@ func TestPublishRunCatchUpWithVerificationRejectsCallerReportForSettledRun(t *te
 }
 
 func TestPublishRunAggregatesProjectsBoundFailure(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -452,6 +458,7 @@ func TestPublishRunAggregatesProjectsBoundFailure(t *testing.T) {
 // to a settled run: an applicable report binds, and a non-applicable or
 // malformed one fails closed with the sentinel the caller can match.
 func TestBindRunVerificationOnSettledRun(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	run := completedTestCampaign(t, store)
@@ -483,6 +490,7 @@ func TestBindRunVerificationOnSettledRun(t *testing.T) {
 		}, wantErr: constants.ErrEvidenceArtifactMalformed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 			tc.mutate(report)
 

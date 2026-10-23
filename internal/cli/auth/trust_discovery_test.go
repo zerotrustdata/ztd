@@ -22,6 +22,8 @@ import (
 )
 
 func TestValidateTrustBundle_ValidBundleWithRootAndLeaf(t *testing.T) {
+	t.Parallel()
+
 	caKey, caCert := generateTestCAWithKey(t, "test-root-ca")
 	caPEM := pemEncode("CERTIFICATE", caCert.Raw)
 	leafPEM, _ := testutil.GenerateTestSignedCert(t, "test-leaf", caCert, caKey)
@@ -37,18 +39,24 @@ func TestValidateTrustBundle_ValidBundleWithRootAndLeaf(t *testing.T) {
 }
 
 func TestValidateTrustBundle_EmptyBundleReturnsErrSystemTrustInvalidAnchor(t *testing.T) {
+	t.Parallel()
+
 	_, err := ValidateTrustBundle([]byte{}, time.Now)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEmptyTrustBundle)
 }
 
 func TestValidateTrustBundle_MalformedPEMReturnsErrSystemTrustInvalidAnchor(t *testing.T) {
+	t.Parallel()
+
 	_, err := ValidateTrustBundle([]byte("not a pem"), time.Now)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrSystemTrustInvalidAnchor)
 }
 
 func TestValidateTrustBundle_ExpiredRootReturnsErrSystemTrustInvalidAnchor(t *testing.T) {
+	t.Parallel()
+
 	caKey, caCert := generateTestCAWithKeyAndExpiry(t, "expired-root", time.Now().Add(-time.Hour))
 	caPEM := pemEncode("CERTIFICATE", caCert.Raw)
 	leafPEM, _ := testutil.GenerateTestSignedCert(t, "test-leaf", caCert, caKey)
@@ -60,10 +68,14 @@ func TestValidateTrustBundle_ExpiredRootReturnsErrSystemTrustInvalidAnchor(t *te
 }
 
 func TestValidateTrustBundle_NoRootAnchorsReturnsErrSystemTrustInvalidAnchor(t *testing.T) {
+	t.Parallel(
+
 	// A bundle with only leaf certs (no self-signed CA) has no root
 	// anchors. ExtractRootAnchors returns (nil, nil) — it skips
 	// non-CA certs without erroring. ValidateTrustBundle catches the
 	// empty root slice and returns ErrSystemTrustInvalidAnchor.
+	)
+
 	caKey, caCert := generateTestCAWithKey(t, "test-root-ca")
 	leafPEM, _ := testutil.GenerateTestSignedCert(t, "test-leaf", caCert, caKey)
 	// Deliberately exclude the root CA PEM — only the leaf.
@@ -75,10 +87,14 @@ func TestValidateTrustBundle_NoRootAnchorsReturnsErrSystemTrustInvalidAnchor(t *
 }
 
 func TestValidateTrustBundle_NoChainToAnchorReturnsErrSystemTrustInvalidAnchor(t *testing.T) {
+	t.Parallel(
+
 	// Two unrelated root CAs: the leaf from one won't chain to the
 	// other. Build a bundle with rootA + leafB (signed by rootB, not
 	// rootA). VerifyRootUsable should fail because no non-root cert
 	// chains to rootA (the only root in the bundle).
+	)
+
 	_, caCertA := generateTestCAWithKey(t, "root-a")
 	caKeyB, caCertB := generateTestCAWithKey(t, "root-b")
 	caAPEM := pemEncode("CERTIFICATE", caCertA.Raw)
@@ -91,6 +107,8 @@ func TestValidateTrustBundle_NoChainToAnchorReturnsErrSystemTrustInvalidAnchor(t
 }
 
 func TestValidateTrustBundle_FingerprintMatchesCertFingerprint(t *testing.T) {
+	t.Parallel()
+
 	caKey, caCert := generateTestCAWithKey(t, "fingerprint-root")
 	caPEM := pemEncode("CERTIFICATE", caCert.Raw)
 	leafPEM, _ := testutil.GenerateTestSignedCert(t, "leaf", caCert, caKey)
@@ -103,6 +121,8 @@ func TestValidateTrustBundle_FingerprintMatchesCertFingerprint(t *testing.T) {
 
 // Ensure the bundle PEM in the result can be re-parsed independently.
 func TestValidateTrustBundle_ResultBundlePEMIsReparseable(t *testing.T) {
+	t.Parallel()
+
 	caKey, caCert := generateTestCAWithKey(t, "reparse-root")
 	caPEM := pemEncode("CERTIFICATE", caCert.Raw)
 	leafPEM, _ := testutil.GenerateTestSignedCert(t, "reparse-leaf", caCert, caKey)
@@ -130,6 +150,8 @@ func TestValidateTrustBundle_ResultBundlePEMIsReparseable(t *testing.T) {
 // Ensure the error message from ValidateTrustBundle on a missing root
 // anchor chain includes the underlying error for diagnostics.
 func TestValidateTrustBundle_ChainFailurePreservesUnderlyingError(t *testing.T) {
+	t.Parallel()
+
 	_, caCertA := generateTestCAWithKey(t, "unrelated-root-a")
 	caKeyB, caCertB := generateTestCAWithKey(t, "unrelated-root-b")
 	caAPEM := pemEncode("CERTIFICATE", caCertA.Raw)
@@ -152,6 +174,8 @@ func TestValidateTrustBundle_ChainFailurePreservesUnderlyingError(t *testing.T) 
 // ErrSystemTrustInvalidAnchor so callers can check for the outer
 // constant regardless of the underlying cause.
 func TestValidateTrustBundle_EmptyBundleErrorIsWrappedAsInvalidAnchor(t *testing.T) {
+	t.Parallel()
+
 	_, err := ValidateTrustBundle([]byte{}, time.Now)
 	require.Error(t, err)
 	// ValidateTrustBundle wraps all ExtractRootAnchors errors with

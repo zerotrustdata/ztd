@@ -30,18 +30,21 @@ func newTestPubSubController(t *testing.T) *PubSubController {
 }
 
 func TestNewPubSubController_Wiring(t *testing.T) {
+	t.Parallel()
 	c := newTestPubSubController(t)
 
 	assert.NotNil(t, c.WebSocketHandler(), "WebSocketHandler accessor should return the wrapped handler")
 }
 
 func TestNewPubSubController_NilDeps(t *testing.T) {
+	t.Parallel()
 	c := newPubSubController(PubSubControllerDeps{})
 	require.NotNil(t, c)
 	assert.Nil(t, c.WebSocketHandler(), "WebSocketHandler accessor should be nil when no handler is wired")
 }
 
 func TestPubSubController_HandleWebSocket_Delegates(t *testing.T) {
+	t.Parallel()
 	c := newTestPubSubController(t)
 
 	// A plain HTTP GET (no WebSocket upgrade headers) causes gorilla/websocket's
@@ -55,6 +58,7 @@ func TestPubSubController_HandleWebSocket_Delegates(t *testing.T) {
 }
 
 func TestPubSubController_PublishDelegatesToUnderlyingHandler(t *testing.T) {
+	t.Parallel()
 	c := newTestPubSubController(t)
 
 	// Publish through the accessor-returned handler. With no subscribers,

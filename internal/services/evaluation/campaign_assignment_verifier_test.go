@@ -106,6 +106,7 @@ func verifyStoredHomogeneous(t *testing.T, req AssignmentExecutionRequest, trace
 // verify: the verifier recomputes the same verdict, under the current catalog
 // and under the legacy one, where grades are not recomputed.
 func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromGraderVerdict(t *testing.T) {
+	t.Parallel()
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
 		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
@@ -128,6 +129,7 @@ func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromGraderVerdic
 
 // A stored INVALID_EVIDENCE from the live schema pin must verify offline.
 func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromSchemaPin(t *testing.T) {
+	t.Parallel()
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
 		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
@@ -147,6 +149,7 @@ func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromSchemaPin(t 
 // cannot be stored COMPLETED: the verifier applies the schema pin, so the
 // COMPLETED lifecycle is flagged.
 func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVersion(t *testing.T) {
+	t.Parallel()
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
 		Intent:     []constants.TriageIntent{constants.TriageIntentAction},

@@ -111,6 +111,7 @@ func (m *mockExitWatchOpener) Open(pid int) (exitWatcher, error) {
 }
 
 func TestIsProcessRunningWithFinder(t *testing.T) {
+	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -119,6 +120,7 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 	}
 
 	t.Run("returns false for PID 0", func(t *testing.T) {
+		t.Parallel()
 		finder := &mockProcessFinder{}
 		result := pm.isProcessRunningWithFinder(0, finder)
 		if result {
@@ -127,6 +129,7 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 	})
 
 	t.Run("returns false when FindProcess fails", func(t *testing.T) {
+		t.Parallel()
 		finder := &mockProcessFinder{
 			findProcessFunc: func(pid int) (process, error) {
 				return nil, errors.New("process not found")
@@ -139,6 +142,7 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 	})
 
 	t.Run("returns false when Signal fails", func(t *testing.T) {
+		t.Parallel()
 		finder := &mockProcessFinder{
 			findProcessFunc: func(pid int) (process, error) {
 				return &mockProcess{
@@ -155,6 +159,7 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 	})
 
 	t.Run("returns true when Signal succeeds", func(t *testing.T) {
+		t.Parallel()
 		finder := &mockProcessFinder{
 			findProcessFunc: func(pid int) (process, error) {
 				return &mockProcess{
@@ -171,6 +176,7 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 	})
 
 	t.Run("returns true for Signal(0) success", func(t *testing.T) {
+		t.Parallel()
 		finder := &mockProcessFinder{
 			findProcessFunc: func(pid int) (process, error) {
 				return &mockProcess{
@@ -191,6 +197,7 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 }
 
 func TestFindProcessOnPortWithFactory(t *testing.T) {
+	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -199,6 +206,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 	}
 
 	t.Run("returns 0 when command fails", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return nil, errors.New("lsof failed")
@@ -211,6 +219,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 	})
 
 	t.Run("returns 0 when output is malformed", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return []byte("not-a-number"), nil
@@ -223,6 +232,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 	})
 
 	t.Run("returns 0 when output is empty", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return []byte(""), nil
@@ -235,6 +245,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 	})
 
 	t.Run("returns valid PID when output is valid", func(t *testing.T) {
+		t.Parallel()
 		expectedPID := 12345
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
@@ -248,6 +259,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 	})
 
 	t.Run("returns valid PID with whitespace", func(t *testing.T) {
+		t.Parallel()
 		expectedPID := 67890
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
@@ -261,6 +273,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 	})
 
 	t.Run("passes correct port to command", func(t *testing.T) {
+		t.Parallel()
 		testPort := 9090
 		executor := &mockCommandExecutor{
 			commandFunc: func(name string, args ...string) *exec.Cmd {
@@ -281,6 +294,7 @@ func TestFindProcessOnPortWithFactory(t *testing.T) {
 }
 
 func TestFindOperatorProcessWithExecutor(t *testing.T) {
+	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -289,6 +303,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	}
 
 	t.Run("returns 0 when command fails", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return nil, errors.New("pgrep failed")
@@ -301,6 +316,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 0 when output is malformed", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return []byte("invalid"), nil
@@ -313,6 +329,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	})
 
 	t.Run("returns valid PID when output is valid", func(t *testing.T) {
+		t.Parallel()
 		expectedPID := 54321
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
@@ -326,6 +343,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	})
 
 	t.Run("skips the calling process", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return []byte(fmt.Sprintf("%d\n54321\n", os.Getpid())), nil
@@ -337,6 +355,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 0 when only the calling process matches", func(t *testing.T) {
+		t.Parallel()
 		executor := &mockCommandExecutor{
 			outputFunc: func(cmd *exec.Cmd) ([]byte, error) {
 				return []byte(fmt.Sprintf("%d\n", os.Getpid())), nil
@@ -348,6 +367,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	})
 
 	t.Run("passes correct arguments to command", func(t *testing.T) {
+		t.Parallel()
 		expectedPattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", fileSvc.Resolve(constants.DataDirname))
 		executor := &mockCommandExecutor{
 			commandFunc: func(name string, args ...string) *exec.Cmd {
@@ -368,6 +388,8 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 }
 
 func TestStopProcessWithDeps(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -400,6 +422,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	}
 
 	t.Run("returns nil for PID 0", func(t *testing.T) {
+		t.Parallel()
+
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
 				t.Error("exit watch should not open for PID 0")
@@ -413,6 +437,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns nil when process is not running", func(t *testing.T) {
+		t.Parallel()
+
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
 				return nil, fmt.Errorf("watch: %w", constants.ErrProcessNotFound)
@@ -431,6 +457,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns error when exit watch cannot open", func(t *testing.T) {
+		t.Parallel()
+
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
 				return nil, errors.New("watch unavailable")
@@ -449,6 +477,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns error when FindProcess fails after watch opens", func(t *testing.T) {
+		t.Parallel()
+
 		closed := false
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
@@ -475,6 +505,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns error when SIGTERM fails", func(t *testing.T) {
+		t.Parallel()
+
 		var signals []syscall.Signal
 		finder := signalRecorder(&signals, syscall.SIGTERM, errors.New("SIGTERM failed"))
 		err := pm.stopProcessWithDeps(123, finder, &mockExitWatchOpener{}, 10*time.Second)
@@ -487,6 +519,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("opens exit watch before SIGTERM and returns nil when process exits", func(t *testing.T) {
+		t.Parallel()
+
 		var signals []syscall.Signal
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
@@ -508,6 +542,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("sends SIGKILL after timeout", func(t *testing.T) {
+		t.Parallel()
+
 		var signals []syscall.Signal
 		waits := 0
 		exits := &mockExitWatchOpener{
@@ -534,6 +570,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns error when SIGKILL fails", func(t *testing.T) {
+		t.Parallel()
+
 		var signals []syscall.Signal
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
@@ -548,6 +586,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns SIGKILL timeout error when process survives SIGKILL", func(t *testing.T) {
+		t.Parallel()
+
 		var signals []syscall.Signal
 		waits := 0
 		exits := &mockExitWatchOpener{
@@ -575,6 +615,8 @@ func TestStopProcessWithDeps(t *testing.T) {
 	})
 
 	t.Run("returns error without SIGKILL when exit cannot be observed", func(t *testing.T) {
+		t.Parallel()
+
 		var signals []syscall.Signal
 		exits := &mockExitWatchOpener{
 			openFunc: func(pid int) (exitWatcher, error) {
@@ -597,7 +639,9 @@ func TestStopProcessWithDeps(t *testing.T) {
 }
 
 func TestMockProcess(t *testing.T) {
+	t.Parallel()
 	t.Run("mockProcess Signal returns nil by default", func(t *testing.T) {
+		t.Parallel()
 		p := &mockProcess{}
 		err := p.Signal(syscall.SIGTERM)
 		if err != nil {
@@ -606,6 +650,7 @@ func TestMockProcess(t *testing.T) {
 	})
 
 	t.Run("mockProcess Signal uses custom function", func(t *testing.T) {
+		t.Parallel()
 		expectedErr := errors.New("custom error")
 		p := &mockProcess{
 			signalFunc: func(sig syscall.Signal) error {
@@ -620,7 +665,11 @@ func TestMockProcess(t *testing.T) {
 }
 
 func TestMockProcessFinder(t *testing.T) {
+	t.Parallel()
+
 	t.Run("mockProcessFinder FindProcess returns mock by default", func(t *testing.T) {
+		t.Parallel()
+
 		f := &mockProcessFinder{}
 		p, err := f.FindProcess(123)
 		if err != nil {
@@ -632,6 +681,8 @@ func TestMockProcessFinder(t *testing.T) {
 	})
 
 	t.Run("mockProcessFinder FindProcess uses custom function", func(t *testing.T) {
+		t.Parallel()
+
 		expectedErr := errors.New("custom error")
 		f := &mockProcessFinder{
 			findProcessFunc: func(pid int) (process, error) {
@@ -646,7 +697,9 @@ func TestMockProcessFinder(t *testing.T) {
 }
 
 func TestMockCommandExecutor(t *testing.T) {
+	t.Parallel()
 	t.Run("mockCommandExecutor Output returns empty by default", func(t *testing.T) {
+		t.Parallel()
 		e := &mockCommandExecutor{}
 		output, err := e.Output(nil)
 		if err != nil {
@@ -658,6 +711,7 @@ func TestMockCommandExecutor(t *testing.T) {
 	})
 
 	t.Run("mockCommandExecutor Output uses custom function", func(t *testing.T) {
+		t.Parallel()
 		expectedOutput := []byte("test output")
 		expectedErr := errors.New("custom error")
 		e := &mockCommandExecutor{

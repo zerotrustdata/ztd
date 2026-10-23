@@ -77,10 +77,12 @@ func httpsToWss(url string) string {
 }
 
 func TestNewOperatorPubSubClient(t *testing.T) {
+	t.Parallel()
 	logger := slog.Default()
 	tlsCfg := newTestCertsTLSConfig(t)
 
 	t.Run("rejects empty baseURL", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewOperatorPubSubClient("", "", logger, tlsCfg)
 		require.Error(t, err)
 		assert.Nil(t, client)
@@ -88,18 +90,21 @@ func TestNewOperatorPubSubClient(t *testing.T) {
 	})
 
 	t.Run("rejects ws:// URL", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewOperatorPubSubClient(fmt.Sprintf("ws://localhost:%d", constants.Ports.OperatorHttp), "", logger, tlsCfg)
 		require.Error(t, err)
 		assert.Nil(t, client)
 	})
 
 	t.Run("rejects nil certsTLSConfig", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewOperatorPubSubClient(fmt.Sprintf("wss://localhost:%d", constants.Ports.OperatorHttp), "", logger, nil)
 		require.Error(t, err)
 		assert.Nil(t, client)
 	})
 
 	t.Run("accepts wss:// URL", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewOperatorPubSubClient(fmt.Sprintf("wss://localhost:%d", constants.Ports.OperatorHttp), "", logger, tlsCfg)
 		require.NoError(t, err)
 		assert.NotNil(t, client)
@@ -108,6 +113,7 @@ func TestNewOperatorPubSubClient(t *testing.T) {
 	})
 
 	t.Run("sets serverName for TLS SNI override", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewOperatorPubSubClient(fmt.Sprintf("wss://192.168.1.1:%d", constants.Ports.OperatorHttp), "gateway.local", logger, tlsCfg)
 		require.NoError(t, err)
 		assert.NotNil(t, client)
@@ -117,10 +123,12 @@ func TestNewOperatorPubSubClient(t *testing.T) {
 }
 
 func TestPubSubWSURL(t *testing.T) {
+	t.Parallel()
 	logger := slog.Default()
 	tlsCfg := newTestCertsTLSConfig(t)
 
 	t.Run("returns correct URL for wss://", func(t *testing.T) {
+		t.Parallel()
 		client, err := NewOperatorPubSubClient(fmt.Sprintf("wss://localhost:%d", constants.Ports.OperatorHttp), "", logger, tlsCfg)
 		require.NoError(t, err)
 		assert.Equal(t, fmt.Sprintf("wss://localhost:%d/api/v1/pubsub/stream", constants.Ports.OperatorHttp), client.pubSubWSURL())

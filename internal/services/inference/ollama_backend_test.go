@@ -25,6 +25,7 @@ import (
 )
 
 func TestTransportError_ClassifiesNetworkTimeoutAndPreservesCause(t *testing.T) {
+	t.Parallel()
 	cause := &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
 	err := transportError(t.Context(), "generate", cause)
 	require.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
@@ -49,6 +50,7 @@ func TestEncodeOllamaKeepAlive(t *testing.T) {
 
 func TestOllamaBackend_GenerateRejectsUnsupportedToolChoiceAndThinkingLevel(t *testing.T) {
 	t.Parallel()
+
 	backend, err := NewOllamaBackend("http://127.0.0.1:1", testutil.NewTestLogger())
 	require.NoError(t, err)
 	tests := []struct {
@@ -70,6 +72,8 @@ func TestOllamaBackend_GenerateRejectsUnsupportedToolChoiceAndThinkingLevel(t *t
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			response, err := backend.Generate(context.Background(), tt.req)
 
 			require.Error(t, err)
@@ -127,6 +131,7 @@ func TestOllamaBackend_StatusUnavailableReturnsErrInferenceBackendUnavailable(t 
 
 func TestOllamaBackend_NewRejectsInvalidEndpoint(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 
 	cases := []struct {
@@ -142,6 +147,8 @@ func TestOllamaBackend_NewRejectsInvalidEndpoint(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			backend, err := NewOllamaBackend(tc.endpoint, logger)
 			require.Error(t, err)
 			assert.Nil(t, backend)

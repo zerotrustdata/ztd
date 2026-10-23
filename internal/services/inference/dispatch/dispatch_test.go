@@ -168,6 +168,7 @@ func TestValidateCampaignModelRegistry_FailsClosedOnInvalidAuthority(t *testing.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := baseRequest()
 			configureCampaignRequest(t, &req)
 			tt.mutate(&req)
@@ -186,6 +187,7 @@ func TestValidateCampaignModelRegistry_FailsClosedOnInvalidAuthority(t *testing.
 // --- routing authority tests ---
 
 func TestDispatchInference_ZeroCapableOperatorsFailsClosed(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		{Id: "op-plain", OperatorSessionId: "sess-plain"},
@@ -198,6 +200,7 @@ func TestDispatchInference_ZeroCapableOperatorsFailsClosed(t *testing.T) {
 }
 
 func TestDispatchInference_SingleCapableOperatorSelected(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		{Id: "op-plain", OperatorSessionId: "sess-plain"},
@@ -214,6 +217,7 @@ func TestDispatchInference_SingleCapableOperatorSelected(t *testing.T) {
 }
 
 func TestDispatchInference_MultipleCapableOperatorsRejectedWithoutTarget(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -227,6 +231,7 @@ func TestDispatchInference_MultipleCapableOperatorsRejectedWithoutTarget(t *test
 }
 
 func TestDispatchInference_DedicatedOperatorPreferredOverEmbedded(t *testing.T) {
+	t.Parallel()
 	embedded := capableOp("sess-embedded")
 	embedded.OperatorType = string(constants.OperatorTypeEmbedded)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
@@ -241,6 +246,7 @@ func TestDispatchInference_DedicatedOperatorPreferredOverEmbedded(t *testing.T) 
 }
 
 func TestDispatchInference_EmbeddedOperatorServesWhenAlone(t *testing.T) {
+	t.Parallel()
 	embedded := capableOp("sess-embedded")
 	embedded.OperatorType = string(constants.OperatorTypeEmbedded)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
@@ -252,6 +258,7 @@ func TestDispatchInference_EmbeddedOperatorServesWhenAlone(t *testing.T) {
 }
 
 func TestDispatchInference_ExplicitTargetSelectsOperator(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -266,6 +273,7 @@ func TestDispatchInference_ExplicitTargetSelectsOperator(t *testing.T) {
 }
 
 func TestDispatchInference_ExplicitTargetNotOwnedByRequestor(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -280,6 +288,7 @@ func TestDispatchInference_ExplicitTargetNotOwnedByRequestor(t *testing.T) {
 }
 
 func TestDispatchInference_ExplicitTargetNotCapable(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		{Id: "op-plain", OperatorSessionId: "sess-plain", Status: string(constants.OperatorStatusActive)},
@@ -295,6 +304,7 @@ func TestDispatchInference_ExplicitTargetNotCapable(t *testing.T) {
 }
 
 func TestDispatchInference_NonActiveOperatorNotSelectable(t *testing.T) {
+	t.Parallel()
 	for _, status := range []constants.OperatorStatus{
 		constants.OperatorStatusTerminated,
 		constants.OperatorStatusStale,
@@ -302,6 +312,7 @@ func TestDispatchInference_NonActiveOperatorNotSelectable(t *testing.T) {
 		constants.OperatorStatusOffline,
 	} {
 		t.Run(string(status), func(t *testing.T) {
+			t.Parallel()
 			dispatcher := &stubCommandDispatcher{}
 			inactive := capableOp("sess-dead")
 			inactive.Status = string(status)
@@ -318,6 +329,7 @@ func TestDispatchInference_NonActiveOperatorNotSelectable(t *testing.T) {
 }
 
 func TestDispatchInference_StaleOperatorDoesNotContestSelection(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
 	stale := capableOp("sess-stale")
 	stale.Status = string(constants.OperatorStatusStale)
@@ -334,6 +346,7 @@ func TestDispatchInference_StaleOperatorDoesNotContestSelection(t *testing.T) {
 // --- request validation ---
 
 func TestDispatchInference_UnspecifiedRoleRejected(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -348,6 +361,7 @@ func TestDispatchInference_UnspecifiedRoleRejected(t *testing.T) {
 }
 
 func TestDispatchInference_MissingRequestorRejected(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{}, testLogger())
 
@@ -360,6 +374,7 @@ func TestDispatchInference_MissingRequestorRejected(t *testing.T) {
 }
 
 func TestDispatchInference_MissingProviderAttemptIDRejected(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-a")}}, testLogger())
 
@@ -373,6 +388,7 @@ func TestDispatchInference_MissingProviderAttemptIDRejected(t *testing.T) {
 }
 
 func TestDispatchInference_OperatorListerErrorPropagates(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{err: errors.New("doc store down")}, testLogger())
 
@@ -385,6 +401,7 @@ func TestDispatchInference_OperatorListerErrorPropagates(t *testing.T) {
 // --- outcome classification ---
 
 func TestDispatchInference_DispatchDeadlineMapsToUnknownOutcome(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{err: fmt.Errorf("dispatch: %w", constants.ErrDispatchResultTimeout)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -398,6 +415,7 @@ func TestDispatchInference_DispatchDeadlineMapsToUnknownOutcome(t *testing.T) {
 }
 
 func TestDispatchInference_DispatchErrorPropagates(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{err: fmt.Errorf("dispatch: %w", constants.ErrDispatchNoDelivery)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -409,6 +427,7 @@ func TestDispatchInference_DispatchErrorPropagates(t *testing.T) {
 }
 
 func TestDispatchInference_EmptyResultPayloadFailsClosed(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: &CommandDispatchResult{TransactionID: "tx-1"}}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -420,6 +439,7 @@ func TestDispatchInference_EmptyResultPayloadFailsClosed(t *testing.T) {
 }
 
 func TestDispatchInference_MalformedResultPayloadFailsClosed(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: &CommandDispatchResult{
 		TransactionID: "tx-1",
 		ResultPayload: []byte{0xff, 0xff, 0xff},
@@ -434,6 +454,7 @@ func TestDispatchInference_MalformedResultPayloadFailsClosed(t *testing.T) {
 }
 
 func TestDispatchInference_ContradictoryResultMetadataFailsClosed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		result *operatorv1.InferenceResult
@@ -484,6 +505,7 @@ func TestDispatchInference_ContradictoryResultMetadataFailsClosed(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			payload, err := proto.Marshal(tt.result)
 			require.NoError(t, err)
 			dispatcher := &stubCommandDispatcher{result: &CommandDispatchResult{TransactionID: "tx-1", ResultPayload: payload}}
@@ -499,6 +521,7 @@ func TestDispatchInference_ContradictoryResultMetadataFailsClosed(t *testing.T) 
 }
 
 func TestDispatchInference_ResultIdentityMismatchFailsClosed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*operatorv1.InferenceResult)
@@ -512,6 +535,7 @@ func TestDispatchInference_ResultIdentityMismatchFailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := baseRequest()
 			configureCampaignRequest(t, &req)
 			result := &operatorv1.InferenceResult{
@@ -538,6 +562,7 @@ func TestDispatchInference_ResultIdentityMismatchFailsClosed(t *testing.T) {
 }
 
 func TestDispatchInference_SuccessReturnsResultAndReceipt(t *testing.T) {
+	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-9", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	req := baseRequest()
 	successResult := &operatorv1.InferenceResult{
@@ -573,6 +598,7 @@ func TestDispatchInference_SuccessReturnsResultAndReceipt(t *testing.T) {
 }
 
 func TestDispatchInference_PayloadCarriesRequestFields(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -650,8 +676,10 @@ type stubObservationNotifier struct {
 }
 
 func TestDispatchInference_UndecodableResultFinalizesObservation(t *testing.T) {
+	t.Parallel()
 	for _, payload := range [][]byte{nil, {0xff, 0xff, 0xff}} {
 		t.Run(fmt.Sprintf("payload_%x", payload), func(t *testing.T) {
+			t.Parallel()
 			dispatcher := &stubCommandDispatcher{result: &CommandDispatchResult{
 				TransactionID: "tx-1", ResultPayload: payload,
 			}}
@@ -685,6 +713,7 @@ func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _,
 // The observers' BEGIN and FINALIZE receipts are returned with the result, in
 // dispatch order, so the caller can claim their ledger commitments.
 func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.T) {
+	t.Parallel()
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
@@ -704,6 +733,7 @@ func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.
 // A failed attempt keeps its observers' BEGIN and FINALIZE receipts on the
 // error, in dispatch order, alongside the Operator's signed FAILED receipt.
 func TestDispatchInference_FailedAttemptCarriesObservationReceipts(t *testing.T) {
+	t.Parallel()
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
 	failedReceipt := &operatorv1.ActionReceipt{TransactionId: "tx-failed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
@@ -723,6 +753,7 @@ func TestDispatchInference_FailedAttemptCarriesObservationReceipts(t *testing.T)
 }
 
 func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(t *testing.T) {
+	t.Parallel()
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-inf"),
@@ -759,6 +790,7 @@ func (o *orderingObservationNotifier) NotifyAttemptBegin(ctx context.Context, re
 // BEGIN runs in the admission hook: after the inference holds its L2 votes, so
 // the observation can bind to them, and before the envelope is published.
 func TestDispatchInference_ObservationBeginRunsInsideAdmission(t *testing.T) {
+	t.Parallel()
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
@@ -777,6 +809,7 @@ func TestDispatchInference_ObservationBeginRunsInsideAdmission(t *testing.T) {
 // Observation is optional: with no observer connected, a campaign attempt
 // reaches the provider unobserved and no FINALIZE is sent.
 func TestDispatchInference_NoObserverProceedsUnobserved(t *testing.T) {
+	t.Parallel()
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
@@ -793,6 +826,7 @@ func TestDispatchInference_NoObserverProceedsUnobserved(t *testing.T) {
 }
 
 func TestDispatchInference_CampaignObservationFinalizeFailureFailsClosed(t *testing.T) {
+	t.Parallel()
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}

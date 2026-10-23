@@ -36,6 +36,8 @@ func resumeTestEnvelope(t *testing.T, event constants.EventType, payload []byte)
 }
 
 func TestDispatchService_ProcessEnvelope_PreservesAdmittedEnvelope(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "new-root-must-not-be-used", op)
 	svc.posture = constants.PostureRatify
@@ -71,6 +73,8 @@ func TestDispatchService_ProcessEnvelope_PreservesAdmittedEnvelope(t *testing.T)
 }
 
 func TestDispatchService_ProcessEnvelope_ReturnsSignedDenialWithoutResult(t *testing.T) {
+	t.Parallel()
+
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	svc, broker := newTestDispatchService(t, "root-abc", op)
 	svc.posture = constants.PostureRatify
@@ -105,6 +109,8 @@ func TestDispatchService_ProcessEnvelope_ReturnsSignedDenialWithoutResult(t *tes
 }
 
 func TestDispatchService_ProcessEnvelope_RejectsChangedIdentityBeforeDelivery(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name   string
 		mutate func(*commonv1.GovernanceEnvelope)
@@ -122,6 +128,8 @@ func TestDispatchService_ProcessEnvelope_RejectsChangedIdentityBeforeDelivery(t 
 		{name: "changed payload", mutate: func(env *commonv1.GovernanceEnvelope) { env.Payload = []byte("other payload") }, want: constants.ErrTxTransactionIDMismatch},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 			svc, broker := newTestDispatchService(t, "root-abc", op)
 			svc.posture = constants.PostureRatify
@@ -139,6 +147,8 @@ func TestDispatchService_ProcessEnvelope_RejectsChangedIdentityBeforeDelivery(t 
 }
 
 func TestDispatchService_ProcessEnvelope_UnsignedResultCannotResumeApproval(t *testing.T) {
+	t.Parallel()
+
 	synctest.Test(t, func(t *testing.T) {
 		op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 		svc, broker := newTestDispatchService(t, "root-abc", op)
@@ -159,8 +169,12 @@ func TestDispatchService_ProcessEnvelope_UnsignedResultCannotResumeApproval(t *t
 }
 
 func TestDispatchService_ProcessEnvelope_InferenceCompletionIsVerified(t *testing.T) {
+	t.Parallel()
+
 	for _, outcome := range []string{"completed", "denied", "changed result"} {
 		t.Run(outcome, func(t *testing.T) {
+			t.Parallel()
+
 			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 			svc, broker := newTestDispatchService(t, "root-abc", op)
 			svc.posture = constants.PostureRatify
@@ -214,6 +228,8 @@ func TestDispatchService_ProcessEnvelope_InferenceCompletionIsVerified(t *testin
 }
 
 func TestDispatchService_ProcessEnvelope_ReceiptMustBindBothTransactionIdentifiers(t *testing.T) {
+	t.Parallel()
+
 	synctest.Test(t, func(t *testing.T) {
 		op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 		svc, broker := newTestDispatchService(t, "root-abc", op)

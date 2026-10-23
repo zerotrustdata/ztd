@@ -37,7 +37,11 @@ func (m *mockBrowserCommandExecutor) start(name string, args ...string) error {
 }
 
 func TestOpenBrowser(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns error for empty URL", func(t *testing.T) {
+		t.Parallel()
+
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
 				return nil
@@ -50,6 +54,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid URL", func(t *testing.T) {
+		t.Parallel()
+
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
 				return nil
@@ -69,6 +75,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("validates URL format before executing command", func(t *testing.T) {
+		t.Parallel()
+
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
 				return nil
@@ -89,6 +97,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("uses correct command for Windows", func(t *testing.T) {
+		t.Parallel()
+
 		if runtime.GOOS != "windows" {
 			t.Skip("Skipping Windows-specific test on non-Windows platform")
 		}
@@ -105,6 +115,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("uses correct command for macOS", func(t *testing.T) {
+		t.Parallel()
+
 		if runtime.GOOS != "darwin" {
 			t.Skip("Skipping macOS-specific test on non-macOS platform")
 		}
@@ -121,6 +133,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("uses correct command for Linux/BSD", func(t *testing.T) {
+		t.Parallel()
+
 		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 			t.Skip("Skipping Linux/BSD-specific test on Windows or macOS platform")
 		}
@@ -137,6 +151,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("returns error when command executor fails", func(t *testing.T) {
+		t.Parallel()
+
 		expectedErr := errors.New("command not found")
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
@@ -151,6 +167,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("wraps executor error with context", func(t *testing.T) {
+		t.Parallel()
+
 		execErr := fmt.Errorf("xdg-open: command not found")
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
@@ -164,6 +182,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("handles URL with special characters", func(t *testing.T) {
+		t.Parallel()
+
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
 				return nil
@@ -177,6 +197,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("handles local file URLs", func(t *testing.T) {
+		t.Parallel()
+
 		mock := &mockBrowserCommandExecutor{
 			startFunc: func(name string, args ...string) error {
 				return nil
@@ -189,6 +211,8 @@ func TestOpenBrowser(t *testing.T) {
 	})
 
 	t.Run("OpenBrowser rejects empty URL before executing a command", func(t *testing.T) {
+		t.Parallel()
+
 		require.ErrorIs(t, OpenBrowser(""), constants.ErrBrowserURLEmpty)
 	})
 }

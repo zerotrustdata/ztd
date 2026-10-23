@@ -20,6 +20,7 @@ import (
 )
 
 func TestOperatorBootstrapRuntimeConfig_KeepsDeclaredHeartbeatInterval(t *testing.T) {
+	t.Parallel()
 	cfg, err := operatorBootstrapRuntimeConfig(&models.OperatorBootstrapRequest{
 		RuntimeConfig: json.RawMessage(`{"heartbeat_interval_ms":120000,"capabilities":["inference"]}`),
 	})
@@ -29,6 +30,7 @@ func TestOperatorBootstrapRuntimeConfig_KeepsDeclaredHeartbeatInterval(t *testin
 }
 
 func TestOperatorBootstrapRuntimeConfig_AcceptsTheMaximumInterval(t *testing.T) {
+	t.Parallel()
 	cfg, err := operatorBootstrapRuntimeConfig(&models.OperatorBootstrapRequest{
 		RuntimeConfig: json.RawMessage(`{"heartbeat_interval_ms":300000}`),
 	})
@@ -37,6 +39,8 @@ func TestOperatorBootstrapRuntimeConfig_AcceptsTheMaximumInterval(t *testing.T) 
 }
 
 func TestOperatorBootstrapRuntimeConfig_RejectsIntervalPastMaximum(t *testing.T) {
+	t.Parallel()
+
 	_, err := operatorBootstrapRuntimeConfig(&models.OperatorBootstrapRequest{
 		RuntimeConfig: json.RawMessage(`{"heartbeat_interval_ms":300001}`),
 	})
@@ -44,6 +48,8 @@ func TestOperatorBootstrapRuntimeConfig_RejectsIntervalPastMaximum(t *testing.T)
 }
 
 func TestOperatorBootstrapRuntimeConfig_RejectsUndecodableConfig(t *testing.T) {
+	t.Parallel()
+
 	_, err := operatorBootstrapRuntimeConfig(&models.OperatorBootstrapRequest{
 		RuntimeConfig: json.RawMessage(`{"heartbeat_interval_ms":"soon"}`),
 	})

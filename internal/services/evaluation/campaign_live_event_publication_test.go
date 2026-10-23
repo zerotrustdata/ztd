@@ -14,6 +14,7 @@ import (
 )
 
 func TestBuildAssignmentPassMetricSignal_IsBinaryPassNotRate(t *testing.T) {
+	t.Parallel()
 	assignment := &evalv1.EvaluationAssignment{
 		RunId:        "run-live-1",
 		AssignmentId: "assign-1",
@@ -34,6 +35,7 @@ func TestBuildAssignmentPassMetricSignal_IsBinaryPassNotRate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result := &evalv1.EvaluationAssignmentResult{
 				LifecycleStatus:     evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 				DeterministicGrades: []*evalv1.DeterministicGrade{{CriterionId: "trajectory", Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION, Status: tc.grade}},

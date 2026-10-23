@@ -99,8 +99,12 @@ func newCLIApprovalMCP(owner string) *approvalRespondMCP {
 }
 
 func TestHandleSignedCLIApproval(t *testing.T) {
+	t.Parallel()
+
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture)+" success", func(t *testing.T) {
+			t.Parallel()
+
 			mcp := newCLIApprovalMCP(cliApprovalTestUser)
 			h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
 			h.posture = posture
@@ -121,6 +125,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	}
 
 	t.Run("tampered signature is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		req := signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession)
 		var payload models.ApprovalRespondRequest
@@ -138,6 +144,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("signature for another hash is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		otherHash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
@@ -150,6 +158,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("certificate for another owner is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, "user-other", cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
@@ -161,6 +171,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("transaction owned by another user is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP("user-other")
 		rr := httptest.NewRecorder()
@@ -173,6 +185,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("wrong TLS session is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, "cli-session-other")
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
@@ -185,6 +199,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("signature from another certificate is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		signerCert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		peerCert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		proof, err := governance.SignCLIApproval(cliApprovalTestHash, &signerCert)
@@ -201,6 +217,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("missing mTLS peer certificate is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		req := approvalRespondRequest(`{"approval_id":"`+cliApprovalTestHash+`","approved":true,"cli_signature":"abcd"}`, cliApprovalTestUser)
 		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyCLISessionID, cliApprovalTestSession))
@@ -214,6 +232,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("browser context cannot use CLI approval", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		req := signedCLIApprovalRequest(t, cliApprovalTestHash, cert, "")
@@ -227,6 +247,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("expired transaction is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		mcp.suspended.ExpiresAt = time.Now().Add(-time.Minute)
@@ -239,6 +261,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("receipt hash mismatch is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		mcp.receipt.TransactionHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -250,6 +274,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("receipt without valid L3 status is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		mcp.receipt.L3Status = operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
@@ -273,6 +299,7 @@ func approvalRespondRequestBody(t *testing.T, payload models.ApprovalRespondRequ
 }
 
 func TestHandleApprovalRespond_ApprovedWithoutCLISignatureRequiresProof(t *testing.T) {
+	t.Parallel()
 	mcp := newCLIApprovalMCP(cliApprovalTestUser)
 	h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
 	req := approvalRespondRequest(`{"approval_id":"`+cliApprovalTestHash+`","approved":true}`, cliApprovalTestUser)

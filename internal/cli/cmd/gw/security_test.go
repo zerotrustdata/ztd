@@ -22,7 +22,9 @@ import (
 )
 
 func TestSecurityCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("security command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := securityCmd()
 		assert.Equal(t, "security", cmd.Use)
 		assert.Contains(t, cmd.Short, "Security validation")
@@ -31,27 +33,33 @@ func TestSecurityCmd(t *testing.T) {
 }
 
 func TestSecurityValidateCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("validate command has correct use", func(t *testing.T) {
+		t.Parallel()
 		cmd := securityValidateCmd()
 		assert.Equal(t, "validate", cmd.Use)
 		assert.Contains(t, cmd.Short, "Run security validation")
 	})
 
 	t.Run("validate has pki-dir flag", func(t *testing.T) {
+		t.Parallel()
 		cmd := securityValidateCmd()
 		flag := cmd.Flags().Lookup("pki-dir")
 		assert.NotNil(t, flag)
 	})
 
 	t.Run("validate has secrets-dir flag", func(t *testing.T) {
+		t.Parallel()
 		cmd := securityValidateCmd()
 		flag := cmd.Flags().Lookup("secrets-dir")
 		assert.NotNil(t, flag)
 	})
 }
 
-func TestSecurityValidateWithTestEnvironment(t *testing.T) {
-	t.Run("validate checks PKI directory structure", func(t *testing.T) {
+func TestSecurityValidateWithTestEnvironment(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("validate checks PKI directory structure", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.TempDir(t)
 		pkiDir := filepath.Join(tmpDir, "pki")
 		secretsDir := filepath.Join(tmpDir, "secrets")
@@ -84,7 +92,8 @@ func TestSecurityValidateWithTestEnvironment(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("validate fails with missing PKI directory", func(t *testing.T) {
+	t.Run("validate fails with missing PKI directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.TempDir(t)
 		pkiDir := filepath.Join(tmpDir, "pki")
 		secretsDir := filepath.Join(tmpDir, "secrets")
@@ -105,7 +114,8 @@ func TestSecurityValidateWithTestEnvironment(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("validate fails with missing secrets directory", func(t *testing.T) {
+	t.Run("validate fails with missing secrets directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.TempDir(t)
 		pkiDir := filepath.Join(tmpDir, "pki")
 		secretsDir := filepath.Join(tmpDir, "secrets")

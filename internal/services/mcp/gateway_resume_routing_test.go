@@ -28,6 +28,7 @@ func (testOutboundProofPreparer) PrepareOutboundL3Proof(_ context.Context, _, _,
 }
 
 func TestResubmitSuspended_OutboundTargetNeverUsesEmbeddedProcessor(t *testing.T) {
+	t.Parallel()
 	local := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{}}
 	g := newTestGatewayService(t, withEnvProc(local))
 	wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
@@ -42,6 +43,7 @@ func TestResubmitSuspended_OutboundTargetNeverUsesEmbeddedProcessor(t *testing.T
 }
 
 func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
+	t.Parallel()
 	for _, embedded := range []bool{true, false} {
 		for _, deny := range []bool{true, false} {
 			name := "outbound approval"
@@ -53,6 +55,7 @@ func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
 				name += " denied"
 			}
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				local, outbound := &fakeEnvelopeProcessor{}, &fakeEnvelopeProcessor{}
 				selected, unused := outbound, local
 				if embedded {
@@ -100,6 +103,7 @@ func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
 }
 
 func TestResubmitSuspended_MissingTargetFailsClosed(t *testing.T) {
+	t.Parallel()
 	local, outbound := &fakeEnvelopeProcessor{}, &fakeEnvelopeProcessor{}
 	g := newTestGatewayService(t, withEnvProc(local))
 	g.outboundEnvProc = outbound
@@ -125,6 +129,7 @@ func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *comm
 // retires the suspension instead of leaving it for the expiry sweep. A decision
 // that never reached the dispatch keeps the row for retry.
 func TestPendingDispatchFailure_RetiresOnlyHandedOffDecisions(t *testing.T) {
+	t.Parallel()
 	failed := &operatorv1.ActionReceipt{TransactionId: "tx-pending", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 	for _, handedOff := range []bool{true, false} {
 		for _, deny := range []bool{true, false} {
@@ -136,6 +141,7 @@ func TestPendingDispatchFailure_RetiresOnlyHandedOffDecisions(t *testing.T) {
 				name += " deny"
 			}
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				store := &fakeSuspendedStore{}
 				g := newTestGatewayService(t, withSuspendedStore(store))
 				g.outboundEnvProc = &fakeEnvelopeProcessor{}

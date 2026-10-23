@@ -22,6 +22,7 @@ import (
 )
 
 func TestBuildScenarioCatalog_HasTwentySevenScenariosWithExpectedCategoryCounts(t *testing.T) {
+	t.Parallel()
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
@@ -52,6 +53,7 @@ func TestBuildScenarioCatalog_HasTwentySevenScenariosWithExpectedCategoryCounts(
 }
 
 func TestBuildScenarioCatalog_PreservesWorkflowOrder(t *testing.T) {
+	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	var ids []string
@@ -65,6 +67,7 @@ func TestBuildScenarioCatalog_PreservesWorkflowOrder(t *testing.T) {
 }
 
 func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
+	t.Parallel()
 	defaultCatalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	smokeCatalog, _, err := BuildSmokeGateScenarioCatalog()
@@ -77,6 +80,7 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	for _, blueprint := range scenarioBlueprints() {
@@ -85,6 +89,7 @@ func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
 }
 
 func TestScenarioDiagnosisRubric_IsBoundIntoFrozenGoldArtifact(t *testing.T) {
+	t.Parallel()
 	blueprint := finalResponseDiagnosis()
 	selected := blueprint.Gold
 	selected.ScenarioID = blueprint.ScenarioID
@@ -118,6 +123,7 @@ func tribunalInvestigationBlueprint() ScenarioBlueprint {
 }
 
 func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 
@@ -244,6 +250,7 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			blueprint := tt.base()
 			require.NoError(t, validateScenarioContract(blueprint, catalog), "base blueprint must be valid")
 			tt.mutate(&blueprint)
@@ -256,6 +263,7 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 }
 
 func TestBuildScenarioCatalog_RejectsABlueprintThatBreaksTheContract(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	blueprint := toolArgGrepPattern()
@@ -270,6 +278,7 @@ func TestBuildScenarioCatalog_RejectsABlueprintThatBreaksTheContract(t *testing.
 // prompt named no path although the search tool requires one, so the task
 // was not answerable. The current prompt names the workspace and passes.
 func TestHintLint_RejectsCatalog100GrepPrompt(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 
@@ -283,6 +292,7 @@ func TestHintLint_RejectsCatalog100GrepPrompt(t *testing.T) {
 }
 
 func TestBuildScenarioCatalog_SeedsCarryConversationTurns(t *testing.T) {
+	t.Parallel()
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
@@ -301,6 +311,7 @@ func TestBuildScenarioCatalog_SeedsCarryConversationTurns(t *testing.T) {
 }
 
 func TestBuildScenarioCatalog_PublicHintNeverCarriesValues(t *testing.T) {
+	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	byID := make(map[string]*evalv1.EvaluationScenarioDefinition, len(catalog.Scenarios))
@@ -337,6 +348,7 @@ func TestBuildScenarioCatalog_PublicHintNeverCarriesValues(t *testing.T) {
 }
 
 func TestBuildScenarioCatalog_DigestIsStableAndBound(t *testing.T) {
+	t.Parallel()
 	first, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	second, _, err := BuildScenarioCatalog()
@@ -347,6 +359,7 @@ func TestBuildScenarioCatalog_DigestIsStableAndBound(t *testing.T) {
 }
 
 func TestBuildScenarioCatalog_FixtureReferencesMatchEmbeddedBodies(t *testing.T) {
+	t.Parallel()
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	for _, scenario := range catalog.Scenarios {
@@ -358,6 +371,7 @@ func TestBuildScenarioCatalog_FixtureReferencesMatchEmbeddedBodies(t *testing.T)
 }
 
 func TestBuildSmokeGateScenarioCatalog_MaterializesFiveDiscriminativeScenarios(t *testing.T) {
+	t.Parallel()
 	catalog, artifacts, err := BuildSmokeGateScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
@@ -377,6 +391,7 @@ func TestBuildSmokeGateScenarioCatalog_MaterializesFiveDiscriminativeScenarios(t
 }
 
 func TestHomogeneousAssignmentMatrix_FiltersBySmokeGateScenarioIDs(t *testing.T) {
+	t.Parallel()
 	catalog, _, err := LoadScenarioCatalog()
 	require.NoError(t, err)
 	variant := &evalv1.ModelVariant{

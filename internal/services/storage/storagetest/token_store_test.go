@@ -19,6 +19,7 @@ import (
 
 func TestTestTokenStore_SetGetRoundTrip(t *testing.T) {
 	t.Parallel()
+
 	store := NewTestTokenStore()
 	ctx := context.Background()
 
@@ -44,6 +45,7 @@ func TestTestTokenStore_SetGetRoundTrip(t *testing.T) {
 
 func TestTestTokenStore_KeyNotFound(t *testing.T) {
 	t.Parallel()
+
 	store := NewTestTokenStore()
 	ctx := context.Background()
 
@@ -55,6 +57,7 @@ func TestTestTokenStore_KeyNotFound(t *testing.T) {
 
 func TestTestTokenStore_TTLExpiry(t *testing.T) {
 	t.Parallel()
+
 	store := NewTestTokenStore()
 	ctx := context.Background()
 
@@ -107,6 +110,7 @@ func TestTestTokenStore_ScanPrefix_ExcludesExpired(t *testing.T) {
 
 func TestTestTokenStore_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
+
 	store := NewTestTokenStore()
 	ctx := context.Background()
 

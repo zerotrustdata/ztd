@@ -42,7 +42,8 @@ func restoreInfra(t *testing.T) {
 	})
 }
 
-func TestInit(t *testing.T) {
+func TestInit(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	if err := Init(); err != nil {
@@ -60,7 +61,8 @@ func TestInit(t *testing.T) {
 	}
 }
 
-func TestInitWithBase(t *testing.T) {
+func TestInitWithBase(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "/test/base"
@@ -98,8 +100,9 @@ func TestInitWithBase(t *testing.T) {
 		{"LedgerDir", Infra.LedgerDir, pathutil.SafeJoin(Infra.DataDir, constants.LedgerDirname)},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tc.name, func(t *testing.T) {
+
 			if tc.got != tc.want {
 				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
 			}
@@ -107,7 +110,8 @@ func TestInitWithBase(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_PackageVars(t *testing.T) {
+func TestInitWithBase_PackageVars(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "/test/base"
@@ -128,8 +132,9 @@ func TestInitWithBase_PackageVars(t *testing.T) {
 		{"PkiGatewayKeyPath", PkiGatewayKeyPath, pathutil.SafeJoin(Infra.PkiIssuedHubDir, constants.PkiFileGatewayKey)},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tc.name, func(t *testing.T) {
+
 			if tc.got != tc.want {
 				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
 			}
@@ -137,7 +142,8 @@ func TestInitWithBase_PackageVars(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_AllFieldsPopulated(t *testing.T) {
+func TestInitWithBase_AllFieldsPopulated(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "/test/base"
@@ -168,7 +174,8 @@ func TestInitWithBase_AllFieldsPopulated(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_RuntimePathsPrefixedWithBase(t *testing.T) {
+func TestInitWithBase_RuntimePathsPrefixedWithBase(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "/my/project/root"
@@ -193,8 +200,9 @@ func TestInitWithBase_RuntimePathsPrefixedWithBase(t *testing.T) {
 		{"LogDir", Infra.LogDir},
 	}
 
-	for _, tc := range runtimePaths {
+	for _, tc := range runtimePaths { //nolint:paralleltest // mutates package-level state
 		t.Run(tc.name, func(t *testing.T) {
+
 			if !strings.HasPrefix(filepath.ToSlash(tc.val), filepath.ToSlash(base)) {
 				t.Errorf("%s = %q, expected prefix %q", tc.name, tc.val, base)
 			}
@@ -202,7 +210,8 @@ func TestInitWithBase_RuntimePathsPrefixedWithBase(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_DerivedPathsPrefixedWithParent(t *testing.T) {
+func TestInitWithBase_DerivedPathsPrefixedWithParent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "/my/project/root"
@@ -229,8 +238,9 @@ func TestInitWithBase_DerivedPathsPrefixedWithParent(t *testing.T) {
 		{"PkiGatewayKeyPath", PkiGatewayKeyPath, Infra.PkiIssuedHubDir},
 	}
 
-	for _, tc := range derivedPaths {
+	for _, tc := range derivedPaths { //nolint:paralleltest // mutates package-level state
 		t.Run(tc.name, func(t *testing.T) {
+
 			if !strings.HasPrefix(tc.val, tc.parent) {
 				t.Errorf("%s = %q, expected prefix %q", tc.name, tc.val, tc.parent)
 			}
@@ -238,13 +248,15 @@ func TestInitWithBase_DerivedPathsPrefixedWithParent(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_DifferentBaseDirs(t *testing.T) {
+func TestInitWithBase_DifferentBaseDirs(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	bases := []string{"/a", "/b", "/c", "/some/very/deep/nested/path"}
 
-	for _, base := range bases {
+	for _, base := range bases { //nolint:paralleltest // mutates package-level state
 		t.Run(base, func(t *testing.T) {
+
 			if err := InitWithBase(base); err != nil {
 				t.Fatalf("InitWithBase(%q) error: %v", base, err)
 			}
@@ -260,7 +272,8 @@ func TestInitWithBase_DifferentBaseDirs(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_RelativeBaseDir(t *testing.T) {
+func TestInitWithBase_RelativeBaseDir(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "."
@@ -274,7 +287,8 @@ func TestInitWithBase_RelativeBaseDir(t *testing.T) {
 	}
 }
 
-func TestInitWithBase_Idempotent(t *testing.T) {
+func TestInitWithBase_Idempotent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	base := "/idempotent/test"
@@ -302,6 +316,7 @@ func TestInitWithBase_Idempotent(t *testing.T) {
 }
 
 func TestGetAgentConfigPaths(t *testing.T) {
+	t.Parallel()
 	home := "/home/testuser"
 	got := GetAgentConfigPaths(home)
 
@@ -320,6 +335,7 @@ func TestGetAgentConfigPaths(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if tc.got != tc.want {
 				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
 			}
@@ -328,6 +344,7 @@ func TestGetAgentConfigPaths(t *testing.T) {
 }
 
 func TestGetAgentConfigPaths_AllFieldsPopulated(t *testing.T) {
+	t.Parallel()
 	got := GetAgentConfigPaths("/home/user")
 
 	if got.DevinConfigDir == "" || got.DevinConfigPath == "" {
@@ -342,6 +359,7 @@ func TestGetAgentConfigPaths_AllFieldsPopulated(t *testing.T) {
 }
 
 func TestGetAgentConfigPaths_ConfigPathInsideConfigDir(t *testing.T) {
+	t.Parallel()
 	home := "/home/user"
 	got := GetAgentConfigPaths(home)
 
@@ -357,6 +375,7 @@ func TestGetAgentConfigPaths_ConfigPathInsideConfigDir(t *testing.T) {
 
 	for _, p := range pairs {
 		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
 			if !strings.HasPrefix(p.path, p.dir) {
 				t.Errorf("%s config path %q should start with config dir %q", p.name, p.path, p.dir)
 			}
@@ -365,10 +384,12 @@ func TestGetAgentConfigPaths_ConfigPathInsideConfigDir(t *testing.T) {
 }
 
 func TestGetAgentConfigPaths_DifferentHomeDirs(t *testing.T) {
+	t.Parallel()
 	homes := []string{"/home/alice", "/home/carol", "/root"}
 
 	for _, home := range homes {
 		t.Run(home, func(t *testing.T) {
+			t.Parallel()
 			got := GetAgentConfigPaths(home)
 			if !strings.HasPrefix(filepath.ToSlash(got.GeminiConfigDir), filepath.ToSlash(home)) {
 				t.Errorf("GeminiConfigDir %q should start with %q", got.GeminiConfigDir, home)
@@ -378,6 +399,7 @@ func TestGetAgentConfigPaths_DifferentHomeDirs(t *testing.T) {
 }
 
 func TestGetSSHConfigPaths(t *testing.T) {
+	t.Parallel()
 	home := "/home/testuser"
 	got := GetSSHConfigPaths(home)
 
@@ -397,6 +419,7 @@ func TestGetSSHConfigPaths(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if tc.got != tc.want {
 				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
 			}
@@ -405,6 +428,7 @@ func TestGetSSHConfigPaths(t *testing.T) {
 }
 
 func TestGetSSHConfigPaths_AllFieldsPopulated(t *testing.T) {
+	t.Parallel()
 	got := GetSSHConfigPaths("/home/user")
 
 	if got.ConfigPath == "" {
@@ -425,6 +449,7 @@ func TestGetSSHConfigPaths_AllFieldsPopulated(t *testing.T) {
 }
 
 func TestGetSSHConfigPaths_PathsInsideSSHDir(t *testing.T) {
+	t.Parallel()
 	home := "/home/user"
 	got := GetSSHConfigPaths(home)
 
@@ -443,6 +468,7 @@ func TestGetSSHConfigPaths_PathsInsideSSHDir(t *testing.T) {
 
 	for _, p := range allPaths {
 		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
 			if !strings.HasPrefix(p.val, sshDir) {
 				t.Errorf("%s = %q, expected prefix %q", p.name, p.val, sshDir)
 			}
@@ -451,10 +477,12 @@ func TestGetSSHConfigPaths_PathsInsideSSHDir(t *testing.T) {
 }
 
 func TestGetSSHConfigPaths_DifferentHomeDirs(t *testing.T) {
+	t.Parallel()
 	homes := []string{"/home/alice", "/home/carol", "/root"}
 
 	for _, home := range homes {
 		t.Run(home, func(t *testing.T) {
+			t.Parallel()
 			got := GetSSHConfigPaths(home)
 			expectedSSHDir := pathutil.SafeJoin(home, constants.SshDirname)
 			if !strings.HasPrefix(got.ConfigPath, expectedSSHDir) {
@@ -464,7 +492,8 @@ func TestGetSSHConfigPaths_DifferentHomeDirs(t *testing.T) {
 	}
 }
 
-func TestInfraDefaults_BeforeInit(t *testing.T) {
+func TestInfraDefaults_BeforeInit(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	restoreInfra(t)
 
 	// Reset Infra to zero values to test defaults.

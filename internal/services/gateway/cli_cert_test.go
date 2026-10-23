@@ -56,6 +56,7 @@ func makeTestCLICert(t *testing.T, notBefore, notAfter time.Time, spiffeURIs []s
 }
 
 func TestExtractUserIDFromCert_NilCert(t *testing.T) {
+	t.Parallel()
 	userID, err := ExtractUserIDFromCert(nil)
 	require.Error(t, err)
 	assert.Empty(t, userID)
@@ -63,6 +64,7 @@ func TestExtractUserIDFromCert_NilCert(t *testing.T) {
 }
 
 func TestExtractUserIDFromCert_NoURIs(t *testing.T) {
+	t.Parallel()
 	cert := makeTestCLICert(t,
 		time.Now().Add(-1*time.Minute),
 		time.Now().Add(24*time.Hour),
@@ -76,6 +78,7 @@ func TestExtractUserIDFromCert_NoURIs(t *testing.T) {
 }
 
 func TestExtractUserIDFromCert_NonCLISPIFFEURI(t *testing.T) {
+	t.Parallel()
 	cert := makeTestCLICert(t,
 		time.Now().Add(-1*time.Minute),
 		time.Now().Add(24*time.Hour),
@@ -89,6 +92,7 @@ func TestExtractUserIDFromCert_NonCLISPIFFEURI(t *testing.T) {
 }
 
 func TestExtractUserIDFromCert_ValidCLISPIFFEURI(t *testing.T) {
+	t.Parallel()
 	cert := makeTestCLICert(t,
 		time.Now().Add(-1*time.Minute),
 		time.Now().Add(24*time.Hour),
@@ -101,6 +105,7 @@ func TestExtractUserIDFromCert_ValidCLISPIFFEURI(t *testing.T) {
 }
 
 func TestExtractUserIDFromCert_MultipleURIsReturnsFirstCLIMatch(t *testing.T) {
+	t.Parallel()
 	cert := makeTestCLICert(t,
 		time.Now().Add(-1*time.Minute),
 		time.Now().Add(24*time.Hour),
@@ -117,6 +122,7 @@ func TestExtractUserIDFromCert_MultipleURIsReturnsFirstCLIMatch(t *testing.T) {
 }
 
 func TestExtractUserIDFromCert_MultipleNonCLIURIs(t *testing.T) {
+	t.Parallel()
 	cert := makeTestCLICert(t,
 		time.Now().Add(-1*time.Minute),
 		time.Now().Add(24*time.Hour),

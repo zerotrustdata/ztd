@@ -30,11 +30,13 @@ func (m *mockCommandExecutor) CombinedOutput(ctx context.Context, name string, a
 }
 
 func TestSysContainerStatusTool_Name(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	require.Equal(t, "sys_container_status", tool.Name())
 }
 
 func TestSysContainerStatusTool_Description(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "container")
@@ -42,6 +44,7 @@ func TestSysContainerStatusTool_Description(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_InputSchema(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	schema := tool.InputSchema()
 
@@ -55,6 +58,7 @@ func TestSysContainerStatusTool_InputSchema(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	ctx := context.Background()
 
@@ -64,6 +68,7 @@ func TestSysContainerStatusTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_EmptyContainerName(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	ctx := context.Background()
 
@@ -74,6 +79,7 @@ func TestSysContainerStatusTool_Execute_EmptyContainerName(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_MissingContainerName(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	ctx := context.Background()
 
@@ -84,6 +90,7 @@ func TestSysContainerStatusTool_Execute_MissingContainerName(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_PodmanCommandFailure(t *testing.T) {
+	t.Parallel()
 	mock := &mockCommandExecutor{
 		output: []byte("podman not found"),
 		err:    errors.New("podman not found"),
@@ -105,6 +112,7 @@ func TestSysContainerStatusTool_Execute_PodmanCommandFailure(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_InvalidInspectOutput(t *testing.T) {
+	t.Parallel()
 	mock := &mockCommandExecutor{
 		output: []byte("command failed"),
 		err:    errors.New("command failed"),
@@ -126,6 +134,7 @@ func TestSysContainerStatusTool_Execute_InvalidInspectOutput(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_InvalidJSONInInspectOutput(t *testing.T) {
+	t.Parallel()
 	mock := &mockCommandExecutor{
 		output: []byte("not valid json"),
 	}
@@ -146,6 +155,7 @@ func TestSysContainerStatusTool_Execute_InvalidJSONInInspectOutput(t *testing.T)
 }
 
 func TestSysContainerStatusTool_Execute_EmptyInspectData(t *testing.T) {
+	t.Parallel()
 	mock := &mockCommandExecutor{
 		output: []byte("[]"),
 	}
@@ -166,6 +176,7 @@ func TestSysContainerStatusTool_Execute_EmptyInspectData(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_Success(t *testing.T) {
+	t.Parallel()
 	inspectOutput := `[{
 		"State": {
 			"Status": "running",
@@ -210,6 +221,7 @@ func TestSysContainerStatusTool_Execute_Success(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_StoppedContainer(t *testing.T) {
+	t.Parallel()
 	inspectOutput := `[{
 		"State": {
 			"Status": "exited",
@@ -245,6 +257,7 @@ func TestSysContainerStatusTool_Execute_StoppedContainer(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_PausedContainer(t *testing.T) {
+	t.Parallel()
 	inspectOutput := `[{
 		"State": {
 			"Status": "paused",
@@ -280,6 +293,7 @@ func TestSysContainerStatusTool_Execute_PausedContainer(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_RestartingContainer(t *testing.T) {
+	t.Parallel()
 	inspectOutput := `[{
 		"State": {
 			"Status": "restarting",
@@ -315,6 +329,7 @@ func TestSysContainerStatusTool_Execute_RestartingContainer(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_MissingStateFields(t *testing.T) {
+	t.Parallel()
 	inspectOutput := `[{
 		"State": {},
 		"Image": "docker.io/library/busybox:latest",
@@ -346,6 +361,7 @@ func TestSysContainerStatusTool_Execute_MissingStateFields(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_MissingImageAndCreated(t *testing.T) {
+	t.Parallel()
 	inspectOutput := `[{
 		"State": {
 			"Status": "running",
@@ -378,6 +394,7 @@ func TestSysContainerStatusTool_Execute_MissingImageAndCreated(t *testing.T) {
 }
 
 func TestSysContainerStatusTool_Execute_NilExecutorReportsInspectFailure(t *testing.T) {
+	t.Parallel()
 	tool := &SysContainerStatusTool{}
 	result, err := tool.Execute(testutil.Context(t), json.RawMessage(`{"container_name":"ztd-test-missing-container"}`))
 	require.NoError(t, err)
@@ -391,9 +408,11 @@ func TestSysContainerStatusTool_Execute_NilExecutorReportsInspectFailure(t *test
 }
 
 func TestOrUnknown_EmptyString(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, "unknown", orUnknown(""))
 }
 
 func TestOrUnknown_NonEmptyString(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, "running", orUnknown("running"))
 }

@@ -18,7 +18,9 @@ import (
 )
 
 func TestParseConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("single host block", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -41,6 +43,7 @@ Host myserver
 	})
 
 	t.Run("multiple blocks", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -63,6 +66,7 @@ Host staging
 	})
 
 	t.Run("equals delimiter", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -82,12 +86,14 @@ Host equalhost
 	})
 
 	t.Run("missing file", func(t *testing.T) {
+		t.Parallel()
 		blocks, err := ParseConfig("/nonexistent/.ssh/config")
 		require.NoError(t, err)
 		assert.Empty(t, blocks)
 	})
 
 	t.Run("comments", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -106,6 +112,7 @@ Host commented
 	})
 
 	t.Run("multiple identity files", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -123,7 +130,9 @@ Host multi
 }
 
 func TestMatchBlock(t *testing.T) {
+	t.Parallel()
 	t.Run("exact match", func(t *testing.T) {
+		t.Parallel()
 		blocks := map[string]*ConfigBlock{
 			"myhost": {Hostname: "1.2.3.4"},
 		}
@@ -133,6 +142,7 @@ func TestMatchBlock(t *testing.T) {
 	})
 
 	t.Run("wildcard match", func(t *testing.T) {
+		t.Parallel()
 		blocks := map[string]*ConfigBlock{
 			"prod-*": {User: "ubuntu"},
 		}
@@ -142,6 +152,7 @@ func TestMatchBlock(t *testing.T) {
 	})
 
 	t.Run("no match", func(t *testing.T) {
+		t.Parallel()
 		blocks := map[string]*ConfigBlock{
 			"staging": {Hostname: "10.0.0.1"},
 		}
@@ -151,6 +162,7 @@ func TestMatchBlock(t *testing.T) {
 }
 
 func TestPatternMatch(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		pattern string
 		input   string
@@ -173,6 +185,7 @@ func TestPatternMatch(t *testing.T) {
 }
 
 func TestMatchGlob(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		pattern string
 		input   string
@@ -195,7 +208,9 @@ func TestMatchGlob(t *testing.T) {
 }
 
 func TestExpandTilde(t *testing.T) {
+	t.Parallel()
 	t.Run("with tilde", func(t *testing.T) {
+		t.Parallel()
 		home, err := os.UserHomeDir()
 		require.NoError(t, err)
 		got, err := ExpandTilde("~/.ssh/id_ed25519")
@@ -204,6 +219,7 @@ func TestExpandTilde(t *testing.T) {
 	})
 
 	t.Run("without tilde", func(t *testing.T) {
+		t.Parallel()
 		got, err := ExpandTilde("/absolute/path")
 		require.NoError(t, err)
 		assert.Equal(t, "/absolute/path", got)
@@ -211,7 +227,7 @@ func TestExpandTilde(t *testing.T) {
 }
 
 func TestResolveHost(t *testing.T) {
-	t.Run("simple hostname", func(t *testing.T) {
+	t.Run("simple hostname", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		r, err := ResolveHost("myserver", "", "defaultuser", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "myserver", r.Original)
@@ -220,7 +236,7 @@ func TestResolveHost(t *testing.T) {
 		assert.Equal(t, "22", r.Port)
 	})
 
-	t.Run("user@host format", func(t *testing.T) {
+	t.Run("user@host format", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		r, err := ResolveHost("alice@myserver", "", "", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "alice@myserver", r.Original)
@@ -229,7 +245,7 @@ func TestResolveHost(t *testing.T) {
 		assert.Equal(t, "22", r.Port)
 	})
 
-	t.Run("host:port format", func(t *testing.T) {
+	t.Run("host:port format", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		r, err := ResolveHost("myserver:2222", "", "defaultuser", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "myserver:2222", r.Original)
@@ -238,7 +254,7 @@ func TestResolveHost(t *testing.T) {
 		assert.Equal(t, "defaultuser", r.User)
 	})
 
-	t.Run("user@host:port format", func(t *testing.T) {
+	t.Run("user@host:port format", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		r, err := ResolveHost("alice@myserver:2222", "", "", "", "")
 		require.NoError(t, err)
 		assert.Equal(t, "alice@myserver:2222", r.Original)
@@ -247,7 +263,7 @@ func TestResolveHost(t *testing.T) {
 		assert.Equal(t, "2222", r.Port)
 	})
 
-	t.Run("with SSH config file", func(t *testing.T) {
+	t.Run("with SSH config file", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -268,7 +284,7 @@ Host testhost
 		assert.Len(t, r.KeyFiles, 1)
 	})
 
-	t.Run("SSH config with wildcard match", func(t *testing.T) {
+	t.Run("SSH config with wildcard match", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -286,7 +302,7 @@ Host prod-*
 		assert.Equal(t, "2222", r.Port)
 	})
 
-	t.Run("SSH user flag overrides config", func(t *testing.T) {
+	t.Run("SSH user flag overrides config", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -300,7 +316,7 @@ Host testhost
 		assert.Equal(t, "flaguser", r.User)
 	})
 
-	t.Run("SSH identity file flag overrides config", func(t *testing.T) {
+	t.Run("SSH identity file flag overrides config", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -345,7 +361,7 @@ Host testhost
 		assert.Equal(t, "22", r.Port)
 	})
 
-	t.Run("proxy command from config", func(t *testing.T) {
+	t.Run("proxy command from config", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -359,12 +375,12 @@ Host jump
 		assert.Equal(t, "ssh -W %h:%p jump.example.com", r.ProxyCommand)
 	})
 
-	t.Run("missing SSH config file", func(t *testing.T) {
+	t.Run("missing SSH config file", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		_, err := ResolveHost("myserver", "/nonexistent/config", "defaultuser", "", "")
 		require.NoError(t, err)
 	})
 
-	t.Run("port 22 from config is ignored", func(t *testing.T) {
+	t.Run("port 22 from config is ignored", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -378,7 +394,7 @@ Host testhost
 		assert.Equal(t, "22", r.Port)
 	})
 
-	t.Run("config hostname overrides parsed hostname", func(t *testing.T) {
+	t.Run("config hostname overrides parsed hostname", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -392,7 +408,7 @@ Host alias
 		assert.Equal(t, "192.168.1.50", r.Hostname)
 	})
 
-	t.Run("user@host with config hostname override", func(t *testing.T) {
+	t.Run("user@host with config hostname override", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		dir := testutil.TempDir(t)
 		cfg := filepath.Join(dir, "config")
 		content := `
@@ -409,7 +425,9 @@ Host alias
 }
 
 func TestBuildHostKeyCallback(t *testing.T) {
+	t.Parallel()
 	t.Run("known_hosts file does not exist", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		khPath := filepath.Join(dir, "known_hosts")
 
@@ -420,6 +438,7 @@ func TestBuildHostKeyCallback(t *testing.T) {
 	})
 
 	t.Run("malformed known_hosts file", func(t *testing.T) {
+		t.Parallel()
 		dir := testutil.TempDir(t)
 		khPath := filepath.Join(dir, "known_hosts")
 		require.NoError(t, os.WriteFile(khPath, []byte("invalid known_hosts content"), 0600))

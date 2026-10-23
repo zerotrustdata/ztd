@@ -106,6 +106,7 @@ func resealV7Trace(t *testing.T, trace *AgentTrace) {
 }
 
 func TestAgentTraceV7_CanonicalInferenceResultRoundTrips(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -124,6 +125,7 @@ func TestAgentTraceV7_CanonicalInferenceResultRoundTrips(t *testing.T) {
 }
 
 func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTampering(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*testing.T, *AgentTrace, oracletest.Signer)
@@ -213,6 +215,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			trace, signer := v7EvidenceTrace(t)
 			test.mutate(t, trace, signer)
 			resealV7Trace(t, trace)
@@ -225,8 +228,10 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 }
 
 func TestValidateAgentTraceDigest_PreservesV6AndEarlierSchemaVersions(t *testing.T) {
+	t.Parallel()
 	for _, version := range []string{agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4} {
 		t.Run(version, func(t *testing.T) {
+			t.Parallel()
 			trace, _ := v7EvidenceTrace(t)
 			trace.SchemaVersion = version
 			trace.ModelCalls[0].ModelVariantID = ""
@@ -263,6 +268,7 @@ func relabelV7(t *testing.T, trace *AgentTrace) {
 }
 
 func TestVerifyAgentTraceEvidence_PreservesV7HistoryTraces(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	relabelV7(t, trace)
 
@@ -276,6 +282,7 @@ func TestVerifyAgentTraceEvidence_PreservesV7HistoryTraces(t *testing.T) {
 }
 
 func TestValidateAgentTraceDigest_RejectsApprovedArgumentsBeforeV8(t *testing.T) {
+	t.Parallel()
 	trace := v7EvidenceTraceWithToolCalls(t)
 	require.NotEmpty(t, trace.ToolCalls)
 	trace.ToolCalls[0].ApprovedArgumentsJSON = `{"args":["app/service.conf"],"command":"cat"}`
@@ -291,6 +298,7 @@ const v1ShellTextSteps = `[{"index":2,"role":"AGENT_ROLE_CANDIDATE_GENERATOR","c
 	`{"index":5,"role":"AGENT_ROLE_REVIEWER","review":{"verdict":"AGENT_REVIEW_VERDICT_APPROVE","command":"cat app/service.conf"}}]`
 
 func TestVerifyAgentTraceEvidence_DecodesV7ShellTextTribunalSteps(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	require.NoError(t, json.Unmarshal([]byte(v1ShellTextSteps), &trace.Steps))
 	relabelV7(t, trace)
@@ -306,6 +314,7 @@ func TestVerifyAgentTraceEvidence_DecodesV7ShellTextTribunalSteps(t *testing.T) 
 }
 
 func TestValidateAgentTraceDigest_RejectsShellTextStepsInV8(t *testing.T) {
+	t.Parallel()
 	trace, _ := v7EvidenceTrace(t)
 	require.NoError(t, json.Unmarshal([]byte(v1ShellTextSteps), &trace.Steps))
 	trace.EvidenceDigest = ""
@@ -319,6 +328,7 @@ func TestValidateAgentTraceDigest_RejectsShellTextStepsInV8(t *testing.T) {
 }
 
 func TestAgentTraceInferenceResult_RejectsUnknownFields(t *testing.T) {
+	t.Parallel()
 	var result AgentTraceInferenceResult
 	err := result.UnmarshalJSON([]byte(`{"resultDigest":"d","unknownField":"x"}`))
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)

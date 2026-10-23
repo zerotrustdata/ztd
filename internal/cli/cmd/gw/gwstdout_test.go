@@ -30,6 +30,7 @@ func newOutputCmd() (*cobra.Command, *bytes.Buffer) {
 }
 
 func TestPrintNextSteps_LoopbackOffersOnlyLocalEndpoints(t *testing.T) {
+	t.Parallel()
 	cmd, buf := newOutputCmd()
 	printNextSteps(cmd, constants.PostureDoctrine, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "192.168.1.100")
 
@@ -48,8 +49,10 @@ func TestPrintNextSteps_LoopbackOffersOnlyLocalEndpoints(t *testing.T) {
 }
 
 func TestPrintNextSteps_PublicOffersRemoteEnrollment(t *testing.T) {
+	t.Parallel()
 	for _, host := range []string{"0.0.0.0", "::", "192.168.1.10"} {
 		t.Run(host, func(t *testing.T) {
+			t.Parallel()
 			cmd, buf := newOutputCmd()
 			printNextSteps(cmd, constants.PostureDoctrine, serve.GatewayConfig{ListenHost: host}, "192.168.1.100")
 			out := buf.String()
@@ -60,6 +63,7 @@ func TestPrintNextSteps_PublicOffersRemoteEnrollment(t *testing.T) {
 }
 
 func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
+	t.Parallel()
 	postures := []struct {
 		posture  constants.Posture
 		required bool
@@ -71,6 +75,7 @@ func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
 	}
 	for _, p := range postures {
 		t.Run(string(p.posture), func(t *testing.T) {
+			t.Parallel()
 			cmd, buf := newOutputCmd()
 			printNextSteps(cmd, p.posture, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
 			out := buf.String()
@@ -87,8 +92,10 @@ func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
 // Under an L2 posture, binding a consensus is the first next step: governed
 // actions fail closed until one is bound. Doctrine and ratify do not gate on L2.
 func TestPrintNextSteps_ConsensusBindLeadsUnderL2Postures(t *testing.T) {
+	t.Parallel()
 	for _, p := range []constants.Posture{constants.PostureConsensus, constants.PostureNotary} {
 		t.Run(string(p), func(t *testing.T) {
+			t.Parallel()
 			cmd, buf := newOutputCmd()
 			printNextSteps(cmd, p, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
 			out := buf.String()
@@ -98,6 +105,7 @@ func TestPrintNextSteps_ConsensusBindLeadsUnderL2Postures(t *testing.T) {
 	}
 	for _, p := range []constants.Posture{constants.PostureDoctrine, constants.PostureRatify} {
 		t.Run(string(p), func(t *testing.T) {
+			t.Parallel()
 			cmd, buf := newOutputCmd()
 			printNextSteps(cmd, p, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
 			assert.NotContains(t, buf.String(), "Bind a consensus")
@@ -108,6 +116,7 @@ func TestPrintNextSteps_ConsensusBindLeadsUnderL2Postures(t *testing.T) {
 // A Gateway that shifted off busy default ports must advertise the ports it
 // bound, or every printed command dials a port nothing listens on.
 func TestPrintNextSteps_ShiftedPortsAreSpelledOut(t *testing.T) {
+	t.Parallel()
 	shifted := serve.GatewayConfig{HTTPPort: 8087, HTTPSPort: 8450}
 
 	cmd, buf := newOutputCmd()
@@ -126,12 +135,14 @@ func TestPrintNextSteps_ShiftedPortsAreSpelledOut(t *testing.T) {
 }
 
 func TestConsoleOriginFor(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, network.LocalhostHTTPSURL(constants.Ports.OperatorHttps), consoleOriginFor("", 0))
 	assert.Equal(t, network.LocalhostHTTPSURL(8450), consoleOriginFor("", 8450))
 	assert.Equal(t, "https://gw.example.com", consoleOriginFor("https://gw.example.com/", 8450))
 }
 
 func TestPrintNetworkIdentity_OnlyForRoutableListeners(t *testing.T) {
+	t.Parallel()
 	identity := &network.NetworkIdentity{IPs: []string{"192.168.1.10"}}
 
 	cmd, buf := newOutputCmd()
@@ -144,8 +155,10 @@ func TestPrintNetworkIdentity_OnlyForRoutableListeners(t *testing.T) {
 }
 
 func TestPrintListenHostNotice(t *testing.T) {
+	t.Parallel()
 	for _, host := range []string{"", constants.LocalhostIP, "127.0.0.2", "::1", "localhost"} {
 		t.Run("loopback "+host, func(t *testing.T) {
+			t.Parallel()
 			cmd, buf := newOutputCmd()
 			printListenHostNotice(cmd, host)
 			assert.Contains(t, buf.String(), "Listening on loopback only")
@@ -154,6 +167,7 @@ func TestPrintListenHostNotice(t *testing.T) {
 	}
 	for _, host := range []string{"0.0.0.0", "::", "192.168.1.10", "gateway.example"} {
 		t.Run("reachable "+host, func(t *testing.T) {
+			t.Parallel()
 			cmd, buf := newOutputCmd()
 			printListenHostNotice(cmd, host)
 			assert.Empty(t, buf.String())

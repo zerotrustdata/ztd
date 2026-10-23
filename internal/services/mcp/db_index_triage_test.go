@@ -31,16 +31,19 @@ func (m *mockDBOpener) Open(driverName, dataSourceName string) (*sql.DB, error) 
 }
 
 func TestDBIndexTriageTool_Name(t *testing.T) {
+	t.Parallel()
 	tool := &DBIndexTriageTool{}
 	require.Equal(t, "db_index_triage", tool.Name())
 }
 
 func TestDBIndexTriageTool_Description(t *testing.T) {
+	t.Parallel()
 	tool := &DBIndexTriageTool{}
 	require.NotEmpty(t, tool.Description())
 }
 
 func TestDBIndexTriageTool_InputSchema(t *testing.T) {
+	t.Parallel()
 	tool := &DBIndexTriageTool{}
 	schema := tool.InputSchema()
 	require.NotNil(t, schema)
@@ -50,6 +53,7 @@ func TestDBIndexTriageTool_InputSchema(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tool := &DBIndexTriageTool{}
 	_, err := tool.Execute(context.Background(), json.RawMessage(`{invalid}`))
 	require.Error(t, err)
@@ -57,6 +61,7 @@ func TestDBIndexTriageTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_MissingDatabasePath(t *testing.T) {
+	t.Parallel()
 	tool := &DBIndexTriageTool{}
 	args := json.RawMessage(`{}`)
 	_, err := tool.Execute(context.Background(), args)
@@ -65,6 +70,7 @@ func TestDBIndexTriageTool_Execute_MissingDatabasePath(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_DBOpenFailure(t *testing.T) {
+	t.Parallel()
 	mock := &mockDBOpener{
 		openErr: errors.New("failed to open database"),
 	}
@@ -77,7 +83,9 @@ func TestDBIndexTriageTool_Execute_DBOpenFailure(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_QueryFailure(t *testing.T) {
+	t.Parallel()
 	// Create a real in-memory database that will fail on the specific query
+
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -91,7 +99,9 @@ func TestDBIndexTriageTool_Execute_QueryFailure(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_SuccessWithIndexes(t *testing.T) {
+	t.Parallel()
 	// Create an in-memory database with actual indexes
+
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -133,6 +143,7 @@ func TestDBIndexTriageTool_Execute_SuccessWithIndexes(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_EmptyDatabase(t *testing.T) {
+	t.Parallel()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -153,6 +164,7 @@ func TestDBIndexTriageTool_Execute_EmptyDatabase(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_SQLiteInternalIndexesFiltered(t *testing.T) {
+	t.Parallel()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -179,6 +191,7 @@ func TestDBIndexTriageTool_Execute_SQLiteInternalIndexesFiltered(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_UniqueIndexDetection(t *testing.T) {
+	t.Parallel()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -222,7 +235,9 @@ func TestDBIndexTriageTool_Execute_UniqueIndexDetection(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_ContextCancellation(t *testing.T) {
+	t.Parallel()
 	// Create a mock that will check the context before returning a database
+
 	mock := &mockDBOpener{
 		openErr: context.Canceled,
 	}
@@ -238,7 +253,9 @@ func TestDBIndexTriageTool_Execute_ContextCancellation(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_NilDBOpener(t *testing.T) {
+	t.Parallel()
 	// Test that nil dbOpener uses the default realDBOpener
+
 	tool := &DBIndexTriageTool{dbOpener: nil}
 
 	// This should not panic, but will fail to open a non-existent database
@@ -249,6 +266,7 @@ func TestDBIndexTriageTool_Execute_NilDBOpener(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_MultipleIndexes(t *testing.T) {
+	t.Parallel()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -292,6 +310,7 @@ func TestDBIndexTriageTool_Execute_MultipleIndexes(t *testing.T) {
 }
 
 func TestDBIndexTriageTool_Execute_ResultMarshaling(t *testing.T) {
+	t.Parallel()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()

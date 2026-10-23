@@ -51,6 +51,7 @@ func conformanceSelectionOperators() []*operatorv1.OperatorDocument {
 }
 
 func TestConformanceDataOperatorSelection_PromptsForEveryActiveDataOperatorByName(t *testing.T) {
+	t.Parallel()
 	cmd, out := conformanceSelectionCommand("bad\n0\n4\n2\n", false)
 	selected, err := selectConformanceDataOperator(cmd, conformanceSelectionOperators(), "")
 	require.NoError(t, err)
@@ -64,6 +65,7 @@ func TestConformanceDataOperatorSelection_PromptsForEveryActiveDataOperatorByNam
 }
 
 func TestConformanceDataOperatorSelection_AutomaticAndExplicitTargets(t *testing.T) {
+	t.Parallel()
 	for _, op := range conformanceSelectionOperators()[3:] {
 		if op.GetId() == "inference" {
 			continue
@@ -82,6 +84,7 @@ func TestConformanceDataOperatorSelection_AutomaticAndExplicitTargets(t *testing
 }
 
 func TestConformanceDataOperatorSelection_FailsWithoutGuessing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		id    string
@@ -97,6 +100,7 @@ func TestConformanceDataOperatorSelection_FailsWithoutGuessing(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cmd, out := conformanceSelectionCommand(tt.input, tt.json)
 			_, err := selectConformanceDataOperator(cmd, conformanceSelectionOperators(), tt.id)
 			require.ErrorIs(t, err, tt.want)
@@ -114,6 +118,7 @@ func TestConformanceDataOperatorSelection_FailsWithoutGuessing(t *testing.T) {
 }
 
 func TestConformanceOperatorRoot_UsesEnrolledRuntimeAndExplicitOverride(t *testing.T) {
+	t.Parallel()
 	enrolledRoot, err := filepath.Abs("operator")
 	require.NoError(t, err)
 	mountedRoot, err := filepath.Abs("mounted-operator")

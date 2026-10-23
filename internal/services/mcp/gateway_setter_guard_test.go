@@ -22,6 +22,7 @@ import (
 // (SetAuditLogger, SetL2ConsensusDeliberator).
 // Both dependencies are now construction-phase and wired via Dependencies.
 func TestGatewayService_NoDeletedSetters(t *testing.T) {
+	t.Parallel()
 	dir := "."
 	entries, err := os.ReadDir(dir)
 	if err != nil {

@@ -60,7 +60,8 @@ func (s *stubOperatorBindClient) SessionInfo(_ context.Context, _ fs.RuntimeFile
 	return s.sessionInfo, s.sessionErr
 }
 
-func TestOperatorBindCmdWithConfig_Success(t *testing.T) {
+func TestOperatorBindCmdWithConfig_Success(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -114,7 +115,8 @@ func multiBindOperators() []*operatorv1.OperatorDocument {
 	}
 }
 
-func TestOperatorBindCmdWithConfig_BindsAllOperatorsInOneCall(t *testing.T) {
+func TestOperatorBindCmdWithConfig_BindsAllOperatorsInOneCall(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -155,7 +157,8 @@ func TestOperatorBindCmdWithConfig_BindsAllOperatorsInOneCall(t *testing.T) {
 	assert.Equal(t, "sess-a", loaded.OperatorSessionID)
 }
 
-func TestOperatorBindCmdWithConfig_UnknownOperatorBindsNothing(t *testing.T) {
+func TestOperatorBindCmdWithConfig_UnknownOperatorBindsNothing(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -177,7 +180,8 @@ func TestOperatorBindCmdWithConfig_UnknownOperatorBindsNothing(t *testing.T) {
 	assert.False(t, stub.called, "a bad target must not reach the bind call")
 }
 
-func TestOperatorBindCmdWithConfig_ListMultipleBound(t *testing.T) {
+func TestOperatorBindCmdWithConfig_ListMultipleBound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -208,7 +212,8 @@ func TestOperatorBindCmdWithConfig_ListMultipleBound(t *testing.T) {
 	assert.Contains(t, buf.String(), "sess-c")
 }
 
-func TestOperatorBindCmdWithConfig_NotAuthenticated(t *testing.T) {
+func TestOperatorBindCmdWithConfig_NotAuthenticated(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	cmd := operatorBindCmdWithConfig(
@@ -223,7 +228,8 @@ func TestOperatorBindCmdWithConfig_NotAuthenticated(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
 }
 
-func TestOperatorBindCmdWithConfig_OperatorNotFound(t *testing.T) {
+func TestOperatorBindCmdWithConfig_OperatorNotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -243,7 +249,8 @@ func TestOperatorBindCmdWithConfig_OperatorNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "no operator found with session id")
 }
 
-func TestOperatorBindCmdWithConfig_BindError(t *testing.T) {
+func TestOperatorBindCmdWithConfig_BindError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -272,7 +279,8 @@ func TestOperatorBindCmdWithConfig_BindError(t *testing.T) {
 	assert.Contains(t, err.Error(), "gateway rejected bind")
 }
 
-func TestOperatorBindCmdWithConfig_ListBoundOperator(t *testing.T) {
+func TestOperatorBindCmdWithConfig_ListBoundOperator(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -310,7 +318,8 @@ func TestOperatorBindCmdWithConfig_ListBoundOperator(t *testing.T) {
 	assert.Contains(t, buf.String(), "899b5d27-4599-4b5c-ac5a-beb86b256e7d")
 }
 
-func TestOperatorBindCmdWithConfig_ListUnbound(t *testing.T) {
+func TestOperatorBindCmdWithConfig_ListUnbound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -333,7 +342,8 @@ func TestOperatorBindCmdWithConfig_ListUnbound(t *testing.T) {
 	assert.Contains(t, buf.String(), "No operators bound to this CLI session.")
 }
 
-func TestOperatorBindCmdWithConfig_UnbindSuccess(t *testing.T) {
+func TestOperatorBindCmdWithConfig_UnbindSuccess(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 

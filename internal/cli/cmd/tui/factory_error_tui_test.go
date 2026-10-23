@@ -23,7 +23,8 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestTUI_FileSvcFactoryError(t *testing.T) {
+func TestTUI_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := setupTUITestConfig(t)
 
 	deps := stubTUIDeps(t, cfg)

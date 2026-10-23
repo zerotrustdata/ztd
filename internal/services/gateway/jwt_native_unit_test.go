@@ -70,6 +70,8 @@ func generateTestJWT(t *testing.T, privKey *rsa.PrivateKey, kid string, header m
 }
 
 func TestExtractRoles(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		payload   map[string]interface{}
@@ -152,6 +154,8 @@ func TestExtractRoles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			payloadBytes, err := json.Marshal(tt.payload)
 			require.NoError(t, err)
 			actual := extractRoles(payloadBytes, tt.roleClaim)
@@ -160,17 +164,23 @@ func TestExtractRoles(t *testing.T) {
 	}
 
 	t.Run("Invalid JSON", func(t *testing.T) {
+		t.Parallel()
+
 		actual := extractRoles([]byte("{invalid json}"), "roles")
 		assert.Nil(t, actual)
 	})
 
 	t.Run("Empty payload", func(t *testing.T) {
+		t.Parallel()
+
 		actual := extractRoles([]byte("{}"), "roles")
 		assert.Nil(t, actual)
 	})
 }
 
 func TestParseAndVerifyJWT_Unit(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
@@ -190,6 +200,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	}
 
 	t.Run("Valid token", func(t *testing.T) {
+		t.Parallel()
+
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		jwt, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "test-issuer", "test-audience")
 
@@ -202,18 +214,24 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Invalid format - missing parts", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := ParseAndVerifyJWT(context.Background(), "invalid.token", mockJWKS, "roles", "", "")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTInvalidFormat)
 	})
 
 	t.Run("Invalid format - too many parts", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := ParseAndVerifyJWT(context.Background(), "a.b.c.d", mockJWKS, "roles", "", "")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTInvalidFormat)
 	})
 
 	t.Run("Invalid base64 header", func(t *testing.T) {
+		t.Parallel()
+
 		token := "!!!." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
 		require.Error(t, err)
@@ -221,6 +239,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Invalid base64 payload", func(t *testing.T) {
+		t.Parallel()
+
 		token := base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".!!!.sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
 		require.Error(t, err)
@@ -228,6 +248,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Invalid base64 signature", func(t *testing.T) {
+		t.Parallel()
+
 		token := base64.RawURLEncoding.EncodeToString([]byte("{}")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".!!!"
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
 		require.Error(t, err)
@@ -235,6 +257,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Invalid JSON header", func(t *testing.T) {
+		t.Parallel()
+
 		token := base64.RawURLEncoding.EncodeToString([]byte("{invalid")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
 		require.Error(t, err)
@@ -242,6 +266,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Unsupported algorithm", func(t *testing.T) {
+		t.Parallel()
+
 		header := map[string]interface{}{"alg": "HS256", "kid": kid}
 		token := generateTestJWT(t, privKey, kid, header, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
@@ -250,6 +276,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Missing kid", func(t *testing.T) {
+		t.Parallel()
+
 		header := map[string]interface{}{"alg": "RS256"}
 		token := generateTestJWT(t, privKey, "", header, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
@@ -258,6 +286,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Invalid JSON payload", func(t *testing.T) {
+		t.Parallel()
+
 		header := map[string]interface{}{"alg": "RS256", "kid": kid}
 		headerBytes, err := json.Marshal(header)
 		require.NoError(t, err)
@@ -270,6 +300,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Expired token", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"exp": time.Now().Add(-time.Hour).Unix(),
 		}
@@ -280,6 +312,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Not yet valid (nbf)", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"nbf": time.Now().Add(2 * time.Minute).Unix(),
 		}
@@ -290,6 +324,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Valid within clock skew (nbf)", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"nbf": time.Now().Add(30 * time.Second).Unix(), // 30s in future, skew is 60s
 		}
@@ -299,6 +335,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Issued in future outside clock skew", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"iat": time.Now().Add(2 * time.Minute).Unix(),
 		}
@@ -308,6 +346,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Issuer mismatch", func(t *testing.T) {
+		t.Parallel()
+
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "wrong-issuer", "")
 		require.Error(t, err)
@@ -315,6 +355,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Audience mismatch", func(t *testing.T) {
+		t.Parallel()
+
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "wrong-audience")
 		require.Error(t, err)
@@ -322,6 +364,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Signature verification failure", func(t *testing.T) {
+		t.Parallel()
+
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		parts := strings.Split(token, ".")
 		// Tamper with signature
@@ -334,6 +378,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Valid token with no issuer/audience validation", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"sub": "user456",
 			"exp": time.Now().Add(time.Hour).Unix(),
@@ -345,6 +391,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Valid token with single role string", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"sub":  "user789",
 			"exp":  time.Now().Add(time.Hour).Unix(),
@@ -357,6 +405,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Valid token with missing role claim", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"sub": "user999",
 			"exp": time.Now().Add(time.Hour).Unix(),
@@ -368,12 +418,16 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Empty token string", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := ParseAndVerifyJWT(context.Background(), "", mockJWKS, "roles", "", "")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTInvalidFormat)
 	})
 
 	t.Run("Token with empty segments", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := ParseAndVerifyJWT(context.Background(), "..", mockJWKS, "roles", "", "")
 		require.Error(t, err)
 		// Empty segments decode to empty bytes, which fail JSON unmarshaling
@@ -381,6 +435,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Token with exp=0 (no expiration)", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"sub": "user000",
 			"exp": 0,
@@ -391,6 +447,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Token with nbf=0 (no not-before)", func(t *testing.T) {
+		t.Parallel()
+
 		claims := map[string]interface{}{
 			"sub": "user111",
 			"exp": time.Now().Add(time.Hour).Unix(),
@@ -402,6 +460,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("JWKS key not found", func(t *testing.T) {
+		t.Parallel()
+
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		emptyJWKS := stubJWKSProvider(map[string]*rsa.PublicKey{})
 		_, err := ParseAndVerifyJWT(context.Background(), token, emptyJWKS, "roles", "", "")
@@ -411,6 +471,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Valid token with all standard claims", func(t *testing.T) {
+		t.Parallel()
+
 		now := time.Now()
 		claims := map[string]interface{}{
 			"sub":       "user123",
@@ -436,6 +498,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Header typ field validation", func(t *testing.T) {
+		t.Parallel()
+
 		header := map[string]interface{}{
 			"alg": "RS256",
 			"kid": kid,
@@ -448,6 +512,8 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	})
 
 	t.Run("Tampered payload", func(t *testing.T) {
+		t.Parallel()
+
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		parts := strings.Split(token, ".")
 		// Tamper with payload

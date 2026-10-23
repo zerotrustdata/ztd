@@ -79,6 +79,8 @@ func seedModelScopes(t *testing.T, root string) {
 }
 
 func TestModelsList_ScopesAndFilters(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -112,6 +114,8 @@ func TestModelsList_ScopesAndFilters(t *testing.T) {
 }
 
 func TestModelsList_JSONReportsScopes(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -129,6 +133,8 @@ func TestModelsList_JSONReportsScopes(t *testing.T) {
 }
 
 func TestModelsList_ReadsRegistryWithoutDigest(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	writeTestFrozenInventory(t, root,
 		&evalv1.ModelVariant{VariantId: "qwen3-4b", ServedModelTag: "qwen3:4b", ModelDigest: "digest", ProviderClass: "ollama"},
@@ -141,12 +147,16 @@ func TestModelsList_ReadsRegistryWithoutDigest(t *testing.T) {
 }
 
 func TestModelsList_EmptyProject(t *testing.T) {
+	t.Parallel()
+
 	out, err := runModelsCmd(t, testutil.TempDir(t), "list")
 	require.NoError(t, err)
 	assert.Contains(t, out, "No models found")
 }
 
 func TestModelsShow(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -177,6 +187,8 @@ func TestModelsShow(t *testing.T) {
 }
 
 func TestModelsAdd_DefaultsToRegistryAndCreatesIt(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 
 	out, err := runModelsCmd(t, root, "add", "gemma4:12b", "--parameters", "12b", "--family", "gemma4", "--context", "8192")
@@ -206,6 +218,8 @@ func TestModelsAdd_DefaultsToRegistryAndCreatesIt(t *testing.T) {
 }
 
 func TestModelsAdd_CatalogFlagTargetsCatalogOnly(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -221,6 +235,8 @@ func TestModelsAdd_CatalogFlagTargetsCatalogOnly(t *testing.T) {
 }
 
 func TestModelsAdd_RejectsBadInput(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	_, err := runModelsCmd(t, root, "add")
 	require.Error(t, err)
@@ -233,6 +249,8 @@ func TestModelsAdd_RejectsBadInput(t *testing.T) {
 }
 
 func TestModelsRemove(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -252,6 +270,8 @@ func TestModelsRemove(t *testing.T) {
 }
 
 func TestModelsRemove_ByFilterAndLastModelClearsRegistry(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -269,6 +289,8 @@ func TestModelsRemove_ByFilterAndLastModelClearsRegistry(t *testing.T) {
 }
 
 func TestModelsRemove_RejectsEmptySelection(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -281,6 +303,8 @@ func TestModelsRemove_RejectsEmptySelection(t *testing.T) {
 }
 
 func TestModelsImport_CatalogToRegistry(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	writeTestCatalogInventory(t, root, []*evalv1.ModelVariant{
 		variantFixture("granite4.2:3b", "granite4-2-3b", "granite", 3_000_000_000, digestOne),
@@ -308,6 +332,8 @@ func TestModelsImport_CatalogToRegistry(t *testing.T) {
 }
 
 func TestModelsImport_CreatesRegistryAndRejectsBadSelections(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	writeTestCatalogInventory(t, root, []*evalv1.ModelVariant{
 		variantFixture("granite4.2:3b", "granite4-2-3b", "granite", 3_000_000_000, digestOne),
@@ -332,11 +358,14 @@ func TestModelsImport_CreatesRegistryAndRejectsBadSelections(t *testing.T) {
 }
 
 func TestModelsImport_MissingCatalogFails(t *testing.T) {
+	t.Parallel()
+
 	_, err := runModelsCmd(t, testutil.TempDir(t), "import", "--all")
 	require.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestDiffModelScopes(t *testing.T) {
+	t.Parallel()
 	catalog := map[string]string{"a": "d1", "b": "d2", "c": "d3", "drift": "d4"}
 	registry := map[string]string{"a": "d1", "b": "d2", "drift": "dX", "reg-only": "d5"}
 	provider := map[string]string{"a": "d1", "drift": "d4", "prov-only": "d6"}
@@ -368,12 +397,15 @@ func TestDiffModelScopes(t *testing.T) {
 }
 
 func TestShortDigest(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "-", shortDigest(""))
 	assert.Equal(t, "abc", shortDigest("abc"))
 	assert.Equal(t, "0123456789ab", shortDigest("0123456789abcdef"))
 }
 
 func TestModelsPull_SelectorAndFormationsAreExclusive(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	_, err := runModelsCmd(t, root, "pull", "qwen3:4b", "--formations")
 	require.ErrorContains(t, err, "--formations cannot be combined")
@@ -382,6 +414,8 @@ func TestModelsPull_SelectorAndFormationsAreExclusive(t *testing.T) {
 }
 
 func TestModelsPull_SelectionIsResolvedAgainstIntakeCatalog(t *testing.T) {
+	t.Parallel()
+
 	root := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "eval"), constants.PermDirStandard))
 	catalog := `{"models":[
@@ -400,6 +434,7 @@ func TestModelsPull_SelectionIsResolvedAgainstIntakeCatalog(t *testing.T) {
 }
 
 func TestIntakeVariantsParsesParameterCounts(t *testing.T) {
+	t.Parallel()
 	variants := intakeVariants([]evaluation.RolloutIntakeModel{
 		{VariantID: "a", ServedModelTag: "a:1", ModelFamily: "fam", ParameterCount: "9000000000"},
 		{VariantID: "b", ServedModelTag: "b:1", ParameterCount: "not-a-number"},

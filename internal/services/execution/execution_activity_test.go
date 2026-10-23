@@ -135,8 +135,8 @@ func (p *fifoPair) awaitReady(t *testing.T, done <-chan executeOutcome) {
 	}
 }
 
-func TestExecutionService_ExecuteCommand_ShellSemantics(t *testing.T) {
-	t.Parallel()
+func TestExecutionService_ExecuteCommand_ShellSemantics(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := newTestExecutionService(t)
 
 	tests := []struct {
@@ -186,9 +186,9 @@ func TestExecutionService_ExecuteCommand_ShellSemantics(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+
 			dir := testutil.TempDir(t)
 			if tt.setup != nil {
 				tt.setup(t, dir)
@@ -211,8 +211,8 @@ func TestExecutionService_ExecuteCommand_ShellSemantics(t *testing.T) {
 	}
 }
 
-func TestExecutionService_ExecuteCommand_DeliversOutputProducedAfterInitialSilence(t *testing.T) {
-	t.Parallel()
+func TestExecutionService_ExecuteCommand_DeliversOutputProducedAfterInitialSilence(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := newTestExecutionService(t)
 	fifos := newFIFOPair(t)
 
@@ -231,8 +231,8 @@ func TestExecutionService_ExecuteCommand_DeliversOutputProducedAfterInitialSilen
 	assert.Equal(t, "Done waiting\n", outcome.result.Stdout)
 }
 
-func TestExecutionService_ExecuteCommand_TimesOutCommandBlockedOnInput(t *testing.T) {
-	t.Parallel()
+func TestExecutionService_ExecuteCommand_TimesOutCommandBlockedOnInput(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := newTestExecutionService(t)
 	fifos := newFIFOPair(t)
 
@@ -249,8 +249,8 @@ func TestExecutionService_ExecuteCommand_TimesOutCommandBlockedOnInput(t *testin
 	assert.Equal(t, constants.ErrMessageExecutionTimeout, result.ErrorMessage)
 }
 
-func TestExecutionService_ExecuteCommand_StopsBlockedCommandWhenContextCancelled(t *testing.T) {
-	t.Parallel()
+func TestExecutionService_ExecuteCommand_StopsBlockedCommandWhenContextCancelled(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := newTestExecutionService(t)
 	fifos := newFIFOPair(t)
 

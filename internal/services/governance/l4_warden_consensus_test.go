@@ -67,6 +67,7 @@ func TestL4Warden_Consensus_ValidMutationPassesWithoutL3(t *testing.T) {
 // from the SSOT can be decoded and verified under consensus posture.
 func TestL4Warden_Consensus_AllActionTypesFromSSOT(t *testing.T) {
 	t.Parallel()
+
 	allActionTypes := constants.AllActionTypes
 	if len(allActionTypes) == 0 {
 		t.Fatal("AllActionTypes() returned empty list")
@@ -75,6 +76,7 @@ func TestL4Warden_Consensus_AllActionTypesFromSSOT(t *testing.T) {
 	for _, actionType := range allActionTypes {
 		t.Run(string(actionType), func(t *testing.T) {
 			t.Parallel()
+
 			if _, err := constants.RequestEventForAction(actionType); err != nil {
 				t.Skipf("no governed request event for %s", actionType)
 			}
@@ -101,6 +103,7 @@ func TestL4Warden_Consensus_AllActionTypesFromSSOT(t *testing.T) {
 // reject an envelope under consensus (L2 is enforced).
 func TestL4Warden_Consensus_MissingL2Rejects(t *testing.T) {
 	t.Parallel()
+
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "consensus")
 
@@ -133,6 +136,7 @@ func TestL4Warden_Consensus_BootstrapActionPassesWithoutL2(t *testing.T) {
 
 		t.Run(string(actionType), func(t *testing.T) {
 			t.Parallel()
+
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, actionType, typedPayload(t, actionType), privKey, "consensus")
 
@@ -187,6 +191,7 @@ func TestL4Warden_Consensus_BootstrapActionWithInvalidL2StillPasses(t *testing.T
 // proof does not reject a mutation under consensus (L3 is audited, not enforced).
 func TestL4Warden_Consensus_MissingL3DoesNotReject(t *testing.T) {
 	t.Parallel()
+
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "consensus")
 
@@ -202,8 +207,10 @@ func TestL4Warden_Consensus_MissingL3DoesNotReject(t *testing.T) {
 // attacks and state root mismatches are rejected under consensus posture.
 func TestL4Warden_Consensus_ReplayAndStateRootReject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("replayed nonce", func(t *testing.T) {
 		t.Parallel()
+
 		replayStore := testutil.NewStatefulMockReplayStore()
 		verifier, privKey := createStrictVerifier(t, replayStore, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "consensus")
@@ -218,6 +225,7 @@ func TestL4Warden_Consensus_ReplayAndStateRootReject(t *testing.T) {
 
 	t.Run("state root mismatch", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("other-root"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "consensus")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -231,8 +239,10 @@ func TestL4Warden_Consensus_ReplayAndStateRootReject(t *testing.T) {
 // missing critical verifier dependencies are rejected under consensus posture.
 func TestL4Warden_Consensus_MissingVerifierDependenciesReject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("missing replay store", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, nil, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "consensus")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -243,6 +253,7 @@ func TestL4Warden_Consensus_MissingVerifierDependenciesReject(t *testing.T) {
 
 	t.Run("missing state root provider", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), nil, testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "consensus")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -258,6 +269,7 @@ func TestL4Warden_Consensus_MissingVerifierDependenciesReject(t *testing.T) {
 // against exactly what the bundle delivered.
 func TestL4Warden_L2VerifiesAgainstEnrollmentBundleTrust(t *testing.T) {
 	t.Parallel()
+
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -285,6 +297,7 @@ func TestL4Warden_L2VerifiesAgainstEnrollmentBundleTrust(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			store, err := NewL2TrustStore(tc.trust)
 			if err != nil {
 				t.Fatalf("NewL2TrustStore: %v", err)
@@ -552,6 +565,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			verified, err := tc.verifier.VerifyEnvelope(context.Background(), tc.env)
 			if tc.wantErr != nil {
 				assert.ErrorIs(t, err, tc.wantErr)

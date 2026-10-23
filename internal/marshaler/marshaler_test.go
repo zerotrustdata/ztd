@@ -14,6 +14,7 @@ import (
 )
 
 func TestCollectionName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		c    constants.CollectionName
@@ -26,6 +27,7 @@ func TestCollectionName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := CollectionName(tt.c); got != tt.want {
 				t.Errorf("CollectionName() = %v, want %v", got, tt.want)
 			}
@@ -34,6 +36,7 @@ func TestCollectionName(t *testing.T) {
 }
 
 func TestDocumentID(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		d    constants.DocumentID
@@ -44,6 +47,7 @@ func TestDocumentID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := DocumentID(tt.d); got != tt.want {
 				t.Errorf("DocumentID() = %v, want %v", got, tt.want)
 			}
@@ -52,7 +56,9 @@ func TestDocumentID(t *testing.T) {
 }
 
 func TestStatus(t *testing.T) {
+	t.Parallel()
 	// Test the generic Status function with different types
+
 	type customStatus string
 	const (
 		customActive customStatus = "active"
@@ -73,6 +79,7 @@ func TestStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var got string
 			switch v := tt.s.(type) {
 			case constants.OperatorStatus:

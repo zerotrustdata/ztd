@@ -166,6 +166,7 @@ func isDoctrineL1Direct(c cases.Case) bool {
 }
 
 func TestBuildCoversEveryCellStatus(t *testing.T) {
+	t.Parallel()
 	runs := fourRuns(t)
 	// Row 1 is a DIRECT mutation that only doctrine and consensus run.
 	setVerdict(t, runFor(t, runs, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS),
@@ -191,6 +192,7 @@ func TestBuildCoversEveryCellStatus(t *testing.T) {
 }
 
 func TestBuildFailingCaseMarksCellMissingWithClass(t *testing.T) {
+	t.Parallel()
 	runs := fourRuns(t)
 	consensus := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS
 	c := findCase(t, consensus, func(c cases.Case) bool { return c.Row == 1 && c.Ingress == cases.IngressDirect })
@@ -208,6 +210,7 @@ func TestBuildFailingCaseMarksCellMissingWithClass(t *testing.T) {
 }
 
 func TestBuildUnrunAttendedCaseMarksCellPartial(t *testing.T) {
+	t.Parallel()
 	runs := fourRuns(t)
 	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
 	c := findCase(t, ratify, func(c cases.Case) bool { return c.Attended })
@@ -221,6 +224,7 @@ func TestBuildUnrunAttendedCaseMarksCellPartial(t *testing.T) {
 }
 
 func TestBuildMinimalStackRunMarksOnlyA2ACellsNotApplicable(t *testing.T) {
+	t.Parallel()
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	run := passingRun(t, doctrine)
 	run.Record.A2AIngressAbsent = true
@@ -264,6 +268,7 @@ func TestBuildMinimalStackRunMarksOnlyA2ACellsNotApplicable(t *testing.T) {
 }
 
 func TestBuildMissingPostureRunMarksItsCellsMissing(t *testing.T) {
+	t.Parallel()
 	var runs []VerifiedRun
 	notary := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY
 	for _, p := range allPostures {
@@ -292,6 +297,7 @@ func TestBuildMissingPostureRunMarksItsCellsMissing(t *testing.T) {
 }
 
 func TestBuildRejectsInvalidRuns(t *testing.T) {
+	t.Parallel()
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	tests := []struct {
 		name   string
@@ -410,6 +416,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			runs := tc.mutate(t, fourRuns(t))
 			_, err := Build(runs)
 			if !errors.Is(err, tc.want) {
@@ -420,6 +427,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 }
 
 func TestBuildRecallCountsMatchCatalogue(t *testing.T) {
+	t.Parallel()
 	type key struct {
 		category doctrinecorpus.Category
 		posture  constants.Posture
@@ -487,6 +495,7 @@ func TestBuildRecallCountsMatchCatalogue(t *testing.T) {
 }
 
 func TestBuildRecallHashIsEmptyOnRefusalOnlyIngresses(t *testing.T) {
+	t.Parallel()
 	rep := buildOK(t, fourRuns(t))
 	signed := map[cases.Ingress]bool{cases.IngressDirect: true, cases.IngressMCP: true, cases.IngressMCPStdio: true, cases.IngressA2A: true}
 	var checked int
@@ -508,6 +517,7 @@ func TestBuildRecallHashIsEmptyOnRefusalOnlyIngresses(t *testing.T) {
 }
 
 func TestMarkdownRendersCoverageAndRecallTables(t *testing.T) {
+	t.Parallel()
 	rep := &Report{
 		SuiteID:      cases.SuiteID,
 		SuiteVersion: cases.SuiteVersion,

@@ -26,6 +26,7 @@ func providerFailureGradeRequest() AssignmentExecutionRequest {
 }
 
 func TestProviderFailureClass_OnlyForClassifiedProviderErrors(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, "capability_unsupported", string(ProviderFailureClass(fmt.Errorf("turn 1: %w", constants.ErrInferenceToolsUnsupported))))
 	assert.Equal(t, "backend_timeout", string(ProviderFailureClass(constants.ErrInferenceBackendTimeout)))
 	assert.Empty(t, ProviderFailureClass(constants.ErrHTTPStatusError))
@@ -34,6 +35,7 @@ func TestProviderFailureClass_OnlyForClassifiedProviderErrors(t *testing.T) {
 // A provider failure leads the role-invoked grade with its attempt class, so
 // an unserved model reads as unserved, not as a content or trajectory miss.
 func TestGradeHomogeneousScenario_ProviderFailureLeadsWithAttemptClass(t *testing.T) {
+	t.Parallel()
 	req := providerFailureGradeRequest()
 	trace := &AgentTrace{
 		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
@@ -55,6 +57,7 @@ func TestGradeHomogeneousScenario_ProviderFailureLeadsWithAttemptClass(t *testin
 }
 
 func TestGradeHomogeneousScenario_ContextFailureIsNotReportedAsModelBehavior(t *testing.T) {
+	t.Parallel()
 	req := providerFailureGradeRequest()
 	trace := &AgentTrace{
 		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
@@ -69,6 +72,7 @@ func TestGradeHomogeneousScenario_ContextFailureIsNotReportedAsModelBehavior(t *
 // A trace sealed before the attempt class existed recomputes to the grade it
 // was stored with, so verification of older runs is unchanged.
 func TestGradeHomogeneousScenario_LegacyProviderFailureDetailUnchanged(t *testing.T) {
+	t.Parallel()
 	req := providerFailureGradeRequest()
 	trace := &AgentTrace{RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary", ProviderFailure: string(ExecutionFailureInternal)}
 	grading, err := GradeHomogeneousScenario(req, trace, agentTraceLifecycle(req, trace))
@@ -80,6 +84,7 @@ func TestGradeHomogeneousScenario_LegacyProviderFailureDetailUnchanged(t *testin
 // record, so the assignment completes and grades FAIL. It never ends
 // PROVIDER_FAILED or INVALID_EVIDENCE, which would keep it out of the pass rate.
 func TestGradeHomogeneousScenario_EmptyReplyGradesModelFail(t *testing.T) {
+	t.Parallel()
 	req := providerFailureGradeRequest()
 	req.ScenarioGold.ContentCheck = &ScenarioContentCheck{ExactToken: "READY"}
 	trace := &AgentTrace{

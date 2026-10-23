@@ -27,7 +27,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestOperatorRunCmdWithConfig_Success(t *testing.T) {
+func TestOperatorRunCmdWithConfig_Success(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -64,7 +65,8 @@ func TestOperatorRunCmdWithConfig_Success(t *testing.T) {
 	assert.Contains(t, buf.String(), "welcome to host-a")
 }
 
-func TestOperatorRunCmdWithConfig_OperatorNotFound(t *testing.T) {
+func TestOperatorRunCmdWithConfig_OperatorNotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -86,7 +88,8 @@ func TestOperatorRunCmdWithConfig_OperatorNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "no operator found with session id")
 }
 
-func TestOperatorStopCmdWithConfig_SendsTargetedShutdown(t *testing.T) {
+func TestOperatorStopCmdWithConfig_SendsTargetedShutdown(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -117,7 +120,8 @@ func TestOperatorStopCmdWithConfig_SendsTargetedShutdown(t *testing.T) {
 	assert.Contains(t, buf.String(), "Stop requested")
 }
 
-func TestOperatorStopCmdWithConfig_RejectsEmbeddedOperator(t *testing.T) {
+func TestOperatorStopCmdWithConfig_RejectsEmbeddedOperator(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -139,6 +143,7 @@ func TestOperatorStopCmdWithConfig_RejectsEmbeddedOperator(t *testing.T) {
 }
 
 func TestDedupeOperatorSessionIDs(t *testing.T) {
+	t.Parallel()
 	ids := dedupeOperatorSessionIDs([]string{
 		"4881d566-90a9-44c9-9e3e-c6bb51e07f5c",
 		"4881d566-90a9-44c9-9e3e-c6bb51e07f5c",

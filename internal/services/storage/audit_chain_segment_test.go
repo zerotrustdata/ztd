@@ -47,11 +47,13 @@ func sampleAuditChainSegmentEntries(t *testing.T) []AuditChainSegmentEntry {
 }
 
 func TestVerifyAuditChainSegment_AcceptsLinkedSegment(t *testing.T) {
+	t.Parallel()
 	entries := sampleAuditChainSegmentEntries(t)
 	require.NoError(t, VerifyAuditChainSegment(entries, auditChainGenesisPrevHash, entries[1].Hash))
 }
 
 func TestVerifyAuditChainSegment_RejectsTamperedHash(t *testing.T) {
+	t.Parallel()
 	entries := sampleAuditChainSegmentEntries(t)
 	entries[0].Hash = "tampered"
 	err := VerifyAuditChainSegment(entries, auditChainGenesisPrevHash, entries[1].Hash)
@@ -60,6 +62,7 @@ func TestVerifyAuditChainSegment_RejectsTamperedHash(t *testing.T) {
 }
 
 func TestMarshalAuditChainSegmentEntry_RoundTrip(t *testing.T) {
+	t.Parallel()
 	entries := sampleAuditChainSegmentEntries(t)
 	body, err := MarshalAuditChainSegmentEntry(entries[0])
 	require.NoError(t, err)

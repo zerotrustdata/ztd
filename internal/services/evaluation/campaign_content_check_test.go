@@ -14,6 +14,7 @@ import (
 )
 
 func TestEvaluateContentCheck_TermsMatchAcrossSeparators(t *testing.T) {
+	t.Parallel()
 	check := ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}}, ForbiddenTerms: []string{"svc-web"}}
 
 	ok, detail := evaluateContentCheck("The checkout API owns the failing route.", check, ScenarioWorkspace{})

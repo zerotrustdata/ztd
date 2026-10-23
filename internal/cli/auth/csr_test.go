@@ -18,6 +18,7 @@ import (
 
 func TestGenerateCSR_Success(t *testing.T) {
 	t.Parallel()
+
 	csrPEM, privKey, err := GenerateCSR("test-common-name")
 
 	require.NoError(t, err)
@@ -38,6 +39,7 @@ func TestGenerateCSR_Success(t *testing.T) {
 
 func TestGenerateCSR_DifferentCommonNames(t *testing.T) {
 	t.Parallel()
+
 	testCases := []string{
 		"operator-1",
 		"cli-device",
@@ -47,6 +49,7 @@ func TestGenerateCSR_DifferentCommonNames(t *testing.T) {
 	for _, cn := range testCases {
 		t.Run(cn, func(t *testing.T) {
 			t.Parallel()
+
 			csrPEM, privKey, err := GenerateCSR(cn)
 
 			require.NoError(t, err)

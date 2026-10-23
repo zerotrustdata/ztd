@@ -25,6 +25,7 @@ const (
 )
 
 func TestBuildPublicResourceSummary(t *testing.T) {
+	t.Parallel()
 	reported := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
 	zero := uint32(0)
 	tests := []struct {
@@ -129,6 +130,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			summary, err := BuildPublicResourceSummary(tt.result)
 			require.NoError(t, err)
 			tt.assertions(t, summary)
@@ -140,6 +142,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 }
 
 func TestBuildPublicResourceSummary_ExcludesMemoryCodexCalls(t *testing.T) {
+	t.Parallel()
 	reported := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
 	scored := &evalv1.ModelInferenceRecord{
 		AgentPersona: "sage", Classification: callScoredChain, UsageAvailability: reported, PromptTokens: 10, CompletionTokens: 5,
@@ -166,6 +169,7 @@ func TestBuildPublicResourceSummary_ExcludesMemoryCodexCalls(t *testing.T) {
 	assert.InDelta(t, float64(1), *with.Retries.Value, 0)
 
 	t.Run("codex-only result reports no scored calls", func(t *testing.T) {
+		t.Parallel()
 		summary, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
 			ModelInferences: []*evalv1.ModelInferenceRecord{codex},
 		})
@@ -176,6 +180,7 @@ func TestBuildPublicResourceSummary_ExcludesMemoryCodexCalls(t *testing.T) {
 }
 
 func TestBuildPublicResourceSummary_ExcludesGraderCalls(t *testing.T) {
+	t.Parallel()
 	reported := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
 	scoredCalls := []*evalv1.ModelInferenceRecord{
 		{
@@ -218,6 +223,7 @@ func TestBuildPublicResourceSummary_ExcludesGraderCalls(t *testing.T) {
 }
 
 func TestBuildPublicResourceSummary_NilResult(t *testing.T) {
+	t.Parallel()
 	_, err := BuildPublicResourceSummary(nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)

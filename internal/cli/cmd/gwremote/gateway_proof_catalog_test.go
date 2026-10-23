@@ -37,7 +37,9 @@ func auditProofInput(id string) evaluation.AssignmentAuditProofInput {
 // the pure classification helpers.
 
 func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *testing.T) {
+	t.Parallel()
 	t.Run("a nil publisher or client reports a missing required field", func(t *testing.T) {
+		t.Parallel()
 		var nilPublisher *remoteGatewayCampaignProofPublisher
 		_, err := nilPublisher.IngestAssignmentAuditSlices(context.Background(), []evaluation.AssignmentAuditProofInput{auditProofInput("1")}, false)
 		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
@@ -47,6 +49,7 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 	})
 
 	t.Run("no inputs is a no-op that never calls the gateway", func(t *testing.T) {
+		t.Parallel()
 		client := &cmdtest.MockAPIClient{}
 		publisher := &remoteGatewayCampaignProofPublisher{client: client}
 
@@ -58,7 +61,9 @@ func TestRemoteGatewayCampaignProofPublisher_IngestAssignmentAuditSlices(t *test
 }
 
 func TestRemoteGatewayCampaignProofPublisher_PruneRunProofCatalog(t *testing.T) {
+	t.Parallel()
 	t.Run("is a no-op for a nil publisher, nil client, or empty run id", func(t *testing.T) {
+		t.Parallel()
 		var nilPublisher *remoteGatewayCampaignProofPublisher
 		require.NoError(t, nilPublisher.PruneRunProofCatalog(context.Background(), "run-1"))
 		require.NoError(t, (&remoteGatewayCampaignProofPublisher{}).PruneRunProofCatalog(context.Background(), "run-1"))
@@ -70,15 +75,19 @@ func TestRemoteGatewayCampaignProofPublisher_PruneRunProofCatalog(t *testing.T) 
 }
 
 func TestRemoteGatewayCampaignProofPublisher_FlushProofCatalog(t *testing.T) {
+	t.Parallel()
 	t.Run("a nil publisher or client reports a missing required field", func(t *testing.T) {
+		t.Parallel()
 		var nilPublisher *remoteGatewayCampaignProofPublisher
 		require.ErrorIs(t, nilPublisher.FlushProofCatalog(context.Background()), constants.ErrMissingRequiredField)
 		require.ErrorIs(t, (&remoteGatewayCampaignProofPublisher{}).FlushProofCatalog(context.Background()), constants.ErrMissingRequiredField)
 	})
 }
 
-func TestNewCampaignProofPublisher(t *testing.T) {
+func TestNewCampaignProofPublisher(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("requires a healthy gateway", func(t *testing.T) {
+
 		cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 		cfg.Paths.Host = "http://127.0.0.1:1"
 
@@ -89,6 +98,7 @@ func TestNewCampaignProofPublisher(t *testing.T) {
 }
 
 func TestIsPublicFeedOutboxPublicationError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		err  error
@@ -104,12 +114,14 @@ func TestIsPublicFeedOutboxPublicationError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, isPublicFeedOutboxPublicationError(tt.err))
 		})
 	}
 }
 
 func TestIsPublicFeedPublicationRetryable(t *testing.T) {
+	t.Parallel()
 	assert.True(t, isPublicFeedPublicationRetryable(constants.ErrPublicFeedSequenceOutOfOrder))
 	assert.True(t, isPublicFeedPublicationRetryable(constants.ErrPublicFeedHashChainMismatch))
 	assert.False(t, isPublicFeedPublicationRetryable(errors.New("connection reset")))
@@ -117,8 +129,11 @@ func TestIsPublicFeedPublicationRetryable(t *testing.T) {
 }
 
 func TestRemoteGatewayCampaignFeedExporter_HighWaterSequence(t *testing.T) {
+	t.Parallel()
 	t.Run("a cached high water is served without calling the gateway", func(t *testing.T) {
+		t.Parallel()
 		// The exporter has no client, so any Gateway call would panic the test.
+
 		exporter := &remoteGatewayCampaignFeedExporter{highWater: 9}
 
 		got, err := exporter.HighWaterSequence(context.Background())

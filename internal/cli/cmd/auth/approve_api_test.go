@@ -60,7 +60,8 @@ func setupApproveAPITestEnv(t *testing.T) (*config.Config, ed25519.PrivateKey, f
 // withEndpointOverride sets the config endpoint override to the given URL and
 // resets it on cleanup.
 
-func TestApproveCmd_APIInjection_ClientFactoryError(t *testing.T) {
+func TestApproveCmd_APIInjection_ClientFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, _, fileSvc := setupApproveAPITestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -78,7 +79,8 @@ func TestApproveCmd_APIInjection_ClientFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
 }
 
-func TestApproveCmd_NoCredentials_Error(t *testing.T) {
+func TestApproveCmd_NoCredentials_Error(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, _, fileSvc := setupApproveAPITestEnv(t)
 	require.NoError(t, fileSvc.Remove(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CredentialsFile())))
 

@@ -297,6 +297,7 @@ func persistedBundleFixture(t *testing.T) (*BundleAssemblyResult, fs.RuntimeFile
 }
 
 func TestPersistBundle_SealsExactProtectedBodiesBeforeCanonicalDescriptor(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -324,6 +325,7 @@ func TestPersistBundle_SealsExactProtectedBodiesBeforeCanonicalDescriptor(t *tes
 }
 
 func TestPersistBundle_RefusesFileServiceThatDoesNotSeal(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -337,6 +339,7 @@ func TestPersistBundle_RefusesFileServiceThatDoesNotSeal(t *testing.T) {
 }
 
 func TestExportBundle_WritesReplayablePlaintextBundle(t *testing.T) {
+	t.Parallel()
 	result, fileSvc := persistedBundleFixture(t)
 	// ExportBundle returns a canonical path; macOS temp dirs sit under the
 	// /var -> /private/var symlink.
@@ -361,10 +364,12 @@ func TestExportBundle_WritesReplayablePlaintextBundle(t *testing.T) {
 }
 
 func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
+	t.Parallel()
 	result, fileSvc := persistedBundleFixture(t)
 	reportID := result.Bundle.GetManifest().GetReportId()
 
 	t.Run("existing output directory", func(t *testing.T) {
+		t.Parallel()
 		outDir := testutil.TempDir(t)
 		_, err := ExportBundle(context.Background(), fileSvc, reportID, outDir)
 		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
@@ -373,6 +378,7 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 		assert.Empty(t, entries)
 	})
 	t.Run("output inside the runtime root", func(t *testing.T) {
+		t.Parallel()
 		runtimeDir := testutil.TempDir(t)
 		store := newRecordingBundleFileService()
 		store.runtimeDir = runtimeDir
@@ -387,12 +393,14 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 		assert.NoDirExists(t, outDir)
 	})
 	t.Run("file service that does not open sealed bundles", func(t *testing.T) {
+		t.Parallel()
 		outDir := filepath.Join(testutil.TempDir(t), "export")
 		_, err := ExportBundle(context.Background(), newRecordingBundleFileService(), reportID, outDir)
 		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		assert.NoDirExists(t, outDir)
 	})
 	t.Run("unknown report", func(t *testing.T) {
+		t.Parallel()
 		outDir := filepath.Join(testutil.TempDir(t), "export")
 		_, err := ExportBundle(context.Background(), fileSvc, "missing-report", outDir)
 		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
@@ -401,6 +409,7 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 }
 
 func TestPersistBundle_RejectsInvalidAssemblyResultsBeforeWriting(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*BundleAssemblyResult)
@@ -432,6 +441,7 @@ func TestPersistBundle_RejectsInvalidAssemblyResultsBeforeWriting(t *testing.T) 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			request, _ := bundleAssemblyFixture(t)
 			result, err := AssembleBundle(request)
 			require.NoError(t, err)
@@ -448,6 +458,7 @@ func TestPersistBundle_RejectsInvalidAssemblyResultsBeforeWriting(t *testing.T) 
 }
 
 func TestPersistBundle_RejectsExistingBundleWithoutOverwriting(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -464,6 +475,7 @@ func TestPersistBundle_RejectsExistingBundleWithoutOverwriting(t *testing.T) {
 }
 
 func TestPersistBundle_RemovesIncompleteNewBundleAfterWriteFailure(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -482,6 +494,7 @@ func TestPersistBundle_RemovesIncompleteNewBundleAfterWriteFailure(t *testing.T)
 }
 
 func TestParseBundleProfile_AcceptsPublicAndRestricted(t *testing.T) {
+	t.Parallel()
 	pub, err := ParseBundleProfile(constants.ComplianceBundleProfilePublic)
 	require.NoError(t, err)
 	assert.Equal(t, ProfilePublic, pub)
@@ -492,11 +505,13 @@ func TestParseBundleProfile_AcceptsPublicAndRestricted(t *testing.T) {
 }
 
 func TestParseBundleProfile_RejectsUnsupportedProfile(t *testing.T) {
+	t.Parallel()
 	_, err := ParseBundleProfile("confidential")
 	assert.ErrorIs(t, err, constants.ErrBundleProfileUnsupported)
 }
 
 func TestAssembleBundle_PublicProfile_ProducesChecksummedArtifactsAndManifest(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -533,6 +548,7 @@ func TestAssembleBundle_PublicProfile_ProducesChecksummedArtifactsAndManifest(t 
 }
 
 func TestAssembleBundle_RestrictedProfile_IncludesRestrictedArtifactsWithEncryption(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.Profile = ProfileRestricted
 	encryption := &compliancev1.EvidenceEncryptionMetadata{
@@ -564,6 +580,7 @@ func TestAssembleBundle_RestrictedProfile_IncludesRestrictedArtifactsWithEncrypt
 }
 
 func TestAssembleBundle_RestrictedProfile_BindsEncryptionMetadataToChecksumRoot(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.Profile = ProfileRestricted
 	request.RestrictedArtifacts = []RestrictedArtifact{{
@@ -588,6 +605,7 @@ func TestAssembleBundle_RestrictedProfile_BindsEncryptionMetadataToChecksumRoot(
 }
 
 func TestAssembleBundle_RestrictedProfile_RejectsUnsupportedEncryptionAlgorithm(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.Profile = ProfileRestricted
 	request.RestrictedArtifacts = []RestrictedArtifact{{
@@ -609,6 +627,7 @@ func TestAssembleBundle_RestrictedProfile_RejectsUnsupportedEncryptionAlgorithm(
 }
 
 func TestAssembleBundle_RestrictedProfile_RejectsRestrictedArtifactWithoutEncryption(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.Profile = ProfileRestricted
 	request.RestrictedArtifacts = []RestrictedArtifact{{
@@ -621,6 +640,7 @@ func TestAssembleBundle_RestrictedProfile_RejectsRestrictedArtifactWithoutEncryp
 }
 
 func TestAssembleBundle_RestrictedProfile_RejectsArtifactOutsideRestrictedNamespace(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		bundlePath string
@@ -630,6 +650,7 @@ func TestAssembleBundle_RestrictedProfile_RejectsArtifactOutsideRestrictedNamesp
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			request, _ := bundleAssemblyFixture(t)
 			request.Profile = ProfileRestricted
 			request.RestrictedArtifacts = []RestrictedArtifact{{
@@ -653,6 +674,7 @@ func TestAssembleBundle_RestrictedProfile_RejectsArtifactOutsideRestrictedNamesp
 }
 
 func TestAssembleBundle_PublicProfile_RejectsPublicArtifactInRestrictedNamespace(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.SourceArtifacts = append(request.SourceArtifacts, SourceArtifact{BundlePath: constants.ComplianceBundleRestrictedEvidenceTestPath, Body: []byte(`{"plaintext":"restricted"}`), MediaType: constants.MediaTypeJSON})
 
@@ -662,6 +684,7 @@ func TestAssembleBundle_PublicProfile_RejectsPublicArtifactInRestrictedNamespace
 }
 
 func TestAssembleBundle_PublicProfile_OmitsRestrictedArtifacts(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.Profile = ProfilePublic
 	request.RestrictedArtifacts = []RestrictedArtifact{{
@@ -685,6 +708,7 @@ func TestAssembleBundle_PublicProfile_OmitsRestrictedArtifacts(t *testing.T) {
 }
 
 func TestAssembleBundle_ChecksumRootIsDeterministic(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	first, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -695,6 +719,7 @@ func TestAssembleBundle_ChecksumRootIsDeterministic(t *testing.T) {
 }
 
 func TestAssembleBundle_ChecksumRootChangesOnArtifactMutation(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	first, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -710,6 +735,7 @@ func TestAssembleBundle_ChecksumRootChangesOnArtifactMutation(t *testing.T) {
 }
 
 func TestAssembleBundle_RejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	tests := []struct {
 		name    string
@@ -740,6 +766,7 @@ func TestAssembleBundle_RejectsInvalidRequests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := AssembleBundle(tt.mutate(request))
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
@@ -747,6 +774,7 @@ func TestAssembleBundle_RejectsInvalidRequests(t *testing.T) {
 }
 
 func TestAssembleBundle_RejectsEmptyArtifactBody(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.RenderedFormats[0].Body = nil
 	_, err := AssembleBundle(request)
@@ -754,6 +782,7 @@ func TestAssembleBundle_RejectsEmptyArtifactBody(t *testing.T) {
 }
 
 func TestAssembleBundle_RejectsRenderedJSONThatDiffersFromCanonicalAnalysis(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.RenderedFormats[0].Body = []byte(`{"analysis_id":"mutated"}`)
 	_, err := AssembleBundle(request)
@@ -761,6 +790,7 @@ func TestAssembleBundle_RejectsRenderedJSONThatDiffersFromCanonicalAnalysis(t *t
 }
 
 func TestAssembleBundle_RejectsEmptyBundlePath(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.RenderedFormats[0].BundlePath = ""
 	_, err := AssembleBundle(request)
@@ -768,6 +798,7 @@ func TestAssembleBundle_RejectsEmptyBundlePath(t *testing.T) {
 }
 
 func TestAssembleBundle_RejectsDuplicateBundlePaths(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.RenderedFormats = append(request.RenderedFormats, RenderedFormat{
 		Format:     FormatMarkdown,
@@ -780,6 +811,7 @@ func TestAssembleBundle_RejectsDuplicateBundlePaths(t *testing.T) {
 }
 
 func TestAssembleBundle_IncludesManifestReferencedSourceArtifacts(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	scopeBody := sourceArtifactBody(t, request.SourceArtifacts, constants.ComplianceBundleScopeFilename)
 	request.SourceArtifacts = []SourceArtifact{
@@ -800,6 +832,7 @@ func TestAssembleBundle_IncludesManifestReferencedSourceArtifacts(t *testing.T) 
 }
 
 func TestAssembleBundle_PreservesEmptyEvalSourceArtifacts(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	emptyPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, "eval-run-1", constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
 	request.SourceArtifacts = append(request.SourceArtifacts, SourceArtifact{BundlePath: emptyPath, Body: []byte{}, MediaType: constants.MediaTypeJSON})
@@ -817,6 +850,7 @@ func TestAssembleBundle_PreservesEmptyEvalSourceArtifacts(t *testing.T) {
 }
 
 func TestAssembleBundle_RejectsMissingManifestReferencedSourceArtifacts(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	request.SourceArtifacts = nil
 
@@ -843,6 +877,7 @@ func artifactBodyAt(bodies []BundleArtifactBody, bundlePath string) []byte {
 }
 
 func TestSignBundle_SignsChecksumRootAndManifestRoot(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -862,6 +897,7 @@ func TestSignBundle_SignsChecksumRootAndManifestRoot(t *testing.T) {
 }
 
 func TestSignBundle_RejectsNilIdentity(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -870,12 +906,14 @@ func TestSignBundle_RejectsNilIdentity(t *testing.T) {
 }
 
 func TestSignBundle_RejectsNilResult(t *testing.T) {
+	t.Parallel()
 	identity := bundleSigningIdentityFixture(t)
 	err := SignBundle(nil, identity)
 	assert.ErrorIs(t, err, constants.ErrBundleAssemblyFailed)
 }
 
 func TestSignBundle_ManifestSignatureBindsManifestContent(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -890,6 +928,7 @@ func TestSignBundle_ManifestSignatureBindsManifestContent(t *testing.T) {
 }
 
 func TestSignBundle_SignaturesVerifyAgainstAssessedTrustPolicy(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -914,6 +953,7 @@ func TestSignBundle_SignaturesVerifyAgainstAssessedTrustPolicy(t *testing.T) {
 }
 
 func TestSignBundle_ManifestSignatureFailsOnContentMutation(t *testing.T) {
+	t.Parallel()
 	request, _ := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -930,6 +970,7 @@ func TestSignBundle_ManifestSignatureFailsOnContentMutation(t *testing.T) {
 }
 
 func TestValidateComplianceReportBundle_RejectsUnsignedBundle(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -938,6 +979,7 @@ func TestValidateComplianceReportBundle_RejectsUnsignedBundle(t *testing.T) {
 }
 
 func TestValidateComplianceReportBundle_RejectsChecksumRootSignatureMismatch(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -951,6 +993,7 @@ func TestValidateComplianceReportBundle_RejectsChecksumRootSignatureMismatch(t *
 }
 
 func TestValidateComplianceReportBundle_RejectsManifestSignatureMismatch(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -964,6 +1007,7 @@ func TestValidateComplianceReportBundle_RejectsManifestSignatureMismatch(t *test
 }
 
 func TestValidateComplianceReportBundle_RejectsPublicArtifactWithEncryption(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -988,6 +1032,7 @@ func TestValidateComplianceReportBundle_RejectsPublicArtifactWithEncryption(t *t
 }
 
 func TestValidateComplianceReportBundle_RejectsDuplicateArtifactPaths(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -1001,6 +1046,7 @@ func TestValidateComplianceReportBundle_RejectsDuplicateArtifactPaths(t *testing
 }
 
 func TestValidateComplianceReportBundle_RejectsRenderedFormatWithoutArtifact(t *testing.T) {
+	t.Parallel()
 	request, frameworks := bundleAssemblyFixture(t)
 	result, err := AssembleBundle(request)
 	require.NoError(t, err)
@@ -1018,6 +1064,7 @@ func TestValidateComplianceReportBundle_RejectsRenderedFormatWithoutArtifact(t *
 }
 
 func TestValidateBundleArtifact_RejectsRestrictedWithoutEncryption(t *testing.T) {
+	t.Parallel()
 	artifact := &compliancev1.BundleArtifact{
 		BundlePath: constants.ComplianceBundleRestrictedEvidenceTestPath,
 		Sha256:     strings.Repeat("a", 64),
@@ -1030,6 +1077,7 @@ func TestValidateBundleArtifact_RejectsRestrictedWithoutEncryption(t *testing.T)
 }
 
 func TestValidateBundleArtifact_RejectsUnsupportedProfile(t *testing.T) {
+	t.Parallel()
 	artifact := &compliancev1.BundleArtifact{
 		BundlePath: "analysis.json",
 		Sha256:     strings.Repeat("a", 64),

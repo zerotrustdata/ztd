@@ -21,6 +21,8 @@ import (
 // sse transport the event is delivered on, and each status it rejects has no
 // registry entry at all.
 func TestOperatorStatusEventRegistry_MatchesPublishedStatuses(t *testing.T) {
+	t.Parallel()
+
 	require.Len(t, operatorStatusEvents, 5)
 	for status, eventType := range operatorStatusEvents {
 		entry, ok := constants.Registry.Lookup(eventType)

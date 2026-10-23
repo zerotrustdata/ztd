@@ -28,7 +28,7 @@ func TestAgentVerify_PassesForEveryRegisteredAgentWithoutTheAgentInstalled(t *te
 	t.Setenv("USERPROFILE", home)
 	scratchFactory := agentScratchFileSvcFactory(t)
 
-	for _, integration := range agent.All() {
+	for _, integration := range agent.All() { //nolint:paralleltest // sets the process environment
 		t.Run(string(integration.ID), func(t *testing.T) {
 			cmd := agentVerifyCmd(scratchFactory)
 			var out bytes.Buffer
@@ -46,6 +46,7 @@ func TestAgentVerify_PassesForEveryRegisteredAgentWithoutTheAgentInstalled(t *te
 }
 
 func TestAgentVerify_UnknownAgentFailsClosed(t *testing.T) {
+	t.Parallel()
 	scratchFactory := agentScratchFileSvcFactory(t)
 	err := runAgentVerify(agentVerifyCmd(scratchFactory), "cursor", scratchFactory)
 	require.ErrorIs(t, err, constants.ErrAgentNotFound)

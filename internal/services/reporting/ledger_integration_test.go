@@ -70,6 +70,8 @@ func seedLedgerCommit(t *testing.T, ledger *storage.GitLedgerService, sessionID,
 }
 
 func TestReportLedgerMerkleRoot_BootstrapOnly(t *testing.T) {
+	t.Parallel()
+
 	ledger := setupTestGitLedger(t)
 	outDir := testutil.TempDir(t)
 
@@ -91,6 +93,8 @@ func TestReportLedgerMerkleRoot_BootstrapOnly(t *testing.T) {
 }
 
 func TestReportLedgerMerkleRoot_WithCommits(t *testing.T) {
+	t.Parallel()
+
 	ledger := setupTestGitLedger(t)
 
 	// Seed a commit.
@@ -115,6 +119,8 @@ func TestReportLedgerMerkleRoot_WithCommits(t *testing.T) {
 }
 
 func TestReportLedgerCommits_BootstrapOnly(t *testing.T) {
+	t.Parallel()
+
 	ledger := setupTestGitLedger(t)
 	outDir := testutil.TempDir(t)
 
@@ -136,6 +142,8 @@ func TestReportLedgerCommits_BootstrapOnly(t *testing.T) {
 }
 
 func TestReportLedgerCommits_WithCommits(t *testing.T) {
+	t.Parallel()
+
 	ledger := setupTestGitLedger(t)
 
 	// Seed two commits with different files.
@@ -168,6 +176,8 @@ func TestReportLedgerCommits_WithCommits(t *testing.T) {
 }
 
 func TestReportLedgerMerkleRoot_CancelledContext(t *testing.T) {
+	t.Parallel()
+
 	ledger := setupTestGitLedger(t)
 	outDir := testutil.TempDir(t)
 
@@ -180,6 +190,8 @@ func TestReportLedgerMerkleRoot_CancelledContext(t *testing.T) {
 }
 
 func TestReportLedgerCommits_CancelledContext(t *testing.T) {
+	t.Parallel()
+
 	ledger := setupTestGitLedger(t)
 	outDir := testutil.TempDir(t)
 

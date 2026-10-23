@@ -217,6 +217,7 @@ func requireEvidenceError(t *testing.T, trace *AgentTrace, cause error) {
 }
 
 func TestVerifyAgentTraceEvidence_AcceptsConnectedBracketWithExecutedAndRejectedCalls(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
@@ -225,12 +226,14 @@ func TestVerifyAgentTraceEvidence_AcceptsConnectedBracketWithExecutedAndRejected
 // Published legacy traces stay verifiable directly: the live import's schema pin
 // is the gate that stops an earlier-version trace from being graded live.
 func TestVerifyAgentTraceEvidence_AcceptsLegacyV6Trace(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	require.Equal(t, agentTraceSchemaVersionV6, trace.SchemaVersion)
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 }
 
 func TestVerifyAgentTraceEvidence_RejectsFlippedSignatureByteInCallReceipt(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	receipt := trace.ToolCalls[0].Receipt.ActionReceipt
 	receipt.Signature = flipFirstHexDigit(receipt.Signature)
@@ -239,6 +242,7 @@ func TestVerifyAgentTraceEvidence_RejectsFlippedSignatureByteInCallReceipt(t *te
 }
 
 func TestVerifyAgentTraceEvidence_RejectsReceiptSignedByAnotherKey(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	stranger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	trace.ToolCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: stranger.executed("tx-1", string(constants.ActionTypeExecuteBash))}
@@ -247,6 +251,7 @@ func TestVerifyAgentTraceEvidence_RejectsReceiptSignedByAnotherKey(t *testing.T)
 }
 
 func TestVerifyAgentTraceEvidence_RejectsAnchorForAnotherRuntime(t *testing.T) {
+	t.Parallel()
 	trace, signer := validEvidenceTrace(t)
 	trace.Data.Anchor = &AgentTraceAnchor{ConformanceAnchor: signer.Anchor("operator-other")}
 
@@ -254,11 +259,13 @@ func TestVerifyAgentTraceEvidence_RejectsAnchorForAnotherRuntime(t *testing.T) {
 }
 
 func TestVerifyAgentTraceEvidence_RejectsMissingRuntimeAnchor(t *testing.T) {
+	t.Parallel()
 	for name, clear := range map[string]func(*AgentTrace){
 		"data":      func(trace *AgentTrace) { trace.Data.Anchor = nil },
 		"inference": func(trace *AgentTrace) { trace.Inference.Anchor = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			trace, _ := validEvidenceTrace(t)
 			clear(trace)
 
@@ -268,6 +275,7 @@ func TestVerifyAgentTraceEvidence_RejectsMissingRuntimeAnchor(t *testing.T) {
 }
 
 func TestVerifyAgentTraceEvidence_RejectsReceiptTransactionThatDiffersFromCall(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.ToolCalls[0].TransactionID = "tx-other"
 
@@ -275,6 +283,7 @@ func TestVerifyAgentTraceEvidence_RejectsReceiptTransactionThatDiffersFromCall(t
 }
 
 func TestVerifyAgentTraceEvidence_RejectsAdmittedCallWithNoReceipt(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.ToolCalls[0].Receipt = nil
 
@@ -282,6 +291,7 @@ func TestVerifyAgentTraceEvidence_RejectsAdmittedCallWithNoReceipt(t *testing.T)
 }
 
 func TestVerifyAgentTraceEvidence_RejectsExecutedReceiptOnCallRecordedAsDeny(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.ToolCalls[0].PolicyDecision = agentPolicyDecisionDeny
 
@@ -291,6 +301,7 @@ func TestVerifyAgentTraceEvidence_RejectsExecutedReceiptOnCallRecordedAsDeny(t *
 // A foreign-session receipt on the Data runtime's ledger still connects the
 // bracket, so only the session comparison can reject it.
 func TestVerifyAgentTraceEvidence_RejectsClaimedToolReceiptFromAnotherSession(t *testing.T) {
+	t.Parallel()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	foreign := ledger.executedInSession("tx-1", string(constants.ActionTypeExecuteBash), "session-other")
@@ -303,6 +314,7 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedToolReceiptFromAnotherSession(t 
 }
 
 func TestVerifyAgentTraceEvidence_RejectsClaimedInferenceReceiptFromAnotherSession(t *testing.T) {
+	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	data := newEvidenceLedger(t, signer)
 	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
@@ -319,6 +331,7 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedInferenceReceiptFromAnotherSessi
 }
 
 func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *testing.T) {
+	t.Parallel()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	claimed := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
@@ -332,6 +345,7 @@ func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *t
 }
 
 func TestVerifyAgentTraceEvidence_RejectsClaimedCallsSwappedInTraceAsLedgerGap(t *testing.T) {
+	t.Parallel()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	model := ledger.inference("tx-m1")
@@ -347,6 +361,7 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedCallsSwappedInTraceAsLedgerGap(t
 }
 
 func TestVerifyAgentTraceEvidence_RejectsMissingBracket(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 	trace.Bracket = nil
 
@@ -357,6 +372,7 @@ func TestVerifyAgentTraceEvidence_RejectsMissingBracket(t *testing.T) {
 // the Data bracket reads. Claiming the model calls alongside the tool calls,
 // in ledger order, accounts for the whole bracket.
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsInterleavedModelAndToolCalls(t *testing.T) {
+	t.Parallel()
 	trace, _ := sharedRuntimeTrace(t)
 
 	require.True(t, trace.SharedRuntime())
@@ -367,6 +383,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsInterleavedModelAndToolCall
 // shared runtime's inferences sit inside the Data bracket, so a trace that
 // drops its model calls leaves them unclaimed.
 func TestVerifyAgentTraceEvidence_SharedRuntimeRejectsInferenceTheTraceDoesNotClaim(t *testing.T) {
+	t.Parallel()
 	trace, _ := sharedRuntimeTrace(t)
 	trace.ModelCalls = trace.ModelCalls[:1]
 
@@ -376,6 +393,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeRejectsInferenceTheTraceDoesNotCl
 // On distinct runtimes the Inference ledger is not bracketed, so its
 // commitments are verified per call but never claimed in the Data bracket.
 func TestVerifyAgentTraceEvidence_DistinctRuntimesDoNotClaimInferenceInDataBracket(t *testing.T) {
+	t.Parallel()
 	trace, _ := validEvidenceTrace(t)
 
 	require.False(t, trace.SharedRuntime())
@@ -386,6 +404,7 @@ func TestVerifyAgentTraceEvidence_DistinctRuntimesDoNotClaimInferenceInDataBrack
 // FAILED receipt and commits it. The trace carries that receipt and the
 // bracket claims it.
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedInference(t *testing.T) {
+	t.Parallel()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	completed := ledger.inference("tx-m1")
@@ -409,6 +428,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedInference(t *testing.
 // A receipt another runtime signed sits on that runtime's ledger and is not
 // claimed here; a non-observation receipt cannot ride in as an observation.
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *testing.T) {
+	t.Parallel()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	begin := ledger.executed("tx-observe-begin", string(constants.ActionTypeProviderBoundaryObservation))
@@ -436,6 +456,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *test
 }
 
 func TestVerifyAgentTraceEvidence_AcceptsRejectedInferenceWithoutCommitment(t *testing.T) {
+	t.Parallel()
 	trace, ledger := sharedRuntimeTrace(t)
 	rejected := ledger.rejected("tx-m3", string(constants.ActionTypeInference))
 	trace.ModelCalls = append(trace.ModelCalls, failedModelCall("tx-m3", rejected))
@@ -444,6 +465,7 @@ func TestVerifyAgentTraceEvidence_AcceptsRejectedInferenceWithoutCommitment(t *t
 }
 
 func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		corrupt func(*testing.T, *AgentTrace)
@@ -486,6 +508,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			trace, _ := validEvidenceTrace(t)
 			test.corrupt(t, trace)
 
@@ -495,6 +518,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 }
 
 func TestVerifyAgentTraceEvidence_SharedRuntimeMustPinOneKey(t *testing.T) {
+	t.Parallel()
 	trace, _ := sharedRuntimeTrace(t)
 	trace.Inference.Anchor = &AgentTraceAnchor{ConformanceAnchor: oracletest.NewSigner(t).Anchor(trace.Inference.OperatorID)}
 
@@ -527,6 +551,7 @@ func shellEpisodeTrace(t *testing.T, raw, recorded string) *AgentTrace {
 }
 
 func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		raw      string
@@ -539,6 +564,7 @@ func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			err := verifyV7EpisodeOutputs(shellEpisodeTrace(t, test.raw, test.recorded))
 			if test.cause == nil {
 				require.NoError(t, err)
@@ -549,12 +575,14 @@ func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing
 	}
 
 	t.Run("tool calls without recorded declarations", func(t *testing.T) {
+		t.Parallel()
 		trace := shellEpisodeTrace(t, `{"command":"echo"}`, `{"command":"echo"}`)
 		trace.Input = nil
 		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrEvaluationEvidenceTraceMismatch)
 	})
 
 	t.Run("undecodable declaration", func(t *testing.T) {
+		t.Parallel()
 		trace := shellEpisodeTrace(t, `{"command":"echo"}`, `{"command":"echo"}`)
 		trace.Input.Tools[0].JSONSchema = "{"
 		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrEvaluationEvidenceTraceMismatch)

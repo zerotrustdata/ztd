@@ -19,7 +19,7 @@ import (
 )
 
 func TestCommandErrorHandling(t *testing.T) {
-	t.Run("data store requires collection flag", func(t *testing.T) {
+	t.Run("data store requires collection flag", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		loader := func(_ string) (*config.Config, error) { return cfg, nil }
 		cmd := dataStoreCmdWithConfig(loader, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))

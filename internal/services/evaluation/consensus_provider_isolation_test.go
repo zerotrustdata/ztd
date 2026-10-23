@@ -17,6 +17,7 @@ import (
 )
 
 func TestDecisionConsensusProviderIsolation(t *testing.T) {
+	t.Parallel()
 	binding := &models.ConsensusPolicy{ID: "consensus-binding", VoteKind: models.ConsensusVoteKindDecision, InferenceOperatorID: "consensus"}
 	ops := []*operatorv1.OperatorDocument{
 		{Id: "consensus", RuntimeConfig: &operatorv1.OperatorRuntimeConfig{InferenceOllamaEndpoint: "http://localhost:11434/a"}},
@@ -35,6 +36,7 @@ func TestDecisionConsensusProviderIsolation(t *testing.T) {
 	require.ErrorIs(t, ValidateConsensusProviderIsolation(binding, ops, "campaign"), constants.ErrEvaluationConsensusProviderShared)
 }
 func TestDecisionOnlyOperatorExcludedFromDefaultCampaignSelection(t *testing.T) {
+	t.Parallel()
 	ops := []*operatorv1.OperatorDocument{
 		{Id: "decision", OperatorType: string(constants.OperatorTypeRemote), OperatorSessionId: "decision-session", Status: string(constants.OperatorStatusActive), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference"}, InferenceDecisionOnly: true}},
 		{Id: "campaign", OperatorType: string(constants.OperatorTypeRemote), OperatorSessionId: "campaign-session", Status: string(constants.OperatorStatusActive), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference"}}},

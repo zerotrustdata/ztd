@@ -16,6 +16,7 @@ import (
 )
 
 func TestNewInferenceConfig_AppliesTypedDefaults(t *testing.T) {
+	t.Parallel()
 	got := newInferenceConfig(true, LoadOptions{})
 
 	assert.True(t, got.Enabled)
@@ -23,6 +24,7 @@ func TestNewInferenceConfig_AppliesTypedDefaults(t *testing.T) {
 }
 
 func TestNewInferenceConfig_ExplicitFlagsOverrideDefaults(t *testing.T) {
+	t.Parallel()
 	got := newInferenceConfig(true, LoadOptions{InferenceKeepAlive: "5m"})
 
 	assert.Equal(t, "5m", got.KeepAlive)

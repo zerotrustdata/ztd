@@ -58,6 +58,7 @@ func requireInvalid(t *testing.T, err error, detail string) {
 }
 
 func TestValidateAcceptsBaseCatalogue(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	if err := Validate(cs, gaps, mustCorpus(t)); err != nil {
 		t.Fatalf("Validate = %v, want nil", err)
@@ -65,11 +66,13 @@ func TestValidateAcceptsBaseCatalogue(t *testing.T) {
 }
 
 func TestValidateRejectsNilCorpus(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	requireInvalid(t, Validate(cs, gaps, nil), "corpus is nil")
 }
 
 func TestValidateRejectsDuplicateCaseID(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	cs = cloneCases(cs)
 	cs[1].ID = cs[0].ID
@@ -77,6 +80,7 @@ func TestValidateRejectsDuplicateCaseID(t *testing.T) {
 }
 
 func TestValidateRejectsUnknownPosture(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	cs = cloneCases(cs)
 	cs[0].Posture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED
@@ -84,6 +88,7 @@ func TestValidateRejectsUnknownPosture(t *testing.T) {
 }
 
 func TestValidateRejectsUnknownIngressAndAction(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
@@ -97,6 +102,7 @@ func TestValidateRejectsUnknownIngressAndAction(t *testing.T) {
 }
 
 func TestValidateRejectsWrongExpectCount(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
@@ -112,6 +118,7 @@ func TestValidateRejectsWrongExpectCount(t *testing.T) {
 }
 
 func TestValidateRejectsBadRejectionAndRefusalCodes(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 	rejectedIdx := func(t *testing.T, base []Case) int {
@@ -164,6 +171,7 @@ func TestValidateRejectsBadRejectionAndRefusalCodes(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			bad := cloneCases(cs)
 			tc.mutate(t, bad)
 			requireInvalid(t, Validate(bad, gaps, corpus), tc.detail)
@@ -172,10 +180,12 @@ func TestValidateRejectsBadRejectionAndRefusalCodes(t *testing.T) {
 }
 
 func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
 	t.Run("executed without L2 or L3 status", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(1))
 		bad[i].Expect[0].L2Status = operatorv1.L2Status_L2_STATUS_UNSPECIFIED
@@ -183,6 +193,7 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 	})
 
 	t.Run("L2 status does not match posture", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(1), posture(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS))
 		bad[i].Expect[0].L2Status = operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
@@ -190,6 +201,7 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 	})
 
 	t.Run("L3 status set on a read", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(2), ingress(IngressDirect), posture(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY))
 		bad[i].Expect[0].L3Status = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
@@ -197,6 +209,7 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 	})
 
 	t.Run("target marker effect on an executed read", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(2), ingress(IngressDirect), posture(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 		bad[i].Expect[0].Effect = EffectTargetMarker
@@ -204,6 +217,7 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 	})
 
 	t.Run("no effect on an executed mutation", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(1), ingress(IngressDirect))
 		bad[i].Expect[0].Effect = EffectNone
@@ -211,6 +225,7 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 	})
 
 	t.Run("target marker effect on an executed A2A mutation", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(1), ingress(IngressA2A))
 		bad[i].Expect[0].Effect = EffectTargetMarker
@@ -218,6 +233,7 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 	})
 
 	t.Run("a2a stub effect on an executed DIRECT mutation", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(1), ingress(IngressDirect))
 		bad[i].Expect[0].Effect = EffectA2AStubCall
@@ -226,10 +242,12 @@ func TestValidateRejectsBadExecutedExpectation(t *testing.T) {
 }
 
 func TestValidateRejectsEffectOnNonExecuted(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
 	t.Run("target marker on a rejection", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(3), ingress(IngressDirect))
 		bad[i].Expect[0].Effect = EffectTargetMarker
@@ -237,6 +255,7 @@ func TestValidateRejectsEffectOnNonExecuted(t *testing.T) {
 	})
 
 	t.Run("a2a stub on a suspension", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(22))
 		bad[i].Expect[0].Effect = EffectA2AStubCall
@@ -244,6 +263,7 @@ func TestValidateRejectsEffectOnNonExecuted(t *testing.T) {
 	})
 
 	t.Run("L2 status on a refusal", func(t *testing.T) {
+		t.Parallel()
 		bad := cloneCases(cs)
 		i := indexOf(t, bad, row(9))
 		bad[i].Expect[0].L2Status = operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
@@ -252,6 +272,7 @@ func TestValidateRejectsEffectOnNonExecuted(t *testing.T) {
 }
 
 func TestValidateRejectsUnknownExpectKind(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	bad := cloneCases(cs)
 	i := indexOf(t, bad, row(3))
@@ -260,6 +281,7 @@ func TestValidateRejectsUnknownExpectKind(t *testing.T) {
 }
 
 func TestValidateRejectsMissingAttackEntryInPosture(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 	bad := cloneCases(cs)
@@ -274,6 +296,7 @@ func TestValidateRejectsMissingAttackEntryInPosture(t *testing.T) {
 }
 
 func TestValidateRejectsMissingCategoryOnIngress(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 	bad := cloneCases(cs)
@@ -297,6 +320,7 @@ func slicesDropIf(cs []Case, drop func(Case) bool) []Case {
 }
 
 func TestValidateRejectsDoctrineCommandNotBlockedOffline(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 	entryID := corpus.Attacks()[0].ID
@@ -316,6 +340,7 @@ func TestValidateRejectsDoctrineCommandNotBlockedOffline(t *testing.T) {
 }
 
 func TestValidateRejectsDoctrineCommandMismatchingCorpus(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	bad := cloneCases(cs)
 	i := indexOf(t, bad, func(c Case) bool { return c.Fault == FaultDoctrine })
@@ -324,6 +349,7 @@ func TestValidateRejectsDoctrineCommandMismatchingCorpus(t *testing.T) {
 }
 
 func TestValidateRejectsDoctrineCaseWithoutAttackEntry(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	bad := cloneCases(cs)
 	i := indexOf(t, bad, func(c Case) bool { return c.Fault == FaultDoctrine })
@@ -332,6 +358,7 @@ func TestValidateRejectsDoctrineCaseWithoutAttackEntry(t *testing.T) {
 }
 
 func TestValidateRejectsMissingRow(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
@@ -350,6 +377,7 @@ func TestValidateRejectsMissingRow(t *testing.T) {
 }
 
 func TestValidateRejectsCaseOrGapRowOutOfRange(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 
@@ -361,6 +389,7 @@ func TestValidateRejectsCaseOrGapRowOutOfRange(t *testing.T) {
 }
 
 func TestValidateRejectsGapWithoutReason(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	bad := cloneGaps(gaps)
 	bad[0].Reason = ""
@@ -368,6 +397,7 @@ func TestValidateRejectsGapWithoutReason(t *testing.T) {
 }
 
 func TestValidateRejectsGapSharingCaseCell(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	shared := append(cloneGaps(gaps), Gap{Row: 1, Ingress: IngressDirect, Fault: FaultNone, Reason: "x"})
 	requireInvalid(t, Validate(cs, shared, mustCorpus(t)), "shares a cell with a case")

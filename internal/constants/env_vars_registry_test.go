@@ -59,6 +59,7 @@ func loadEnvVarRegistry(t *testing.T) map[string]envVarRegistryEntry {
 // protocol JSON registry describe exactly the same keys, and every key carries a
 // valid category.
 func TestEnvVarRegistry_MatchesGoConstants(t *testing.T) {
+	t.Parallel()
 	registry := loadEnvVarRegistry(t)
 	byGoConst := make(map[string]envVarRegistryEntry, len(registry))
 	for name, entry := range registry {
@@ -88,6 +89,7 @@ func TestEnvVarRegistry_MatchesGoConstants(t *testing.T) {
 // TestSecretEnvVars_MatchRegistrySecrets asserts SecretEnvVars lists exactly the
 // registry keys in category "secret".
 func TestSecretEnvVars_MatchRegistrySecrets(t *testing.T) {
+	t.Parallel()
 	var want []string
 	for _, entry := range loadEnvVarRegistry(t) {
 		if entry.Category == "secret" {
@@ -104,6 +106,7 @@ func TestSecretEnvVars_MatchRegistrySecrets(t *testing.T) {
 // TestUserEndpointEnvVars_MatchRegistryUserEndpoints asserts UserEndpointEnvVars
 // lists exactly the registry keys in category "user_endpoint".
 func TestUserEndpointEnvVars_MatchRegistryUserEndpoints(t *testing.T) {
+	t.Parallel()
 	var want []string
 	for _, entry := range loadEnvVarRegistry(t) {
 		if entry.Category == "user_endpoint" {
@@ -126,6 +129,7 @@ const testHarnessEnvPrefix = "ZTD_TEST_"
 // literal or a locally declared string constant; every key goes through the
 // typed constants.EnvVar registry (INV-TYPE-06, INV-ENV-04).
 func TestProductionGoEnvReads_UseRegistryKeys(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	var files []string
 	for _, dir := range []string{"internal", "cmd"} {

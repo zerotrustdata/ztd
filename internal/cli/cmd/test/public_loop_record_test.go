@@ -19,6 +19,7 @@ import (
 )
 
 func TestPublicLoopRecordDoesNotClaimAMeasuredRelease(t *testing.T) {
+	t.Parallel()
 	record, err := publicLoopRecord(1, "qualification-campaign")
 	require.NoError(t, err)
 	require.NoError(t, publicdisclosure.ValidatePublicFeedRecord(record.RecordType, []byte(record.RecordBytes)))

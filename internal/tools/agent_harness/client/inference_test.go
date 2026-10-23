@@ -24,6 +24,7 @@ import (
 )
 
 func TestInferenceHTTP_TimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
+	t.Parallel()
 	client, err := New(config.Config{MTLSBaseURL: "http://inference.test"})
 	require.NoError(t, err)
 
@@ -35,6 +36,7 @@ func TestInferenceHTTP_TimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
 }
 
 func TestInferenceDispatchFailure_MapsCodeToSentinel(t *testing.T) {
+	t.Parallel()
 	body, err := protojson.Marshal(&operatorv1.InferenceDispatchFailure{
 		Error: constants.ErrInferenceToolsUnsupported.Error(),
 		Code:  operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED,
@@ -47,6 +49,7 @@ func TestInferenceDispatchFailure_MapsCodeToSentinel(t *testing.T) {
 }
 
 func TestInferenceDispatchFailure_UncodedBodyIsStatusErrorOnly(t *testing.T) {
+	t.Parallel()
 	err := inferenceDispatchFailure(http.StatusForbidden, []byte(`{"error":"forbidden"}`))
 	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	require.NotErrorIs(t, err, constants.ErrInferenceGovernanceRejected)

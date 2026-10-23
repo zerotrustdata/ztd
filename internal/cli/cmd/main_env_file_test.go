@@ -60,18 +60,18 @@ func runEnvFileProbe(t *testing.T, key constants.EnvVarKey, value string, refuse
 	return seen, ran, err
 }
 
-func TestRootPreRunLoadsDotEnvOnlyAfterGatesPass(t *testing.T) {
+func TestRootPreRunLoadsDotEnvOnlyAfterGatesPass(t *testing.T) { //nolint:paralleltest // changes the process working directory and environment
 	key := constants.EnvVar.OllamaEndpoint
 	const value = "http://10.0.0.2:11434"
 
-	t.Run("command that passes pre-run sees the dot-env value in its run", func(t *testing.T) {
+	t.Run("command that passes pre-run sees the dot-env value in its run", func(t *testing.T) { //nolint:paralleltest // changes the process working directory and environment
 		seen, ran, err := runEnvFileProbe(t, key, value, false)
 		require.NoError(t, err)
 		require.True(t, ran)
 		assert.Equal(t, value, seen)
 	})
 
-	t.Run("command refused by pre-run never loads the dot-env", func(t *testing.T) {
+	t.Run("command refused by pre-run never loads the dot-env", func(t *testing.T) { //nolint:paralleltest // changes the process working directory and environment
 		_, ran, err := runEnvFileProbe(t, key, value, true)
 		require.Error(t, err)
 		assert.False(t, ran)

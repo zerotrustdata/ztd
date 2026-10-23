@@ -17,6 +17,7 @@ import (
 )
 
 func TestResolveConsensusMembership(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		members     []string
@@ -37,6 +38,7 @@ func TestResolveConsensusMembership(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			members, quorum, err := ResolveConsensusMembership("app-a", tc.members, tc.quorum)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
@@ -56,6 +58,7 @@ const (
 )
 
 func TestResolveConsensusBinding(t *testing.T) {
+	t.Parallel()
 	canonical := constants.TribunalConsensusMemberAppIDs()
 	validTribunal := ConsensusBindingSpec{
 		Provider:    constants.ConsensusProviderTribunal,
@@ -166,6 +169,7 @@ func TestResolveConsensusBinding(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := ResolveConsensusBinding(tc.spec)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
@@ -179,6 +183,7 @@ func TestResolveConsensusBinding(t *testing.T) {
 }
 
 func TestConsensusPolicyProviderRequiresExplicitProvider(t *testing.T) {
+	t.Parallel()
 	var policy ConsensusPolicy
 	legacy := `{"app_id":"app-a","member_app_ids":["app-a"],"quorum":1,"require_distinct":true,"endpoint_url":"https://app.example.com/deliberate","enabled":true}`
 	require.NoError(t, json.Unmarshal([]byte(legacy), &policy))

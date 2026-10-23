@@ -19,6 +19,7 @@ import (
 )
 
 func TestLongitudinalConditionFreezesPersistentInvestigation(t *testing.T) {
+	t.Parallel()
 	mode, holdContext, err := applyCampaignCondition("longitudinal", "campaign-a", "fresh", "operator-a", false)
 	require.NoError(t, err)
 	assert.False(t, holdContext)
@@ -39,6 +40,7 @@ func TestLongitudinalConditionFreezesPersistentInvestigation(t *testing.T) {
 }
 
 func TestLongitudinalConditionRequiresDataOperator(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name              string
 		condition         string
@@ -50,6 +52,7 @@ func TestLongitudinalConditionRequiresDataOperator(t *testing.T) {
 		{name: "whitespace data operator", condition: "longitudinal", investigationMode: "fresh", dataOperatorID: "  "},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, _, err := applyCampaignCondition(test.condition, "campaign-a", test.investigationMode, test.dataOperatorID, false)
 			require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 		})
@@ -57,12 +60,14 @@ func TestLongitudinalConditionRequiresDataOperator(t *testing.T) {
 }
 
 func TestLongitudinalConditionTrimsInvestigationMode(t *testing.T) {
+	t.Parallel()
 	mode, _, err := applyCampaignCondition("longitudinal", "campaign-a", " fresh ", "operator-a", false)
 	require.NoError(t, err)
 	assert.Equal(t, "persistent:campaign-a-inv", mode)
 }
 
 func TestParseCampaignInvestigation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		mode           string
@@ -93,6 +98,7 @@ func TestParseCampaignInvestigation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := parseCampaignInvestigation(test.mode, test.dataOperatorID)
 			if test.wantErr != nil {
 				require.ErrorIs(t, err, test.wantErr)
@@ -113,6 +119,7 @@ func threeModelRegistry() []*evalv1.ModelVariant {
 }
 
 func TestExtractCampaignMetricsCurve_EmptyOnNoResults(t *testing.T) {
+	t.Parallel()
 	curve := extractCampaignMetricsCurve(t.Context(), nil, []string{"run-empty"})
 	assert.Empty(t, curve)
 }

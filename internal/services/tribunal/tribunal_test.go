@@ -23,6 +23,7 @@ import (
 )
 
 func TestCandidateDecodeIsStrictAndDoesNotRewrite(t *testing.T) {
+	t.Parallel()
 	for _, answer := range []string{`not json`, `{"command":"ss","args":[],"extra":1}`, `{"command":"ss -l","args":[]}`, `{"command":"ss\u00a0-l","args":[]}`, `{"command":"","args":[]}`, `null`, "{\"command\":\"ss\",\"args\":[]} trailing", "Command: {\"command\":\"ss\",\"args\":[]}", "```json\n{\"command\":\"ss\",\"args\":[]}\n```"} {
 		inferer := &fakeInferer{generate: func(uint32, Member) string { return answer }}
 		got, err := generate(context.Background(), testConfig(inferer), Request{}, 1, nil)
@@ -37,6 +38,7 @@ func TestCandidateDecodeIsStrictAndDoesNotRewrite(t *testing.T) {
 }
 
 func TestVoteUsesCanonicalTypedArguments(t *testing.T) {
+	t.Parallel()
 	candidates := []Candidate{
 		{Member: MemberAxiom, Arguments: models.RunShellCommandRequest{Command: "tool", Args: []string{"a", "b"}}},
 		{Member: MemberConcord, Arguments: models.RunShellCommandRequest{Command: "tool", Args: []string{"a", "b"}}},
@@ -140,6 +142,7 @@ func argsFor(command string) models.RunShellCommandRequest {
 }
 
 func TestVoteExcludesNemesisAndMatchingProposals(t *testing.T) {
+	t.Parallel()
 	candidates := []Candidate{
 		{Member: MemberAxiom, Arguments: argsFor("ss -tlpn")},
 		{Member: MemberConcord, Arguments: argsFor("ss -tlpn")},
@@ -157,10 +160,12 @@ func TestVoteExcludesNemesisAndMatchingProposals(t *testing.T) {
 }
 
 func TestRunRestartsOnNemesisExclusion(t *testing.T) {
+	t.Parallel()
 	// In round 1, Axiom/Concord/Variance propose "ss -tlpn", Nemesis also proposes "ss -tlpn", Pragma proposes "netstat -tlpn".
 	// "ss -tlpn" is excluded because Nemesis proposed it. "netstat -tlpn" has only 1 vote (< MinConsensus 2).
 	// This MUST trigger round 2.
 	// In round 2, members converge on "pwd" (with Nemesis proposing "ls"), and "pwd" is approved.
+
 	inferer := &fakeInferer{
 		generate: func(round uint32, member Member) string {
 			if round == 1 {
@@ -195,6 +200,7 @@ func TestRunRestartsOnNemesisExclusion(t *testing.T) {
 }
 
 func TestVote(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		commands map[Member]string
@@ -227,6 +233,7 @@ func TestVote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			v := vote(1, candidatesFor(tt.commands))
 			assert.Equal(t, tt.winner, v.Winner.CommandLine())
 			for i, cluster := range v.Clusters {
@@ -238,6 +245,7 @@ func TestVote(t *testing.T) {
 }
 
 func TestVoteUnanimous(t *testing.T) {
+	t.Parallel()
 	all := map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "ls"}
 	assert.True(t, vote(1, candidatesFor(all)).Unanimous())
 	all[MemberPragma] = "whoami"
@@ -245,6 +253,7 @@ func TestVoteUnanimous(t *testing.T) {
 }
 
 func TestAssessRisk(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		answer  string
@@ -261,6 +270,7 @@ func TestAssessRisk(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inferer := &fakeInferer{marshal: tt.answer}
 			risk, err := assessRisk(context.Background(), testConfig(inferer), Request{Request: testRequest}, argsFor("rm -rf /tmp/x"))
 			require.NoError(t, err)
@@ -273,11 +283,13 @@ func TestAssessRisk(t *testing.T) {
 }
 
 func TestDecodeAnswerSentinel(t *testing.T) {
+	t.Parallel()
 	var answer marshalAnswer
 	assert.ErrorIs(t, decodeAnswer("LOW", &answer), constants.ErrTribunalAnswerInvalid)
 }
 
 func TestAudit(t *testing.T) {
+	t.Parallel()
 	split := vote(1, candidatesFor(map[Member]string{
 		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "netstat -tlpn", MemberPragma: "lsof -i", MemberNemesis: "ps",
 	}))
@@ -323,6 +335,7 @@ func TestAudit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inferer := &fakeInferer{audit: tt.answers}
 			result, err := audit(context.Background(), testConfig(inferer), Request{Request: testRequest}, tt.vote)
 			require.NoError(t, err)
@@ -341,6 +354,7 @@ func TestAudit(t *testing.T) {
 }
 
 func TestAuditClustersLabelWinnerFirst(t *testing.T) {
+	t.Parallel()
 	v := vote(1, candidatesFor(map[Member]string{
 		MemberAxiom: "lsof -i", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat", MemberNemesis: "ps",
 	}))
@@ -353,6 +367,7 @@ func TestAuditClustersLabelWinnerFirst(t *testing.T) {
 }
 
 func TestRunApproved(t *testing.T) {
+	t.Parallel()
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{
 			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
@@ -389,6 +404,7 @@ func TestRunApproved(t *testing.T) {
 }
 
 func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
+	t.Parallel()
 	distinct := map[Member]string{MemberAxiom: "a", MemberConcord: "b", MemberVariance: "c", MemberPragma: "d", MemberNemesis: "e"}
 	inferer := &fakeInferer{
 		generate: func(round uint32, member Member) string {
@@ -416,6 +432,7 @@ func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
 }
 
 func TestRunNoConsensus(t *testing.T) {
+	t.Parallel()
 	distinct := map[Member]string{MemberAxiom: "a", MemberConcord: "b", MemberVariance: "c", MemberPragma: "d", MemberNemesis: "e"}
 	inferer := &fakeInferer{generate: proposals(distinct)}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
@@ -429,6 +446,7 @@ func TestRunNoConsensus(t *testing.T) {
 }
 
 func TestRunBlocked(t *testing.T) {
+	t.Parallel()
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{MemberAxiom: "rm -rf /", MemberConcord: "rm -rf /", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  "not json",
@@ -448,6 +466,7 @@ func TestRunBlocked(t *testing.T) {
 // changed is assessed by Marshal before it can be approved, and a changed
 // command that Marshal blocks is never approved.
 func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
+	t.Parallel()
 	const highRisk = `{"risk": "HIGH", "rationale": "deletes /", "feedback": "scope the path"}`
 	tests := []struct {
 		name         string
@@ -490,6 +509,7 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inferer := &fakeInferer{
 				generate: proposals(map[Member]string{
 					MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
@@ -526,6 +546,7 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 }
 
 func TestRunAuditFailed(t *testing.T) {
+	t.Parallel()
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  lowRisk,
@@ -541,8 +562,10 @@ func TestRunAuditFailed(t *testing.T) {
 }
 
 func TestRunInferenceFailureStops(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []Stage{StageGenerate, StageMarshal, StageAudit} {
 		t.Run(string(stage), func(t *testing.T) {
+			t.Parallel()
 			inferer := &fakeInferer{
 				generate: proposals(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd"}),
 				marshal:  lowRisk,
@@ -558,11 +581,13 @@ func TestRunInferenceFailureStops(t *testing.T) {
 }
 
 func TestRunRequiresInferer(t *testing.T) {
+	t.Parallel()
 	_, err := Run(context.Background(), Config{}, Request{Request: testRequest}, 0)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestContextBlock(t *testing.T) {
+	t.Parallel()
 	block := contextBlock(Request{Request: testRequest, Guidelines: "no sudo", WorkingDirectory: "/srv"})
 	assert.Contains(t, block, "OS: linux\nExecution: direct executable argv (no shell)\nWorking directory: /srv")
 	assert.Contains(t, block, "<guidelines>\nno sudo\n</guidelines>")
@@ -570,6 +595,7 @@ func TestContextBlock(t *testing.T) {
 }
 
 func TestGatewayOwnedContextIsComposedBeforeReview(t *testing.T) {
+	t.Parallel()
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  lowRisk,

@@ -159,10 +159,12 @@ func TestNativeToolHandler_ListTools_Unit(t *testing.T) {
 }
 
 func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("unknown tool", func(t *testing.T) {
+		t.Parallel()
 		_, err := handler.HandleTool(context.Background(), "unknown_tool", json.RawMessage(`{}`))
 		require.Error(t, err, "expected error for unknown tool")
 
@@ -174,6 +176,7 @@ func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
 	})
 
 	t.Run("custom registry", func(t *testing.T) {
+		t.Parallel()
 		customRegistry := NewToolRegistry()
 		customHandler := &NativeToolHandler{registry: customRegistry}
 		require.NotNil(t, customHandler, "expected non-nil handler with custom registry")
@@ -181,6 +184,7 @@ func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
 	})
 
 	t.Run("all 33 tools registered", func(t *testing.T) {
+		t.Parallel()
 		tools := handler.ListTools()
 		require.Len(t, tools, 33, "expected 33 registered tools")
 
@@ -232,10 +236,12 @@ func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
 }
 
 func TestHandleDBDiscoverTopology(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid database", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -273,6 +279,7 @@ func TestHandleDBDiscoverTopology(t *testing.T) {
 	})
 
 	t.Run("missing database path", func(t *testing.T) {
+		t.Parallel()
 		req := DBDiscoverTopologyRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -283,6 +290,7 @@ func TestHandleDBDiscoverTopology(t *testing.T) {
 	})
 
 	t.Run("non-existent database", func(t *testing.T) {
+		t.Parallel()
 		req := DBDiscoverTopologyRequest{DatabasePath: "/nonexistent/path.db"}
 		reqJSON, _ := json.Marshal(req)
 
@@ -294,10 +302,12 @@ func TestHandleDBDiscoverTopology(t *testing.T) {
 }
 
 func TestHandleDBQueryValidate(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("indexed SELECT query accepted", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -334,6 +344,7 @@ func TestHandleDBQueryValidate(t *testing.T) {
 	})
 
 	t.Run("full table scan rejected", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -370,6 +381,7 @@ func TestHandleDBQueryValidate(t *testing.T) {
 	})
 
 	t.Run("non-SELECT query rejected", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -402,10 +414,12 @@ func TestHandleDBQueryValidate(t *testing.T) {
 }
 
 func TestHandleDBIsolatedRead(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid SELECT query", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -447,6 +461,7 @@ func TestHandleDBIsolatedRead(t *testing.T) {
 	})
 
 	t.Run("non-SELECT query rejected", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -472,6 +487,7 @@ func TestHandleDBIsolatedRead(t *testing.T) {
 	})
 
 	t.Run("missing query rejected", func(t *testing.T) {
+		t.Parallel()
 		req := DBIsolatedReadRequest{DatabasePath: filepath.Join(testutil.TempDir(t), "test.db")}
 		reqJSON, _ := json.Marshal(req)
 
@@ -482,6 +498,7 @@ func TestHandleDBIsolatedRead(t *testing.T) {
 	// Property: no query, including a stacked statement behind a SELECT
 	// prefix, changes the database. The read-only DSN is the last line.
 	t.Run("never mutates the database", func(t *testing.T) {
+		t.Parallel()
 		dbPath := filepath.Join(testutil.TempDir(t), "test.db")
 		db, err := sql.Open("sqlite", dbPath)
 		require.NoError(t, err)
@@ -518,6 +535,7 @@ func TestHandleDBIsolatedRead(t *testing.T) {
 	})
 
 	t.Run("concurrent reads", func(t *testing.T) {
+		t.Parallel()
 		dbPath := filepath.Join(testutil.TempDir(t), "test.db")
 		db, err := sql.Open("sqlite", dbPath)
 		require.NoError(t, err)
@@ -565,10 +583,12 @@ func TestHandleDBIsolatedRead(t *testing.T) {
 }
 
 func TestHandleDBIndexTriage(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid database", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -603,10 +623,12 @@ func TestHandleDBIndexTriage(t *testing.T) {
 }
 
 func TestHandleSysOOMDetect(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("explicit log reports the killed process", func(t *testing.T) {
+		t.Parallel()
 		logPath := filepath.Join(testutil.TempDir(t), "dmesg")
 		require.NoError(t, os.WriteFile(logPath, []byte("[ 1235.123456] oom-killer: killed process 5678 (worker) pid=5678 process worker 512 MB\n"), 0o644))
 		reqJSON, err := json.Marshal(SysOOMDetectRequest{LogPath: logPath})
@@ -625,6 +647,7 @@ func TestHandleSysOOMDetect(t *testing.T) {
 	})
 
 	t.Run("missing default log fails closed", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS != "linux" {
 			t.Skip("the default log path is the Linux dmesg file")
 		}
@@ -640,10 +663,12 @@ func TestHandleSysOOMDetect(t *testing.T) {
 }
 
 func TestHandleConfigDiffMask(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid config diff", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -676,6 +701,7 @@ func TestHandleConfigDiffMask(t *testing.T) {
 	})
 
 	t.Run("secret masking", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -714,6 +740,7 @@ func TestHandleConfigDiffMask(t *testing.T) {
 }
 
 func TestHandleProcMetricTop(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("skipping on non-Linux - /proc not available")
 	}
@@ -722,6 +749,7 @@ func TestHandleProcMetricTop(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("valid request", func(t *testing.T) {
+		t.Parallel()
 		req := ProcMetricTopRequest{Limit: 5}
 		reqJSON, _ := json.Marshal(req)
 
@@ -742,10 +770,12 @@ func TestHandleProcMetricTop(t *testing.T) {
 }
 
 func TestHandleFSDiskProfile(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid path", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 
 		req := FSDiskProfileRequest{
@@ -770,6 +800,7 @@ func TestHandleFSDiskProfile(t *testing.T) {
 	})
 
 	t.Run("missing path", func(t *testing.T) {
+		t.Parallel()
 		req := FSDiskProfileRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -781,10 +812,12 @@ func TestHandleFSDiskProfile(t *testing.T) {
 }
 
 func TestHandleProcSignalSafe(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("protected PID rejected", func(t *testing.T) {
+		t.Parallel()
 		req := ProcSignalSafeRequest{
 			PID:    1,
 			Signal: "SIGTERM",
@@ -807,6 +840,7 @@ func TestHandleProcSignalSafe(t *testing.T) {
 	})
 
 	t.Run("protected PID 2 rejected", func(t *testing.T) {
+		t.Parallel()
 		req := ProcSignalSafeRequest{
 			PID:    2,
 			Signal: "SIGKILL",
@@ -829,6 +863,7 @@ func TestHandleProcSignalSafe(t *testing.T) {
 	})
 
 	t.Run("unsupported signal", func(t *testing.T) {
+		t.Parallel()
 		req := ProcSignalSafeRequest{
 			PID:    9999,
 			Signal: "INVALID",
@@ -851,6 +886,7 @@ func TestHandleProcSignalSafe(t *testing.T) {
 	})
 
 	t.Run("missing PID", func(t *testing.T) {
+		t.Parallel()
 		req := ProcSignalSafeRequest{
 			Signal: "SIGTERM",
 		}
@@ -863,6 +899,7 @@ func TestHandleProcSignalSafe(t *testing.T) {
 	})
 
 	t.Run("missing signal", func(t *testing.T) {
+		t.Parallel()
 		req := ProcSignalSafeRequest{
 			PID: 9999,
 		}
@@ -875,6 +912,7 @@ func TestHandleProcSignalSafe(t *testing.T) {
 	})
 
 	t.Run("valid signals accepted", func(t *testing.T) {
+		t.Parallel()
 		signals := []string{"SIGTERM", "SIGKILL", "SIGINT"}
 		for _, sig := range signals {
 			req := ProcSignalSafeRequest{
@@ -902,6 +940,7 @@ func TestHandleProcSignalSafe(t *testing.T) {
 }
 
 func TestHandleNetSocketAudit(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("skipping on non-Linux - /proc not available")
 	}
@@ -910,6 +949,7 @@ func TestHandleNetSocketAudit(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("valid request", func(t *testing.T) {
+		t.Parallel()
 		req := NetSocketAuditRequest{Protocol: "tcp"}
 		reqJSON, _ := json.Marshal(req)
 
@@ -929,6 +969,7 @@ func TestHandleNetSocketAudit(t *testing.T) {
 	})
 
 	t.Run("invalid protocol - path traversal attempt", func(t *testing.T) {
+		t.Parallel()
 		req := NetSocketAuditRequest{Protocol: "../../etc/passwd"}
 		reqJSON, _ := json.Marshal(req)
 
@@ -939,6 +980,7 @@ func TestHandleNetSocketAudit(t *testing.T) {
 	})
 
 	t.Run("invalid protocol - arbitrary string", func(t *testing.T) {
+		t.Parallel()
 		req := NetSocketAuditRequest{Protocol: "sctp"}
 		reqJSON, _ := json.Marshal(req)
 
@@ -950,10 +992,12 @@ func TestHandleNetSocketAudit(t *testing.T) {
 }
 
 func TestHandleNetEndpointPing(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("invalid host", func(t *testing.T) {
+		t.Parallel()
 		req := NetEndpointPingRequest{
 			Host: "invalid-host-that-does-not-exist-12345.com",
 			Port: 9999,
@@ -976,6 +1020,7 @@ func TestHandleNetEndpointPing(t *testing.T) {
 	})
 
 	t.Run("missing host", func(t *testing.T) {
+		t.Parallel()
 		req := NetEndpointPingRequest{Port: 80}
 		reqJSON, _ := json.Marshal(req)
 
@@ -986,6 +1031,7 @@ func TestHandleNetEndpointPing(t *testing.T) {
 	})
 
 	t.Run("missing port", func(t *testing.T) {
+		t.Parallel()
 		req := NetEndpointPingRequest{
 			Host: "localhost",
 		}
@@ -998,6 +1044,7 @@ func TestHandleNetEndpointPing(t *testing.T) {
 	})
 
 	t.Run("invalid port", func(t *testing.T) {
+		t.Parallel()
 		req := NetEndpointPingRequest{
 			Host: "localhost",
 			Port: -1,
@@ -1011,6 +1058,7 @@ func TestHandleNetEndpointPing(t *testing.T) {
 	})
 
 	t.Run("localhost ping", func(t *testing.T) {
+		t.Parallel()
 		req := NetEndpointPingRequest{
 			Host: "127.0.0.1",
 			Port: 80, // May or may not be listening
@@ -1034,6 +1082,7 @@ func TestHandleNetEndpointPing(t *testing.T) {
 	})
 
 	t.Run("context cancellation", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
@@ -1061,10 +1110,12 @@ func TestHandleNetEndpointPing(t *testing.T) {
 }
 
 func TestHandleNetHTTPProbe(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("invalid URL", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL: "http://invalid-host-that-does-not-exist-12345.com",
 		}
@@ -1086,6 +1137,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("missing URL", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1096,6 +1148,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("default method is HEAD", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL: "http://example.com",
 		}
@@ -1118,6 +1171,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("custom method GET", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL:    "http://example.com",
 			Method: "GET",
@@ -1141,6 +1195,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("context cancellation", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
@@ -1166,6 +1221,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("invalid URL format", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL: "not-a-valid-url",
 		}
@@ -1187,6 +1243,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("blocks localhost", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL: "http://localhost:8080",
 		}
@@ -1208,6 +1265,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("blocks loopback IP", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL: "http://127.0.0.1:8080",
 		}
@@ -1229,6 +1287,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	})
 
 	t.Run("blocks private IP", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL: "http://192.168.1.1",
 		}
@@ -1251,6 +1310,7 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 }
 
 func TestNativeTools(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 	nativeTools := handler.ListTools()
@@ -1494,10 +1554,12 @@ func TestParseSocketAddr(t *testing.T) {
 }
 
 func TestHandleGitOps(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("git status on test repo", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 
 		cmd := exec.Command("git", "init")
@@ -1561,6 +1623,7 @@ func TestHandleGitOps(t *testing.T) {
 	})
 
 	t.Run("git log with limit", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 
 		cmd := exec.Command("git", "init")
@@ -1621,6 +1684,7 @@ func TestHandleGitOps(t *testing.T) {
 	})
 
 	t.Run("non-git repository", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		req := GitOpsRequest{
 			Operation: "status",
@@ -1645,10 +1709,12 @@ func TestHandleGitOps(t *testing.T) {
 }
 
 func TestHandleCloudMetadata(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("detect provider", func(t *testing.T) {
+		t.Parallel()
 		req := CloudMetadataRequest{
 			Operation: "detect",
 		}
@@ -1670,6 +1736,7 @@ func TestHandleCloudMetadata(t *testing.T) {
 	})
 
 	t.Run("all metadata", func(t *testing.T) {
+		t.Parallel()
 		req := CloudMetadataRequest{
 			Operation: "all",
 		}
@@ -1692,10 +1759,12 @@ func TestHandleCloudMetadata(t *testing.T) {
 }
 
 func TestHandleSysInfo(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid request", func(t *testing.T) {
+		t.Parallel()
 		req := SysInfoRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1716,10 +1785,12 @@ func TestHandleSysInfo(t *testing.T) {
 }
 
 func TestHandleNetDNSResolve(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid hostname", func(t *testing.T) {
+		t.Parallel()
 		req := NetDNSResolveRequest{
 			Hostname: "localhost",
 		}
@@ -1741,6 +1812,7 @@ func TestHandleNetDNSResolve(t *testing.T) {
 	})
 
 	t.Run("missing hostname", func(t *testing.T) {
+		t.Parallel()
 		req := NetDNSResolveRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1752,10 +1824,12 @@ func TestHandleNetDNSResolve(t *testing.T) {
 }
 
 func TestHandleTLSCertInspect(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("missing cert path", func(t *testing.T) {
+		t.Parallel()
 		req := TLSCertInspectRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1767,10 +1841,12 @@ func TestHandleTLSCertInspect(t *testing.T) {
 }
 
 func TestHandleSysEnvVars(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid request", func(t *testing.T) {
+		t.Parallel()
 		req := SysEnvVarsRequest{
 			Pattern:       "PATH",
 			RedactSecrets: true,
@@ -1794,10 +1870,12 @@ func TestHandleSysEnvVars(t *testing.T) {
 }
 
 func TestHandleFSFileChecksum(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid file", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		testFile := filepath.Join(tmpDir, "test.txt")
 		if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
@@ -1825,6 +1903,7 @@ func TestHandleFSFileChecksum(t *testing.T) {
 	})
 
 	t.Run("missing file path", func(t *testing.T) {
+		t.Parallel()
 		req := FSFileChecksumRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1836,10 +1915,12 @@ func TestHandleFSFileChecksum(t *testing.T) {
 }
 
 func TestHandleSysServiceStatus(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("missing service name", func(t *testing.T) {
+		t.Parallel()
 		req := SysServiceStatusRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1851,10 +1932,12 @@ func TestHandleSysServiceStatus(t *testing.T) {
 }
 
 func TestHandleSysContainerStatus(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("missing container name", func(t *testing.T) {
+		t.Parallel()
 		req := SysContainerStatusRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1866,10 +1949,12 @@ func TestHandleSysContainerStatus(t *testing.T) {
 }
 
 func TestHandleFSDiskUsage(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid path", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 
 		req := FSDiskUsageRequest{
@@ -1893,6 +1978,7 @@ func TestHandleFSDiskUsage(t *testing.T) {
 	})
 
 	t.Run("missing path (defaults to all filesystems)", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS != "linux" {
 			t.Skip("skipping on non-Linux - /proc/mounts not available")
 		}
@@ -1916,10 +2002,12 @@ func TestHandleFSDiskUsage(t *testing.T) {
 }
 
 func TestHandleSysTimeClock(t *testing.T) {
+	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
 	t.Run("valid request", func(t *testing.T) {
+		t.Parallel()
 		req := SysTimeClockRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1940,6 +2028,7 @@ func TestHandleSysTimeClock(t *testing.T) {
 }
 
 func TestHandleProcTree(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("skipping on non-Linux - /proc not available")
 	}
@@ -1948,6 +2037,7 @@ func TestHandleProcTree(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("valid request", func(t *testing.T) {
+		t.Parallel()
 		req := ProcTreeRequest{
 			PID: 1,
 		}
@@ -1969,6 +2059,7 @@ func TestHandleProcTree(t *testing.T) {
 	})
 
 	t.Run("missing pid (defaults to 1)", func(t *testing.T) {
+		t.Parallel()
 		req := ProcTreeRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1989,6 +2080,7 @@ func TestHandleProcTree(t *testing.T) {
 }
 
 func TestHandleK8sInspect(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("kubectl"); err != nil {
 		t.Skip("kubectl not found in PATH, skipping k8s_inspect tests")
 	}
@@ -1997,6 +2089,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("kubectl not available", func(t *testing.T) {
+		t.Parallel()
 		if _, err := exec.LookPath("kubectl"); err == nil {
 			t.Skip("kubectl is available, skipping unavailable test")
 		}
@@ -2011,6 +2104,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("invalid namespace format", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{
 			Operation: "pods",
 			Namespace: "Invalid_Namespace",
@@ -2033,6 +2127,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("invalid resource name format", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{
 			Operation: "pod_logs",
 			Name:      "Invalid_Pod_Name",
@@ -2055,6 +2150,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("pod_logs missing name", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{
 			Operation: "pod_logs",
 		}
@@ -2067,6 +2163,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("pod_describe missing name", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{
 			Operation: "pod_describe",
 		}
@@ -2079,6 +2176,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("unsupported operation", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{
 			Operation: "invalid_operation",
 		}
@@ -2091,6 +2189,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("default operation is pods", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{}
 		reqJSON, _ := json.Marshal(req)
 
@@ -2110,6 +2209,7 @@ func TestHandleK8sInspect(t *testing.T) {
 	})
 
 	t.Run("context cancellation", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 

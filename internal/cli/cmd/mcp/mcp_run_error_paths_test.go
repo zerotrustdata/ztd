@@ -28,8 +28,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestBuildGatewayConn_ErrorPaths(t *testing.T) {
-	t.Run("fails when trust bundle and cert files do not exist", func(t *testing.T) {
+func TestBuildGatewayConn_ErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("fails when trust bundle and cert files do not exist", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
 		require.NoError(t, err)
@@ -42,7 +44,8 @@ func TestBuildGatewayConn_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
 	})
 
-	t.Run("fails when CA bundle does not exist", func(t *testing.T) {
+	t.Run("fails when CA bundle does not exist", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tempDir := testutil.TempDir(t)
 		certPath, keyPath, _ := generateTestCerts(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -61,7 +64,8 @@ func TestBuildGatewayConn_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
 	})
 
-	t.Run("succeeds with valid certs and custom gateway URL", func(t *testing.T) {
+	t.Run("succeeds with valid certs and custom gateway URL", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		certPath, keyPath, caPath := generateTestCerts(t)
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -85,7 +89,8 @@ func TestBuildGatewayConn_ErrorPaths(t *testing.T) {
 
 	// Without --gateway-url the proxy addresses the Gateway every other CLI
 	// command addresses: the ports the local Gateway bound, not the protocol default.
-	t.Run("default gateway URL follows the local Gateway ports", func(t *testing.T) {
+	t.Run("default gateway URL follows the local Gateway ports", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		config.SetEndpointOverride("")
 		config.SetLocalGatewayPorts(8087, 8450)
 		t.Cleanup(func() { config.SetLocalGatewayPorts(0, 0) })
@@ -104,7 +109,7 @@ func TestBuildGatewayConn_ErrorPaths(t *testing.T) {
 
 // ─── runMCPStdioProxy config load error ──────────────────────────────────────
 
-func TestRunMCPStdioProxy_ConfigLoadError(t *testing.T) {
+func TestRunMCPStdioProxy_ConfigLoadError(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	t.Run("returns wrapped error when config load fails", func(t *testing.T) {
 		cmdtest.ChdirTemp(t)
 
@@ -129,7 +134,9 @@ func TestRunMCPStdioProxy_ConfigLoadError(t *testing.T) {
 // ─── proxySessionToGateway connection refused ────────────────────────────────
 
 func TestProxySessionToGateway_ConnectionRefused(t *testing.T) {
+	t.Parallel()
 	t.Run("returns error when gateway is unreachable", func(t *testing.T) {
+		t.Parallel()
 		session := &gatewayConn{
 			openBrowser: func(string) error { return nil },
 			client:      &http.Client{Timeout: 1 * time.Second},
@@ -151,7 +158,7 @@ func TestProxySessionToGateway_ConnectionRefused(t *testing.T) {
 // ─── buildGatewayConn flag resolution ─────────────────────────────────────────
 
 func TestBuildGatewayConn_FlagResolution(t *testing.T) {
-	t.Run("flag-only credentials succeed", func(t *testing.T) {
+	t.Run("flag-only credentials succeed", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		certPath, keyPath, caPath := generateTestCerts(t)
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -197,7 +204,7 @@ func TestBuildGatewayConn_FlagResolution(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
 	})
 
-	t.Run("gateway-url flag honored verbatim", func(t *testing.T) {
+	t.Run("gateway-url flag honored verbatim", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		certPath, keyPath, caPath := generateTestCerts(t)
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -220,7 +227,7 @@ func TestBuildGatewayConn_FlagResolution(t *testing.T) {
 		assert.Equal(t, "https://10.0.0.99:8443/mcp", conn.gatewayURL)
 	})
 
-	t.Run("ca-bundle under runtime root reads through fileSvc", func(t *testing.T) {
+	t.Run("ca-bundle under runtime root reads through fileSvc", func(t *testing.T) { //nolint:paralleltest // sets the process environment
 		certPath, keyPath, _ := generateTestCerts(t)
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -254,7 +261,9 @@ func TestBuildGatewayConn_FlagResolution(t *testing.T) {
 // ─── buildGatewayConn fail-closed ─────────────────────────────────────────────
 
 func TestBuildGatewayConn_FailClosed(t *testing.T) {
+	t.Parallel()
 	t.Run("client-cert without client-key returns ErrIncompleteCredentialPair", func(t *testing.T) {
+		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
 		require.NoError(t, err)
@@ -274,6 +283,7 @@ func TestBuildGatewayConn_FailClosed(t *testing.T) {
 	})
 
 	t.Run("client-key without client-cert returns ErrIncompleteCredentialPair", func(t *testing.T) {
+		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
 		require.NoError(t, err)
@@ -293,6 +303,7 @@ func TestBuildGatewayConn_FailClosed(t *testing.T) {
 	})
 
 	t.Run("http gateway URL returns ErrMCPConfigGatewayURLInvalidScheme", func(t *testing.T) {
+		t.Parallel()
 		certPath, keyPath, caPath := generateTestCerts(t)
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -316,6 +327,7 @@ func TestBuildGatewayConn_FailClosed(t *testing.T) {
 	})
 
 	t.Run("empty host in gateway URL returns ErrMCPConfigGatewayURLHostEmpty", func(t *testing.T) {
+		t.Parallel()
 		certPath, keyPath, caPath := generateTestCerts(t)
 		tempDir := testutil.TempDir(t)
 		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
@@ -342,7 +354,9 @@ func TestBuildGatewayConn_FailClosed(t *testing.T) {
 // ─── parseStdioCredentialFlags ────────────────────────────────────────────────
 
 func TestParseStdioCredentialFlags(t *testing.T) {
+	t.Parallel()
 	t.Run("zero value when nothing is set", func(t *testing.T) {
+		t.Parallel()
 		cmd := mcpStdioCmd()
 		cmd.SetArgs([]string{})
 		// Execute to register flags
@@ -354,6 +368,7 @@ func TestParseStdioCredentialFlags(t *testing.T) {
 	})
 
 	t.Run("exact values after flag set", func(t *testing.T) {
+		t.Parallel()
 		cmd := mcpStdioCmd()
 		require.NoError(t, cmd.ParseFlags([]string{
 			"--client-cert", "/tmp/cli.crt",

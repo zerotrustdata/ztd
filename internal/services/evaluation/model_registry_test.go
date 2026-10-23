@@ -20,6 +20,7 @@ import (
 )
 
 func TestMaterializeCampaignInventory_WritesInventoryFile(t *testing.T) {
+	t.Parallel()
 	root := testutil.TempDir(t)
 	fileSvc, err := fs.NewRuntimeFileService(root, nil)
 	require.NoError(t, err)

@@ -82,6 +82,7 @@ func rendererTestOSCALInvalidAnalysis() *compliancev1.ComplianceAnalysis {
 }
 
 func TestRenderComplianceAnalysis_RendersEveryViewFromCanonicalAnalysis(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestAnalysis()
 	tests := []struct {
 		name      string
@@ -99,6 +100,7 @@ func TestRenderComplianceAnalysis_RendersEveryViewFromCanonicalAnalysis(t *testi
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			first, err := RenderComplianceAnalysis(analysis, test.format)
 			require.NoError(t, err)
 			second, err := RenderComplianceAnalysis(analysis, test.format)
@@ -115,6 +117,7 @@ func TestRenderComplianceAnalysis_RendersEveryViewFromCanonicalAnalysis(t *testi
 }
 
 func TestRenderComplianceAnalysis_ProjectionIncludesCoverageDiagnosticsAndEvidenceLinks(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestAnalysis()
 	artifactID := "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	analysis.AssertionAssessments[0].EvidenceRefs = []string{artifactID}
@@ -142,6 +145,7 @@ func TestRenderComplianceAnalysis_ProjectionIncludesCoverageDiagnosticsAndEviden
 }
 
 func TestRenderPublicReleaseProjection_ExcludesPrivateAnalysisFields(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestAnalysis()
 	artifactID := "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	analysis.AssertionAssessments[0].EvidenceRefs = []string{artifactID}
@@ -169,6 +173,7 @@ func TestRenderPublicReleaseProjection_ExcludesPrivateAnalysisFields(t *testing.
 }
 
 func TestRenderComplianceAnalysis_CanonicalJSONRoundTrips(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestAnalysis()
 
 	rendered, err := RenderComplianceAnalysis(analysis, FormatJSON)
@@ -180,6 +185,7 @@ func TestRenderComplianceAnalysis_CanonicalJSONRoundTrips(t *testing.T) {
 }
 
 func TestRenderComplianceAnalysis_TextRenderersEscapeAnalysisContent(t *testing.T) {
+	t.Parallel()
 	for _, format := range []Format{FormatMarkdown, FormatHTML} {
 		rendered, err := RenderComplianceAnalysis(rendererTestAnalysis(), format)
 		require.NoError(t, err)
@@ -190,12 +196,14 @@ func TestRenderComplianceAnalysis_TextRenderersEscapeAnalysisContent(t *testing.
 }
 
 func TestRenderComplianceAnalysis_NonOSCALViewsDoNotRequireOSCALProjection(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestOSCALInvalidAnalysis()
 	_, err := RenderComplianceAnalysis(analysis, FormatOSCAL)
 	require.ErrorIs(t, err, constants.ErrOSCALValidationFailed)
 
 	for _, format := range []Format{FormatJSON, FormatMarkdown, FormatHTML, FormatCSV, FormatCLI} {
 		t.Run(string(format), func(t *testing.T) {
+			t.Parallel()
 			rendered, err := RenderComplianceAnalysis(analysis, format)
 
 			require.NoError(t, err)
@@ -205,6 +213,7 @@ func TestRenderComplianceAnalysis_NonOSCALViewsDoNotRequireOSCALProjection(t *te
 }
 
 func TestRenderComplianceAnalysis_RejectsInvalidInput(t *testing.T) {
+	t.Parallel()
 	invalidOSCALAnalysis := rendererTestOSCALInvalidAnalysis()
 	tests := []struct {
 		name     string
@@ -219,6 +228,7 @@ func TestRenderComplianceAnalysis_RejectsInvalidInput(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			rendered, err := RenderComplianceAnalysis(test.analysis, test.format)
 
 			require.Error(t, err)
@@ -229,6 +239,7 @@ func TestRenderComplianceAnalysis_RejectsInvalidInput(t *testing.T) {
 }
 
 func TestRenderComplianceAnalysis_GoldenVectors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		format         Format
 		expectedSHA256 string
@@ -242,6 +253,7 @@ func TestRenderComplianceAnalysis_GoldenVectors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.format), func(t *testing.T) {
+			t.Parallel()
 			rendered, err := RenderComplianceAnalysis(rendererTestAnalysis(), tt.format)
 			require.NoError(t, err)
 			digest := sha256.Sum256(rendered.Body)
@@ -251,6 +263,7 @@ func TestRenderComplianceAnalysis_GoldenVectors(t *testing.T) {
 }
 
 func TestRenderComplianceAnalysis_CanonicalJSONReproducesEveryRenderer(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestAnalysis()
 	canonical, err := RenderComplianceAnalysis(analysis, FormatJSON)
 	require.NoError(t, err)
@@ -266,6 +279,7 @@ func TestRenderComplianceAnalysis_CanonicalJSONReproducesEveryRenderer(t *testin
 }
 
 func TestRenderComplianceAnalysis_FormatsProduceDistinctBodies(t *testing.T) {
+	t.Parallel()
 	analysis := rendererTestAnalysis()
 	seen := make([][]byte, 0, len(SupportedFormats()))
 	for _, format := range SupportedFormats() {

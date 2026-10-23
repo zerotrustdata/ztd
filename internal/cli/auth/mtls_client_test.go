@@ -28,6 +28,8 @@ import (
 )
 
 func TestBuildMTLSClient_MissingCertFile(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 
 	_, err := BuildMTLSClient(fileSvc, cfg, 30*time.Second)
@@ -36,6 +38,8 @@ func TestBuildMTLSClient_MissingCertFile(t *testing.T) {
 }
 
 func TestBuildMTLSClient_InvalidCertPair(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 
 	certRel, err := fileSvc.RelFromAbs(cfg.CLICertFile())
@@ -52,6 +56,8 @@ func TestBuildMTLSClient_InvalidCertPair(t *testing.T) {
 }
 
 func TestBuildMTLSClient_MissingTrustBundle(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -82,6 +88,8 @@ func TestBuildMTLSClient_MissingTrustBundle(t *testing.T) {
 }
 
 func TestBuildMTLSClient_InvalidTrustBundle(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -114,6 +122,8 @@ func TestBuildMTLSClient_InvalidTrustBundle(t *testing.T) {
 }
 
 func TestBuildMTLSClient_ValidCertsAndBundle(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	writeTestCLICert(t, fileSvc, cfg)
 
@@ -148,6 +158,8 @@ func TestBuildMTLSClient_ValidCertsAndBundle(t *testing.T) {
 }
 
 func TestBuildMTLSClient_ZeroTimeoutForSSEStreaming(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	writeTestCLICert(t, fileSvc, cfg)
 

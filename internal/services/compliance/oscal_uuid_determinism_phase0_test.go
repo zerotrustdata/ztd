@@ -18,7 +18,8 @@ import (
 )
 
 // TestPhase0OSCAL_IdenticalInputsProduceByteIdenticalOutput verifies that identical canonical analysis produces reproducible unsigned OSCAL output.
-func TestPhase0OSCAL_IdenticalInputsProduceByteIdenticalOutput(t *testing.T) {
+func TestPhase0OSCAL_IdenticalInputsProduceByteIdenticalOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	analysis := oscalTestAnalysis()
 	exporter := NewOSCALExporter(oscalTestCatalog())
 
@@ -37,6 +38,7 @@ func TestPhase0OSCAL_IdenticalInputsProduceByteIdenticalOutput(t *testing.T) {
 
 // TestPhase0OSCAL_GenerateUUIDIsIdentityBound verifies deterministic namespace derivation and identity separation.
 func TestPhase0OSCAL_GenerateUUIDIsIdentityBound(t *testing.T) {
+	t.Parallel()
 	u1 := generateUUID("observation", "analysis-1", "assertion-1")
 	u2 := generateUUID("observation", "analysis-1", "assertion-1")
 	u3 := generateUUID("observation", "analysis-1", "assertion-2")
@@ -45,7 +47,8 @@ func TestPhase0OSCAL_GenerateUUIDIsIdentityBound(t *testing.T) {
 	assert.NotEqual(t, u1, u3, phase0RegressionAfterFix+": distinct assertion identities derive distinct UUIDs")
 }
 
-func TestPhase0OSCAL_IdentifiersBindCanonicalRecordIdentities(t *testing.T) {
+func TestPhase0OSCAL_IdentifiersBindCanonicalRecordIdentities(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	newAnalysis := func() *compliancev1.ComplianceAnalysis {
 		analysis := oscalTestAnalysis()
 		analysis.AssertionAssessments = analysis.AssertionAssessments[:1]
@@ -89,8 +92,9 @@ func TestPhase0OSCAL_IdentifiersBindCanonicalRecordIdentities(t *testing.T) {
 	exporter := NewOSCALExporter(oscalTestCatalog())
 	base, err := exporter.GenerateAssessmentResults(newAnalysis())
 	require.NoError(t, err)
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			changedAnalysis := newAnalysis()
 			tt.mutate(changedAnalysis)
 			changed, err := exporter.GenerateAssessmentResults(changedAnalysis)

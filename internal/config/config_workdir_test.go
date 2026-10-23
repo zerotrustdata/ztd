@@ -21,6 +21,7 @@ import (
 
 // External test package: testutil imports config, so only config_test can use it.
 func TestLoad_WorkDir_Flag(t *testing.T) {
+	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 
 	cfg, err := config.Load(config.LoadOptions{

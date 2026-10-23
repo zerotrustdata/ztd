@@ -34,11 +34,12 @@ func testCmd(t *testing.T, client authcmd.APIClient) *cobra.Command {
 	return cmdWithConfig(cmdtest.ConfigLoaderFor(cfg), func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return client, nil }, cmdtest.FileSvcFactoryFor(fileSvc))
 }
 
-func TestConsensusEnrollAppCommands(t *testing.T) {
+func TestConsensusEnrollAppCommands(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	policyBody, err := json.Marshal(policy)
 	require.NoError(t, err)
-	for _, tc := range []struct {
+	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
 		name         string
 		args         []string
 		postResponse []byte
@@ -51,6 +52,7 @@ func TestConsensusEnrollAppCommands(t *testing.T) {
 		{name: "reject malformed success", args: []string{"enroll", "app", "reviewer", policy.EndpointURL}, postResponse: []byte(`{}`), wantPosts: 1, wantError: constants.ErrInvalidJSONResponse},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+
 			client := &cmdtest.MockAPIClient{PostResp: tc.postResponse, GetResp: policyBody}
 			cmd := testCmd(t, client)
 			var output bytes.Buffer
@@ -75,7 +77,8 @@ func TestConsensusEnrollAppCommands(t *testing.T) {
 	}
 }
 
-func TestConsensusEnrollApp_SendsKOfNFlags(t *testing.T) {
+func TestConsensusEnrollApp_SendsKOfNFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer-a", MemberAppIDs: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, Quorum: 2, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer-a.example/deliberate"}
 	body, err := json.Marshal(policy)
 	require.NoError(t, err)
@@ -88,7 +91,8 @@ func TestConsensusEnrollApp_SendsKOfNFlags(t *testing.T) {
 	require.Equal(t, models.PlatformEnrollmentBindConsensusRequest{AppID: "reviewer-a", EndpointURL: policy.EndpointURL, MemberAppIDs: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, Quorum: 2, Provider: string(constants.ConsensusProviderApplication)}, client.PostCalls[0].Body)
 }
 
-func TestConsensusEnrollApp_TrimsMemberAppIDsBeforeCompare(t *testing.T) {
+func TestConsensusEnrollApp_TrimsMemberAppIDsBeforeCompare(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	body, err := json.Marshal(policy)
 	require.NoError(t, err)
@@ -102,7 +106,8 @@ func TestConsensusEnrollApp_TrimsMemberAppIDsBeforeCompare(t *testing.T) {
 	require.Equal(t, models.PlatformEnrollmentBindConsensusRequest{AppID: "reviewer", EndpointURL: policy.EndpointURL, MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, Provider: string(constants.ConsensusProviderApplication)}, client.PostCalls[0].Body)
 }
 
-func TestConsensusEnrollApp_RejectsEmptyMemberAppLocally(t *testing.T) {
+func TestConsensusEnrollApp_RejectsEmptyMemberAppLocally(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	for _, member := range []string{"", "   "} {
 		client := &cmdtest.MockAPIClient{}
 		cmd := testCmd(t, client)
@@ -116,6 +121,7 @@ func TestConsensusEnrollApp_RejectsEmptyMemberAppLocally(t *testing.T) {
 }
 
 func TestConsensusEnrollApp_HelpListsMemberAndQuorumOptions(t *testing.T) {
+	t.Parallel()
 	cmd := enrollAppCmd(nil)
 	var output bytes.Buffer
 	cmd.SetOut(&output)
@@ -125,9 +131,11 @@ func TestConsensusEnrollApp_HelpListsMemberAndQuorumOptions(t *testing.T) {
 	require.Contains(t, output.String(), "--quorum")
 }
 
-func TestConsensusEnrollApp_PrintsPostureSuspension(t *testing.T) {
-	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
+func TestConsensusEnrollApp_PrintsPostureSuspension(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} { //nolint:paralleltest // mutates package-level state
 		t.Run(string(posture), func(t *testing.T) {
+
 			suspension := models.PlatformEnrollmentL3SuspensionResponse{Status: models.PlatformEnrollmentStatusL3Required, Posture: posture, TxHash: "binding-hash", ApprovalURL: "https://gateway.example/approve/binding-hash", ExpiresAt: time.Now().Add(time.Minute)}
 			body, err := json.Marshal(suspension)
 			require.NoError(t, err)
@@ -147,7 +155,8 @@ func TestConsensusEnrollApp_PrintsPostureSuspension(t *testing.T) {
 	}
 }
 
-func TestConsensusEnrollApp_JSONSuspension(t *testing.T) {
+func TestConsensusEnrollApp_JSONSuspension(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	suspension := models.PlatformEnrollmentL3SuspensionResponse{Status: models.PlatformEnrollmentStatusL3Required, Posture: constants.PostureNotary, TxHash: "binding-hash", ApprovalURL: "https://gateway.example/approve/binding-hash", ExpiresAt: time.Now().UTC().Truncate(time.Second)}
 	body, err := json.Marshal(suspension)
 	require.NoError(t, err)
@@ -163,7 +172,8 @@ func TestConsensusEnrollApp_JSONSuspension(t *testing.T) {
 	require.Equal(t, suspension, actual)
 }
 
-func TestConsensusCommands_FileServiceFailure(t *testing.T) {
+func TestConsensusCommands_FileServiceFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	for _, args := range [][]string{{"status"}, {"enroll", "app", "reviewer", "https://reviewer.example"}} {
 		_, cfg := cmdtest.NewCmdTestEnv(t)
 		cmd := cmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -177,6 +187,7 @@ func TestConsensusCommands_FileServiceFailure(t *testing.T) {
 }
 
 func TestDecodeConsensusBinding_ProviderShapes(t *testing.T) {
+	t.Parallel()
 	application := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	tribunal := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: constants.TribunalConsensusMemberAppIDs()[0], MemberAppIDs: constants.TribunalConsensusMemberAppIDs(), Quorum: constants.TribunalConsensusDefaultQuorum, Provider: string(constants.ConsensusProviderTribunal), ModelTag: "vote-model", ModelDigest: "sha256:abc", Enabled: true}
 	tribunalWithEndpoint := tribunal
@@ -197,6 +208,7 @@ func TestDecodeConsensusBinding_ProviderShapes(t *testing.T) {
 		{name: "application without endpoint", policy: applicationNoEndpoint, wantError: constants.ErrMissingRequiredField},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			body, err := json.Marshal(tc.policy)
 			require.NoError(t, err)
 			decoded, err := decodeConsensusBinding(body)

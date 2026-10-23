@@ -18,7 +18,9 @@ import (
 )
 
 func TestCallToolJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("CallToolRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := CallToolRequest{
 			Name:      "test-tool",
 			Arguments: json.RawMessage(`{"arg1":"val1"}`),
@@ -30,6 +32,7 @@ func TestCallToolJSON(t *testing.T) {
 	})
 
 	t.Run("CallToolResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := CallToolResult{
 			Content: []TextContent{
 				{
@@ -54,7 +57,9 @@ func TestCallToolJSON(t *testing.T) {
 }
 
 func TestResourceModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("Resource marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := Resource{
 			URI:         "file:///tmp/test.txt",
 			Name:        "test-resource",
@@ -72,6 +77,7 @@ func TestResourceModelsJSON(t *testing.T) {
 	})
 
 	t.Run("ResourcesListResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := ResourcesListResult{
 			Resources: []Resource{
 				{URI: "uri1", Name: "name1"},
@@ -89,7 +95,9 @@ func TestResourceModelsJSON(t *testing.T) {
 }
 
 func TestPromptModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("Prompt marshalling", func(t *testing.T) {
+		t.Parallel()
 		p := Prompt{
 			Name:        "test-prompt",
 			Description: "a test prompt",
@@ -104,6 +112,7 @@ func TestPromptModelsJSON(t *testing.T) {
 	})
 
 	t.Run("GetPromptResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := GetPromptResult{
 			Description: "desc",
 			Messages: []PromptMessage{
@@ -124,7 +133,9 @@ func TestPromptModelsJSON(t *testing.T) {
 }
 
 func TestNativeToolModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("DBQueryValidateResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := DBQueryValidateResult{
 			Valid:    true,
 			Plan:     "SELECT *",
@@ -138,6 +149,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("FSDiskUsageResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := FSDiskUsageResult{
 			Path: "/tmp",
 			Filesystem: &FilesystemInfo{
@@ -153,6 +165,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SysInfoResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := SysInfoResult{
 			Hostname: "test-host",
 			OS: OSInfo{
@@ -167,6 +180,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sInspectResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := K8sInspectResult{
 			Operation: "list_pods",
 			Pods: []K8sPodInfo{
@@ -182,6 +196,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetSSHKnownHostsResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := NetSSHKnownHostsResult{
 			ConfigHosts: []SSHConfigHost{
 				{Pattern: "*", Hostname: "github.com", User: "git"},
@@ -197,6 +212,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("RunShellCommandResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := RunShellCommandResult{
 			ExitCode: 0,
 			Stdout:   "hello",
@@ -211,6 +227,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SysTimeClockResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := SysTimeClockResult{
 			SystemTime: SystemTimeInfo{
 				UTC:      "2026-06-14T12:00:00Z",
@@ -229,6 +246,7 @@ func TestNativeToolModelsJSON(t *testing.T) {
 	})
 
 	t.Run("FSDiskProfileResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := FSDiskProfileResult{
 			Entries: []DirEntry{
 				{Path: "/tmp", SizeMB: 10, IsDir: true, Modified: 123456789},
@@ -244,30 +262,36 @@ func TestNativeToolModelsJSON(t *testing.T) {
 }
 
 func TestFieldValueString(t *testing.T) {
+	t.Parallel()
 	t.Run("null value", func(t *testing.T) {
+		t.Parallel()
 		v := FieldValue{Null: true}
 		assert.Equal(t, "null", v.String())
 	})
 
 	t.Run("string value", func(t *testing.T) {
+		t.Parallel()
 		s := "hello world"
 		v := FieldValue{Str: &s}
 		assert.Equal(t, "hello world", v.String())
 	})
 
 	t.Run("int64 value", func(t *testing.T) {
+		t.Parallel()
 		i := int64(42)
 		v := FieldValue{Int64: &i}
 		assert.Equal(t, "42", v.String())
 	})
 
 	t.Run("float64 value", func(t *testing.T) {
+		t.Parallel()
 		f := float64(3.14159)
 		v := FieldValue{Float64: &f}
 		assert.Equal(t, "3.14159", v.String())
 	})
 
 	t.Run("bool value", func(t *testing.T) {
+		t.Parallel()
 		b := true
 		v := FieldValue{Bool: &b}
 		assert.Equal(t, "true", v.String())
@@ -278,19 +302,23 @@ func TestFieldValueString(t *testing.T) {
 	})
 
 	t.Run("array value", func(t *testing.T) {
+		t.Parallel()
 		v := FieldValue{Array: []FieldValue{{Str: strPtr("a")}, {Str: strPtr("b")}}}
 		assert.Contains(t, v.String(), "a")
 		assert.Contains(t, v.String(), "b")
 	})
 
 	t.Run("object value", func(t *testing.T) {
+		t.Parallel()
 		v := FieldValue{Object: map[string]FieldValue{"key": {Str: strPtr("value")}}}
 		assert.Contains(t, v.String(), "key")
 		assert.Contains(t, v.String(), "value")
 	})
 
 	t.Run("empty value returns empty string on marshal error", func(t *testing.T) {
+		t.Parallel()
 		// This tests the fallback case where json.Marshal might fail
+
 		v := FieldValue{}
 		result := v.String()
 		// Empty value should marshal to valid JSON
@@ -299,7 +327,9 @@ func TestFieldValueString(t *testing.T) {
 }
 
 func TestFieldReadModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("FieldReadRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := FieldReadRequest{
 			Collection:        "test-collection",
 			DocumentID:        "doc-123",
@@ -324,6 +354,7 @@ func TestFieldReadModelsJSON(t *testing.T) {
 	})
 
 	t.Run("FieldReadResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		s := "test-value"
 		res := FieldReadResult{
 			Value: FieldValue{Str: &s},
@@ -341,7 +372,9 @@ func TestFieldReadModelsJSON(t *testing.T) {
 }
 
 func TestDBModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("DBDiscoverTopologyRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := DBDiscoverTopologyRequest{
 			DatabasePath: "/tmp/test.db",
 		}
@@ -351,6 +384,7 @@ func TestDBModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DBDiscoverTopologyResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := DBDiscoverTopologyResult{
 			Schema: map[string]map[string]string{
 				"users": {
@@ -372,6 +406,7 @@ func TestDBModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DBIsolatedReadRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := DBIsolatedReadRequest{
 			DatabasePath: "/tmp/test.db",
 			Query:        "SELECT * FROM users",
@@ -383,6 +418,7 @@ func TestDBModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DBIsolatedReadResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		s1, s2 := "alice", "bob"
 		res := DBIsolatedReadResult{
 			Rows: []DBRow{
@@ -415,6 +451,7 @@ func TestDBModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DBValue null handling", func(t *testing.T) {
+		t.Parallel()
 		v := DBValue{Null: true}
 		data, err := json.Marshal(v)
 		require.NoError(t, err)
@@ -427,6 +464,7 @@ func TestDBModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DBIndexTriageRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := DBIndexTriageRequest{
 			DatabasePath: "/tmp/test.db",
 		}
@@ -436,6 +474,7 @@ func TestDBModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DBIndexTriageResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := DBIndexTriageResult{
 			Indexes: []IndexInfo{
 				{
@@ -464,7 +503,9 @@ func TestDBModelsJSON(t *testing.T) {
 }
 
 func TestLogModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("SysOOMDetectRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := SysOOMDetectRequest{
 			LogPath: "/var/log/syslog",
 		}
@@ -480,6 +521,7 @@ func TestLogModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SysOOMDetectResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := SysOOMDetectResult{
 			Events: []OOMEvent{
 				{
@@ -507,7 +549,9 @@ func TestLogModelsJSON(t *testing.T) {
 }
 
 func TestConfigModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("ConfigDiffMaskRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := ConfigDiffMaskRequest{
 			ConfigPath: "/etc/app/config.yaml",
 			Baseline:   "version: 1.0",
@@ -519,6 +563,7 @@ func TestConfigModelsJSON(t *testing.T) {
 	})
 
 	t.Run("ConfigDiffMaskResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := ConfigDiffMaskResult{
 			Differences: []ConfigDiff{
 				{
@@ -550,7 +595,9 @@ func TestConfigModelsJSON(t *testing.T) {
 }
 
 func TestProcessModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("ProcMetricTopRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := ProcMetricTopRequest{
 			Limit: 10,
 		}
@@ -566,6 +613,7 @@ func TestProcessModelsJSON(t *testing.T) {
 	})
 
 	t.Run("ProcMetricTopResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := ProcMetricTopResult{
 			Processes: []ProcessInfo{
 				{
@@ -593,6 +641,7 @@ func TestProcessModelsJSON(t *testing.T) {
 	})
 
 	t.Run("ProcSignalSafeRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := ProcSignalSafeRequest{
 			PID:    1234,
 			Signal: "TERM",
@@ -611,6 +660,7 @@ func TestProcessModelsJSON(t *testing.T) {
 	})
 
 	t.Run("ProcSignalSafeResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := ProcSignalSafeResult{
 			Sent:   true,
 			PID:    1234,
@@ -630,7 +680,9 @@ func TestProcessModelsJSON(t *testing.T) {
 }
 
 func TestFileSystemModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("FSDiskProfileRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := FSDiskProfileRequest{
 			Path:     "/var/log",
 			MaxDepth: 3,
@@ -648,6 +700,7 @@ func TestFileSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DirEntry marshalling", func(t *testing.T) {
+		t.Parallel()
 		entry := DirEntry{
 			Path:     "/var/log/app.log",
 			SizeMB:   10,
@@ -670,6 +723,7 @@ func TestFileSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("FSDiskUsageRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := FSDiskUsageRequest{
 			Path: "/",
 		}
@@ -685,6 +739,7 @@ func TestFileSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("FilesystemInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		info := FilesystemInfo{
 			Path:           "/",
 			TotalBytes:     1000000000000,
@@ -708,7 +763,9 @@ func TestFileSystemModelsJSON(t *testing.T) {
 }
 
 func TestNetworkModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("NetSocketAuditRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := NetSocketAuditRequest{
 			Protocol: "tcp",
 		}
@@ -724,6 +781,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SocketInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		info := SocketInfo{
 			Protocol:   "tcp",
 			LocalAddr:  "0.0.0.0",
@@ -750,6 +808,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetDNSResolveRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := NetDNSResolveRequest{
 			Hostname:   "example.com",
 			RecordType: "A",
@@ -767,6 +826,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("DNSRecords marshalling", func(t *testing.T) {
+		t.Parallel()
 		records := DNSRecords{
 			A: []DNSARecord{
 				{IP: "93.184.216.34"},
@@ -801,6 +861,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetDNSResolveResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := NetDNSResolveResult{
 			Hostname:   "example.com",
 			RecordType: "A",
@@ -822,6 +883,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetEndpointPingRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := NetEndpointPingRequest{
 			Host: "example.com",
 			Port: 443,
@@ -840,6 +902,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetEndpointPingResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := NetEndpointPingResult{
 			Reachable: true,
 			LatencyMs: 15.5,
@@ -858,6 +921,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetHTTPProbeRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := NetHTTPProbeRequest{
 			URL:    "https://example.com",
 			Method: "GET",
@@ -875,6 +939,7 @@ func TestNetworkModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NetHTTPProbeResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := NetHTTPProbeResult{
 			StatusCode: 200,
 			Headers: map[string]string{
@@ -898,7 +963,9 @@ func TestNetworkModelsJSON(t *testing.T) {
 }
 
 func TestSystemModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("SysInfoRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := SysInfoRequest{}
 		data, err := json.Marshal(req)
 		require.NoError(t, err)
@@ -906,6 +973,7 @@ func TestSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("OSInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		info := OSInfo{
 			OS:          "linux",
 			Arch:        "amd64",
@@ -928,6 +996,7 @@ func TestSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SysTimeClockRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := SysTimeClockRequest{}
 		data, err := json.Marshal(req)
 		require.NoError(t, err)
@@ -935,6 +1004,7 @@ func TestSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SystemTimeInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		info := SystemTimeInfo{
 			UTC:      "2026-06-14T12:00:00Z",
 			Local:    "2026-06-14T08:00:00-04:00",
@@ -957,6 +1027,7 @@ func TestSystemModelsJSON(t *testing.T) {
 	})
 
 	t.Run("NTPStatus marshalling", func(t *testing.T) {
+		t.Parallel()
 		status := NTPStatus{
 			Synced:           true,
 			Status:           "synchronized",
@@ -993,7 +1064,9 @@ func TestSystemModelsJSON(t *testing.T) {
 }
 
 func TestK8sModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("K8sInspectRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := K8sInspectRequest{
 			Operation: "list_pods",
 			Namespace: "default",
@@ -1014,6 +1087,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sPodInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		pod := K8sPodInfo{
 			Name:      "nginx-deployment-abc123",
 			Namespace: "default",
@@ -1033,6 +1107,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sNodeInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		node := K8sNodeInfo{
 			Name:  "node-1",
 			Ready: true,
@@ -1051,6 +1126,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sServiceInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		svc := K8sServiceInfo{
 			Name:      "nginx-service",
 			Namespace: "default",
@@ -1070,6 +1146,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sDeploymentInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		deploy := K8sDeploymentInfo{
 			Name:              "nginx-deployment",
 			Namespace:         "default",
@@ -1092,6 +1169,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sNamespaceInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		ns := K8sNamespaceInfo{
 			Name:   "production",
 			Status: "Active",
@@ -1110,6 +1188,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sClusterInfo marshalling", func(t *testing.T) {
+		t.Parallel()
 		cluster := K8sClusterInfo{
 			Version: "v1.28.0",
 			Context: "minikube",
@@ -1129,6 +1208,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sPodLogs marshalling", func(t *testing.T) {
+		t.Parallel()
 		logs := K8sPodLogs{
 			Namespace: "default",
 			Pod:       "nginx-abc123",
@@ -1149,6 +1229,7 @@ func TestK8sModelsJSON(t *testing.T) {
 	})
 
 	t.Run("K8sPodDescribe marshalling", func(t *testing.T) {
+		t.Parallel()
 		desc := K8sPodDescribe{
 			Namespace: "default",
 			Pod:       "nginx-abc123",
@@ -1169,7 +1250,9 @@ func TestK8sModelsJSON(t *testing.T) {
 }
 
 func TestSSHModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("NetSSHKnownHostsRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := NetSSHKnownHostsRequest{
 			SSHConfigPath:  "~/.ssh/config",
 			KnownHostsPath: "~/.ssh/known_hosts",
@@ -1189,6 +1272,7 @@ func TestSSHModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SSHConfigHost marshalling", func(t *testing.T) {
+		t.Parallel()
 		host := SSHConfigHost{
 			Pattern:       "github.com",
 			Hostname:      "github.com",
@@ -1211,6 +1295,7 @@ func TestSSHModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SSHKnownHost marshalling", func(t *testing.T) {
+		t.Parallel()
 		host := SSHKnownHost{
 			HostPattern: "github.com",
 			KeyType:     "ssh-rsa",
@@ -1231,7 +1316,9 @@ func TestSSHModelsJSON(t *testing.T) {
 }
 
 func TestOperatorModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("OperatorDeployRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := OperatorDeployRequest{
 			Hostnames:      []string{"host1", "host2"},
 			OperatorBinary: "/usr/local/bin/ztd-operator",
@@ -1251,6 +1338,7 @@ func TestOperatorModelsJSON(t *testing.T) {
 	})
 
 	t.Run("OperatorDeploymentResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := OperatorDeploymentResult{
 			Hostname: "host1",
 			Success:  true,
@@ -1279,6 +1367,7 @@ func TestOperatorModelsJSON(t *testing.T) {
 	})
 
 	t.Run("OperatorDeployResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := OperatorDeployResult{
 			Deployments: []OperatorDeploymentResult{
 				{
@@ -1308,7 +1397,9 @@ func TestOperatorModelsJSON(t *testing.T) {
 }
 
 func TestSysServiceStatusModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("SysServiceStatusRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := SysServiceStatusRequest{
 			ServiceName: "nginx",
 		}
@@ -1324,6 +1415,7 @@ func TestSysServiceStatusModelsJSON(t *testing.T) {
 	})
 
 	t.Run("SysServiceStatusResult marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := SysServiceStatusResult{
 			ServiceName: "nginx",
 			LoadState:   "loaded",
@@ -1357,7 +1449,9 @@ func TestSysServiceStatusModelsJSON(t *testing.T) {
 }
 
 func TestA2AModelsJSON(t *testing.T) {
+	t.Parallel()
 	t.Run("GovernedSuspension marshalling", func(t *testing.T) {
+		t.Parallel()
 		res := GovernedSuspension{
 			ID:          "id1",
 			Status:      string(constants.GatewayResponseStatusSuspended),
@@ -1371,6 +1465,7 @@ func TestA2AModelsJSON(t *testing.T) {
 	})
 
 	t.Run("A2ADownstreamRequest marshalling", func(t *testing.T) {
+		t.Parallel()
 		req := A2ADownstreamRequest{
 			SkillName: "test-skill",
 			Payload:   json.RawMessage(`{"data":1}`),

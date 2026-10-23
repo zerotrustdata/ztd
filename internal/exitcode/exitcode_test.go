@@ -15,6 +15,7 @@ import (
 )
 
 func TestFromError_NilReturnsSuccess(t *testing.T) {
+	t.Parallel()
 	got := FromError(nil)
 	if got != constants.ExitSuccess {
 		t.Errorf("FromError(nil) = %d, want %d (ExitSuccess)", got, constants.ExitSuccess)
@@ -22,6 +23,7 @@ func TestFromError_NilReturnsSuccess(t *testing.T) {
 }
 
 func TestFromError_GeneralError(t *testing.T) {
+	t.Parallel()
 	err := errors.New("something unexpected happened")
 	got := FromError(err)
 	if got != constants.ExitGeneralError {
@@ -30,6 +32,7 @@ func TestFromError_GeneralError(t *testing.T) {
 }
 
 func TestFromError_EmptyString(t *testing.T) {
+	t.Parallel()
 	err := errors.New("")
 	got := FromError(err)
 	if got != constants.ExitGeneralError {
@@ -38,6 +41,7 @@ func TestFromError_EmptyString(t *testing.T) {
 }
 
 func TestFromError_PermissionDenied(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  string
@@ -49,6 +53,7 @@ func TestFromError_PermissionDenied(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != constants.ExitPermissionDenied {
 				t.Errorf("FromError(%q) = %d, want %d (ExitPermissionDenied)", tc.msg, got, constants.ExitPermissionDenied)
@@ -58,6 +63,7 @@ func TestFromError_PermissionDenied(t *testing.T) {
 }
 
 func TestFromError_PermissionDenied_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"PERMISSION DENIED",
 		"Access Denied",
@@ -66,6 +72,7 @@ func TestFromError_PermissionDenied_CaseInsensitive(t *testing.T) {
 	}
 	for _, msg := range tests {
 		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(msg))
 			if got != constants.ExitPermissionDenied {
 				t.Errorf("FromError(%q) = %d, want %d (ExitPermissionDenied)", msg, got, constants.ExitPermissionDenied)
@@ -75,6 +82,7 @@ func TestFromError_PermissionDenied_CaseInsensitive(t *testing.T) {
 }
 
 func TestFromError_CertTrustFailure(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  string
@@ -89,6 +97,7 @@ func TestFromError_CertTrustFailure(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != constants.ExitCertTrustFailure {
 				t.Errorf("FromError(%q) = %d, want %d (ExitCertTrustFailure)", tc.msg, got, constants.ExitCertTrustFailure)
@@ -98,6 +107,7 @@ func TestFromError_CertTrustFailure(t *testing.T) {
 }
 
 func TestFromError_CertTrustFailure_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"CERTIFICATE SIGNED BY UNKNOWN AUTHORITY",
 		"Certificate Has Expired",
@@ -106,6 +116,7 @@ func TestFromError_CertTrustFailure_CaseInsensitive(t *testing.T) {
 	}
 	for _, msg := range tests {
 		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(msg))
 			if got != constants.ExitCertTrustFailure {
 				t.Errorf("FromError(%q) = %d, want %d (ExitCertTrustFailure)", msg, got, constants.ExitCertTrustFailure)
@@ -115,6 +126,7 @@ func TestFromError_CertTrustFailure_CaseInsensitive(t *testing.T) {
 }
 
 func TestFromError_AuthFailure(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  string
@@ -125,6 +137,7 @@ func TestFromError_AuthFailure(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != constants.ExitAuthFailure {
 				t.Errorf("FromError(%q) = %d, want %d (ExitAuthFailure)", tc.msg, got, constants.ExitAuthFailure)
@@ -134,6 +147,7 @@ func TestFromError_AuthFailure(t *testing.T) {
 }
 
 func TestFromError_AuthFailure_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"AUTHENTICATION FAILED",
 		"Unauthorized",
@@ -141,6 +155,7 @@ func TestFromError_AuthFailure_CaseInsensitive(t *testing.T) {
 	}
 	for _, msg := range tests {
 		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(msg))
 			if got != constants.ExitAuthFailure {
 				t.Errorf("FromError(%q) = %d, want %d (ExitAuthFailure)", msg, got, constants.ExitAuthFailure)
@@ -150,6 +165,7 @@ func TestFromError_AuthFailure_CaseInsensitive(t *testing.T) {
 }
 
 func TestFromError_NetworkError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  string
@@ -163,6 +179,7 @@ func TestFromError_NetworkError(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != constants.ExitNetworkError {
 				t.Errorf("FromError(%q) = %d, want %d (ExitNetworkError)", tc.msg, got, constants.ExitNetworkError)
@@ -172,6 +189,7 @@ func TestFromError_NetworkError(t *testing.T) {
 }
 
 func TestFromError_NetworkError_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"CONNECTION REFUSED",
 		"No Such Host",
@@ -180,6 +198,7 @@ func TestFromError_NetworkError_CaseInsensitive(t *testing.T) {
 	}
 	for _, msg := range tests {
 		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(msg))
 			if got != constants.ExitNetworkError {
 				t.Errorf("FromError(%q) = %d, want %d (ExitNetworkError)", msg, got, constants.ExitNetworkError)
@@ -189,6 +208,7 @@ func TestFromError_NetworkError_CaseInsensitive(t *testing.T) {
 }
 
 func TestFromError_StorageError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  string
@@ -202,6 +222,7 @@ func TestFromError_StorageError(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != constants.ExitStorageError {
 				t.Errorf("FromError(%q) = %d, want %d (ExitStorageError)", tc.msg, got, constants.ExitStorageError)
@@ -211,6 +232,7 @@ func TestFromError_StorageError(t *testing.T) {
 }
 
 func TestFromError_StorageError_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"FAILED TO INITIALIZE AUDIT VAULT",
 		"Disk Full",
@@ -218,6 +240,7 @@ func TestFromError_StorageError_CaseInsensitive(t *testing.T) {
 	}
 	for _, msg := range tests {
 		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(msg))
 			if got != constants.ExitStorageError {
 				t.Errorf("FromError(%q) = %d, want %d (ExitStorageError)", msg, got, constants.ExitStorageError)
@@ -227,6 +250,7 @@ func TestFromError_StorageError_CaseInsensitive(t *testing.T) {
 }
 
 func TestFromError_ConfigError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  string
@@ -237,6 +261,7 @@ func TestFromError_ConfigError(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != constants.ExitConfigError {
 				t.Errorf("FromError(%q) = %d, want %d (ExitConfigError)", tc.msg, got, constants.ExitConfigError)
@@ -246,6 +271,7 @@ func TestFromError_ConfigError(t *testing.T) {
 }
 
 func TestFromError_ConfigError_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"FAILED TO LOAD CONFIGURATION",
 		"Missing Required",
@@ -253,6 +279,7 @@ func TestFromError_ConfigError_CaseInsensitive(t *testing.T) {
 	}
 	for _, msg := range tests {
 		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(msg))
 			if got != constants.ExitConfigError {
 				t.Errorf("FromError(%q) = %d, want %d (ExitConfigError)", msg, got, constants.ExitConfigError)
@@ -262,6 +289,7 @@ func TestFromError_ConfigError_CaseInsensitive(t *testing.T) {
 }
 
 func TestFromError_PriorityOrdering(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		msg      string
@@ -295,6 +323,7 @@ func TestFromError_PriorityOrdering(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := FromError(errors.New(tc.msg))
 			if got != tc.wantCode {
 				t.Errorf("FromError(%q) = %d, want %d", tc.msg, got, tc.wantCode)
@@ -304,6 +333,7 @@ func TestFromError_PriorityOrdering(t *testing.T) {
 }
 
 func TestContainsAny(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		s          string
@@ -323,6 +353,7 @@ func TestContainsAny(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := containsAny(tc.s, tc.substrings)
 			if got != tc.want {
 				t.Errorf("containsAny(%q, %v) = %v, want %v", tc.s, tc.substrings, got, tc.want)

@@ -174,6 +174,7 @@ func (m *campaignMemoryFileService) OpenFileEditTarget(context.Context, string, 
 }
 
 func TestStoreSaveAndLoadCampaignSpec(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	spec := testCampaignSpec()
@@ -189,6 +190,7 @@ func TestStoreSaveAndLoadCampaignSpec(t *testing.T) {
 }
 
 func TestStoreAccess_ReportsTypedPreconditionErrors(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 	var nilStore *Store
@@ -220,6 +222,7 @@ func TestStoreAccess_ReportsTypedPreconditionErrors(t *testing.T) {
 }
 
 func TestStoreSaveAndLoadScenarioCatalog(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	catalog := testScenarioCatalog()
@@ -235,6 +238,7 @@ func TestStoreSaveAndLoadScenarioCatalog(t *testing.T) {
 }
 
 func TestStoreSaveAndLoadAssignmentResult(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	result := &evalv1.EvaluationAssignmentResult{
@@ -257,6 +261,7 @@ func TestStoreSaveAndLoadAssignmentResult(t *testing.T) {
 }
 
 func TestCampaignImporterPreservesBoundIncompletePopulation(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -299,6 +304,7 @@ func diagnosticCodes(diagnostics []*compliancev1.AssessmentDiagnostic) []string 
 }
 
 func TestCampaignVerificationDiagnosticsAppendsFailureReasonsBeyondInitialCapacity(t *testing.T) {
+	t.Parallel()
 	diagnostics := campaignVerificationDiagnostics(&evalv1.EvaluationVerificationReport{
 		RunId:                   "run-1",
 		ExpectedAssignmentCount: 2,
@@ -317,6 +323,7 @@ func TestCampaignVerificationDiagnosticsAppendsFailureReasonsBeyondInitialCapaci
 }
 
 func TestReviewedCampaignAssertionMappingsExcludeApplicationEvidence(t *testing.T) {
+	t.Parallel()
 	mappings := reviewedCampaignAssertionMappings()
 	require.NotEmpty(t, mappings)
 
@@ -350,6 +357,7 @@ func TestReviewedCampaignAssertionMappingsExcludeApplicationEvidence(t *testing.
 }
 
 func TestCampaignImporterRejectsTamperedPersistedScenarioBody(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -371,6 +379,7 @@ func TestCampaignImporterRejectsTamperedPersistedScenarioBody(t *testing.T) {
 }
 
 func TestStoreListCampaigns_ReturnsPersistedCampaignsWithRuns(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	specA := testCampaignSpec()
@@ -415,6 +424,7 @@ func TestStoreListCampaigns_ReturnsPersistedCampaignsWithRuns(t *testing.T) {
 }
 
 func TestStoreListCampaigns_ReturnsEmptyWhenNoCampaignsExist(t *testing.T) {
+	t.Parallel()
 	store := NewStore(newCampaignMemoryFileService())
 	campaigns, err := store.ListCampaigns(context.Background())
 	require.NoError(t, err)
@@ -422,6 +432,7 @@ func TestStoreListCampaigns_ReturnsEmptyWhenNoCampaignsExist(t *testing.T) {
 }
 
 func TestInspectRunListClassifiesEveryPersistedCandidate(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
@@ -461,6 +472,7 @@ func TestInspectRunListClassifiesEveryPersistedCandidate(t *testing.T) {
 }
 
 func TestInspectRunReturnsIncompleteForMissingSelection(t *testing.T) {
+	t.Parallel()
 	store := NewStore(newCampaignMemoryFileService())
 	entry, err := store.InspectRun(context.Background(), "missing-run")
 	require.NoError(t, err)

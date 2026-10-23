@@ -22,6 +22,7 @@ import (
 // TestObserveEventPayloadsJSONValidity asserts the canonical protocol JSON
 // model file parses.
 func TestObserveEventPayloadsJSONValidity(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("../../protocol/models/observe_event_payloads.json")
 	require.NoError(t, err)
 	assert.True(t, json.Valid(data), "observe_event_payloads.json is valid JSON")
@@ -30,6 +31,7 @@ func TestObserveEventPayloadsJSONValidity(t *testing.T) {
 // TestObserveAPIJSONValidity asserts the canonical protocol JSON model file
 // for the observe read API parses.
 func TestObserveAPIJSONValidity(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("../../protocol/models/observe_api.json")
 	require.NoError(t, err)
 	assert.True(t, json.Valid(data), "observe_api.json is valid JSON")
@@ -39,6 +41,7 @@ func TestObserveAPIJSONValidity(t *testing.T) {
 // through JSON with the canonical wire field names and omits optional fields
 // when empty.
 func TestAgentStatusUpdatedPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	payload := AgentStatusUpdatedPayload{
 		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
@@ -74,6 +77,7 @@ func TestAgentStatusUpdatedPayloadRoundTrip(t *testing.T) {
 // TestRunStatusUpdatedPayloadRoundTrip asserts the Go struct round-trips
 // through JSON and omits optional timestamp fields when nil.
 func TestRunStatusUpdatedPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	payload := RunStatusUpdatedPayload{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
@@ -102,6 +106,7 @@ func TestRunStatusUpdatedPayloadRoundTrip(t *testing.T) {
 // TestEvalRunCompletedPayloadRoundTrip asserts the Go struct round-trips
 // through JSON with the canonical wire field names.
 func TestEvalRunCompletedPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
 	completedAt := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	payload := EvalRunCompletedPayload{
 		SchemaVersion:             constants.ObserveEventPayloadSchemaVersion,
@@ -128,6 +133,7 @@ func TestEvalRunCompletedPayloadRoundTrip(t *testing.T) {
 // TestEvalMetricRecordedPayloadRoundTrip asserts the Go struct round-trips
 // through JSON and omits the optional value field when nil.
 func TestEvalMetricRecordedPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
 	recordedAt := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	payload := EvalMetricRecordedPayload{
 		SchemaVersion:      constants.ObserveEventPayloadSchemaVersion,
@@ -156,6 +162,7 @@ func TestEvalMetricRecordedPayloadRoundTrip(t *testing.T) {
 // round-trips through JSON and omits the optional window_seconds field when
 // nil.
 func TestObservedMeasurementRoundTrip(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	m := ObservedMeasurement{
 		SchemaVersion:   constants.ObserveMeasurementSchemaVersion,
@@ -181,6 +188,7 @@ func TestObservedMeasurementRoundTrip(t *testing.T) {
 // TestObserveBootstrapSnapshotRoundTrip asserts the bootstrap snapshot
 // round-trips through JSON and omits the optional active_run field when nil.
 func TestObserveBootstrapSnapshotRoundTrip(t *testing.T) {
+	t.Parallel()
 	generatedAt := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	snapshot := ObserveBootstrapSnapshot{
 		SchemaVersion: constants.ObserveAPIReadModelSchemaVersion,
@@ -216,6 +224,7 @@ func TestObserveBootstrapSnapshotRoundTrip(t *testing.T) {
 // TestDownloadArtifactPrivacyClassification asserts that the download privacy
 // classification constant for browser-visible artifacts is public_safe.
 func TestDownloadArtifactPrivacyClassification(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, DownloadPrivacyPublicSafe, DownloadPrivacyClassification("public_safe"))
 	assert.Equal(t, DownloadPrivacyRestricted, DownloadPrivacyClassification("restricted"))
 }
@@ -224,6 +233,7 @@ func TestDownloadArtifactPrivacyClassification(t *testing.T) {
 // canonical strings defined in protocol/models/observe_event_payloads.json
 // and observe_api.json.
 func TestObserveTypedStatusEnums(t *testing.T) {
+	t.Parallel()
 	agentStatuses := []AgentLifecycleStatus{
 		AgentLifecycleStatusIdle, AgentLifecycleStatusQueued, AgentLifecycleStatusRunning,
 		AgentLifecycleStatusWaiting, AgentLifecycleStatusCompleted, AgentLifecycleStatusFailed,

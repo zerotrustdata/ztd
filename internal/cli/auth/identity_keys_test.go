@@ -21,6 +21,8 @@ import (
 )
 
 func TestIdentityKey_SealedOnDiskAndUnsealsToPEM(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "sealed-app", time.Now().Add(time.Hour))
 
@@ -36,6 +38,8 @@ func TestIdentityKey_SealedOnDiskAndUnsealsToPEM(t *testing.T) {
 }
 
 func TestIdentityKey_PlaintextPEMFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "plain-app", time.Now().Add(time.Hour))
 	require.NoError(t, fileSvc.WriteFile(context.Background(), "cli.key", []byte(keyPEM), constants.PermFilePrivate))
@@ -47,6 +51,8 @@ func TestIdentityKey_PlaintextPEMFailsClosed(t *testing.T) {
 }
 
 func TestIdentityKey_WrongMasterKeyFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "sealed-app", time.Now().Add(time.Hour))
 	require.NoError(t, SealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile(), []byte(keyPEM)))
@@ -61,6 +67,8 @@ func TestIdentityKey_WrongMasterKeyFailsClosed(t *testing.T) {
 }
 
 func TestIdentityKey_MissingMasterKeyFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "sealed-app", time.Now().Add(time.Hour))
 	require.NoError(t, SealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile(), []byte(keyPEM)))
@@ -76,6 +84,8 @@ func TestIdentityKey_MissingMasterKeyFailsClosed(t *testing.T) {
 }
 
 func TestIdentityKey_SealIsBoundToItsPath(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	_, keyPEM := generateTestCertificateWithSPIFFE(t, "sealed-app", time.Now().Add(time.Hour))
 	require.NoError(t, SealIdentityKey(context.Background(), fileSvc, cfg, cfg.CLIKeyFile(), []byte(keyPEM)))
@@ -91,6 +101,7 @@ func TestIdentityKey_SealIsBoundToItsPath(t *testing.T) {
 }
 
 func TestLoadCLICertificate_UnsealsKeyForTLS(t *testing.T) {
+	t.Parallel()
 	fileSvc, cfg := newAuthTestEnv(t)
 	writeTestCLICert(t, fileSvc, cfg)
 
@@ -102,6 +113,8 @@ func TestLoadCLICertificate_UnsealsKeyForTLS(t *testing.T) {
 }
 
 func TestLoadCLICertificate_PlaintextKeyRefused(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, cfg := newAuthTestEnv(t)
 	writeTestCLICert(t, fileSvc, cfg)
 	plain, err := fileSvc.ReadFile(context.Background(), "cli.crt")
