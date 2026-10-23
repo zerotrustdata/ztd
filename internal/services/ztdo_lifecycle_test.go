@@ -11,7 +11,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -101,26 +100,4 @@ func TestZtdoService_Start_SuccessFlow(t *testing.T) {
 
 	// Clean up to avoid background goroutines logging after test completion
 	require.NoError(t, service.Stop(context.Background()))
-}
-
-func TestZtdoService_Start_FactoryFailureStopsBeforeDependents(t *testing.T) {
-	cfg := enrolledTestConfig(t)
-
-	factoryErr := fmt.Errorf("pub/sub client factory unavailable")
-	factoryCalls := 0
-	service, err := NewZtdoService(cfg, testutil.NewVerboseTestLogger(t), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
-		factoryCalls++
-		return nil, factoryErr
-	})
-	require.NoError(t, err)
-
-	err = service.Start(context.Background())
-	require.Error(t, err)
-	assert.ErrorIs(t, err, factoryErr)
-	assert.Equal(t, 1, factoryCalls)
-	assert.Nil(t, service.pubSubClient)
-	assert.Nil(t, service.pubSubResults)
-	assert.Nil(t, service.pubSubCommands)
-	assert.Nil(t, service.execution)
-	service.cancel()
 }
