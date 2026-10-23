@@ -495,6 +495,39 @@ func TestIsSensitiveReadPath(t *testing.T) {
 	}
 }
 
+func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
+	for _, sensitive := range []string{
+		constants.PathEtcShadow,
+		constants.PathEtcPasswd,
+		constants.PathEtcGshadow,
+		constants.PathEtcSudoers,
+	} {
+		t.Run(sensitive, func(t *testing.T) {
+			dir, base := filepath.Split(sensitive)
+			for _, tc := range []struct {
+				name string
+				path string
+				want bool
+			}{
+				{name: "canonical", path: sensitive, want: true},
+				{name: "native separators", path: filepath.FromSlash(sensitive), want: true},
+				{name: "redundant separator", path: dir + "/" + base, want: true},
+				{name: "dot segment", path: dir + "./" + base, want: true},
+				{name: "parent segment", path: dir + "child/../" + base, want: true},
+				{name: "backup file", path: sensitive + ".bak"},
+				{name: "prefixed basename", path: dir + "copy-" + base},
+				{name: "different directory", path: filepath.Join(dir, "other", base)},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					if got := IsSensitiveReadPath(tc.path); got != tc.want {
+						t.Errorf("IsSensitiveReadPath(%q) = %v, want %v", tc.path, got, tc.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestIsProtectedRuntimePath(t *testing.T) {
 	for _, tc := range []struct {
 		path string

@@ -81,13 +81,14 @@ var sensitiveReadBasenames = []string{
 
 // IsSensitiveReadPath reports whether path names a system credential file or
 // an SSH private key that read and search tools refuse to open.
+// System paths and candidates are cleaned using the same host path rules.
 func IsSensitiveReadPath(path string) bool {
 	if path == "" {
 		return false
 	}
 	clean := filepath.Clean(path)
 	for _, sensitive := range sensitiveReadPaths {
-		if clean == sensitive {
+		if clean == filepath.Clean(sensitive) {
 			return true
 		}
 	}
