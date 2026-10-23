@@ -12,11 +12,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -134,18 +136,19 @@ func TestSysOOMDetectTool_Execute(t *testing.T) {
 }
 
 func TestSysOOMDetectTool_Execute_DefaultPath(t *testing.T) {
-	// Only run this test if the default dmesg path exists
-	if _, err := os.Stat("/var/log/dmesg"); os.IsNotExist(err) {
-		t.Skip("dmesg does not exist, skipping default path test")
-	}
-
 	tool := &SysOOMDetectTool{}
-	_, err := tool.Execute(context.Background(), json.RawMessage("{}"))
-	// We don't check for success/failure since it depends on system permissions,
-	// but we ensure it doesn't panic and returns a valid response or error.
-	if err != nil {
-		assert.Contains(t, err.Error(), "open log file")
+	result, err := tool.Execute(testutil.Context(t), json.RawMessage(`{}`))
+	if runtime.GOOS != "linux" {
+		require.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform)
+		return
 	}
+	if err != nil {
+		require.ErrorIs(t, err, constants.ErrMCPOpenLogFile)
+		return
+	}
+	require.NotEmpty(t, result.Content)
+	var decoded SysOOMDetectResult
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &decoded))
 }
 
 func TestSysOOMDetectTool_Execute_NoEvents(t *testing.T) {
