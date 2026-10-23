@@ -4,7 +4,7 @@ title: SSE Streaming
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - internal/services/gateway/sse_controller.go
   - internal/services/gateway/sse_event_publisher.go
@@ -36,7 +36,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines the Gateway's Server-Sent Events (SSE) delivery channel for session-targeted events. The Gateway is the sole SSE publisher for browsers and CLIs. It publishes from its internal services (approvals, Operator status, heartbeats, model provenance evidence) and from the observe producer endpoints that application workloads call over mTLS.
+Defines the Gateway's Server-Sent Events (SSE) delivery channel for session-targeted events. The Gateway publishes session-targeted events to browsers and CLIs from its internal services (approvals, Operator status, heartbeats, model provenance evidence, approval and passkey completion notifications) and from the observe producer endpoints that application workloads call over mTLS. Other Gateway routes also write `text/event-stream` responses (the MCP endpoint and the public mirror relay); they use their own routing and are outside this document's session model.
 
 SSE is a session-scoped delivery channel for asynchronous notifications and telemetry. Publishing an event neither mutates governed state nor alters the five-layer governance interlock; authoritative outcomes reside in signed receipts and platform records.
 
@@ -64,7 +64,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SSE-EVT-01 | Every SSE event is keyed by two routing dimensions: `user_id` (ownership) and exactly one of `web_session_id` or `cli_session_id` (delivery target). A bare `user_id` is not a valid route. The Gateway does not provide user-wide fan-out. |
-| INV-SSE-EVT-02 | Registered event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). Non-registry CLI notification types such as `approval.completed` and `passkey.registered` are defined by their owning producers. The registry's `persistence` value is the contract for registered events: a publisher uses `SSEEventPublisher.Publish` for a persisted event and `PublishEphemeral` for an `ephemeral` one. |
+| INV-SSE-EVT-02 | Registered event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). Non-registry CLI notification types such as `approval.completed` and `passkey.registered` are defined by their owning producers. The registry's `persistence` value is the contract for registered events: an `ephemeral` event is published with `SSEEventPublisher.PublishEphemeral`, and every other persistence value (for example `gateway.sse_store`) is published with `SSEEventPublisher.Publish`. |
 | INV-SSE-EVT-03 | SSE frames carry a `data:` field and, for persisted events, an `id:` field; no `event:` field is emitted. Ephemeral events have no durable row and therefore no `id:` line. Consumers read the application event type from the nested `event.type` value in the JSON data payload. Heartbeats are SSE comments (`: heartbeat\n\n`) and do not advance the event cursor. |
 | INV-SSE-EVT-04 | Ephemeral events are delivered via live streams but not persisted to the SSE store; consumers cannot recover them via replay. Persisted events are appended before live publication, so a persistence failure prevents delivery. A live ephemeral event is emitted without an `id:` line to avoid rewinding the client's `Last-Event-ID` cursor. |
 
@@ -151,16 +151,19 @@ Persisted Event             Ephemeral Event
 
 | Event Type | Persistence | Publisher / Trigger | Description |
 | :--- | :--- | :--- | :--- |
-| `ztd.v1.platform.approvals.changed` | ephemeral | `approvals_events.go` | Signals pending L3 transactions or platform enrollment changes |
-| `ztd.v1.operator.status.updated.<state>` | persisted | `operator_status_events.go` | Operator status announcements: `offline` on enrollment, `active` when the Operator's command-channel subscription is established (ready for commands), and later `stopped` or `terminated`; `stale` is derived on read and may be reported to a deploy client, not stored as a transition |
-| `ztd.v1.operator.heartbeat.received` | ephemeral | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at` |
-| `ztd.v1.inference.model.provenance.attestation.recorded` | ephemeral | `evidence_window_publisher.go` | The Gateway stored a Provenance Operator attestation window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
-| `ztd.v1.inference.provider.boundary.observation.recorded` | ephemeral | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
-| `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
-| `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
-| `ztd.v1.ai.eval.stop.requested` | ephemeral | `observe_producer.go` | Run-scoped stop request from an app workload; carries `campaign_id` and `run_id`. Sent to the named session's open stream only and never stored |
-| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
-| `passkey.registered` | persisted | `passkey_orchestrator.go` | Direct CLI notification of completed passkey registration |
+| `ztd.v1.platform.approvals.changed` | `ephemeral` | `approvals_events.go` | Signals pending L3 transactions or platform enrollment changes. Sent to every unexpired web session and active CLI session of the owner |
+| `ztd.v1.operator.status.updated.<state>` | `gateway.sse_store` | `operator_status_events.go` | Operator status announcements: `active` when the Operator's command-channel subscription is established (ready for commands), and the `offline`, `stopped`, and `terminated` transitions; `stale` is never stored or announced as a transition and is derived on read |
+| `ztd.v1.operator.heartbeat.received` | `ephemeral` | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at`. Sent to the owner's web sessions |
+| `ztd.v1.inference.model.provenance.attestation.recorded` | `ephemeral` | `evidence_window_publisher.go` | The Gateway stored a Provenance Operator attestation window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
+| `ztd.v1.inference.provider.boundary.observation.recorded` | `ephemeral` | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
+| `ztd.v1.app.agent.status.updated` | `gateway.sse_store` | `observe_producer.go` | Agent state emitted by registered application workloads |
+| `ztd.v1.app.run.status.updated` | `gateway.sse_store` | `observe_producer.go` | Run state emitted by registered application workloads |
+| `ztd.v1.ai.eval.*` (except `stop.requested`) | per registry entry | `observe_producer.go` (`emitLiveSSEEvent`) | Campaign progress events from the observe producer. A repeated `event_id` is rejected before emission (`ErrObserveDuplicateEventID`) |
+| `ztd.v1.ai.eval.stop.requested` | `ephemeral` | `observe_producer.go` | Run-scoped stop request from an app workload; carries `campaign_id` and `run_id`. Sent to the named session's open stream only and never stored |
+| `approval.completed` (non-registry) | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
+| `passkey.registered` (non-registry) | persisted | `passkey_orchestrator.go` | Direct CLI notification of completed passkey registration |
+
+Registry rows take their persistence value from `protocol/constants/events.json`, which is the canonical source; this table does not replace it.
 
 ## Observe Producers
 
@@ -200,7 +203,7 @@ Browser / CLI Client                          Gateway SSE Controller
 
 ### Consuming Live Events via CLI
 
-The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
+The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. Other CLI commands share the same client, including operator deploy events, `gwremote` model-provenance and provider-observation windows, and eval run events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
 
 `ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead, and `--deny` denies it from the enrolled CLI session (`./ztd auth approve --help`). The `--cli` and `--deny` paths read the final receipt from the HTTP response; the browser path reads it from the `approval.completed` event on the stream. A stream line may hold up to `SSEClientMaxLineSize` bytes (`internal/constants/paths.go`), enough for an `approval.completed` event whose receipt carries both escaped execution output streams.
 
@@ -208,7 +211,7 @@ The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for appr
 
 Query stored events after a known cursor:
 
-Set `ZTD_WEB_SESSION_COOKIE` to the `ztd_web_session_cookie` value of a signed-in browser session, then run:
+Copy the `ztd_web_session_cookie` value of a signed-in browser session into a local shell variable named `ZTD_WEB_SESSION_COOKIE` (the variable is set in your shell, not by the Gateway), then run:
 
 ```bash
 curl -k -H "Cookie: ztd_web_session_cookie=${ZTD_WEB_SESSION_COOKIE}" \

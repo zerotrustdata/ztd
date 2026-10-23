@@ -4,7 +4,7 @@ title: Governing Agentic Execution Without Surrendering Data Custody
 audience: researchers, security architects, compliance officers, and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - protocol/
   - internal/services/governance/
@@ -39,9 +39,9 @@ ztd posits that an AI system may propose an action, but it must never authorize 
 The defining security challenge in agentic computing is not that large language models generate occasional hallucinations. Rather, it is that modern software architectures convert probabilistic model outputs into unconstrained infrastructure side effects. An agent reads an inbound email, retrieves enterprise documentation, queries an API, modifies configuration files, executes operating-system commands, or approves financial transfers. When reasoning engines and tool execution layers share ambient credentials and mutable runtime contexts, prompt-level manipulation immediately escalates into catastrophic integrity, confidentiality, and availability failures.
 
 This failure mode is thoroughly documented across empirical literature:
-- **InjecAgent** evaluated 30 tool-integrated agent configurations across 1,054 attack scenarios, demonstrating a 24% attack success rate for ReAct-prompted GPT-4 agents under indirect prompt injection [1].
-- **AgentDojo** established 97 realistic tasks across 629 stateful test cases, demonstrating that contemporary agent architectures fail to provide simultaneous task efficacy and security under adversarial conditions [2].
-- **Agent Security Bench (ASB)** evaluated attacks across 10 realistic scenarios, over 400 tools, and 13 distinct backbones, observing average attack success rates reaching up to 84.30% [3].
+- **InjecAgent** benchmarks indirect prompt injection against tool-integrated agents and reports substantial attack success [1].
+- **AgentDojo** benchmarks the task utility and security of tool-using agents under adversarial conditions and reports that defenses do not reliably provide both [2].
+- **Agent Security Bench (ASB)** formalizes and benchmarks attacks and defenses against LLM-based agents across multiple scenarios, tools, and model backbones [3].
 
 These findings demonstrate that conversational context constitutes both data and instruction surfaces; therefore, prompt filtering and fine-tuning alone cannot serve as an authorization boundary. NIST's Generative AI Profile (NIST AI 600-1) classifies prompt injection, information disclosure, and improper human-AI configuration as holistic system risks requiring architectural controls [4]. The 2026 International AI Safety Report warns that autonomous agents amplify systemic risk by eliminating windows for human intervention prior to execution [5]. Furthermore, NIST's concept paper on software and agent identity identifies cryptographic identification, least-privilege authorization, and non-repudiable auditability as mandatory prerequisites for agent deployment [6].
 
@@ -53,18 +53,9 @@ To address these vulnerabilities, ztd enforces three core architectural proposit
 
 The ztd architecture operationalizes these propositions through clear protocol roles: Governance Gateway (Policy Decision Point), Governed Operator (Policy Execution Point), L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, and L5 Actuator.
 
-## 2. Operational Foundations and the Seven-Stage Method
+## 2. Operational Foundations
 
-This architectural position is grounded in the operational requirements of managing high-consequence remote data systems. During production incidents, operational trust is never established because an engineer or autonomous system exhibits confidence. Trust is established because the operator functions within the resource owner's policy controls, gathers verifiable telemetry from affected systems, justifies each operational step, exercises narrowly scoped credentials, validates outcome state, and leaves an immutable audit trail.
-
-ztd encodes this discipline into an automated seven-stage method:
-1. Gather broad operational context from managed hosts and system telemetry.
-2. Formulate high-signal questions that reduce parameter uncertainty.
-3. Converge on the optimal next step rather than executing the first plausible hypothesis.
-4. Format the proposed mutation, affected target, and cryptographic rationale for review.
-5. Cryptographically bind human authorization to the canonical transaction hash when policy requires.
-6. Execute strictly through a constrained, host-local boundary at the system owning the data.
-7. Verify outcome state, preserve signed pre- and post-execution evidence, and record immutable receipts.
+This architectural position is grounded in the requirements of operating high-consequence remote data systems: changes are made within the resource owner's policy controls, credentials are narrowly scoped, and each change leaves an audit record. ztd expresses these requirements as code-enforced mechanisms: a typed proposal (Section 5.2), a five-layer verification pipeline (Section 5.3), host-local execution (Sections 5.3 and 5.4), and signed receipts (Section 5.6).
 
 Reasoning workflows—whether powered by proprietary frontier models, local open-weights engines, or human operators—operate strictly as proposers outside the trusted computing base. The platform supplies the identity, policy enforcement, verification, execution, and receipt boundary between proposed intent and target systems.
 
@@ -95,9 +86,9 @@ NIST SP 800-207 defines Zero Trust Architecture around dynamic, least-privilege 
 ## 4. Design Requirements for Governed Execution
 
 1. **Treat Every Proposer as Untrusted**: Human operators, AI models, workflow engines, MCP tools, and A2A clients may propose mutations. None receives execution authority simply by virtue of generating a plausible plan. Model alignment is removed from the trusted computing base for authorization.
-2. **Bind Policy to Canonical Intent**: Governed intent must explicitly encode action type, target resource, typed payload, requesting identities, Merkle state binding, nonce, expiration, and governance metadata. Canonical serialization and deterministic hashing guarantee that signatures over one intent cannot authorize a modified mutation.
+2. **Bind Policy to Canonical Intent**: Governed intent must explicitly encode action type, target resource, typed payload, requesting identities, Merkle state binding, nonce, expiration, and governance metadata. Canonical serialization and deterministic hashing are designed so that a signature over one intent cannot authorize a modified mutation; the L4 Warden recomputes the hash before execution.
 3. **Verify at the Execution Site**: A remote admission decision must not compel a local host mutation. The component resident on the target system must independently verify freshness, replay state, canonical intent, state Merkle roots, and posture-mandated proofs prior to execution.
-4. **Minimize Standing Authority**: Handlers receive ephemeral, transaction-bound capabilities that dissolve immediately upon execution completion. Ambient credentials are eliminated from the execution layer.
+4. **Minimize Standing Authority**: The L5 Actuator mints a single-use, transaction-bound capability for each dispatch and dissolves it after the handler returns. This narrows standing authority; it does not remove host-level credentials, which remain in scope for host hardening (Section 8).
 5. **Preserve Evidence Before and After Dispatch**: A system recording only completed outcomes cannot distinguish between an unexecuted request and a crashed execution. The execution boundary must persist signed pre-execution (`EXECUTING`) and post-execution (`COMPLETED`/`FAILED`) receipts, backed by durable storage attestations.
 6. **Make Claim Boundaries Explicit**: Cryptographic receipts attest strictly to operations traversing the governed path. They do not attest to activity on ungoverned shell sessions, unmanaged tools, or compromised host accounts.
 
@@ -143,25 +134,27 @@ flowchart LR
     J --> K["Authoritative Receipts\n& File Ledger"]
 ```
 
-1. **L1 Doctrine**: Evaluates decoded typed payloads against field-level constraints, forbidden-pattern regex, and deterministic MITRE ATT&CK heuristics. Enforced across all postures.
-2. **L2 Consensus**: Validates Ed25519 signatures from enrolled consensus members against configured quorum rules. It gates only state-changing, non-bootstrap actions, and only under the consensus and notary postures.
-3. **L3 Notary**: Validates transaction-bound human approval. Gateway workflows enforce WebAuthn passkeys; outbound Operator workflows verify signed cryptographic approval proofs.
-4. **L4 Warden**: Pre-dispatch gate executed on the target host. Durably reserves the nonce, validates TTL expiration, recomputes the transaction hash, verifies the state Merkle root, re-runs L1 Doctrine, and verifies posture-required L2 and L3 proofs.
+1. **L1 Doctrine**: Checks `forbidden_patterns` regex field options (`ztd.common.v1`) on string fields, and runs deterministic MITRE ATT&CK-based detection on command, MCP argument, and A2A payloads. Enforced across all postures.
+2. **L2 Consensus**: Validates Ed25519 signatures over `<transaction_hash>|<decision>` from enrolled consensus members against the configured quorum. It gates only state-changing, non-bootstrap actions, and only under the consensus and notary postures. The vote producer is either the Gateway-hosted Tribunal or an enrolled application.
+3. **L3 Notary**: Validates transaction-bound human approval, and is required only under the ratify and notary postures. Gateway workflows require WebAuthn passkeys; outbound Operator workflows accept either a signed CLI approval proof or a passkey proof.
+4. **L4 Warden**: Pre-dispatch gate executed on the target host. In order, it checks expiry, durably reserves the nonce, runs L1 Doctrine, recomputes and checks the transaction hash, verifies the state Merkle root, and verifies the posture-required L2 and L3 proofs.
 5. **L5 Actuator**: Sole execution boundary. Persists an initial signed `EXECUTING` receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final receipt and persistence attestation.
+
+Posture selects which of L2 and L3 gate execution: `doctrine` requires neither, `consensus` requires L2, `ratify` requires L3, and `notary` requires both. Envelopes are admitted at the Gateway (PDP), and the Operator receives them only over its outbound mTLS channel, so the Operator is the trust boundary for L4 and L5. Identity requirements are the Operator's workload mTLS identity, the WebAuthn or CLI proof identity for L3, and the Ed25519 key of each L2 member. Limitations are listed in Section 8.
 
 ### 5.4 Sovereign Execution Boundary and Token Rehydration
 
-To safeguard sensitive operational data, the Operator deploys a Sovereign Execution Boundary. Bounded scrubbing transforms sensitive values in tool outputs into tokenized placeholders (`{{UEI_<owner>_N}}`, named for the minting runtime) before transmission across network boundaries. Token mappings are encrypted at rest using AES-256-GCM via the local vault. When an admitted transaction returns to the host for execution, L5 Actuator rehydrates placeholders locally in memory immediately prior to dispatching commands to the underlying operating system.
+To safeguard sensitive operational data, the Operator deploys a Sovereign Execution Boundary. Bounded scrubbing transforms sensitive values in tool outputs into placeholders of the form `{{UEI_<owner>_N}}` before transmission across network boundaries. The owner segment is an optional 12-hex runtime identifier, and token mappings are held in the scrubbing service's in-memory maps. When an admitted transaction returns to the host for execution, L5 Actuator rehydrates only this runtime's own placeholders, in memory, immediately before dispatching commands to the operating system. A payload that cannot be rehydrated is not dispatched, and the receipt finalizes as `FAILED`.
 
 ### 5.5 Transaction-Bound Human Authorization
 
-L3 Notary binds human approval to the specific transaction hash rather than granting standing session access. In WebAuthn workflows, the authenticator signs client data containing the transaction hash as a challenge [12]. In outbound Operator workflows, a cryptographic approval proof is signed and linked to the suspended transaction. This design prevents authorization replay and ensures that approval is cryptographically inseparable from the exact mutation parameters.
+L3 Notary binds human approval to the specific transaction hash rather than granting standing session access. In WebAuthn workflows, the authenticator signs client data whose challenge is the base64url-encoded transaction hash [12]. In outbound Operator workflows, a cryptographic approval proof is signed and linked to the suspended transaction. This design is intended to prevent authorization replay: because the transaction hash covers the mutation parameters, an approval is bound to those parameters. The proof's identity requirements are listed in Section 5.3.
 
 ### 5.6 Receipts, Commitments, and Forensic Memory
 
-L5 Actuator signs and persists an initial `EXECUTING` receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `ActionReceipt` along with a `ReceiptPersistenceAttestation`. When enabled, the SQLite `commitment_ledger` appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
+L5 Actuator signs and persists an initial `EXECUTING` receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `ActionReceipt` along with a `ReceiptPersistenceAttestation`. The SQLite `commitment_ledger` is created with the audit schema on every store and appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
 
-These artifacts establish an immutable, verifiable memory substrate. Autonomous workflows and human operators can query signed receipts to establish exactly what was proposed, verified, and executed.
+These artifacts provide signed, hash-chained evidence of what was proposed, verified, and executed on the governed path. Autonomous workflows and human operators can query signed receipts to establish exactly what was proposed, verified, and executed.
 
 ### 5.7 Confidential Edge Execution and Governed Mutation
 
@@ -171,7 +164,7 @@ The reference architecture composes four distinct roles across edge and distribu
 3. **Central Policy Decision**: The Gateway functions as the Policy Decision Point (PDP), evaluating posture, freshness, and required governance proofs.
 4. **Outbound State Mutation**: An Operator at the data owner's boundary acts as the sole Policy Execution Point (PEP) for authorized side effects.
 
-This topology generalizes across high-consequence domains:
+This topology is illustrated for the following high-consequence domains (illustrative examples, not an inventory of implemented integrations):
 
 | Domain | Provenance Layer | Observer Layer | Data Operator (PEP) | Gateway (PDP) |
 | :--- | :--- | :--- | :--- | :--- |
@@ -180,29 +173,29 @@ This topology generalizes across high-consequence domains:
 | **Healthcare AI** | DICOM headers & model weight digests | PHI isolation & inference confidence | EHR record update dispatch | Regulatory privacy policy gate |
 | **Sovereign FinTech** | Market feed & risk model digests | Execution latency & slippage data | Exchange order execution | Treasury & risk limit policy |
 
-Across all domains, the invariant holds: **reasoning may execute locally or remotely, but policy decisions and execution authority remain strictly separable.**
+Across these domains, the design rule is: **reasoning may execute locally or remotely, but policy decisions and execution authority remain separable.**
 
 ## 6. Evidence and Claim Discipline
 
 ### 6.1 External Literature Context
 
-Empirical studies demonstrate the systemic necessity of an external execution boundary:
+The following external studies are cited for design context. They are not verified against ztd code.
 
 | Evaluation | Benchmark Scope | Key Finding | Architectural Implication |
 | :--- | :--- | :--- | :--- |
-| **InjecAgent** [1] | 1,054 test cases, 30 agent configurations | 24% attack success rate on GPT-4 ReAct agents via indirect injection | Tool calls require deterministic policy hard gates outside model context. |
-| **AgentDojo** [2] | 97 tasks, 629 security test cases | Defenses fail to provide joint security and task completion | Security cannot rely on prompt-level instructions; execution must be constrained. |
-| **Agent Security Bench** [3] | 10 scenarios, 400+ tools, 13 backbones | Peak average attack success rate of 84.30% across tested attacks | Vulnerabilities span memory, planning, and execution; multi-layer governance is required. |
+| **InjecAgent** [1] | Indirect prompt-injection test cases against tool-integrated agents | Reports substantial attack success via indirect injection | Tool calls require deterministic policy hard gates outside model context. |
+| **AgentDojo** [2] | Task-utility and security test cases for tool-using agents | Defenses fail to provide joint security and task completion | Security cannot rely on prompt-level instructions; execution must be constrained. |
+| **Agent Security Bench** [3] | Attacks and defenses across multiple scenarios, tools, and model backbones | Reports high average attack success rates across tested attacks | Vulnerabilities span memory, planning, and execution; multi-layer governance is required. |
 | **NIST AI 600-1** [4] | Lifecycle risk management framework | Classifies prompt injection and human-AI configuration as system-level risks | Governance must attach to the transaction boundary. |
 | **AI Safety Report 2026** [5] | Scientific consensus report | Agentic autonomy diminishes human intervention windows before damage occurs | Independent, transaction-bound human approval ceremonies are necessary for mutations. |
 
 ### 6.2 Published ztd Evidence
 
 ztd maintains a verifiable, proof-backed compliance and evidence engine:
-- The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, v2.1.0) defines 13 atomic, framework-neutral technical assertions covering identity, least privilege, allow/block outcomes, receipt integrity, persistence, Merkle state tracking, DLP scrubbing, and FIPS cryptographic modes.
-- The framework catalog covers FedRAMP 20x CR26 (31 controls: 14 mapped, 17 unsupported) and NIST SP 800-53 Rev. 5 (100 controls: 20 mapped, 80 unsupported).
-- Catalog coverage is strictly distinguished from customer compliance; unsupported controls are explicitly reported rather than hidden.
-- The evidence hierarchy enforces strict levels from L0 (Documented) to L5 (Externally Attested); the automated platform pipeline generates evidence up to L3 (Demonstrated).
+- The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, v2.1.0) defines 13 technical assertions covering governed allow and block outcomes, receipt integrity and persistence, commitment integrity, workload mTLS, notary authorization, local rehydration, sensitive-data detection, model-boundary leakage, and declared cryptographic mode.
+- The framework catalog (`protocol/constants/compliance/framework-catalog.json`, `support_status`) covers FedRAMP 20x CR26 (31 controls: 14 mapped, 17 unsupported) and NIST SP 800-53 Rev. 5 (100 controls: 20 mapped, 80 unsupported).
+- Catalog coverage is distinguished from customer compliance; unsupported controls are reported rather than hidden.
+- Evidence levels are ordered L0 through L5 in code (`internal/services/compliance/catalog/validation.go`). The grader assigns L3 when an observation node is corroborated by an L2 node for the same subject (`internal/services/compliance/evidence/assertion_grader.go`, `achievedEvidenceLevel`).
 
 ### 6.3 Explicit Boundaries and Non-Claims
 
@@ -210,18 +203,18 @@ ztd explicitly disclaims universal security guarantees:
 - Receipts attest strictly to mutations processed across the governed path; they do not attest to side channels, unmanaged local shells, or client-native tools.
 - Token scrubbing and local rehydration reduce exposure but do not guarantee zero prompt leakage across unconstrained analytical queries.
 - Cryptographic verification cannot compensate for compromised host operating-system credentials, stolen private keys, or root-level host tampering.
-- Compliance reports reflect point-in-time technical evaluations and do not constitute legal compliance, organizational certification, or auditor accreditation.
+- This paper makes no legal, organizational-certification, or auditor-accreditation claims about any ztd deployment.
 
 ## 7. Reasoning Topology and Governance Economics
 
 Governing execution does not imply running expensive frontier models at every verification layer. Within ztd:
-- L1 Doctrine, transaction canonicalization, signature verification, nonce reservation, Merkle state root checking, capability minting, and receipt persistence are fully deterministic, microsecond-scale algorithmic operations.
+- L1 Doctrine, transaction canonicalization, signature verification, nonce reservation, Merkle state root checking, capability minting, and receipt persistence are deterministic algorithmic operations.
 - L2 Consensus involves model deliberation only when the deployment explicitly binds a deliberating consensus provider (the Gateway-hosted Tribunal panel, or an enrolled application), and only for state-changing actions.
-- L3 Notary is a human cryptographic ceremony, incurring zero model inference cost.
+- L3 Notary is a human approval ceremony.
 
-Belcak et al. argue that small, specialized models are optimal for targeted agentic tasks, reserving frontier models for general reasoning [9]. Multi-agent debate research also highlights trade-offs: Bertalanič and Fortuna show that unguided debate among homogeneous models increases token consumption by 2.1–3.4x without accuracy gains [10], whereas Lin et al. demonstrate that structured role separation (critic, defender, judge) enhances safety evaluation [11].
+Belcak et al. argue that small, specialized models are suitable for targeted agentic tasks, reserving frontier models for general reasoning [9]. Multi-agent debate research also highlights trade-offs: Bertalanič and Fortuna report that unguided debate among homogeneous models increases token consumption without accuracy gains [10], whereas Lin et al. report that structured role separation (critic, defender, judge) enhances safety evaluation [11]. These citations are external and are not verified against ztd code.
 
-ztd remains agnostic to reasoning topology: it enforces deterministic policy gates, coordinates consensus when configured, and guarantees that regardless of which models propose work, no mutation executes without passing through the L4/L5 host boundary.
+ztd remains agnostic to reasoning topology: it enforces deterministic policy gates, coordinates consensus when configured, and is designed so that no mutation executes without passing through the L4/L5 host boundary on the executing Operator.
 
 ## 8. Limitations and Scope
 
@@ -234,7 +227,7 @@ ztd remains agnostic to reasoning topology: it enforces deterministic policy gat
 
 Agentic computing requires an unyielding architectural boundary between generating a plan and exercising operational authority. Prompt instructions, model fine-tuning, and application-level confirmations are insufficient defenses against prompt injection, memory poisoning, and tool compromise.
 
-ztd's thesis is that the data owner must retain custody of authoritative state, execution authority, and forensic evidence, while AI systems operate as untrusted reasoning components. An agent proposal becomes an executable side effect only as a canonical, state-bound transaction that clears deterministic policy gates and is independently verified where execution occurs. Human approval binds cryptographically to the transaction, execution receives an ephemeral single-action capability, and signed evidence records the complete lifecycle. Through this separation of Policy Decision Points from Policy Execution Points, ztd provides the zero-trust execution and evidence foundation for the agentic era.
+ztd's thesis is that the data owner must retain custody of authoritative state, execution authority, and forensic evidence, while AI systems operate as untrusted reasoning components. An agent proposal becomes an executable side effect only as a canonical, state-bound transaction that clears deterministic policy gates and is independently verified where execution occurs. Human approval binds cryptographically to the transaction, execution receives a single-use capability, and signed evidence records the governed lifecycle. Through this separation of Policy Decision Points from Policy Execution Points, ztd provides the zero-trust execution and evidence foundation for the agentic era.
 
 ## References
 

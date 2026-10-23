@@ -4,7 +4,7 @@ title: Air-Gapped Deployment
 audience: platform operators and infrastructure teams
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/guides/air_gap.md
   - Makefile
@@ -76,6 +76,7 @@ Documents how to stage ztd for deployment in network-isolated environments using
 | Makefile air-gap target | `Makefile` | `make test-airgap` |
 | Go vendor build support | `go.mod`, `vendor/` | `go build -mod=vendor ./...` |
 | Gateway port defaults | `internal/constants/ports.go` | HTTP 8080, HTTPS 8443 |
+| Port registry entries | `protocol/constants/ports.json` | Lists the HTTP 8080 and HTTPS 8443 values |
 
 ## Procedures
 
@@ -106,7 +107,7 @@ The Gateway browser console is embedded in the binary and served locally without
 - `vault/`: Vault header (`vault.header`) with the wrapped data-encryption key metadata.
 - `logs/`, `pids/`: Operational runtime state.
 
-v1.3.0 does not rewrite an existing `ztd.db`. Start the Gateway and every Operator from a new runtime root.
+The Gateway schema (`internal/services/gateway/db/schema.sql`) contains only `CREATE TABLE IF NOT EXISTS` statements and no `ALTER` or `DROP` statements, so an existing `ztd.db` keeps its current tables and is not migrated. Start the Gateway and every Operator from a new runtime root.
 
 ### Prepare a native binary
 
@@ -150,12 +151,12 @@ The `--headless` identity is mTLS-only and cannot authenticate to the console. A
 
 Run `make test-airgap` in the staged source tree before transfer to verify:
 1. `vendor/` directory exists.
-2. `go build -mod=vendor ./...` succeeds without network access.
+2. `go build -mod=vendor ./...` succeeds.
 
 On the air-gapped target host:
 - Block outbound internet traffic at host firewall and network perimeter.
-- Ensure external JWKS, public LLM endpoints, and external MCP/A2A URLs remain unset.
-- Point model storage, consensus application endpoints, and DNS at internal endpoints.
+- Do not configure any endpoint outside the air gap (INV-AIR-ISO-02).
+- Point consensus application endpoints at internal `https://` hosts. `ValidateConsensusEndpoint` (`internal/models/consensus_endpoint.go`) rejects any other scheme, empty host, userinfo, or fragment.
 - For Tribunal consensus (`./ztd consensus enroll tribunal --model <tag>`), bind a local model tag. Hosted Jev access is disabled by default, so leave it off; the bind command rejects hosted use unless `--allow-hosted` is given.
 - Restrict permissions on `.ztd/` (directory mode 0700, sensitive files 0600).
 

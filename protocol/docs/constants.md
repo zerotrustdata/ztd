@@ -1,9 +1,9 @@
 # Protocol Constants System
 
-Last Updated: 2026-10-22
+Last Updated: 2026-10-23
 Version: v1.3.0
 
-The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
+The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the **Single Source of Truth (SSOT)** for the registries they cover (collections, status and action types, events, API paths, ports, channels, senders, and env vars). Some constants are hand-maintained Go with no JSON source; section 7 marks them.
 
 Code generators synthesize Go types (`internal/constants/*_gen.go`) and TypeScript frontend definitions (`console/src/generated/events.ts`) directly from these canonical registries. Hand-editing generated constant files is strictly forbidden.
 
@@ -23,11 +23,11 @@ internal/tools/constgen/operator_hierarchy.json ┘                   ├──�
 
 Before generating, `constgen` validates `protocol/constants/env_vars.json` (categories, `_go_const`, names, descriptions) and requires every `secret` and `user_endpoint` key to appear in `.env.example` (`internal/tools/constgen/check_env.go`). The env registry produces no generated output.
 
-Action classifications in `status.action_type` generate `ActionType.IsMutation()`, `IsBootstrapAction()`, and `AuthorizedByDecision()` from `_mutation`, `_bootstrap`, and `_authorized_by_decision`, respectively. Each predicate matches only explicitly flagged actions and returns false for other values. Empty registries and classifications with no matching actions produce valid Go predicates that always return false; the generator omits the matching case entirely.
+Action classifications in `status.action_type` generate `ActionType.IsMutation()`, `IsBootstrapAction()`, `AuthorizedByDecision()`, and `IsStateChange()` from `_mutation`, `_bootstrap`, `_authorized_by_decision`, and `_state_change`, respectively. `ChangesState(target)` combines `_state_change` with `_read_only_targets`. Each predicate matches only explicitly flagged actions and returns false for other values. Empty registries and classifications with no matching actions produce valid Go predicates that always return false; the generator omits the matching case entirely.
 
 ### 1.2 Build Automation Targets
 - **`make constants-generate`**: Executes `go run ./internal/tools/constgen -write`. Validates the registry syntax, grammar, and taxonomy, then writes the generated Go artifacts (gofmt-formatted) and the TypeScript artifact.
-- **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Validates the env registry and verifies that committed generated files match the output derived from the registry JSON files, ignoring CRLF line endings. Runs as a prerequisite of `make test-unit` and `make ci-platform`.
+- **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Validates the env registry and verifies that committed generated files match the output derived from the registry JSON files, ignoring CRLF line endings. Runs as a prerequisite of `make test-unit` and as a recipe step of `make ci-platform`.
 
 ---
 
@@ -144,66 +144,37 @@ Permitted terminals come from the closed `allowedTerminals` list in `internal/to
 The governance engine determines the action class of any governed request via `constants.Registry.ActionFor(event)`. Hand-coded mapping tables are strictly prohibited.
 
 ### 3.4 Hierarchical Go Accessors
-The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval`, `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
+The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval` (including `Eval.WorkspaceSeed`), `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
 
 ---
 
 ## 4. Action Types (`status.json` → `action_types_gen.go`)
 
-Action types define the coarse-grained operational classes evaluated by L1 Doctrine, L4 Warden, and L5 Actuator. They are generated from `protocol/constants/status.json` into `internal/constants/action_types_gen.go`.
+Action types define the coarse-grained operational classes that the governance services (`internal/services/governance/`) evaluate. They are declared under `status.action_type` in `protocol/constants/status.json` and generated into `internal/constants/action_types_gen.go`. This section defines the flags. The classification of each action is the `status.action_type` object itself and is not copied here.
 
 ### 4.1 Action Classification
+Each `status.action_type` entry has a `value` (the wire string), a `_go_const`, and optional flags:
+- `_mutation`: the action modifies system state. Generates `IsMutation()`.
+- `_bootstrap`: a platform enrollment bootstrap action. Generates `IsBootstrapAction()`.
+- `_authorized_by_decision`: an enrollment action that carries out an owner decision already committed under the L3 gate. Generates `AuthorizedByDecision()`. Requires `_bootstrap`.
+- `_state_change`: executing the action changes state. Generates `IsStateChange()`. Requires `_mutation`.
+- `_read_only_targets`: constants identifiers of target resources against which a `_state_change` action changes no state. Generates the read-only branch of `ChangesState(target)`. Requires `_state_change`.
 
-| Action Type Identifier | String Constant | Mutation (`IsMutation()`) | Bootstrap (`IsBootstrapAction()`) | Description |
-|:---|:---|:---:|:---:|:---|
-| `ActionTypeA2aCall` | `"A2A_CALL"` | **Yes** | No | Agent-to-Agent skill invocation |
-| `ActionTypeCancel` | `"CANCEL"` | **Yes** | No | Command cancellation request |
-| `ActionTypeDocumentDelete` | `"DOCUMENT_DELETE"` | **Yes** | No | Governed collection document removal |
-| `ActionTypeDocumentUpdate` | `"DOCUMENT_UPDATE"` | **Yes** | No | Governed collection document update |
-| `ActionTypeExecuteBash` | `"EXECUTE_BASH"` | **Yes** | No | Host shell command execution |
-| `ActionTypeFileEdit` | `"FILE_EDIT"` | **Yes** | No | Host filesystem file modification |
-| `ActionTypeMcpCall` | `"MCP_CALL"` | **Yes** | No | Model Context Protocol tool execution |
-| `ActionTypeRestoreFile` | `"RESTORE_FILE"` | **Yes** | No | Git ledger file revision restoration |
-| `ActionTypeShutdown` | `"SHUTDOWN"` | **Yes** | No | Operator shutdown request |
-| `ActionTypeInference` | `"INFERENCE"` | **Yes** | No | Governed model inference |
-| `ActionTypeOllamaModelRelease` | `"OLLAMA_MODEL_RELEASE"` | **Yes** | No | Ollama model unload with in-execution residency verification |
-| `ActionTypePlatformEnrollmentDecide` | `"PLATFORM_ENROLLMENT_DECIDE"` | **Yes** | **Yes** | Owner decision on workload enrollment |
-| `ActionTypePlatformEnrollmentIssue` | `"PLATFORM_ENROLLMENT_ISSUE"` | **Yes** | **Yes** | Platform certificate issuance |
-| `ActionTypePlatformEnrollmentPersistPolicy` | `"PLATFORM_ENROLLMENT_PERSIST_POLICY"` | **Yes** | **Yes** | Persisting app policy for enrolled node |
-| `ActionTypePlatformEnrollmentCreateSession` | `"PLATFORM_ENROLLMENT_CREATE_SESSION"` | **Yes** | **Yes** | Initial session creation post-enrollment |
-| `ActionTypePlatformEnrollmentRevoke` | `"PLATFORM_ENROLLMENT_REVOKE"` | **Yes** | **Yes** | Platform enrollment revocation |
-| `ActionTypePlatformEnrollmentBindConsensus` | `"PLATFORM_ENROLLMENT_BIND_CONSENSUS"` | **Yes** | **Yes** | Binds an enrolled application as the Gateway consensus application |
-| `ActionTypePlatformEnrollmentCreate` | `"PLATFORM_ENROLLMENT_CREATE"` | No | **Yes** | Inbound enrollment CSR submission |
-| `ActionTypeEvalAnswer` | `"EVAL_ANSWER"` | No | No | Evaluation answer submission |
-| `ActionTypeFetchFileDiff` | `"FETCH_FILE_DIFF"` | No | No | Ledger diff inspection |
-| `ActionTypeFetchFileHistory` | `"FETCH_FILE_HISTORY"` | No | No | Ledger commit history inspection |
-| `ActionTypeFetchHistory` | `"FETCH_HISTORY"` | No | No | Command execution history query |
-| `ActionTypeFetchLogs` | `"FETCH_LOGS"` | No | No | Execution output log fetch |
-| `ActionTypeFsGrep` | `"FS_GREP"` | No | No | Filesystem regex search |
-| `ActionTypeFsList` | `"FS_LIST"` | No | No | Directory listing |
-| `ActionTypeFsRead` | `"FS_READ"` | No | No | File read operation |
-| `ActionTypeHeartbeat` | `"HEARTBEAT"` | No | No | Node liveness check |
-| `ActionTypeMcpPromptGet` | `"MCP_PROMPT_GET"` | No | No | MCP prompt template retrieval |
-| `ActionTypeMcpPromptList` | `"MCP_PROMPT_LIST"` | No | No | MCP prompt template listing |
-| `ActionTypeMcpResourceList` | `"MCP_RESOURCE_LIST"` | No | No | MCP resource enumeration |
-| `ActionTypeMcpResourceRead` | `"MCP_RESOURCE_READ"` | No | No | MCP resource data retrieval |
-| `ActionTypeModelProvenanceObservation` | `"MODEL_PROVENANCE_OBSERVATION"` | No | No | Model provenance observation |
-| `ActionTypeOllamaModelInventory` | `"OLLAMA_MODEL_INVENTORY"` | No | No | Ollama model inventory query |
-| `ActionTypeOllamaModelResidency` | `"OLLAMA_MODEL_RESIDENCY"` | No | No | Ollama model residency query |
-| `ActionTypePortCheck` | `"PORT_CHECK"` | No | No | Network TCP port connectivity check |
-| `ActionTypeProviderBoundaryObservation` | `"PROVIDER_BOUNDARY_OBSERVATION"` | No | No | Provider boundary observation |
+The loader in `internal/tools/constgen/generate_actions.go` rejects any classification that violates a "Requires" rule.
 
 ### 4.2 Mutation Gating
-`IsMutation()` is consumed only by `governance.L3Required`. Under postures that require L3 (`ratify`, `notary`), a mutation action that is not `AuthorizedByDecision()` MUST carry an L3 notary proof. The L4 state-root check (`verifyStateful`), JIT capability minting, and L5 signed receipts do not depend on the mutation flag.
+`IsMutation()` is consumed only by `governance.L3Required` (`internal/services/governance/l4_warden.go`). Under postures that require L3 (see `RequiresL3` in `internal/constants/posture.go`), a mutation action that is not `AuthorizedByDecision()` MUST carry an L3 notary proof. No other non-test code reads the mutation flag.
 
 ### 4.3 State-Change Gating
-`ChangesState(targetResource)` is consumed by `governance.L2Enforced`, the single L2 gate. Under postures that require L2 (`consensus`, `notary`), only a non-bootstrap action for which it holds is voted on. The `_state_change` flag in `status.json` requires `_mutation` and marks `A2A_CALL`, `CANCEL`, `DOCUMENT_DELETE`, `DOCUMENT_UPDATE`, `EXECUTE_BASH`, `FILE_EDIT`, `MCP_CALL`, `RESTORE_FILE`, `SHUTDOWN`, and the bootstrap enrollment mutations. `_read_only_targets` lists the native MCP tools whose `MCP_CALL` changes no state; any other target, including an empty or unknown one, is a state change. `INFERENCE` and `OLLAMA_MODEL_RELEASE` are mutations but not state changes, so L3 gates them and L2 does not.
+`ChangesState(targetResource)` is consumed by `governance.L2Enforced` (`internal/services/governance/l2_consensus.go`), the single L2 gate, together with `IsBootstrapAction()`. Under postures that require L2 (see `RequiresL2` in `internal/constants/posture.go`), only a non-bootstrap action for which `ChangesState` holds is voted on. `ChangesState` holds for a `_state_change` action against every target except its `_read_only_targets`, so an empty or unknown target is a state change.
+
+Governed inference (`INFERENCE`) and Ollama model release (`OLLAMA_MODEL_RELEASE`) are `_mutation` without `_state_change`: L3 gates them and L2 does not.
 
 ---
 
 ## 5. API Paths Registry (`api_paths.json` / `api_paths.go`)
 
-HTTP route paths for Gateway REST, mTLS, and control-plane controllers are exposed via the `APIPaths` struct in `internal/constants/api_paths.go`:
+Route values are defined in `protocol/constants/api_paths.json`. The `APIPaths` struct in `internal/constants/api_paths.go` exposes them as Go fields for Gateway REST, mTLS, and control-plane controllers. The list below is a partial index of route groups, not the full route set:
 
 ### 5.1 Route Groups
 
@@ -248,12 +219,12 @@ The platform explicitly declares all recognized environment variables in `protoc
 Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, each declared with one `category`: `host`, `secret`, `test`, or `user_endpoint`. Platform configuration (ports, postures, directory locations, and timeouts) MUST NOT be read from environment variables. It is supplied by explicit CLI command flags or strongly typed code defaults.
 
 Production Go code accesses the environment solely via typed constants defined on `constants.EnvVar`:
-- **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`), `EnvVar.DBusSessionBusAddress` (`DBUS_SESSION_BUS_ADDRESS`).
+- **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`), `EnvVar.DBusSessionBusAddress` (`DBUS_SESSION_BUS_ADDRESS`), `EnvVar.Display` (`DISPLAY`), `EnvVar.WaylandDisplay` (`WAYLAND_DISPLAY`), `EnvVar.Browser` (`BROWSER`).
 - **Secrets**: `EnvVar.CloudflareAPIToken` (`CLOUDFLARE_API_TOKEN`).
-- **User Endpoints**: `EnvVar.OllamaEndpoint` (`ZTD_OLLAMA_ENDPOINT`), the default for `--inference-ollama-endpoint`.
+- **User Endpoints**: `EnvVar.OllamaEndpoint` (`ZTD_OLLAMA_ENDPOINT`), the environment fallback for `--inference-ollama-endpoint`. The flag wins when set; otherwise the built-in default is `http://127.0.0.1:11434`.
 - **Test Harness**: the `EnvVar.E2E*` keys (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, and the `ZTD_E2E_FLEET_*` keys), set by `ztd test scale` and read by the E2E suite under `test/e2e/`.
 
-Raw `os.Getenv("...")` calls with hardcoded strings or locally declared string constants are prohibited, in production Go code and in the `test/` harness; `TestProductionGoEnvReads_UseRegistryKeys` enforces this. In-process `ZTD_TEST_*` re-exec markers are exempt. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from the working-directory `.env` (the repository root) into the process environment before every `./ztd` command; an already exported variable wins.
+Raw `os.Getenv("...")` calls with hardcoded strings or locally declared string constants are prohibited, in production Go code and in the `test/` harness; `TestProductionGoEnvReads_UseRegistryKeys` enforces this. In-process `ZTD_TEST_*` re-exec markers are exempt. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from `.env` in the working directory (`constants.EnvFilename`) into the process environment. The root command runs it after its pre-run gates pass, so a refused command does not populate the environment. A variable that is already set wins.
 
 ---
 
@@ -268,8 +239,10 @@ Pub/Sub channels enforce structured naming conventions:
 - **Additional Prefixes**: `receipts`, `audit`, and `renewal` (`ChannelPrefixReceipts`, `ChannelPrefixAudit`, `ChannelPrefixRenewal`); SSE channels `sse:cli` and `sse:web` (`ChannelPrefixSSECLI`, `ChannelPrefixSSEWeb`)
 
 ### 7.2 Network Ports (`ports.json` / `ports.go`)
-- `OperatorHttp` (`8080`): Plain HTTP listener for health, PKI discovery and bootstrap, CLI recovery and platform enrollment discovery, and deploy script distribution. All other paths redirect to HTTPS.
-- `OperatorHttps` (`8443`): Production mTLS surface, public API routes, authenticated console SPA, and external MCP/A2A ingress.
+- `OperatorHttp` (`8080`): Gateway HTTP port (plaintext): health, PKI bootstrap and discovery, CLI recovery and platform enrollment discovery, and deploy script distribution; all other paths redirect to HTTPS.
+- `OperatorHttps` (`8443`): Gateway HTTPS port (mTLS, for all operator traffic).
+
+`ports.go` also declares Gateway-owned deployment defaults that are not in `ports.json` and are not protocol ports: the public spectator ingest and read listeners (`8081`, `8082`), the evaluation explorer (`5173`), a suggested pprof port (`6060`), and Ollama's loopback API default (`11434`).
 
 ### 7.3 Message Senders (`senders.json` / `senders.go`)
 Defines message attribution sources:
@@ -279,8 +252,10 @@ Defines message attribution sources:
 
 Message content types: `text`, `code`, `call`, `result`, `error`, `thinking`.
 
-### 7.4 Standard Protocol RPC Errors (`rpc_errors.go`)
-Reserved JSON-RPC protocol error codes for governance verification:
+`internal/constants/senders.go` is hand-maintained. `constgen` does not generate it, so keep it in step with `senders.json` by hand.
+
+### 7.4 Protocol RPC Error Codes (`internal/constants/rpc_errors.go`)
+`rpc_errors.go` is hand-maintained Go with no JSON source. It defines the protocol error codes for governance verification, including:
 - `ErrCodeInvalidEnvelope` (`-32000`)
 - `ErrCodeHashMismatch` (`-32001`)
 - `ErrCodeExpired` (`-32002`)
@@ -292,3 +267,5 @@ Reserved JSON-RPC protocol error codes for governance verification:
 - `ErrCodePayloadDecodeFailed` (`-32008`)
 - `ErrCodeResourceNotFound` (`-32100`)
 - `ErrCodeGatewayNotReady` (`-32101`)
+
+The file's comment reserves the range -32000 to -32099; `-32100` and `-32101` sit outside it.

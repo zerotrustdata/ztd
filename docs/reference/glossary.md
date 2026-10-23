@@ -454,7 +454,7 @@ The deterministic SHA-256 digest computed from normalized **Governance Envelope*
 
 ## Tribunal
 
-The Gateway-hosted L2 consensus panel, selected as the `tribunal` consensus provider (`ConsensusProviderTribunal`, `internal/constants/consensus.go`). The panel binds the canonical Tribunal member applications, each member votes through one governed inference, and the panel is pinned to one frozen model tag and digest at enrollment (`ztd consensus enroll tribunal`). The default quorum is 3-of-5 (`TribunalConsensusDefaultQuorum`); the lowest accepted quorum is also 3 (`TribunalConsensusMinQuorum`). Tribunal votes apply only to state-changing actions under **L2 Consensus**.
+The Gateway-hosted L2 consensus panel, selected as the `tribunal` consensus provider (`ConsensusProviderTribunal`, `internal/constants/consensus.go`). The panel binds the canonical Tribunal member applications, each member votes through one governed inference, and the panel is pinned to one frozen model tag and digest at enrollment (`ztd consensus enroll tribunal`). The default quorum is 3-of-5 (`TribunalConsensusDefaultQuorum`); the lowest accepted quorum is also 3 (`TribunalConsensusMinQuorum`). Tribunal votes apply only to state-changing actions under **L2 Consensus**. In the Evaluation Explorer's Live activity table, each assignment row that received votes shows the five Tribunal seats, with outcome and the recorded vote, between its Model and Latency columns.
 
 ---
 

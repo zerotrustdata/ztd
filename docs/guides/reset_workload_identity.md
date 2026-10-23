@@ -3,12 +3,13 @@ doc_id: reset_workload_identity
 title: Reset Workload Identity
 audience: platform operators, administrators, developers
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - docs/guides/reset_workload_identity.md
   - internal/cli/cmd/operator
   - internal/cli/cmd/gw
+  - internal/cli/identityreset
 related:
   - docs/guides/connect_operator_to_gateway.md
   - docs/guides/unified_stack.md
@@ -25,9 +26,9 @@ do_not_use_for:
 
 ## Overview
 
-When the Gateway runtime is reset via `./ztd gw clean` or `./ztd gw reset`, the Gateway moves its `.ztd/` directory to `.ztd-<MMDDHHMM>` and generates a fresh Certificate Authority (CA) on restart. Existing Operator credentials and cached trust bundles belong to the previous CA and cannot authenticate to the new Gateway instance.
+`./ztd gw clean` and `./ztd gw reset` stop running ztd services, remove ztd root CA anchors from the OS trust store, and rename the `.ztd/` runtime directory to `.ztd-<MMDDHHMM>`. The next Gateway start generates a fresh Certificate Authority (CA). CLI credentials become invalid. Before cleaning, `gw clean` lists recorded local Operator working directories that hold a cached Gateway trust bundle and require `ztd operator reset-identity`.
 
-`make clean` removes build and test artifacts, harness directories, and the Go build cache; it preserves `.ztd/` and workload identities.
+`make clean` removes `bin/`, `.ztd-test-tmp/`, `.ztd-harness-*/`, test and coverage outputs, and the Go build cache. It does not remove `.ztd/` runtime directories.
 
 ## Reset a Stale Operator Identity
 
@@ -76,11 +77,10 @@ Verify connection status:
 
 ## Trust for Remote Operators
 
-A TLS failure during enrollment does not authorize replacing a CA. Workloads retain existing trust during enrollment. For a remote Operator connecting to a newly reset Gateway:
+For a remote Operator connecting to a newly reset Gateway:
 
-1. Obtain the new Gateway CA bundle (`.ztd/pki/trust/ztdg-ca-bundle.pem`) through an authenticated out-of-band channel.
-2. Verify its SHA-256 fingerprint.
-3. Start the Operator with `--trust-bundle /path/to/ztdg-ca-bundle.pem`.
+1. Obtain the new Gateway CA bundle, `.ztd/pki/trust/ztdg-ca-bundle.pem` in the Gateway runtime directory, and copy it to the Operator host. Verify it through a channel you trust; `--trust-bundle` checks only that the file parses as PEM certificates and does not verify a fingerprint.
+2. Start the Operator with `--trust-bundle /path/to/ztdg-ca-bundle.pem`. The explicit bundle is read, never persisted, and overrides the bundle delivered at enrollment.
 
 Remote working directories are never modified or reset by the local Gateway.
 

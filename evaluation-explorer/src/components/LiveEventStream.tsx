@@ -61,17 +61,66 @@ function tribunalSeatId(record: Record<string, unknown>): TribunalSeatId | undef
   return TRIBUNAL_SEATS.some((seat) => seat.id === id) ? id as TribunalSeatId : undefined;
 }
 
-function latestTribunalVotes(events: LiveEvent[]): Map<TribunalSeatId, Record<string, unknown>> {
-  const latest = new Map<TribunalSeatId, { at: string; record: Record<string, unknown> }>();
-  for (const event of events) {
-    const record = tribunalVoteRecord(event);
-    if (!record) continue;
-    const id = tribunalSeatId(record);
-    if (!id) continue;
-    const current = latest.get(id);
-    if (!current || event.observed_at >= current.at) latest.set(id, { at: event.observed_at, record });
+type SeatVotes = Map<TribunalSeatId, Record<string, unknown>>;
+
+function assignmentRowKey(event: LiveEvent): string {
+  return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
+}
+
+/** Vote events carry no assignment identity, so a vote belongs to the assignment
+ *  whose activity was most recent when it arrived. The next assignment's activity
+ *  moves later votes to its own row. Within a row only the latest round shows,
+ *  one vote per seat. */
+function tribunalVotesByAssignment(events: LiveEvent[]): Map<string, SeatVotes> {
+  const byTime = (left: LiveEvent, right: LiveEvent) => left.observed_at.localeCompare(right.observed_at);
+  const activity = events.filter((event) => event.assignment_id && !isTribunalVoteEvent(event)).sort(byTime);
+  const votes = events.filter(isTribunalVoteEvent).sort(byTime);
+  const rounds = new Map<string, { transaction: string; seats: SeatVotes }>();
+  let cursor = -1;
+  for (const vote of votes) {
+    const record = tribunalVoteRecord(vote);
+    const seat = record ? tribunalSeatId(record) : undefined;
+    if (!record || !seat) continue;
+    while (cursor + 1 < activity.length && activity[cursor + 1]!.observed_at <= vote.observed_at) cursor++;
+    const current = activity[cursor];
+    if (!current) continue;
+    const key = assignmentRowKey(current);
+    const transaction = typeof record.transaction_id === 'string' ? record.transaction_id : '';
+    let round = rounds.get(key);
+    if (!round || round.transaction !== transaction) {
+      round = { transaction, seats: new Map() };
+      rounds.set(key, round);
+    }
+    round.seats.set(seat, record);
   }
-  return new Map([...latest].map(([id, vote]) => [id, vote.record]));
+  return new Map([...rounds].map(([key, round]) => [key, round.seats]));
+}
+
+function TribunalVotes({ votes }: { votes: SeatVotes }) {
+  return (
+    <div className="tribunal-seats" role="group" aria-label="Tribunal">
+      {TRIBUNAL_SEATS.map((seat) => {
+        const vote = votes.get(seat.id);
+        const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
+        const body = (
+          <>
+            <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
+            <span className="tribunal-name">{seat.name}</span>
+            <span className="tribunal-office">{seat.office}</span>
+            <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Pending'}</span>
+          </>
+        );
+        return vote ? (
+          <details key={seat.id} className="tribunal-seat" title={`${seat.name}, ${seat.office}`} data-outcome={outcome ?? 'pending'}>
+            <summary>{body}</summary>
+            <pre>{JSON.stringify(vote, null, 2)}</pre>
+          </details>
+        ) : (
+          <div key={seat.id} className="tribunal-seat" title={`${seat.name}, ${seat.office}`} data-outcome="pending">{body}</div>
+        );
+      })}
+    </div>
+  );
 }
 
 function eventTime(iso: string): string {
@@ -330,7 +379,7 @@ export function LiveEventStream({
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
   const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event)), [events]);
-  const tribunalVotes = useMemo(() => latestTribunalVotes(events), [events]);
+  const tribunalVotes = useMemo(() => tribunalVotesByAssignment(events), [events]);
 
   const latestEvent = useMemo(() => activityEvents.reduce<LiveEvent | undefined>(
     (latest, event) => !latest || event.observed_at > latest.observed_at ? event : latest, undefined,
@@ -397,26 +446,6 @@ export function LiveEventStream({
           <h2>{title}</h2>
           <StreamStatusIndicator streamConnection={streamConnection} feedConnection={connection} />
         </div>
-        <div className="tribunal-strip" role="region" aria-label="Tribunal">
-          {TRIBUNAL_SEATS.map((seat) => {
-            const vote = tribunalVotes.get(seat.id);
-            const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
-            return (
-              <article key={seat.id} className="tribunal-seat" title={`${seat.name}, ${seat.office}`} data-lit={vote ? 'true' : 'false'} data-outcome={outcome ?? 'pending'}>
-                <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
-                <span className="tribunal-name">{seat.name}</span>
-                <span className="tribunal-office">{seat.office}</span>
-                <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Ready'}</span>
-                {vote ? (
-                  <details className="tribunal-vote">
-                    <summary>Vote</summary>
-                    <pre>{JSON.stringify(vote, null, 2)}</pre>
-                  </details>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
         <div className="stream-controls">
           <select aria-label="Filter by model" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}>
             <option value="all">All models</option>
@@ -461,6 +490,7 @@ export function LiveEventStream({
               <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <th scope="col"><span className="sr-only">Tribunal</span></th>
               {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
               <SortHeader label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             </tr></thead>
@@ -469,6 +499,7 @@ export function LiveEventStream({
                 const assignment = matchingAssignment(event, assignments);
                 const model = event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined;
                 const parts = eventParts(event, assignment);
+                const rowVotes = event.assignment_id ? tribunalVotes.get(assignmentRowKey(event)) : undefined;
                 const result = streamResult(event, assignment);
                 const eventHref = event.assignment_id
                   ? `/evaluations/${event.dataset_id}/${event.run_id}/assignments/${event.assignment_id}`
@@ -494,6 +525,9 @@ export function LiveEventStream({
                     <td className="stream-model-cell">
                       {modelHref ? <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>{model?.served_model_tag ?? event.variant_id}</Link> : <span>Platform</span>}
                       {event.assignment_id || event.role ? <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span> : null}
+                    </td>
+                    <td className="stream-tribunal-cell">
+                      {rowVotes ? <TribunalVotes votes={rowVotes} /> : null}
                     </td>
                     {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label, format }) => {
                       const displayed = event.assignment_id

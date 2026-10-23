@@ -4,7 +4,7 @@ title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - Makefile
   - docs/guides/
@@ -49,9 +49,9 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 | :--- | :--- |
 | INV-STACK-01 | The host stack runs as processes of the `ztd` binary on the Gateway host: `make up` or `./ztd gw start` for the Gateway, and `make operator` or `./ztd operator start` for each outbound Operator. Each Operator MUST run in its own working directory; `./ztd operator start` refuses a working directory that holds a Gateway runtime. |
 | INV-STACK-02 | Operator health is determined by the Gateway registry (`./ztd operator list`), not by process existence. An Operator that has not enrolled or whose heartbeat is `stale` is not ready. |
-| INV-STACK-03 | The Inference Operator MUST enroll with `--capabilities inference` before any scored campaign dispatch reaches the provider. |
-| INV-STACK-04 | Observer and Provenance Operators enroll as separate sessions on the provider host and MUST NOT share the same session. |
-| INV-STACK-05 | Campaign identity (campaign ID and registry digest) travels on each governed dispatch from the campaign controller. The Inference Operator has no startup campaign binding. Console chat and campaigns share it concurrently without switching. |
+| INV-STACK-03 | The Inference Operator MUST enroll with `--capabilities inference` before any scored campaign run starts. Run preparation fails when no active Operator has the inference capability. |
+| INV-STACK-04 | Observer and Provenance Operators enroll as separate sessions on the provider host and MUST NOT share the same session. Each witness role resolves to exactly one active Operator; re-enrolling the same identity supersedes the previous lease. |
+| INV-STACK-05 | Campaign identity (campaign ID and registry digest) travels on each governed inference dispatch from the campaign controller. `./ztd operator start` takes no campaign flag, so the Inference Operator has no startup campaign binding. |
 
 ## Owned surfaces
 
@@ -69,7 +69,7 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 
 - A built `./ztd` binary (`make build`). See [Getting Started](getting_started.md).
 - An approved Ollama provider reachable from the Inference Operator host, for example: `curl -fsS http://192.168.1.2:11434/api/version`. The Inference Operator default endpoint is `http://127.0.0.1:11434`; set `ZTD_OLLAMA_ENDPOINT` in `.env` (or `--inference-ollama-endpoint`) when the approved provider is remote.
-- Host ports available: **8080** (HTTP discovery) and **8443** (HTTPS/mTLS API and console). The public spectator and evaluation explorer listen on loopback **8081**, **8082**, and **5173** by default.
+- Host ports available: **8080** (HTTP discovery) and **8443** (HTTPS/mTLS API and console). The public spectator listens on loopback **8081** (private ingest) and **8082** (public read) by default, and the evaluation explorer uses **5173**.
 - A browser with WebAuthn support for the owner passkey, or headless enrollment.
 
 `./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`; the file must be owned by the user or root with mode `0600` or `0400`) before each command runs; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
@@ -78,7 +78,7 @@ Use `ZTD_ARGS` for global CLI flags shared by `make up`, `make gw`, `make operat
 
 ### Binary building and version alignment
 
-`make build` writes the host binary to `bin/ztd-<os>-<arch>` and copies it to `./ztd`. A running Operator keeps the binary it started with, so restart each Operator after a rebuild to run the new binary. A restart starts a new enrollment, which needs owner approval.
+`make build` writes the host binary to `bin/ztd-<os>-<arch>` and copies it to `./ztd`. A running Operator process keeps running the binary it started with, so restart each Operator after a rebuild. Every Operator start enrolls again, and that enrollment needs owner approval.
 
 ### Start the Gateway and Operators
 
@@ -135,7 +135,7 @@ Each Operator submits a platform enrollment request and waits for owner approval
 
 Approve the Data Operator request first, then the Inference Operator request, by request ID, instance ID, or hostname: `./ztd auth enroll approve <selector> --yes`. Deny a request that should not be admitted with `./ztd auth enroll deny <selector>`.
 
-The evaluation CLI dispatches inference with a separate host application identity, `ztd-eval`. When that identity is missing, expired, or untrusted, the first eval command that needs it enrolls it: it submits the platform enrollment request and approves that exact request (matched by request ID and app CSR fingerprint) with the authenticated owner's CLI identity. The Gateway still enforces owner authority, so a CLI that is not the owner fails closed. To enroll it ahead of time instead, run `./ztd auth enroll app ztd-eval` and approve the request with `./ztd auth enroll approve <request-id> --yes`.
+The evaluation CLI dispatches inference with a separate host application identity, `ztd-eval`. When an eval command that dispatches inference finds that identity missing, expired, or untrusted, it enrolls it: it submits the platform enrollment request and approves that exact request (matched by request ID and app CSR fingerprint) with the authenticated owner's CLI identity. The Gateway still enforces owner authority, so a CLI that is not the owner fails closed. To enroll it ahead of time instead, run `./ztd auth enroll app ztd-eval` and approve the request with `./ztd auth enroll approve <request-id> --yes`.
 
 ### 3. Verify readiness
 
@@ -149,7 +149,7 @@ Expect two remote Operators (data and inference) plus the embedded Gateway Opera
 
 ### Stop or revoke an enrolled workload
 
-Use the Operator session ID from `operator list` for a reversible process stop: `./ztd operator stop <operator-session-id> --reason "planned maintenance"`. The command targets one active remote Operator owned by the authenticated user. It waits for the Operator's governed shutdown acknowledgement before the Gateway records `stopped`; the embedded Gateway Operator is never a valid target. The enrollment is not revoked, but the Operator identity is held in memory only, so the next `./ztd operator start` submits a new enrollment request that needs owner approval.
+Use the Operator session ID from `operator list` for a reversible process stop: `./ztd operator stop <operator-session-id> --reason "planned maintenance"`. The command targets one active remote Operator owned by the authenticated user. The Gateway records `stopped` only after the governed shutdown request dispatches successfully; the embedded Gateway Operator is refused as a target. The enrollment is not revoked, but the Operator identity is held in memory only, so the next `./ztd operator start` submits a new enrollment request that needs owner approval.
 
 Use the completed platform enrollment request ID for permanent identity revocation: `./ztd auth enroll revoke <request-id> --reason "host retired" --yes`. Operator revocation invalidates the Operator and companion CLI certificates, deactivates their sessions, marks the Operator `terminated`, and disconnects established pub/sub connections. The workload must submit a new enrollment request and receive owner approval before it can authenticate again.
 
@@ -161,7 +161,7 @@ Deploy this on the machine that runs Ollama (e.g. `192.168.1.2`), not on the cam
 
 - `ztd.exe` built for Windows (`make build-windows` or copy `bin/ztd-windows-amd64.exe`).
 - Outbound TCP to the campaign Gateway on **8080** and **8443**.
-- `nvidia-smi` on PATH (GPU telemetry). Host RAM via Windows-equivalent collection in the observer collector.
+- `nvidia-smi` on PATH (GPU telemetry). Host RAM is read by the observer's host RAM collector.
 - A hosts-file mapping so the Gateway certificate SAN matches, for example: `192.168.1.10 ztd.local`.
 
 #### Start and enroll the Observer
@@ -229,17 +229,18 @@ The formation catalog (`./ztd eval formations list`) holds Lite, Assistant, and 
 
 A formation campaign (`./ztd eval campaigns create <campaign> --formations <formation-id>`) freezes the registered models that the formation requires and runs on the system lane. Formation campaigns support one repetition without held context. A model-role campaign scores one registry model. Validate the witness path with the [mini smoke campaign workflow](#mini-smoke-campaign-workflow) after the Inference Operator and both witness Operators (Observer + Provenance) are enrolled.
 
-Under `consensus` or `notary`, a campaign starts only when the Gateway reports `governance_ready`: a consensus is bound and has quorum-many usable signers. Check it with `./ztd consensus status`. A campaign does not freeze a posture. Each run freezes the live posture and consensus binding when it starts, and `runs start` prints that governance line. `runs execute` and `runs resume` refuse a run whose posture or binding has since changed, so a rebind never mixes two vote models in one run.
+Under `consensus` or `notary`, a campaign starts only when the Gateway reports `governance_ready`: a consensus is bound and has quorum-many usable signers. Check it with `./ztd consensus status`. A campaign does not freeze a posture. Each run freezes the live posture and consensus binding when it starts, and `runs start` prints that governance line. `runs resume` refuses a run whose posture or binding has since changed, so a rebind never mixes two vote models in one run.
 
 ### Campaign and run naming
 
-| Purpose | Campaign ID | Run ID pattern | Model inventory |
-| :--- | :--- | :--- | :--- |
-| **Init campaign** (one model, single-model gate) | `eval-init-<variant_id>` | `<campaign-id>-<unix>` | `.ztd/eval/inventories/<campaign-id>.json` |
-| **Mini smoke** (one-model end-to-end validation) | `eval-smoke-mini` | `eval-smoke-mini-<unix>` | `.ztd/eval/inventories/eval-smoke-mini.json` |
-| **Full homogeneous run** | `eval-genesis-homogeneous` | `eval-genesis-homogeneous-<unix>` | `.ztd/eval/model-inventory.json` |
+The operator chooses campaign IDs in `campaigns create`. The code assigns a fixed ID in two cases: `eval rollout` names each model campaign `eval-init-<variant_id>` (`init-campaign` for `gemma4:e4b`), and `eval-genesis-homogeneous` is the default homogeneous campaign ID. `eval-smoke-mini` is only an example name in this guide. When a campaign ID was already frozen on a different catalog, `campaigns create` appends a prefix of the current catalog digest. A run ID defaults to `<campaign-id>-<unix>`.
 
-Single model init campaign:
+Inventory files:
+
+- `campaigns create` writes the campaign's model inventory to `.ztd/eval/inventories/<campaign-id>.json`.
+- `eval models freeze` writes the registry model inventory to `.ztd/eval/model-inventory.json`.
+
+Single-model init campaign example:
 
 ```bash
 ./ztd eval models freeze
@@ -261,7 +262,7 @@ Multi-model rollout queue:
 
 #### Phase A — Public feed preparation
 
-The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public read/SSE), and evaluation explorer (`5173`) when started with `--public-spectator` (default).
+The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public read), and evaluation explorer (`5173`) when started with `--public-spectator` (default).
 
 #### Phase B — Create campaign and start run
 
@@ -290,18 +291,17 @@ The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public r
 | `make gw` | Starts the Gateway with its embedded Operator carrying capabilities from `GW_CAPABILITIES` (default `data,inference,observer`), then prints `ztd gw status`. Setting `MODEL_STORAGE_ROOT` adds the Provenance capability. |
 | `make up-public` / `make gw-public` | Same as `make up` / `make gw` with the listeners bound to every interface (`--listen-host 0.0.0.0`) so Operators on other hosts can enroll. |
 | `make operator` | Runs one outbound Operator in the foreground. Pass capability and endpoint flags in `OPERATOR_ARGS`. |
-| `make status` | Prints `ztd gw status`: Gateway health, the Operator inventory, and pending enrollments. |
-| `make down` | Stops Operators, then the Gateway (`ztd gw stop`). Runtime state in `.ztd/` is preserved. |
+| `make status` | Prints `ztd gw status`: Gateway status, Operator capabilities, and enrollment counts. |
+| `make down` | Runs `ztd operator stop` with no session ID, which requests governed shutdown for every local Operator owned by the current user (its errors are ignored), then `ztd gw stop`. Runtime state in `.ztd/` is preserved. |
 
-`make clean` removes build and test artifacts and the Go build cache while preserving `.ztd/` and the repository-root `ztd` binary. `./ztd gw clean` renames `.ztd/` to `.ztd-<MMDDHHMM>`, invalidates CLI credentials, and requires fresh owner and workload enrollment.
+`make clean` removes `bin/`, `.ztd-test-tmp/`, `.ztd-harness-*/`, `*.sha256`, `*.test`, and coverage output files, then runs `go clean -cache`. It does not touch `.ztd/` or the repository-root `ztd` binary. `./ztd gw clean` renames `.ztd/` to `.ztd-<MMDDHHMM>`, invalidates CLI credentials, and requires fresh owner and workload enrollment. It offers an evaluation-evidence backup first unless `--skip-backup` is given.
 
 ## Anti-patterns
 
 - Leaving `--inference-ollama-endpoint` at default `http://127.0.0.1:11434` when the approved provider is remote.
 - Rebinding campaign ID and digest per model instead of using dispatch-carried campaign authority.
-- Running `./ztd gw clean` or `./ztd gw reset` expecting credentials and public mirror state to persist. Use `make down` to stop the stack without losing state.
-- Starting a strict-witness campaign run without enrolling Observer and Provenance Operators first.
-- Running `ztd eval runs publish` concurrently with `runs start --publish` or `runs resume --publish`.
+- Running `./ztd gw clean` or `./ztd gw reset` expecting credentials and runtime state to persist. Use `make down` to stop the stack without losing state.
+- Starting a strict-witness run (`--require-witness`, or `eval rollout run`) before Observer and Provenance Operators are enrolled. Verification then fails when witness windows are missing.
 - Granting command execution authority to Observer or Provenance Operators. These are read-only witness boundaries.
 
 ## Links out

@@ -281,7 +281,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 
 ### Autochthon Subsystem
 
-The `ztd autochthon` command is an isolated, autonomous runtime observer and forecaster operating without Gateway dependencies:
+`ztd autochthon` is a separate subsystem, not an Operator mode. It is an isolated, autonomous runtime observer and forecaster operating without Gateway dependencies:
 - **Operation**: Samples once per second: load, memory in use, the `TERM` environment variable, process count, and the UTC hour, weekday, and minute. The hour, weekday, and minute senses are inputs only. Breeds a population of 16 fixed-topology networks (8 hidden units, direct input-to-output connections) by selection and mutation, with no gradient training. Each network predicts the next value of load, memory, TERM, and process count as a change from the current sample; the zero genome is persistence. The champion is the fittest genome over the last 128 samples, re-selected at each 32-sample episode boundary. Children are mutated copies of the top four genomes, with no crossover.
 - **State Storage**: Persisted under `.ztd/autochthon/` (`run.lock`, `culture.bin`, and hash-chained `tally.jsonl`).
 - **Independence**: Accepts no governance envelopes, opens no network listeners, and produces no `ActionReceipt` records. `ztd autochthon status` verifies the tally hash chain from genesis without acquiring locks.

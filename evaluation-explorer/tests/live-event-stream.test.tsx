@@ -41,10 +41,10 @@ describe('LiveEventStream', () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
-  it('keeps eight columns and links the task and result directly to evidence', () => {
+  it('keeps nine columns and links the task and result directly to evidence', () => {
     render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, input_tokens: { value: 350 } } })]));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
-      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
+      .toEqual(['Result', 'Task', 'Model', 'Tribunal', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
     const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
     expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
@@ -282,67 +282,74 @@ describe('LiveEventStream', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('keeps all five Tribunal seats visible before votes and after feed retention removes them', () => {
-    const { rerender } = render(stream([]));
-    const tribunal = screen.getByRole('region', { name: 'Tribunal' });
-    const heading = screen.getByRole('heading', { name: 'Live activity' }).parentElement;
-    const modelControls = screen.getByRole('combobox', { name: 'Filter by model' }).parentElement;
-    expect(heading?.nextElementSibling).toBe(tribunal);
-    expect(tribunal.nextElementSibling).toBe(modelControls);
-    expect(within(tribunal).getAllByRole('article')).toHaveLength(5);
-    expect(within(tribunal).getAllByText('Ready')).toHaveLength(5);
+  describe('Tribunal votes', () => {
+    const voteEvent = (id: string, member: string, outcome: string, observedAt: string, transaction = 'tx-1') => liveEvent({
+      event_id: id, kind: 'stage_updated', lifecycle_status: 'running', observed_at: observedAt,
+      dataset_id: 'ds-live-investigation', run_id: 'investigation', assignment_id: undefined,
+      role: undefined, task_id: undefined, variant_id: undefined,
+      stage_label: `tribunal vote\n${JSON.stringify({
+        member_app_id: `tribunal-${member}`, outcome, reason: 'read-only query', model_tag: 'gemma4:e2b', transaction_id: transaction,
+      })}`,
+    });
+    const started = (assignmentId: string, observedAt: string) => liveEvent({
+      event_id: `start-${assignmentId}`, kind: 'assignment_started', lifecycle_status: 'running',
+      assignment_id: assignmentId, task_id: `task-${assignmentId}`, observed_at: observedAt,
+    });
+    const rowFor = (task: string) => rows().find((row) => row.textContent?.includes(task)) as HTMLElement;
 
-    rerender(stream([liveEvent({
-      event_id: 'vote-axiom', kind: 'stage_updated',
-      stage_label: `tribunal vote\n${JSON.stringify({ member_app_id: 'tribunal-axiom', outcome: 'approve' })}`,
-    })]));
-    expect(screen.getByRole('region', { name: 'Tribunal' })).toBe(tribunal);
-    expect(within(tribunal).getByText('Axiom').closest('article')).toHaveAttribute('data-lit', 'true');
+    it('renders no Tribunal outside a row and none on rows without votes', () => {
+      render(stream([liveEvent()]));
+      expect(screen.queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
+    });
 
-    rerender(stream([liveEvent()]));
-    expect(screen.getByRole('region', { name: 'Tribunal' })).toBe(tribunal);
-    expect(within(tribunal).getAllByText('Ready')).toHaveLength(5);
-  });
+    it('spawns all five seats in the row of the assignment that was active, keeping votes out of the row set', async () => {
+      const user = userEvent.setup();
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:00:05Z'),
+        voteEvent('v-nemesis', 'nemesis', 'deny', '2026-09-17T08:00:06Z'),
+      ]));
+      expect(rows()).toHaveLength(1);
+      const tribunal = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
+      expect(within(tribunal).getByText('Coherent Composer')).toBeInTheDocument();
+      expect(within(tribunal).getByText('Approve')).toBeInTheDocument();
+      expect(within(tribunal).getByText('Deny')).toBeInTheDocument();
+      expect(within(tribunal).getAllByText('Pending')).toHaveLength(3);
+      const axiom = within(tribunal).getByText('Axiom').closest('details') as HTMLElement;
+      expect(axiom).toHaveAttribute('data-outcome', 'approve');
+      expect(axiom).not.toHaveAttribute('open');
+      await user.click(within(axiom).getByText('Axiom'));
+      expect(axiom).toHaveAttribute('open');
+      expect(within(axiom).getByText(/read-only query/)).toBeInTheDocument();
+      expect(within(axiom).getByText(/gemma4:e2b/)).toBeInTheDocument();
+    });
 
-  it('lights Tribunal seats from consensus vote events and keeps them out of the table', async () => {
-    const user = userEvent.setup();
-    const vote = {
-      member_app_id: 'tribunal-axiom',
-      outcome: 'approve',
-      reason: 'read-only query',
-      failure: '',
-      quorum: 3,
-      model_tag: 'gemma4:e2b',
-      transaction_id: 'tx-1',
-      transaction_hash: 'abc',
-      inference_transaction_id: 'inf-1',
-    };
-    render(stream([
-      liveEvent(),
-      liveEvent({
-        event_id: 'vote-axiom',
-        kind: 'stage_updated',
-        assignment_id: undefined,
-        role: undefined,
-        task_id: undefined,
-        stage_label: `tribunal vote\n${JSON.stringify(vote)}`,
-      }),
-    ]));
-    const tribunal = screen.getByRole('region', { name: 'Tribunal' });
-    expect(within(tribunal).getByText('Axiom')).toBeInTheDocument();
-    expect(within(tribunal).getByText('Coherent Composer')).toBeInTheDocument();
-    expect(within(tribunal).getByText('✶')).toBeInTheDocument();
-    expect(within(tribunal).getByText('Concord')).toBeInTheDocument();
-    expect(within(tribunal).getByText('Nemesis')).toBeInTheDocument();
-    expect(within(tribunal).getAllByText('Ready')).toHaveLength(4);
-    const axiom = within(tribunal).getByText('Axiom').closest('article');
-    expect(axiom).toHaveAttribute('data-lit', 'true');
-    expect(axiom).toHaveAttribute('data-outcome', 'approve');
-    await user.click(within(axiom as HTMLElement).getByText('Vote'));
-    expect(within(tribunal).getByText(/read-only query/)).toBeInTheDocument();
-    expect(within(tribunal).getByText(/gemma4:e2b/)).toBeInTheDocument();
-    expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toHaveTextContent('tool-select-file-read');
+    it('moves later votes to the next assignment and leaves the earlier row as it was', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:00:05Z'),
+        started('a-2', '2026-09-17T08:01:00Z'),
+        voteEvent('v-pragma', 'pragma', 'deny', '2026-09-17T08:01:05Z', 'tx-2'),
+      ]));
+      const first = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
+      const second = within(rowFor('task-a-2')).getByRole('group', { name: 'Tribunal' });
+      expect(within(first).getByText('Approve')).toBeInTheDocument();
+      expect(within(first).queryByText('Deny')).not.toBeInTheDocument();
+      expect(within(second).getByText('Deny')).toBeInTheDocument();
+      expect(within(second).queryByText('Approve')).not.toBeInTheDocument();
+    });
+
+    it('shows only the latest round of a row', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        voteEvent('v-axiom-1', 'axiom', 'approve', '2026-09-17T08:00:05Z', 'tx-1'),
+        voteEvent('v-axiom-2', 'concord', 'deny', '2026-09-17T08:00:30Z', 'tx-2'),
+      ]));
+      const tribunal = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
+      expect(within(tribunal).queryByText('Approve')).not.toBeInTheDocument();
+      expect(within(tribunal).getByText('Deny')).toBeInTheDocument();
+      expect(within(tribunal).getAllByText('Pending')).toHaveLength(4);
+    });
   });
 
 });

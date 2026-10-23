@@ -4,7 +4,7 @@ title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/guides/
   - cmd/ztd
@@ -42,10 +42,10 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-BUILD-OP-01 | `make build` compiles the host platform into `bin/ztd-<os>-<arch>` and copies the binary to `./ztd`. Cross-platform builds use `make build-target GOOS=<os> GOARCH=<arch>`, `make build-linux`, `make build-darwin`, `make build-windows`, or `make build-all`. Every build embeds the evaluation explorer SPA and carries provenance stamps (version, build ID, build time, platform). |
+| INV-BUILD-OP-01 | `make build` compiles the host platform into `bin/ztd-<os>-<arch>` and copies the binary to `./ztd`. Cross-platform builds use `make build-target GOOS=<os> GOARCH=<arch>`, `make build-linux`, `make build-darwin`, `make build-windows`, or `make build-all`. Builds embed the committed evaluation explorer SPA assets and carry provenance stamps (version, build ID, build time, source revision, source tree hash, platform). |
 | INV-BUILD-OP-02 | The `operator start` command accepts connection parameters (`--endpoint`, `--trust-bundle`) and capability flags (`--capabilities`). Unknown flags are rejected before startup. |
 | INV-BUILD-OP-03 | Multiple Operators on the same host MUST use distinct working directories to prevent fingerprint collisions. They share a Gateway endpoint and expose no inbound ports. The Gateway differentiates instances by SHA-256 composite fingerprint. |
-| INV-BUILD-OP-04 | The `.ztd/` runtime state tree contains `pki/`, `data/` (with `data/ledger/`), `vault/`, `secrets/`, `logs/`, `pids/`, and `bin/` subdirectories. It never stores the Operator's enrollment identity on disk; credentials live only in process memory. Auto-initialization occurs on first `operator start`. |
+| INV-BUILD-OP-04 | The `.ztd/` runtime state tree is created by `CreateRuntimeTree` (`internal/services/fs/bootstrap.go`) and contains `pki/` (with its `root/`, `authorities/`, `issued/`, `trust/`, `revocation/`, `binaries/`, and `client/` subdirectories), `data/` (with `data/ledger/` and `data/ledger/files/`), `vault/`, `secrets/`, `logs/`, `pids/`, `bin/`, `public-feed/`, and `public-mirror/`. It never stores the Operator's enrollment identity on disk; credentials live only in process memory. Auto-initialization occurs on first `operator start`. |
 | INV-BUILD-OP-05 | L1 Doctrine re-execution, L2/L3 posture verification, replay and expiry checks, transaction hash equality, and state-root binding MUST be performed in L4 Warden before L5 Actuator execution. L5 Actuator signs the execution receipts. |
 
 ## Owned surfaces
@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/show/bind/run/stop commands | `internal/cli/cmd/operator/` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.3.0` | `go get github.com/zerotrustdata/ztd@v1.3.0` |
+| Go module (root module, includes `protocol/`) | `go.mod` | `go get github.com/zerotrustdata/ztd@v1.3.0` |
 
 ## Procedures
 
@@ -101,8 +101,6 @@ The Operator requires a reachable Gateway for enrollment, pub/sub, and receipt p
 ./ztd gw start
 ```
 
-v1.3.0 does not rewrite an existing `ztd.db`. Start the Gateway and every Operator from a new runtime root, and upgrade the Gateway and all outbound Operators together.
-
 #### Start and Enroll the Operator
 
 On the target host, set `GATEWAY_HOST` to the Gateway's host name or address, then start the Operator with the Gateway discovery endpoint:
@@ -112,7 +110,7 @@ GATEWAY_HOST=gateway.example.com
 ./ztd operator start --endpoint "$GATEWAY_HOST"
 ```
 
-Every start runs the owner-approved platform enrollment protocol over one bootstrap websocket to the Gateway. The Operator creates keys and certificate requests in memory, holds the socket, proves possession of both keys, and receives its certificate, trust bundle, session, posture, runtime limits, and L2 signer trust. Nothing from enrollment is written to disk. The L2 signer trust comes from the Gateway's bound consensus and reaches an Operator only at enrollment or certificate renewal, so restart running Operators after `./ztd consensus enroll`.
+Every start runs the owner-approved platform enrollment protocol over one bootstrap websocket to the Gateway. The Operator creates keys and certificate requests in memory, holds the socket, proves possession of both keys, and receives its certificate, trust bundle, session, posture, runtime limits, and L2 signer trust. The enrollment identity is held in process memory only and is never written to disk; `operator deploy` records only the launch phase and key fingerprints. The L2 signer trust comes from the Gateway's bound consensus and reaches an Operator at enrollment or certificate renewal, so restart running Operators after `./ztd consensus enroll` to pick up a new binding.
 
 The enrolled owner lists pending requests, sets `REQUEST_ID` to the request to approve, and approves it:
 
@@ -184,13 +182,13 @@ Set `OPERATOR_SESSION_ID` to the Operator session to stop and `REQUEST_ID` to th
 
 ### Deployment Commands
 
-`ztd operator cp <target>` copies the running binary to a local path. `ztd operator scp <user@host:path>` copies via SCP.
+`ztd operator cp <target>` copies the running ztd binary to a local file or directory. `ztd operator scp <user@host:path>` copies it to a remote host via scp.
 
-`ztd operator deploy --local --count N --capabilities data --background --approve --trust-bundle <gateway-ca.pem> --endpoint <gateway-host>` deploys isolated Operators on this system under `.ztd/operators/` (pass `--dest-dir <dir>` to place them elsewhere). Replace `--local` with `--hosts <host[,host...]>` for SSH deployment.
+`ztd operator deploy --local --count N --capabilities data --background --approve --trust-bundle <gateway-ca.pem> --endpoint <gateway-host>` deploys isolated Operators on this system under `.ztd/operators/` (pass `--dest-dir <dir>` to place them elsewhere). Replace `--local` with `--hosts <host[,host...]> --dest-dir <dir>` for SSH deployment; `--dest-dir` is required with `--hosts`. `--approve` requires `--background` and `--trust-bundle`.
 
 ## Anti-patterns
 
-- Using `./ztd gw clean` on a host where `.ztd/` runtime state must be preserved (INV-BUILD-OP-04). The command renames `.ztd` to `.ztd-<MMDDHHMM>` and removes Gateway state.
+- Using `./ztd gw clean` on a host where `.ztd/` runtime state must be preserved (INV-BUILD-OP-04). The command stops all services, moves the runtime directory to `.ztd-<MMDDHHMM>`, and invalidates CLI credentials.
 - Assuming protocol package schemas alone provide an Operator implementation without the required L1-L5 governance engine (INV-BUILD-OP-05).
 - Running multiple Operators in the same working directory on one host.
 

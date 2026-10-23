@@ -3,8 +3,8 @@ doc_id: lovable
 title: Connect a Lovable App to the Gateway
 audience: frontend builders and developers
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - docs/guides/lovable.md
   - internal/cli/cmd/gw/gateway_connect.go
@@ -60,6 +60,8 @@ For the complete browser API, WebAuthn, SSE, and frontend reference, see [Build 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
 | gw connect command | `internal/cli/cmd/gw/gateway_connect.go` | `./ztd gw connect --help` |
+| Connect output and frontend prompt | `internal/cli/cmd/gw/gateway_connect_render.go` | `./ztd gw connect --help` |
+| Frontend origin validation and RP ID derivation | `internal/cli/browserorigin/origin.go` | `./ztd gw connect --help` |
 | gw start flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Contract pack generator | `ztd-adapter/generator/gen-contract-pack.mjs` | `npm run gen:contract-pack` |
 | Contract pack README | `ztd-adapter/contract-pack/README.md` | Contract pack documentation |
@@ -98,6 +100,8 @@ To skip OS trust installation and perform manual verification:
 ./ztd gw connect https://your-app.lovable.app --no-system-trust
 ```
 
+The command prints the Gateway HTTPS URL and root CA fingerprint, then opens the Gateway HTTPS URL in the browser unless `--no-open` is set.
+
 ### 2. Apply the Emitted Frontend Prompt
 
 After verification succeeds, `gw connect` prints a prompt:
@@ -127,8 +131,8 @@ For a read-only observe dashboard (lifecycle projections, evaluation summaries, 
 ### Browser Limitations
 
 - **Local Network Access**: Browsers may request permission to contact local loopback devices. Select **Allow**.
-- **Top-Level Context**: Editor iframes block WebAuthn ceremonies and local fetch requests; test in a standalone tab.
-- **Third-Party Cookies**: Hosted origins (e.g. `https://your-app.lovable.app`) calling `https://localhost:8443` are cross-site. Browsers that block third-party cookies reject `SameSite=None` cookies, returning `401` on authenticated calls. Deploy frontend and Gateway under the same site or use a tunnel if third-party cookies are blocked.
+- **Top-Level Context**: Run the app in a standalone top-level tab. Embedded editor previews are not a supported origin (`INV-LOVABLE-03`).
+- **Third-Party Cookies**: Hosted origins (e.g. `https://your-app.lovable.app`) calling `https://localhost:8443` are cross-site. When the Gateway has CORS origins configured, as `gw connect` configures them, it sets the web session cookie with `SameSite=None` (`internal/services/gateway/passkey_service_http.go`). Browsers that block third-party cookies reject that cookie, and web-session routes return `401` without it (`internal/services/gateway/gateway_auth.go`). Deploy frontend and Gateway under the same site or use a tunnel if third-party cookies are blocked.
 - **Certificate Trust**: The Gateway's local HTTPS certificate must be trusted by the OS or browser.
 
 ### Troubleshooting
@@ -136,19 +140,19 @@ For a read-only observe dashboard (lifecycle projections, evaluation summaries, 
 - **`Failed to fetch`**: Confirm Gateway is running (`./ztd gw status`), open app in a top-level tab, and allow local network access.
 - **WebAuthn `SecurityError`**: Ensure the URL origin in the browser address bar matches the origin passed to `gw connect`.
 - **401 Unauthorized after login**: Ensure fetch includes `credentials: "include"`. If cookies are blocked by browser privacy policies, deploy frontend and Gateway on the same domain or use a Cloudflare Tunnel.
+- **`launch profile` error when `gw connect` runs against a running Gateway**: `gw connect` does not reconstruct settings from a running process. Run `./ztd gw stop`, then rerun `./ztd gw connect <frontend-origin>`.
 
 ### When You Need a Tunnel
 
 Use a tunnel when:
 - The Gateway must be reached by users on other machines.
-- Integration tests execute in remote CI environments.
-- Public browser-trusted endpoints are required.
+- Public browser-trusted endpoints are required. The local HTTPS certificate chains to a local root CA that `gw connect` installs or the browser trusts manually.
 
 See [Cloudflare Tunnel Integration](cloudflare_tunnel.md).
 
 ## Advanced Configuration
 
-For multi-origin setups or custom ports, start the Gateway with explicit flags:
+For multi-origin setups or custom ports, start the Gateway with explicit `gw start` flags (see `./ztd gw start --help`):
 
 ```bash
 ./ztd gw start \

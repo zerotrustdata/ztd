@@ -4,7 +4,7 @@ title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -36,8 +36,6 @@ Connecting a new Operator follows five steps:
 4. Approve the request from an enrolled owner CLI.
 5. The Operator receives its issued credentials and connects to the pub/sub channel automatically.
 
-**Upgrade note (v1.3.0):** Upgrade the Gateway and every outbound Operator together. Operators must run v1.3.0. Start the Gateway and each Operator from a new runtime root, because an existing `ztd.db` is not rewritten.
-
 The reference Gateway and Operator are subcommands in the same static `ztd` binary. See [Build Operator](build_operator.md) for build details and [Operator Architecture](../architecture/operator.md) for service design.
 
 ---
@@ -53,7 +51,7 @@ The reference Gateway and Operator are subcommands in the same static `ztd` bina
 
 **Operator host requirements:**
 
-- The `ztd` binary and a writable working directory. The Operator creates its `.ztd/` runtime tree (vault keys, audit database, ledger) under `--working-dir`, or under the launch directory when the flag is omitted. Operator credentials are never written there; they exist only in process memory.
+- The `ztd` binary and a writable working directory. The Operator creates its `.ztd/` runtime tree (`vault/`, `secrets/`, `data/ztd.db`, and `ledger/`) under `--working-dir`, or under the launch directory when the flag is omitted. Enrollment keys, certificates, and session credentials are held only in process memory.
 - Outbound access to the Gateway on ports 8080 (bootstrap websocket) and 8443 (mTLS pub/sub).
 - A working directory of its own. `--working-dir` selects both where commands run and where the runtime tree lives. Operator start refuses a directory that already holds a Gateway runtime.
 
@@ -122,7 +120,7 @@ From the enrolled owner CLI, with `GATEWAY_HOST` still set from step 2:
 ./ztd auth enroll pending --endpoint "$GATEWAY_HOST"
 ```
 
-Compare the component, hostname, system fingerprint, and key fingerprints with the values the Operator logs on submission (`operator_fingerprint` and `cli_fingerprint`). Then set the shell variable `REQUEST_ID` to the request ID the Operator printed in step 3, and approve:
+Compare the hostname and the Operator and CLI key fingerprints with the values the Operator logs on submission (`operator_fingerprint` and `cli_fingerprint`). Then set the shell variable `REQUEST_ID` to the request ID the Operator printed in step 3, and approve:
 
 ```bash
 ./ztd auth enroll approve "$REQUEST_ID" --endpoint "$GATEWAY_HOST" --yes
@@ -133,7 +131,7 @@ Compare the component, hostname, system fingerprint, and key fingerprints with t
 After approval, the Gateway sends the decision over the held socket and issues the certificates against the completion proof the Operator already sent. The Operator receives its credentials, trust bundle, session ID, runtime limits, and L2 signer trust into memory. The Operator establishes the mTLS pub/sub connection and subscribes to its command channel:
 
 ```text
-cmd:<operator-id>:<operator-session-id>
+cmd:<operator_id>:<operator_session_id>
 ```
 
 A successful connection logs `Channel established - Ready to receive`. The Operator sends an immediate heartbeat and continues at its configured interval (default: 30 seconds).
@@ -182,7 +180,7 @@ Deploy and start Operators over SSH, with `GATEWAY_HOST` set as in step 2:
 
 ### Connect Many Operators
 
-Deploy up to 5000 Operators per host with `--count`. With `--local` alone, the Operators land in `.ztd/operators/op-00001` onward under the project runtime tree:
+Deploy several Operators in one run with `--count`; `--count` and `--start-index` must select Operators within 1 to 5000. With `--local` alone, the Operators land in `.ztd/operators/op-00001` onward under the project runtime tree:
 
 ```bash
 ./ztd operator deploy --local --endpoint localhost --count 10 \
@@ -249,7 +247,7 @@ To stop all local Operators running under the current user (Linux, macOS, and Wi
 
 This discovers `ztd operator start` processes owned by the current user and targets only those Operators; it does not stop the Gateway or unrelated `ztd` commands. It first requests governed shutdown where an active Gateway connection is available, then waits for exit and escalates to the platform process termination mechanism if needed. On Windows, both escalation signals terminate the process because Windows has no catchable `TERM` signal. Processes owned by another user, or that cannot be inspected due to permissions or bitness, are skipped. Local stop does not revoke enrollment; because Operator credentials are memory-only, the next start performs enrollment again and needs owner approval.
 
-Enrolling again with the same system fingerprint supersedes the prior lease. The fingerprint covers the host, working directory, account, port, and capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
+Enrolling again with the same system fingerprint supersedes the prior lease. The fingerprint covers the OS, architecture, CPU count, machine ID, hostname, working directory, account, port, and capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
 
 ---
 
@@ -277,8 +275,8 @@ Keep `--working-dir` outside `--model-storage-root`. Startup refuses a runtime `
 
 - **Owner-approved enrollment**: Platform certificates require explicit owner approval via authenticated CLI or Console.
 - **Proof of key possession**: The Operator signs the enrollment completion transcript with both private keys before certificate issuance.
-- **Memory-only identity**: Operator private keys, certificates, and session credentials live only in process memory and never touch disk.
-- **Bounded identity lifetime**: Operator leaf certificates are valid for at most 7 days (`constants.MaxWorkloadLeafCertTTL`). The Operator renews its leaf two thirds into its lifetime over its own renewal channel. Renewal failures are retried until the leaf expires. A Gateway refusal is final, and the Operator enrolls again with owner approval once the leaf expires.
+- **Memory-only identity**: Operator enrollment private keys, certificates, and session credentials live only in process memory. The Actuator signing key is persisted encrypted under `.ztd/secrets/`.
+- **Bounded identity lifetime**: Operator leaf certificates are valid for at most 7 days (`constants.MaxWorkloadLeafCertTTL`). The Operator renews its leaf two thirds into its lifetime. Renewal failures are retried until the leaf expires. A Gateway refusal is final, and the Operator enrolls again with owner approval once the leaf expires.
 - **Outbound-only Operator**: Operators initiate all connections and expose zero inbound ports.
 - **Fail-closed verification**: L4 Warden re-verifies transactions, hashes, nonces, state roots, and posture proofs locally before L5 execution.
 
