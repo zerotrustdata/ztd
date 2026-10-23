@@ -14,8 +14,6 @@ import (
 	"log/slog"
 	"sync"
 
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
@@ -26,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // providerBoundaryOperatorLister resolves operators for campaign gateway
@@ -438,7 +437,7 @@ func (d *DispatchService) DispatchObservation(ctx context.Context, req Observati
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: observation: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
 		}
-		wire = deliberated
+		wire = deliberated.Envelope
 	}
 	result, err := d.dispatchEnvelope(ctx, op, env, wire, DispatchRequest{
 		TargetOperatorSessionID: req.TargetOperatorSessionID,

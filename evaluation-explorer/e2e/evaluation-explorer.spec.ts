@@ -89,7 +89,7 @@ async function installMirror(page: Page, records: object[] = runIds.map(nativeEv
             freshness: 'active',
           },
           source_freshness: 'active',
-          recent_projections: [],
+          recent_projections: records.map((record, index) => ({ ...record, sequence: index + 1 })).reverse(),
           proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
           generated_at: '2026-09-20T00:00:00Z',
         }),

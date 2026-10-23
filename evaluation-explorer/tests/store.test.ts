@@ -195,12 +195,12 @@ describe('EvalStore', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('reports reconciliation while the bootstrap snapshot is pending', () => {
+  it('reports reconciliation when the stream announces a newer snapshot cursor', () => {
     store.initBootstrap(
       {
         protocol_version: '1.0.0',
         source_id: 'opendevops-local',
-        high_water_sequence: 3,
+        high_water_sequence: 0,
         feed_chain_hash: '0'.repeat(64),
         withdrawal_digest: '0'.repeat(64),
         batch_count: 0,
@@ -210,6 +210,7 @@ describe('EvalStore', () => {
       [],
       0,
     );
+    store.acceptSnapshot({ ...store.getState().currentSnapshot!, high_water_sequence: 3 });
     expect(store.isReconciling()).toBe(true);
     store.beginBatch();
     store.acceptProjection({
@@ -424,7 +425,7 @@ describe('EvalStore', () => {
     expect(store.getEvaluation(datasetId, runId)?.quality_state).toBe('exploratory_verified');
   });
 
-  it('preserves bound verification through a later unverified aggregate revision', () => {
+  it('uses the latest canonical aggregate instead of merging older verification fields', () => {
     const runId = 'run-verification-replay';
     const datasetId = `ds-live-${runId}`;
     const base = {
@@ -493,9 +494,9 @@ describe('EvalStore', () => {
     });
 
     const summary = store.getEvaluation(datasetId, runId);
-    expect(summary?.verifier_state).toBe('passed');
-    expect(summary?.quality_state).toBe('exploratory_verified');
-    expect(summary?.verification_metadata?.report_digest).toBe('a'.repeat(64));
+    expect(summary?.verifier_state).toBe('not_run');
+    expect(summary?.quality_state).toBe('live_in_progress');
+    expect(summary?.verification_metadata).toBeUndefined();
     expect(summary?.headline_metrics.pass_rate?.value).toBe(0.5);
   });
 

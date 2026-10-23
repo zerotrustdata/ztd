@@ -256,6 +256,13 @@ func TestMirror_SegmentIngest_RejectsUnsignedLinksAndInvalidTransitions(t *testi
 		{"duplicate entry", func(env *mirrorTestEnv, seg *models.PublicProofManifestSegment) {
 			*seg = makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, append(seg.Entries, seg.Entries[0]), nil)
 		}, constants.ErrPublicFeedProofCatalogMismatch},
+		{"oversized segment", func(env *mirrorTestEnv, seg *models.PublicProofManifestSegment) {
+			entries := make([]models.PublicProofCatalogEntry, constants.PublicFeedProofMaxArtifacts+1)
+			for i := range entries {
+				entries[i] = seg.Entries[0]
+			}
+			*seg = makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, entries, nil)
+		}, constants.ErrPublicFeedProofSegmentInvalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

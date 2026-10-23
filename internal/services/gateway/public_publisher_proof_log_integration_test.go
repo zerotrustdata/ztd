@@ -230,6 +230,22 @@ func seedPublisherProofLog(t *testing.T, publisher *PublicPublisherService, segm
 	require.NoError(t, publisher.fileSvc.WriteFile(context.Background(), constants.PublicProofSegmentsFilename, log, constants.PermFilePrivate))
 }
 
+func TestPublisherProofLog_CatalogGrowsBeyondOneSegmentLimit(t *testing.T) {
+	publisher := newProofBuilderTestEnv(t)
+	ctx := context.Background()
+	// Each signed segment is bounded; the accumulated catalog is not a request.
+	seedPublisherProofLog(t, publisher, 1, constants.PublicFeedProofMaxArtifacts)
+	manifest := buildPushTestProof(t, publisher, "next-assignment", "run-next")
+	assert.Equal(t, constants.PublicFeedProofMaxArtifacts+1, manifest.ArtifactCount)
+
+	// A fresh publisher must be able to verify and replay the larger catalog.
+	restarted := newSharedLogPublisher(publisher)
+	catalog, err := restarted.GetProofCatalog(ctx)
+	require.NoError(t, err)
+	assert.Len(t, catalog.Entries, constants.PublicFeedProofMaxArtifacts+1)
+	assert.Len(t, requireLinearProofChain(t, restarted), 2)
+}
+
 // proofHeadMirror is a mirror stub that reports a fixed head and accepts the
 // next segments, recording each ingest body size.
 type proofHeadMirror struct {

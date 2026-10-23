@@ -5386,6 +5386,41 @@
                 }
             }
         },
+        "operatorv1.ConsensusVoteInference": {
+            "type": "object",
+            "properties": {
+                "failure": {
+                    "$ref": "#/definitions/operatorv1.InferenceDispatchFailure"
+                },
+                "member_app_id": {
+                    "type": "string"
+                },
+                "observation_receipts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    }
+                },
+                "provider_attempt_id": {
+                    "type": "string"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                },
+                "result": {
+                    "$ref": "#/definitions/operatorv1.InferenceResult"
+                },
+                "subject_transaction_hash": {
+                    "type": "string"
+                },
+                "subject_transaction_id": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "type": "string"
+                }
+            }
+        },
         "operatorv1.DeterministicStageEvidence": {
             "type": "object",
             "properties": {
@@ -5543,6 +5578,12 @@
         "operatorv1.GovernanceRejection": {
             "type": "object",
             "properties": {
+                "consensus_inferences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ConsensusVoteInference"
+                    }
+                },
                 "error": {
                     "type": "string"
                 },
@@ -5616,6 +5657,12 @@
             "properties": {
                 "action_type": {
                     "type": "string"
+                },
+                "consensus_inferences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ConsensusVoteInference"
+                    }
                 },
                 "event_type": {
                     "type": "string"
@@ -6306,6 +6353,12 @@
             "properties": {
                 "code": {
                     "$ref": "#/definitions/operatorv1.IngressRefusalCode"
+                },
+                "consensus_inferences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ConsensusVoteInference"
+                    }
                 },
                 "error": {
                     "type": "string"

@@ -1432,7 +1432,6 @@ var (
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationRunGovernanceChanged      = errors.New("evaluation: Gateway posture or consensus binding differs from what the run froze at start; start a new run")
-	ErrEvaluationSharedRuntimeTribunalL2   = errors.New("evaluation: enforced Tribunal L2 requires distinct Inference and Data Operators")
 	ErrEvaluationTribunalNotAssistant      = errors.New("evaluation: enforced Tribunal L2 must vote on every formation's Assistant slot model")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")

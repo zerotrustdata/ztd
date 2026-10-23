@@ -838,9 +838,5 @@ func (c *CampaignController) publishAssignmentTerminal(ctx context.Context, assi
 	if err != nil {
 		return err
 	}
-	if err := c.publication.PublishAssignmentResult(ctx, assignment, result, category, "unverified"); err != nil {
-		return err
-	}
-	_, err = c.publication.PublishRunAggregates(ctx, assignment.GetRunId(), c.now().UTC())
-	return err
+	return c.publication.PublishAssignmentResult(ctx, assignment, result, category, "unverified")
 }

@@ -45,7 +45,7 @@ func TestRunsStart_AllowsSharedRuntimeUnderTribunalConsensus(t *testing.T) {
 		RunID:      "run-shared-tribunal-runtime",
 	})
 	require.NoError(t, err)
-	assert.Zero(t, run.stack.Provider.ChatCount(), "starting a run must not dispatch Tribunal inference")
+	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "the first answer-only assignment executes without a Tribunal vote round")
 	runIDs, err := evaluation.NewStore(env.fileSvc(t)).ListRunIDs(context.Background())
 	require.NoError(t, err)
 	assert.Contains(t, runIDs, "run-shared-tribunal-runtime")

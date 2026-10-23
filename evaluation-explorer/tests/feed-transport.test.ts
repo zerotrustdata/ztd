@@ -137,14 +137,14 @@ describe('normalizeStreamRecord', () => {
   });
 });
 
-describe('history backfill', () => {
+describe('current snapshot and live deltas', () => {
   let store: EvalStore;
 
   beforeEach(() => {
     store = new EvalStore();
   });
 
-  it('pages history from sequence 0 to snapshot high-water and seals', () => {
+  it('installs current entities at the snapshot cursor without replay', () => {
     // Two pages of history: sequences 1-2 then 3-4, high-water 4.
     const m0 = fixtureModelSummaries[0]!;
     const m1 = fixtureModelSummaries[1]!;
@@ -157,9 +157,9 @@ describe('history backfill', () => {
     ];
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 4, batch_count: 1 };
 
-    store.initBootstrap(snapshot, [], 0);
-    expect(store.getState().observedSequence).toBe(0);
-    expect(store.getState().pendingSnapshot).not.toBeNull();
+    store.initBootstrap(snapshot, records, 0);
+    expect(store.getState().observedSequence).toBe(4);
+    expect(store.getState().pendingSnapshot).toBeNull();
 
     for (const record of records) store.acceptProjection(record);
 
@@ -171,12 +171,12 @@ describe('history backfill', () => {
     expect(state.models.size).toBe(3);
   });
 
-  it('bootstrap recent projections are indexed before history backfill', () => {
+  it('bootstrap entities and cursor become visible together', () => {
     const recent = [snapshotRecord(fixtureCatalogExploratory, 1)];
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 1, batch_count: 1 };
     store.initBootstrap(snapshot, recent, 0);
     expect(store.getState().catalogs.size).toBe(1);
-    expect(store.getState().observedSequence).toBe(0);
+    expect(store.getState().observedSequence).toBe(1);
   });
 
   it('does not inflate campaign progress when bootstrap and history overlap', () => {
@@ -258,19 +258,19 @@ describe('history backfill', () => {
     expect(failEvent).toMatchObject({ completed: 1, total: 1 });
   });
 
-  it('accepts the first retained sequence even when above 1', () => {
+  it('accepts sparse current entity revisions below the snapshot cursor', () => {
     // The mirror may prune early records; the first retained record is
     // accepted at whatever sequence the feed starts at.
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 5, batch_count: 1 };
-    store.initBootstrap(snapshot, [], 0);
-    store.acceptProjection(snapshotRecord(fixtureCatalogExploratory, 3));
-    expect(store.getState().observedSequence).toBe(3);
+    store.initBootstrap(snapshot, [snapshotRecord(fixtureCatalogExploratory, 3)], 0);
+    expect(store.getState().observedSequence).toBe(5);
+    expect(store.getCatalog(fixtureCatalogExploratory.dataset_id)).toBeDefined();
     expect(store.getState().errors.length).toBe(0);
   });
 
   it('accepts mirror withdrawal gaps after the first retained record', () => {
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 5, batch_count: 1 };
-    store.initBootstrap(snapshot, [], 0);
+    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, [], 0);
     store.acceptProjection(snapshotRecord(fixtureCatalogExploratory, 3));
     store.acceptProjection(snapshotRecord(fixtureModelSummaries[0]!, 5));
     expect(store.getState().observedSequence).toBe(5);
@@ -279,14 +279,14 @@ describe('history backfill', () => {
 
   it('ignores replayed or regressive sequences after the first record', () => {
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 5, batch_count: 1 };
-    store.initBootstrap(snapshot, [], 0);
+    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, [], 0);
     store.acceptProjection(snapshotRecord(fixtureCatalogExploratory, 3));
     store.acceptProjection(snapshotRecord(fixtureModelSummaries[0]!, 2));
     expect(store.getState().observedSequence).toBe(3);
     expect(store.getState().errors).toEqual([]);
   });
 
-  it('retains the highest feed sequences after bootstrap-then-history ingest', () => {
+  it('retains the newest activity when live deltas roll past the snapshot tail', () => {
     const runId = 'run-feed-tail';
     const datasetId = campaignDatasetId(runId);
     const lifecycleEnvelope = (assignmentId: string, sequence: number) =>
@@ -310,15 +310,15 @@ describe('history backfill', () => {
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 1000, batch_count: 1 };
     store.initBootstrap(snapshot, recent, 0);
 
-    for (let sequence = 1; sequence <= 1000; sequence += 1) {
+    for (let sequence = 1001; sequence <= 2000; sequence += 1) {
       store.acceptProjection(lifecycleEnvelope(`hist-${sequence}`, sequence));
     }
 
     const events = store.getEvents(runId, datasetId);
     expect(events.length).toBe(LIVE_EVENT_STORE_LIMIT);
     expect(events.some((event) => event.event_id === `${runId}:hist-1:lifecycle:queued`)).toBe(false);
-    expect(events.some((event) => event.event_id === `${runId}:hist-1000:lifecycle:queued`)).toBe(true);
-    expect(events.some((event) => event.event_id === `${runId}:recent-49:lifecycle:queued`)).toBe(true);
+    expect(events.some((event) => event.event_id === `${runId}:hist-2000:lifecycle:queued`)).toBe(true);
+    expect(events.some((event) => event.event_id === `${runId}:recent-49:lifecycle:queued`)).toBe(false);
   });
 });
 
@@ -326,7 +326,7 @@ describe('cross-dataset keying', () => {
   it('the same variant_id in two datasets does not collide', () => {
     const store = new EvalStore();
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 4, batch_count: 1 };
-    store.initBootstrap(snapshot, [], 0);
+    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, [], 0);
     // Exploratory gemma4-e4b at sequence 1, verified gemma4-e4b at sequence 2.
     store.acceptProjection(snapshotRecord(fixtureModelSummaries[0]!, 1));
     store.acceptProjection(snapshotRecord(fixtureVerifiedModelSummaries[0]!, 2));

@@ -73,8 +73,9 @@ func newPublicProofIndex() *publicProofIndex {
 }
 
 // check reports whether seg is the valid next link: consecutive index and
-// root link, no relisted artifact, withdrawals of active artifacts only, and
-// an active set within the artifact limit. These are the mirror's rules.
+// root link, no relisted artifact, and withdrawals of active artifacts only.
+// Artifact limits apply to each signed segment, not the
+// accumulated catalog. These are the mirror's rules.
 func (x *publicProofIndex) check(seg models.PublicProofManifestSegment) error {
 	previousRoot := constants.PublicFeedZeroHashHex
 	if len(x.segments) > 0 {
@@ -92,9 +93,6 @@ func (x *publicProofIndex) check(seg models.PublicProofManifestSegment) error {
 		if _, active := x.active[id]; !active {
 			return constants.ErrPublicFeedProofSegmentInvalid
 		}
-	}
-	if len(x.active)+len(seg.Entries)-len(seg.WithdrawnArtifactIDs) > constants.PublicFeedProofMaxArtifacts {
-		return constants.ErrPublicFeedProofCatalogMismatch
 	}
 	return nil
 }

@@ -118,7 +118,12 @@ func IngressRefusalSentinel(err error) (operatorv1.IngressRefusalCode, error) {
 
 // NewIngressRefusal builds the wire body for a pre-envelope refusal. Error is
 // the sentinel's text; an unmapped error renders constants.ErrInternal.
-func NewIngressRefusal(err error) *operatorv1.IngressRefusal {
+func NewIngressRefusal(err error) (refusal *operatorv1.IngressRefusal) {
+	defer func() {
+		if refusal != nil {
+			refusal.ConsensusInferences = ConsensusInferences(err)
+		}
+	}()
 	code, sentinel := IngressRefusalSentinel(err)
 	text := constants.ErrInternal.Error()
 	if sentinel != nil {

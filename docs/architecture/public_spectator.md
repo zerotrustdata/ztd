@@ -45,6 +45,7 @@ The credentialed owner-local observe mode and the anonymous public-spectator mod
 - [Export Binding and Cryptographic Continuity](#export-binding-and-cryptographic-continuity)
 - [Threat Model and Mitigations](#threat-model-and-mitigations)
 - [Anonymous Read Limits, Retention, and Availability](#anonymous-read-limits-retention-and-availability)
+- [Proposed Current-State Snapshot](#proposed-current-state-snapshot)
 - [Relationship to Platform Architecture](#relationship-to-platform-architecture)
 - [Procedures](#procedures)
 - [Anti-patterns](#anti-patterns)
@@ -191,7 +192,7 @@ The mirror accepts a typed `PublicProofManifestSegment` on private `/proof-inges
 
 Timestamps use UTC RFC 3339 with trailing fractional zeroes omitted (`time.RFC3339Nano`). The signature covers the decoded 32-byte root. The root and signature fields themselves are excluded from the hash. Entry metadata and adjacent variable-length fields therefore cannot be substituted without invalidating the signature.
 
-Ingest verifies only the incoming segment and its inline artifact bytes. Reused artifacts require an existing metadata row and a regular file of the verified size. Indexed chain-position reads and count/byte deltas keep mutations proportional to the incoming entries and withdrawals. Startup re-verifies every signature, chain link, artifact hash, indexed chain column, entry projection, withdrawal projection, and source proof summary before serving requests.
+Ingest verifies only the incoming segment and its inline artifact bytes. `PublicFeedProofMaxArtifacts` bounds the entries plus withdrawals in one signed segment (12,288), or the artifact count in one legacy full manifest. It does not limit the accumulated segment-backed catalog. This keeps each ingest bounded while allowing a long-lived source to publish additional assignments without withdrawing historical evidence. Reused artifacts require an existing metadata row and a regular file of the verified size. Indexed chain-position reads and count/byte deltas keep mutations proportional to the incoming entries and withdrawals. Startup re-verifies every signature, chain link, artifact hash, indexed chain column, entry projection, withdrawal projection, and source proof summary before serving requests.
 
 The SQLite upgrade retains existing full-manifest rows at segment index zero and preserves their actual signatures. It does not manufacture signed segments. A source can replace that projection by sending its own first signed segment with the initial artifact set. Once the mirror accepts a segment for a source, it rejects full-manifest submissions for that source. For segment-backed sources, `/proof-manifest` is a derived active view with a nonzero `segment_index`; its root and signature belong to that segment and MUST be verified using the signed log.
 
@@ -199,7 +200,7 @@ The publisher appends signed links to `public-proofs/proof-segments.jsonl` and s
 
 Withdrawal preserves the publisher's immutable artifact files so an unsent prefix can still be delivered to a new mirror. The signed withdrawal removes those artifacts from the active catalog and public download authorization. Re-adding a withdrawn content ID to that source is rejected before appending to the local log.
 
-The publisher keeps an in-memory index of the log: the byte offset and root of every segment, the active catalog, and every content ID ever listed. The first read replays and verifies the whole log once. After that, each access stats the file and verifies only bytes past the indexed offset, so appends by another process are picked up. A log that was replaced or shrank is replayed from the start, and nothing is appended to a log that does not verify. Every append verifies the new segment against the chain rules the mirror enforces (consecutive link, no relisting of a listed ID, withdrawals of active IDs only, the active-artifact cap), so a link the mirror would reject is never written. Appends hold the `public-proofs/proof-segments.lock` file lock across processes; a held lock fails the publication with `ErrRuntimeFileLocked`. A final line with no newline is an interrupted append. Reads ignore it, and the next append truncates it before writing. Delivery reads only the byte range of the pending segments. A publication's cost depends on its new entries, not on retained history; `TestPublisherProofLog_PublicationCostIsFlatInHistory` guards allocation, log growth, and push body size.
+The publisher keeps an in-memory index of the log: the byte offset and root of every segment, the active catalog, and every content ID ever listed. The first read replays and verifies the whole log once. After that, each access stats the file and verifies only bytes past the indexed offset, so appends by another process are picked up. A log that was replaced or shrank is replayed from the start, and nothing is appended to a log that does not verify. Every append verifies the new segment against the chain rules the mirror enforces (consecutive link, no relisting of a listed ID, withdrawals of active IDs only, and per-segment bounds), so a link the mirror would reject is never written. Appends hold the `public-proofs/proof-segments.lock` file lock across processes; a held lock fails the publication with `ErrRuntimeFileLocked`. A final line with no newline is an interrupted append. Reads ignore it, and the next append truncates it before writing. Delivery reads only the byte range of the pending segments. A publication's cost depends on its new entries, not on retained history; `TestPublisherProofLog_PublicationCostIsFlatInHistory` guards allocation, log growth, and push body size.
 
 The proof log, its artifacts, and `proof-mirror-sync.json` belong to the feed generation of the key that signed them. `EnsureLocalPublicFeed` mints a new signing key only when no generation path exists. If any feed-generation path remains without its key, startup fails closed with `ErrPublicFeedOrphanedGeneration`, because segments signed by a deleted key can never verify. `public source transition` archives the whole generation, including the sync checkpoint, under `public-feed-archive/generations/<source_id>/`.
 
@@ -232,7 +233,7 @@ Offline verification supports one pinned signing key through `verify-proof --pub
 ### Retention
 
 - **Batches and Records**: Retains up to 25,000 batches and 128 MiB of record payload bytes per source by default (`PublicFeedMirrorRetainedBatches`, `PublicFeedMirrorRetainedRecordBytes`). Whichever limit is hit first advances `retained_from_sequence`.
-- **Proof Artifacts**: Content-addressed storage persists indefinitely. A withdrawal removes an artifact from the active catalog and public download authorization but keeps its stored bytes.
+- **Proof Artifacts**: The active segment-backed catalog has no lifetime artifact-count ceiling. Each signed segment remains bounded by `PublicFeedProofMaxArtifacts`; ingest bodies and individual artifacts retain their existing byte limits. Content-addressed storage persists indefinitely. A withdrawal removes an artifact from the active catalog and public download authorization but keeps its stored bytes.
 - **Publisher Outbox**: Unacknowledged batches persist until acknowledged by the mirror.
 
 ### Durable Mirror Store
@@ -242,6 +243,33 @@ The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `int
 - **Incremental writes**: Each accepted batch, key registration, revocation, withdrawal, and proof ingest is one SQLite transaction. Retention pruning of the oldest batches and their records runs inside the same transaction as the append, so the retained window and chain anchor (`retained_from_sequence`, `retained_previous_batch_hash`) never diverge from the stored rows.
 - **Verified on open**: Every open re-verifies the retained chain (contiguous sequences, `previous_batch_hash` links, `content_hash` recomputation, Ed25519 signatures against the key registry, record hashes against stored record bytes), each proof manifest's root and entries, and each stored artifact file's SHA-256. Any mismatch fails startup with `ErrPublicFeedMirrorStoreCorrupt`.
 - **Proof ingest**: `POST /proof-ingest` carries one signed segment and its new artifact bytes; a withdrawal carries no artifact bytes. `GET /proof-catalog` is derived from the active entry projection. The mirror also accepts legacy full manifests until a source's first segment arrives. An entry whose artifact is neither in the request nor stored is rejected with HTTP 400 and `missing_artifact_ids`; nothing is committed. Private `GET /proof-root` supplies the delivery position without reading the full manifest. Each accepted segment updates the publisher's small delivery checkpoint. Pruning a run invalidates that checkpoint and appends a signed withdrawal.
+
+## Proposed Current-State Snapshot
+
+This design is pending implementation approval. The current `/snapshot` response is a chain cursor, and `/bootstrap` contains only recent projections. The Explorer reconstructs current state by replaying retained history and merging aggregate summaries with assignment and live-event updates. These are the behaviors this proposal replaces.
+
+The mirror owns one durable current read model per source. The evaluation projector remains the only owner of derived run counts, verdict classifications, metrics, verification state, and process-aware run status. The mirror retains and serves those published records; it does not manufacture verdicts from tool activity or missing proof artifacts. Live events describe activity and never overwrite aggregate run fields in the browser.
+
+### Storage and atomicity
+
+- A current-record table keeps the newest accepted record for each catalog, model and role, suite, run, and assignment identity. A separate bounded tail within the snapshot keeps recent activity. Source and dataset identity participate in every index key.
+- Each current record references its original signed batch. The mirror preserves that batch while the current state references it, including after replay-history retention prunes the batch from `/history`. Replacing a record releases its old batch only after no current record references it.
+- One SQLite transaction appends accepted feed records, updates the current read model, and advances the snapshot cursor. Snapshot reads capture records, withdrawals, and the cursor from the same database read transaction. Failed ingest exposes none of its partial state.
+- Snapshot initialization and live deltas use the same identity and replacement rules. Counts and byte totals use deltas; routine publication does not scan all retained artifacts or revisions. Proof bytes remain content-addressed and are fetched on demand.
+
+### Browser contract
+
+`/bootstrap` returns the coherent current records and their source, accepted sequence, chain hash, withdrawal digest, and proof summary. The Explorer installs the entire snapshot in one store notification and subscribes to `/stream` after that sequence. SSE carries accepted deltas through the same record decoder. A replay gap, source change, or withdrawal replaces the snapshot. `/history` remains an evidence-inspection endpoint and does not participate in ordinary page initialization. The browser feed-history cache and history-to-current-state reconstruction are removed.
+
+The snapshot payload contains current entities rather than all historical revisions. Assignment evidence and immutable proof artifacts remain available on demand; they are not copied into every SSE message. Transport compression and explicit response bounds apply to the snapshot. If pagination is required, all pages must reference one immutable snapshot version, rather than reading a moving current state between pages.
+
+### Upgrade and verification
+
+The migration preserves existing tables, signed records, source identity, proof log, and artifact bytes. It builds the initial read model only from verified retained history. Records already lost to prior retention require explicit republication from the authoritative evaluation store; the migration cannot reconstruct them or claim completeness. A durable initialization marker prevents an absent or corrupt snapshot from being silently treated as an empty new installation.
+
+Startup verifies retained snapshot batch signatures, exact record membership and bytes, record identity columns, snapshot cursor, and source binding before serving. A snapshot must never be accepted solely because its unsigned rows contain self-consistent hashes. Withdrawn datasets are excluded from the current read model and subsequent bootstrap responses.
+
+Acceptance requires regressions for snapshot survival across history pruning and restart; replacement of one entity without replaying older revisions; atomic run/result visibility; correct Runs totals during SSE; duplicate delivery; gap recovery; withdrawals and source changes; corrupted projection columns and missing batches; and bounded startup/network work as revision history grows.
 
 ## Relationship to Platform Architecture
 

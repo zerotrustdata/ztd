@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -38,7 +39,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 type fakeEnvelopeProcessor struct {
@@ -1511,7 +1511,7 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 
 	t.Run("processGatewayTransaction", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), constants.ContextKeyAppID, "calling-app")
-		_, envelope, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
+		_, envelope, _, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
 		require.ErrorIs(t, err, constants.ErrEmbeddedOperatorUnclaimed)
 		require.Nil(t, envelope)
 	})

@@ -8,7 +8,6 @@
 package mcp
 
 import (
- "github.com/zerotrustdata/ztd/internal/services/governance"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
 
 func TestNewStdioConfigSimple_EmptyPath(t *testing.T) {

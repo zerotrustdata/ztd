@@ -32,7 +32,7 @@ func TestGatewayService_LocalEnvelopeExecutionTarget(t *testing.T) {
 			ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, "foreign-session")
 			eventType, err := constants.RequestEventForAction(action)
 			require.NoError(t, err)
-			_, wire, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: eventType, targetResource: "local-tool", payloadBytes: []byte("payload")})
+			_, wire, _, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: eventType, targetResource: "local-tool", payloadBytes: []byte("payload")})
 			require.NoError(t, err)
 			env := &commonv1.GovernanceEnvelope{}
 			require.NoError(t, protojson.Unmarshal(wire, env))
@@ -50,7 +50,7 @@ func TestGatewayService_ResumePreservesEnvelopeTargetAndHash(t *testing.T) {
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
 	ctx := context.WithValue(context.Background(), constants.ContextKeyOperatorSessionID, "operator-session-1")
 	ctx = context.WithValue(ctx, constants.ContextKeyUserID, "requesting-user")
-	hash, wire, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
+	hash, wire, _, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
 	require.NoError(t, err)
 	before := &commonv1.GovernanceEnvelope{}
 	require.NoError(t, protojson.Unmarshal(wire, before))

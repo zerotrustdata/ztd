@@ -228,10 +228,11 @@ type DispatchRequest struct {
 // before Dispatch returned. For inference dispatches, InferenceResult carries
 // the verified complete result and its digest was verified too.
 type DispatchResult struct {
-	TransactionID   string
-	ResultEnvelope  *commonv1.GovernanceEnvelope
-	Receipt         *operatorv1.ActionReceipt
-	InferenceResult *operatorv1.InferenceResult
+	ConsensusInferences []*operatorv1.ConsensusVoteInference
+	TransactionID       string
+	ResultEnvelope      *commonv1.GovernanceEnvelope
+	Receipt             *operatorv1.ActionReceipt
+	InferenceResult     *operatorv1.InferenceResult
 }
 
 // operatorSessionValidator resolves an operator session ID to the operator
@@ -333,7 +334,7 @@ func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHand
 // nonce, and a near-future expiry. The result is correlated by transaction ID.
 // Returns an error if the operator session is invalid, envelope construction
 // fails, L2 deliberation fails, or the result does not arrive within DispatchTimeout.
-func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*DispatchResult, error) {
+func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (result *DispatchResult, err error) {
 	// 1. Resolve the target operator session.
 	op, err := d.auth.ValidateOperatorSession(ctx, req.TargetOperatorSessionID)
 	if err != nil {
@@ -388,6 +389,13 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		return nil, fmt.Errorf("dispatch: marshal envelope: %w", err)
 	}
 
+	var consensusInferences []*operatorv1.ConsensusVoteInference
+	defer func() {
+		if result != nil {
+			result.ConsensusInferences = consensusInferences
+		}
+		err = governance.WithConsensusInferences(consensusInferences, err)
+	}()
 	// 5. Where L4 enforces L2 for this action (governance.L2Enforced),
 	//    deliberate the envelope through the L2 consensus service before
 	//    publish. The deliberator collects signed votes and returns the
@@ -401,7 +409,8 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
 		}
-		wire = deliberated
+		wire = deliberated.Envelope
+		consensusInferences = deliberated.Inferences
 	}
 
 	if governance.L3Required(actionType, d.posture) {
@@ -1068,9 +1077,10 @@ func inferenceReceiptFailureError(receipt *operatorv1.ActionReceipt) error {
 // result_payload is the terminal operator result (for example FsReadResult).
 func (r *DispatchResult) GovernedDispatchResult() *operatorv1.GovernedDispatchResult {
 	out := &operatorv1.GovernedDispatchResult{
-		TransactionId:   r.TransactionID,
-		InferenceResult: r.InferenceResult,
-		Receipt:         r.Receipt,
+		TransactionId:       r.TransactionID,
+		InferenceResult:     r.InferenceResult,
+		Receipt:             r.Receipt,
+		ConsensusInferences: r.ConsensusInferences,
 	}
 	if r.ResultEnvelope != nil {
 		out.EventType = r.ResultEnvelope.GetEventType()
@@ -1242,7 +1252,12 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 // L4 receipt, are 403 like direct envelope submission. Anything else follows
 // envelopeErrorCode, so an unclassified fault is 500 with constants.ErrInternal
 // and UNCLASSIFIED.
-func dispatchErrorCode(err error) (int, *operatorv1.IngressRefusal) {
+func dispatchErrorCode(err error) (status int, refusal *operatorv1.IngressRefusal) {
+	defer func() {
+		if refusal != nil {
+			refusal.ConsensusInferences = governance.ConsensusInferences(err)
+		}
+	}()
 	var authErr *AuthError
 	if errors.As(err, &authErr) {
 		return http.StatusNotFound, &operatorv1.IngressRefusal{
@@ -1291,7 +1306,7 @@ func dispatchErrorCode(err error) (int, *operatorv1.IngressRefusal) {
 			Error: constants.ErrIngressL2DeliberationFailed.Error(),
 		}
 	}
-	status, _ := envelopeErrorCode(err)
+	status, _ = envelopeErrorCode(err)
 	return status, governance.NewIngressRefusal(err)
 }
 

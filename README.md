@@ -4,7 +4,9 @@
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
 [![Version](https://img.shields.io/badge/version-v1.3.0-green.svg)](docs/release_notes/v1.3.x/v1.3.0.md)
 
-**A model can ask, but it cannot directly act.**
+## Verify, then execute.
+
+**Separate reasoning from state, intent from authority.**
 
 ![ztd blocks an AI agent's attempt to truncate a protected audit log through L1 Doctrine policy enforcement.](docs/media/denied.png)
 

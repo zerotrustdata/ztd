@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -151,6 +150,7 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		return nil, err
 	}
 	votes := make([]*commonv1.L2Vote, 0, len(bound.MemberAppIDs))
+	var inferences []*operatorv1.ConsensusVoteInference
 	batchSize := bound.Quorum
 	if batchSize <= 0 {
 		batchSize = len(bound.MemberAppIDs)
@@ -162,6 +162,11 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		end := min(i+batchSize, len(bound.MemberAppIDs))
 		batch := bound.MemberAppIDs[i:end]
 		for j, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
+			if vote.inference != nil {
+				vote.inference.SubjectTransactionId = env.GetId()
+				vote.inference.SubjectTransactionHash = computed
+				inferences = append(inferences, vote.inference)
+			}
 			if _, signed := d.countVote(ctx, &env, bound, batch[j], computed, vote); signed != nil {
 				votes = append(votes, signed)
 			}
@@ -176,7 +181,7 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	if err != nil {
 		return nil, fmt.Errorf("tribunal consensus: encode deliberated envelope: %w", err)
 	}
-	return &governance.ConsensusDeliberation{Envelope: deliberated}, nil
+	return &governance.ConsensusDeliberation{Envelope: deliberated, Inferences: inferences}, nil
 }
 
 // castVotes runs the batch's vote inferences concurrently. A batch is exactly
@@ -222,6 +227,7 @@ func (d *TribunalConsensusDeliberator) countVote(ctx context.Context, env *commo
 // memberVote is one member's deliberation outcome. failure is set when the
 // member casts no vote.
 type memberVote struct {
+	inference     *operatorv1.ConsensusVoteInference
 	evidence      []models.ConsensusDecisionEvidence
 	answer        tribunal.ConsensusVoteAnswer
 	inferenceTxID string
@@ -355,7 +361,7 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		d.logger.Warn("tribunal consensus: member owner unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 		return memberVote{failure: fmt.Errorf("member owner: %w", err)}
 	}
-	attemptID := consensusVoteAttemptID(txHash, memberAppID)
+	attemptID := governance.ConsensusVoteAttemptID(txHash, memberAppID)
 	system, user := tribunal.ConsensusVotePrompt(member, subject)
 	request := dispatch.DispatchInferenceRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
@@ -385,12 +391,25 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		request.ResponseFormat = nil
 	}
 	result, err := d.inference.DispatchInference(ctx, request)
+	if err == nil && (result == nil || result.Result == nil) {
+		err = constants.ErrInferenceCompletionNoResult
+	}
+	inference := &operatorv1.ConsensusVoteInference{MemberAppId: memberAppID, ProviderAttemptId: attemptID}
+	if result != nil {
+		inference.TransactionId = result.TransactionID
+		inference.Result = result.Result
+		inference.Receipt = result.Receipt
+		inference.ObservationReceipts = result.ObservationReceipts
+	}
+	if err != nil {
+		_, inference.Failure = inferenceDispatchFailure(err)
+		inference.Receipt = inference.Failure.GetReceipt()
+		inference.TransactionId = inference.Receipt.GetTransactionId()
+		inference.ObservationReceipts = inference.Failure.GetObservationReceipts()
+	}
 	if err != nil {
 		d.logger.Warn("tribunal consensus: member inference failed", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-		return memberVote{attemptID: attemptID, failure: fmt.Errorf("member inference: %w", err)}
-	}
-	if result == nil || result.Result == nil {
-		return memberVote{attemptID: attemptID, failure: constants.ErrInferenceCompletionNoResult}
+		return memberVote{inference: inference, inferenceTxID: inference.GetTransactionId(), attemptID: attemptID, failure: fmt.Errorf("member inference: %w", err)}
 	}
 	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
 		threshold := 0.0
@@ -400,12 +419,12 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 			}
 		}
 		if threshold < 0.5 || threshold > 1 {
-			return memberVote{attemptID: attemptID, failure: constants.ErrConsensusDecisionBindingInvalid}
+			return memberVote{inference: inference, attemptID: attemptID, failure: constants.ErrConsensusDecisionBindingInvalid}
 		}
 		answer, evidence := tribunal.EvaluateConsensusDecision(member, request.Decision, result.Result.GetDecision(), threshold)
-		return memberVote{answer: answer, evidence: evidence, inferenceTxID: result.TransactionID, attemptID: attemptID}
+		return memberVote{inference: inference, answer: answer, evidence: evidence, inferenceTxID: result.TransactionID, attemptID: attemptID}
 	}
-	return memberVote{
+	return memberVote{inference: inference,
 		answer:        tribunal.ParseConsensusVote(models.InferenceResultText(result.Result)),
 		inferenceTxID: result.TransactionID,
 		attemptID:     attemptID,
@@ -454,15 +473,6 @@ func tribunalMemberForAppID(appID string) (tribunal.Member, bool) {
 		}
 	}
 	return "", false
-}
-
-// consensusVoteAttemptID names one member's vote attempt on one transaction.
-func consensusVoteAttemptID(txHash, memberAppID string) string {
-	prefix := txHash
-	if len(prefix) > 32 {
-		prefix = prefix[:32]
-	}
-	return "l2-" + prefix + "-" + strings.TrimPrefix(memberAppID, constants.TribunalConsensusAppIDPrefix)
 }
 
 func consensusVoteMessage(role operatorv1.InferenceMessageRole, text string) *operatorv1.InferenceMessage {

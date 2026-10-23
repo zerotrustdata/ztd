@@ -29,6 +29,10 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -40,9 +44,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // ApprovalRequestTTL is the lifetime of a human-approval request created when a
@@ -584,14 +585,14 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	hash, envelopeBytes, stateRoot, err := g.processGatewayTransaction(ctx, processGatewayOptions{
+	hash, envelopeBytes, stateRoot, inferences, err := g.processGatewayTransaction(ctx, processGatewayOptions{
 		eventType:       constants.Event.Operator.Mcp.CallRequested,
 		targetResource:  callParams.Name,
 		payloadBytes:    payloadBytes,
 		investigationID: investigationID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, governance.WithConsensusInferences(inferences, err)
 	}
 
 	if stateRoot != "" {
@@ -603,7 +604,7 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 		if errors.Is(err, governance.ErrL3ProofMissing) {
 			suspension, err := g.suspendGovernedCall(ctx, r, hash, envelopeBytes, callParams.Name, callParams.Arguments)
 			if err != nil {
-				return nil, err
+				return nil, governance.WithConsensusInferences(inferences, err)
 			}
 			return CallToolResult{
 				Content: []TextContent{
@@ -612,17 +613,20 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 						Text: suspension.Message,
 					},
 				},
-				Suspension: suspension,
+				Suspension:          suspension,
+				ConsensusInferences: governance.WrapConsensusInferences(inferences),
 			}, nil
 		}
-		return nil, err
+		return nil, governance.WithConsensusInferences(inferences, err)
 	}
 
 	receiptJSON, err := encodeActionReceipt(receipt)
 	if err != nil {
-		return nil, err
+		return nil, governance.WithConsensusInferences(inferences, err)
 	}
-	return ReceiptCallToolResult(receipt, receiptJSON), nil
+	result := ReceiptCallToolResult(receipt, receiptJSON)
+	result.ConsensusInferences = governance.WrapConsensusInferences(inferences)
+	return result, nil
 }
 
 // ReceiptCallToolResult builds the tools/call result of a completed governed call:
@@ -767,7 +771,7 @@ func (g *GatewayService) readResource(ctx context.Context, params json.RawMessag
 		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	_, envelopeBytes, stateRoot, err := g.processGatewayTransaction(ctx, processGatewayOptions{
+	_, envelopeBytes, stateRoot, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{
 		eventType:      constants.Event.Operator.Mcp.ResourceReadRequested,
 		targetResource: readParams.URI,
 		payloadBytes:   payloadBytes,
@@ -824,7 +828,7 @@ func (g *GatewayService) getPrompt(ctx context.Context, params json.RawMessage) 
 		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	_, envelopeBytes, stateRoot, err := g.processGatewayTransaction(ctx, processGatewayOptions{
+	_, envelopeBytes, stateRoot, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{
 		eventType:      constants.Event.Operator.Mcp.PromptGetRequested,
 		targetResource: getParams.Name,
 		payloadBytes:   payloadBytes,
@@ -931,7 +935,7 @@ type processGatewayOptions struct {
 	investigationID string
 }
 
-func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts processGatewayOptions) (hash string, envelopeBytes []byte, stateRoot string, err error) {
+func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts processGatewayOptions) (hash string, envelopeBytes []byte, stateRoot string, inferences []*operatorv1.ConsensusVoteInference, err error) {
 	stateRoot = ""
 	if g.stateRootProvider != nil {
 		var err error
@@ -943,13 +947,13 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 
 	actionType, err := constants.ValidateGovernedRequest(opts.eventType)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("gateway: %w", err)
+		return "", nil, "", nil, fmt.Errorf("gateway: %w", err)
 	}
 
 	now := time.Now().UTC()
 	nonce, err := uuid.NewString()
 	if err != nil {
-		return "", nil, "", err
+		return "", nil, "", nil, err
 	}
 	env := &commonv1.GovernanceEnvelope{
 		Timestamp:       timestamppb.New(now),
@@ -988,7 +992,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		// and the call fails closed.
 		embeddedSessionID, err := g.embeddedSession.OperatorSessionID(ctx)
 		if err != nil {
-			return "", nil, "", fmt.Errorf("gateway: resolve embedded operator session for app %s: %w", appID, err)
+			return "", nil, "", nil, fmt.Errorf("gateway: resolve embedded operator session for app %s: %w", appID, err)
 		}
 		env.ActingAppId = appID
 		env.OperatorSessionId = embeddedSessionID
@@ -1003,14 +1007,14 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 
 	hash, err = govpkg.GenerateMessageID(env)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("gateway: %w", constants.ErrInternal)
+		return "", nil, "", nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 	env.Id = hash
 	env.TransactionHash = hash
 
 	envelopeBytes, err = (protojson.MarshalOptions{Multiline: false}).Marshal(env)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("gateway: %w", constants.ErrInternal)
+		return "", nil, "", nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
 	// Under a posture that enforces L2 for this envelope (consensus and notary, state
@@ -1023,12 +1027,13 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(ctx, envelopeBytes)
 		if err != nil {
 			g.logger.Error("L2 consensus deliberation failed", "tx_hash", hash, "error", err)
-			return "", nil, "", fmt.Errorf("gateway: l2 consensus deliberation: %w", err)
+			return "", nil, "", nil, fmt.Errorf("gateway: l2 consensus deliberation: %w", err)
 		}
-		envelopeBytes = deliberatedBytes
+		envelopeBytes = deliberatedBytes.Envelope
+		inferences = deliberatedBytes.Inferences
 	}
 
-	return hash, envelopeBytes, stateRoot, nil
+	return hash, envelopeBytes, stateRoot, inferences, nil
 }
 
 // @Summary		A2A call
@@ -1100,14 +1105,14 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	hash, envelopeBytes, stateRoot, err := g.processGatewayTransaction(ctx, processGatewayOptions{
+	hash, envelopeBytes, stateRoot, inferences, err := g.processGatewayTransaction(ctx, processGatewayOptions{
 		eventType:       constants.Event.Operator.A2a.CallRequested,
 		targetResource:  req.SkillName,
 		payloadBytes:    payloadBytes,
 		investigationID: investigationID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, governance.WithConsensusInferences(inferences, err)
 	}
 
 	if stateRoot != "" {
@@ -1119,20 +1124,22 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 		if errors.Is(err, governance.ErrL3ProofMissing) {
 			suspension, err := g.suspendGovernedCall(ctx, r, hash, envelopeBytes, req.SkillName, req.Payload)
 			if err != nil {
-				return nil, err
+				return nil, governance.WithConsensusInferences(inferences, err)
 			}
+			suspension.ConsensusInferences = governance.WrapConsensusInferences(inferences)
 			return suspension, nil
 		}
-		return nil, err
+		return nil, governance.WithConsensusInferences(inferences, err)
 	}
 
 	receiptJSON, err := encodeActionReceipt(receipt)
 	if err != nil {
-		return nil, err
+		return nil, governance.WithConsensusInferences(inferences, err)
 	}
 	return A2ASuccessResponse{
-		ID:     hash,
-		Result: receiptJSON,
+		ID:                  hash,
+		Result:              receiptJSON,
+		ConsensusInferences: governance.WrapConsensusInferences(inferences),
 	}, nil
 }
 

@@ -183,10 +183,13 @@ export function reconcilePublicBootstrap(state: PublicMirrorState, bootstrap: Pu
   if (bootstrap.source_freshness !== bootstrap.snapshot.freshness) throw new PublicReconciliationError('bootstrap freshness mismatch');
   let reconciled = reconcilePublicSnapshot(state, bootstrap.snapshot);
   const recent = [...bootstrap.recent_projections].sort((left, right) => left.sequence - right.sequence);
-  if (recent.length > 0) {
-    if (recent[recent.length - 1]!.sequence !== bootstrap.snapshot.high_water_sequence) {
-      throw new PublicReconciliationError('bootstrap projections do not reach snapshot high-water sequence');
+  for (const item of recent) {
+    validateSequence(item.sequence);
+    if (item.sequence < 1 || item.sequence > bootstrap.snapshot.high_water_sequence) {
+      throw new PublicReconciliationError('bootstrap projection exceeds snapshot high-water sequence');
     }
+  }
+  if (recent.length > 0) {
     reconciled = {
       ...reconciled,
       observed_sequence: bootstrap.snapshot.high_water_sequence,

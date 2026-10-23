@@ -26,7 +26,8 @@ import (
 )
 
 type recordingCampaignFeedExporter struct {
-	records []CampaignPublicFeedRecord
+	records    []CampaignPublicFeedRecord
+	batchSizes []int
 }
 
 func (r *recordingCampaignFeedExporter) HighWaterSequence(context.Context) (int64, error) {
@@ -34,6 +35,7 @@ func (r *recordingCampaignFeedExporter) HighWaterSequence(context.Context) (int6
 }
 
 func (r *recordingCampaignFeedExporter) ExportBatch(_ context.Context, records []CampaignPublicFeedRecord) error {
+	r.batchSizes = append(r.batchSizes, len(records))
 	r.records = append(r.records, records...)
 	return nil
 }
@@ -114,7 +116,9 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesSealedObservat
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
 		"unverified",
 	))
-	require.Len(t, exporter.records, 1)
+	require.Greater(t, len(exporter.records), 1)
+	require.Len(t, evaluationSummaries(t, exporter.records), 1, "result publication also carries canonical run values")
+	require.Equal(t, []int{len(exporter.records)}, exporter.batchSizes, "result and run summary share one signed batch")
 
 	envelope := CampaignProjectionEnvelope{}
 	require.NoError(t, json.Unmarshal([]byte(exporter.records[0].RecordBytes), &envelope))
@@ -169,7 +173,8 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultFailedAssignmentWi
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
 		"unverified",
 	))
-	require.Len(t, exporter.records, 1)
+	require.Greater(t, len(exporter.records), 1)
+	require.Len(t, evaluationSummaries(t, exporter.records), 1, "failed assignment publication refreshes the run summary")
 }
 
 // savePublicRunIdentity stores the campaign spec and run identity the public

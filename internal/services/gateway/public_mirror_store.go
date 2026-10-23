@@ -167,6 +167,10 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 		_ = store.Close()
 		return nil, err
 	}
+	if err := store.initializePublicSnapshots(ctx); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
@@ -536,6 +540,9 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 		}
 		if err := insertPublicMirrorBatch(ctx, tx, batch); err != nil {
 			return err
+		}
+		if err := updatePublicSnapshot(ctx, tx, batch); err != nil {
+			return fmt.Errorf("update current snapshot: %w", err)
 		}
 		if (maxRetainedBatches > 0 && summary.RetainedBatchCount > maxRetainedBatches) ||
 			(maxRetainedBytes > 0 && summary.RetainedRecordBytes > maxRetainedBytes) {
@@ -1019,10 +1026,6 @@ func (s *PublicMirrorStore) putProofSegment(ctx context.Context, sourceID string
 			activeCount++
 			totalByteSize += entry.ByteSize
 		}
-		if activeCount > constants.PublicFeedProofMaxArtifacts {
-			return constants.ErrPublicFeedProofCatalogMismatch
-		}
-
 		stmt, err := tx.PrepareContext(ctx, `INSERT INTO proof_manifest_entries (source_id, segment_index, ordinal, artifact_id, entry_json) VALUES (?, ?, ?, ?, ?)`)
 		if err != nil {
 			return fmt.Errorf("prepare proof manifest entry upsert: %w", err)

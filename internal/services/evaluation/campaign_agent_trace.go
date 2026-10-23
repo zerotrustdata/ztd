@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -164,8 +165,10 @@ func (c AgentModelCall) IsTurn() bool {
 // operator tool's CallID is the governed transaction ID when the Gateway
 // admitted the dispatch, so governed actions resolve to their call.
 type AgentToolCall struct {
-	CallID      string `json:"call_id"`
-	ModelCallID string `json:"model_call_id"`
+	// ConsensusInferences are the governed L2 vote attempts for this action.
+	ConsensusInferences []governance.ConsensusInference `json:"consensus_inferences,omitempty"`
+	CallID              string                          `json:"call_id"`
+	ModelCallID         string                          `json:"model_call_id"`
 	// ProviderCallID is the call ID the model returned; the assistant and tool
 	// result messages sent on the next turn carry it.
 	ProviderCallID        string `json:"provider_call_id,omitempty"`

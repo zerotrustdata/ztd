@@ -59,7 +59,7 @@ describe('proof catalog bootstrap', () => {
 
     await startFeed({ fetchImpl: fetchImpl as typeof fetch });
 
-    expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/history')).toBe(true);
+    expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/history')).toBe(false);
     expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/proof-catalog')).toBe(false);
     expect(evalStore.getState().proofArtifacts.size).toBe(0);
     expect(evalStore.getState().proofArtifactCount).toBe(1);

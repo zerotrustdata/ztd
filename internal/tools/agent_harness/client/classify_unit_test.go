@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -269,4 +270,34 @@ func rpcLine(t *testing.T, result json.RawMessage, errData json.RawMessage) []by
 	body, err := json.Marshal(envelope)
 	require.NoError(t, err)
 	return body
+}
+
+func TestGovernedOutcomePreservesConsensusInferenceEvidence(t *testing.T) {
+	vote := &operatorv1.ConsensusVoteInference{SubjectTransactionId: "subject", TransactionId: "vote", Receipt: &operatorv1.ActionReceipt{TransactionId: "vote"}}
+	votes := []*operatorv1.ConsensusVoteInference{vote}
+	receipt := &operatorv1.ActionReceipt{TransactionId: "subject"}
+	dispatched := &operatorv1.GovernedDispatchResult{Receipt: receipt, ConsensusInferences: votes}
+	rejection := &operatorv1.GovernanceRejection{Receipt: receipt, ConsensusInferences: votes}
+	refusal := &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED, ConsensusInferences: votes}
+	callBody, err := json.Marshal(mcp.CallToolResult{Receipt: canonicalProto(t, receipt), ConsensusInferences: governance.WrapConsensusInferences(votes)})
+	require.NoError(t, err)
+	a2aBody, err := json.Marshal(mcp.A2ASuccessResponse{Result: canonicalProto(t, receipt), ConsensusInferences: governance.WrapConsensusInferences(votes)})
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name    string
+		outcome *GovernedOutcome
+	}{
+		{"dispatch", decodeHTTPOutcome(http.StatusOK, canonicalProto(t, dispatched), &operatorv1.GovernedDispatchResult{})},
+		{"rejection", decodeHTTPOutcome(http.StatusForbidden, canonicalProto(t, rejection), &operatorv1.GovernedDispatchResult{})},
+		{"refusal", decodeHTTPOutcome(http.StatusServiceUnavailable, canonicalProto(t, refusal), &operatorv1.GovernedDispatchResult{})},
+		{"MCP", decodeMCPResult(callBody)},
+		{"A2A", decodeA2AResult(a2aBody)},
+		{"Tribunal intent", IntentCommandOutcome(&tribunalv1.TribunalIntentResult{CommandOutcome: &tribunalv1.TribunalIntentResult_Dispatched{Dispatched: dispatched}})},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.NoError(t, test.outcome.Typed())
+			require.Len(t, test.outcome.ConsensusInferences, 1)
+			assert.True(t, proto.Equal(vote, test.outcome.ConsensusInferences[0]))
+		})
+	}
 }

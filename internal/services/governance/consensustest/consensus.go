@@ -136,10 +136,10 @@ func (d *Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) (*govs
 
 	if isJSON {
 		wire, err := protojson.Marshal(&env)
- return &govsvc.ConsensusDeliberation{Envelope: wire}, err
+		return &govsvc.ConsensusDeliberation{Envelope: wire}, err
 	}
 	wire, err := proto.Marshal(&env)
- return &govsvc.ConsensusDeliberation{Envelope: wire}, err
+	return &govsvc.ConsensusDeliberation{Envelope: wire}, err
 }
 
 // SetupConsensus seeds nMembers trusted signers and a consensus policy with

@@ -24,6 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
@@ -36,8 +38,6 @@ import (
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -73,8 +73,9 @@ func (fakePolicies) GetAppPolicy(_ context.Context, appID string) (*models.AppPo
 
 // inferReply is one member's scripted inference outcome.
 type inferReply struct {
-	text string
-	err  error
+	result *dispatch.DispatchInferenceResult
+	text   string
+	err    error
 }
 
 // inferCall records one DispatchInference call as the deliberator issued it.
@@ -153,6 +154,9 @@ func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.Dispat
 	if reply.err != nil {
 		return nil, reply.err
 	}
+	if reply.result != nil {
+		return reply.result, nil
+	}
 	return &dispatch.DispatchInferenceResult{
 		Result: &operatorv1.InferenceResult{
 			Parts: []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: reply.text}}},
@@ -218,7 +222,7 @@ type fakeApplicationDeliberator struct {
 
 func (f *fakeApplicationDeliberator) Deliberate(context.Context, []byte) (*governance.ConsensusDeliberation, error) {
 	f.calls++
-	return f.out, f.err
+	return &governance.ConsensusDeliberation{Envelope: f.out}, f.err
 }
 
 func tribunalTestBinding() *models.ConsensusPolicy {
@@ -940,7 +944,7 @@ func TestConsensusDeliberatorRouterApplicationProviderRoutesToApplication(t *tes
 	if app.calls != 1 {
 		t.Fatalf("application deliberator calls = %d, want 1", app.calls)
 	}
-	if string(out) != string(wantOut) {
+	if string(out.Envelope) != string(wantOut) {
 		t.Fatalf("router output = %s, want application output %s", out, wantOut)
 	}
 	if len(inferer.calls) != 0 || len(signer.calls) != 0 {
@@ -982,4 +986,29 @@ func TestConsensusDeliberatorRouterFailsClosedWithoutBindingOrTribunal(t *testin
 			}
 		})
 	}
+}
+
+func TestTribunalConsensusRetainsEveryVoteInferenceReceipt(t *testing.T) {
+	binding := tribunalTestBinding()
+	env, _ := tribunalTestEnvelope(t)
+	receipt := &operatorv1.ActionReceipt{TransactionId: "vote-tx", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	observed := &operatorv1.ActionReceipt{TransactionId: "observer-tx"}
+	replies := repliesForAll(inferReply{text: tribunalApproveAnswer})
+	replies[binding.MemberAppIDs[0]] = inferReply{result: &dispatch.DispatchInferenceResult{TransactionID: "vote-tx", Result: &operatorv1.InferenceResult{}, Receipt: receipt, ObservationReceipts: []*operatorv1.ActionReceipt{observed}}}
+	failed := &operatorv1.ActionReceipt{TransactionId: "failed-vote-tx", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	replies[binding.MemberAppIDs[1]] = inferReply{err: dispatch.WithObservationReceipts([]*operatorv1.ActionReceipt{observed}, governance.WithFailedReceipt(failed, constants.ErrInferenceGenerateFailed))}
+	d := newTribunalTestDeliberator(t, binding, &fakeInferer{replies: replies}, newFakeSigner(t, binding.MemberAppIDs...))
+	result, err := d.Deliberate(t.Context(), marshalTestEnvelope(t, env))
+	require.NoError(t, err)
+	require.Len(t, result.Inferences, len(binding.MemberAppIDs))
+	completed, failure := result.Inferences[0], result.Inferences[1]
+	assert.Same(t, receipt, completed.GetReceipt())
+	assert.Equal(t, []*operatorv1.ActionReceipt{observed}, completed.GetObservationReceipts())
+	assert.Equal(t, env.GetId(), completed.GetSubjectTransactionId())
+	assert.Equal(t, env.GetTransactionHash(), completed.GetSubjectTransactionHash())
+	assert.Equal(t, governance.ConsensusVoteAttemptID(env.GetTransactionHash(), binding.MemberAppIDs[0]), completed.GetProviderAttemptId())
+	assert.Same(t, failed, failure.GetReceipt())
+	assert.Equal(t, failed.GetTransactionId(), failure.GetTransactionId())
+	require.NotNil(t, failure.GetFailure())
+	assert.Equal(t, []*operatorv1.ActionReceipt{observed}, failure.GetObservationReceipts())
 }

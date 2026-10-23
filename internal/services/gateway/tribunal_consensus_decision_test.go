@@ -13,13 +13,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type decisionVoteInferer struct {
@@ -72,7 +73,7 @@ func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
 	out, err := d.Deliberate(t.Context(), marshalTestEnvelope(t, env))
 	require.NoError(t, err)
 	var deliberated commonv1.GovernanceEnvelope
-	require.NoError(t, protojson.Unmarshal(out, &deliberated))
+	require.NoError(t, protojson.Unmarshal(out.Envelope, &deliberated))
 	require.Len(t, deliberated.GetGovernance().GetL2().GetVotes(), len(binding.MemberAppIDs))
 	for _, vote := range deliberated.GetGovernance().GetL2().GetVotes() {
 		require.True(t, vote.Decision)

@@ -104,7 +104,7 @@ func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) 
 			g.l2ConsensusDeliberator = deliberator
 			ctx := context.WithValue(context.Background(), constants.ContextKeyOperatorSessionID, "operator-session-1")
 
-			_, wire, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: tc.eventType, targetResource: tc.target, payloadBytes: []byte("payload")})
+			_, wire, _, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: tc.eventType, targetResource: tc.target, payloadBytes: []byte("payload")})
 			require.NoError(t, err)
 
 			env := &commonv1.GovernanceEnvelope{}
