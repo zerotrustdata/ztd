@@ -113,7 +113,7 @@ func NewTribunalConsensusDeliberator(store consensusBindingReader, policies cons
 // strict approve is a signed deny. Every
 // member's outcome, with its stated reason, is recorded as a
 // ztd.v1.consensus.vote.recorded audit event before its vote counts.
-func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
+func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	var env commonv1.GovernanceEnvelope
 	if err := protojson.Unmarshal(envelopeBytes, &env); err != nil {
 		return nil, fmt.Errorf("tribunal consensus: decode envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
@@ -176,7 +176,7 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	if err != nil {
 		return nil, fmt.Errorf("tribunal consensus: encode deliberated envelope: %w", err)
 	}
-	return deliberated, nil
+	return &governance.ConsensusDeliberation{Envelope: deliberated}, nil
 }
 
 // castVotes runs the batch's vote inferences concurrently. A batch is exactly
@@ -479,7 +479,7 @@ type consensusDeliberatorRouter struct {
 }
 
 // Deliberate routes envelopeBytes to the bound provider's deliberator.
-func (r *consensusDeliberatorRouter) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
+func (r *consensusDeliberatorRouter) Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	bound, err := r.store.GetBoundConsensusApp(ctx)
 	if err != nil {
 		return nil, err

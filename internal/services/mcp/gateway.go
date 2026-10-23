@@ -73,7 +73,7 @@ func approvalPausedMessage(posture constants.Posture, approvalURL string) string
 // result uses the same encoding, so callers publish it unchanged.
 // Integration fixtures may inject a test deliberator.
 type L2ConsensusDeliberator interface {
-	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
+	Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error)
 }
 
 // EmbeddedSessionResolver reads the claimed embedded Operator's session ID.

@@ -8,6 +8,7 @@
 package mcp
 
 import (
+ "github.com/zerotrustdata/ztd/internal/services/governance"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -194,7 +195,7 @@ func TestRuntimeDeps_L2ConsensusDeliberator(t *testing.T) {
 
 type mockL2ConsensusDeliberator struct{}
 
-func (m *mockL2ConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
+func (m *mockL2ConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	return nil, nil
 }
 

@@ -81,7 +81,7 @@ func TestConsensusDeliberation_SpeaksProtobufToApplicationAndReturnsCallerWire(t
 	require.NoError(t, err)
 	require.Equal(t, "application/x-protobuf", sawContentType.Load())
 	var signed commonv1.GovernanceEnvelope
-	require.NoError(t, protojson.Unmarshal(deliberated, &signed), "the caller receives the protojson wire it sent")
+	require.NoError(t, protojson.Unmarshal(deliberated.Envelope, &signed), "the caller receives the protojson wire it sent")
 	require.Equal(t, envelope.GetPayload(), signed.GetPayload())
 	require.Len(t, signed.GetGovernance().GetL2().GetVotes(), 1)
 

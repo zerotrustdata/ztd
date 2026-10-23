@@ -249,7 +249,7 @@ type operatorSessionValidator interface {
 // or L2 is not enforced for the action, deliberation is skipped and the envelope
 // proceeds without L2 votes (failing closed at L4 verification where L2 is enforced).
 type L2ConsensusDeliberator interface {
-	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
+	Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error)
 }
 
 // ConsensusMemberSigner signs with a Tribunal consensus member's sealed app

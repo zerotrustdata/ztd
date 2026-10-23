@@ -125,21 +125,30 @@ function currentAssignmentEvent(current: LiveEvent, candidate: LiveEvent): LiveE
 /** One stream row per assignment, carrying the assignment's current status. */
 function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
   const rows = new Map<string, LiveEvent>();
-  const order: string[] = [];
-  for (const event of events) {
+  const metrics = new Map<string, NonNullable<LiveEvent['metric_delta']>>();
+  const metricKey = (event: LiveEvent) =>
+    `${event.dataset_id}:${event.run_id}:${event.assignment_id}:${event.variant_id}:${event.role}`;
+  for (const event of [...events].sort(compareStreamEventsOldestFirst)) {
+    if (event.assignment_id && event.metric_delta) {
+      const key = metricKey(event);
+      metrics.set(key, { ...metrics.get(key), ...event.metric_delta });
+    }
+    if (STREAM_HIDDEN_KINDS.has(event.kind)) continue;
     const key =
       event.assignment_id && ASSIGNMENT_ROW_KINDS.has(event.kind)
-        ? `${event.run_id}:${event.assignment_id}:row`
+        ? `${event.dataset_id}:${event.run_id}:${event.assignment_id}:row`
         : `event:${event.event_id}`;
     const existing = rows.get(key);
-    if (!existing) {
-      rows.set(key, event);
-      order.push(key);
-      continue;
-    }
-    rows.set(key, currentAssignmentEvent(existing, event));
+    rows.set(key, existing ? currentAssignmentEvent(existing, event) : event);
   }
-  return order.map((key) => rows.get(key)!);
+  return [...rows.values()].map((event) => {
+    const observed = metrics.get(metricKey(event));
+    // Terminal lifecycle records carry no measurements. Retain the observations
+    // already published for this assignment's model and role; result deltas win.
+    return isTerminalStreamKind(event.kind) && observed
+      ? { ...event, metric_delta: { ...observed, ...event.metric_delta } }
+      : event;
+  });
 }
 
 function streamDedupeKey(event: LiveEvent): string {
@@ -321,7 +330,6 @@ export function visibleStreamEvents(
   options: { modelFilter: string; kindFilter: string; assignmentFilter?: string; limit?: number },
 ): LiveEvent[] {
   const filtered = events
-    .filter((event) => !STREAM_HIDDEN_KINDS.has(event.kind))
     .filter((event) => options.modelFilter === 'all' || event.variant_id === options.modelFilter)
     .filter(
       (event) =>

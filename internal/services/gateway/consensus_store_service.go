@@ -240,7 +240,7 @@ func (s *ConsensusStoreService) NewConsensusAppDeliberatorWithClientFactory(fact
 }
 
 // Deliberate sends the envelope to the bound consensus app and verifies the returned envelope carries a ConsensusProof.
-func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
+func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	bound, err := d.store.GetBoundConsensusApp(ctx)
 	if err != nil {
 		return nil, err
@@ -321,7 +321,7 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	if err != nil {
 		return nil, fmt.Errorf("encode deliberated envelope: %w", err)
 	}
-	return deliberated, nil
+	return &governance.ConsensusDeliberation{Envelope: deliberated}, nil
 }
 
 // sameEnvelopeExceptL2 reports whether two envelopes are equal once their L2

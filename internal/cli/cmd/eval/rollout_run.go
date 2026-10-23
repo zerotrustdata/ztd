@@ -56,6 +56,8 @@ const (
 )
 
 type rolloutRunOptions struct {
+	PendingOnly        bool
+	CampaignIDs        []string
 	Until              int
 	SkipVerified       bool
 	DryRun             bool
@@ -65,7 +67,19 @@ type rolloutRunOptions struct {
 }
 
 func rolloutRunCmd(deps nativeEvalDeps) *cobra.Command {
-	opts := rolloutRunOptions{SkipVerified: true}
+	return rolloutExecuteCmd(deps, false)
+}
+
+func rolloutResumeCmd(deps nativeEvalDeps) *cobra.Command {
+	return rolloutExecuteCmd(deps, true)
+}
+
+func rolloutExecuteCmd(deps nativeEvalDeps, pendingOnly bool) *cobra.Command {
+	opts := rolloutRunOptions{SkipVerified: !pendingOnly, PendingOnly: pendingOnly}
+	action := "run"
+	if pendingOnly {
+		action = "resume"
+	}
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Qualify queued models with strict-witness campaign runs",
@@ -91,16 +105,39 @@ Examples:
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.Until < 0 {
-				return fmt.Errorf("evaluation: rollout run: --until must not be negative: %w", constants.ErrEvaluationFlagsInvalid)
+				return fmt.Errorf("evaluation: rollout %s: --until must not be negative: %w", action, constants.ErrEvaluationFlagsInvalid)
 			}
 			if opts.PromoteOnPass && !opts.GateSmoke {
-				return fmt.Errorf("evaluation: rollout run: --promote-on-pass requires --gate-smoke: %w", constants.ErrEvaluationFlagsInvalid)
+				return fmt.Errorf("evaluation: rollout %s: --promote-on-pass requires --gate-smoke: %w", action, constants.ErrEvaluationFlagsInvalid)
 			}
+			opts.CampaignIDs = args
 			return runRollout(cmd, deps, opts)
 		},
 	}
+	if pendingOnly {
+		cmd.Use = "resume [campaign...]"
+		cmd.Short = "Resume pending campaigns in the rollout queue"
+		cmd.Long = `Continue qualification of pending campaigns in rollout queue order. With no
+arguments, select every pending campaign; otherwise select the named campaign
+IDs. Each selected campaign starts a fresh strict-witness run through the
+governed Inference and Data Operators. Existing run evidence is retained.
+Failed, skipped, and verified entries are excluded, even if verification is
+stale. An explicitly named campaign must be pending in the rollout queue.
+
+The batch holds the rollout queue lock and stops when interrupted, leaving
+the current entry pending. Smoke screening and promotion work as in rollout run.
+
+Examples:
+  ztd eval rollout resume
+  ztd eval rollout resume eval-init-qwen3-4b
+  ztd eval rollout resume --until 1
+  ztd eval rollout resume --dry-run
+  ztd eval rollout resume --gate-smoke --promote-on-pass`
+		cmd.Args = cobra.ArbitraryArgs
+	} else {
+		cmd.Flags().BoolVar(&opts.SkipVerified, "skip-verified", true, "Skip queue entries already verified on the current scenario catalog")
+	}
 	cmd.Flags().IntVar(&opts.Until, "until", 0, "Run at most this many models (0 runs every pending model)")
-	cmd.Flags().BoolVar(&opts.SkipVerified, "skip-verified", true, "Skip queue entries already verified on the current scenario catalog")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Print the rollout plan without executing")
 	cmd.Flags().BoolVar(&opts.GateSmoke, "gate-smoke", false, "Screen each model with the fast smoke campaign before any full run")
 	cmd.Flags().BoolVar(&opts.PromoteOnPass, "promote-on-pass", false, "Run the full campaign for models that pass the smoke gate")
@@ -135,6 +172,10 @@ func runRollout(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOptions)
 }
 
 func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOptions, gates rolloutGateFactory) error {
+	action := "run"
+	if opts.PendingOnly {
+		action = "resume"
+	}
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return err
@@ -142,24 +183,31 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 	if !opts.DryRun {
 		held, err := evaluation.LockRolloutQueue(cmd.Context(), fileSvc)
 		if err != nil {
-			return fmt.Errorf("evaluation: rollout run: %w", err)
+			return fmt.Errorf("evaluation: rollout %s: %w", action, err)
 		}
 		defer func() { _ = held.Close() }()
 	}
 	queue, err := evaluation.LoadRolloutQueue(cmd.Context(), fileSvc)
 	if err != nil {
-		return fmt.Errorf("evaluation: rollout run: %w", err)
+		return fmt.Errorf("evaluation: rollout %s: %w", action, err)
+	}
+	if opts.PendingOnly {
+		pending, err := pendingRolloutCampaigns(queue, opts.CampaignIDs)
+		if err != nil {
+			return fmt.Errorf("evaluation: rollout %s: %w", action, err)
+		}
+		queue = &evaluation.CampaignQueue{Models: pending}
 	}
 	planRequest := evaluation.CampaignQueueBatchPlanRequest{SkipVerified: opts.SkipVerified, Until: opts.Until}
-	if opts.SkipVerified {
+	if opts.SkipVerified && !opts.PendingOnly {
 		store := evaluation.NewStore(fileSvc)
 		catalog, _, err := store.LoadSuiteCatalog(cmd.Context(), evaluation.DefaultSuiteID)
 		if err != nil {
-			return fmt.Errorf("evaluation: rollout run: %w", err)
+			return fmt.Errorf("evaluation: rollout %s: %w", action, err)
 		}
 		stale, err := evaluation.StaleVerifiedVariants(cmd.Context(), store, queue, catalog.GetCatalogDigest())
 		if err != nil {
-			return fmt.Errorf("evaluation: rollout run: %w", err)
+			return fmt.Errorf("evaluation: rollout %s: %w", action, err)
 		}
 		planRequest.VerifiedIsStale = func(entry evaluation.CampaignQueueModel) bool {
 			_, isStale := stale[entry.VariantID]
@@ -168,6 +216,12 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 	}
 	plan := queue.BuildBatchPlan(planRequest)
 	if len(plan) == 0 {
+		if output.JSONEnabled(cmd) {
+			if opts.DryRun {
+				return writeRolloutRunPlan(cmd, plan, true)
+			}
+			return finishRolloutRun(cmd, rolloutRunResult{}, action)
+		}
 		cmd.Println("No queue entries selected")
 		return nil
 	}
@@ -175,11 +229,11 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 		return writeRolloutRunPlan(cmd, plan, output.JSONEnabled(cmd))
 	}
 	if err := preflightRollout(cmd, opts.MirrorBootstrapURL); err != nil {
-		return fmt.Errorf("evaluation: rollout run: %w", err)
+		return fmt.Errorf("evaluation: rollout %s: %w", action, err)
 	}
 	registry, err := newModelInventories(fileSvc, cfg.ProjectRoot).variants(cmd.Context(), modelScopeRegistry)
 	if err != nil {
-		return fmt.Errorf("evaluation: rollout run: %w", err)
+		return fmt.Errorf("evaluation: rollout %s: %w", action, err)
 	}
 	runGate := gates(fileSvc, registry)
 	jsonOutput := output.JSONEnabled(cmd)
@@ -212,7 +266,7 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 			// An operator stop is not a model outcome: the entry stays
 			// pending and no later entry starts.
 			_, _ = fmt.Fprintf(progress, "STOPPED %s (%s)\n", entry.VariantID, entry.ServedModelTag)
-			stopErr = fmt.Errorf("evaluation: rollout run: %s: %w", entry.VariantID, runErr)
+			stopErr = fmt.Errorf("evaluation: rollout %s: %s: %w", action, entry.VariantID, runErr)
 			break
 		}
 		if runErr != nil {
@@ -231,7 +285,33 @@ func runRolloutWith(cmd *cobra.Command, deps nativeEvalDeps, opts rolloutRunOpti
 			_, _ = fmt.Fprintf(progress, "PASS %s %s -> %s\n", entry.VariantID, last.Gate, last.RunID)
 		}
 	}
-	return errors.Join(stopErr, finishRolloutRun(cmd, result))
+	return errors.Join(stopErr, finishRolloutRun(cmd, result, action))
+}
+
+// pendingRolloutCampaigns selects pending entries before the batch limit is
+// applied. Validate every requested ID so a typo never starts a partial batch.
+func pendingRolloutCampaigns(queue *evaluation.CampaignQueue, campaignIDs []string) ([]evaluation.CampaignQueueModel, error) {
+	pending := queue.FilterByStatus(evaluation.QueueStatusPending)
+	if len(campaignIDs) == 0 {
+		return pending, nil
+	}
+	wanted := make(map[string]bool, len(campaignIDs))
+	for _, id := range campaignIDs {
+		wanted[id] = false
+	}
+	selected := make([]evaluation.CampaignQueueModel, 0, len(pending))
+	for _, entry := range pending {
+		if _, ok := wanted[entry.CampaignID]; ok {
+			selected = append(selected, entry)
+			wanted[entry.CampaignID] = true
+		}
+	}
+	for _, id := range campaignIDs {
+		if !wanted[id] {
+			return nil, fmt.Errorf("campaign %q is not pending in the rollout queue: %w", id, constants.ErrEvaluationSelectionEmpty)
+		}
+	}
+	return selected, nil
 }
 
 // qualifyRolloutEntry runs the gates the options ask for against one queue
@@ -445,14 +525,14 @@ func writeRolloutRunPlan(cmd *cobra.Command, plan []evaluation.CampaignQueueMode
 		return err
 	}
 	for _, entry := range plan {
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "- %s (%s) status=%s\n", entry.VariantID, entry.ServedModelTag, entry.Status); err != nil {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "- %s (%s) status=%s campaign=%s\n", entry.VariantID, entry.ServedModelTag, entry.Status, entry.CampaignID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func finishRolloutRun(cmd *cobra.Command, result rolloutRunResult) error {
+func finishRolloutRun(cmd *cobra.Command, result rolloutRunResult, action string) error {
 	if output.JSONEnabled(cmd) {
 		if err := output.WriteJSON(cmd.OutOrStdout(), result); err != nil {
 			return err
@@ -464,7 +544,7 @@ func finishRolloutRun(cmd *cobra.Command, result rolloutRunResult) error {
 		}
 	}
 	if result.Failed > 0 {
-		return fmt.Errorf("evaluation: rollout run: %d model(s) failed", result.Failed)
+		return fmt.Errorf("evaluation: rollout %s: %d model(s) failed", action, result.Failed)
 	}
 	return nil
 }

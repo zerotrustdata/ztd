@@ -785,6 +785,21 @@ message ActionReceipt {
   GovernanceRejectionCode rejection_code = 18;
 }
 
+// ConsensusVoteInference retains one Tribunal member's governed vote inference,
+// including failures and observation executions. These receipts are independent
+// signed evidence; they never replace the subject's L2 quorum proof.
+message ConsensusVoteInference {
+  string subject_transaction_id = 1;
+  string subject_transaction_hash = 2;
+  string member_app_id = 3;
+  string provider_attempt_id = 4;
+  string transaction_id = 5;
+  InferenceResult result = 6;
+  ActionReceipt receipt = 7;
+  InferenceDispatchFailure failure = 8;
+  repeated ActionReceipt observation_receipts = 9;
+}
+
 // GovernanceRejection is the client-facing body every governed ingress
 // (direct envelope submission, governed dispatch, MCP, A2A) returns when the
 // executing Operator rejected a transaction at L4. receipt is the Operator's
@@ -795,6 +810,7 @@ message ActionReceipt {
 message GovernanceRejection {
   string error = 1;
   ActionReceipt receipt = 2;
+  repeated ConsensusVoteInference consensus_inferences = 3;
 }
 
 // IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
@@ -829,6 +845,7 @@ enum IngressRefusalCode {
 message IngressRefusal {
   IngressRefusalCode code = 1;
   string error = 2;
+  repeated ConsensusVoteInference consensus_inferences = 3;
 }
 
 // GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
@@ -843,6 +860,7 @@ message GovernedDispatchResult {
   bytes result_payload = 4;
   InferenceResult inference_result = 5;
   ActionReceipt receipt = 6;
+  repeated ConsensusVoteInference consensus_inferences = 7;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified

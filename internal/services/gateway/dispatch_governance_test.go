@@ -35,17 +35,17 @@ type stubL2Deliberator struct {
 	envelope []byte
 }
 
-func (s *stubL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
+func (s *stubL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	s.called = true
 	s.envelope = envelopeBytes
-	return envelopeBytes, nil
+	return &governance.ConsensusDeliberation{Envelope: envelopeBytes}, nil
 }
 
 // failingL2Deliberator always returns an error, proving the dispatch path
 // fails closed when L2 deliberation fails under a posture that requires it.
 type failingL2Deliberator struct{}
 
-func (failingL2Deliberator) Deliberate(_ context.Context, _ []byte) ([]byte, error) {
+func (failingL2Deliberator) Deliberate(_ context.Context, _ []byte) (*governance.ConsensusDeliberation, error) {
 	return nil, fmt.Errorf("l2 deliberation unavailable")
 }
 

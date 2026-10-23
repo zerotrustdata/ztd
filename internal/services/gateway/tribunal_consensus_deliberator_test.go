@@ -216,7 +216,7 @@ type fakeApplicationDeliberator struct {
 	err   error
 }
 
-func (f *fakeApplicationDeliberator) Deliberate(context.Context, []byte) ([]byte, error) {
+func (f *fakeApplicationDeliberator) Deliberate(context.Context, []byte) (*governance.ConsensusDeliberation, error) {
 	f.calls++
 	return f.out, f.err
 }
@@ -294,10 +294,10 @@ func marshalTestEnvelope(t *testing.T, env *commonv1.GovernanceEnvelope) []byte 
 	return raw
 }
 
-func unmarshalDeliberatedEnvelope(t *testing.T, raw []byte) *commonv1.GovernanceEnvelope {
+func unmarshalDeliberatedEnvelope(t *testing.T, result *governance.ConsensusDeliberation) *commonv1.GovernanceEnvelope {
 	t.Helper()
 	var env commonv1.GovernanceEnvelope
-	if err := protojson.Unmarshal(raw, &env); err != nil {
+	if err := protojson.Unmarshal(result.Envelope, &env); err != nil {
 		t.Fatalf("unmarshal deliberated envelope: %v", err)
 	}
 	return &env

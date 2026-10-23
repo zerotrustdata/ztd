@@ -105,6 +105,7 @@ func TestRunCommands_DoNotExposeOllamaEndpointOverride(t *testing.T) {
 		runsStartCmd(nativeEvalDeps{}),
 		runsResumeCmd(nativeEvalDeps{}),
 		rolloutRunCmd(nativeEvalDeps{}),
+		rolloutResumeCmd(nativeEvalDeps{}),
 	}
 	for _, command := range commands {
 		assert.Nil(t, command.Flags().Lookup("ollama-endpoint"), command.Use)

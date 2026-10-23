@@ -31,9 +31,9 @@ type countingL2Deliberator struct {
 	calls int
 }
 
-func (d *countingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
+func (d *countingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	d.calls++
-	return envelopeBytes, nil
+	return &governance.ConsensusDeliberation{Envelope: envelopeBytes}, nil
 }
 
 // postureDependencies returns the minimum valid Dependencies for NewGatewayService with the given posture name.

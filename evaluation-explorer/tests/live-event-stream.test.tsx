@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, LiveEvent } from '../src/contract/types';
 import { LiveEventStream } from '../src/components/LiveEventStream';
 import { evalStore, recordKey } from '../src/state/store';
+import { adaptCampaignProjectionEnvelope, createCampaignAdaptContext } from '../src/state/campaign-adapter';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 
 function liveEvent(partial: Partial<LiveEvent> = {}): LiveEvent {
@@ -52,6 +53,59 @@ describe('LiveEventStream', () => {
     expect(screen.getByText('780')).toBeInTheDocument();
     expect(screen.getByText('350')).toBeInTheDocument();
     expect(screen.getByText('Primary')).toHaveClass('stream-role');
+  });
+
+  it.each([1, 0, undefined])('updates the stage icon from terminal lifecycle without a result projection (pass=%s)', (pass) => {
+    const context = createCampaignAdaptContext();
+    const lifecycle = (status: string) => adaptCampaignProjectionEnvelope({
+      schema_version: '1.0.0', message_type: 'PublicAssignmentLifecycleRecord',
+      idempotency_key: `run-a:assignment-1:lifecycle:${status}`,
+      record: {
+        run_id: 'run-a', assignment_id: 'assignment-1', scenario_id: 'tool-select-file-read',
+        designated_role: 'MODEL_CAMPAIGN_ROLE_PRIMARY', variant_id: 'model-a',
+        lifecycle_status: `EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_${status}`,
+        observed_at: status === 'RUNNING' ? '2026-09-17T07:59:00Z' : '2026-09-17T08:00:00Z',
+      },
+    }, context) as LiveEvent[];
+    const activity = liveEvent({
+      dataset_id: 'ds-live-run-a', kind: 'stage_updated', lifecycle_status: 'running',
+      metric_delta: { latency_ms: { value: 82 }, input_tokens: { value: 880 }, output_tokens: { value: 27 } },
+    });
+    const events = [...lifecycle('RUNNING'), activity];
+    const { rerender } = render(stream(events));
+    expect(screen.getByRole('link', { name: /Stage Updated:/ })).toHaveTextContent('•');
+    if (pass !== undefined) events.push(liveEvent({
+      dataset_id: 'ds-live-run-a', event_id: 'pass', kind: 'metric_updated', lifecycle_status: 'running',
+      metric_delta: { pass: { value: pass } },
+    }));
+    events.push(...lifecycle('COMPLETED'));
+    // Reconciliation may deliver records in either order.
+    rerender(stream([...events].reverse()));
+    expect(rows()).toHaveLength(1);
+    const label = pass === 0 ? 'Model failed' : pass === 1 ? 'Passed' : 'Completed';
+    expect(screen.getByRole('link', { name: `${label}: tool-select-file-read. View details` }))
+      .toHaveTextContent(pass === 0 ? '×' : '✓');
+    expect(screen.queryByRole('link', { name: /Stage Updated:/ })).not.toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
+    expect(screen.getByText('880')).toBeInTheDocument();
+    expect(screen.getByText('27')).toBeInTheDocument();
+  });
+
+  it('replaces a lifecycle completion with the classified result without borrowing another role’s grade', () => {
+    const terminal = liveEvent({ event_id: 'lifecycle', terminal_status: undefined });
+    const { rerender } = render(stream([
+      terminal,
+      liveEvent({ event_id: 'other-role', kind: 'metric_updated', role: 'lite', metric_delta: { pass: { value: 0 } } }),
+    ]));
+    expect(screen.getByRole('link', { name: /Completed:/ })).toHaveTextContent('✓');
+    const result = liveEvent({
+      event_id: 'run-a:assignment-1:result:event', kind: 'assignment_failed', terminal_status: 'model_failed',
+      metric_delta: { pass: { value: 0 } },
+    });
+    rerender(stream([result, terminal]));
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Model failed:/ })).toHaveTextContent('×');
+    expect(screen.queryByRole('link', { name: /Completed:/ })).not.toBeInTheDocument();
   });
 
   it('caps the unfiltered feed at 100 rows and paginates 25 at a time', async () => {

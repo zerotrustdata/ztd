@@ -245,8 +245,11 @@ describe('adaptCampaignProjectionEnvelope', () => {
       },
     });
     adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED'), context);
-    // A terminal lifecycle record defers its event to the result projection.
-    expect(adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE'), context)).toEqual([]);
+    // The lifecycle updates the Live icon even before the detailed result arrives.
+    const terminal = adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE'), context);
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0]).toMatchObject({ kind: 'assignment_failed', terminal_status: 'invalid_evidence' });
+    expect(() => decodeViewRecord(terminal[0]!.kind, terminal[0])).not.toThrow();
 
     const records = adaptCampaignProjectionEnvelope(
       {
