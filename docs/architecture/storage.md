@@ -4,7 +4,7 @@ title: Storage Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -125,6 +125,8 @@ Paths are relative to `.ztd/data/` within the runtime directory. The database fi
 All databases are local to the runtime that opens them. An outbound Operator's `ztd.db` is not a central platform database; it is authoritative only for evidence produced by that Operator. During L4 verification on the authenticated command channel, the Operator uses the Gateway admission snapshot already bound into the envelope, without querying the Gateway or substituting its own database root. L5 reads the local database root before and after execution for receipt evidence. The Gateway mirrors remote signed receipts on a best-effort basis; mirroring failure does not invalidate the Operator's local evidence.
 
 Each runtime keeps its own database, PKI, vault, and evidence under its own runtime root. Removing one runtime root removes only that runtime's state.
+
+A minor release that changes the canonical `ztd.db` shape does not migrate an existing database (`INV-STOR-SCHEMA-01`). For example, v1.3.0 stores the current transaction receipt on the `events` chain and does not read a legacy `receipts` table. Start the Gateway and each outbound Operator from a new runtime root, re-enroll, and treat evidence in an older root as scoped to the release that produced it.
 
 ## Canonical Database
 
@@ -269,7 +271,7 @@ The audit store runs incremental vacuum after scheduled pruning to gradually rec
 Every governed operation follows the [five-layer interlock](./governance.md):
 
 1. **L1 Doctrine** validates the typed payload and applies hard gates, forbidden-pattern matching, and MITRE threat detection.
-2. **L2 Consensus** verifies Ed25519 consensus votes when the active posture requires them.
+2. **L2 Consensus** verifies Ed25519 consensus votes for state-changing actions when the active posture requires them (`governance.L2Enforced`).
 3. **L3 Notary** verifies WebAuthn or signed CLI authorization when the active posture requires it. Transactions awaiting Gateway-managed approval are persisted in the suspended-transaction store.
 4. **L4 Warden** checks expiry, reserves the nonce, validates payload and transaction hash, verifies the state root, and evaluates required L2 and L3 evidence. Failed validation releases the nonce reservation.
 5. **L5 Actuator** signs and persists the `EXECUTING` receipt, appends the signed commitment, rehydrates protected values, invokes the handler, and signs and persists the final receipt and persistence attestation.

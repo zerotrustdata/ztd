@@ -3,8 +3,8 @@ doc_id: agents
 title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-22
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
@@ -63,7 +63,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-AGT-01 | AI model outputs, prompts, and application memory are advisory only. They MUST NOT produce Ed25519 protocol signatures (L2), WebAuthn proofs, or enrolled CLI P-256 signatures (L3), and cannot satisfy governance gates. A human may approve a pending Gateway transaction with `ztd auth approve <transaction-hash> --cli` using the enrolled CLI key. All state mutations require the Gateway PDP and executing Operator PEP to enforce the active posture. |
+| INV-AGT-01 | AI model outputs, prompts, and application memory are advisory only. They MUST NOT produce Ed25519 protocol signatures (L2), WebAuthn proofs, or enrolled CLI P-256 signatures (L3), and cannot satisfy governance gates. A human may approve a pending Gateway transaction with `ztd auth approve <transaction-hash> --cli` or deny it with `ztd auth approve <transaction-hash> --deny` using the enrolled CLI session over mTLS (`--cli` and `--deny` are mutually exclusive). All state mutations require the Gateway PDP and executing Operator PEP to enforce the active posture. |
 | INV-AGT-02 | Every external agent (`claude`, `codex`, `devin`, `gemini`, `goose`) launched via `ztd mcp agent run <agent>` MUST authenticate with an owner-approved platform application enrollment (`ztd auth enroll app <agent>`) whose mTLS certificate carries both the agent's SPIFFE app identity and the approving owner's SPIFFE user identity in URI SANs. Identity MUST come from the verified certificate, never request headers. |
 | INV-AGT-03 | Devin CLI does not expose native-tool disabling options. Only operations explicitly routed through ztd MCP cross the governance boundary; Devin's native file, shell, and network access remain ungoverned side channels. |
 | INV-AGT-04 | `ztd mcp stdio` MUST fail closed immediately with `ErrIncompleteCredentialPair` when supplied a certificate without its corresponding private key or vice versa. Partial credential pairs MUST NOT degrade to unauthenticated access. |
@@ -183,7 +183,7 @@ flowchart LR
 ```
 
 - **Advisory Role**: Model reasoning, context windows, and tool plans are unverified user intent. They cannot satisfy governance gates or issue Ed25519 signatures (INV-AGT-01).
-- **Gateway PDP Role**: Authenticates client mTLS identities (extracting `acting_app_id` and `requestor_user_id`), validates intent, screens L1 Doctrine, gathers L2 Consensus votes, and manages L3 human approvals.
+- **Gateway PDP Role**: Authenticates client mTLS identities (extracting `acting_app_id` and `requestor_user_id`), validates intent, screens L1 Doctrine, coordinates L2 Consensus when the posture and action require it (`governance.L2Enforced`), and manages L3 human approvals.
 - **Operator PEP Role**: Remote Operators pull envelopes over outbound mTLS channels (`cmd:<operator_id>:<operator_session_id>`), re-verify proofs at L4, mint single-action JIT capabilities at L5, execute the action, and record authoritative receipts locally under LFAA.
 - **Boundary Limits**: Governance applies strictly to operations routed through a ztd ingress. It does not sandbox external AI processes or intercept ungoverned host processes.
 
@@ -195,13 +195,13 @@ flowchart LR
 | **Gateway Downstream Egress** | Upstream MCP `tools/call` | Full L1–L5 pipeline; posture enforcement; produces signed receipts | Downstream subprocess or HTTP MCP server |
 | **Direct Gateway `/mcp`** | JSON-RPC over HTTP with mTLS | Gateway constructs `GovernanceEnvelope`; screens L1–L3; dispatches L4–L5 | Embedded Operator or downstream service |
 | **A2A Ingress (`/api/v1/a2a/call`)** | JSON-RPC `a2a/call` with mTLS; mounted only when `--a2a-downstream-url` is set | Gateway constructs `A2A_CALL` envelope; screens L1–L3; dispatches L4–L5 | Registered downstream A2A service |
-| **Governed HTTP Dispatch** | Serialized protobuf at `POST /api/v1/operators/commands` | Derives `action_type`; validates session; no L2/L3 synthesis; holds the request for a human L3 decision when required | Bound remote Operator PEP |
+| **Governed HTTP Dispatch** | JSON request body (`models.OperatorCommandRequest`) at `POST /api/v1/operators/commands` | Derives `action_type`; validates session; no L2/L3 synthesis; holds the request for a human L3 decision when required | Bound remote Operator PEP |
 | **Direct Envelope** | Canonical `GovernanceEnvelope` at `/api/v1/governance/envelopes` | Validates envelope; verifies pre-existing L2/L3 proofs; no synthesis | Embedded Operator (or remote via dispatch) |
 
 ### Agent Launcher Architecture and Tool Lockdown
 
 The launcher defines exact tool lockdown levels across registered agents (INV-AGT-09):
-- **Claude Code (Strict)**: Launches with a temporary MCP configuration via `--mcp-config`; `--strict-mcp-config` ignores other servers; `--disallowed-tools` disables all built-in tools capable of file access, command execution, or network calls (`nativeToolsToDisable`). Only `ReportFindings`, `TaskStop`, and `ToolSearch` remain.
+- **Claude Code (Strict)**: Launches with a temporary MCP configuration via `--mcp-config`; `--strict-mcp-config` ignores other servers; `--disallowed-tools` disables the built-in tools listed in `nativeToolsToDisable` (`internal/cli/agent/config.go`). Tools not in that list, such as `ReportFindings`, `TaskStop`, and `ToolSearch`, stay enabled; the list's comment records the Claude Code version it was checked against.
 - **OpenAI Codex (Strict)**: Uses the same strict flags and temporary MCP configuration as Claude Code.
 - **Goose (Strict)**: Injects ztd as an extension into `~/.config/goose/config.yaml` and starts with `session --no-profile --with-extension` to disable profile extensions.
 - **Gemini CLI (Strict)**: Merges the ztd MCP server into `~/.gemini/settings.json` and sets `tools.core: []` (empty allowlist) to disable built-in tools.
@@ -241,7 +241,7 @@ Every admitted tool execution produces a signed `ActionReceipt` containing:
 
 Event receipts are persisted authoritatively on the executing Operator's local `events` chain. Mirrored event receipts at the Gateway provide query access via `ztd audit event-receipts --app <spiffe-id>`.
 
-The `audit_receipt_list` and `audit_receipt_get` tools read the executing runtime's own audit store. Through the Gateway's MCP endpoint, `audit_receipt_list`'s optional `investigation_id` filter intersects the required `operator_session_id` scope, and remote Operator records there remain best-effort projections. Dispatched to an outbound Operator as `MCP_CALL`, both return that Operator's authoritative local receipts. Evaluation's built-in model-role executor has a separate governed route to the selected Operator's own `audit_receipt_list` handler. That route requires an investigation ID and `exclude_audit_reads`, which drops only the audit-read tools' own receipts so that `run_shell_command` and other native-tool receipts stay investigation context; it returns only the Operator's authoritative local receipts and does not fall back to Gateway projections. `audit_receipt_list` also accepts an `action_type` filter, a `not_before` RFC 3339 lower bound on execution time, and `limit` (default 50) and `offset` pagination, and returns only signed receipt records with their `count`; `audit_receipt_get` returns one signed receipt by `transaction_id`. See the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane) for its campaign binding and trace evidence.
+Shell execution is exposed only through governed `run_shell_command` (`MCP_CALL`); log search uses `search_file` or `search_directory`. The `audit_receipt_list` and `audit_receipt_get` tools read the executing runtime's own audit store. Through the Gateway's MCP endpoint, `audit_receipt_list`'s optional `investigation_id` filter intersects the required `operator_session_id` scope, and remote Operator records there remain best-effort projections. Dispatched to an outbound Operator as `MCP_CALL`, both return that Operator's authoritative local receipts. Evaluation's built-in model-role executor has a separate governed route to the selected Operator's own `audit_receipt_list` handler. That route requires an investigation ID and `exclude_audit_reads`, which drops only the audit-read tools' own receipts so that `run_shell_command` and other native-tool receipts stay investigation context; it returns only the Operator's authoritative local receipts and does not fall back to Gateway projections. `audit_receipt_list` also accepts an `action_type` filter, a `not_before` RFC 3339 lower bound on execution time, and `limit` (default 50) and `offset` pagination, and returns only signed receipt records with their `count`; `audit_receipt_get` returns one signed receipt by `transaction_id`. See the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane) for its campaign binding and trace evidence.
 
 MCP `tools/call` and A2A `a2a/call` return that signed `ActionReceipt` as canonical protojson, not as a reference. The execution and investigation IDs are inside the receipt's envelope and payload. A suspended call returns one `GovernedSuspension` (`id`, `status`, `tx_hash`, `approval_url`, `message`) on both ingresses. Only a missing L3 proof suspends. An invalid L3 proof returns a signed `L3_PROOF_INVALID` rejection (`INV-GOV-ACT-13`).
 

@@ -3,8 +3,8 @@ doc_id: autochthon
 title: Run an Autochthon
 audience: platform operators and host owners
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - docs/guides/autochthon.md
   - internal/cli/cmd/autochthon/
@@ -157,26 +157,26 @@ The anchor is in the form `<lines>:<64 lowercase hex>`. When the verified chain 
 
 | Error | Cause | Recovery |
 | :--- | :--- | :--- |
-| `autochthon does not dial a gateway: --<flag>` | A Gateway-related flag was passed. | Remove Gateway flags (`--endpoint`, `--port`). |
+| `autochthon does not dial a gateway: --<flag>` | A flag outside the accepted set was passed, such as `--endpoint`, `--port`, or `--json` on start. | Remove the refused flag. The accepted flags are listed by `./ztd autochthon --help` and `./ztd autochthon status --help`. |
 | `autochthon tally hash chain is broken: line N` | Tally line modified or corrupted. | Move corrupted `.ztd/autochthon/tally.jsonl` aside to begin a fresh chain. |
 | `autochthon tally hash chain is broken: line N is unterminated` | Partial line written before a crash. Start refuses it; `status` reports it as pending. | Remove the trailing partial line from `tally.jsonl`. |
 | `autochthon already running on this root` | Another instance holds `run.lock`. | Stop the other instance or specify a distinct `--working-dir`. |
-| `autochthon culture file does not match this binary` | Binary version or genome format changed. | Remove `.ztd/autochthon/culture.bin` to restart culture at generation 0. |
+| `autochthon culture file does not match this binary` | The file is not a culture of the current format (magic, format version, or size), or a gene is outside the allowed range. | Remove `.ztd/autochthon/culture.bin` to restart culture at generation 0. |
 | `autochthon tally does not contain the anchor` | The verified chain has fewer lines than the anchor, or no longer contains the anchored head. | Restore `tally.jsonl` from a copy that still contains the anchored line. |
 | `autochthon anchor must be <lines>:<64 lowercase hex>` | The `--anchor` value is malformed. | Pass the `Anchor` row from `status` unchanged. |
 
 ### Usage patterns
 
-- **Host baselining**: Run autochthon to establish normal host dynamics before enrolling an Operator.
+- **Host baselining**: Run autochthon to accumulate a local tally and culture of host dynamics, then read them with `status`.
 - **Disconnected or air-gapped monitoring**: Run autonomously without network connectivity or credentials.
 - **Telemetry verification**: Use `status --json` to export host prediction statistics into external logging frameworks.
 
 ## Anti-patterns
 
-- Running without `--working-dir` inside a Gateway or Operator directory (INV-AUTO-STATE-01).
+- Omitting `--working-dir` in a Gateway or Operator working directory, which places the tally and culture under that directory's `.ztd/autochthon/` beside the runtime's own state (INV-AUTO-STATE-01).
 - Treating the autochthon tally as a cryptographic execution receipt or governance audit log (INV-AUTO-EVID-01).
 - Assuming `chain verified` guarantees full history retention without checking an external anchor (INV-AUTO-EVID-02).
-- Treating surprises as attribution of specific user actions or security violations (INV-AUTO-BND-01).
+- Treating surprises as attribution of specific user actions or security violations. A surprise row holds only a sequence number, time, the load, memory, and process-count senses, and the fit values, and it identifies no user or action (INV-AUTO-BND-01).
 
 ## Links out
 

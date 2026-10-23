@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Architecture and Threat Model
 audience: architects and security reviewers
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - internal/services/gateway/public_mirror.go
   - internal/services/gateway/public_mirror_store.go
@@ -155,12 +155,12 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Model Role Identity**: Primary variant ID, Assistant variant ID, Lite variant ID.
 - **Metrics**: Metric ID, metric version, numerator, denominator, rate, unit, verification status.
 - **Verification Status**: Verification status, verified index-generation hash.
-- **Categorical Environment Labels**: `environment_class`, `backend_name`, `quantization`.
+- **Categorical Environment Labels**: `backend_name`, `quantization`.
 - **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, `failure_reason`, `tools_declared`.
 - **Verbatim Model and Grader Text (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts`, and `benchmark_observations.grade_summaries[].detail` / `semantic_grade_summaries[].detail` (each text within the 256 KiB record bound, at most 8 role transcripts, no screening or redaction).
-- **Agent Trace Proof Artifact**: `assignment-<id>.agent-trace.json`, the persisted `AgentTrace` body byte for byte, served at `/proofs/<sha256>` and bound by an `assignment_agent_trace` evidence binding. `agent-trace.v4` and later carry the exact first-turn model input (`input.messages`, `input.tools`); `agent-trace.v5` and later also carry `held_context`, the earlier repetition's conversation that a held-context repetition continued from, which the explorer renders before the model input. `agent-trace.v6` adds the scored investigation identity and authoritative context query details with returned receipt IDs and digests; see the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane). `agent-trace.v7` adds each complete signed inference result and its per-call model identity. `agent-trace.v8`, the version every new trace is sealed with, adds `tool_calls[].approved_arguments_json`, the Tribunal-approved arguments a `run_shell_command` call executed; the explorer shows them when they differ from the proposal. `agent-trace.v3` carries no input, and the explorer labels it not captured.
+- **Agent Trace Proof Artifact**: `assignment-<id>.agent-trace.json`, the persisted `AgentTrace` body byte for byte, served at `/proofs/<sha256>` and bound by an `assignment_agent_trace` evidence binding. The trace carries the exact first-turn model input (`input.messages`, `input.tools`) and, for held-context repetitions, `held_context`, the earlier repetition's conversation. `agent-trace.v8`, the schema version new traces are sealed with, adds `tool_calls[].approved_arguments_json`, the approved arguments a tool call executed (`AgentToolCall`, `internal/services/evaluation/campaign_agent_trace.go`).
 - **Scenario Fixture Proof Artifacts**: `scenario-<id>.input.json` (`ScenarioInputFixture`: user prompt, inline context, workspace files including decoys, seeded investigation) and `scenario-<id>.gold.json` (`ScenarioGoldCriteria`), the campaign-frozen canonical bytes, so each SHA-256 equals the campaign's fixture reference. They are served at `/proofs/<sha256>` and bound by `scenario_input_fixture` and `scenario_gold_criteria` evidence bindings, which appear together or not at all. Their catalog entries carry no source run because every run of the campaign shares them, so one run's prune never removes them.
-- **Assignment Audit Database Proof Artifact**: `assignment-<id>.db`, a plaintext SQLite database of the assignment's public live-event records exactly as the Gateway signed and stored them. The Gateway builds it from its own stored signed rows when the assignment is published; the request carries no database and no key. A republish reuses the assignment's active database by digest and does not rebuild it. The eval CLI requests the proof before it exports the assignment's result record. This holds on the live, catch-up and verified-republish paths. Catch-up and verified republish first export the assignment's live event records (idempotent by key), because a run executed with `--publish=false` never sent them and the Gateway indexes only records it was sent. The CLI binds the `database_sha256` the Gateway returns, and it fails closed on a missing answer, an answer for another assignment, or an empty digest. There is no vault key and no key artifact: the proof segment signature covers the database's SHA-256, and `ztd public verify-assignment --db assignment-<id>.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>` checks it offline.
+- **Assignment Audit Database Proof Artifact**: `assignment-<id>.db`, a plaintext SQLite database of the assignment's public live-event records. The Gateway builds it from the live event records it retains, indexed per assignment (`assignment_event_records`). Before any proof is reused or requested, the publisher delivers every pending assignment's live event records, because the Gateway builds proofs only from records it was sent. Result publication ingests the audit proof bindings before it publishes the assignment result record. The publisher binds the `database_sha256` the Gateway returns and fails closed on an answer for another assignment or an empty digest. There is no vault key and no key artifact: the proof segment entry carries the database's SHA-256, and `ztd public verify-assignment --db assignment-<id>.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>` checks it offline.
 
 ## Export Binding and Cryptographic Continuity
 
@@ -210,15 +210,15 @@ Offline verification supports one pinned signing key through `verify-proof --pub
 
 | Threat Vector | Mitigation Strategy | Fail-Closed Behavior |
 | :--- | :--- | :--- |
-| **Replay & Reordering** | Batches carry contiguous sequence ranges and link to the prior batch by `previous_batch_hash`. The mirror rejects a batch at or below its high-water sequence unless it re-delivers an accepted batch with the same sequence range and content hash, and rejects a broken link. Clients reject sequence $\le$ last consumed. | HTTP 200 with `accepted: false` and a typed `rejection_reason`: `sequence_out_of_order`, `duplicate_sequence`, or `hash_chain_mismatch` |
+| **Replay & Reordering** | Batches carry contiguous sequence ranges and link to the prior batch by `previous_batch_hash`. The mirror rejects a batch at or below its high-water sequence unless it re-delivers an accepted batch with the same sequence range and content hash, and rejects a broken link. | HTTP 200 with `accepted: false` and a typed `rejection_reason`: `sequence_out_of_order`, `duplicate_sequence`, or `hash_chain_mismatch` |
 | **Equivocation** | Content hashes bind each batch to its exact position. A batch that reuses an accepted sequence range with a different content hash is equivocal. | HTTP 200 with `accepted: false` and `rejection_reason` `equivocation`; ingest revokes no key (revocation requires a signed revocation batch, `INV-SPEC-CRYPTO-03`) |
 | **Stale Snapshots** | Snapshots bind high-water mark and chain hash. Clients verify freshness labels (`active`, `delayed`, `stale`, `intentionally_stopped`, `safety_stopped`, `source_offline`). | Stale data explicitly tagged, not served as live |
 | **Forged Events** | Batches signed with Ed25519. Mirrors and offline verifiers validate signatures over canonical content hashes. | Bad signatures rejected with `accepted: false` and `rejection_reason` `signature_invalid`; unknown or revoked signing keys rejected with `unknown_key` or `revoked_key` |
-| **Mirror Tampering** | Projections and proofs are content-addressed by SHA-256. Proof root manifests bind the entire artifact tree. | Hash mismatch causes immediate client rejection |
-| **Cache Poisoning** | Immutable HTTP cache headers (`Cache-Control: immutable`). Client checks SHA-256 against proof catalog before acceptance. | Corrupted download discarded |
-| **Path Traversal** | Proof ingest rejects filenames that are absolute, contain backslashes or `..`, or are not plain base names. The mirror serves artifacts by artifact ID from its store. The publisher refuses symlinked proof artifacts and directories (`ErrPublicFeedProofSymlinkRejected`). | Proof ingest rejected with HTTP 400; download of an unknown artifact ID returns HTTP 404 |
+| **Mirror Tampering** | Projections and proofs are content-addressed by SHA-256. Each signed segment entry binds an artifact's SHA-256 and size under the segment root. | Hash or signature mismatch invalidates the package in `verify-proof` |
+| **Cache Poisoning** | Immutable HTTP cache headers (`Cache-Control: public, max-age=31536000, immutable`). `verify-proof` recomputes each active artifact's SHA-256 and checks it against its signed segment entry. | Mismatched artifact invalidates the package |
+| **Path Traversal** | Proof ingest rejects filenames that are absolute, contain backslashes or `..`, or are not plain base names (`safePublicProofFilename`). The mirror serves artifacts by artifact ID from its store. The publisher refuses symlinked proof artifacts (`ErrPublicFeedProofSymlinkRejected`), and the offline verifier rejects non-regular artifact files. | Proof ingest rejected with HTTP 400; download of an unknown artifact ID returns HTTP 404 |
 | **Denial of Service** | Strict rate limits (600 req/min per IP), bounded SSE buffers (100 events), maximum download lengths. | HTTP 429 Too Many Requests |
-| **Correlation Leakage** | Stable non-reversible source pseudonyms; stripping of user IDs, operator sessions, and machine hostnames. | Sanitized at disclosure boundary |
+| **Correlation Leakage** | Only allowlisted fields cross the projection boundary (`INV-SPEC-DATA-01`); each batch identifies its source by `source_id`. | Unknown fields fail closed at the disclosure boundary |
 
 ## Anonymous Read Limits, Retention, and Availability
 
@@ -226,7 +226,7 @@ Offline verification supports one pinned signing key through `verify-proof --pub
 
 - **Bootstrap**: Single snapshot per request.
 - **History**: Cursor-paginated; page size defaults to 20 and is capped at 500.
-- **SSE Stream**: Bounded to 1,000 concurrent connections, 100-event memory queue per connection. Drops oldest events on consumer lag and signals `truncated`.
+- **SSE Stream**: Bounded to 1,000 concurrent subscribers (`PublicFeedSSEMaxSubscribers`), a 100-event queue per subscriber (`maxSSEQueueSize`), and a replay bound of 100 records (`PublicFeedSSEReplayMaxRecords`).
 - **Proof Downloads**: Bounded by byte length in catalog metadata.
 - **Client Rate Limit**: 600 requests per minute per IP. Trusted proxy CIDR required for `CF-Connecting-IP`.
 
@@ -246,9 +246,9 @@ The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `int
 
 ## Relationship to Platform Architecture
 
-- **Private Ingress**: Private Gateway surfaces (`/mcp`, `/api/v1/a2a/`, `/api/v1/governance/envelopes`) never accept anonymous traffic.
-- **SSE Bridge**: Gateway SSE (`/api/v1/sse/stream`) is session-scoped for owners and CLIs; Public SSE (`/stream`) is served exclusively by the mirror runtime.
-- **Evaluation Integration**: Native evaluation runs persist under `.ztd/data/eval/runs/`. The projector generates allowlisted projections; the publisher attaches each captured agent trace as a proof artifact (`INV-SPEC-DATA-03`).
+- **Private Ingress**: Private Gateway paths (`/mcp`, `/api/v1/a2a/`, `/api/v1/governance/envelopes`, from `protocol/constants/api_paths.json`) are not mounted on the public read listener (`INV-SPEC-ISO-02`), and `cloudflared` dials only that listener.
+- **SSE Bridge**: Gateway SSE (`/api/v1/sse/stream`) is the private Gateway stream; Public SSE (`/stream`) is served by the mirror's public read listener.
+- **Evaluation Integration**: Native evaluation runs persist under `.ztd/data/eval/runs/` (`EvaluationRunsDirname` under `DataDirname` and `EvaluationDirname`). The projector generates allowlisted projections; the publisher attaches each captured agent trace as a proof artifact (`INV-SPEC-DATA-03`).
 
 ## Procedures
 
@@ -292,7 +292,7 @@ Alternatively, copy the publisher's local `public-proofs/proof-segments.jsonl` a
 
 For a log spanning key rotations, replace `--public-key` with `--key-registry trusted-keys.json`, where the JSON object maps each signing key ID to a public key hex value pinned through a trusted channel.
 
-The command checks one source's consecutive indexes and root links from zero, recomputes every segment root, verifies every Ed25519 signature, applies signed withdrawals, and checks active artifact hashes and sizes. Artifact filenames in the supplied directory MUST be the lowercase SHA-256 IDs. It rejects traversal, symlinks, repeated entries, unknown withdrawals, and mixed sources. Verification establishes the integrity of the supplied prefix; determining whether the prefix is current requires an independently trusted latest root. Previously downloaded or cached bytes are not erased by a withdrawal.
+The command checks one source's consecutive indexes and root links from zero, recomputes every segment root, verifies every Ed25519 signature, applies signed withdrawals, and checks active artifact hashes and sizes. It rejects symlinked or non-regular artifact files, repeated artifact IDs, and withdrawals of inactive artifacts. Verification establishes the integrity of the supplied prefix; determining whether the prefix is current requires an independently trusted latest root. Previously downloaded or cached bytes are not erased by a withdrawal.
 
 For sources still publishing full manifests, download `/proof-manifest`, `/proof-catalog`, and their artifact files. Offline, compare every artifact's SHA-256 and size with the catalog, check catalog membership against the signed manifest, recompute the legacy manifest root, and verify its Ed25519 signature with the trusted source key. Do not present a legacy manifest signature as proof of a segment link or withdrawal.
 

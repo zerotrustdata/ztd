@@ -4,7 +4,7 @@ title: Documentation Guide
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/
   - protocol/docs/

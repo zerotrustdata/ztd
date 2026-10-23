@@ -4,7 +4,7 @@ title: Cloudflare Tunnel Integration
 audience: operators, infrastructure engineers, deployment specialists
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/guides/cloudflare_tunnel.md
   - internal/cli/cmd/gw/tunnel.go
@@ -58,7 +58,7 @@ The tunnel secures transport between Cloudflare's edge and the local origin. Aut
 [Browser] -> https://console.example.com -> [Cloudflare Edge] -> [cloudflared] -> [Gateway HTTPS localhost:8443]
 ```
 
-`cloudflared` maintains outbound connections to Cloudflare, so the Gateway host requires zero inbound firewall openings. Cloudflare terminates public TLS. The Gateway applies its own route authentication, WebAuthn passkey authentication, WebSessions, mTLS requirements, and governance checks.
+`ztd gw tunnel run` executes `cloudflared` in the foreground and opens no ztd listener. The generated ingress rule routes the public hostname to the Gateway HTTPS origin. The Gateway applies its own route authentication, WebAuthn passkey authentication, WebSessions, mTLS requirements, and governance checks.
 
 ## Procedures
 
@@ -85,7 +85,7 @@ export CLOUDFLARE_API_TOKEN
 ./ztd gw tunnel route-dns --name ztd console.example.com
 ```
 
-To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600` or `0400`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. `--api-token` overrides the environment.
+To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600` or `0400`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. A variable already set in the shell takes precedence over the `.env` value. `--api-token` overrides the environment.
 
 ### 3. Start the Gateway with tunnel-aware configuration
 
@@ -97,6 +97,8 @@ To keep the token in the repo-root `.env` instead (template: `.env.example`, mod
   --public-base-url https://console.example.com \
   --cors-origin https://console.example.com
 ```
+
+For a non-localhost `--passkey-rp-id`, the Gateway already accepts `https://<rp-id>` as a passkey origin. `--passkey-rp-origin` adds further origins.
 
 ### 4. Start the tunnel
 
@@ -118,7 +120,7 @@ Or query health directly:
 curl -fsS https://console.example.com/api/v1/health
 ```
 
-Expected response contains `"status":"ok"` and `"governance_ready":true`. This holds for the `doctrine` posture used in step 3, and for `ratify`. Under `consensus` or `notary`, `governance_ready` is `true` only after a consensus is bound and usable, so it reports `false` until then.
+The health route requires no authentication. Expected response contains `"status":"ok"` and `"governance_ready":true`. This holds for the `doctrine` posture used in step 3, and for `ratify`. Under `consensus` or `notary`, `governance_ready` is `true` only after a consensus is bound and usable, so it reports `false` until then.
 
 ## Configuration Reference
 
@@ -137,13 +139,15 @@ ingress:
   - service: http_status:404
 ```
 
-By default, `cloudflared` does not verify the Gateway certificate (`noTLSVerify: true`), so the `cloudflared`-to-Gateway hop is encrypted but not authenticated. To enable origin certificate verification, pass `--ca-bundle /path/to/ztdg-ca-bundle.pem` to `gw tunnel create`; the generated config then sets `originCaPool` in place of `noTLSVerify`. The origin TLS server name (SNI) is set to `ztd.local` by default, which is the DNS SAN every Gateway server certificate carries, so verification does not depend on the `--service` host matching the certificate. Pass `--origin-server-name <name>` to override it. `--origin-server-name` requires `--ca-bundle`; `gw tunnel create` rejects `--origin-server-name` when `--ca-bundle` is absent, because `noTLSVerify` mode never sends a server name.
+`--service` sets the origin URL (default `https://localhost:<https-port>`). An `http://` origin produces no `originRequest` block.
+
+By default, `cloudflared` does not verify the Gateway certificate (`noTLSVerify: true`), so the `cloudflared`-to-Gateway hop is encrypted but not authenticated. To enable origin certificate verification, pass `--ca-bundle /path/to/ztdg-ca-bundle.pem` to `gw tunnel create`; the generated config then sets `originCaPool` and `originServerName` in place of `noTLSVerify`. The canonical Gateway CA bundle path is `.ztd/pki/trust/ztdg-ca-bundle.pem`. The origin TLS server name (SNI) defaults to `ztd.local`, the DNS name that the Gateway service certificate always includes (`generateServiceCertWithNames` in `internal/services/gateway/gateway_certs.go`), so verification does not depend on the `--service` host matching the certificate. Pass `--origin-server-name <name>` to override it. `--origin-server-name` requires `--ca-bundle`; `gw tunnel create` rejects `--origin-server-name` when `--ca-bundle` is absent, because `noTLSVerify` mode never sends a server name.
 
 ## Troubleshooting
 
-- **`Failed to fetch` or 502 Bad Gateway**: Verify Gateway is running on `localhost:8443` and returns healthy status locally via `curl -sk https://localhost:8443/api/v1/health`.
-- **Passkey RP mismatch**: The RP ID must be the exact hostname (`console.example.com`) or a registrable parent domain without scheme or port.
-- **CORS or session cookies blocked**: Add `--cors-origin https://console.example.com` and `--passkey-rp-origin https://console.example.com` to Gateway startup.
+- **`tunnel status` reports `UNREACHABLE`**: `tunnel status` requests `https://<hostname>/api/v1/health`. Verify the Gateway answers locally with `curl -sk https://localhost:8443/api/v1/health`, then confirm `./ztd gw tunnel run` is active and the hostname resolves.
+- **Passkey RP mismatch**: `--passkey-rp-id` must equal the hostname of each `--passkey-rp-origin`, or be a registrable parent suffix of it. Public suffixes are rejected, and Gateway launch validation fails otherwise.
+- **CORS or session cookies blocked**: Browser requests from an origin receive CORS headers only when the origin is listed in `--cors-origin`. For a non-localhost RP ID, passkey origins are `https://<rp-id>` plus any `--passkey-rp-origin` values.
 
 ## Links out
 

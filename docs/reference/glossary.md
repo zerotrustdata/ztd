@@ -4,7 +4,7 @@ title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - protocol/
   - internal/services/
@@ -64,13 +64,13 @@ The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLA
 
 ## Bound State Root
 
-The admission-gating **State Root** read from `StateRootService`. It is the root of a persisted incremental SHA-256 Merkle commitment (algorithm 2) over: all authoritative `documents` rows, bound-tier `kv_store` entries (`state_tier = 'bound'`), bound-tier `blobs` entries (`state_tier = 'bound'`), and the token keymap hash provided by `KeymapHashProvider` when the scrubbing service is attached. A write marks only its own leaf dirty; a read rehashes the dirty leaves and their ancestor paths. It explicitly excludes nonces, SSE events, and observed-tier rows (`state_tier = 'observed'`) so telemetry does not continuously invalidate in-flight envelopes; observed-tier rows are committed in a separate observed tree.
+The admission-gating **State Root** read from `StateRootService`. It is the root of a persisted incremental SHA-256 Merkle commitment (algorithm 2) over: all authoritative `documents` rows, bound-tier `kv_store` entries (`state_tier = 'bound'`), bound-tier `blobs` entries (`state_tier = 'bound'`), and the token keymap hash provided by `KeymapHashProvider` when the scrubbing service is attached. A write marks only its own leaf dirty; a read rehashes the dirty leaves and their ancestor paths. Nonces and SSE events are not state sources, and observed-tier rows (`state_tier = 'observed'`) are committed to the separate **Observed-State Root**, so telemetry does not continuously invalidate in-flight envelopes.
 
 ---
 
 ## Canonical Gateway Database
 
-The Gateway's primary SQLite database, `ztd.db`, opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService`. It embeds the canonical schema from `internal/services/gateway/db/schema.sql` and stores platform state across `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), `nonces`, and `sse_events`; the same file also holds the audit tables, the **Execution Record**, and the **Suspended Transaction** table. Each runtime root holds exactly one such database plus one git-backed file **Ledger**. It is distinct from remote Operator databases, each of which maintains an independent lifecycle and sovereignty boundary.
+The Gateway's primary SQLite database, `ztd.db` (`constants.DbFilename`), opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService` (`internal/services/gateway/gateway_db.go`). Its canonical schema, `internal/services/gateway/db/schema.sql`, creates `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), and `sse_events`. The stores opened over the same database create their own tables: `storage.ReplayStore` creates `nonces`, the SQLite audit store creates `sessions`, `events` (which holds the **Execution Record**), `file_mutation_log`, and `commitment_ledger`, and `suspended_transaction_store.go` creates `suspended_transactions`. The public mirror is a separate file, `public-mirror/mirror.db` (`constants.PublicMirrorDBPath`). Remote Operator databases are distinct; each maintains an independent lifecycle and sovereignty boundary.
 
 ---
 
@@ -112,7 +112,7 @@ The append-only SQLite hash chain of signed **Commitment Attestations** (`intern
 
 ## Compliance Bundle
 
-A portable, content-addressed release package (`internal/services/compliance/report/bundle.go`) containing a manifest (`manifest.json`), canonical compliance report formats (JSON, OSCAL, Markdown, HTML, CSV, CLI), assertion assessments, framework control assessments, evidence index, source artifacts, catalogs, crosswalks, checksum roots, and cryptographic signatures. Verification (`VerifyComplianceReportBundle`) independently checks allowed paths, digests, signatures, references, scope, versions, and assessment consistency without trusting rendered text or terminal output.
+A portable, content-addressed release package (`internal/services/compliance/report/bundle.go`) containing a manifest (`manifest.json`), canonical compliance report formats (JSON, OSCAL, Markdown, HTML, CSV, CLI), assertion assessments, framework control assessments, evidence index, source artifacts, catalogs, crosswalks, checksum roots, and cryptographic signatures. Verification (`VerifyComplianceReportBundle`, `internal/services/compliance/report/bundle_verifier.go`) independently checks allowed paths, digests, signatures, references, scope, versions, and assessment consistency without trusting rendered text or terminal output.
 
 ---
 
@@ -186,7 +186,7 @@ The `events` table in `ztd.db` (`internal/services/storage/audit_store.go`). It 
 
 ## Gateway Peer
 
-A workload identity reserved for Gateway-to-Gateway trust, with SPIFFE URI `spiffe://ztd.local/gateway/<gateway_id>`. The PKI issues certificates from a dedicated `gateway-peer` intermediate CA and includes the CA in the canonical trust bundle. These identity and certificate primitives provide the trust foundation for federated deployments.
+A workload identity reserved for Gateway-to-Gateway trust, with SPIFFE URI `spiffe://ztd.local/gateway/<gateway_id>`. The PKI issues certificates from a dedicated `gateway-peer` intermediate CA and includes the CA in the canonical trust bundle.
 
 ---
 
@@ -360,13 +360,13 @@ The owner-approved protocol for enrolling Operator and application component ins
 
 ## Principal
 
-The human user, AI agent, application, CI/CD pipeline, or automated process that originates an intent. ztd governs the requested action rather than granting a trusted principal an unmonitored bypass; identity claims (`requestor_user_id`, `acting_app_id`) remain explicitly bound in the envelope.
+The identity the transport establishes for a request: the SPIFFE URI SAN of the mTLS client certificate (CLI, Operator, and app workloads), or a validated WebSession cookie (`ValidateWebSessionCookie`, `internal/services/gateway/gateway_auth.go`). For a human user the principal takes the User Principal form `spiffe://ztd.local/user/<user_id>` (`UserSPIFFEID`, `protocol/workload_identity.go`). Principal identity is not the envelope's authority to act: the envelope carries the delegator as `requestor_user_id` and the acting application as `acting_app_id`, and the governance pipeline still evaluates the action.
 
 ---
 
 ## Producer
 
-A client or service that translates a principal's intent into a conformant **Governance Envelope**. Producers include the Gateway's MCP and A2A translators, the CLI dispatch service, and native third-party clients. Producing an envelope initiates governance evaluation; it does not authorize execution.
+An app workload that reports agent and run state changes to the Gateway through the mTLS observe producer endpoints (`ObserveProducerController`, `internal/services/gateway/observe_producer_controller.go`). The Gateway derives `user_id` from the delegated user SAN on the peer certificate, never from the request body, and rejects Operator and CLI certificates. Producer reports feed the SSE event streams; see [SSE](../architecture/sse.md#observe-producers).
 
 ---
 
@@ -443,18 +443,6 @@ A SHA-256 host identifier (`internal/services/auth/fingerprint.go`, `SystemFinge
 ## Tactical Governance Console (TUI)
 
 The terminal user interface launched via `ztd tui` (`internal/cli/cmd/tui/`, implemented in `internal/cli/tui/`). It runs as the enrolled CLI session (`ztd auth enroll user`): the same mTLS identity, CLI session header, and live SSE stream as every other CLI command. Its header shows the CLI identity (user, CLI session, bound Operator) and the Gateway's governance posture, marking L2 and L3 as audited when the posture does not enforce them. Number keys switch between views. The overview shows the L1–L5 execution pipeline, an audit ledger of the session's stream events and TUI action results, the pending L3 approval queue, and the connected Operators. The Operators view lists connected Operators; Enter opens a scrollable detail view using the same heartbeat snapshot as `ztd operator show`, Esc returns to the list, `b` binds the CLI session to the selected Operator, and `u` clears the binding; binding changes keep the same CLI session ID, refresh the live session from the updated local credentials, and reconnect SSE. The Audit view lists paged Gateway audit events, summary totals, and on-demand hash-chain verification using the same endpoints as `ztd audit events`, `ztd audit summary`, and `ztd audit verify`. The Status view shows Gateway health, connected Operators, and completed platform-enrolled workloads using the same health and enrollment data as `ztd gw status`. The Recovery view accepts a one-time headless CLI recovery token and submits the same approve/deny request as `ztd auth approve-recovery`, after confirmation. Other views show the approval queue and the platform enrollments (owner only). Pending approvals and enrollments are re-listed on every stream connect and on each `ztd.v1.platform.approvals.changed` event for their subject. Approving a selected transaction opens the same browser WebAuthn page as `ztd auth approve` and then verifies the result over mTLS. Enrollment decisions and revocations make the same mTLS requests as `ztd auth enroll approve|deny|revoke`, and stopping a remote Operator makes the same governed shutdown request as `ztd operator stop <session_id>`, each after a y/N confirmation. The Operator list is re-listed on every stream connect and on each `ztd.v1.operator.status.updated.*` event; each `ztd.v1.operator.heartbeat.received` event updates the listed Operator in place, and stale status is derived from `stale_at` at render time. For views and controls, see `ztd tui --help`.
-
----
-
-## Time-Travel
-
-Point-in-time file retrieval and restoration powered by the git-backed **Ledger** (`internal/services/storage/ledger.go`). Callers can inspect historical file versions, retrieve diff statistics, or restore a file to a specific ledger commit. This is distinct from the append-only SQLite **Commitment Ledger**, which cannot be rewound.
-
----
-
-## Tool Calling Loop
-
-The operational pattern in which an AI agent selects an MCP tool or A2A skill, submits arguments, receives a governed result or approval suspension, and decides its next action. Every state-modifying iteration executes as an independent, fully evaluated **Governance Envelope** rather than inheriting standing authorization from earlier conversational turns.
 
 ---
 

@@ -4,7 +4,7 @@ title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -64,7 +64,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
 | INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.3). |
 | INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
-| INV-TROUBLE-ENV-04 | Every `./ztd` command loads `.env` from the working directory before it runs (`config.LoadEnvFile`). When every command exits before running with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration MUST go in command flags, never `.env`. |
+| INV-TROUBLE-ENV-04 | The root command loads `.env` from the working directory (`config.LoadEnvFile`) after its pre-run gates pass, so a refused command never sees it. When commands fail with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration MUST go in command flags, never `.env`. |
 
 ### Gateway startup and vault (`INV-TROUBLE-GW`)
 
@@ -74,7 +74,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-GW-02 | `gw restart` reads the launch profile at `.ztd/pids/operator-launch-profile.json`. If missing or invalid, `gw restart` fails closed; run `gw start` with the intended flags to write a new launch profile. |
 | INV-TROUBLE-GW-03 | `gw clean` and `gw reset` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; `gw reset` then starts a new Gateway without it. MUST NOT use either command to repair retained state. `make clean` removes build artifacts, harness and test temp directories, and the Go build cache; it does not reset Gateway runtime state. |
 | INV-TROUBLE-GW-04 | `gw start` against a running Gateway succeeds only when every explicitly set startup flag (capabilities, posture, listen host, ports, model storage root, Ollama endpoint, public base URL, CORS origins, passkey RP ID, RP name, and origins, pprof listen) matches the running launch profile. Otherwise it prints the differences and fails with `ErrGatewayAlreadyRunning`; stop the Gateway (`./ztd gw stop` or `make down`), then rerun the start command. Runtime state in `.ztd/` is kept. |
-| INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` MUST be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and waits up to five minutes. Approve with the login password and **Always Allow**; a denied or unanswered prompt fails with `ErrKeyStoreLocked` or `OS key store access was not approved`. Over SSH, start once from the desktop session. |
+| INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` MUST be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and waits up to five minutes. Approve with the login password and **Always Allow**. If the prompt is not answered within that wait, the start fails with `OS key store access was not approved within <timeout>`. |
 | INV-TROUBLE-GW-06 | `gw start --pprof-listen` accepts only `localhost` or a loopback IP (`ErrProfilingListenAddress`); profiles expose command lines, heap contents, and goroutine stacks. Profiling is off when the flag is unset, and it is a startup flag covered by `INV-TROUBLE-GW-04`. |
 | INV-TROUBLE-GW-07 | The public spectator mirror verifies `.ztd/public-mirror/mirror.db` and its proof files on every open; a tampered or truncated store fails startup with `ErrPublicFeedMirrorStoreCorrupt` and MUST NOT be hand-edited back into shape. Restore `.ztd/public-mirror/` from backup. |
 
@@ -91,8 +91,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-TROUBLE-OP-01 | Outbound Operators connect strictly outbound over mTLS to the Gateway (`cmd:<operator_id>:<operator_session_id>`) and expose NO inbound listening ports. To diagnose an unreachable Operator, check Gateway mTLS port reachability, local CA bundle integrity, and platform enrollment approval status. |
-| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in event receipts (`ztd audit event-receipts`, `ztd audit events`, and `ztd audit votes --tx` for an L2 quorum rejection; stored under `.ztd/data/`) and state roots before altering configuration or attempting re-execution. |
+| INV-TROUBLE-OP-01 | Outbound Operators connect strictly outbound over mTLS to the Gateway and expose NO inbound listening ports. Their pub/sub command channel is named `cmd:<operator_id>:<operator_session_id>` (Agent to Operator); it is a channel name, not a network address. To diagnose an unreachable Operator, check Gateway mTLS port reachability, local CA bundle integrity, and platform enrollment approval status. |
+| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in event receipts (`ztd audit event-receipts`, `ztd audit events`, and `ztd audit votes --tx` for an L2 quorum rejection) and state roots before altering configuration or attempting re-execution. |
 | INV-TROUBLE-OP-03 | `ztd operator start` and `ztd operator reset-identity` refuse a working directory whose runtime tree holds the Gateway root CA (`constants.GatewayRuntimeMarker`); `operator start` fails with `ErrOperatorGatewayRuntime`. Each executing runtime owns its own audit store and state root, so an outbound Operator on the Gateway host MUST run with `--working-dir` set to a separate directory. |
 
 ## Owned surfaces
@@ -105,7 +105,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Vault key path | `internal/constants/paths.go` | `SecretsDirname`/`SecretsFileVaultKey` (`secrets/vault_key`) |
 | CA trust bundle | `internal/constants/paths.go` | `PkiDirname`/`PkiSubdirTrust`/`PkiFileGatewayBundle` (`pki/trust/ztdg-ca-bundle.pem`) |
 | CLI session credentials | `internal/cli/config/config.go`, `internal/constants/paths.go` | `CredentialsFilename`, `CliCertFilename`, `CliKeyFilename` (`.ztd/credentials`, `.ztd/cli.crt`, `.ztd/cli.key`) |
-| Operator enrollment state | `internal/cli/serve/operator.go` | `ztd operator list`, `ztd operator show` |
+| Operator enrollment identity files | `internal/cli/identityreset/reset.go` | `ztd operator reset-identity --help` |
 
 ## Procedures
 
@@ -143,7 +143,7 @@ make proto-generate
 ./ztd gw start --follow --log debug
 ```
 
-`./ztd gw status` prints a `Consensus` row that describes the bound L2 consensus and the posture the Gateway reports. Start the Gateway and each Operator against a new runtime root rather than one left by an earlier release: an existing `.ztd/data/ztd.db` is not altered, because the `CREATE TABLE` statements are the whole schema (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
+`./ztd gw status` prints a `Consensus` row that describes the bound L2 consensus and the posture the Gateway reports. Start the Gateway and each Operator against a new runtime root rather than one left by an earlier release: an existing `.ztd/data/ztd.db` is not migrated, because the `CREATE TABLE` statements are the whole schema (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 
 ### Gateway CPU and Memory Profiling
 
@@ -176,9 +176,10 @@ go tool trace .ztd/tmp/pprof/gw.trace
 # Validate existing vault header with stored vault key
 ./ztd vault unlock
 
-# Linux over SSH or in a container without a desktop keyring: seal the master key with your ssh-agent key
-# (writes ciphertext to .ztd/secrets/.master_key.ssh-agent, never the key itself)
-eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A; run ssh-keygen -t ed25519 first if no key exists
+# Linux when the Secret Service is unreachable or has no default keyring (SSH-only sessions, servers, WSL):
+# the master key is sealed under an Ed25519 or RSA key loaded in ssh-agent; the sealed form is stored at
+# .ztd/secrets/.master_key.ssh-agent. An existing seal is used first.
+eval "$(ssh-agent)" && ssh-add   # run ssh-keygen -t ed25519 first if no key exists
 ./ztd gw start
 ```
 
@@ -234,7 +235,7 @@ When an L2 quorum rejects a transaction, inspect the bound consensus and each me
 ./ztd audit votes --tx <tx-id>
 ```
 
-Members are bound with `./ztd consensus enroll`.
+Members are bound with `./ztd consensus enroll app <primary-app> <https-endpoint>` or `./ztd consensus enroll tribunal --model <tag>`; see `./ztd consensus enroll --help`.
 
 ## Anti-patterns
 
@@ -244,7 +245,7 @@ Members are bound with `./ztd consensus enroll`.
 - Re-enrolling and wiping valid certificates when a simple `auth refresh` suffices (`INV-TROUBLE-AUTH-02`).
 - Running `auth refresh` against a revoked certificate instead of clearing local credentials and logging in again (`INV-TROUBLE-AUTH-04`).
 - Attempting to connect inbound to an outbound Operator, or configuring inbound firewall ports for an Operator (`INV-TROUBLE-OP-01`).
-- Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from audit receipts (`INV-TROUBLE-OP-02`).
+- Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from event receipts (`ztd audit event-receipts`, `INV-TROUBLE-OP-02`).
 - Reusing a runtime root from an earlier release for the Gateway or an Operator, relying on a schema that is never migrated (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 
 ## Links out
