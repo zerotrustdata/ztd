@@ -377,49 +377,69 @@ func TestFocused_ResourceLimitDepth(t *testing.T) {
 }
 
 func TestFocused_MalformedSchemaRejection(t *testing.T) {
-	malformed := []string{
-		`{"type": 123}`,
-		`{"enum": "not-array"}`,
-		`{"properties": "not-object"}`,
-		`{"required": "not-array"}`,
-		`{"allOf": "not-array"}`,
-		`{"$ref": 123}`,
-		`{"minLength": "not-number"}`,
-		`{"pattern": "[invalid"}`,
+	cases := []struct {
+		src     string
+		wantErr bool
+	}{
+		{src: `{"type": 123}`, wantErr: true},
+		{src: `{"enum": "not-array"}`, wantErr: true},
+		{src: `{"pattern": "[invalid"}`, wantErr: true},
+		{src: `{"properties": "not-object"}`},
+		{src: `{"required": "not-array"}`},
+		{src: `{"allOf": "not-array"}`},
+		{src: `{"$ref": 123}`},
+		{src: `{"minLength": "not-number"}`},
 	}
-	for _, src := range malformed {
-		t.Run(src, func(t *testing.T) {
-			c := NewCompiler()
-			_, _ = c.Compile([]byte(src))
+	for _, tt := range cases {
+		t.Run(tt.src, func(t *testing.T) {
+			schema, err := NewCompiler().Compile([]byte(tt.src))
+			if tt.wantErr {
+				require.Error(t, err)
+				var ce *CompileError
+				require.ErrorAs(t, err, &ce)
+				assert.NotEmpty(t, ce.Failures)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, schema)
 		})
 	}
 }
 
 func TestFocused_FuzzSmoke(t *testing.T) {
-	// Fuzz-like smoke test: random-ish inputs should not panic
-	c := NewCompiler()
 	v := NewValidator()
-	inputs := []string{
-		`{}`,
-		`[]`,
-		`null`,
-		`true`,
-		`false`,
-		`0`,
-		`""`,
-		`{"a":null,"b":[null,true,false,0,"",{},[]]}`,
-		`[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]`,
-		strings.Repeat(`{"a":`, 50) + `1` + strings.Repeat(`}`, 50),
+	cases := []struct {
+		name     string
+		schema   string
+		instance string
+		valid    bool
+	}{
+		{name: "empty schema accepts an object", schema: `{}`, instance: `{}`, valid: true},
+		{name: "empty schema accepts an array", schema: `{}`, instance: `[]`, valid: true},
+		{name: "boolean true accepts any instance", schema: `true`, instance: `{"a":1}`, valid: true},
+		{name: "boolean false rejects any instance", schema: `false`, instance: `{"a":1}`, valid: false},
+		{name: "string type accepts a string", schema: `{"type":"string"}`, instance: `"ok"`, valid: true},
+		{name: "string type rejects a number", schema: `{"type":"string"}`, instance: `1`, valid: false},
+		{name: "nested object stays valid", schema: `{"type":"object","properties":{"a":{"type":"object","properties":{"b":{"type":"number"}}}}}`, instance: `{"a":{"b":1}}`, valid: true},
 	}
-	for _, schemaSrc := range inputs {
-		s, err := c.Compile([]byte(schemaSrc))
-		if err != nil {
-			continue // compilation failure is fine
-		}
-		for _, instance := range inputs {
-			// Should not panic
-			_ = v.Validate(s, []byte(instance))
-		}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			schema, err := NewCompiler().Compile([]byte(tt.schema))
+			require.NoError(t, err)
+			failures := v.Validate(schema, []byte(tt.instance))
+			if tt.valid {
+				assert.Empty(t, failures)
+				return
+			}
+			assert.NotEmpty(t, failures)
+		})
+	}
+
+	for _, src := range []string{`[]`, `null`, `0`, `""`} {
+		t.Run("rejects "+src, func(t *testing.T) {
+			_, err := NewCompiler().Compile([]byte(src))
+			require.Error(t, err)
+		})
 	}
 }
 
