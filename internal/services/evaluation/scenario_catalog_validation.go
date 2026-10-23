@@ -236,7 +236,11 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 }
 
 func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
-	if check == nil || check.DiagnosisRubric == "" || check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
+	if check == nil {
+		return nil
+	}
+	switch check.DiagnosisRubric {
+	case "", ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3:
 		return nil
 	}
 	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)

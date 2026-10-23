@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.10.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.10.0";
+export const SCENARIO_CATALOG_VERSION = "1.13.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.13.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -105,7 +105,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Choose file read instead of grep or command execution for a direct file lookup.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "first_choice",
-    "userPrompt": "Read {{workspace}}/config/retry-config.env and report the value of retry_limit.",
+    "userPrompt": "Read {{workspace}}/config/retry-config.env and return a JSON object with the integer field retry_limit.",
     "workspaceFiles": [
       {
         "label": "retry-config",
@@ -504,7 +504,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Handle a tiny triage label in Lite without over-escalating.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
-    "userPrompt": "Assign the synthetic alert below one label: noise or action. Reply with only the label.",
+    "userPrompt": "Assign the synthetic alert below one label: noise or action. Treat disk usage below 80 percent as noise; treat disk usage at or above 80 percent as action. Reply with only the label.",
     "inlineContext": [
       {
         "kind": "log",
@@ -761,7 +761,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "content": "checkout-api timeout rate 18 percent; upstream_host=payments.internal.example; customer checkout failures confirmed"
       }
     ],
-    "expectedBehavior": "The final response states a qualified diagnosis, confidence, recommended action, and customer-safe summary. It identifies the checkout-api timeout signal and configured payments upstream without claiming the configured host is a proven root cause.",
+    "expectedBehavior": "The final response states an evidence-backed diagnosis, confidence, recommended action, and customer-safe summary. High confidence in the observed checkout-api timeout signal and confirmed customer impact is justified; the configured payments upstream is not a proven root cause.",
     "requiredConcepts": [
       "final-response",
       "diagnosis",

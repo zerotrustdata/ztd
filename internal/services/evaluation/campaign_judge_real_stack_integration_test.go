@@ -43,7 +43,7 @@ const (
 		"Confidence: Moderate; the available evidence is incomplete.\n" +
 		"Recommended action: Compare checkout-api and upstream observations before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while the timeout issue is investigated."
-	judgeScoreFour = `{"score": 4, "rationale": "Clear root cause identification."}`
+	judgeScoreFour = `{"score": 4, "rationale": "Clear evidence-backed diagnosis."}`
 )
 
 // judgeReplies scripts the agent's final diagnosis followed by the judge's reply.
@@ -127,7 +127,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, diagGrade.GetStatus(), diagGrade.GetDetail())
 	assert.Contains(t, diagGrade.GetDetail(), "score: 4/5")
 	assert.Contains(t, diagGrade.GetDetail(), "rubric: "+judge.RubricVersion)
-	assert.Equal(t, "diagnosis-quality-v2", judge.RubricVersion)
+	assert.Equal(t, "diagnosis-quality-v3", judge.RubricVersion)
 
 	// 2. The judge receipt is kept as verified and names the judge's own
 	// transaction, which is distinct from the agent's.
@@ -464,6 +464,33 @@ func TestRealStackAgentTraceV7_RejectsResealedToolArguments(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, evaluation.ValidateAgentTraceDigest(trace))
 	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
+func TestRealStackJudge_HighConfidenceInObservedSymptomsPasses(t *testing.T) {
+	answer := "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream.\n" +
+		"Confidence: High.\n" +
+		"Recommended action: Investigate checkout-api and upstream telemetry to identify the cause.\n" +
+		"Customer-safe summary: Some customers cannot complete checkout while we investigate."
+	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-high-observation",
+		replies: []fixtures.OllamaReply{{Content: answer}, {Content: judgeScoreFour}},
+	})
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), res.GetInvalidEvidenceDetail())
+	for _, grade := range res.GetDeterministicGrades() {
+		require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), "%s: %s", grade.GetCriterionId(), grade.GetDetail())
+	}
+	grade := diagnosisQualityGrade(res)
+	require.NotNil(t, grade)
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), grade.GetDetail())
+	require.NotNil(t, grade.GetGraderCallRef())
+	require.Equal(t, "verified", grade.GetGraderCallRef().GetVerificationStatus())
+	requests := env.stack.Provider.ChatRequests()
+	require.Len(t, requests, 2)
+	judgeRequest := string(requests[1])
+	require.Contains(t, judgeRequest, "Assess confidence in the claims actually made")
+	require.Contains(t, judgeRequest, "do not penalize it when that diagnosis only reports those observations")
+	require.Contains(t, judgeRequest, "checkout-api timeout rate 18 percent")
+	require.Contains(t, judgeRequest, "final response contains a populated diagnosis supported by the frozen timeout and customer-impact evidence")
 }
 
 func TestRealStackJudge_ContradictoryHighScoreIsUnavailable(t *testing.T) {

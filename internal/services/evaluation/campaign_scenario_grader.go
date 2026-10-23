@@ -107,8 +107,8 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			if contentPassed {
 				switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
 				case "":
-				case ScenarioDiagnosisRubricCheckoutTimeoutV1:
-					contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput)
+				case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3:
+					contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
 				default:
 					contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
 				}
@@ -464,7 +464,7 @@ func evidenceVerdict(passed bool, passDetail, failDetail string) (evalv1.Evaluat
 // evaluateFinalResponseDiagnosis checks the one catalog scenario whose grade
 // makes an evidence-backed diagnosis claim. Its evidence must exist in the
 // frozen inline fixture, and the response must populate each requested part.
-func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture) (bool, string) {
+func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture, rubric ScenarioDiagnosisRubric) (bool, string) {
 	var evidence strings.Builder
 	for _, item := range input.InlineContext {
 		evidence.WriteString(strings.ToLower(item.Content))
@@ -504,7 +504,7 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture) (
 			return false, "final response asserts an unobserved cause: " + unsupportedCause
 		}
 	}
-	if assertsDefinitiveRootCause(responseSections) {
+	if assertsDefinitiveRootCause(responseSections, rubric) {
 		return false, "the frozen evidence does not establish a definitive root cause or a clear causal link"
 	}
 	if !strings.Contains(foldContentTerm(diagnosis), "checkout api") || !containsAny(diagnosis, "timeout", "timed out", "timing out", "deadline", "latency") ||
@@ -512,14 +512,39 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture) (
 		!strings.Contains(diagnosis, "upstream") {
 		return false, "diagnosis does not identify the checkout service timeout and payments upstream"
 	}
-	confidence := strings.ToLower(sections["confidence"])
-	for _, clause := range splitDiagnosisClauses(confidence) {
-		if containsAny(clause, "high", "certain", "clear causal link") && !containsAny(clause, "not high", "not certain", "uncertain", "high confidence in the observed", "high confidence in the timeout", "high confidence in customer") {
-			return false, "confidence overstates the available evidence for the diagnosis"
+	// The rubric is frozen with the gold. Keep its confidence contract when
+	// executing queued assignments or verifying a custom historical suite.
+	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
+		confidence := strings.ToLower(sections["confidence"])
+		for _, clause := range splitDiagnosisClauses(confidence) {
+			if containsAny(clause, "high", "certain", "clear causal link") && !containsAny(clause, "not high", "not certain", "uncertain", "high confidence in the observed", "high confidence in the timeout", "high confidence in customer") {
+				return false, "confidence overstates the available evidence for the diagnosis"
+			}
 		}
-	}
-	if !containsAny(confidence, "moderate", "low", "uncertain", "uncertainty", "not conclusive", "cannot confirm", "cannot establish", "limited evidence", "incomplete evidence") {
-		return false, "confidence does not reflect the limits of the available evidence"
+		if !containsAny(confidence, "moderate", "low", "uncertain", "uncertainty", "not conclusive", "cannot confirm", "cannot establish", "limited evidence", "incomplete evidence") {
+			return false, "confidence does not reflect the limits of the available evidence"
+		}
+	} else {
+		// Confidence applies to the diagnosis actually stated. The frozen fixture
+		// directly supports the timeout signal and customer impact, so even an
+		// unqualified "High" is valid when those are the response's claims. The
+		// causal checks above still reject unsupported causes at any confidence.
+		// Explicit confidence in a root cause needs its own check: it can overclaim
+		// without naming a cause or using a definitive causal verb.
+		confidence := strings.ToLower(sections["confidence"])
+		for _, clause := range splitDiagnosisClauses(confidence) {
+			if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 && containsAny(clause,
+				"no root cause has been established", "root cause has not been established",
+				"no causal link has been established", "causal link has not been established",
+			) {
+				continue
+			}
+			if containsAny(clause, "root cause", "causal link", "causation", "cause of") &&
+				containsAny(clause, "high", "certain", "confident", "definite", "100%") &&
+				!containsAny(clause, "not high", "not certain", "not confident", "not definite", "uncertain") {
+				return false, "confidence asserts an unproven root cause rather than the observed symptoms"
+			}
+		}
 	}
 
 	customerSummary := strings.ToLower(sections["summary"])
@@ -547,12 +572,15 @@ func assertsUnsupportedCause(response, cause string) bool {
 	return false
 }
 
-func assertsDefinitiveRootCause(response string) bool {
+func assertsDefinitiveRootCause(response string, rubric ScenarioDiagnosisRubric) bool {
 	causal := []string{
 		"root cause is", "root cause was", "cause is", "cause was",
 		"caused by", "causes the", "caused the", "is due to", "was due to",
 		"is responsible for", "are responsible for", "resulted in", "led to",
 		"clear causal link", "failing dependency", "payment service is unstable",
+	}
+	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 {
+		causal = append(causal, "due to", "clearly links", "clearly linked", "clearly connects")
 	}
 	qualified := []string{
 		"may be", "might be", "could be", "possibly", "potentially",

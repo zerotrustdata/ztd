@@ -255,8 +255,8 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		objective += "\n\nFrozen evidence (" + evidence.Label + "):\n" + evidence.Content
 	}
 	diagnosisPassed, diagnosisDetail := true, ""
-	if check := req.ScenarioGold.ContentCheck; check != nil && check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
-		diagnosisPassed, diagnosisDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, req.ScenarioInput)
+	if check := req.ScenarioGold.ContentCheck; check != nil && check.DiagnosisRubric != "" {
+		diagnosisPassed, diagnosisDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, req.ScenarioInput, check.DiagnosisRubric)
 		objective += "\n\nDeterministic evidence assessment:\n" + diagnosisDetail
 	}
 	var memoryFacts []string

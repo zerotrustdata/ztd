@@ -10,8 +10,12 @@ package evaluation
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
+	"math/big"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -278,7 +282,13 @@ func extractJSONObject(value string) map[string]any {
 		return nil
 	}
 	payload := map[string]any{}
-	if err := json.Unmarshal([]byte(trimmed[start:end+1]), &payload); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(trimmed[start : end+1]))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
+		return nil
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil
 	}
 	return payload
@@ -287,10 +297,29 @@ func extractJSONObject(value string) map[string]any {
 func numericValue(raw any) (int64, bool) {
 	switch typed := raw.(type) {
 	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed < -0x1p63 || typed >= 0x1p63 {
+			return 0, false
+		}
 		return int64(typed), true
 	case json.Number:
-		parsed, err := typed.Int64()
-		return parsed, err == nil
+		if parsed, err := typed.Int64(); err == nil {
+			return parsed, true
+		}
+		literal := string(typed)
+		if len(literal) > 128 {
+			return 0, false
+		}
+		if exponentIndex := strings.IndexAny(literal, "eE"); exponentIndex >= 0 {
+			exponent, err := strconv.Atoi(literal[exponentIndex+1:])
+			if err != nil || exponent < -19 || exponent > 19 {
+				return 0, false
+			}
+		}
+		rational, ok := new(big.Rat).SetString(literal)
+		if !ok || !rational.IsInt() || !rational.Num().IsInt64() {
+			return 0, false
+		}
+		return rational.Num().Int64(), true
 	default:
 		return 0, false
 	}
