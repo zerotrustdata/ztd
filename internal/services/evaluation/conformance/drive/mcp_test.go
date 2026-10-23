@@ -17,13 +17,11 @@ import (
 )
 
 func TestMCPNewRejectsNilClient(t *testing.T) {
-	t.Parallel()
 	_, err := NewMCP(context.Background(), nil, testIdentity().Persona)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestCheckNativeToolsFailsWhenToolMissing(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		names []string
@@ -35,7 +33,6 @@ func TestCheckNativeToolsFailsWhenToolMissing(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			require.ErrorIs(t, checkNativeTools(tt.names), constants.ErrConformanceIngressUnsupported)
 		})
 	}

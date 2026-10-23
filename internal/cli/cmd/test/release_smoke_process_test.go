@@ -62,7 +62,6 @@ func assertExited(t *testing.T, proc *smokeOwnedProcess) {
 }
 
 func TestOwnedProcessStopsOnCancellation(t *testing.T) {
-	t.Parallel()
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(smokeTempDir(t), "run")})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -81,7 +80,6 @@ func TestOwnedProcessStopsOnCancellation(t *testing.T) {
 }
 
 func TestOwnedProcessStopsOnTimeout(t *testing.T) {
-	t.Parallel()
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(smokeTempDir(t), "run")})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
@@ -98,7 +96,6 @@ func TestOwnedProcessStopsOnTimeout(t *testing.T) {
 }
 
 func TestOwnedProcessStopsOnFailureAndIsIdempotent(t *testing.T) {
-	t.Parallel()
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(smokeTempDir(t), "run")})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	var proc *smokeOwnedProcess
@@ -116,7 +113,6 @@ func TestOwnedProcessStopsOnFailureAndIsIdempotent(t *testing.T) {
 }
 
 func TestOwnerDoesNotTouchProcessesItDidNotStart(t *testing.T) {
-	t.Parallel()
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: smokeTempDir(t)})
 	r.logDir = filepath.Join(r.opts.RunDir, "logs")
 	unrelated := startSleeper(t, r)

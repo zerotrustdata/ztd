@@ -36,7 +36,6 @@ func testutil_GenerateRSAPrivateKey(t *testing.T) []byte {
 }
 
 func TestIsTransientError(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		err      error
@@ -55,7 +54,6 @@ func TestIsTransientError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			result := isTransientError(tt.err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -63,7 +61,6 @@ func TestIsTransientError(t *testing.T) {
 }
 
 func TestParseConfig_ProxyCommand(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	configPath := filepath.Join(dir, "config")
 	configContent := `Host bastion
@@ -94,7 +91,6 @@ Host *.internal
 }
 
 func TestResolveHost_ProxyCommand(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	configPath := filepath.Join(dir, "config")
 	configContent := `Host proxyhost

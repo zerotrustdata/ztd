@@ -19,7 +19,6 @@ import (
 )
 
 func TestCampaignController_GenerateFormationStackSet_PersistsStacks(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -53,7 +52,6 @@ func TestCampaignController_GenerateFormationStackSet_PersistsStacks(t *testing.
 }
 
 func TestCampaignController_ScheduleRun_SystemLaneUsesFrozenCatalogFormations(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })

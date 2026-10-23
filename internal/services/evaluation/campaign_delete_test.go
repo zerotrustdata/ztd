@@ -99,7 +99,6 @@ func newRecordingPublicationStateStore() *recordingPublicationStateStore {
 }
 
 func TestDeleterDeleteRunDiscardsPublicationAndRemovesRun(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	publication := newRecordingPublicationStateStore()
@@ -118,7 +117,6 @@ func TestDeleterDeleteRunDiscardsPublicationAndRemovesRun(t *testing.T) {
 }
 
 func TestDeleterDeleteRunRemovesRunWhoseEvidenceNoLongerAuthenticates(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	require.NoError(t, SealedFiles(f.files).WriteFile(ctx, activeEvalLayout().runStatePath("run-a"), foreignCiphertext(t), constants.PermFilePrivate))
@@ -135,7 +133,6 @@ func TestDeleterDeleteRunRemovesRunWhoseEvidenceNoLongerAuthenticates(t *testing
 }
 
 func TestDeleterDeleteRunRemovesArchivedRun(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	_, err := f.archiver(false).ArchiveRun(ctx, "run-a", "operator-1")
@@ -152,7 +149,6 @@ func TestDeleterDeleteRunRemovesArchivedRun(t *testing.T) {
 }
 
 func TestDeleterDeleteRunRejectsRunningRun(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	f.holdLease(t, "run-a")
@@ -166,7 +162,6 @@ func TestDeleterDeleteRunRejectsRunningRun(t *testing.T) {
 }
 
 func TestDeleterDeleteRunKeepsEvidenceWhenDiscardFails(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	publication := newRecordingPublicationStateStore()
@@ -183,7 +178,6 @@ func TestDeleterDeleteRunKeepsEvidenceWhenDiscardFails(t *testing.T) {
 }
 
 func TestDeleterDeleteCampaignRemovesRunsCampaignAndInventory(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	_, err := f.archiver(false).ArchiveRun(ctx, "run-b", "operator-1")
@@ -209,7 +203,6 @@ func TestDeleterDeleteCampaignRemovesRunsCampaignAndInventory(t *testing.T) {
 }
 
 func TestDeleterRejectsUnsafeIDsWithTypedPathElementError(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	const unsafeID = "eval-v130-smoke-1022-13:30-gemma4-e4b"
@@ -234,7 +227,6 @@ func TestDeleterRejectsUnsafeIDsWithTypedPathElementError(t *testing.T) {
 }
 
 func TestDeleterDeleteCampaignRemovesArchivedCampaign(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	_, err := f.archiver(false).ArchiveCampaign(ctx, f.req.CampaignID, "operator-1")
@@ -251,7 +243,6 @@ func TestDeleterDeleteCampaignRemovesArchivedCampaign(t *testing.T) {
 }
 
 func TestDeleterDeleteCampaignFailsBeforeDeletingAnythingWhenARunIsRunning(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	f.holdLease(t, "run-b")
@@ -267,7 +258,6 @@ func TestDeleterDeleteCampaignFailsBeforeDeletingAnythingWhenARunIsRunning(t *te
 }
 
 func TestDeleterDeleteRunPurgesItFromBackups(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	backupDir := f.backUp(t)
@@ -288,7 +278,6 @@ func TestDeleterDeleteRunPurgesItFromBackups(t *testing.T) {
 }
 
 func TestDeleterDeleteRunThatIsOnlyInBackups(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	backupDir := f.backUp(t)
@@ -304,7 +293,6 @@ func TestDeleterDeleteRunThatIsOnlyInBackups(t *testing.T) {
 }
 
 func TestDeleterDeleteRunInNeitherRuntimeNorBackupsIsNotFound(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	publication := newRecordingPublicationStateStore()
 
@@ -314,7 +302,6 @@ func TestDeleterDeleteRunInNeitherRuntimeNorBackupsIsNotFound(t *testing.T) {
 }
 
 func TestDeleterDeleteRunFailsWhileABackupIsInProgress(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	backup, err := f.files.TryLockShared(ctx, constants.EvaluationBackupLockRelPath, constants.PermFilePrivate)
@@ -330,7 +317,6 @@ func TestDeleterDeleteRunFailsWhileABackupIsInProgress(t *testing.T) {
 }
 
 func TestDeleterDeleteCampaignPurgesItsRunsFromBackups(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	inventory := campaignInventoryPath(f.req.CampaignID)
@@ -353,7 +339,6 @@ func TestDeleterDeleteCampaignPurgesItsRunsFromBackups(t *testing.T) {
 }
 
 func TestDeleterDeleteCampaignThatIsOnlyInBackups(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	backupDir := f.backUp(t)

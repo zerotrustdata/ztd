@@ -98,7 +98,6 @@ func newStandaloneReceiptFixture(t *testing.T) *standaloneReceiptFixture {
 }
 
 func TestReceiptImporter_Import_VerifiesSignatureWithAssessedTrust(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	nodes, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
 	require.NoError(t, err)
@@ -113,7 +112,6 @@ func TestReceiptImporter_Import_VerifiesSignatureWithAssessedTrust(t *testing.T)
 }
 
 func TestReceiptImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	fixture.trust.keys = map[string]ed25519.PublicKey{}
 	nodes, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
@@ -124,7 +122,6 @@ func TestReceiptImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(t *t
 }
 
 func TestReceiptImporter_Import_MarksInvalidSignatureFailed(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	fixture.trust.keys[fixture.receipt.SignerKeyId] = ed25519.PublicKey(strings.Repeat("x", ed25519.PublicKeySize))
 	nodes, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
@@ -135,7 +132,6 @@ func TestReceiptImporter_Import_MarksInvalidSignatureFailed(t *testing.T) {
 }
 
 func TestReceiptImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	tests := []struct {
 		name     string
@@ -151,7 +147,6 @@ func TestReceiptImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -160,7 +155,6 @@ func TestReceiptImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestReceiptImporter_Import_RejectsDigestAndCanonicalMutations(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		mutate    func(*standaloneReceiptFixture)
@@ -177,7 +171,6 @@ func TestReceiptImporter_Import_RejectsDigestAndCanonicalMutations(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newStandaloneReceiptFixture(t)
 			test.mutate(fixture)
 			_, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
@@ -188,7 +181,6 @@ func TestReceiptImporter_Import_RejectsDigestAndCanonicalMutations(t *testing.T)
 }
 
 func TestReceiptImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	trustErr := fmt.Errorf("assessment unavailable")
 	fixture.trust.err = trustErr
@@ -199,7 +191,6 @@ func TestReceiptImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T) {
 }
 
 func TestPersistenceImporter_Import_VerifiesPersistenceIndependently(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	nodes, err := NewPersistenceImporterAt(fixture.reader, fixture.trust, fixture.persistenceBinding, time.Now).Import(context.Background())
 	require.NoError(t, err)
@@ -213,7 +204,6 @@ func TestPersistenceImporter_Import_VerifiesPersistenceIndependently(t *testing.
 }
 
 func TestPersistenceImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	fixture.trust.keys = map[string]ed25519.PublicKey{}
 	nodes, err := NewPersistenceImporterAt(fixture.reader, fixture.trust, fixture.persistenceBinding, time.Now).Import(context.Background())
@@ -223,7 +213,6 @@ func TestPersistenceImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(
 }
 
 func TestPersistenceImporter_Import_MarksInvalidAttestationSignatureFailed(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	fixture.receipt.FinalPersistenceAttestation.Signature = strings.Repeat("0", ed25519.SignatureSize*2)
 	receiptBody, err := compliancev1.MarshalCanonical(fixture.receipt)
@@ -242,7 +231,6 @@ func TestPersistenceImporter_Import_MarksInvalidAttestationSignatureFailed(t *te
 }
 
 func TestPersistenceImporter_Import_RejectsAttestationNotEmbeddedInReceipt(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: fixture.receipt.TransactionId, PersistedAtUnixMs: 1_700_000_003_000, SignerKeyId: fixture.receipt.SignerKeyId}
 	body, err := compliancev1.MarshalCanonical(attestation)
@@ -255,7 +243,6 @@ func TestPersistenceImporter_Import_RejectsAttestationNotEmbeddedInReceipt(t *te
 }
 
 func TestReceiptAndPersistenceImporters_Import_RespectCancellation(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -266,7 +253,6 @@ func TestReceiptAndPersistenceImporters_Import_RespectCancellation(t *testing.T)
 }
 
 func TestReceiptAndPersistenceImporters_Import_ProduceValidGraph(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	receiptNodes, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
 	require.NoError(t, err)
@@ -283,7 +269,6 @@ func TestReceiptAndPersistenceImporters_Import_ProduceValidGraph(t *testing.T) {
 }
 
 func TestReceiptAndPersistenceImporters_Import_RecordDeterministicVerifierMetadata(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	verifiedAt := time.Unix(1_700_000_003, 0).UTC()
 	now := func() time.Time { return verifiedAt }
@@ -301,7 +286,6 @@ func TestReceiptAndPersistenceImporters_Import_RecordDeterministicVerifierMetada
 }
 
 func TestPersistenceImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	tests := []struct {
 		name     string
@@ -319,7 +303,6 @@ func TestPersistenceImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -328,7 +311,6 @@ func TestPersistenceImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestPersistenceImporter_Import_RejectsDigestCanonicalAndBindingMutations(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		mutate    func(*testing.T, *standaloneReceiptFixture)
@@ -357,7 +339,6 @@ func TestPersistenceImporter_Import_RejectsDigestCanonicalAndBindingMutations(t 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newStandaloneReceiptFixture(t)
 			test.mutate(t, fixture)
 			_, err := NewPersistenceImporterAt(fixture.reader, fixture.trust, fixture.persistenceBinding, time.Now).Import(context.Background())
@@ -368,7 +349,6 @@ func TestPersistenceImporter_Import_RejectsDigestCanonicalAndBindingMutations(t 
 }
 
 func TestReceiptAndPersistenceImporters_Import_WrapReadFailures(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	readErr := fmt.Errorf("artifact source unavailable")
 	reader := &failingArtifactReader{err: readErr}
@@ -384,7 +364,6 @@ func TestReceiptAndPersistenceImporters_Import_WrapReadFailures(t *testing.T) {
 }
 
 func TestPersistenceImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T) {
-	t.Parallel()
 	fixture := newStandaloneReceiptFixture(t)
 	trustErr := fmt.Errorf("assessment unavailable")
 	fixture.trust.err = trustErr

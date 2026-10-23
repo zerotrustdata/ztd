@@ -236,7 +236,6 @@ func flipStoredRecord(files fs.RuntimeFileService) fs.RuntimeFileService {
 }
 
 func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *testing.T) {
-	t.Parallel()
 	unbound := conformanceTestOutboundDocument()
 	tests := []struct {
 		name string
@@ -247,7 +246,6 @@ func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *te
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, tt.doc)
 			require.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
 			assert.Nil(t, roots)
@@ -256,7 +254,6 @@ func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *te
 }
 
 func TestConformanceEmbeddedTarget_RequiresExactlyOneSession(t *testing.T) {
-	t.Parallel()
 	embedded := func(session string) *operatorv1.OperatorDocument {
 		return &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: session}
 	}
@@ -272,7 +269,6 @@ func TestConformanceEmbeddedTarget_RequiresExactlyOneSession(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			target, err := conformanceEmbeddedTarget(tt.operators)
 			if tt.wantErr != nil {
 				assert.ErrorIs(t, err, tt.wantErr)
@@ -286,8 +282,6 @@ func TestConformanceEmbeddedTarget_RequiresExactlyOneSession(t *testing.T) {
 }
 
 func TestConformanceReport_RejectsMoreThanFourRunsBeforeTouchingState(t *testing.T) {
-	t.Parallel()
-
 	rig := newConformanceStoreRig(t)
 	rig.deps.configLoader = func(string) (*config.Config, error) {
 		t.Fatal("config loader called before the run count was checked")
@@ -301,8 +295,7 @@ func TestConformanceReport_RejectsMoreThanFourRunsBeforeTouchingState(t *testing
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
-func TestConformanceVerify_SealedBytesThatFailAuthenticationAreTheDigestMismatchVerdict(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConformanceVerify_SealedBytesThatFailAuthenticationAreTheDigestMismatchVerdict(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(context.Context, fs.RuntimeFileService) error
@@ -310,9 +303,8 @@ func TestConformanceVerify_SealedBytesThatFailAuthenticationAreTheDigestMismatch
 		{name: "record ciphertext changed on disk", mutate: replaceStoredRunFile(constants.ConformanceRecordFilename, []byte("changed"))},
 		{name: "digest sidecar ciphertext changed on disk", mutate: replaceStoredRunFile(constants.ConformanceRecordDigestFilename, []byte("changed"))},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			rig := storedRunRig(t, productionStoredVault, tt.mutate)
 			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 			require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "a changed sealed byte fails the exit rule")
@@ -323,8 +315,7 @@ func TestConformanceVerify_SealedBytesThatFailAuthenticationAreTheDigestMismatch
 	}
 }
 
-func TestConformanceVerify_UnchangedSealedRecordIsNotTheDigestMismatchVerdict(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConformanceVerify_UnchangedSealedRecordIsNotTheDigestMismatchVerdict(t *testing.T) {
 	rig := storedRunRig(t, productionStoredVault, nil)
 
 	out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
@@ -333,8 +324,7 @@ func TestConformanceVerify_UnchangedSealedRecordIsNotTheDigestMismatchVerdict(t 
 	assert.NotContains(t, out, "RECORD_DIGEST_MISMATCH")
 }
 
-func TestConformanceVerify_FlippedSealedByteIsDigestMismatchUnlessTheVaultIsLocked(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConformanceVerify_FlippedSealedByteIsDigestMismatchUnlessTheVaultIsLocked(t *testing.T) {
 	recordPath := filepath.Join(conformanceRunDir(), constants.ConformanceRecordFilename)
 	flipSealedRecord := func(ctx context.Context, raw fs.RuntimeFileService) error {
 		ciphertext, err := raw.ReadFile(ctx, recordPath)
@@ -345,16 +335,14 @@ func TestConformanceVerify_FlippedSealedByteIsDigestMismatchUnlessTheVaultIsLock
 		flipped[len(flipped)/2] ^= 0x01
 		return raw.WriteFile(ctx, recordPath, flipped, constants.PermFilePrivate)
 	}
-	t.Run("the open vault refuses the changed ciphertext", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("the open vault refuses the changed ciphertext", func(t *testing.T) {
 		rig := storedRunRig(t, productionStoredVault, flipSealedRecord)
 		out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 		require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
 		assert.Contains(t, out, "Suite: INVALID_EVIDENCE")
 		assert.Contains(t, out, "RECORD_DIGEST_MISMATCH", "the open vault refuses the changed ciphertext")
 	})
-	t.Run("the same bytes under a locked vault are a locked-vault error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("the same bytes under a locked vault are a locked-vault error", func(t *testing.T) {
 		rig := storedRunRig(t, lockedStoredVault, flipSealedRecord)
 		out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 		require.ErrorIs(t, err, constants.ErrVaultLocked)
@@ -363,8 +351,7 @@ func TestConformanceVerify_FlippedSealedByteIsDigestMismatchUnlessTheVaultIsLock
 	})
 }
 
-func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *testing.T) {
 	tests := []struct {
 		name    string
 		open    storedVault
@@ -375,9 +362,8 @@ func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *tes
 		{name: "vault key unreadable", open: unreadableStoredVault, wantErr: constants.ErrVaultKeyReadFailed},
 		{name: "record file missing", open: productionStoredVault, mutate: removeStoredRunFile(constants.ConformanceRecordFilename), wantErr: constants.ErrNotFound},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			rig := storedRunRig(t, tt.open, tt.mutate)
 			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 			require.ErrorIs(t, err, tt.wantErr)
@@ -388,8 +374,7 @@ func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *tes
 	}
 }
 
-func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testing.T) {
 	tests := []struct {
 		name        string
 		flip        bool
@@ -398,9 +383,8 @@ func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testin
 		{name: "stored bytes unchanged", flip: false, wantInvalid: false},
 		{name: "one stored byte flipped", flip: true, wantInvalid: true},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			rig := storedRunRig(t, productionStoredVault, nil)
 			if tt.flip {
 				rig = rig.wrapFiles(flipStoredRecord)
@@ -418,8 +402,7 @@ func TestConformanceVerify_FlippedByteIsInvalidEvidenceAndExitsNonZero(t *testin
 	}
 }
 
-func TestConformanceVerify_JSONEmitsCanonicalVerdictSet(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConformanceVerify_JSONEmitsCanonicalVerdictSet(t *testing.T) {
 	rig := storedRunRig(t, productionStoredVault, nil).wrapFiles(flipStoredRecord)
 
 	root := cmdtest.GlobalJSONRoot(t, evalCmdWithConfig(rig.deps))
@@ -437,7 +420,6 @@ func TestConformanceVerify_JSONEmitsCanonicalVerdictSet(t *testing.T) { //nolint
 }
 
 func TestConformanceVerdictError_PassesOnlyPassOrUnattendedIncomplete(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		verdict  evalv1.ConformanceSuiteVerdict
@@ -454,7 +436,6 @@ func TestConformanceVerdictError_PassesOnlyPassOrUnattendedIncomplete(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := conformanceVerdictError(&evalv1.ConformanceVerdictSet{SuiteVerdict: tt.verdict}, tt.attended)
 			if !tt.wantErr {
 				assert.NoError(t, err)
@@ -469,7 +450,6 @@ func TestConformanceVerdictError_PassesOnlyPassOrUnattendedIncomplete(t *testing
 // stderr contract: each request is one canonical JSON line that decodes back to itself, and
 // no writer is no sink.
 func TestApprovalRequestWriterPrintsOneCanonicalLinePerRequest(t *testing.T) {
-	t.Parallel()
 	var nilWriter *approvalRequestWriter
 	assert.Nil(t, nilWriter.sink())
 

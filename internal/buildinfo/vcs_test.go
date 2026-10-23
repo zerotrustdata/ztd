@@ -14,7 +14,6 @@ import (
 )
 
 func TestReadVCSStamp_ReturnsStampWithoutPanicking(t *testing.T) {
-	t.Parallel()
 	stamp := ReadVCSStamp()
 	if stamp.Present {
 		assert.NotEmpty(t, stamp.Revision)

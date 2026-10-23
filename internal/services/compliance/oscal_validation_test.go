@@ -21,8 +21,7 @@ import (
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 )
 
-func TestOSCALDocumentValidator_ValidateBytesReturnsProtocolOwnedStructuralFailures(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidateBytesReturnsProtocolOwnedStructuralFailures(t *testing.T) {
 	validator, err := NewOSCALDocumentValidator()
 	require.NoError(t, err)
 
@@ -40,8 +39,7 @@ func TestOSCALDocumentValidator_ValidateBytesReturnsProtocolOwnedStructuralFailu
 	assert.NotEmpty(t, result.GetStructuralFailures()[0].GetMessage())
 }
 
-func TestOSCALDocumentValidator_ValidateAssessmentResultsAcceptsGeneratedTypedDocument(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidateAssessmentResultsAcceptsGeneratedTypedDocument(t *testing.T) {
 	document, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(oscalTestAnalysis())
 	require.NoError(t, err)
 	validator, err := NewOSCALDocumentValidator()
@@ -54,8 +52,7 @@ func TestOSCALDocumentValidator_ValidateAssessmentResultsAcceptsGeneratedTypedDo
 	assert.Empty(t, result.GetSemanticFailures())
 }
 
-func TestOSCALDocumentValidator_ValidateAssessmentResultsRejectsNilDocument(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidateAssessmentResultsRejectsNilDocument(t *testing.T) {
 	validator, err := NewOSCALDocumentValidator()
 	require.NoError(t, err)
 
@@ -65,8 +62,7 @@ func TestOSCALDocumentValidator_ValidateAssessmentResultsRejectsNilDocument(t *t
 	assert.Nil(t, result)
 }
 
-func TestOSCALDocumentValidator_ValidateAssessmentResultsReturnsProtocolOwnedSemanticFailures(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidateAssessmentResultsReturnsProtocolOwnedSemanticFailures(t *testing.T) {
 	document, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(oscalTestAnalysis())
 	require.NoError(t, err)
 	for i := range document.AssessmentResults.BackMatter.Resources[0].Props {
@@ -87,8 +83,7 @@ func TestOSCALDocumentValidator_ValidateAssessmentResultsReturnsProtocolOwnedSem
 	assert.NotEmpty(t, result.GetSemanticFailures()[0].GetInstancePtr())
 }
 
-func TestOSCALDocumentValidator_ValidationResultIsCanonicalProtocolJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidationResultIsCanonicalProtocolJSON(t *testing.T) {
 	validator, err := NewOSCALDocumentValidator()
 	require.NoError(t, err)
 	result, err := validator.ValidateBytes([]byte(`{"invalid":true}`))
@@ -101,8 +96,7 @@ func TestOSCALDocumentValidator_ValidationResultIsCanonicalProtocolJSON(t *testi
 	assert.True(t, proto.Equal(result, decoded))
 }
 
-func TestOSCALDocumentValidator_ValidationResultGoldenVector(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidationResultGoldenVector(t *testing.T) {
 	validator, err := NewOSCALDocumentValidator()
 	require.NoError(t, err)
 	result, err := validator.ValidateBytes([]byte(`{"invalid":true}`))
@@ -113,8 +107,7 @@ func TestOSCALDocumentValidator_ValidationResultGoldenVector(t *testing.T) { //n
 	assert.Equal(t, "aba48aba39c388b2485c5edb0a604c3f8266642e96b1c119e93a40f4fdd63d12", hex.EncodeToString(digest[:]))
 }
 
-func TestOSCALDocumentValidator_ValidateBytesReturnsDeterministicFailures(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALDocumentValidator_ValidateBytesReturnsDeterministicFailures(t *testing.T) {
 	validator, err := NewOSCALDocumentValidator()
 	require.NoError(t, err)
 	document := []byte(`{"assessment-results":{"uuid":"invalid"}}`)

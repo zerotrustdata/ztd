@@ -36,7 +36,6 @@ func decodeStrict(t *testing.T, data []byte, target any) error {
 // This is the first line of defense against restricted data leaking through
 // the typed payload surface.
 func TestObservePayloadsRejectUnknownFields(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name    string
 		payload any
@@ -85,7 +84,6 @@ func TestObservePayloadsRejectUnknownFields(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			err := decodeStrict(t, []byte(tc.json), tc.payload)
 			require.Error(t, err, "unknown field must be rejected")
 			assert.Contains(t, err.Error(), "unknown field")
@@ -96,7 +94,6 @@ func TestObservePayloadsRejectUnknownFields(t *testing.T) {
 // TestObserveReadModelsRejectUnknownFields asserts that the observe API read
 // models reject JSON carrying restricted or unknown fields.
 func TestObserveReadModelsRejectUnknownFields(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name   string
 		target any
@@ -135,7 +132,6 @@ func TestObserveReadModelsRejectUnknownFields(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			err := decodeStrict(t, []byte(tc.json), tc.target)
 			require.Error(t, err, "unknown field must be rejected")
 			assert.Contains(t, err.Error(), "unknown field")
@@ -156,7 +152,6 @@ func TestObserveReadModelsRejectUnknownFields(t *testing.T) {
 // certificate, never from the request body. They are excluded from this
 // browser-disclosure check.
 func TestObservePayloadSchemasExcludeRestrictedFields(t *testing.T) {
-	t.Parallel()
 	restrictedFieldNames := []string{
 		"user_email", "email", "web_session_id", "cli_session_id", "session_id",
 		"raw_prompt", "raw_output", "chain_of_thought", "thinking",
@@ -210,7 +205,6 @@ func TestObservePayloadSchemasExcludeRestrictedFields(t *testing.T) {
 // categories in their descriptions, which would indicate the schema is
 // documenting disclosure of restricted data.
 func TestObservePayloadSchemasExcludeRestrictedDescriptions(t *testing.T) {
-	t.Parallel()
 	restrictedTerms := []string{
 		"raw prompt", "raw output", "chain-of-thought",
 		"enrollment token", "evidence encryption key",
@@ -235,7 +229,6 @@ func TestObservePayloadSchemasExcludeRestrictedDescriptions(t *testing.T) {
 // constant used by the Go payloads matches the schema version documented in
 // the canonical protocol JSON.
 func TestObserveEventPayloadSchemaVersionConstant(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "1.0.0", constants.ObserveEventPayloadSchemaVersion,
 		"ObserveEventPayloadSchemaVersion must be 1.0.0")
 	assert.Equal(t, "1.0.0", constants.ObserveMeasurementSchemaVersion,

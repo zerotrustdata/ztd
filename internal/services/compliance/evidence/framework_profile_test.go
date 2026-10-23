@@ -30,7 +30,6 @@ func frameworkProfileAnalysis(t *testing.T) (*compliancev1.ComplianceAnalysis, *
 }
 
 func TestBuildFrameworkProfiles_ProjectsEachCatalogFramework(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	secondFramework := analysisTestFramework("nist-800-53", "rev5", analysisTestControl("AC-2", "platform"))
 	frameworks.Frameworks = append(frameworks.Frameworks, secondFramework)
@@ -49,7 +48,6 @@ func TestBuildFrameworkProfiles_ProjectsEachCatalogFramework(t *testing.T) {
 }
 
 func TestBuildFrameworkProfiles_PreservesUnderlyingControlAssessmentOutcomes(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	before := proto.Clone(analysis).(*compliancev1.ComplianceAnalysis)
 
@@ -65,7 +63,6 @@ func TestBuildFrameworkProfiles_PreservesUnderlyingControlAssessmentOutcomes(t *
 }
 
 func TestBuildFrameworkProfiles_StampsCanonicalMetadata(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 
 	profiles, err := evidence.BuildFrameworkProfiles(context.Background(), evidence.FrameworkProfileRequest{Analysis: analysis, Frameworks: frameworks})
@@ -80,7 +77,6 @@ func TestBuildFrameworkProfiles_StampsCanonicalMetadata(t *testing.T) {
 }
 
 func TestBuildFrameworkProfiles_AggregatesOnlyFrameworkLocalLimitations(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	analysis.FrameworkAssessments[0].Limitations = []string{"shared limitation", "fedramp only"}
 	analysis.FrameworkAssessments[1].Limitations = []string{"shared limitation"}
@@ -98,7 +94,6 @@ func TestBuildFrameworkProfiles_AggregatesOnlyFrameworkLocalLimitations(t *testi
 }
 
 func TestBuildFrameworkProfiles_EmitsEmptyProfileForUnassessedFramework(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	frameworks.Frameworks = append(frameworks.Frameworks, analysisTestFramework("nist-800-53", "rev5", analysisTestControl("AC-2", "platform")))
 
@@ -110,7 +105,6 @@ func TestBuildFrameworkProfiles_EmitsEmptyProfileForUnassessedFramework(t *testi
 }
 
 func TestBuildFrameworkProfiles_IsDeterministicAcrossInputOrdering(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	secondFramework := analysisTestFramework("nist-800-53", "rev5", analysisTestControl("AC-2", "platform"))
 	frameworks.Frameworks = append([]*compliancev1.FrameworkDefinition{secondFramework}, frameworks.Frameworks...)
@@ -137,7 +131,6 @@ func TestBuildFrameworkProfiles_IsDeterministicAcrossInputOrdering(t *testing.T)
 }
 
 func TestBuildFrameworkProfiles_ProfileIDBindsAssessmentContent(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	first, err := evidence.BuildFrameworkProfiles(context.Background(), evidence.FrameworkProfileRequest{Analysis: analysis, Frameworks: frameworks})
 	require.NoError(t, err)
@@ -148,7 +141,6 @@ func TestBuildFrameworkProfiles_ProfileIDBindsAssessmentContent(t *testing.T) {
 }
 
 func TestBuildFrameworkProfiles_RejectsIncompleteInputs(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	tests := []struct {
 		name    string
@@ -161,7 +153,6 @@ func TestBuildFrameworkProfiles_RejectsIncompleteInputs(t *testing.T) {
 	tests[2].request.Analysis.AnalysisId = ""
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := evidence.BuildFrameworkProfiles(context.Background(), test.request)
 			assert.ErrorIs(t, err, constants.ErrFrameworkProfileInvalid)
 		})
@@ -169,7 +160,6 @@ func TestBuildFrameworkProfiles_RejectsIncompleteInputs(t *testing.T) {
 }
 
 func TestBuildFrameworkProfiles_RejectsInvalidOrUnknownAssessmentReferences(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ComplianceAnalysis)
@@ -185,7 +175,6 @@ func TestBuildFrameworkProfiles_RejectsInvalidOrUnknownAssessmentReferences(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			analysis, frameworks := frameworkProfileAnalysis(t)
 			test.mutate(analysis)
 			_, err := evidence.BuildFrameworkProfiles(context.Background(), evidence.FrameworkProfileRequest{Analysis: analysis, Frameworks: frameworks})
@@ -195,7 +184,6 @@ func TestBuildFrameworkProfiles_RejectsInvalidOrUnknownAssessmentReferences(t *t
 }
 
 func TestBuildFrameworkProfiles_RejectsDuplicateAssessments(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	analysis.FrameworkAssessments = append(analysis.FrameworkAssessments, proto.Clone(analysis.FrameworkAssessments[0]).(*compliancev1.FrameworkControlAssessment))
 
@@ -204,7 +192,6 @@ func TestBuildFrameworkProfiles_RejectsDuplicateAssessments(t *testing.T) {
 }
 
 func TestBuildFrameworkProfiles_RejectsInvalidFrameworkCatalog(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	frameworks.Frameworks[0].Controls[0].SupportStatus = "invalid"
 
@@ -213,7 +200,6 @@ func TestBuildFrameworkProfiles_RejectsInvalidFrameworkCatalog(t *testing.T) {
 }
 
 func TestBuildFrameworkProfiles_RejectsInvalidEvidenceGraphAnalysis(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	analysis.EvidenceGraphValid = false
 
@@ -222,7 +208,6 @@ func TestBuildFrameworkProfiles_RejectsInvalidEvidenceGraphAnalysis(t *testing.T
 }
 
 func TestBuildFrameworkProfiles_PropagatesCancellation(t *testing.T) {
-	t.Parallel()
 	analysis, frameworks := frameworkProfileAnalysis(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

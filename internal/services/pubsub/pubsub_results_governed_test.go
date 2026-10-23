@@ -42,8 +42,7 @@ func requireSinglePublished(t *testing.T, client *pubsubtest.MockOperatorPubSubC
 	return last.Channel, mustUnmarshalGovernanceEnvelope(t, last.Data)
 }
 
-func TestPubSubResultsService_PublishShutdownAcknowledgement_CorrelatesWithTheShutdownCommand(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishShutdownAcknowledgement_CorrelatesWithTheShutdownCommand(t *testing.T) {
 	svc, client, cfg := newResultsTestService(t)
 	request := &operatorv1.ShutdownRequested{Reason: "maintenance window"}
 	original := &PubSubCommandMessage{
@@ -65,8 +64,7 @@ func TestPubSubResultsService_PublishShutdownAcknowledgement_CorrelatesWithTheSh
 	assert.Equal(t, "maintenance window", echoed.Reason)
 }
 
-func TestPubSubResultsService_PublishShutdownAcknowledgement_FailsWhenCommandIsNotAGovernedRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishShutdownAcknowledgement_FailsWhenCommandIsNotAGovernedRequest(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	original := &PubSubCommandMessage{ID: "m", EventType: constants.Event.Operator.Command.Completed}
 
@@ -92,8 +90,7 @@ func inferenceCommand(operatorID *string) *PubSubCommandMessage {
 	}
 }
 
-func TestPubSubResultsService_PublishInferenceProgress_RoutesByCommandSessionAndCarriesCorrelation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceProgress_RoutesByCommandSessionAndCarriesCorrelation(t *testing.T) {
 	override := "op-override"
 	tests := []struct {
 		name         string
@@ -103,9 +100,8 @@ func TestPubSubResultsService_PublishInferenceProgress_RoutesByCommandSessionAnd
 		{"defaults to the service operator id", nil, func(cfg *config.Config) string { return cfg.OperatorID }},
 		{"command operator id overrides the service config", &override, func(*config.Config) string { return override }},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			svc, client, cfg := newResultsTestService(t)
 			progress := &operatorv1.InferenceProgressEvent{ProviderAttemptId: "attempt-1", Sequence: 3, ServedModel: "qwen3:4b"}
 
@@ -129,8 +125,7 @@ func TestPubSubResultsService_PublishInferenceProgress_RoutesByCommandSessionAnd
 	}
 }
 
-func TestPubSubResultsService_PublishInferenceProgress_RejectsInvalidInput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceProgress_RejectsInvalidInput(t *testing.T) {
 	progress := &operatorv1.InferenceProgressEvent{ProviderAttemptId: "a"}
 
 	tests := []struct {
@@ -142,9 +137,8 @@ func TestPubSubResultsService_PublishInferenceProgress_RejectsInvalidInput(t *te
 		{"nil command", nil, progress, constants.ErrMissingRequiredField},
 		{"nil progress", inferenceCommand(nil), nil, constants.ErrMissingRequiredField},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			svc, client, _ := newResultsTestService(t)
 
 			err := svc.PublishInferenceProgress(t.Context(), tt.original, tt.progress)
@@ -155,7 +149,6 @@ func TestPubSubResultsService_PublishInferenceProgress_RejectsInvalidInput(t *te
 	}
 
 	t.Run("command that is not a governed request has no originating action", func(t *testing.T) {
-
 		svc, client, _ := newResultsTestService(t)
 		original := inferenceCommand(nil)
 		original.EventType = constants.Event.Operator.Command.Completed
@@ -167,8 +160,7 @@ func TestPubSubResultsService_PublishInferenceProgress_RejectsInvalidInput(t *te
 	})
 }
 
-func TestPubSubResultsService_PublishInferenceProgress_SurfacesTransportFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceProgress_SurfacesTransportFailure(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	client.SetPublishError(true)
 
@@ -193,8 +185,7 @@ func inferenceCommandEnvelope() *commonv1.GovernanceEnvelope {
 	}
 }
 
-func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerminalEvent(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerminalEvent(t *testing.T) {
 	tests := []struct {
 		name      string
 		status    operatorv1.ExecutionStatus
@@ -205,9 +196,8 @@ func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerm
 		{"timed-out receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_TIMEOUT, constants.Event.Operator.Inference.Failed},
 		{"cancelled receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_CANCELLED, constants.Event.Operator.Inference.Failed},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			svc, client, _ := newResultsTestService(t)
 			completion := &operatorv1.InferenceCompletion{
 				Receipt: &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: tt.status},
@@ -231,8 +221,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerm
 	}
 }
 
-func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(t *testing.T) {
 	completed := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	tests := []struct {
@@ -244,9 +233,8 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(
 		{"nil completion", inferenceCommandEnvelope(), nil},
 		{"completion without a signed receipt", inferenceCommandEnvelope(), &operatorv1.InferenceCompletion{}},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			svc, client, _ := newResultsTestService(t)
 
 			err := svc.PublishInferenceCompletion(t.Context(), tt.env, tt.completion)
@@ -257,8 +245,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(
 	}
 }
 
-func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseActionDoesNotMatchItsEvent(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseActionDoesNotMatchItsEvent(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	env := inferenceCommandEnvelope()
 	env.ActionType = string(constants.ActionTypeExecuteBash)
@@ -270,8 +257,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseAct
 	assert.Zero(t, client.PublishedCount(), "a mislabelled completion must never reach the wire")
 }
 
-func TestPubSubResultsService_PublishInferenceCompletion_SurfacesTransportFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishInferenceCompletion_SurfacesTransportFailure(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	client.SetPublishError(true)
 	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
@@ -282,8 +268,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_SurfacesTransportFailur
 	assert.Contains(t, err.Error(), "publish inference completion")
 }
 
-func TestPubSubResultsService_PublishProviderBoundaryObservationCompleted_PublishesWindowOnObserverChannel(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishProviderBoundaryObservationCompleted_PublishesWindowOnObserverChannel(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	completion := &evalv1.ProviderBoundaryObservationCompleted{
 		Window: &evalv1.ProviderBoundaryObservationWindow{ProviderAttemptId: "attempt-pb", ObserverId: "observer-1"},
@@ -301,8 +286,7 @@ func TestPubSubResultsService_PublishProviderBoundaryObservationCompleted_Publis
 	assert.Equal(t, "observer-1", decoded.GetWindow().GetObserverId())
 }
 
-func TestPubSubResultsService_PublishModelProvenanceObservationCompleted_PublishesWindowOnProvenanceChannel(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishModelProvenanceObservationCompleted_PublishesWindowOnProvenanceChannel(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	completion := &evalv1.ModelProvenanceObservationCompleted{
 		Window: &evalv1.ModelProvenanceAttestationWindow{ProviderAttemptId: "attempt-mp", ServedModelTag: "qwen3:4b"},
@@ -320,8 +304,7 @@ func TestPubSubResultsService_PublishModelProvenanceObservationCompleted_Publish
 	assert.Equal(t, "qwen3:4b", decoded.GetWindow().GetServedModelTag())
 }
 
-func TestPubSubResultsService_ObservationCompletions_RejectMissingCorrelationOrWindow(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_ObservationCompletions_RejectMissingCorrelationOrWindow(t *testing.T) {
 	boundaryWindow := &evalv1.ProviderBoundaryObservationWindow{ProviderAttemptId: "a"}
 	provenanceWindow := &evalv1.ModelProvenanceAttestationWindow{ProviderAttemptId: "a"}
 
@@ -354,9 +337,8 @@ func TestPubSubResultsService_ObservationCompletions_RejectMissingCorrelationOrW
 			return s.PublishModelProvenanceObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "cmd", OperatorId: "op-1", OperatorSessionId: "sess-1"}, &evalv1.ModelProvenanceObservationCompleted{})
 		}},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			svc, client, _ := newResultsTestService(t)
 
 			err := tt.call(t, svc)
@@ -367,10 +349,8 @@ func TestPubSubResultsService_ObservationCompletions_RejectMissingCorrelationOrW
 	}
 }
 
-func TestPubSubResultsService_ObservationCompletions_SurfaceTransportFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("provider boundary", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_ObservationCompletions_SurfaceTransportFailure(t *testing.T) {
+	t.Run("provider boundary", func(t *testing.T) {
 		svc, client, _ := newResultsTestService(t)
 		client.SetPublishError(true)
 
@@ -381,8 +361,7 @@ func TestPubSubResultsService_ObservationCompletions_SurfaceTransportFailure(t *
 		assert.Contains(t, err.Error(), "provider boundary observation completion")
 	})
 
-	t.Run("model provenance", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("model provenance", func(t *testing.T) {
 		svc, client, _ := newResultsTestService(t)
 		client.SetPublishError(true)
 

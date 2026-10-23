@@ -97,13 +97,11 @@ func (f *ledgerImporterFixture) replaceState(t *testing.T) {
 }
 
 func TestLedgerImporter_SourceID(t *testing.T) {
-	t.Parallel()
 	fixture := newLedgerImporterFixture(t)
 	assert.Equal(t, "ledger", NewLedgerImporter(fixture.reader, fixture.binding).SourceID())
 }
 
 func TestLedgerImporter_Import_LoadsCanonicalChainAndState(t *testing.T) {
-	t.Parallel()
 	fixture := newLedgerImporterFixture(t)
 	nodes, err := NewLedgerImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)
@@ -136,7 +134,6 @@ func TestLedgerImporter_Import_LoadsCanonicalChainAndState(t *testing.T) {
 }
 
 func TestLedgerImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newLedgerImporterFixture(t)
 	tests := []struct {
 		name     string
@@ -153,7 +150,6 @@ func TestLedgerImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -162,7 +158,6 @@ func TestLedgerImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestLedgerImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ledgerImporterFixture)
@@ -176,7 +171,6 @@ func TestLedgerImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newLedgerImporterFixture(t)
 			test.mutate(fixture)
 			_, err := NewLedgerImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -187,7 +181,6 @@ func TestLedgerImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
 }
 
 func TestLedgerImporter_Import_RejectsMalformedArtifacts(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*testing.T, *ledgerImporterFixture)
@@ -215,7 +208,6 @@ func TestLedgerImporter_Import_RejectsMalformedArtifacts(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newLedgerImporterFixture(t)
 			test.mutate(t, fixture)
 			_, err := NewLedgerImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -226,7 +218,6 @@ func TestLedgerImporter_Import_RejectsMalformedArtifacts(t *testing.T) {
 }
 
 func TestLedgerImporter_Import_RejectsInvalidChainAndStateBindings(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ledgerImporterFixture)
@@ -249,7 +240,6 @@ func TestLedgerImporter_Import_RejectsInvalidChainAndStateBindings(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newLedgerImporterFixture(t)
 			test.mutate(fixture)
 			fixture.replaceCommits(t)
@@ -262,7 +252,6 @@ func TestLedgerImporter_Import_RejectsInvalidChainAndStateBindings(t *testing.T)
 }
 
 func TestLedgerImporter_Import_WrapsReadFailures(t *testing.T) {
-	t.Parallel()
 	fixture := newLedgerImporterFixture(t)
 	readErr := fmt.Errorf("ledger source unavailable")
 	_, err := NewLedgerImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
@@ -272,7 +261,6 @@ func TestLedgerImporter_Import_WrapsReadFailures(t *testing.T) {
 }
 
 func TestLedgerImporter_Import_RespectsCancellation(t *testing.T) {
-	t.Parallel()
 	fixture := newLedgerImporterFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -281,7 +269,6 @@ func TestLedgerImporter_Import_RespectsCancellation(t *testing.T) {
 }
 
 func TestLedgerImporter_Import_ProducesValidGraph(t *testing.T) {
-	t.Parallel()
 	fixture := newLedgerImporterFixture(t)
 	nodes, err := NewLedgerImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)

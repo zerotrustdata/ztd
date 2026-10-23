@@ -35,7 +35,6 @@ func customSuite(t *testing.T, id, version string, scenarioIDs ...string) Scenar
 }
 
 func TestBuiltinSuites_RoundTripThroughTheAuthoringFileToIdenticalCatalogs(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		suite ScenarioSuite
@@ -66,7 +65,6 @@ func TestBuiltinSuites_RoundTripThroughTheAuthoringFileToIdenticalCatalogs(t *te
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			wantDigest, wantBodies, err := tt.build()
 			require.NoError(t, err)
 
@@ -92,7 +90,6 @@ func artifactBodies(artifacts map[string]ScenarioArtifacts) map[string][2]string
 }
 
 func TestMaterializeSuite_CustomSuiteIsNotHeldToTheDefaultSuiteGates(t *testing.T) {
-	t.Parallel()
 	custom := customSuite(t, "tiny-suite", "1.0.0", "instruction-exact-format")
 
 	catalog, artifacts, err := MaterializeSuite(custom)
@@ -108,7 +105,6 @@ func TestMaterializeSuite_CustomSuiteIsNotHeldToTheDefaultSuiteGates(t *testing.
 }
 
 func TestMaterializeSuite_SameScenariosUnderAnotherSuiteYieldAnotherCatalog(t *testing.T) {
-	t.Parallel()
 	first, _, err := MaterializeSuite(customSuite(t, "suite-a", "1.0.0", "instruction-exact-format"))
 	require.NoError(t, err)
 	second, _, err := MaterializeSuite(customSuite(t, "suite-b", "1.0.0", "instruction-exact-format"))
@@ -118,7 +114,6 @@ func TestMaterializeSuite_SameScenariosUnderAnotherSuiteYieldAnotherCatalog(t *t
 }
 
 func TestMaterializeSuite_RejectsInvalidDefinitions(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ScenarioSuite)
@@ -146,7 +141,6 @@ func TestMaterializeSuite_RejectsInvalidDefinitions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			custom := customSuite(t, "bad-suite", "1.0.0", "instruction-exact-format")
 			tt.mutate(&custom)
 			_, _, err := MaterializeSuite(custom)
@@ -157,7 +151,6 @@ func TestMaterializeSuite_RejectsInvalidDefinitions(t *testing.T) {
 }
 
 func TestDecodeScenarioSuite_RejectsUnknownFieldsAndTrailingContent(t *testing.T) {
-	t.Parallel()
 	good, err := EncodeScenarioSuite(customSuite(t, "tiny-suite", "1.0.0", "instruction-exact-format"))
 	require.NoError(t, err)
 
@@ -172,7 +165,6 @@ func TestDecodeScenarioSuite_RejectsUnknownFieldsAndTrailingContent(t *testing.T
 }
 
 func TestCatalogRecomputesGrades(t *testing.T) {
-	t.Parallel()
 	assert.True(t, CatalogRecomputesGrades(nil))
 	assert.True(t, CatalogRecomputesGrades(&compliancev1.VersionedReference{Id: DefaultSuiteID, Version: DefaultSuiteVersion}))
 	assert.False(t, CatalogRecomputesGrades(&compliancev1.VersionedReference{Id: DefaultSuiteID, Version: "0.9.0"}), "an older default-suite version was graded against fixtures this build no longer carries")
@@ -181,7 +173,6 @@ func TestCatalogRecomputesGrades(t *testing.T) {
 }
 
 func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 
@@ -237,7 +228,6 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 }
 
 func TestSuiteStore_BuiltinSuitesAreReadOnlyAndReserved(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 
@@ -265,7 +255,6 @@ func TestSuiteStore_BuiltinSuitesAreReadOnlyAndReserved(t *testing.T) {
 }
 
 func TestBuiltinSuiteIDs_EveryBuiltinBuildsAndIsReserved(t *testing.T) {
-	t.Parallel()
 	for _, id := range BuiltinSuiteIDs() {
 		def, builtin, err := BuiltinScenarioSuite(id)
 		require.NoError(t, err, id)
@@ -280,7 +269,6 @@ func TestBuiltinSuiteIDs_EveryBuiltinBuildsAndIsReserved(t *testing.T) {
 }
 
 func TestSuiteStore_InvalidSuiteIsNeverStored(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 
@@ -293,7 +281,6 @@ func TestSuiteStore_InvalidSuiteIsNeverStored(t *testing.T) {
 }
 
 func TestSuiteStore_LoadSuiteCatalogServesBuiltinsAndRejectsUnknownIDs(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 

@@ -25,7 +25,6 @@ import (
 )
 
 func TestCampaignExporter_PassRatesExcludeUnjudgedFailuresInCSVAndSQLite(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		judged   uint32
@@ -38,7 +37,6 @@ func TestCampaignExporter_PassRatesExcludeUnjudgedFailuresInCSVAndSQLite(t *test
 		{name: "no model verdicts", csvRate: "", wantRate: sql.NullFloat64{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			assignments := make([]*evalv1.EvaluationAssignment, 0, 3)
 			results := make(map[string]*evalv1.EvaluationAssignmentResult)
 			for i := uint32(0); i < 3; i++ {

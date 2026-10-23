@@ -410,7 +410,6 @@ func (a *approvalKeyring) RetrieveMasterKey() ([]byte, error) {
 }
 
 func TestKeystore_Initialize_LogsWhileAwaitingKeyStoreApproval(t *testing.T) {
-	t.Parallel()
 	keyring := &approvalKeyring{release: make(chan struct{})}
 	require.NoError(t, keyring.StoreMasterKey(testMasterKey(7)))
 	var logs syncBuffer
@@ -426,7 +425,6 @@ func TestKeystore_Initialize_LogsWhileAwaitingKeyStoreApproval(t *testing.T) {
 }
 
 func TestKeystore_Initialize_FastRetrievalLogsNoApprovalWait(t *testing.T) {
-	t.Parallel()
 	keyring := newMemoryKeyring()
 	require.NoError(t, keyring.StoreMasterKey(testMasterKey(7)))
 	var logs syncBuffer
@@ -467,7 +465,6 @@ func (c *countingKeyring) RetrieveMasterKey() ([]byte, error) {
 }
 
 func TestKeystore_ReadsMasterKeyOncePerProcess(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	keyring := &countingKeyring{}
 	require.NoError(t, keyring.StoreMasterKey(testMasterKey(3)))
@@ -495,7 +492,6 @@ func TestKeystore_ReadsMasterKeyOncePerProcess(t *testing.T) {
 }
 
 func TestKeystore_GeneratedKeyIsHeld(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	keyring := &countingKeyring{}
 	ks, err := NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
@@ -508,7 +504,6 @@ func TestKeystore_GeneratedKeyIsHeld(t *testing.T) {
 }
 
 func TestKeystore_PurgeZeroesHeldKey(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	keyring := &countingKeyring{}
 	require.NoError(t, keyring.StoreMasterKey(testMasterKey(5)))

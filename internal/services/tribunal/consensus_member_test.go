@@ -16,6 +16,5 @@ import (
 )
 
 func TestConsensusMemberAppIDsMatchConstants(t *testing.T) {
-	t.Parallel()
 	require.Equal(t, constants.TribunalConsensusMemberAppIDs(), ConsensusMemberAppIDs())
 }

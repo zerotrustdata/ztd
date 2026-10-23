@@ -251,7 +251,6 @@ func analysisBaseRequest(t *testing.T) evidence.AnalysisRequest {
 }
 
 func TestBuildComplianceAnalysis_StampsGeneratorIdentityAndSchemaVersion(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -263,7 +262,6 @@ func TestBuildComplianceAnalysis_StampsGeneratorIdentityAndSchemaVersion(t *test
 }
 
 func TestBuildComplianceAnalysis_EvidenceWindowCompleteWhenAllSatisfied(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -277,7 +275,6 @@ func TestBuildComplianceAnalysis_EvidenceWindowCompleteWhenAllSatisfied(t *testi
 }
 
 func TestBuildComplianceAnalysis_EvidenceWindowCompleteForFreshNegativeMeasurement(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "not_satisfied", "fresh", "reproduced negative measurement")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -289,7 +286,6 @@ func TestBuildComplianceAnalysis_EvidenceWindowCompleteForFreshNegativeMeasureme
 }
 
 func TestBuildComplianceAnalysis_EvidenceWindowPartialWhenEvidenceUnavailable(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "unverifiable", "incomplete", "required evidence is unavailable")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -300,7 +296,6 @@ func TestBuildComplianceAnalysis_EvidenceWindowPartialWhenEvidenceUnavailable(t 
 }
 
 func TestBuildComplianceAnalysis_EvidenceWindowEmptyWhenAllEvidenceUnavailable(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "unverifiable", "incomplete", "required evidence is unavailable")
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "unverifiable", "stale", "required evidence is stale")
@@ -312,7 +307,6 @@ func TestBuildComplianceAnalysis_EvidenceWindowEmptyWhenAllEvidenceUnavailable(t
 }
 
 func TestBuildComplianceAnalysis_RecordsMissingAndStaleEvidenceRefs(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "satisfied", "incomplete", "")
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "satisfied", "stale", "")
@@ -324,7 +318,6 @@ func TestBuildComplianceAnalysis_RecordsMissingAndStaleEvidenceRefs(t *testing.T
 }
 
 func TestBuildComplianceAnalysis_DerivesEvidenceLinksFromGraphReferences(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -337,7 +330,6 @@ func TestBuildComplianceAnalysis_DerivesEvidenceLinksFromGraphReferences(t *test
 }
 
 func TestBuildComplianceAnalysis_EmbedsSortedTypedEvidenceResources(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -358,7 +350,6 @@ func TestBuildComplianceAnalysis_EmbedsSortedTypedEvidenceResources(t *testing.T
 }
 
 func TestBuildComplianceAnalysis_EmitsGapsForNotSatisfiedAssertions(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -370,7 +361,6 @@ func TestBuildComplianceAnalysis_EmitsGapsForNotSatisfiedAssertions(t *testing.T
 }
 
 func TestBuildComplianceAnalysis_EmitsGapsForNotSatisfiedFrameworkControls(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-MLA-07", "not_satisfied", "shared")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -382,7 +372,6 @@ func TestBuildComplianceAnalysis_EmitsGapsForNotSatisfiedFrameworkControls(t *te
 }
 
 func TestBuildComplianceAnalysis_SkipsGapsForSatisfiedAndNotApplicable(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_applicable", "fresh", "")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -393,7 +382,6 @@ func TestBuildComplianceAnalysis_SkipsGapsForSatisfiedAndNotApplicable(t *testin
 }
 
 func TestBuildComplianceAnalysis_DeduplicatesAndSortsLimitations(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "satisfied", "fresh", "", "limitation-b", "limitation-a")
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "satisfied", "fresh", "", "limitation-a", "limitation-c")
@@ -405,7 +393,6 @@ func TestBuildComplianceAnalysis_DeduplicatesAndSortsLimitations(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_EmitsFindingsForNotSatisfiedAssertionsWithGovernanceSeverity(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -416,7 +403,6 @@ func TestBuildComplianceAnalysis_EmitsFindingsForNotSatisfiedAssertionsWithGover
 }
 
 func TestBuildComplianceAnalysis_EmitsFindingsForNotSatisfiedAssertionsWithNonGovernanceSeverity(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "not_satisfied", "fresh", "missing evidence")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -426,7 +412,6 @@ func TestBuildComplianceAnalysis_EmitsFindingsForNotSatisfiedAssertionsWithNonGo
 }
 
 func TestBuildComplianceAnalysis_EmitsFindingsForNotSatisfiedFrameworkControls(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-MLA-07", "not_satisfied", "shared")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -437,7 +422,6 @@ func TestBuildComplianceAnalysis_EmitsFindingsForNotSatisfiedFrameworkControls(t
 }
 
 func TestBuildComplianceAnalysis_DerivesRemediationFromFindings(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	request.FrameworkAssessments[1] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-PRIV-01", "not_satisfied", "shared")
@@ -460,7 +444,6 @@ func TestBuildComplianceAnalysis_DerivesRemediationFromFindings(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_GroupsSectionsByResponsibility(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-MLA-07", "satisfied", "platform")
 	request.FrameworkAssessments[1] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-PRIV-01", "satisfied", "customer")
@@ -480,7 +463,6 @@ func TestBuildComplianceAnalysis_GroupsSectionsByResponsibility(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_EmitsExplicitResponsibilityAndStatusSections(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	framework := request.Frameworks.GetFrameworks()[0]
 	framework.Controls = append(framework.Controls,
@@ -537,7 +519,6 @@ func TestBuildComplianceAnalysis_EmitsExplicitResponsibilityAndStatusSections(t 
 }
 
 func TestBuildComplianceAnalysis_SortsSectionsBySectionID(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-MLA-07", "satisfied", "customer")
 	request.FrameworkAssessments[1] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-PRIV-01", "satisfied", "platform")
@@ -550,7 +531,6 @@ func TestBuildComplianceAnalysis_SortsSectionsBySectionID(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_PropagatesGraphFailuresAndValidity(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.Graph = evidence.NewEvidenceGraph(0, nil)
 	require.NoError(t, request.Graph.AddNode(evidence.EvidenceNode{
@@ -574,7 +554,6 @@ func TestBuildComplianceAnalysis_PropagatesGraphFailuresAndValidity(t *testing.T
 }
 
 func TestBuildComplianceAnalysis_ReportsValidGraphWhenNoFailures(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -583,7 +562,6 @@ func TestBuildComplianceAnalysis_ReportsValidGraphWhenNoFailures(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_DeterministicAnalysisID(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis1, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -595,7 +573,6 @@ func TestBuildComplianceAnalysis_DeterministicAnalysisID(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_DifferentInputsProduceDifferentIDs(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis1, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -606,7 +583,6 @@ func TestBuildComplianceAnalysis_DifferentInputsProduceDifferentIDs(t *testing.T
 }
 
 func TestBuildComplianceAnalysis_AnalysisIDBindsCompleteAssessmentContent(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis1, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -618,7 +594,6 @@ func TestBuildComplianceAnalysis_AnalysisIDBindsCompleteAssessmentContent(t *tes
 }
 
 func TestBuildComplianceAnalysis_CanonicalVectorIsPinned(t *testing.T) {
-	t.Parallel()
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), analysisBaseRequest(t))
 	require.NoError(t, err)
 	canonical, err := compliancev1.MarshalCanonical(analysis)
@@ -629,7 +604,6 @@ func TestBuildComplianceAnalysis_CanonicalVectorIsPinned(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_CanonicalBytesIgnoreInputOrdering(t *testing.T) {
-	t.Parallel()
 	request1 := analysisBaseRequest(t)
 	analysis1, err := evidence.BuildComplianceAnalysis(context.Background(), request1)
 	require.NoError(t, err)
@@ -648,7 +622,6 @@ func TestBuildComplianceAnalysis_CanonicalBytesIgnoreInputOrdering(t *testing.T)
 }
 
 func TestBuildComplianceAnalysis_SortsAssertionAndFrameworkAssessments(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0], request.AssertionAssessments[1] = request.AssertionAssessments[1], request.AssertionAssessments[0]
 	request.FrameworkAssessments[0], request.FrameworkAssessments[1] = request.FrameworkAssessments[1], request.FrameworkAssessments[0]
@@ -659,7 +632,6 @@ func TestBuildComplianceAnalysis_SortsAssertionAndFrameworkAssessments(t *testin
 }
 
 func TestBuildComplianceAnalysis_RejectsIncompleteRequests(t *testing.T) {
-	t.Parallel()
 	valid := analysisBaseRequest(t)
 	tests := []struct {
 		name   string
@@ -676,7 +648,6 @@ func TestBuildComplianceAnalysis_RejectsIncompleteRequests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			request := valid
 			tt.mutate(&request)
 			_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -687,7 +658,6 @@ func TestBuildComplianceAnalysis_RejectsIncompleteRequests(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsInvertedEvidenceWindow(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.WindowStart = analysisTestWindowEnd
 	request.WindowEnd = analysisTestWindowStart
@@ -697,7 +667,6 @@ func TestBuildComplianceAnalysis_RejectsInvertedEvidenceWindow(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsEvaluatedAtOutsideWindow(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.EvaluatedAt = analysisTestWindowEnd.Add(time.Hour)
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -706,7 +675,6 @@ func TestBuildComplianceAnalysis_RejectsEvaluatedAtOutsideWindow(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsInvalidAssertionCatalog(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.Assertions = &compliancev1.ControlAssertionCatalog{
 		CatalogId:      "bad",
@@ -719,7 +687,6 @@ func TestBuildComplianceAnalysis_RejectsInvalidAssertionCatalog(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsInvalidFrameworkCatalog(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.Frameworks = &compliancev1.FrameworkCatalog{
 		CatalogId:      "bad",
@@ -732,7 +699,6 @@ func TestBuildComplianceAnalysis_RejectsInvalidFrameworkCatalog(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsAssertionAssessmentFromAnotherScope(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0].ScopeId = "scope-2"
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -741,7 +707,6 @@ func TestBuildComplianceAnalysis_RejectsAssertionAssessmentFromAnotherScope(t *t
 }
 
 func TestBuildComplianceAnalysis_RejectsFrameworkAssessmentFromAnotherScope(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0].ScopeId = "scope-2"
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -750,7 +715,6 @@ func TestBuildComplianceAnalysis_RejectsFrameworkAssessmentFromAnotherScope(t *t
 }
 
 func TestBuildComplianceAnalysis_RejectsNilAssertionAssessment(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments = append(request.AssertionAssessments, nil)
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -759,7 +723,6 @@ func TestBuildComplianceAnalysis_RejectsNilAssertionAssessment(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsNilFrameworkAssessment(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments = append(request.FrameworkAssessments, nil)
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -768,7 +731,6 @@ func TestBuildComplianceAnalysis_RejectsNilFrameworkAssessment(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_RejectsAssertionAssessmentWithNilAssertionRef(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0].AssertionRef = nil
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -777,7 +739,6 @@ func TestBuildComplianceAnalysis_RejectsAssertionAssessmentWithNilAssertionRef(t
 }
 
 func TestBuildComplianceAnalysis_RejectsFrameworkAssessmentWithNilFrameworkRef(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0].FrameworkRef = nil
 	_, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -786,7 +747,6 @@ func TestBuildComplianceAnalysis_RejectsFrameworkAssessmentWithNilFrameworkRef(t
 }
 
 func TestBuildComplianceAnalysis_StopsOnCancellation(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -795,7 +755,6 @@ func TestBuildComplianceAnalysis_StopsOnCancellation(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_AggregatesRealGraderOutput(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks := analysisTestCatalogs(t)
 	graph := analysisTestGraph(t)
 	assertionAssessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
@@ -841,7 +800,6 @@ func TestBuildComplianceAnalysis_AggregatesRealGraderOutput(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_GapIDsAreDeterministicAndContentAddressed(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	analysis1, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -856,7 +814,6 @@ func TestBuildComplianceAnalysis_GapIDsAreDeterministicAndContentAddressed(t *te
 }
 
 func TestBuildComplianceAnalysis_FindingAndRemediationIDsAreContentAddressed(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -872,7 +829,6 @@ func TestBuildComplianceAnalysis_FindingAndRemediationIDsAreContentAddressed(t *
 }
 
 func TestBuildComplianceAnalysis_SortsGapsFindingsAndRemediation(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	request.AssertionAssessments[1] = analysisTestAssertionAssessment("ZTD-PRIV-001", "not_satisfied", "fresh", "missing evidence")
@@ -885,7 +841,6 @@ func TestBuildComplianceAnalysis_SortsGapsFindingsAndRemediation(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_SortsEvidenceLinksBySourceThenTarget(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -900,7 +855,6 @@ func TestBuildComplianceAnalysis_SortsEvidenceLinksBySourceThenTarget(t *testing
 }
 
 func TestBuildComplianceAnalysis_SectionIDsAreContentAddressed(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -910,7 +864,6 @@ func TestBuildComplianceAnalysis_SectionIDsAreContentAddressed(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_DoesNotMutateInputs(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	assertionOrderBefore := assessmentIDs(request.AssertionAssessments)
 	frameworkOrderBefore := frameworkAssessmentIDs(request.FrameworkAssessments)
@@ -921,7 +874,6 @@ func TestBuildComplianceAnalysis_DoesNotMutateInputs(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_EmitsNoFindingsWhenAllSatisfied(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -930,7 +882,6 @@ func TestBuildComplianceAnalysis_EmitsNoFindingsWhenAllSatisfied(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_EmitsNoGapsWhenAllSatisfied(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
 	require.NoError(t, err)
@@ -938,7 +889,6 @@ func TestBuildComplianceAnalysis_EmitsNoGapsWhenAllSatisfied(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_EmitsGapsForUnverifiableAssertions(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "unverifiable", "incomplete", "")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -948,7 +898,6 @@ func TestBuildComplianceAnalysis_EmitsGapsForUnverifiableAssertions(t *testing.T
 }
 
 func TestBuildComplianceAnalysis_EmitsGapsForCustomerAttestationRequired(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-MLA-07", "customer_attestation_required", "shared")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -958,7 +907,6 @@ func TestBuildComplianceAnalysis_EmitsGapsForCustomerAttestationRequired(t *test
 }
 
 func TestBuildComplianceAnalysis_EmitsRemediationOwnerCustomerForControlFindings(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.FrameworkAssessments[0] = analysisTestFrameworkAssessment("fedramp-20x", "CR26-2026-06-24", "KSI-MLA-07", "not_satisfied", "shared")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -969,7 +917,6 @@ func TestBuildComplianceAnalysis_EmitsRemediationOwnerCustomerForControlFindings
 }
 
 func TestBuildComplianceAnalysis_EmitsRemediationOwnerPlatformForAssertionFindings(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	request.AssertionAssessments[0] = analysisTestAssertionAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "fresh", "missing evidence")
 	analysis, err := evidence.BuildComplianceAnalysis(context.Background(), request)
@@ -980,7 +927,6 @@ func TestBuildComplianceAnalysis_EmitsRemediationOwnerPlatformForAssertionFindin
 }
 
 func TestBuildComplianceAnalysis_EvidenceLinksOnlyForScopeNodes(t *testing.T) {
-	t.Parallel()
 	request := analysisBaseRequest(t)
 	otherBody := []byte(`{"other":"scope"}`)
 	otherDigest := sha256.Sum256(otherBody)
@@ -1006,7 +952,6 @@ func TestBuildComplianceAnalysis_EvidenceLinksOnlyForScopeNodes(t *testing.T) {
 }
 
 func TestBuildComplianceAnalysis_EmptyAssessmentsPreserveExplicitCatalogSections(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks := analysisTestCatalogs(t)
 	request := evidence.AnalysisRequest{
 		ScopeID:              "scope-1",

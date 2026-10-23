@@ -44,7 +44,6 @@ func writeGenerated(t *testing.T, root string) {
 }
 
 func TestGenerate_EmitsEveryCatalogScenarioWithoutHintValues(t *testing.T) {
-	t.Parallel()
 	out, err := generate()
 	require.NoError(t, err)
 	text := string(out)
@@ -59,14 +58,12 @@ func TestGenerate_EmitsEveryCatalogScenarioWithoutHintValues(t *testing.T) {
 }
 
 func TestGenerate_KeepsLicenseHeader(t *testing.T) {
-	t.Parallel()
 	out, err := generate()
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(out), "// Copyright (c) 2026 Lateralus Labs, LLC.\n// Licensed under the Business Source License 1.1"))
 }
 
 func TestGenerate_IsDeterministic(t *testing.T) {
-	t.Parallel()
 	first, err := generate()
 	require.NoError(t, err)
 	second, err := generate()
@@ -75,7 +72,6 @@ func TestGenerate_IsDeterministic(t *testing.T) {
 }
 
 func TestGenerate_UsesPublicToolArgumentsCategorySpelling(t *testing.T) {
-	t.Parallel()
 	out, err := generate()
 	require.NoError(t, err)
 	assert.Contains(t, string(out), `"category": "tool_arguments"`)
@@ -83,7 +79,6 @@ func TestGenerate_UsesPublicToolArgumentsCategorySpelling(t *testing.T) {
 }
 
 func TestGenerateEnums_EmitsEveryDeclaredValueExceptUnspecified(t *testing.T) {
-	t.Parallel()
 	out, err := generateEnums()
 	require.NoError(t, err)
 	text := string(out)
@@ -103,13 +98,11 @@ func TestGenerateEnums_EmitsEveryDeclaredValueExceptUnspecified(t *testing.T) {
 }
 
 func TestScreamingSnake_SplitsOnUpperCase(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "EVALUATION_LANE", screamingSnake("EvaluationLane"))
 	assert.Equal(t, "EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS", screamingSnake("EvaluationAssignmentLifecycleStatus"))
 }
 
 func TestEnumSuffix_StripsPrefixAndLowercases(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		value  string
@@ -123,14 +116,12 @@ func TestEnumSuffix_StripsPrefixAndLowercases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, enumSuffix(tt.value, tt.prefix))
 		})
 	}
 }
 
 func TestNonEmpty_ReturnsNilForEmptyAndCopyForPopulated(t *testing.T) {
-	t.Parallel()
 	assert.Nil(t, nonEmpty(nil))
 	assert.Nil(t, nonEmpty([]string{}))
 
@@ -143,7 +134,6 @@ func TestNonEmpty_ReturnsNilForEmptyAndCopyForPopulated(t *testing.T) {
 }
 
 func TestBuildTask_MapsScenarioFixtureAndGoldIntoPublicTask(t *testing.T) {
-	t.Parallel()
 	scenario := &evalv1.EvaluationScenarioDefinition{
 		ScenarioId:        "scn-001",
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION,
@@ -189,7 +179,6 @@ func TestBuildTask_MapsScenarioFixtureAndGoldIntoPublicTask(t *testing.T) {
 }
 
 func TestBuildTask_CategoryNamesUsePublicSpelling(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		category evalv1.EvaluationScenarioCategory
@@ -202,7 +191,6 @@ func TestBuildTask_CategoryNamesUsePublicSpelling(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got := buildTask(&evalv1.EvaluationScenarioDefinition{Category: tt.category}, evaluation.ScenarioInputFixture{}, evaluation.ScenarioGoldCriteria{})
 			assert.Equal(t, tt.want, got.Category)
 		})
@@ -210,7 +198,6 @@ func TestBuildTask_CategoryNamesUsePublicSpelling(t *testing.T) {
 }
 
 func TestBuildTask_OmitsEmptyOptionalCollections(t *testing.T) {
-	t.Parallel()
 	got := buildTask(&evalv1.EvaluationScenarioDefinition{ScenarioId: "scn-empty"}, evaluation.ScenarioInputFixture{}, evaluation.ScenarioGoldCriteria{})
 
 	assert.Nil(t, got.AllowedTools)
@@ -223,7 +210,6 @@ func TestBuildTask_OmitsEmptyOptionalCollections(t *testing.T) {
 }
 
 func TestBuildTask_PublishesHintSourcesButNeverArgumentValues(t *testing.T) {
-	t.Parallel()
 	scenario := &evalv1.EvaluationScenarioDefinition{
 		PromptHint: &evalv1.PromptHint{
 			HintedTools: []string{"fs_read"},
@@ -245,7 +231,6 @@ func TestBuildTask_PublishesHintSourcesButNeverArgumentValues(t *testing.T) {
 }
 
 func TestBuildTask_HintWithoutArgumentsEmitsEmptyArgumentList(t *testing.T) {
-	t.Parallel()
 	scenario := &evalv1.EvaluationScenarioDefinition{
 		PromptHint: &evalv1.PromptHint{HintedTools: []string{"fs_list"}},
 	}
@@ -258,7 +243,6 @@ func TestBuildTask_HintWithoutArgumentsEmitsEmptyArgumentList(t *testing.T) {
 }
 
 func TestFindRepoRoot_LocatesDirectoryContainingGoMod(t *testing.T) {
-	t.Parallel()
 	root, err := findRepoRoot()
 	require.NoError(t, err)
 	_, err = os.Stat(filepath.Join(root, "go.mod"))
@@ -266,7 +250,6 @@ func TestFindRepoRoot_LocatesDirectoryContainingGoMod(t *testing.T) {
 }
 
 func TestRun_WriteCreatesModuleAndCheckAcceptsIt(t *testing.T) {
-	t.Parallel()
 	root := newCatalogRoot(t)
 	var stdout, stderr bytes.Buffer
 
@@ -285,7 +268,6 @@ func TestRun_WriteCreatesModuleAndCheckAcceptsIt(t *testing.T) {
 }
 
 func TestRun_DefaultsToCheckMode(t *testing.T) {
-	t.Parallel()
 	root := newCatalogRoot(t)
 	writeGenerated(t, root)
 
@@ -293,7 +275,6 @@ func TestRun_DefaultsToCheckMode(t *testing.T) {
 }
 
 func TestRun_CheckRejectsStaleModule(t *testing.T) {
-	t.Parallel()
 	root := newCatalogRoot(t)
 	require.NoError(t, os.WriteFile(filepath.Join(root, outputRelPath), []byte("// stale\n"), 0o644))
 
@@ -305,7 +286,6 @@ func TestRun_CheckRejectsStaleModule(t *testing.T) {
 }
 
 func TestRun_CheckRejectsStaleEnumModule(t *testing.T) {
-	t.Parallel()
 	root := newCatalogRoot(t)
 	writeGenerated(t, root)
 	require.NoError(t, os.WriteFile(filepath.Join(root, enumsRelPath), []byte("// stale\n"), 0o644))
@@ -317,7 +297,6 @@ func TestRun_CheckRejectsStaleEnumModule(t *testing.T) {
 }
 
 func TestRun_CheckReportsMissingModule(t *testing.T) {
-	t.Parallel()
 	root := newCatalogRoot(t)
 
 	err := run([]string{"-check"}, root, &bytes.Buffer{}, &bytes.Buffer{})
@@ -328,7 +307,6 @@ func TestRun_CheckReportsMissingModule(t *testing.T) {
 }
 
 func TestRun_WriteFailsWhenOutputDirectoryIsMissing(t *testing.T) {
-	t.Parallel()
 	err := run([]string{"-write"}, testutil.TempDir(t), &bytes.Buffer{}, &bytes.Buffer{})
 
 	require.Error(t, err)
@@ -337,7 +315,6 @@ func TestRun_WriteFailsWhenOutputDirectoryIsMissing(t *testing.T) {
 }
 
 func TestRun_RejectsConflictingAndUnknownFlags(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name string
 		args []string
@@ -348,7 +325,6 @@ func TestRun_RejectsConflictingAndUnknownFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			root := newCatalogRoot(t)
 
 			err := run(tt.args, root, &bytes.Buffer{}, &bytes.Buffer{})

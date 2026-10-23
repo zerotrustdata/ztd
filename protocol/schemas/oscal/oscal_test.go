@@ -81,8 +81,7 @@ func verifySchemaDigest() error {
 	return err
 }
 
-func TestSchemaBytes_MatchesPinnedDigest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSchemaBytes_MatchesPinnedDigest(t *testing.T) {
 	b, err := SchemaBytes()
 	require.NoError(t, err)
 	assert.Len(t, b, PinnedByteLength)
@@ -90,8 +89,7 @@ func TestSchemaBytes_MatchesPinnedDigest(t *testing.T) { //nolint:paralleltest /
 	assert.Equal(t, PinnedSHA256, hex.EncodeToString(sum[:]))
 }
 
-func TestSchemaBytes_IsACopy(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSchemaBytes_IsACopy(t *testing.T) {
 	b1, err := SchemaBytes()
 	require.NoError(t, err)
 	b2, err := SchemaBytes()
@@ -100,8 +98,7 @@ func TestSchemaBytes_IsACopy(t *testing.T) { //nolint:paralleltest // mutates pa
 	assert.Equal(t, b1, b2)
 }
 
-func TestSchemaBytes_DecodesAsValidJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSchemaBytes_DecodesAsValidJSON(t *testing.T) {
 	b, err := SchemaBytes()
 	require.NoError(t, err)
 	var schema map[string]any
@@ -114,13 +111,11 @@ func TestSchemaBytes_DecodesAsValidJSON(t *testing.T) { //nolint:paralleltest //
 	assert.NotEmpty(t, defs)
 }
 
-func TestVerifySchemaDigest_PassesForEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifySchemaDigest_PassesForEmbeddedSchema(t *testing.T) {
 	assert.NoError(t, verifySchemaDigest())
 }
 
-func TestProvenanceBytes_DecodesAndMatchesSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestProvenanceBytes_DecodesAndMatchesSchema(t *testing.T) {
 	p, err := loadProvenance()
 	require.NoError(t, err)
 	assert.Equal(t, "oscal-assessment-results", p.SchemaType)
@@ -136,14 +131,12 @@ func TestProvenanceBytes_DecodesAndMatchesSchema(t *testing.T) { //nolint:parall
 }
 
 func TestProvenanceBytes_IsValidJSON(t *testing.T) {
-	t.Parallel()
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(provenanceBytes(), &raw))
 	assert.NotEmpty(t, raw)
 }
 
 func TestPinnedSHA256_IsValidHex(t *testing.T) {
-	t.Parallel()
 	assert.Len(t, PinnedSHA256, 64)
 	for _, c := range PinnedSHA256 {
 		assert.True(t, strings.ContainsRune("0123456789abcdef", c), "invalid hex char %q", c)

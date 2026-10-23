@@ -44,7 +44,6 @@ func validNode(artifactType ArtifactType, scopeID string, body []byte) EvidenceN
 }
 
 func TestContentAddress_FormatAndDeterminism(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"hello":"world"}`)
 	addr := ContentAddress(ArtifactTypeEvalManifest, body)
 	digest := sha256.Sum256(body)
@@ -60,7 +59,6 @@ func TestContentAddress_FormatAndDeterminism(t *testing.T) {
 }
 
 func TestParseContentAddress_ValidAddress(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{}`)
 	addr := ContentAddress(ArtifactTypeActionReceipt, body)
 	artifactType, digest, ok := ParseContentAddress(addr)
@@ -70,7 +68,6 @@ func TestParseContentAddress_ValidAddress(t *testing.T) {
 }
 
 func TestParseContentAddress_InvalidAddresses(t *testing.T) {
-	t.Parallel()
 	emptyDigest := sha256.Sum256(nil)
 	tests := []struct {
 		name    string
@@ -86,7 +83,6 @@ func TestParseContentAddress_InvalidAddresses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			_, _, ok := ParseContentAddress(tt.address)
 			assert.False(t, ok)
 		})
@@ -94,7 +90,6 @@ func TestParseContentAddress_InvalidAddresses(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_AcceptsValidNode(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	require.NoError(t, g.AddNode(node))
@@ -103,7 +98,6 @@ func TestEvidenceGraph_AddNode_AcceptsValidNode(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsEmptyArtifactID(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ArtifactID = ""
@@ -114,7 +108,6 @@ func TestEvidenceGraph_AddNode_RejectsEmptyArtifactID(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsEmptySHA256(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.SHA256 = ""
@@ -124,7 +117,6 @@ func TestEvidenceGraph_AddNode_RejectsEmptySHA256(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsEmptyScopeID(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ScopeID = ""
@@ -134,7 +126,6 @@ func TestEvidenceGraph_AddNode_RejectsEmptyScopeID(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsOversizedArtifact(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(10, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`this is more than 10 bytes`))
 	err := g.AddNode(node)
@@ -143,7 +134,6 @@ func TestEvidenceGraph_AddNode_RejectsOversizedArtifact(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_AllowsZeroMaxBytes(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	large := make([]byte, 1024)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", large)
@@ -152,7 +142,6 @@ func TestEvidenceGraph_AddNode_AllowsZeroMaxBytes(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsUnsupportedMediaType(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, []string{"application/json"})
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.MediaType = "application/xml"
@@ -162,7 +151,6 @@ func TestEvidenceGraph_AddNode_RejectsUnsupportedMediaType(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_AllowsEmptyMediaTypeWithAllowList(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, []string{"application/json"})
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.MediaType = ""
@@ -170,7 +158,6 @@ func TestEvidenceGraph_AddNode_AllowsEmptyMediaTypeWithAllowList(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsPathTraversalBundlePath(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.BundlePath = "../escape.json"
@@ -180,7 +167,6 @@ func TestEvidenceGraph_AddNode_RejectsPathTraversalBundlePath(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsAbsoluteBundlePath(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.BundlePath = "/etc/passwd"
@@ -190,7 +176,6 @@ func TestEvidenceGraph_AddNode_RejectsAbsoluteBundlePath(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_AcceptsDuplicateWithSameContent(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	body := []byte(`{"id":"dup"}`)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", body)
@@ -201,7 +186,6 @@ func TestEvidenceGraph_AddNode_AcceptsDuplicateWithSameContent(t *testing.T) {
 }
 
 func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingContent(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"v":1}`))
 	require.NoError(t, g.AddNode(node1))
@@ -215,7 +199,6 @@ func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingContent(t *testing
 }
 
 func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingScope(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	body := []byte(`{"id":"dup"}`)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", body)
@@ -228,7 +211,6 @@ func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingScope(t *testing.T
 }
 
 func TestEvidenceGraph_AddNode_DeduplicatesMirroredArtifactAcrossSourceAdmissions(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	body := []byte(`{"id":"mirrored"}`)
 	node1 := validNode(ArtifactTypeActionReceipt, "scope-1", body)
@@ -242,7 +224,6 @@ func TestEvidenceGraph_AddNode_DeduplicatesMirroredArtifactAcrossSourceAdmission
 }
 
 func TestEvidenceGraph_ResolveReferences_DetectsUnresolved(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalMetric, "scope-1", []byte(`{}`))
 	node.References = []string{"eval-manifest:sha256:missing"}
@@ -259,7 +240,6 @@ func TestEvidenceGraph_ResolveReferences_DetectsUnresolved(t *testing.T) {
 }
 
 func TestEvidenceGraph_ResolveReferences_PassesForResolved(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	manifest := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"m":1}`))
 	require.NoError(t, g.AddNode(manifest))
@@ -271,7 +251,6 @@ func TestEvidenceGraph_ResolveReferences_PassesForResolved(t *testing.T) {
 }
 
 func TestEvidenceGraph_DetectCycles_DetectsSelfReference(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalMetric, "scope-1", []byte(`{}`))
 	node.ArtifactID = "self-ref"
@@ -289,7 +268,6 @@ func TestEvidenceGraph_DetectCycles_DetectsSelfReference(t *testing.T) {
 }
 
 func TestEvidenceGraph_DetectCycles_DetectsMutualReference(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	nodeA := validNode(ArtifactTypeEvalMetric, "scope-1", []byte(`{"a":1}`))
 	nodeA.ArtifactID = "node-a"
@@ -304,7 +282,6 @@ func TestEvidenceGraph_DetectCycles_DetectsMutualReference(t *testing.T) {
 }
 
 func TestEvidenceGraph_DetectCycles_PassesForAcyclic(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	a := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"a":1}`))
 	a.ArtifactID = "node-a"
@@ -318,7 +295,6 @@ func TestEvidenceGraph_DetectCycles_PassesForAcyclic(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_DetectsRunScopeConflict(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"1":1}`))
 	node1.RunID = "run-x"
@@ -333,7 +309,6 @@ func TestEvidenceGraph_ValidateScopeBinding_DetectsRunScopeConflict(t *testing.T
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_AllowsRunIdentityToRepeatAcrossSources(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"1":1}`))
 	node1.RunID = "run-x"
@@ -348,7 +323,6 @@ func TestEvidenceGraph_ValidateScopeBinding_AllowsRunIdentityToRepeatAcrossSourc
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_AllowsAttemptIdentityToRepeatAcrossSources(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"1":1}`))
 	node1.RunID = "run-1"
@@ -365,7 +339,6 @@ func TestEvidenceGraph_ValidateScopeBinding_AllowsAttemptIdentityToRepeatAcrossS
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_DetectsTransactionRunConflictWithinSource(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeActionReceipt, "scope-1", []byte(`{"1":1}`))
 	node1.SourceAdmissionID = "source-1"
@@ -382,7 +355,6 @@ func TestEvidenceGraph_ValidateScopeBinding_DetectsTransactionRunConflictWithinS
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_DetectsAttemptRunConflict(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"1":1}`))
 	node1.RunID = "run-1"
@@ -397,7 +369,6 @@ func TestEvidenceGraph_ValidateScopeBinding_DetectsAttemptRunConflict(t *testing
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_AllowsScenarioIDToRepeatAcrossRuns(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node1 := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"1":1}`))
 	node1.RunID = "run-1"
@@ -412,7 +383,6 @@ func TestEvidenceGraph_ValidateScopeBinding_AllowsScenarioIDToRepeatAcrossRuns(t
 }
 
 func TestEvidenceGraph_ValidateScopeBinding_PassesForConsistentBindings(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	for i := 0; i < 3; i++ {
 		node := validNode(ArtifactTypeEvalMetric, "scope-1", []byte(fmt.Sprintf(`{"i":%d}`, i)))
@@ -426,7 +396,6 @@ func TestEvidenceGraph_ValidateScopeBinding_PassesForConsistentBindings(t *testi
 }
 
 func TestEvidenceGraph_ValidateFreshness_DetectsMissingTimestamp(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ProducedAt = time.Time{}
@@ -437,7 +406,6 @@ func TestEvidenceGraph_ValidateFreshness_DetectsMissingTimestamp(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateFreshness_DetectsBeforeWindowStart(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ProducedAt = time.Unix(1_000_000_000, 0).UTC()
@@ -448,7 +416,6 @@ func TestEvidenceGraph_ValidateFreshness_DetectsBeforeWindowStart(t *testing.T) 
 }
 
 func TestEvidenceGraph_ValidateFreshness_DetectsAfterWindowEnd(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ProducedAt = time.Unix(3_000_000_000, 0).UTC()
@@ -459,7 +426,6 @@ func TestEvidenceGraph_ValidateFreshness_DetectsAfterWindowEnd(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateFreshness_PassesWithinWindow(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ProducedAt = time.Unix(1_500_000_000, 0).UTC()
@@ -469,7 +435,6 @@ func TestEvidenceGraph_ValidateFreshness_PassesWithinWindow(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateEncryption_DetectsIncompleteMetadata(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.Encryption = &EncryptionMetadata{Algorithm: "aes-256-gcm"}
@@ -479,7 +444,6 @@ func TestEvidenceGraph_ValidateEncryption_DetectsIncompleteMetadata(t *testing.T
 }
 
 func TestEvidenceGraph_ValidateEncryption_AcceptsDistinctAccessAuthorizationScope(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.Encryption = &EncryptionMetadata{
@@ -495,7 +459,6 @@ func TestEvidenceGraph_ValidateEncryption_AcceptsDistinctAccessAuthorizationScop
 }
 
 func TestEvidenceGraph_ValidateEncryption_PassesForCompleteMatchingMetadata(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.Encryption = &EncryptionMetadata{
@@ -511,7 +474,6 @@ func TestEvidenceGraph_ValidateEncryption_PassesForCompleteMatchingMetadata(t *t
 }
 
 func TestEvidenceGraph_ValidateEncryption_PassesForNoEncryption(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	require.NoError(t, g.AddNode(node))
@@ -520,7 +482,6 @@ func TestEvidenceGraph_ValidateEncryption_PassesForNoEncryption(t *testing.T) {
 }
 
 func TestEvidenceGraph_VerifyDigests_DetectsMismatch(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.SHA256 = "deadbeef" + "00000000000000000000000000000000000000000000000000000000000000"
@@ -531,7 +492,6 @@ func TestEvidenceGraph_VerifyDigests_DetectsMismatch(t *testing.T) {
 }
 
 func TestEvidenceGraph_VerifyDigests_PassesForMatchingDigest(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	body := []byte(`{"verified":true}`)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", body)
@@ -541,7 +501,6 @@ func TestEvidenceGraph_VerifyDigests_PassesForMatchingDigest(t *testing.T) {
 }
 
 func TestEvidenceGraph_VerifyDigests_SkipsNodesWithoutCanonicalBytes(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.CanonicalBytes = nil
@@ -551,7 +510,6 @@ func TestEvidenceGraph_VerifyDigests_SkipsNodesWithoutCanonicalBytes(t *testing.
 }
 
 func TestEvidenceGraph_ValidateTrust_DetectsMissingVerifier(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.VerificationStatus = VerificationStatusVerified
@@ -562,7 +520,6 @@ func TestEvidenceGraph_ValidateTrust_DetectsMissingVerifier(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateTrust_DetectsMissingProducer(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ProducerIdentity = ""
@@ -572,7 +529,6 @@ func TestEvidenceGraph_ValidateTrust_DetectsMissingProducer(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateTrust_PassesForUnverifiedWithoutVerifier(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.VerificationStatus = VerificationStatusUnverified
@@ -584,7 +540,6 @@ func TestEvidenceGraph_ValidateTrust_PassesForUnverifiedWithoutVerifier(t *testi
 }
 
 func TestEvidenceGraph_ValidateAll_RunsAllChecksInOrder(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	// Add a node with a bad digest to trigger VerifyDigests.
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
@@ -596,7 +551,6 @@ func TestEvidenceGraph_ValidateAll_RunsAllChecksInOrder(t *testing.T) {
 }
 
 func TestEvidenceGraph_ValidateAll_PassesForValidGraph(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	manifest := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{"m":1}`))
 	require.NoError(t, g.AddNode(manifest))
@@ -608,7 +562,6 @@ func TestEvidenceGraph_ValidateAll_PassesForValidGraph(t *testing.T) {
 }
 
 func TestEvidenceGraph_NodesByScope_ReturnsBoundNodes(t *testing.T) {
-	t.Parallel()
 	g := NewEvidenceGraph(0, nil)
 	require.NoError(t, g.AddNode(validNode(ArtifactTypeEvalManifest, "scope-a", []byte(`{"a":1}`))))
 	require.NoError(t, g.AddNode(validNode(ArtifactTypeEvalMetric, "scope-a", []byte(`{"a":2}`))))
@@ -619,7 +572,6 @@ func TestEvidenceGraph_NodesByScope_ReturnsBoundNodes(t *testing.T) {
 }
 
 func TestEvidenceNode_ToProto_RoundTripsCoreFields(t *testing.T) {
-	t.Parallel()
 	node := validNode(ArtifactTypeActionReceipt, "scope-1", []byte(`{}`))
 	node.TransactionID = "tx-001"
 	node.Encryption = &EncryptionMetadata{
@@ -655,7 +607,6 @@ func TestEvidenceNode_ToProto_RoundTripsCoreFields(t *testing.T) {
 }
 
 func TestEvidenceNode_ToProto_OmitsZeroTimestamps(t *testing.T) {
-	t.Parallel()
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	node.ProducedAt = time.Time{}
 	node.VerifiedAt = time.Time{}
@@ -665,21 +616,18 @@ func TestEvidenceNode_ToProto_OmitsZeroTimestamps(t *testing.T) {
 }
 
 func TestEvidenceNode_ToProto_OmitsNilEncryption(t *testing.T) {
-	t.Parallel()
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`{}`))
 	ref := node.ToProto()
 	assert.Nil(t, ref.GetEncryption())
 }
 
 func TestValidateRelativePath_RejectsUnsafePathsWithTypedError(t *testing.T) {
-	t.Parallel()
 	for _, value := range []string{"", "/absolute/path", "..", "../escape", "../../escape", "run:1"} {
 		require.ErrorIs(t, ValidateRelativePath(value), constants.ErrEvidenceRelativePathInvalid, value)
 	}
 }
 
 func TestValidateRelativePath_AcceptsSafePaths(t *testing.T) {
-	t.Parallel()
 	for _, value := range []string{"manifest.json", "receipts/abc.json", "a/b/c.json"} {
 		require.NoError(t, ValidateRelativePath(value), value)
 	}

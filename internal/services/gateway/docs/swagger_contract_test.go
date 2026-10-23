@@ -69,7 +69,6 @@ type swaggerContract struct {
 }
 
 func TestSwaggerContract_DocumentsCanonicalReceiptsAndOperatorValidation(t *testing.T) {
-	t.Parallel()
 	var contract swaggerContract
 	require.NoError(t, json.Unmarshal(SwaggerJSON, &contract))
 
@@ -86,7 +85,6 @@ func TestSwaggerContract_DocumentsCanonicalReceiptsAndOperatorValidation(t *test
 	}
 	for _, tc := range responseCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tc.wantRef, tc.operation.Responses.OK.Schema.Ref)
 		})
 	}

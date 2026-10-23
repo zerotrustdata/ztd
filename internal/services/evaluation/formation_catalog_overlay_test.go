@@ -21,7 +21,6 @@ import (
 )
 
 func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
-	t.Parallel()
 	overlay := FormationCatalogOverlay{
 		Formations:          []Formation{newTestFormation("test-new-formation")},
 		RemovedFormationIDs: []string{"gemma-cascade"},
@@ -41,13 +40,11 @@ func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
 }
 
 func TestLoadFormationCatalogOverlayFileMissingWrapsNotExist(t *testing.T) {
-	t.Parallel()
 	_, err := LoadFormationCatalogOverlayFile(filepath.Join(testutil.TempDir(t), "does-not-exist.json"))
 	assert.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestApplyFormationCatalogOverlayAddsAndRemoves(t *testing.T) {
-	t.Parallel()
 	overlay := &FormationCatalogOverlay{
 		Formations:          []Formation{newTestFormation("test-new-formation")},
 		RemovedFormationIDs: []string{"gemma-cascade"},
@@ -63,14 +60,12 @@ func TestApplyFormationCatalogOverlayAddsAndRemoves(t *testing.T) {
 }
 
 func TestApplyFormationCatalogOverlayNilReturnsDefaults(t *testing.T) {
-	t.Parallel()
 	topologies, err := ApplyFormationCatalogOverlay(nil)
 	require.NoError(t, err)
 	assert.Len(t, topologies.Formations(), 5)
 }
 
 func TestApplyFormationCatalogOverlayEmptyingTheCatalogStillErrors(t *testing.T) {
-	t.Parallel()
 	defaults, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	overlay := &FormationCatalogOverlay{}

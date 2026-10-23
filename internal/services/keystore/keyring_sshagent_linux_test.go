@@ -54,7 +54,6 @@ func noSecretService() (secretService, error) {
 }
 
 func TestSSHAgentKeyring_SealRoundTrip(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := setupTestFileService(t)
 	dial := memoryAgentDialer(t, newEd25519(t))
 	kr := newSSHAgentKeyring(fileSvc, dial)
@@ -77,7 +76,6 @@ func TestSSHAgentKeyring_SealRoundTrip(t *testing.T) {
 }
 
 func TestSSHAgentKeyring_WrongKeyCannotUnseal(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	dial := memoryAgentDialer(t, newEd25519(t))
 	require.NoError(t, newSSHAgentKeyring(fileSvc, dial).StoreMasterKey(testMasterKey(21)))
@@ -88,7 +86,6 @@ func TestSSHAgentKeyring_WrongKeyCannotUnseal(t *testing.T) {
 }
 
 func TestSSHAgentKeyring_RejectsNondeterministicKeys(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
@@ -98,7 +95,6 @@ func TestSSHAgentKeyring_RejectsNondeterministicKeys(t *testing.T) {
 }
 
 func TestSelectLinuxKeyring_NoDefaultCollectionUsesSSHAgent(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	fake := newFakeSecretService()
 	fake.defaultAlias = noObject
@@ -115,7 +111,6 @@ func TestSelectLinuxKeyring_NoDefaultCollectionUsesSSHAgent(t *testing.T) {
 }
 
 func TestSelectLinuxKeyring_SealedKeyIsSticky(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	dial := memoryAgentDialer(t, newEd25519(t))
 	require.NoError(t, newSSHAgentKeyring(fileSvc, dial).StoreMasterKey(testMasterKey(23)))
@@ -128,7 +123,6 @@ func TestSelectLinuxKeyring_SealedKeyIsSticky(t *testing.T) {
 }
 
 func TestSelectLinuxKeyring_PrefersWorkingSecretService(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	dial := memoryAgentDialer(t, newEd25519(t))
 	kr, err := selectLinuxKeyring(fileSvc, newFakeSecretService().dial, dial)
@@ -137,7 +131,6 @@ func TestSelectLinuxKeyring_PrefersWorkingSecretService(t *testing.T) {
 }
 
 func TestSelectLinuxKeyring_NeitherStoreReportsBoth(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	_, err := selectLinuxKeyring(fileSvc, noSecretService, noAgent)
 	require.ErrorIs(t, err, constants.ErrKeyStoreSecretServiceDown)
@@ -145,7 +138,6 @@ func TestSelectLinuxKeyring_NeitherStoreReportsBoth(t *testing.T) {
 }
 
 func TestSelectLinuxKeyring_SecretServiceFailuresFailClosed(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := setupTestFileService(t)
 	fake := newFakeSecretService()
 	fake.addItem(base64.StdEncoding.EncodeToString(testMasterKey(24)), false)

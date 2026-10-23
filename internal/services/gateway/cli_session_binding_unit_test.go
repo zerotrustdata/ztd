@@ -31,8 +31,6 @@ func persistActiveCLISessionForBinding(t *testing.T, svc *CLISessionService, cli
 }
 
 func TestCLISessionBinding_BindUpdatesActiveSessionInPlace(t *testing.T) {
-	t.Parallel()
-
 	svc := newCLISessionBindingTestService(t)
 	persistActiveCLISessionForBinding(t, svc, "binding-session-1", "user-1", "op-session-a")
 	before, err := svc.loadCLISession(t.Context(), "binding-session-1")
@@ -60,8 +58,6 @@ func TestCLISessionBinding_BindUpdatesActiveSessionInPlace(t *testing.T) {
 }
 
 func TestCLISessionBinding_BindRejectsMissingSessionWithoutMinting(t *testing.T) {
-	t.Parallel()
-
 	svc := newCLISessionBindingTestService(t)
 
 	_, err := svc.BindOperatorSessions(t.Context(), "binding-session-missing", "op-session-a", []string{"op-session-a"})
@@ -73,8 +69,6 @@ func TestCLISessionBinding_BindRejectsMissingSessionWithoutMinting(t *testing.T)
 }
 
 func TestCLISessionBinding_BindRejectsInactiveSessionKeepsBinding(t *testing.T) {
-	t.Parallel()
-
 	svc := newCLISessionBindingTestService(t)
 	persistActiveCLISessionForBinding(t, svc, "binding-session-inactive", "user-1", "op-session-a")
 	require.NoError(t, svc.DeactivateCLISession(t.Context(), "binding-session-inactive"))
@@ -89,8 +83,6 @@ func TestCLISessionBinding_BindRejectsInactiveSessionKeepsBinding(t *testing.T) 
 }
 
 func TestCLISessionBinding_BindRejectsInvalidTargets(t *testing.T) {
-	t.Parallel()
-
 	svc := newCLISessionBindingTestService(t)
 	persistActiveCLISessionForBinding(t, svc, "binding-session-invalid", "user-1", "op-session-a")
 
@@ -107,8 +99,6 @@ func TestCLISessionBinding_BindRejectsInvalidTargets(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			_, err := svc.BindOperatorSessions(t.Context(), tc.sessionID, tc.primary, tc.bound)
 			require.ErrorIs(t, err, constants.ErrCLISessionInvalid)
 		})
@@ -121,8 +111,6 @@ func TestCLISessionBinding_BindRejectsInvalidTargets(t *testing.T) {
 }
 
 func TestCLISessionBinding_UnbindClearsBindingInPlace(t *testing.T) {
-	t.Parallel()
-
 	svc := newCLISessionBindingTestService(t)
 	persistActiveCLISessionForBinding(t, svc, "binding-session-unbind", "user-1", "op-session-a")
 	_, err := svc.BindOperatorSessions(t.Context(), "binding-session-unbind", "op-session-a", []string{"op-session-a", "op-session-b"})
@@ -147,8 +135,6 @@ func TestCLISessionBinding_UnbindClearsBindingInPlace(t *testing.T) {
 }
 
 func TestCLISessionBinding_UnbindRejectsMissingAndInactiveSessions(t *testing.T) {
-	t.Parallel()
-
 	svc := newCLISessionBindingTestService(t)
 
 	_, err := svc.UnbindOperatorSessions(t.Context(), "binding-session-unbind-missing")

@@ -21,7 +21,6 @@ import (
 // campaign_tribunal_real_stack_integration_test.go.
 
 func TestResolveAssignmentModels_RejectsStackOutsideFrozenFormationSet(t *testing.T) {
-	t.Parallel()
 	variants := testFormationCatalogVariants()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   agentTestCampaignID,

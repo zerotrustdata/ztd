@@ -32,7 +32,6 @@ import (
 
 func TestReadTrustBundle_DefaultPath(t *testing.T) {
 	t.Parallel()
-
 	fileSvc := newAuthTestFileSvc(t)
 	runtimeDir := fileSvc.Resolve("")
 
@@ -53,7 +52,6 @@ func TestReadTrustBundle_DefaultPath(t *testing.T) {
 
 func TestReadTrustBundle_CustomPath(t *testing.T) {
 	t.Parallel()
-
 	fileSvc := newAuthTestFileSvc(t)
 	runtimeDir := fileSvc.Resolve("")
 
@@ -77,7 +75,6 @@ func TestReadTrustBundle_CustomPath(t *testing.T) {
 
 func TestReadTrustBundle_MissingDefaultReturnsTypedError(t *testing.T) {
 	t.Parallel()
-
 	fileSvc := newAuthTestFileSvc(t)
 	runtimeDir := fileSvc.Resolve("")
 
@@ -94,7 +91,6 @@ func TestReadTrustBundle_MissingDefaultReturnsTypedError(t *testing.T) {
 
 func TestReadTrustBundle_MissingCustomReturnsOSErrNotExist(t *testing.T) {
 	t.Parallel()
-
 	fileSvc := newAuthTestFileSvc(t)
 	runtimeDir := fileSvc.Resolve("")
 
@@ -167,7 +163,6 @@ func TestWriteTrustBundleFS_CustomPath(t *testing.T) {
 
 func TestBuildMTLSClient_ReadsTrustBundleFromRuntimeTree(t *testing.T) {
 	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 
 	caPEM, _ := testutil.GenerateTestCertificate(t, "test-ca")

@@ -26,7 +26,6 @@ import (
 )
 
 func TestVersionInfoFromCmd_WithVersionInfo(t *testing.T) {
-	t.Parallel()
 	vi := serve.VersionInfo{
 		Version:   "1.2.3",
 		BuildID:   "build-abc",
@@ -45,7 +44,6 @@ func TestVersionInfoFromCmd_WithVersionInfo(t *testing.T) {
 }
 
 func TestVersionInfoFromCmd_WithoutVersionInfo(t *testing.T) {
-	t.Parallel()
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 	got := shared.VersionInfoFromCmd(cmd)
@@ -54,7 +52,7 @@ func TestVersionInfoFromCmd_WithoutVersionInfo(t *testing.T) {
 	assert.Empty(t, got.BuildID)
 }
 
-func TestNewRootCmd_PassportVersionInfoIntoContext(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestNewRootCmd_PassportVersionInfoIntoContext(t *testing.T) {
 	vi := serve.VersionInfo{
 		Version:   "2.0.0",
 		BuildID:   "test-build",
@@ -68,7 +66,7 @@ func TestNewRootCmd_PassportVersionInfoIntoContext(t *testing.T) { //nolint:para
 	assert.Equal(t, "test-build", got.BuildID)
 }
 
-func TestNewRootCmd_PersistentFlagsExist(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestNewRootCmd_PersistentFlagsExist(t *testing.T) {
 	rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 	endpointFlag := rootCmd.PersistentFlags().Lookup("endpoint")
@@ -86,8 +84,8 @@ func TestNewRootCmd_PersistentFlagsExist(t *testing.T) { //nolint:paralleltest /
 	assert.Equal(t, "false", jsonFlag.DefValue)
 }
 
-func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) { //nolint:paralleltest // mutates the process environment
-	t.Run("endpoint flag sets override", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) {
+	t.Run("endpoint flag sets override", func(t *testing.T) {
 		config.SetEndpointOverride("")
 		t.Cleanup(func() { config.SetEndpointOverride("") })
 
@@ -106,7 +104,7 @@ func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) { //nol
 		assert.Contains(t, cfg.OperatorPublicURL(), "remote.example.com")
 	})
 
-	t.Run("endpoint and port flags set override with port", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("endpoint and port flags set override with port", func(t *testing.T) {
 		config.SetEndpointOverride("")
 		t.Cleanup(func() { config.SetEndpointOverride("") })
 
@@ -127,7 +125,7 @@ func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) { //nol
 		assert.Contains(t, cfg.OperatorPublicURL(), "9999")
 	})
 
-	t.Run("endpoint with port and --port sets split overrides", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("endpoint with port and --port sets split overrides", func(t *testing.T) {
 		config.SetEndpointOverride("")
 		t.Cleanup(func() { config.SetEndpointOverride("") })
 
@@ -148,7 +146,7 @@ func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) { //nol
 		assert.NotContains(t, cfg.OperatorPublicURL(), "8085")
 	})
 
-	t.Run("port-only flag defaults to localhost", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("port-only flag defaults to localhost", func(t *testing.T) {
 		config.SetEndpointOverride("")
 		t.Cleanup(func() { config.SetEndpointOverride("") })
 
@@ -169,7 +167,7 @@ func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) { //nol
 		assert.Contains(t, cfg.OperatorPublicURL(), "9090")
 	})
 
-	t.Run("operator deploy SSH port does not override Gateway HTTPS port", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("operator deploy SSH port does not override Gateway HTTPS port", func(t *testing.T) {
 		config.SetEndpointOverride("")
 		t.Cleanup(func() { config.SetEndpointOverride("") })
 
@@ -191,7 +189,7 @@ func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) { //nol
 // directory for an autochthon command, so the refused flag fails first. The
 // working directory has no launch profile; any runtime file service the root
 // opens is recorded.
-func TestRootPreRunRefusesAutochthonBeforeRuntimeFiles(t *testing.T) { //nolint:paralleltest // changes the process working directory and environment
+func TestRootPreRunRefusesAutochthonBeforeRuntimeFiles(t *testing.T) {
 	dir := testutil.TempDir(t)
 	t.Chdir(dir)
 
@@ -211,7 +209,7 @@ func TestRootPreRunRefusesAutochthonBeforeRuntimeFiles(t *testing.T) { //nolint:
 		"endpoint flag":       {"autochthon", "--working-dir", dir, "--endpoint", "gateway.example"},
 		"port flag on status": {"autochthon", "status", "--working-dir", dir, "--port", "8443"},
 	}
-	for name, args := range cases { //nolint:paralleltest // changes the process working directory and environment
+	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
 			opened = nil
 			rootCmd := NewRootCmd("dev", serve.VersionInfo{})

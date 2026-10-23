@@ -24,7 +24,6 @@ import (
 )
 
 func TestExecutionIDFromMessage(t *testing.T) {
-	t.Parallel()
 	t.Run("extracts execution_id from payload", func(t *testing.T) {
 		t.Parallel()
 		req := &operatorv1.CommandRequested{Command: "ls -la", ExecutionId: "exec-123"}
@@ -67,7 +66,6 @@ func TestExecutionIDFromMessage(t *testing.T) {
 }
 
 func TestSetExecutionIDOnPayload(t *testing.T) {
-	t.Parallel()
 	t.Run("sets execution_id on payload with field", func(t *testing.T) {
 		t.Parallel()
 		req := &operatorv1.CommandRequested{Command: "ls -la"}
@@ -90,10 +88,9 @@ func TestSetExecutionIDOnPayload(t *testing.T) {
 	})
 }
 
-func TestPublishLFAATypedResponseTo(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("publishes typed response successfully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublishLFAATypedResponseTo(t *testing.T) {
+	t.Run("publishes typed response successfully", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -124,8 +121,8 @@ func TestPublishLFAATypedResponseTo(t *testing.T) { //nolint:paralleltest // mut
 		assert.NotEmpty(t, published.Data)
 	})
 
-	t.Run("handles build envelope error gracefully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("handles build envelope error gracefully", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -150,8 +147,8 @@ func TestPublishLFAATypedResponseTo(t *testing.T) { //nolint:paralleltest // mut
 		// Should log error and not panic
 	})
 
-	t.Run("handles publish error gracefully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("handles publish error gracefully", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -181,11 +178,9 @@ func TestPublishLFAATypedResponseTo(t *testing.T) { //nolint:paralleltest // mut
 	})
 }
 
-func TestLFAAResponsesUseExecutingOperatorIdentity(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	for _, failure := range []bool{false, true} { //nolint:paralleltest // mutates package-level state
+func TestLFAAResponsesUseExecutingOperatorIdentity(t *testing.T) {
+	for _, failure := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completion", true: "failure"}[failure], func(t *testing.T) {
-
 			cfg := testutil.NewTestConfig(t)
 			cfg.OperatorID = "gateway-config-identity"
 			cfg.OperatorSessionId = "gateway-config-session"
@@ -213,10 +208,9 @@ func TestLFAAResponsesUseExecutingOperatorIdentity(t *testing.T) { //nolint:para
 	}
 }
 
-func TestPublishLFAAErrorTo(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("publishes error response successfully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublishLFAAErrorTo(t *testing.T) {
+	t.Run("publishes error response successfully", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -239,8 +233,8 @@ func TestPublishLFAAErrorTo(t *testing.T) { //nolint:paralleltest // mutates pac
 		assert.NotEmpty(t, published.Data)
 	})
 
-	t.Run("handles publish error gracefully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("handles publish error gracefully", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -263,8 +257,6 @@ func TestPublishLFAAErrorTo(t *testing.T) { //nolint:paralleltest // mutates pac
 }
 
 func TestPublishObservedStateEvidence(t *testing.T) {
-	t.Parallel()
-
 	const sessionID = "session-1"
 	newMsg := func() *PubSubCommandMessage {
 		return &PubSubCommandMessage{ID: "msg-1", OperatorSessionID: sessionID}
@@ -272,7 +264,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("persists observed-state content for FsListResult", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
@@ -295,7 +286,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("does not persist for handlers that record their own raw event", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
@@ -310,7 +300,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("persists observed-state content for PortCheckResult", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
@@ -331,7 +320,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("scrubs sensitive content before persisting", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
@@ -352,7 +340,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("does not persist for command events (double-recording guard)", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
@@ -371,7 +358,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("non-fatal: a failing store write does not panic or record", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		// The session is never created, so the real store rejects the event.
 		auditStore := storagetest.NewTestAuditStore(t)
@@ -390,7 +376,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 
 	t.Run("handles empty content gracefully", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		auditStore := storagetest.NewTestAuditStore(t, sessionID)
 
@@ -407,7 +392,6 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 }
 
 func TestExtractContentText(t *testing.T) {
-	t.Parallel()
 	t.Run("nil payload returns empty", func(t *testing.T) {
 		t.Parallel()
 		assert.Empty(t, extractContentText(nil))

@@ -36,15 +36,13 @@ func translateSSEEvents(eventType, data string) []tea.Msg {
 	return translateEvent(ev)
 }
 
-func TestTranslateSSEEvent(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestTranslateSSEEvent(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	originalTimeNow := timeNow
 	t.Cleanup(func() { timeNow = originalTimeNow })
 	timeNow = func() time.Time { return fixedTime }
 
-	t.Run("unknown event type falls back to LedgerMsg", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("unknown event type falls back to LedgerMsg", func(t *testing.T) {
 		data := `{"type":"system.heartbeat","data":{"status":"ok"}}`
 		msgs := translateSSEEvents("system.heartbeat", data)
 		require.Len(t, msgs, 1)
@@ -54,8 +52,7 @@ func TestTranslateSSEEvent(t *testing.T) { //nolint:paralleltest // mutates pack
 		assert.Equal(t, fixedTime, lm.Time)
 	})
 
-	t.Run("event families with no Gateway producer are not special-cased", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("event families with no Gateway producer are not special-cased", func(t *testing.T) {
 		for _, eventType := range []string{"pipeline.advance", "ledger.entry", "consensus.vote"} {
 			msgs := translateSSEEvents("", `{"type":"`+eventType+`","data":{}}`)
 			require.Len(t, msgs, 1, eventType)
@@ -64,8 +61,7 @@ func TestTranslateSSEEvent(t *testing.T) { //nolint:paralleltest // mutates pack
 		}
 	})
 
-	t.Run("non-JSON data falls back to LedgerMsg with raw text", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("non-JSON data falls back to LedgerMsg with raw text", func(t *testing.T) {
 		msgs := translateSSEEvents("unknown", "plain text message")
 		require.Len(t, msgs, 1)
 		lm, ok := msgs[0].(LedgerMsg)
@@ -74,8 +70,7 @@ func TestTranslateSSEEvent(t *testing.T) { //nolint:paralleltest // mutates pack
 		assert.Equal(t, LevelInfo, lm.Level)
 	})
 
-	t.Run("uses event type from SSE header when payload type is empty", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("uses event type from SSE header when payload type is empty", func(t *testing.T) {
 		data := `{"type":"","data":{"approval_id":"app-2","file_path":"/etc/hosts"}}`
 		msgs := translateSSEEvents(string(constants.EventOperatorFileEditApprovalRequested), data)
 		require.Len(t, msgs, 2)
@@ -85,8 +80,7 @@ func TestTranslateSSEEvent(t *testing.T) { //nolint:paralleltest // mutates pack
 		assert.Contains(t, pm.Detail, "/etc/hosts")
 	})
 
-	t.Run("R14: extracts type from SSEPushPayload envelope when eventType is empty", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("R14: extracts type from SSEPushPayload envelope when eventType is empty", func(t *testing.T) {
 		innerEvent := `{"type":"` + string(constants.EventOperatorIntentApprovalRequested) + `","data":{"approval_id":"app-3","intent_name":"network.read"}}`
 		envelopeJSON, err := json.Marshal(models.SSEPushPayload{CliSessionID: "cli-123", Event: json.RawMessage(innerEvent)})
 		require.NoError(t, err)
@@ -102,8 +96,6 @@ func TestTranslateSSEEvent(t *testing.T) { //nolint:paralleltest // mutates pack
 }
 
 func TestAdapterRunNilSession(t *testing.T) {
-	t.Parallel()
-
 	a := newAdapterWithManager(nil, &mockSender{})
 	done := make(chan struct{})
 	go func() {
@@ -254,15 +246,13 @@ func (m *mockSender) snapshot() []tea.Msg {
 	return out
 }
 
-func TestTranslateSSEEvents_Approvals(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestTranslateSSEEvents_Approvals(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	originalTimeNow := timeNow
 	t.Cleanup(func() { timeNow = originalTimeNow })
 	timeNow = func() time.Time { return fixedTime }
 
-	t.Run("command approval requested", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command approval requested", func(t *testing.T) {
 		msgs := translateSSEEvents(string(constants.EventOperatorCommandApprovalRequested), `{"type":"ztd.v1.operator.command.approval.requested","data":{"approval_id":"app-1","command":"rm -rf /tmp/test"}}`)
 		require.Len(t, msgs, 2)
 		pm, ok := msgs[0].(PipelineMsg)
@@ -276,8 +266,7 @@ func TestTranslateSSEEvents_Approvals(t *testing.T) { //nolint:paralleltest // m
 		assert.Contains(t, lm.Message, "APPROVAL REQUIRED")
 	})
 
-	t.Run("approval completed", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("approval completed", func(t *testing.T) {
 		msgs := translateSSEEvents(constants.SSEEventTypeApprovalCompleted, `{"type":"approval.completed","tx_hash":"tx-999"}`)
 		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-999"}}, msgs)
 	})
@@ -300,11 +289,7 @@ func gatewayFrame(t *testing.T, eventType string, data any) string {
 }
 
 func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
-	t.Parallel()
-
 	t.Run("publisher envelope payload is decoded from data", func(t *testing.T) {
-		t.Parallel()
-
 		frame := gatewayFrame(t, string(constants.EventOperatorCommandApprovalRequested), map[string]string{"approval_id": "app-7", "command": "systemctl restart nginx"})
 		msgs := translateSSEEvents("", frame)
 		require.Len(t, msgs, 2)
@@ -315,8 +300,6 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 	})
 
 	t.Run("approval.completed is read from the flat event", func(t *testing.T) {
-		t.Parallel()
-
 		event, err := json.Marshal(models.ApprovalCompletedEvent{Type: constants.SSEEventTypeApprovalCompleted, UserID: "user-1", TxHash: "tx-abc"})
 		require.NoError(t, err)
 		frame, err := json.Marshal(models.SSEPushPayload{UserID: "user-1", CliSessionID: "cli-1", Event: event})
@@ -325,9 +308,7 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-abc"}}, msgs)
 	})
 
-	t.Run("approval.completed with the L3_DENIED receipt is a deny", func(t *testing.T) {
-		t.Parallel()
-
+	t.Run("approval.completed carries its decoded receipt", func(t *testing.T) {
 		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
 			TransactionHash: "tx-denied",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -361,25 +342,17 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 	})
 
 	t.Run("transaction approvals.changed produces no message", func(t *testing.T) {
-		t.Parallel()
-
 		frame := gatewayFrame(t, string(constants.EventPlatformApprovalsChanged), models.ApprovalsChangedPayload{Subject: models.ApprovalsChangedTransactions})
 		assert.Empty(t, translateSSEEvents("", frame))
 	})
 
 	t.Run("enrollment approvals.changed produces no message", func(t *testing.T) {
-		t.Parallel(
-
 		// The adapter re-lists enrollments; the model announces new requests.
-		)
-
 		frame := gatewayFrame(t, string(constants.EventPlatformApprovalsChanged), models.ApprovalsChangedPayload{Subject: models.ApprovalsChangedEnrollments})
 		assert.Empty(t, translateSSEEvents("", frame))
 	})
 
 	t.Run("replay error sentinel surfaces as a warning", func(t *testing.T) {
-		t.Parallel()
-
 		sentinel, err := json.Marshal(models.SSEErrorEvent{Type: "error", Reason: "replay_failed"})
 		require.NoError(t, err)
 		msgs := translateSSEEvents("", string(sentinel))
@@ -395,8 +368,6 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 // fails to decode is reported as one warning line naming the event, and never
 // renders as a message built from the zero value of the failed decode.
 func TestTranslateSSEEvents_MalformedPayloadWarns(t *testing.T) {
-	t.Parallel()
-
 	malformedFrame := func(t *testing.T, eventType, data string) string {
 		t.Helper()
 		frame, err := json.Marshal(models.SSEPushPayload{
@@ -418,8 +389,6 @@ func TestTranslateSSEEvents_MalformedPayloadWarns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			msgs := translateSSEEvents("", malformedFrame(t, tt.eventType, tt.data))
 			require.Len(t, msgs, 1, "a malformed payload must yield exactly one message")
 			lm, ok := msgs[0].(LedgerMsg)
@@ -430,8 +399,6 @@ func TestTranslateSSEEvents_MalformedPayloadWarns(t *testing.T) {
 	}
 
 	t.Run("stream error sentinel with a mistyped field warns instead of an empty reason", func(t *testing.T) {
-		t.Parallel()
-
 		msgs := translateSSEEvents("", `{"type":"error","reason":5}`)
 		require.Len(t, msgs, 1)
 		lm, ok := msgs[0].(LedgerMsg)

@@ -42,8 +42,7 @@ func newDataTestEnv(t *testing.T) dataTestEnv {
 	return dataTestEnv{fileSvc: fileSvc, cfg: cfg}
 }
 
-func TestDataUsersCmdWithConfig_ConfigLoadError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataUsersCmdWithConfig_ConfigLoadError(t *testing.T) {
 	failLoader := func(string) (*config.Config, error) {
 		return nil, fmt.Errorf("config load error")
 	}
@@ -57,8 +56,7 @@ func TestDataUsersCmdWithConfig_ConfigLoadError(t *testing.T) { //nolint:paralle
 	require.Error(t, err)
 }
 
-func TestDataUsersCmdWithConfig_ClientCreationError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataUsersCmdWithConfig_ClientCreationError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -72,8 +70,7 @@ func TestDataUsersCmdWithConfig_ClientCreationError(t *testing.T) { //nolint:par
 	assert.Contains(t, err.Error(), "client creation error")
 }
 
-func TestDataUsersCmdWithConfig_GetRequestError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataUsersCmdWithConfig_GetRequestError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -88,8 +85,7 @@ func TestDataUsersCmdWithConfig_GetRequestError(t *testing.T) { //nolint:paralle
 	assert.Contains(t, err.Error(), "fetch users")
 }
 
-func TestDataUsersCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataUsersCmdWithConfig_InvalidJSONResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -104,8 +100,7 @@ func TestDataUsersCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:par
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestDataUsersCmdWithConfig_ValidResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataUsersCmdWithConfig_ValidResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	users := []struct {
@@ -136,8 +131,7 @@ func saveDataTestCredentials(t *testing.T, fileSvc fs.RuntimeFileService, cfg *c
 	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, creds))
 }
 
-func TestDataOperatorsCmdWithConfig_ValidResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataOperatorsCmdWithConfig_ValidResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 	saveDataTestCredentials(t, env.fileSvc, env.cfg, "user-001")
 
@@ -163,8 +157,7 @@ func TestDataOperatorsCmdWithConfig_ValidResponse(t *testing.T) { //nolint:paral
 	assert.Equal(t, []string{constants.APIPaths.Operators + "?user_id=user-001"}, client.GetCalls)
 }
 
-func TestDataOperatorsCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataOperatorsCmdWithConfig_InvalidJSONResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 	saveDataTestCredentials(t, env.fileSvc, env.cfg, "user-001")
 
@@ -180,8 +173,7 @@ func TestDataOperatorsCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestDataOperatorsCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataOperatorsCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -197,8 +189,7 @@ func TestDataOperatorsCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testin
 	assert.Empty(t, client.GetCalls, "client must not be called when credentials are missing")
 }
 
-func TestDataOperatorsCmdWithConfig_SendsUserIDQueryParameter(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataOperatorsCmdWithConfig_SendsUserIDQueryParameter(t *testing.T) {
 	env := newDataTestEnv(t)
 	saveDataTestCredentials(t, env.fileSvc, env.cfg, "user-distinct-456")
 
@@ -219,8 +210,7 @@ func TestDataOperatorsCmdWithConfig_SendsUserIDQueryParameter(t *testing.T) { //
 	assert.Equal(t, constants.APIPaths.Operators+"?user_id=user-distinct-456", client.GetCalls[0])
 }
 
-func TestDataSettingsCmdWithConfig_ValidResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataSettingsCmdWithConfig_ValidResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	settings := struct {
@@ -249,8 +239,7 @@ func TestDataSettingsCmdWithConfig_ValidResponse(t *testing.T) { //nolint:parall
 	assert.Equal(t, []string{"/db/settings/platform_settings"}, client.GetCalls)
 }
 
-func TestDataSettingsCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataSettingsCmdWithConfig_InvalidJSONResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -265,8 +254,7 @@ func TestDataSettingsCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestDataStoreCmdWithConfig_NoCollectionReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCmdWithConfig_NoCollectionReturnsError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -281,8 +269,7 @@ func TestDataStoreCmdWithConfig_NoCollectionReturnsError(t *testing.T) { //nolin
 	assert.ErrorIs(t, err, constants.ErrCollectionRequired)
 }
 
-func TestDataStoreCmdWithConfig_ListModeCallsQuery(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCmdWithConfig_ListModeCallsQuery(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -300,8 +287,7 @@ func TestDataStoreCmdWithConfig_ListModeCallsQuery(t *testing.T) { //nolint:para
 	assert.Contains(t, client.PostCalls[0].Path, "/db/test_collection/_query")
 }
 
-func TestDataStoreCmdWithConfig_DocumentModeCallsGet(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCmdWithConfig_DocumentModeCallsGet(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -319,8 +305,7 @@ func TestDataStoreCmdWithConfig_DocumentModeCallsGet(t *testing.T) { //nolint:pa
 	assert.Equal(t, []string{"/db/test_collection/doc1"}, client.GetCalls)
 }
 
-func TestDataStoreCmdWithConfig_PostError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCmdWithConfig_PostError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -336,8 +321,7 @@ func TestDataStoreCmdWithConfig_PostError(t *testing.T) { //nolint:paralleltest 
 	assert.Contains(t, err.Error(), "query collection")
 }
 
-func TestDataStoreCmdWithConfig_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCmdWithConfig_GetError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -354,8 +338,7 @@ func TestDataStoreCmdWithConfig_GetError(t *testing.T) { //nolint:paralleltest /
 	assert.Contains(t, err.Error(), "fetch document")
 }
 
-func TestDataAuditListCmdWithConfig_NoSessionIDReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditListCmdWithConfig_NoSessionIDReturnsError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -370,8 +353,7 @@ func TestDataAuditListCmdWithConfig_NoSessionIDReturnsError(t *testing.T) { //no
 	assert.ErrorIs(t, err, constants.ErrOperatorSessionIDRequired)
 }
 
-func TestDataAuditListCmdWithConfig_ValidQuery(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditListCmdWithConfig_ValidQuery(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -389,8 +371,7 @@ func TestDataAuditListCmdWithConfig_ValidQuery(t *testing.T) { //nolint:parallel
 	assert.Equal(t, constants.APIPaths.AuditEvents+"?limit=100&operator_session_id=sess-123", client.GetCalls[0])
 }
 
-func TestDataAuditListCmdWithConfig_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditListCmdWithConfig_GetError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }

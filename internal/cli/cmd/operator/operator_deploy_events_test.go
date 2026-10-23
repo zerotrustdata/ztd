@@ -75,7 +75,6 @@ func pushFrame(t *testing.T, eventType string, data any) string {
 }
 
 func TestDeploymentEventsRouteByLaunchID(t *testing.T) {
-	t.Parallel()
 	events := newDeploymentEvents()
 	mine := events.watch("launch-mine")
 	other := events.watch("launch-other")
@@ -101,7 +100,6 @@ func TestDeploymentEventsRouteByLaunchID(t *testing.T) {
 }
 
 func TestDeploymentEventsIgnoreAnnouncementsWithoutALaunchID(t *testing.T) {
-	t.Parallel()
 	events := newDeploymentEvents()
 	w := events.watch("launch-1")
 
@@ -118,7 +116,6 @@ func TestDeploymentEventsIgnoreAnnouncementsWithoutALaunchID(t *testing.T) {
 }
 
 func TestDeploymentWatchReadyBeforeRequestFailsClosed(t *testing.T) {
-	t.Parallel()
 	events := newDeploymentEvents()
 	w := events.watch("launch-1")
 	events.handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
@@ -132,7 +129,6 @@ func TestDeploymentWatchReadyBeforeRequestFailsClosed(t *testing.T) {
 }
 
 func TestDeploymentWatchNonActiveSubscriptionIsNotReadiness(t *testing.T) {
-	t.Parallel()
 	events := newDeploymentEvents()
 	w := events.watch("launch-1")
 	events.handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedStopped),
@@ -146,7 +142,6 @@ func TestDeploymentWatchNonActiveSubscriptionIsNotReadiness(t *testing.T) {
 }
 
 func TestDeploymentWatchActiveIsNotRegressedByALaterAnnouncement(t *testing.T) {
-	t.Parallel()
 	events := newDeploymentEvents()
 	w := events.watch("launch-1")
 	for _, status := range []constants.OperatorStatus{constants.OperatorStatusActive, constants.OperatorStatusStale} {
@@ -162,7 +157,6 @@ func TestDeploymentWatchActiveIsNotRegressedByALaterAnnouncement(t *testing.T) {
 }
 
 func TestExplainDeployWaitNamesTheWorkersOwnFailure(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	fileSvc, err := fs.NewRuntimeFileService(dir, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
@@ -178,7 +172,6 @@ func TestExplainDeployWaitNamesTheWorkersOwnFailure(t *testing.T) {
 }
 
 func TestExplainDeployWaitKeepsTheWaitErrorWhenTheWorkerRecordedNothing(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	waitErr := fmt.Errorf("%w: wait ended", constants.ErrOperatorDeployFailed)
 

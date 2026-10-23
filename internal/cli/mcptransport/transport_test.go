@@ -23,7 +23,6 @@ import (
 )
 
 func TestServeStdio_BasicRequestResponse(t *testing.T) {
-	t.Parallel()
 	input := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n"
 	in := strings.NewReader(input)
 	var out bytes.Buffer
@@ -50,9 +49,7 @@ func TestServeStdio_BasicRequestResponse(t *testing.T) {
 }
 
 func TestServeStdio_NotificationDropped(t *testing.T) {
-	t.Parallel()
 	// Notification has method but no id
-
 	input := `{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n" +
 		`{"jsonrpc":"2.0","id":2,"method":"ping"}` + "\n"
 	in := strings.NewReader(input)
@@ -82,7 +79,6 @@ func TestServeStdio_NotificationDropped(t *testing.T) {
 }
 
 func TestServeStdio_ParseError(t *testing.T) {
-	t.Parallel()
 	input := "invalid-json\n" +
 		`{"jsonrpc":"2.0","id":3,"method":"ping"}` + "\n"
 	in := strings.NewReader(input)
@@ -116,7 +112,6 @@ func TestServeStdio_ParseError(t *testing.T) {
 }
 
 func TestServeStdio_HandlerError(t *testing.T) {
-	t.Parallel()
 	input := `{"jsonrpc":"2.0","id":4,"method":"fail"}` + "\n"
 	in := strings.NewReader(input)
 	var out bytes.Buffer
@@ -138,7 +133,6 @@ func TestServeStdio_HandlerError(t *testing.T) {
 }
 
 func TestServeStdio_BlankLinesSkipped(t *testing.T) {
-	t.Parallel()
 	input := "\n  \n\t\n" +
 		`{"jsonrpc":"2.0","id":5,"method":"ping"}` + "\n\n"
 	in := strings.NewReader(input)
@@ -162,7 +156,6 @@ func TestServeStdio_BlankLinesSkipped(t *testing.T) {
 }
 
 func TestServeStdio_ContextCancellation(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
@@ -179,7 +172,6 @@ func TestServeStdio_ContextCancellation(t *testing.T) {
 }
 
 func TestSendError(t *testing.T) {
-	t.Parallel()
 	var buf bytes.Buffer
 	err := SendError(&buf, 20, -32600, "invalid request")
 	require.NoError(t, err)

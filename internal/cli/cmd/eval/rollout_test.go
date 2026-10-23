@@ -21,8 +21,6 @@ import (
 )
 
 func TestRolloutAdd_QueuesModelsByTag(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	out := env.mustRun(t, "rollout", "add", "qwen3:4b")
 	assert.Contains(t, out, "Queued qwen3:4b")
@@ -38,8 +36,6 @@ func TestRolloutAdd_QueuesModelsByTag(t *testing.T) {
 }
 
 func TestRolloutAdd_RejectsEmptyRegistry(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	// Remove the test variant from the registry
 	fileSvc := env.fileSvc(t)
@@ -52,8 +48,6 @@ func TestRolloutAdd_RejectsEmptyRegistry(t *testing.T) {
 }
 
 func TestRolloutAdd_RejectsUnknownModel(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	_, err := env.run(t, "rollout", "add", "unknown:model")
 	require.Error(t, err)
@@ -61,8 +55,6 @@ func TestRolloutAdd_RejectsUnknownModel(t *testing.T) {
 }
 
 func TestRolloutRemove_DropsModelByTag(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	out := env.mustRun(t, "rollout", "remove", "qwen3:4b")
@@ -73,8 +65,6 @@ func TestRolloutRemove_DropsModelByTag(t *testing.T) {
 }
 
 func TestRolloutRemove_LastEntryDeletesQueueFile(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "remove", "qwen3:4b")
@@ -87,8 +77,6 @@ func TestRolloutRemove_LastEntryDeletesQueueFile(t *testing.T) {
 }
 
 func TestRolloutRetry_ReturnsModelsToPending(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "skip", "qwen3:4b")
@@ -103,8 +91,6 @@ func TestRolloutRetry_ReturnsModelsToPending(t *testing.T) {
 }
 
 func TestRolloutSkip_ExcludesModelFromRuns(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	out := env.mustRun(t, "rollout", "skip", "qwen3:4b")
@@ -117,8 +103,6 @@ func TestRolloutSkip_ExcludesModelFromRuns(t *testing.T) {
 }
 
 func TestRolloutNext_ReturnsFirstPendingModel(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
@@ -128,8 +112,6 @@ func TestRolloutNext_ReturnsFirstPendingModel(t *testing.T) {
 }
 
 func TestRolloutNext_FailsWhenNoPendingModels(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	_, err := env.run(t, "rollout", "next")
 	require.Error(t, err)
@@ -137,8 +119,6 @@ func TestRolloutNext_FailsWhenNoPendingModels(t *testing.T) {
 }
 
 func TestRolloutList_FiltersByStatus(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "skip", "qwen3:4b")
@@ -152,8 +132,6 @@ func TestRolloutList_FiltersByStatus(t *testing.T) {
 }
 
 func TestRolloutRun_DryRunDoesNotExecute(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
@@ -162,8 +140,6 @@ func TestRolloutRun_DryRunDoesNotExecute(t *testing.T) {
 }
 
 func TestRolloutAdd_FailsWhileQueueIsLocked(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
 	require.NoError(t, err)
@@ -180,8 +156,6 @@ func TestRolloutAdd_FailsWhileQueueIsLocked(t *testing.T) {
 }
 
 func TestRolloutRun_PromoteOnPassRequiresGateSmoke(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
@@ -191,8 +165,6 @@ func TestRolloutRun_PromoteOnPassRequiresGateSmoke(t *testing.T) {
 }
 
 func TestRolloutRun_UntilCannotBeNegative(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
@@ -202,8 +174,6 @@ func TestRolloutRun_UntilCannotBeNegative(t *testing.T) {
 }
 
 func TestRequireRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *testing.T) {
-	t.Parallel()
-
 	env := newStoreRunEnv(t)
 	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	ctx := context.Background()

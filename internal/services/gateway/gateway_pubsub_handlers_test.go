@@ -17,8 +17,6 @@ import (
 )
 
 func TestPubSubPublish_HandlerTeardownDuringEvidenceNotification(t *testing.T) {
-	t.Parallel()
-
 	broker := NewGatewayWebSocketHandler(slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()

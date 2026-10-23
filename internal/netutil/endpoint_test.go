@@ -17,7 +17,6 @@ import (
 )
 
 func TestSplitEndpoint(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -36,7 +35,6 @@ func TestSplitEndpoint(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			host, port, err := SplitEndpoint(tt.endpoint)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantHost, host)
@@ -46,7 +44,6 @@ func TestSplitEndpoint(t *testing.T) {
 }
 
 func TestSplitEndpoint_Rejects(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -62,7 +59,6 @@ func TestSplitEndpoint_Rejects(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			_, _, err := SplitEndpoint(tt.endpoint)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrGatewayEndpointInvalid)
@@ -71,7 +67,6 @@ func TestSplitEndpoint_Rejects(t *testing.T) {
 }
 
 func TestIsLoopbackEndpoint(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -92,7 +87,6 @@ func TestIsLoopbackEndpoint(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, IsLoopbackEndpoint(tt.endpoint))
 		})
 	}

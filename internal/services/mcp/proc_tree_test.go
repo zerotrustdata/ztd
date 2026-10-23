@@ -21,26 +21,25 @@ import (
 )
 
 func TestProcTreeTool_Metadata(t *testing.T) {
-	t.Parallel()
 	tool := &ProcTreeTool{}
 	require.Equal(t, "proc_tree", tool.Name())
 	require.Contains(t, tool.Description(), "process tree")
 	require.NotNil(t, tool.InputSchema())
 }
 
-func TestProcTreeTool_Execute_Errors(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+func TestProcTreeTool_Execute_Errors(t *testing.T) {
 	tool := &ProcTreeTool{}
 
-	t.Run("invalid json", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("invalid json", func(t *testing.T) {
 		_, err := tool.Execute(context.Background(), json.RawMessage(`{invalid`))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid arguments")
 	})
 
-	t.Run("proc directory not found", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("proc directory not found", func(t *testing.T) {
 		oldProcDir := procDirectory
 		procDirectory = "/nonexistent-proc-dir-12345"
-		t.Cleanup(func() { procDirectory = oldProcDir })
+		defer func() { procDirectory = oldProcDir }()
 
 		_, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
 		require.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform)
@@ -48,7 +47,7 @@ func TestProcTreeTool_Execute_Errors(t *testing.T) { //nolint:paralleltest // mu
 	})
 }
 
-func TestBuildProcessTree(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+func TestBuildProcessTree(t *testing.T) {
 	tmpDir := testutil.TempDir(t)
 
 	// Setup mock /proc
@@ -75,9 +74,9 @@ func TestBuildProcessTree(t *testing.T) { //nolint:paralleltest // mutates the p
 
 	oldProcDir := procDirectory
 	procDirectory = tmpDir
-	t.Cleanup(func() { procDirectory = oldProcDir })
+	defer func() { procDirectory = oldProcDir }()
 
-	t.Run("full tree from init", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("full tree from init", func(t *testing.T) {
 		result, err := buildProcessTree(context.Background(), 1, 10)
 		require.NoError(t, err)
 		require.Equal(t, 1, result.RootPID)
@@ -116,17 +115,16 @@ func TestBuildProcessTree(t *testing.T) { //nolint:paralleltest // mutates the p
 		require.Empty(t, c2.Children)
 	})
 
-	t.Run("partial tree from parent", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("partial tree from parent", func(t *testing.T) {
 		result, err := buildProcessTree(context.Background(), 10, 10)
 		require.NoError(t, err)
 		require.Equal(t, 10, result.RootPID)
 		require.Equal(t, "parent", result.Tree.Name)
 	})
 
-	t.Run("max depth limit", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("max depth limit", func(t *testing.T) {
 		// systemd (0) -> parent (1) -> child1 (2) -> grandchild (3)
 		// max_depth 1 means only systemd and parent
-
 		result, err := buildProcessTree(context.Background(), 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, 1, result.RootPID)
@@ -134,14 +132,14 @@ func TestBuildProcessTree(t *testing.T) { //nolint:paralleltest // mutates the p
 		require.Empty(t, result.Tree.Children[0].Children) // child1 excluded
 	})
 
-	t.Run("process not found", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("process not found", func(t *testing.T) {
 		result, err := buildProcessTree(context.Background(), 999, 10)
 		require.NoError(t, err)
 		require.Equal(t, 999, result.RootPID)
 		require.Contains(t, result.Error, "process 999 not found")
 	})
 
-	t.Run("context cancellation", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("context cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -151,27 +149,27 @@ func TestBuildProcessTree(t *testing.T) { //nolint:paralleltest // mutates the p
 	})
 }
 
-func TestBuildProcessTree_EdgeCases(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+func TestBuildProcessTree_EdgeCases(t *testing.T) {
 	tmpDir := testutil.TempDir(t)
 	oldProcDir := procDirectory
 	procDirectory = tmpDir
-	t.Cleanup(func() { procDirectory = oldProcDir })
+	defer func() { procDirectory = oldProcDir }()
 
-	t.Run("invalid pid directory name", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("invalid pid directory name", func(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "abc"), 0755))
 		result, err := buildProcessTree(context.Background(), 1, 10)
 		require.NoError(t, err)
 		require.Contains(t, result.Error, "not found")
 	})
 
-	t.Run("missing stat file", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("missing stat file", func(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "100"), 0755))
 		result, err := buildProcessTree(context.Background(), 1, 10)
 		require.NoError(t, err)
 		require.Contains(t, result.Error, "not found")
 	})
 
-	t.Run("malformed stat file", func(t *testing.T) { //nolint:paralleltest // mutates the package-level proc directory
+	t.Run("malformed stat file", func(t *testing.T) {
 		pidDir := filepath.Join(tmpDir, "100")
 		require.NoError(t, os.MkdirAll(pidDir, 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(pidDir, "stat"), []byte("100"), 0644)) // too few fields

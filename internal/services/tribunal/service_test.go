@@ -119,7 +119,6 @@ func intentRequest(template *operatorv1.InferenceDispatchRequest) *tribunalv1.Tr
 }
 
 func TestDeliberateApproved(t *testing.T) {
-	t.Parallel()
 	template := memberTemplate()
 	original := proto.Clone(template)
 	dispatcher := &fakeMemberDispatcher{
@@ -181,10 +180,8 @@ func TestDeliberateApproved(t *testing.T) {
 }
 
 func TestDeliberateMemberFailure(t *testing.T) {
-	t.Parallel()
 	for _, stage := range []Stage{StageGenerate, StageMarshal, StageAudit} {
 		t.Run(string(stage), func(t *testing.T) {
-			t.Parallel()
 			dispatcher := &fakeMemberDispatcher{
 				generate: proposals(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 				marshal:  lowRisk,
@@ -209,7 +206,6 @@ func TestDeliberateMemberFailure(t *testing.T) {
 }
 
 func TestDeliberateBlocked(t *testing.T) {
-	t.Parallel()
 	dispatcher := &fakeMemberDispatcher{
 		generate: proposals(map[Member]string{MemberAxiom: "rm -rf /", MemberConcord: "rm -rf /", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  `{"risk": "HIGH", "rationale": "deletes /", "feedback": "scope the path"}`,
@@ -227,7 +223,6 @@ func TestDeliberateBlocked(t *testing.T) {
 }
 
 func TestDeliberateAuditFailed(t *testing.T) {
-	t.Parallel()
 	dispatcher := &fakeMemberDispatcher{
 		generate: proposals(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  lowRisk,
@@ -244,7 +239,6 @@ func TestDeliberateAuditFailed(t *testing.T) {
 }
 
 func TestValidateIntentRequest(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(req *tribunalv1.TribunalIntentRequest)
@@ -344,7 +338,6 @@ func TestValidateIntentRequest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			req := intentRequest(memberTemplate())
 			tt.mutate(req)
 			err := ValidateIntentRequest(req)

@@ -42,8 +42,6 @@ func newMiddlewareTestHandler(t *testing.T) *HTTPHandler {
 // --- containsTraversal ---
 
 func TestContainsTraversal_DetectsTraversal(t *testing.T) {
-	t.Parallel()
-
 	h := &HTTPHandler{}
 
 	paths := []string{
@@ -59,16 +57,12 @@ func TestContainsTraversal_DetectsTraversal(t *testing.T) {
 
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-
 			assert.True(t, h.containsTraversal(p), "expected traversal in %q", p)
 		})
 	}
 }
 
 func TestContainsTraversal_NoTraversal(t *testing.T) {
-	t.Parallel()
-
 	h := &HTTPHandler{}
 
 	paths := []string{
@@ -84,16 +78,12 @@ func TestContainsTraversal_NoTraversal(t *testing.T) {
 
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-
 			assert.False(t, h.containsTraversal(p), "expected no traversal in %q", p)
 		})
 	}
 }
 
 func TestContainsTraversal_EncodedDotsNotDetected(t *testing.T) {
-	t.Parallel()
-
 	h := &HTTPHandler{}
 
 	// containsTraversal operates on the raw string, not URL-decoded.
@@ -107,16 +97,12 @@ func TestContainsTraversal_EncodedDotsNotDetected(t *testing.T) {
 
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-
 			assert.False(t, h.containsTraversal(p), "encoded dots should not be detected by containsTraversal")
 		})
 	}
 }
 
 func TestContainsTraversal_DotSegmentsOnly(t *testing.T) {
-	t.Parallel()
-
 	h := &HTTPHandler{}
 
 	// Single dots and dotfiles should not be flagged as traversal
@@ -130,8 +116,6 @@ func TestContainsTraversal_DotSegmentsOnly(t *testing.T) {
 
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-
 			assert.False(t, h.containsTraversal(p), "single dots and dotfiles should not be traversal")
 		})
 	}
@@ -140,8 +124,6 @@ func TestContainsTraversal_DotSegmentsOnly(t *testing.T) {
 // --- pathTraversalGuard ---
 
 func TestPathTraversalGuard_RejectsTraversalPaths(t *testing.T) {
-	t.Parallel()
-
 	h := newMiddlewareTestHandler(t)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -158,8 +140,6 @@ func TestPathTraversalGuard_RejectsTraversalPaths(t *testing.T) {
 
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-
 			req := httptest.NewRequest(http.MethodGet, p, nil)
 			rr := httptest.NewRecorder()
 			mw.ServeHTTP(rr, req)
@@ -169,9 +149,14 @@ func TestPathTraversalGuard_RejectsTraversalPaths(t *testing.T) {
 }
 
 func TestPathTraversalGuard_AllowsValidPaths(t *testing.T) {
-	t.Parallel()
-
 	h := newMiddlewareTestHandler(t)
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+	mw := h.pathTraversalGuard(next)
+
 	paths := []string{
 		"/",
 		"/db/users/u1",
@@ -182,16 +167,10 @@ func TestPathTraversalGuard_AllowsValidPaths(t *testing.T) {
 
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			t.Parallel()
-
-			nextCalled := false
-			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				nextCalled = true
-				w.WriteHeader(http.StatusOK)
-			})
+			nextCalled = false
 			req := httptest.NewRequest(http.MethodGet, p, nil)
 			rr := httptest.NewRecorder()
-			h.pathTraversalGuard(next).ServeHTTP(rr, req)
+			mw.ServeHTTP(rr, req)
 			assert.True(t, nextCalled, "next handler should be called for %q", p)
 			assert.Equal(t, http.StatusOK, rr.Code)
 		})
@@ -199,7 +178,6 @@ func TestPathTraversalGuard_AllowsValidPaths(t *testing.T) {
 }
 
 func TestPathTraversalGuard_AllowsTrailingSlashNormalization(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +196,6 @@ func TestPathTraversalGuard_AllowsTrailingSlashNormalization(t *testing.T) {
 }
 
 func TestPathTraversalGuard_AllowsDoubleSlashNormalization(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +214,6 @@ func TestPathTraversalGuard_AllowsDoubleSlashNormalization(t *testing.T) {
 }
 
 func TestPathTraversalGuard_RejectsEncodedTraversal(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -253,7 +229,6 @@ func TestPathTraversalGuard_RejectsEncodedTraversal(t *testing.T) {
 }
 
 func TestPathTraversalGuard_PreservesQueryParams(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -272,7 +247,6 @@ func TestPathTraversalGuard_PreservesQueryParams(t *testing.T) {
 // --- rateLimitMiddleware ---
 
 func TestRateLimitMiddleware_DisabledPassesThrough(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 0
 	h.cfg.Gateway.RateLimitBurst = 0
@@ -295,7 +269,6 @@ func TestRateLimitMiddleware_DisabledPassesThrough(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_NegativeRPSPassesThrough(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = -1
 
@@ -315,7 +288,6 @@ func TestRateLimitMiddleware_NegativeRPSPassesThrough(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_RequestsWithinBurstAllowed(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 100 // high rate so tokens replenish fast
 	h.cfg.Gateway.RateLimitBurst = 5
@@ -338,7 +310,6 @@ func TestRateLimitMiddleware_RequestsWithinBurstAllowed(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_ExceedingBurstReturns429(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 0.01 // very slow refill
 	h.cfg.Gateway.RateLimitBurst = 2
@@ -369,7 +340,6 @@ func TestRateLimitMiddleware_ExceedingBurstReturns429(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_DifferentIPsTrackedSeparately(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 0.01
 	h.cfg.Gateway.RateLimitBurst = 1
@@ -402,8 +372,6 @@ func TestRateLimitMiddleware_DifferentIPsTrackedSeparately(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_RemoteAddrWithoutPort(t *testing.T) {
-	t.Parallel()
-
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 100
 	h.cfg.Gateway.RateLimitBurst = 1
@@ -432,8 +400,6 @@ func TestRateLimitMiddleware_RemoteAddrWithoutPort(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_StaleLimiterCleanup(t *testing.T) {
-	t.Parallel()
-
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 10
 	h.cfg.Gateway.RateLimitBurst = 10
@@ -476,7 +442,6 @@ func TestRateLimitMiddleware_StaleLimiterCleanup(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_ReusesExistingLimiter(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 100
 	h.cfg.Gateway.RateLimitBurst = 10
@@ -512,7 +477,6 @@ func TestRateLimitMiddleware_ReusesExistingLimiter(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_ConcurrentRequestsSafe(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 1000
 	h.cfg.Gateway.RateLimitBurst = 100
@@ -544,7 +508,6 @@ func TestRateLimitMiddleware_ConcurrentRequestsSafe(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_UpdatesLimiterLastUsed(t *testing.T) {
-	t.Parallel()
 	h := newMiddlewareTestHandler(t)
 	h.cfg.Gateway.RateLimitRPS = 100
 	h.cfg.Gateway.RateLimitBurst = 10

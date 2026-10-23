@@ -207,7 +207,6 @@ func tierOp(id string, kind constants.OperatorType, hostname string, capabilitie
 }
 
 func TestEmbeddedTypeImpliesDataAndWitnessCommands(t *testing.T) {
-	t.Parallel()
 	op := tierOp("embedded-operator", constants.OperatorTypeEmbedded, "", constants.OperatorCapabilityObserver)
 	require.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver}, GetOperatorCapabilities(op))
 	require.NoError(t, ValidateWitnessCommand(GetOperatorCapabilities(op), "pwd"))
@@ -216,7 +215,6 @@ func TestEmbeddedTypeImpliesDataAndWitnessCommands(t *testing.T) {
 }
 
 func TestDataOperatorTiering(t *testing.T) {
-	t.Parallel()
 	embedded := tierOp("embedded-operator", constants.OperatorTypeEmbedded, "")
 	remote := tierOp("data", constants.OperatorTypeRemote, "host", constants.OperatorCapabilityData)
 	remote2 := tierOp("data-2", constants.OperatorTypeRemote, "host-2", constants.OperatorCapabilityData)

@@ -58,9 +58,7 @@ func generateTestCertPEM(t *testing.T, notBefore, notAfter time.Time) []byte {
 // ---------------------------------------------------------------------------
 
 func TestGenerateCSR(t *testing.T) {
-	t.Parallel()
 	t.Run("Success", func(t *testing.T) {
-		t.Parallel()
 		csrPEM, privKey, err := GenerateCSR("test-operator")
 		require.NoError(t, err)
 		assert.NotEmpty(t, csrPEM)
@@ -83,7 +81,6 @@ func TestGenerateCSR(t *testing.T) {
 	})
 
 	t.Run("EmptyCommonName", func(t *testing.T) {
-		t.Parallel()
 		csrPEM, privKey, err := GenerateCSR("")
 		require.NoError(t, err)
 		assert.NotEmpty(t, csrPEM)
@@ -97,7 +94,6 @@ func TestGenerateCSR(t *testing.T) {
 	})
 
 	t.Run("Uniqueness", func(t *testing.T) {
-		t.Parallel()
 		csr1, key1, err := GenerateCSR("test")
 		require.NoError(t, err)
 
@@ -114,7 +110,6 @@ func TestGenerateCSR(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogCertBundle(t *testing.T) {
-	t.Parallel()
 	certPEM := generateTestCertPEM(t, time.Now(), time.Now().Add(365*24*time.Hour))
 
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -158,7 +153,6 @@ func TestLogCertBundle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			logger := testLogger()
 			assert.NotPanics(t, func() {
 				LogCertBundle(logger, tt.label, tt.data)

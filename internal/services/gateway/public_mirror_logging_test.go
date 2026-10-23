@@ -27,8 +27,6 @@ import (
 // unconfigured ingest token rejects every request, including one that presents
 // a bearer header, and that a configured token still requires an exact match.
 func TestPublicMirrorIngestAuthFailsClosedWithoutConfiguredToken(t *testing.T) {
-	t.Parallel()
-
 	mirror := &PublicMirrorServer{logger: testutil.NewTestLogger()}
 	for _, header := range []string{"", "Bearer ", "Bearer anything"} {
 		request := httptest.NewRequest(http.MethodPost, "/ingest", nil)
@@ -55,7 +53,6 @@ type mirrorFailedResponseWriter struct {
 func (w mirrorFailedResponseWriter) Write([]byte) (int, error) { return 0, w.err }
 
 func TestPublicMirrorHTTPServer_DiagnosticsUseInjectedPlatformLogger(t *testing.T) {
-	t.Parallel()
 	var output bytes.Buffer
 	logger, err := logging.NewLogger("error", &output)
 	require.NoError(t, err)
@@ -69,8 +66,6 @@ func TestPublicMirrorHTTPServer_DiagnosticsUseInjectedPlatformLogger(t *testing.
 }
 
 func TestPublicMirror_ResponseWriteFailuresUsePlatformLogger(t *testing.T) {
-	t.Parallel()
-
 	for _, test := range []struct {
 		name  string
 		err   error
@@ -81,8 +76,6 @@ func TestPublicMirror_ResponseWriteFailuresUsePlatformLogger(t *testing.T) {
 		{"unexpected failure", constants.ErrInternal, "ERROR"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
 			for _, compressed := range []bool{false, true} {
 				var output bytes.Buffer
 				logger, err := logging.NewLogger("debug", &output)

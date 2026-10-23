@@ -19,7 +19,6 @@ import (
 )
 
 func TestMarkCampaignQueueEntry(t *testing.T) {
-	t.Parallel()
 	queue := CampaignQueue{
 		Models: []CampaignQueueModel{
 			{VariantID: "gemma3-4b", ServedModelTag: "gemma3:4b", Status: "pending"},

@@ -35,7 +35,6 @@ func (f embeddedEnvelopeProcessorFunc) ProcessEnvelope(ctx context.Context, wire
 }
 
 func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 	broker := NewGatewayWebSocketHandler(logger)
@@ -72,8 +71,6 @@ func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T
 // A failed observation, a non-observation event, and an undeliverable command
 // all fail closed.
 func TestDispatchObservationReturnsEmbeddedObserverReceipt(t *testing.T) {
-	t.Parallel()
-
 	logger := testutil.NewTestLogger()
 	actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 	broker := NewGatewayWebSocketHandler(logger)
@@ -130,7 +127,6 @@ func TestDispatchObservationReturnsEmbeddedObserverReceipt(t *testing.T) {
 }
 
 func TestEmbeddedInferenceDispatchDrainsProgressWhileProcessing(t *testing.T) {
-	t.Parallel()
 
 	errProcessing := errors.New("embedded processing failed")
 	for _, tc := range []struct {
@@ -142,8 +138,6 @@ func TestEmbeddedInferenceDispatchDrainsProgressWhileProcessing(t *testing.T) {
 		{name: "completion verification", want: constants.ErrInferenceCompletionNoReceipt},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			synctest.Test(t, func(t *testing.T) {
 				logger := testutil.NewTestLogger()
 				broker := NewGatewayWebSocketHandler(logger)
@@ -204,8 +198,6 @@ func TestEmbeddedInferenceDispatchDrainsProgressWhileProcessing(t *testing.T) {
 }
 
 func TestEmbeddedInferenceDispatchCancelsAndJoinsProcessor(t *testing.T) {
-	t.Parallel()
-
 	errProgress := errors.New("progress callback failed")
 	for _, tc := range []struct {
 		name string
@@ -217,8 +209,6 @@ func TestEmbeddedInferenceDispatchCancelsAndJoinsProcessor(t *testing.T) {
 		{name: "deadline", stop: func(context.CancelFunc) error { time.Sleep(2 * time.Second); return nil }, want: constants.ErrDispatchResultTimeout},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			synctest.Test(t, func(t *testing.T) {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
@@ -268,8 +258,6 @@ func TestEmbeddedInferenceDispatchCancelsAndJoinsProcessor(t *testing.T) {
 }
 
 func TestEmbeddedDispatchDeadlineWhileAwaitingProcessor(t *testing.T) {
-	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		logger := testutil.NewTestLogger()
 		broker := NewGatewayWebSocketHandler(logger)
@@ -307,16 +295,12 @@ func TestEmbeddedDispatchDeadlineWhileAwaitingProcessor(t *testing.T) {
 // the dispatch returns that result, as for an outbound Operator. Without an
 // executed L5 stage the same error still fails the dispatch.
 func TestEmbeddedDispatchReturnsHandlerFailureResult(t *testing.T) {
-	t.Parallel()
-
 	actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 	for _, tc := range []struct {
 		name     string
 		executed bool
 	}{{name: "handler ran", executed: true}, {name: "refused before handler", executed: false}} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			logger := testutil.NewTestLogger()
 			broker := NewGatewayWebSocketHandler(logger)
 			op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded)}

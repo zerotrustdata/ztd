@@ -113,7 +113,6 @@ func mustParse(t *testing.T, pemStr string) *x509.Certificate {
 
 func TestExtractRootAnchors_FourCertBundle(t *testing.T) {
 	t.Parallel()
-
 	bundle, _ := testBundle(t)
 	roots, err := extractRootAnchors([]byte(bundle), time.Now)
 	require.NoError(t, err)
@@ -123,21 +122,18 @@ func TestExtractRootAnchors_FourCertBundle(t *testing.T) {
 
 func TestExtractRootAnchors_EmptyBundle(t *testing.T) {
 	t.Parallel()
-
 	_, err := extractRootAnchors(nil, time.Now)
 	require.Error(t, err)
 }
 
 func TestExtractRootAnchors_MalformedPEM(t *testing.T) {
 	t.Parallel()
-
 	_, err := extractRootAnchors([]byte("not a pem at all"), time.Now)
 	require.Error(t, err)
 }
 
 func TestExtractRootAnchors_NonCAPEMOnly(t *testing.T) {
 	t.Parallel()
-
 	leafPEM, _, _ := testLeafAndKey(t)
 	roots, err := extractRootAnchors([]byte(leafPEM), time.Now)
 	require.NoError(t, err)
@@ -146,7 +142,6 @@ func TestExtractRootAnchors_NonCAPEMOnly(t *testing.T) {
 
 func TestExtractRootAnchors_ExpiredCA(t *testing.T) {
 	t.Parallel()
-
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
@@ -169,7 +164,6 @@ func TestExtractRootAnchors_ExpiredCA(t *testing.T) {
 
 func TestExtractRootAnchors_NotYetValidCA(t *testing.T) {
 	t.Parallel()
-
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
@@ -192,7 +186,6 @@ func TestExtractRootAnchors_NotYetValidCA(t *testing.T) {
 
 func TestCertFingerprint_Stable(t *testing.T) {
 	t.Parallel()
-
 	caPEM, _ := testCA(t, "fp-test")
 	cert := mustParse(t, caPEM)
 	fp1 := certFingerprint(cert)
@@ -203,7 +196,6 @@ func TestCertFingerprint_Stable(t *testing.T) {
 
 func TestParseBundleCerts_MultipleCerts(t *testing.T) {
 	t.Parallel()
-
 	ca1PEM, _ := testCA(t, "ca-one")
 	ca2PEM, _ := testCA(t, "ca-two")
 	certs, err := parseBundleCerts([]byte(ca1PEM + ca2PEM))
@@ -213,7 +205,6 @@ func TestParseBundleCerts_MultipleCerts(t *testing.T) {
 
 func TestParseBundleCerts_IgnoresNonCertificateBlocks(t *testing.T) {
 	t.Parallel()
-
 	keyPEM := generateECKeyPEM(t)
 	caPEM, _ := testCA(t, "ca-with-key")
 	certs, err := parseBundleCerts([]byte(keyPEM + caPEM))
@@ -234,7 +225,6 @@ func TestVerifyRootUsable_ValidChain(t *testing.T) {
 
 func TestVerifyRootUsable_UnrelatedRoot(t *testing.T) {
 	t.Parallel()
-
 	root1PEM, _ := testCA(t, "root-unrelated-1")
 	root2PEM, root2Key := testCA(t, "root-unrelated-2")
 	root2Cert := mustParse(t, root2PEM)

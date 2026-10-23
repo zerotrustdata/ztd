@@ -27,7 +27,6 @@ import (
 )
 
 func TestGenerateCA(t *testing.T) {
-	t.Parallel()
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -55,7 +54,6 @@ func TestGenerateCA(t *testing.T) {
 }
 
 func TestGenerateCert(t *testing.T) {
-	t.Parallel()
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -92,7 +90,6 @@ func TestGenerateCert(t *testing.T) {
 }
 
 func TestGenerateCert_MultipleCerts(t *testing.T) {
-	t.Parallel()
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -122,7 +119,6 @@ func TestGenerateCert_MultipleCerts(t *testing.T) {
 }
 
 func TestGovernanceEnvelope_Integration(t *testing.T) {
-	t.Parallel()
 	env := &govpkg.GovernanceEnvelope{
 		ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
 		OperatorId:      "test-operator",

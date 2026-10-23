@@ -18,7 +18,6 @@ import (
 )
 
 func TestBuildPublicAssignmentEvidence(t *testing.T) {
-	t.Parallel()
 	result := &evalv1.EvaluationAssignmentResult{
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			ModelRole:         evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
@@ -52,7 +51,6 @@ func TestBuildPublicAssignmentEvidence(t *testing.T) {
 }
 
 func TestBuildPublicAssignmentEvidence_ProjectsOptionalThinkingAndCachePresence(t *testing.T) {
-	t.Parallel()
 	zero := uint32(0)
 	cache := uint32(4)
 	result := &evalv1.EvaluationAssignmentResult{
@@ -95,7 +93,6 @@ func TestBuildPublicAssignmentEvidence_ProjectsOptionalThinkingAndCachePresence(
 }
 
 func TestBuildPublicAssignmentEvidence_MissingCaptureAndEmptyObservedList(t *testing.T) {
-	t.Parallel()
 	activity, _, err := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{Result: &evalv1.EvaluationAssignmentResult{ToolDecisionsCaptured: true}})
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.PublicActivityAvailability_PUBLIC_ACTIVITY_AVAILABILITY_OBSERVED, activity.Summary.ToolDecisions.Availability)
@@ -105,7 +102,6 @@ func TestBuildPublicAssignmentEvidence_MissingCaptureAndEmptyObservedList(t *tes
 }
 
 func TestBuildPublicAssignmentEvidence_RejectsPrivateOrMalformedProof(t *testing.T) {
-	t.Parallel()
 	base := PublicAssignmentEvidenceInput{Result: &evalv1.EvaluationAssignmentResult{}}
 	for _, test := range []struct {
 		name    string
@@ -115,7 +111,6 @@ func TestBuildPublicAssignmentEvidence_RejectsPrivateOrMalformedProof(t *testing
 		{name: "private kind", binding: &evalv1.PublicEvidenceBinding{Sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SchemaRef: "schema", Kind: "trace"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			input := base
 			input.PublicProofs = []*evalv1.PublicEvidenceBinding{test.binding}
 			_, _, err := BuildPublicAssignmentEvidence(input)
@@ -126,7 +121,6 @@ func TestBuildPublicAssignmentEvidence_RejectsPrivateOrMalformedProof(t *testing
 }
 
 func TestBuildPublicAssignmentEvidence_RejectsUnknownActivityEnum(t *testing.T) {
-	t.Parallel()
 	_, _, err := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{Result: &evalv1.EvaluationAssignmentResult{
 		ToolCallsCaptured: true,
 		ToolCalls:         []*evalv1.ToolCallRecord{{ToolName: "read_file", SchemaOutcome: evalv1.EvaluationVerdictStatus(99)}},

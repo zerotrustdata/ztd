@@ -26,7 +26,6 @@ import (
 )
 
 func TestBuildExecuteBashDispatchRequest(t *testing.T) {
-	t.Parallel()
 	request, err := BuildExecuteBashDispatchRequest(
 		"4881d566-90a9-44c9-9e3e-c6bb51e07f5c",
 		"echo hello",
@@ -45,13 +44,11 @@ func TestBuildExecuteBashDispatchRequest(t *testing.T) {
 }
 
 func TestBuildExecuteBashDispatchRequest_MissingFields(t *testing.T) {
-	t.Parallel()
 	_, err := BuildExecuteBashDispatchRequest("", "echo", "exec-1", "cli-1")
 	require.Error(t, err)
 }
 
 func TestParseCommandResult_EmptyPayload(t *testing.T) {
-	t.Parallel()
 	_, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{
 		EventType: "ztd.v1.operator.command.status.updated.running",
 	})
@@ -60,7 +57,6 @@ func TestParseCommandResult_EmptyPayload(t *testing.T) {
 }
 
 func TestParseCommandResult_Success(t *testing.T) {
-	t.Parallel()
 	payload, err := proto.Marshal(&operatorv1.CommandResult{
 		Stdout:     "hello\n",
 		ReturnCode: 0,
@@ -82,7 +78,6 @@ func TestParseCommandResult_Success(t *testing.T) {
 var truncatedProto = []byte{0x0a, 0x05, 'a'}
 
 func TestMarshalExecuteBashPayload_RoundTripsEveryField(t *testing.T) {
-	t.Parallel()
 	payload, err := MarshalExecuteBashPayload("ls -la /etc", "exec-9", "inspect config")
 	require.NoError(t, err)
 
@@ -95,7 +90,6 @@ func TestMarshalExecuteBashPayload_RoundTripsEveryField(t *testing.T) {
 }
 
 func TestBuildExecuteBashDispatchRequest_TrimsCommandAndStampsGovernedCLIMetadata(t *testing.T) {
-	t.Parallel()
 	request, err := BuildExecuteBashDispatchRequest("session-1", "  \techo hi \n", "exec-1", "cli-1")
 	require.NoError(t, err)
 
@@ -107,7 +101,6 @@ func TestBuildExecuteBashDispatchRequest_TrimsCommandAndStampsGovernedCLIMetadat
 }
 
 func TestBuildExecuteBashDispatchRequest_RejectsMissingRequiredFields(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name        string
 		sessionID   string
@@ -122,7 +115,6 @@ func TestBuildExecuteBashDispatchRequest_RejectsMissingRequiredFields(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			request, err := BuildExecuteBashDispatchRequest(tt.sessionID, tt.command, tt.executionID, "cli-1")
 
 			require.ErrorIs(t, err, tt.want)
@@ -132,7 +124,6 @@ func TestBuildExecuteBashDispatchRequest_RejectsMissingRequiredFields(t *testing
 }
 
 func TestBuildExecuteBashDispatchRequest_AllowsAnEmptyCLISessionAndOmitsItFromJSON(t *testing.T) {
-	t.Parallel()
 	request, err := BuildExecuteBashDispatchRequest("session-1", "echo", "exec-1", "")
 	require.NoError(t, err)
 
@@ -178,7 +169,6 @@ func marshalCommandResult(t *testing.T, result *operatorv1.CommandResult) []byte
 }
 
 func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
-	t.Parallel()
 	signedRejection := &operatorv1.GovernanceRejection{
 		Error: "rejected",
 		Receipt: &operatorv1.ActionReceipt{
@@ -281,7 +271,6 @@ func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			poster := &fakeCommandPoster{raw: tt.raw, err: tt.err}
 
 			result := RunOnce(poster, Target{OperatorSessionID: "session-1", OperatorID: "op-1"}, "echo hi", "exec-1", "cli-1")
@@ -310,7 +299,6 @@ func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 }
 
 func TestParseCommandResult_NilResponseIsAMissingRequiredField(t *testing.T) {
-	t.Parallel()
 	got, err := ParseCommandResult(nil)
 
 	assert.Nil(t, got)
@@ -318,7 +306,6 @@ func TestParseCommandResult_NilResponseIsAMissingRequiredField(t *testing.T) {
 }
 
 func TestParseCommandResult_EmptyPayloadErrorIdentifiesTheOffendingEvent(t *testing.T) {
-	t.Parallel()
 	_, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{
 		EventType:  "ztd.v1.operator.command.status.updated.running",
 		ActionType: string(constants.ActionTypeExecuteBash),
@@ -330,7 +317,6 @@ func TestParseCommandResult_EmptyPayloadErrorIdentifiesTheOffendingEvent(t *test
 }
 
 func TestParseCommandResult_CorruptPayloadWrapsTheProtobufError(t *testing.T) {
-	t.Parallel()
 	_, err := ParseCommandResult(&operatorv1.GovernedDispatchResult{ResultPayload: truncatedProto})
 
 	require.Error(t, err)
@@ -339,7 +325,6 @@ func TestParseCommandResult_CorruptPayloadWrapsTheProtobufError(t *testing.T) {
 }
 
 func TestSummarizeRunPercentilesUseSuccessfulDispatchesOnly(t *testing.T) {
-	t.Parallel()
 	results := make([]RunResult, 0, 102)
 	for i := 1; i <= 100; i++ {
 		results = append(results, RunResult{Success: true, DurationMs: float64(i)})
@@ -362,7 +347,6 @@ func TestSummarizeRunPercentilesUseSuccessfulDispatchesOnly(t *testing.T) {
 }
 
 func TestSummarizeRunWithoutSuccessReportsZeroLatency(t *testing.T) {
-	t.Parallel()
 	summary := SummarizeRun([]RunResult{{DurationMs: 40}}, time.Second, 1)
 
 	assert.Equal(t, 1, summary.Failed)

@@ -26,14 +26,14 @@ import (
 )
 
 // Tests for shell Operator handling in command execution
-func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_ShellOperators(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("pipe operator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("pipe operator", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "shell-pipe-1",
 			CaseID:         "test-case-shell",
@@ -50,8 +50,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "1")
 	})
 
-	t.Run("output redirection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("output redirection", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("file redirection to absolute Windows paths not reliable in POSIX shell")
 		}
@@ -74,8 +74,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.FileExists(t, outputFile)
 	})
 
-	t.Run("input redirection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("input redirection", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("file redirection to absolute Windows paths not reliable in POSIX shell")
 		}
@@ -99,8 +99,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "input content")
 	})
 
-	t.Run("append redirection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("append redirection", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("file redirection to absolute Windows paths not reliable in POSIX shell")
 		}
@@ -126,8 +126,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, string(data), "line2")
 	})
 
-	t.Run("logical AND operator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("logical AND operator", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "shell-and-1",
 			CaseID:         "test-case-shell",
@@ -144,8 +144,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "success")
 	})
 
-	t.Run("logical OR operator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("logical OR operator", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "shell-or-1",
 			CaseID:         "test-case-shell",
@@ -162,8 +162,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "fallback")
 	})
 
-	t.Run("semicolon command separator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("semicolon command separator", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "shell-semicolon-1",
 			CaseID:         "test-case-shell",
@@ -181,8 +181,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "second")
 	})
 
-	t.Run("background operator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("background operator", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		testFile := filepath.ToSlash(filepath.Join(tmpDir, "bg.txt"))
 
@@ -201,8 +201,8 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
 	})
 
-	t.Run("simple command with spaces no operators", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("simple command with spaces no operators", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "shell-simple-spaces-1",
 			CaseID:         "test-case-shell",
@@ -220,14 +220,14 @@ func TestExecutionService_ShellOperators(t *testing.T) { //nolint:paralleltest /
 	})
 }
 
-func TestExecutionService_SystemMetrics(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_SystemMetrics(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("Linux extended metrics", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("Linux extended metrics", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "metrics-linux-1",
 			CaseID:         "test-case-metrics",
@@ -254,8 +254,8 @@ func TestExecutionService_SystemMetrics(t *testing.T) { //nolint:paralleltest //
 		}
 	})
 
-	t.Run("active executions tracking", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("active executions tracking", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "metrics-active-1",
 			CaseID:         "test-case-metrics",
@@ -288,8 +288,8 @@ func TestExecutionService_SystemMetrics(t *testing.T) { //nolint:paralleltest //
 		<-done
 	})
 
-	t.Run("signal terminated process", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("signal terminated process", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "metrics-signal-1",
 			CaseID:         "test-case-metrics",
@@ -306,14 +306,14 @@ func TestExecutionService_SystemMetrics(t *testing.T) { //nolint:paralleltest //
 	})
 }
 
-func TestExecutionService_ConcurrencyStress(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_ConcurrencyStress(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("max concurrent executions", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("max concurrent executions", func(t *testing.T) {
+		t.Parallel()
 		maxConcurrent := cfg.MaxConcurrentTasks
 		var wg sync.WaitGroup
 		results := make(chan *models.ExecutionResult, maxConcurrent)
@@ -348,8 +348,8 @@ func TestExecutionService_ConcurrencyStress(t *testing.T) { //nolint:paralleltes
 		assert.Equal(t, maxConcurrent, count)
 	})
 
-	t.Run("context cancelled while waiting for semaphore", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("context cancelled while waiting for semaphore", func(t *testing.T) {
+		t.Parallel()
 		waitSvc := NewExecutionService(cfg, logger)
 		for range cap(waitSvc.semaphore) {
 			waitSvc.semaphore <- struct{}{}
@@ -385,8 +385,8 @@ func TestExecutionService_ConcurrencyStress(t *testing.T) { //nolint:paralleltes
 		require.ErrorIs(t, got.err, context.Canceled)
 	})
 
-	t.Run("cancelled context never takes a free slot", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("cancelled context never takes a free slot", func(t *testing.T) {
+		t.Parallel()
 		freeSvc := NewExecutionService(cfg, logger)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -410,8 +410,8 @@ func TestExecutionService_ConcurrencyStress(t *testing.T) { //nolint:paralleltes
 		assert.Empty(t, freeSvc.semaphore)
 	})
 
-	t.Run("concurrent active executions tracking", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("concurrent active executions tracking", func(t *testing.T) {
+		t.Parallel()
 		var wg sync.WaitGroup
 		numTasks := 8
 
@@ -451,14 +451,14 @@ func TestExecutionService_ConcurrencyStress(t *testing.T) { //nolint:paralleltes
 	})
 }
 
-func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_ErrorPaths(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("empty command string", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("empty command string", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "error-empty-1",
 			CaseID:         "test-error",
@@ -473,8 +473,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
 	})
 
-	t.Run("whitespace only command", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("whitespace only command", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "error-whitespace-1",
 			CaseID:         "test-error",
@@ -489,8 +489,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
 	})
 
-	t.Run("nonexistent working directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nonexistent working directory", func(t *testing.T) {
+		t.Parallel()
 		badDir := "/nonexistent/directory/path"
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:      "error-baddir-1",
@@ -507,8 +507,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
 	})
 
-	t.Run("permission denied exit code 126", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("permission denied exit code 126", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		scriptPath := filepath.Join(tmpDir, "no-exec.sh")
 
@@ -539,8 +539,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		}
 	})
 
-	t.Run("command not found exit code 127", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command not found exit code 127", func(t *testing.T) {
+		t.Parallel()
 		// Use shell execution to get proper shell exit code 127
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "error-notfound-1",
@@ -558,8 +558,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		assert.NotEmpty(t, result.ErrorMessage)
 	})
 
-	t.Run("timeout exit code 124", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("timeout exit code 124", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "error-timeout-1",
 			CaseID:         "test-error",
@@ -577,8 +577,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		assert.Contains(t, result.ErrorMessage, "timed out")
 	})
 
-	t.Run("large output truncation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("large output truncation", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("seq command not available on Windows")
 		}
@@ -601,8 +601,8 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 		assert.Contains(t, result.Stdout, "Line 1000")
 	})
 
-	t.Run("mixed stderr and stdout", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("mixed stderr and stdout", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "error-mixed-1",
 			CaseID:         "test-error",
@@ -625,14 +625,14 @@ func TestExecutionService_ErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 	})
 }
 
-func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_ShellComplexity(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("multiple piped commands", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("multiple piped commands", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "complex-multipipe-1",
 			CaseID:         "test-complex",
@@ -648,8 +648,8 @@ func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest 
 		assert.Contains(t, result.Stdout, "1")
 	})
 
-	t.Run("subshell execution", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("subshell execution", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "complex-subshell-1",
 			CaseID:         "test-complex",
@@ -665,8 +665,8 @@ func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest 
 		assert.Contains(t, result.Stdout, "nested")
 	})
 
-	t.Run("command with backticks", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command with backticks", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "complex-backticks-1",
 			CaseID:         "test-complex",
@@ -682,8 +682,8 @@ func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest 
 		assert.Contains(t, result.Stdout, "backtick")
 	})
 
-	t.Run("stderr to file redirection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("stderr to file redirection", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("file redirection to absolute Windows paths not reliable in POSIX shell")
 		}
@@ -706,8 +706,8 @@ func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest 
 		assert.FileExists(t, errFile)
 	})
 
-	t.Run("both stdout and stderr redirection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("both stdout and stderr redirection", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("file redirection to absolute Windows paths not reliable in POSIX shell")
 		}
@@ -731,8 +731,8 @@ func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest 
 		assert.FileExists(t, errFile)
 	})
 
-	t.Run("environment variable expansion in shell", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("environment variable expansion in shell", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("custom env var inheritance not reliable with POSIX shell on Windows")
 		}
@@ -754,8 +754,8 @@ func TestExecutionService_ShellComplexity(t *testing.T) { //nolint:paralleltest 
 		assert.Contains(t, result.Stdout, "prefix_EXPANDED_suffix")
 	})
 
-	t.Run("script with multiple commands", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("script with multiple commands", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("shell script execution via absolute Windows paths not reliable in POSIX shell")
 		}

@@ -28,7 +28,6 @@ import (
 )
 
 func TestCanonicalProtoBodyEqual_ComparesAgainstCanonicalProtocolBytes(t *testing.T) {
-	t.Parallel()
 	message := &compliancev1.ComplianceVerificationReport{ReportId: "report-1", Valid: true}
 	body, err := compliancev1.MarshalCanonical(message)
 	require.NoError(t, err)
@@ -42,7 +41,6 @@ func TestCanonicalProtoBodyEqual_ComparesAgainstCanonicalProtocolBytes(t *testin
 }
 
 func TestCanonicalProtosEqual_PreservesRepeatedFieldOrder(t *testing.T) {
-	t.Parallel()
 	left := &compliancev1.ComplianceVerificationReport{ReportId: "report-1", Failures: []*compliancev1.VerificationFailure{{Code: "a"}, {Code: "b"}}}
 	right := proto.Clone(left).(*compliancev1.ComplianceVerificationReport)
 
@@ -56,7 +54,6 @@ func TestCanonicalProtosEqual_PreservesRepeatedFieldOrder(t *testing.T) {
 }
 
 func TestNewVerificationCheckResult_EmitsTypedPassedAndFailedChecks(t *testing.T) {
-	t.Parallel()
 	passed := NewVerificationCheckResult("check-1", "verifier-1", "1.0.0", []string{"b", "a", "a"}, nil)
 	assert.Equal(t, compliancev1.VerificationCheckStatus_VERIFICATION_CHECK_STATUS_PASSED, passed.GetStatus())
 	assert.Equal(t, []string{"a", "b"}, passed.GetEvidenceRefs())
@@ -68,7 +65,6 @@ func TestNewVerificationCheckResult_EmitsTypedPassedAndFailedChecks(t *testing.T
 }
 
 func TestReadAndDigest_ReturnsBytesAndDigest(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"hello":"world"}`)
 	reader := &memoryArtifactReader{files: map[string][]byte{"path": body}}
 	result, err := ReadAndDigest(reader, context.Background(), "path", 0)
@@ -79,7 +75,6 @@ func TestReadAndDigest_ReturnsBytesAndDigest(t *testing.T) {
 }
 
 func TestReadAndDigest_PropagatesReadError(t *testing.T) {
-	t.Parallel()
 	reader := &memoryArtifactReader{files: map[string][]byte{}}
 	_, err := ReadAndDigest(reader, context.Background(), "missing", 0)
 	require.Error(t, err)
@@ -87,7 +82,6 @@ func TestReadAndDigest_PropagatesReadError(t *testing.T) {
 }
 
 func TestReadAndDigest_EnforcesSizeLimit(t *testing.T) {
-	t.Parallel()
 	body := []byte("this is more than 5 bytes")
 	reader := &memoryArtifactReader{files: map[string][]byte{"path": body}}
 	_, err := ReadAndDigest(reader, context.Background(), "path", 5)
@@ -96,7 +90,6 @@ func TestReadAndDigest_EnforcesSizeLimit(t *testing.T) {
 }
 
 func TestReadAndDigest_DefaultMaxBytesWhenZero(t *testing.T) {
-	t.Parallel()
 	body := make([]byte, 100)
 	reader := &memoryArtifactReader{files: map[string][]byte{"path": body}}
 	result, err := ReadAndDigest(reader, context.Background(), "path", 0)
@@ -105,19 +98,16 @@ func TestReadAndDigest_DefaultMaxBytesWhenZero(t *testing.T) {
 }
 
 func TestVerifyDigest_MatchesCorrectDigest(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"verified":true}`)
 	digest := sha256.Sum256(body)
 	assert.True(t, VerifyDigest(body, hex.EncodeToString(digest[:])))
 }
 
 func TestVerifyDigest_RejectsIncorrectDigest(t *testing.T) {
-	t.Parallel()
 	assert.False(t, VerifyDigest([]byte(`{}`), "wrong"))
 }
 
 func TestContentReferenceForBody_FormatAndDeterminism(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"ref":"test"}`)
 	ref := ContentReferenceForBody("action-receipt", body)
 	digest := sha256.Sum256(body)
@@ -126,7 +116,6 @@ func TestContentReferenceForBody_FormatAndDeterminism(t *testing.T) {
 }
 
 func TestParseContentReference_ValidReference(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{}`)
 	ref := ContentReferenceForBody("demo-manifest", body)
 	prefix, digest, ok := ParseContentReference(ref)
@@ -136,7 +125,6 @@ func TestParseContentReference_ValidReference(t *testing.T) {
 }
 
 func TestParseContentReference_InvalidReferences(t *testing.T) {
-	t.Parallel()
 	emptyDigest := sha256.Sum256(nil)
 	tests := []struct {
 		name      string
@@ -151,7 +139,6 @@ func TestParseContentReference_InvalidReferences(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			_, _, ok := ParseContentReference(tt.reference)
 			assert.False(t, ok)
 		})
@@ -159,7 +146,6 @@ func TestParseContentReference_InvalidReferences(t *testing.T) {
 }
 
 func TestParseExpectedContentReference_MatchesPrefix(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{}`)
 	ref := ContentReferenceForBody("action-receipt", body)
 	prefix, digest, ok := ParseExpectedContentReference(ref, "action-receipt")
@@ -169,7 +155,6 @@ func TestParseExpectedContentReference_MatchesPrefix(t *testing.T) {
 }
 
 func TestParseExpectedContentReference_RejectsWrongPrefix(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{}`)
 	ref := ContentReferenceForBody("action-receipt", body)
 	_, _, ok := ParseExpectedContentReference(ref, "demo-manifest")
@@ -177,13 +162,11 @@ func TestParseExpectedContentReference_RejectsWrongPrefix(t *testing.T) {
 }
 
 func TestValidateCanonicalJSON_AcceptsCanonicalCompact(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"key":"value","num":42}`)
 	require.NoError(t, ValidateCanonicalJSON(body))
 }
 
 func TestValidateCanonicalJSON_RejectsNonCanonicalWhitespace(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"key": "value"}`)
 	err := ValidateCanonicalJSON(body)
 	require.Error(t, err)
@@ -191,7 +174,6 @@ func TestValidateCanonicalJSON_RejectsNonCanonicalWhitespace(t *testing.T) {
 }
 
 func TestValidateCanonicalJSON_RejectsTrailingData(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"key":"value"}extra`)
 	err := ValidateCanonicalJSON(body)
 	require.Error(t, err)
@@ -199,20 +181,17 @@ func TestValidateCanonicalJSON_RejectsTrailingData(t *testing.T) {
 }
 
 func TestValidateCanonicalJSON_RejectsInvalidJSON(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{invalid}`)
 	err := ValidateCanonicalJSON(body)
 	require.Error(t, err)
 }
 
 func TestValidPathElement_AcceptsSafeElement(t *testing.T) {
-	t.Parallel()
 	assert.True(t, ValidPathElement("manifest.json"))
 	assert.True(t, ValidPathElement("abc123"))
 }
 
 func TestValidatePathElement_ReturnsTypedErrorForUnsafeElements(t *testing.T) {
-	t.Parallel()
 	for _, value := range []string{"", ".", "..", "a/b", "/absolute", "eval-1022-13:30", "run\x00id"} {
 		require.ErrorIs(t, ValidatePathElement(value), constants.ErrEvidencePathElementInvalid, value)
 	}
@@ -220,7 +199,6 @@ func TestValidatePathElement_ReturnsTypedErrorForUnsafeElements(t *testing.T) {
 }
 
 func TestValidPathElement_RejectsUnsafeElements(t *testing.T) {
-	t.Parallel()
 	assert.False(t, ValidPathElement(""))
 	assert.False(t, ValidPathElement("."))
 	assert.False(t, ValidPathElement(".."))
@@ -231,7 +209,6 @@ func TestValidPathElement_RejectsUnsafeElements(t *testing.T) {
 }
 
 func TestValidatePathElement_AdmitsOnlyValidRelativePaths(t *testing.T) {
-	t.Parallel()
 	for _, value := range []string{"", "..", "a/b", "eval-1022-13:30", "a\x00b"} {
 		require.ErrorIs(t, ValidatePathElement(value), constants.ErrEvidencePathElementInvalid, "%q", value)
 	}
@@ -242,7 +219,6 @@ func TestValidatePathElement_AdmitsOnlyValidRelativePaths(t *testing.T) {
 }
 
 func TestValidateRelativePath_ReportsTypedError(t *testing.T) {
-	t.Parallel()
 	for _, value := range []string{"", "..", "../escape", "/absolute", "runs/a:b/evidence", "a\x00b"} {
 		assert.ErrorIs(t, ValidateRelativePath(value), constants.ErrEvidenceRelativePathInvalid, "%q", value)
 	}
@@ -253,7 +229,6 @@ func TestValidateRelativePath_ReportsTypedError(t *testing.T) {
 type unusedFileService struct{ fs.RuntimeFileService }
 
 func TestPersistCanonicalProtoArtifact_ReportsEachUnmetPrecondition(t *testing.T) {
-	t.Parallel()
 	message := &compliancev1.ComplianceVerificationReport{ReportId: "report-1", Valid: true}
 	files := unusedFileService{}
 	tests := []struct {
@@ -271,7 +246,6 @@ func TestPersistCanonicalProtoArtifact_ReportsEachUnmetPrecondition(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := PersistCanonicalProtoArtifact(context.Background(), tt.files, tt.directory, tt.artifactType, tt.message)
 			require.ErrorIs(t, err, constants.ErrEvidenceArtifactPersistFailed)
 			assert.ErrorIs(t, err, tt.want)
@@ -280,13 +254,11 @@ func TestPersistCanonicalProtoArtifact_ReportsEachUnmetPrecondition(t *testing.T
 }
 
 func TestValidRelativePath_AcceptsSafeRelativePath(t *testing.T) {
-	t.Parallel()
 	assert.True(t, ValidRelativePath("receipts/abc.json"))
 	assert.True(t, ValidRelativePath("a/b/c.json"))
 }
 
 func TestValidRelativePath_RejectsUnsafePaths(t *testing.T) {
-	t.Parallel()
 	assert.False(t, ValidRelativePath(""))
 	assert.False(t, ValidRelativePath("."))
 	assert.False(t, ValidRelativePath(".."))
@@ -295,29 +267,24 @@ func TestValidRelativePath_RejectsUnsafePaths(t *testing.T) {
 }
 
 func TestClassifyReadError_MapsNotFoundToUnresolvedReference(t *testing.T) {
-	t.Parallel()
 	assert.ErrorIs(t, ClassifyReadError(constants.ErrNotFound), constants.ErrUnresolvedReference)
 }
 
 func TestClassifyReadError_PreservesTooLarge(t *testing.T) {
-	t.Parallel()
 	assert.ErrorIs(t, ClassifyReadError(constants.ErrEvidenceArtifactTooLarge), constants.ErrEvidenceArtifactTooLarge)
 }
 
 func TestClassifyReadError_MapsUnknownToInvalidGraph(t *testing.T) {
-	t.Parallel()
 	assert.ErrorIs(t, ClassifyReadError(errors.New("unknown")), constants.ErrInvalidEvidenceGraph)
 }
 
 func TestContains_FindsTarget(t *testing.T) {
-	t.Parallel()
 	assert.True(t, Contains([]string{"a", "b", "c"}, "b"))
 	assert.False(t, Contains([]string{"a", "b", "c"}, "d"))
 	assert.False(t, Contains([]string{}, "a"))
 }
 
 func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *testing.T) {
-	t.Parallel()
 	binding := ReceiptBinding{
 		RunID:                   "run-1",
 		ScenarioID:              "scenario-1",
@@ -380,7 +347,6 @@ func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *test
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			receipt := newReceipt()
 			test.mutate(receipt)
 			_, err := BuildVerifiedReceiptEvidence(binding, projection, receipt)
@@ -390,7 +356,6 @@ func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *test
 }
 
 func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *testing.T) {
-	t.Parallel()
 	verifiedAt := time.Unix(1_700_000_000, 0).UTC()
 	valid := &compliancev1.ComplianceVerificationReport{
 		ReportId:        "run-1",
@@ -444,7 +409,6 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			report := proto.Clone(valid).(*compliancev1.ComplianceVerificationReport)
 			if test.mutate != nil {
 				test.mutate(report)
@@ -466,7 +430,6 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 }
 
 func TestValidateVerificationReport_RejectsNoncanonicalBody(t *testing.T) {
-	t.Parallel()
 	report, err := ValidateVerificationReport([]byte(`{"report_id": "run-1"}`), "run-1", constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, time.Unix(1_700_000_000, 0).UTC())
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)

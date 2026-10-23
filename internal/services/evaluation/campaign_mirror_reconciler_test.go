@@ -24,7 +24,6 @@ func (blockingCampaignMirrorProbe) DatasetPresent(ctx context.Context, _ string)
 }
 
 func TestCampaignMirrorReconciler_ReportsMissingHostEvidence(t *testing.T) {
-	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}

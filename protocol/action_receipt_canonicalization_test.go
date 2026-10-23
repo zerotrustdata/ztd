@@ -51,7 +51,6 @@ var actionReceiptFailureCodeCanonicalizationVectorJSON []byte
 var actionReceiptRejectionCodeCanonicalizationVectorJSON []byte
 
 func TestActionReceiptCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector actionReceiptCanonicalizationVector
 	require.NoError(t, json.Unmarshal(actionReceiptCanonicalizationVectorJSON, &vector))
 
@@ -72,7 +71,6 @@ func TestActionReceiptCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
 }
 
 func TestActionReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector actionReceiptCanonicalizationVector
 	require.NoError(t, json.Unmarshal(actionReceiptStageEvidenceCanonicalizationVectorJSON, &vector))
 	receipt := &operatorv1.ActionReceipt{}
@@ -89,7 +87,6 @@ func TestActionReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t 
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 
 	t.Run("stage order", func(t *testing.T) {
-		t.Parallel()
 		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		tampered.DeterministicStageEvidence[0], tampered.DeterministicStageEvidence[1] = tampered.DeterministicStageEvidence[1], tampered.DeterministicStageEvidence[0]
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
@@ -98,7 +95,6 @@ func TestActionReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t 
 	})
 
 	t.Run("stage field", func(t *testing.T) {
-		t.Parallel()
 		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		tampered.DeterministicStageEvidence[0].DoctrineBundleHash = "sha256:tampered"
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
@@ -108,7 +104,6 @@ func TestActionReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t 
 }
 
 func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector actionReceiptCanonicalizationVector
 	require.NoError(t, json.Unmarshal(actionReceiptFailureCodeCanonicalizationVectorJSON, &vector))
 	receipt := &operatorv1.ActionReceipt{}
@@ -128,7 +123,6 @@ func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *t
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 
 	t.Run("failure code tampering", func(t *testing.T) {
-		t.Parallel()
 		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		tampered.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
@@ -137,7 +131,6 @@ func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *t
 	})
 
 	t.Run("failure code removal", func(t *testing.T) {
-		t.Parallel()
 		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		tampered.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
@@ -148,7 +141,6 @@ func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *t
 }
 
 func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector actionReceiptCanonicalizationVector
 	require.NoError(t, json.Unmarshal(actionReceiptRejectionCodeCanonicalizationVectorJSON, &vector))
 	receipt := &operatorv1.ActionReceipt{}
@@ -169,7 +161,6 @@ func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t 
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 
 	t.Run("rejection code tampering", func(t *testing.T) {
-		t.Parallel()
 		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
@@ -178,7 +169,6 @@ func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t 
 	})
 
 	t.Run("rejection code removal", func(t *testing.T) {
-		t.Parallel()
 		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 		tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
 		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
@@ -189,7 +179,6 @@ func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t 
 }
 
 func TestReceiptPersistenceAttestationCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var receiptVector actionReceiptCanonicalizationVector
 	require.NoError(t, json.Unmarshal(actionReceiptCanonicalizationVectorJSON, &receiptVector))
 	var persistenceVector receiptPersistenceCanonicalizationVector

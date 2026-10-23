@@ -63,8 +63,7 @@ func bindingBody(t *testing.T, policy models.ConsensusPolicy) []byte {
 	return body
 }
 
-func TestConsensusStatus_BoundApplicationJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusStatus_BoundApplicationJSON(t *testing.T) {
 	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	client := &routedClient{bodies: map[string][]byte{
 		constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, policy),
@@ -94,8 +93,7 @@ func TestConsensusStatus_BoundApplicationJSON(t *testing.T) { //nolint:parallelt
 	require.Equal(t, []string{constants.APIPaths.AuthPlatformEnrollmentConsensus, constants.APIPaths.Health}, client.calls)
 }
 
-func TestConsensusStatus_BoundTribunalShowsModelText(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusStatus_BoundTribunalShowsModelText(t *testing.T) {
 	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: constants.TribunalConsensusMemberAppIDs()[0], MemberAppIDs: constants.TribunalConsensusMemberAppIDs(), Quorum: constants.TribunalConsensusDefaultQuorum, Provider: string(constants.ConsensusProviderTribunal), ModelTag: "vote-model", ModelDigest: "sha256:abc", Enabled: true}
 	client := &routedClient{bodies: map[string][]byte{
 		constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, policy),
@@ -116,8 +114,7 @@ func TestConsensusStatus_BoundTribunalShowsModelText(t *testing.T) { //nolint:pa
 	require.Contains(t, text, "L2         enforced")
 }
 
-func TestConsensusStatus_UnboundWithL2PostureFails(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusStatus_UnboundWithL2PostureFails(t *testing.T) {
 	client := &routedClient{
 		errs: map[string]error{constants.APIPaths.AuthPlatformEnrollmentConsensus: &api.StatusError{StatusCode: http.StatusNotFound, Body: "not bound"}},
 		bodies: map[string][]byte{
@@ -134,8 +131,7 @@ func TestConsensusStatus_UnboundWithL2PostureFails(t *testing.T) { //nolint:para
 	require.Contains(t, output.String(), "L2         enforced")
 }
 
-func TestConsensusStatus_UnboundDoctrinePostureSucceeds(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusStatus_UnboundDoctrinePostureSucceeds(t *testing.T) {
 	client := &routedClient{
 		errs: map[string]error{constants.APIPaths.AuthPlatformEnrollmentConsensus: &api.StatusError{StatusCode: http.StatusNotFound, Body: "not bound"}},
 		bodies: map[string][]byte{
@@ -155,8 +151,7 @@ func TestConsensusStatus_UnboundDoctrinePostureSucceeds(t *testing.T) { //nolint
 	require.Equal(t, constants.PostureDoctrine, actual.Posture)
 }
 
-func TestConsensusStatus_BindingFetchErrorIsNotUnbound(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusStatus_BindingFetchErrorIsNotUnbound(t *testing.T) {
 	errBoom := errors.New("gateway unreachable")
 	client := &routedClient{
 		errs: map[string]error{constants.APIPaths.AuthPlatformEnrollmentConsensus: errBoom},
@@ -172,8 +167,7 @@ func TestConsensusStatus_BindingFetchErrorIsNotUnbound(t *testing.T) { //nolint:
 	require.NotErrorIs(t, err, constants.ErrTxL2ConsensusNotConfigured)
 }
 
-func TestConsensusStatus_HealthFailureReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusStatus_HealthFailureReturnsError(t *testing.T) {
 	errBoom := errors.New("health down")
 	client := &routedClient{
 		bodies: map[string][]byte{constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"})},

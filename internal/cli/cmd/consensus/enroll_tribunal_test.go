@@ -124,9 +124,8 @@ func tribunalBindingBody(t *testing.T, quorum int) []byte {
 	return body
 }
 
-func TestConsensusEnrollTribunal_Validation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
+func TestConsensusEnrollTribunal_Validation(t *testing.T) {
+	for _, tc := range []struct {
 		name      string
 		args      []string
 		wantError error
@@ -137,7 +136,6 @@ func TestConsensusEnrollTribunal_Validation(t *testing.T) { //nolint:paralleltes
 		{name: "quorum above member count", args: []string{"tribunal", "--model", tribunalTestTag, "--quorum", "6"}, wantError: constants.ErrConsensusQuorumInvalid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			client := &cmdtest.MockAPIClient{}
 			_, enrolled, err := runEnrollTribunal(t, client, nil, tc.args...)
 			require.ErrorIs(t, err, tc.wantError)
@@ -147,8 +145,7 @@ func TestConsensusEnrollTribunal_Validation(t *testing.T) { //nolint:paralleltes
 	}
 }
 
-func TestConsensusEnrollTribunal_UnknownTagIsNotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusEnrollTribunal_UnknownTagIsNotFound(t *testing.T) {
 	client := &cmdtest.MockAPIClient{}
 	_, enrolled, err := runEnrollTribunal(t, client, nil, "tribunal", "--model", "missing-tag")
 	require.ErrorIs(t, err, constants.ErrNotFound)
@@ -157,10 +154,9 @@ func TestConsensusEnrollTribunal_UnknownTagIsNotFound(t *testing.T) { //nolint:p
 	require.Empty(t, enrolled)
 }
 
-func TestConsensusEnrollTribunal_ResumeSkipsEnrolledMembers(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusEnrollTribunal_ResumeSkipsEnrolledMembers(t *testing.T) {
 	members := constants.TribunalConsensusMemberAppIDs()
-	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
+	for _, tc := range []struct {
 		name       string
 		enrolled   map[string]bool
 		wantEnroll []string
@@ -170,7 +166,6 @@ func TestConsensusEnrollTribunal_ResumeSkipsEnrolledMembers(t *testing.T) { //no
 		{name: "all keys present enrolls nobody", enrolled: map[string]bool{members[0]: true, members[1]: true, members[2]: true, members[3]: true, members[4]: true}, wantEnroll: nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			client := &cmdtest.MockAPIClient{PostResp: tribunalBindingBody(t, constants.TribunalConsensusDefaultQuorum)}
 			_, enrolled, err := runEnrollTribunal(t, client, tc.enrolled, "tribunal", "--model", tribunalTestTag)
 			require.NoError(t, err)
@@ -180,10 +175,9 @@ func TestConsensusEnrollTribunal_ResumeSkipsEnrolledMembers(t *testing.T) { //no
 	}
 }
 
-func TestConsensusEnrollTribunal_BindRequestBody(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusEnrollTribunal_BindRequestBody(t *testing.T) {
 	members := constants.TribunalConsensusMemberAppIDs()
-	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
+	for _, tc := range []struct {
 		name       string
 		args       []string
 		wantQuorum int
@@ -192,7 +186,6 @@ func TestConsensusEnrollTribunal_BindRequestBody(t *testing.T) { //nolint:parall
 		{name: "explicit quorum", args: []string{"tribunal", "--model", " " + tribunalTestTag + " ", "--quorum", "4"}, wantQuorum: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			client := &cmdtest.MockAPIClient{PostResp: tribunalBindingBody(t, tc.wantQuorum)}
 			_, _, err := runEnrollTribunal(t, client, map[string]bool{members[0]: true}, tc.args...)
 			require.NoError(t, err)
@@ -210,11 +203,9 @@ func TestConsensusEnrollTribunal_BindRequestBody(t *testing.T) { //nolint:parall
 	}
 }
 
-func TestConsensusEnrollTribunal_PrintsPostureSuspension(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} { //nolint:paralleltest // mutates package-level state
+func TestConsensusEnrollTribunal_PrintsPostureSuspension(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
-
 			suspension := models.PlatformEnrollmentL3SuspensionResponse{Status: models.PlatformEnrollmentStatusL3Required, Posture: posture, TxHash: "tribunal-binding-hash", ApprovalURL: "https://gateway.example/approve/tribunal-binding-hash", ExpiresAt: time.Now().Add(time.Minute)}
 			body, err := json.Marshal(suspension)
 			require.NoError(t, err)
@@ -231,8 +222,7 @@ func TestConsensusEnrollTribunal_PrintsPostureSuspension(t *testing.T) { //nolin
 	}
 }
 
-func TestConsensusEnrollTribunal_RejectsMismatchedBinding(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConsensusEnrollTribunal_RejectsMismatchedBinding(t *testing.T) {
 	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: constants.TribunalConsensusMemberAppIDs()[0], MemberAppIDs: constants.TribunalConsensusMemberAppIDs(), Quorum: constants.TribunalConsensusDefaultQuorum, Provider: string(constants.ConsensusProviderTribunal), ModelTag: tribunalTestTag, ModelDigest: strings.Repeat("cd", 32), Enabled: true}
 	body, err := json.Marshal(policy)
 	require.NoError(t, err)

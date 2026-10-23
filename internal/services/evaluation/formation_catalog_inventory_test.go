@@ -19,7 +19,6 @@ import (
 )
 
 func TestFormationCatalogServedTags_ReturnsSortedUniqueTags(t *testing.T) {
-	t.Parallel()
 	tags := FormationCatalogServedTags()
 	require.Len(t, tags, 11)
 	sort.Strings(tags)
@@ -28,7 +27,6 @@ func TestFormationCatalogServedTags_ReturnsSortedUniqueTags(t *testing.T) {
 }
 
 func TestFormationCatalogIntakeModels_ReturnsOneSovereignLibraryPullPerTag(t *testing.T) {
-	t.Parallel()
 	models, err := FormationCatalogIntakeModels()
 	require.NoError(t, err)
 	require.Len(t, models, 11)
@@ -39,7 +37,6 @@ func TestFormationCatalogIntakeModels_ReturnsOneSovereignLibraryPullPerTag(t *te
 }
 
 func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *testing.T) {
-	t.Parallel()
 	partial := []*evalv1.ModelVariant{
 		{VariantId: "freeze-qwen35-4b", ProviderClass: "ollama", ServedModelTag: "qwen3.5:4b", ModelDigest: repeatHex('5'), ModelFamily: "Qwen 3.5", Quantization: "Q4_K_M"},
 		{VariantId: "freeze-gemma4-e2b", ProviderClass: "ollama", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('2'), ModelFamily: "Gemma 4", Quantization: "Q4_K_M"},
@@ -66,7 +63,6 @@ func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *t
 }
 
 func TestMaterializeFormationVariants_SelectsOnlyTheNamedFormationsModels(t *testing.T) {
-	t.Parallel()
 	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a') })
 
 	selected, err := MaterializeFormationVariants(source, []string{"qwen-powerhouse"}, nil)
@@ -90,7 +86,6 @@ func TestMaterializeFormationVariants_SelectsOnlyTheNamedFormationsModels(t *tes
 }
 
 func TestFormationCatalogFixtureVariants_MatchesCatalogServedTags(t *testing.T) {
-	t.Parallel()
 	variants := FormationCatalogFixtureVariants(func(string) string { return repeatHex('b') })
 	require.Len(t, variants, 11)
 	tags := make([]string, 0, len(variants))

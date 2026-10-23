@@ -34,7 +34,6 @@ func compileCanonicalSchema(t *testing.T, schema string) *jsonschema.Schema {
 }
 
 func TestResponseSchemasConstrainEachRoleToItsDecoderShape(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		schema   string
@@ -94,7 +93,6 @@ func TestResponseSchemasConstrainEachRoleToItsDecoderShape(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			compiled := compileCanonicalSchema(t, tt.schema)
 			validator := jsonschema.NewValidator()
 			for _, answer := range tt.accept {
@@ -111,9 +109,7 @@ func TestResponseSchemasConstrainEachRoleToItsDecoderShape(t *testing.T) {
 // every live shell proposal before the schemas existed: decoding stays strict
 // whether or not a provider honours the schema.
 func TestDecodersRejectTheLiveUnconstrainedShapes(t *testing.T) {
-	t.Parallel()
 	t.Run("marshal non-JSON fails closed HIGH", func(t *testing.T) {
-		t.Parallel()
 		inferer := &fakeInferer{marshal: "Risk: LOW. The command only reads state."}
 		risk, err := assessRisk(context.Background(), testConfig(inferer), Request{Request: testRequest}, argsFor("ss -tlpn"))
 		require.NoError(t, err)
@@ -129,7 +125,6 @@ func TestDecodersRejectTheLiveUnconstrainedShapes(t *testing.T) {
 		"auditor approve with swap":     `{"verdict":"APPROVE","swap_to_cluster":"cluster_b","rationale":"x"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			inferer := &fakeInferer{audit: []string{answer}}
 			result, err := audit(context.Background(), testConfig(inferer), Request{Request: testRequest}, split)
 			require.NoError(t, err)
@@ -140,7 +135,6 @@ func TestDecodersRejectTheLiveUnconstrainedShapes(t *testing.T) {
 }
 
 func TestEveryRoleCallCarriesItsSchema(t *testing.T) {
-	t.Parallel()
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ps"}),
 		marshal:  lowRisk,
@@ -164,7 +158,6 @@ func TestEveryRoleCallCarriesItsSchema(t *testing.T) {
 }
 
 func TestRegenerationShowsOnlyAuthoredArguments(t *testing.T) {
-	t.Parallel()
 	prior := []Cluster{{ID: "cluster_a", Arguments: argsFor("ss -l"), Members: []Member{MemberAxiom}}}
 	prior[0].Arguments.Timeout, prior[0].Arguments.WorkingDir = 23, "/srv/work"
 	prompt := generationPrompt(Request{Request: testRequest}, prior)

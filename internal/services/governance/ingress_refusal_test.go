@@ -120,18 +120,12 @@ var ingressRefusalRejectionOverlaps = []error{
 }
 
 func TestClassifyIngressRefusal(t *testing.T) {
-	t.Parallel()
-
 	t.Run("nil error is UNSPECIFIED", func(t *testing.T) {
-		t.Parallel()
-
 		assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED, ClassifyIngressRefusal(nil))
 	})
 
 	for _, tc := range ingressRefusalCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tc.code, ClassifyIngressRefusal(tc.sentinel), "bare sentinel")
 			assert.Equal(t, tc.code, ClassifyIngressRefusal(fmt.Errorf("ctx: %w", tc.sentinel)), "single-wrapped sentinel")
 			assert.Equal(t, tc.code, ClassifyIngressRefusal(fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", tc.sentinel))), "double-wrapped sentinel")
@@ -142,8 +136,6 @@ func TestClassifyIngressRefusal(t *testing.T) {
 // TestClassifyIngressRefusalTableCoversEveryEntry fails when a classifier
 // entry has no row in the explicit case table, so the table cannot drift.
 func TestClassifyIngressRefusalTableCoversEveryEntry(t *testing.T) {
-	t.Parallel()
-
 	require.Len(t, ingressRefusalCases, len(ingressRefusalCodes), "table rows must match classifier entries one-to-one")
 	for _, entry := range ingressRefusalCodes {
 		found := false
@@ -158,13 +150,11 @@ func TestClassifyIngressRefusalTableCoversEveryEntry(t *testing.T) {
 }
 
 func TestClassifyIngressRefusalUnmapped(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED, ClassifyIngressRefusal(errors.New("x")))
 	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED, ClassifyIngressRefusal(fmt.Errorf("store: %w", errors.New("x"))))
 }
 
 func TestNewIngressRefusalRendersSentinelOnly(t *testing.T) {
-	t.Parallel()
 	refusal := NewIngressRefusal(fmt.Errorf("store write failed /secret/path: %w", constants.ErrMethodNotAllowed))
 	assert.Equal(t, constants.ErrMethodNotAllowed.Error(), refusal.GetError(), "only the sentinel renders, never the chain")
 	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_METHOD_NOT_ALLOWED, refusal.GetCode())
@@ -182,8 +172,6 @@ func TestNewIngressRefusalRendersSentinelOnly(t *testing.T) {
 // to the same meaning in both, and the test fails until the overlap list is
 // updated on purpose.
 func TestIngressRefusalCodesDisjointFromRejection(t *testing.T) {
-	t.Parallel()
-
 	var overlaps []error
 	for _, ingress := range ingressRefusalCodes {
 		for _, rejection := range governanceRejectionCodes {

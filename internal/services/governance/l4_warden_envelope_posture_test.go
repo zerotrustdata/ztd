@@ -31,7 +31,6 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 
 	t.Run("notary posture requires L3 for mutation", func(t *testing.T) {
 		t.Parallel()
-
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "notary")
 		env.Governance.L3 = nil
@@ -42,7 +41,6 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 
 	t.Run("doctrine posture does not require L3 for mutation", func(t *testing.T) {
 		t.Parallel()
-
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "doctrine")
 		env.Governance.L3 = nil
@@ -60,13 +58,11 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 // still passes under ratify and notary, where L3 gates mutations.
 func TestVerifyEnvelope_ReadOnlyNeedsNoL3UnderAnyPosture(t *testing.T) {
 	t.Parallel()
-
 	require.False(t, constants.ActionTypeFsRead.IsMutation())
 
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
 			t.Parallel()
-
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeFsRead, typedPayload(t, constants.ActionTypeFsRead), privKey, posture)
 			env.Governance.L3 = nil
@@ -101,7 +97,6 @@ func TestVerifyEnvelope_RatifyRequiresL3WithoutL2(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "ratify")
 			if tc.invalidL2 {
@@ -149,7 +144,6 @@ func TestVerifyEnvelope_EnvelopePostureIsTheOnlyPosture(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
 			t.Parallel()
-
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, posture)
 
@@ -223,8 +217,6 @@ func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			envelope := &govtypes.GovernanceEnvelope{ActionType: string(tc.action)}
 			assert.Equal(t, tc.wantL2, L2Enforced(envelope, tc.posture), "L2Enforced")
 			assert.Equal(t, tc.wantL3, L3Required(tc.action, tc.posture), "L3Required")
@@ -262,8 +254,6 @@ func TestL2Enforced_ScopesTribunalToStateChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			envelope := &govtypes.GovernanceEnvelope{ActionType: string(tc.action), TargetResource: tc.target}
 			for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureNotary} {
 				assert.Equal(t, tc.wantL2, L2Enforced(envelope, posture), posture)

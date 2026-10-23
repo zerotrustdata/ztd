@@ -23,8 +23,7 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestAuditReceiptsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := auditEventReceiptsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -36,8 +35,7 @@ func TestAuditReceiptsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestAuditExportCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditExportCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := auditExportCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -49,8 +47,7 @@ func TestAuditExportCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:p
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestAuditReportCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReportCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := auditReportCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -62,8 +59,7 @@ func TestAuditReportCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:p
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestAuditEventsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditEventsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := auditEventsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -75,8 +71,7 @@ func TestAuditEventsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:p
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestAuditSummaryCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditSummaryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := auditSummaryCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer

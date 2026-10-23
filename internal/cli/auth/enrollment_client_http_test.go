@@ -82,8 +82,6 @@ func bootstrapResponseFrom(a EnrollmentArtifacts) models.BootstrapResponse {
 // ---------------------------------------------------------------------------
 
 func TestNewEnrollmentClient_DefaultsFingerprintGeneratorWhenNotInjected(t *testing.T) {
-	t.Parallel()
-
 	_, cfg := newAuthTestEnv(t)
 
 	defaulted := NewEnrollmentClient(cfg, nil)
@@ -113,7 +111,6 @@ func TestNewEnrollmentClient_DefaultsFingerprintGeneratorWhenNotInjected(t *test
 // ---------------------------------------------------------------------------
 
 func TestSignRecoveryProof_RejectsMissingInputsAndProducesVerifiableSignature(t *testing.T) {
-	t.Parallel()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
@@ -134,8 +131,6 @@ func TestSignRecoveryProof_RejectsMissingInputsAndProducesVerifiableSignature(t 
 }
 
 func TestParseCertPEMBytes_RejectsNonCertificates(t *testing.T) {
-	t.Parallel()
-
 	valid := testutil.GenerateTestCA(t, "parse-test")
 
 	cert, err := parseCertPEMBytes([]byte(valid))
@@ -198,8 +193,6 @@ func noIdentityClient(t *testing.T) (*EnrollmentClient, fs.RuntimeFileService) {
 }
 
 func TestEnrollmentClient_MTLSOperations_FailClosedWithoutLocalIdentity(t *testing.T) {
-	t.Parallel()
-
 	ops := map[string]func(c *EnrollmentClient, fileSvc fs.RuntimeFileService) error{
 		"Rotate": func(c *EnrollmentClient, f fs.RuntimeFileService) error {
 			_, err := c.Rotate(t.Context(), f, "csr", nil, "")
@@ -228,8 +221,6 @@ func TestEnrollmentClient_MTLSOperations_FailClosedWithoutLocalIdentity(t *testi
 	}
 	for name, op := range ops {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			client, fileSvc := noIdentityClient(t)
 
 			require.ErrorIs(t, op(client, fileSvc), constants.ErrFailedToLoadClientCertificate)
@@ -237,8 +228,6 @@ func TestEnrollmentClient_MTLSOperations_FailClosedWithoutLocalIdentity(t *testi
 	}
 
 	t.Run("ProbeCLISession", func(t *testing.T) {
-		t.Parallel()
-
 		client, fileSvc := noIdentityClient(t)
 
 		require.ErrorIs(t, client.ProbeCLISession(t.Context(), fileSvc), constants.ErrHTTPRequestExecuteFailed)

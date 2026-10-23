@@ -24,7 +24,6 @@ import (
 )
 
 func TestNewOperatorRuntimeFileServiceUsesWorkingDir(t *testing.T) {
-	t.Parallel()
 	workingDir := testutil.TempDir(t)
 	fileSvc, effectiveWorkDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{
 		WorkingDir: workingDir,
@@ -36,7 +35,6 @@ func TestNewOperatorRuntimeFileServiceUsesWorkingDir(t *testing.T) {
 }
 
 func TestOperatorFingerprintOptions_ProvenanceIncludesRuntimePort(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{OperatorCapabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}}
 
 	got := operatorFingerprintOptions(opts, "/var/lib/ollama/models", "operator-user")
@@ -50,7 +48,6 @@ func TestOperatorFingerprintOptions_ProvenanceIncludesRuntimePort(t *testing.T) 
 }
 
 func TestServeOperatorOptions_ZeroValue(t *testing.T) {
-	t.Parallel()
 	var opts ServeOperatorOptions
 
 	assert.Empty(t, opts.LogLevel)
@@ -64,7 +61,6 @@ func TestServeOperatorOptions_ZeroValue(t *testing.T) {
 }
 
 func TestServeOperatorOptions_FullAssignment(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{
 		LogLevel:          "debug",
 		Endpoint:          "192.168.1.10",
@@ -87,7 +83,6 @@ func TestServeOperatorOptions_FullAssignment(t *testing.T) {
 }
 
 func TestServeOperatorOptions_Equality(t *testing.T) {
-	t.Parallel()
 	a := ServeOperatorOptions{
 		LogLevel:   "info",
 		Endpoint:   constants.DefaultEndpoint,
@@ -110,7 +105,6 @@ func TestServeOperatorOptions_Equality(t *testing.T) {
 }
 
 func TestServeOperatorOptions_PartialAssignment(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{
 		LogLevel: "info",
 		Endpoint: "10.0.0.1",
@@ -126,7 +120,6 @@ func TestServeOperatorOptions_PartialAssignment(t *testing.T) {
 }
 
 func TestServeOperatorOptions_HeartbeatInterval(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		duration time.Duration
@@ -141,7 +134,6 @@ func TestServeOperatorOptions_HeartbeatInterval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			opts := ServeOperatorOptions{HeartbeatInterval: tt.duration}
 			assert.Equal(t, tt.expected, opts.HeartbeatInterval)
 		})
@@ -149,7 +141,6 @@ func TestServeOperatorOptions_HeartbeatInterval(t *testing.T) {
 }
 
 func TestServeOperatorOptions_CloudProviderValues(t *testing.T) {
-	t.Parallel()
 	providers := []string{"aws", "gcp", "azure", ""}
 
 	for _, p := range providers {
@@ -160,7 +151,6 @@ func TestServeOperatorOptions_CloudProviderValues(t *testing.T) {
 }
 
 func TestResolveOperatorGateway(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -183,7 +173,6 @@ func TestResolveOperatorGateway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			host, port, err := resolveOperatorGateway(tt.endpoint, tt.httpPort)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantHost, host)
@@ -193,7 +182,6 @@ func TestResolveOperatorGateway(t *testing.T) {
 }
 
 func TestResolveOperatorGateway_Rejects(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -210,7 +198,6 @@ func TestResolveOperatorGateway_Rejects(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			_, _, err := resolveOperatorGateway(tt.endpoint, tt.httpPort)
 			require.ErrorIs(t, err, constants.ErrGatewayEndpointInvalid)
 		})
@@ -218,7 +205,6 @@ func TestResolveOperatorGateway_Rejects(t *testing.T) {
 }
 
 func TestResolveWorkingDir(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name       string
 		workingDir string
@@ -234,7 +220,6 @@ func TestResolveWorkingDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			result := resolveWorkingDir(tt.workingDir, tt.launchDir)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -246,14 +231,12 @@ func TestResolveWorkingDir(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeOperatorOptions_NegativeHeartbeatInterval(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{HeartbeatInterval: -5 * time.Second}
 	assert.Equal(t, -5*time.Second, opts.HeartbeatInterval,
 		"negative durations should be stored as-is; validation is the caller's responsibility")
 }
 
 func TestServeOperatorOptions_AllBooleansTrue(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{
 		CloudMode: true,
 	}
@@ -261,7 +244,6 @@ func TestServeOperatorOptions_AllBooleansTrue(t *testing.T) {
 }
 
 func TestServeOperatorOptions_AllBooleansFalse(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{
 		CloudMode: false,
 	}
@@ -269,7 +251,6 @@ func TestServeOperatorOptions_AllBooleansFalse(t *testing.T) {
 }
 
 func TestServeOperatorOptions_Equality_DifferInEachField(t *testing.T) {
-	t.Parallel()
 	base := ServeOperatorOptions{
 		LogLevel:          "info",
 		Endpoint:          constants.DefaultEndpoint,
@@ -297,7 +278,6 @@ func TestServeOperatorOptions_Equality_DifferInEachField(t *testing.T) {
 
 	for _, f := range fields {
 		t.Run(f.name, func(t *testing.T) {
-			t.Parallel()
 			modified := base
 			f.mut(&modified)
 			require.NotEqual(t, base, modified,
@@ -307,7 +287,6 @@ func TestServeOperatorOptions_Equality_DifferInEachField(t *testing.T) {
 }
 
 func TestServeOperatorOptions_Equality_AllFieldsEqual(t *testing.T) {
-	t.Parallel()
 	a := ServeOperatorOptions{
 		LogLevel:          "debug",
 		Endpoint:          "10.0.0.1",
@@ -327,7 +306,6 @@ func TestServeOperatorOptions_Equality_AllFieldsEqual(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildOperatorLoadOptions_BasicMapping(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{
 		LogLevel:          "debug",
 		CloudMode:         true,
@@ -348,7 +326,6 @@ func TestBuildOperatorLoadOptions_BasicMapping(t *testing.T) {
 }
 
 func TestBuildOperatorLoadOptions_EmptyEndpoint(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{}
 	loadOpts := buildOperatorLoadOptions(opts, "", "/work")
 	assert.Empty(t, loadOpts.OperatorEndpoint)
@@ -356,7 +333,6 @@ func TestBuildOperatorLoadOptions_EmptyEndpoint(t *testing.T) {
 }
 
 func TestBuildOperatorLoadOptions_ZeroValues(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{}
 	loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, constants.DefaultPKIDir)
 
@@ -383,7 +359,6 @@ func TestBuildOperatorLoadOptions_EnvVarsPropagated(t *testing.T) {
 }
 
 func TestBuildOperatorLoadOptions_GatewayPortsDefaultToZeroAndPassThroughWhenSet(t *testing.T) {
-	t.Parallel()
 	loadOpts := buildOperatorLoadOptions(ServeOperatorOptions{}, "10.0.0.1", "/work")
 	assert.Equal(t, 0, loadOpts.HTTPPort)
 	assert.Equal(t, 0, loadOpts.HTTPSPort)
@@ -394,7 +369,6 @@ func TestBuildOperatorLoadOptions_GatewayPortsDefaultToZeroAndPassThroughWhenSet
 }
 
 func TestBuildOperatorLoadOptions_PKIAndSecretsAlwaysEmpty(t *testing.T) {
-	t.Parallel()
 	opts := ServeOperatorOptions{}
 	loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, constants.DefaultDataDir)
 	assert.Empty(t, loadOpts.PKIDir, "PKIDir should always be empty for operator mode")
@@ -433,7 +407,6 @@ func TestBuildOperatorLoadOptions_AllFieldsPopulated(t *testing.T) {
 }
 
 func TestBuildOperatorLoadOptions_HeartbeatIntervalPropagated(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		duration time.Duration
@@ -446,7 +419,6 @@ func TestBuildOperatorLoadOptions_HeartbeatIntervalPropagated(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			opts := ServeOperatorOptions{HeartbeatInterval: tt.duration}
 			loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, "/work")
 			assert.Equal(t, tt.duration, loadOpts.HeartbeatInterval)
@@ -470,7 +442,6 @@ func TestBuildOperatorLoadOptions_EnvVarsUnset(t *testing.T) {
 }
 
 func TestClassifyConfigLoadError_NonPostureError_ReturnsConfigError(t *testing.T) {
-	t.Parallel()
 	exitCode, actionable := classifyConfigLoadError(errors.New("some other config error"))
 	assert.Equal(t, constants.ExitConfigError, exitCode,
 		"all config.Load errors should return ExitConfigError")
@@ -478,14 +449,12 @@ func TestClassifyConfigLoadError_NonPostureError_ReturnsConfigError(t *testing.T
 }
 
 func TestClassifyConfigLoadError_NilError_ReturnsConfigError(t *testing.T) {
-	t.Parallel()
 	exitCode, actionable := classifyConfigLoadError(nil)
 	assert.Equal(t, constants.ExitConfigError, exitCode)
 	assert.Empty(t, actionable)
 }
 
 func TestOperatorInstanceIDSeparatesSameHostAndRole(t *testing.T) {
-	t.Parallel()
 	first := operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/op-00001")
 	assert.Equal(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/./op-00001"))
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/op-00002"))
@@ -497,7 +466,6 @@ func TestOperatorInstanceIDSeparatesSameHostAndRole(t *testing.T) {
 }
 
 func TestRefuseGatewayRuntime(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	fileSvc, workDir, err := newOperatorRuntimeFileService(ServeOperatorOptions{WorkingDir: testutil.TempDir(t)}, testLogger())
 	require.NoError(t, err)

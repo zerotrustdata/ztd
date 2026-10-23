@@ -49,7 +49,6 @@ import (
 // routes are explicitly classified as RouteAuthMTLS, aligned with their
 // handler-level mTLS enforcement.
 func TestPlatformEnrollmentBypassRouteAuth_CurrentClassifications(t *testing.T) {
-	t.Parallel()
 	registry := NewRouteAuthRegistry(false)
 
 	// /api/v1/pki/csr/sign is explicitly classified as RouteAuthMTLS.
@@ -89,7 +88,6 @@ func TestPlatformEnrollmentBypassRouteAuth_CurrentClassifications(t *testing.T) 
 // controller enforces active-first-user authorization after the
 // middleware stamps the user ID).
 func TestPlatformEnrollmentRouteAuth_NewRoutesClassified(t *testing.T) {
-	t.Parallel()
 	registry := NewRouteAuthRegistry(false)
 
 	// Public discovery surface — token-scoped, no mTLS or cookie required.

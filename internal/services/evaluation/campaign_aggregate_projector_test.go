@@ -26,7 +26,6 @@ import (
 )
 
 func TestCollectRunAggregateState(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT),
@@ -61,7 +60,6 @@ func TestCollectRunAggregateState(t *testing.T) {
 // not lower the pass rate: one pass, one model miss, and one provider failure
 // is 1/2 judged, not 1/3 terminal.
 func TestPassRateDividesByAssignmentsJudgedOnTheModel(t *testing.T) {
-	t.Parallel()
 	passGrade := []*evalv1.DeterministicGrade{{Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION, Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS}}
 	failGrade := []*evalv1.DeterministicGrade{{Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION, Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL}}
 	const completed = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
@@ -97,7 +95,6 @@ func TestPassRateDividesByAssignmentsJudgedOnTheModel(t *testing.T) {
 // provider identity rather than a tag guessed from the variant ID, which
 // cannot recover decimal sizes such as qwen3:0.6b.
 func TestModelSummaryPublishesFrozenVariantIdentity(t *testing.T) {
-	t.Parallel()
 	assignment := homogeneousAssignment("assign-1", "qwen3-0-6b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
 	assignment.GetHomogeneous().CandidateVariant.ServedModelTag = "qwen3:0.6b"
 	assignment.GetHomogeneous().CandidateVariant.ParameterCount = 751_632_384
@@ -135,7 +132,6 @@ func TestModelSummaryPublishesFrozenVariantIdentity(t *testing.T) {
 
 // With no assignment judged on the model the rate is unavailable, never zero.
 func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -153,7 +149,6 @@ func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
 }
 
 func TestAssignmentRunSeconds_ExcludesIdleGapsAndCountsOverlapOnce(t *testing.T) {
-	t.Parallel()
 	at := func(seconds int64) *timestamppb.Timestamp {
 		return timestamppb.New(time.Unix(1_700_000_000+seconds, 0).UTC())
 	}
@@ -184,7 +179,6 @@ func TestAssignmentRunSeconds_ExcludesIdleGapsAndCountsOverlapOnce(t *testing.T)
 }
 
 func TestBuildRunAggregateViewRecords(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -259,7 +253,6 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 }
 
 func TestBuildRunAggregateViewRecordsScheduledNoProgress(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT),
@@ -283,7 +276,6 @@ func TestBuildRunAggregateViewRecordsScheduledNoProgress(t *testing.T) {
 }
 
 func TestBuildRunAggregateViewRecordsCancelledRunReportsStopped(t *testing.T) {
-	t.Parallel()
 	stopped := homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT)
 	stopped.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED
 	assignments := []*evalv1.EvaluationAssignment{
@@ -320,7 +312,6 @@ func TestBuildRunAggregateViewRecordsCancelledRunReportsStopped(t *testing.T) {
 }
 
 func TestBuildRunAggregateViewRecordsPartialProgress(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT),
@@ -354,7 +345,6 @@ func TestBuildRunAggregateViewRecordsPartialProgress(t *testing.T) {
 }
 
 func TestBuildRunCompletionViewRecords(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT),
@@ -405,7 +395,6 @@ func TestBuildRunCompletionViewRecords(t *testing.T) {
 }
 
 func TestBuildRunVerificationViewRecords(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -468,7 +457,6 @@ func TestBuildRunVerificationViewRecords(t *testing.T) {
 }
 
 func TestBuildRunVerificationViewRecordsEligibility(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name          string
 		reportStatus  evalv1.EvaluationVerdictStatus
@@ -484,7 +472,6 @@ func TestBuildRunVerificationViewRecordsEligibility(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			state := &runAggregateState{
 				Scheduled: tt.expected,
 				Terminal:  tt.terminal,
@@ -513,7 +500,6 @@ func TestBuildRunVerificationViewRecordsEligibility(t *testing.T) {
 }
 
 func TestBuildRunVerificationViewRecordsEmitsEveryEligibleVariantRole(t *testing.T) {
-	t.Parallel()
 	run := &evalv1.EvaluationRun{
 		RunId: "run-multi-model",
 		CampaignBinding: &evalv1.ModelCampaignBinding{
@@ -559,7 +545,6 @@ func TestBuildRunVerificationViewRecordsEmitsEveryEligibleVariantRole(t *testing
 }
 
 func TestBuildRunVerificationViewRecordsBoundFailurePublishesPartialModelRevisions(t *testing.T) {
-	t.Parallel()
 	run := &evalv1.EvaluationRun{RunId: "run-failed", CampaignBinding: &evalv1.ModelCampaignBinding{CampaignDigest: "campaign", CatalogDigest: "catalog", ModelRegistryDigest: "registry"}}
 	state := &runAggregateState{Scheduled: 1, Terminal: 1, VariantRoles: map[string]*variantRoleAggregate{"model-a:primary": {VariantID: "model-a", Role: "primary", Scheduled: 1, Terminal: 1, Failed: 1, Outcomes: map[string]uint32{"model_failed": 1}}}}
 	report := &evalv1.EvaluationVerificationReport{SchemaVersion: "2.0.0", RunId: run.GetRunId(), Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, ReportDigestRef: &compliancev1.ComplianceEvidenceReference{Sha256: strings.Repeat("c", 64)}, VerifiedAt: timestamppb.New(time.Unix(1_700_000_200, 0).UTC()), VerifierReleaseVersion: "v2.1.10", VerifierContractVersion: "2.0.0", VerifiedPopulationDigest: strings.Repeat("d", 64), CampaignDigest: "campaign", CatalogDigest: "catalog", ModelRegistryDigest: "registry", ExpectedAssignmentCount: 1, VerifiedAssignmentCount: 1}
@@ -572,13 +557,11 @@ func TestBuildRunVerificationViewRecordsBoundFailurePublishesPartialModelRevisio
 }
 
 func TestBoundVerificationRevisionKeysAreReportScoped(t *testing.T) {
-	t.Parallel()
 	assert.NotEqual(t, BoundVerificationSummaryIdempotencyKey("run-1", "a"), BoundVerificationSummaryIdempotencyKey("run-1", "b"))
 	assert.NotEqual(t, VerifiedModelSummaryIdempotencyKey("run-1", "model-1", "primary", "a"), VerifiedModelSummaryIdempotencyKey("run-1", "model-1", "primary", "b"))
 }
 
 func TestVerifiedModelSummaryIdempotencyKeyIsDistinctAndScoped(t *testing.T) {
-	t.Parallel()
 	assert.NotEqual(t, RunVerificationIdempotencyKey("run-1"), VerifiedModelSummaryIdempotencyKey("run-1", "model-1", "primary", "a"))
 	assert.NotEqual(t, VerifiedModelSummaryIdempotencyKey("run-1", "model-1", "primary", "a"), VerifiedModelSummaryIdempotencyKey("run-1", "model-1", "assistant", "a"))
 	assert.NotEqual(t, VerifiedModelSummaryIdempotencyKey("run-1", "model-1", "primary", "a"), VerifiedModelSummaryIdempotencyKey("run-2", "model-1", "primary", "a"))
@@ -586,7 +569,6 @@ func TestVerifiedModelSummaryIdempotencyKeyIsDistinctAndScoped(t *testing.T) {
 }
 
 func TestFormatCampaignVerifierFailureSummary(t *testing.T) {
-	t.Parallel()
 	assert.Empty(t, formatCampaignVerifierFailureSummary(nil))
 	assert.Equal(t, "assignment a: missing window", formatCampaignVerifierFailureSummary(&evalv1.EvaluationVerificationReport{
 		FailureReasons: []string{"assignment a: missing window"},
@@ -601,7 +583,6 @@ func TestFormatCampaignVerifierFailureSummary(t *testing.T) {
 }
 
 func TestRunAggregateCompleteLifecycleWithoutPersistedResult(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -614,7 +595,6 @@ func TestRunAggregateCompleteLifecycleWithoutPersistedResult(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
-	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -680,7 +660,6 @@ func terminalResultWithEvidence(assignmentID string, spanNanos *uint64, calls ..
 }
 
 func TestCollectRunHeadlineMetricsPassRate(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -702,7 +681,6 @@ func TestCollectRunHeadlineMetricsPassRate(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsPassRateUnavailableBeforeTerminal(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -715,7 +693,6 @@ func TestCollectRunHeadlineMetricsPassRateUnavailableBeforeTerminal(t *testing.T
 }
 
 func TestCollectRunHeadlineMetricsLatencyMedian(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		spansMS   []uint64
@@ -728,7 +705,6 @@ func TestCollectRunHeadlineMetricsLatencyMedian(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assignments := make([]*evalv1.EvaluationAssignment, 0, len(tt.spansMS))
 			results := make(map[string]*evalv1.EvaluationAssignmentResult, len(tt.spansMS))
 			for index, span := range tt.spansMS {
@@ -751,7 +727,6 @@ func TestCollectRunHeadlineMetricsLatencyMedian(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsLatencyPartialCoverage(t *testing.T) {
-	t.Parallel()
 	span := uint64(150_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -774,7 +749,6 @@ func TestCollectRunHeadlineMetricsLatencyPartialCoverage(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsLatencyUnavailableWithoutSpans(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -793,7 +767,6 @@ func TestCollectRunHeadlineMetricsLatencyUnavailableWithoutSpans(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsNoScoredCalls(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -811,7 +784,6 @@ func TestCollectRunHeadlineMetricsNoScoredCalls(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsLatencyRejectsOutOfBoundSpan(t *testing.T) {
-	t.Parallel()
 	span := (maxPublicDurationMS + 1) * 1_000_000
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -826,7 +798,6 @@ func TestCollectRunHeadlineMetricsLatencyRejectsOutOfBoundSpan(t *testing.T) {
 }
 
 func TestCollectVariantRoleMetricsPerformance(t *testing.T) {
-	t.Parallel()
 	span := uint64(200_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -857,7 +828,6 @@ func TestCollectVariantRoleMetricsPerformance(t *testing.T) {
 }
 
 func TestCollectVariantRoleMetricsPairwiseAgreement(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -898,7 +868,6 @@ func TestCollectVariantRoleMetricsPairwiseAgreement(t *testing.T) {
 }
 
 func TestBuildRunAggregateViewRecordsModelPerformanceMetrics(t *testing.T) {
-	t.Parallel()
 	span := uint64(300_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -940,9 +909,7 @@ func TestBuildRunAggregateViewRecordsModelPerformanceMetrics(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsOutputThroughput(t *testing.T) {
-	t.Parallel()
 	// Two scored calls totaling 40 tokens over 2s of generation: 20 tok/s.
-
 	call := scoredInferenceCall(20, 1_000_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -967,7 +934,6 @@ func TestCollectRunHeadlineMetricsOutputThroughput(t *testing.T) {
 }
 
 func TestCollectRunHeadlineMetricsOutputThroughputIncompleteContributors(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		calls []*evalv1.ModelInferenceRecord
@@ -1005,7 +971,6 @@ func TestCollectRunHeadlineMetricsOutputThroughputIncompleteContributors(t *test
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assignments := []*evalv1.EvaluationAssignment{
 				homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 			}
@@ -1026,7 +991,6 @@ func TestCollectRunHeadlineMetricsOutputThroughputIncompleteContributors(t *test
 }
 
 func TestCollectRunHeadlineMetricsFailedAssignmentContributesMeasurements(t *testing.T) {
-	t.Parallel()
 	span := uint64(500_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -1060,7 +1024,6 @@ func boundTestReport(runID string, status evalv1.EvaluationVerdictStatus) *evalv
 }
 
 func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
-	t.Parallel()
 	span := uint64(200_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -1089,7 +1052,6 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	}
 
 	t.Run("unbound run reports not_run", func(t *testing.T) {
-		t.Parallel()
 		records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
@@ -1099,7 +1061,6 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	})
 
 	t.Run("bound pass reports verified state and metadata", func(t *testing.T) {
-		t.Parallel()
 		report := boundTestReport(run.GetRunId(), evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 		records, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC())
 		require.NoError(t, err)
@@ -1118,7 +1079,6 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	})
 
 	t.Run("bound failure reports failed state", func(t *testing.T) {
-		t.Parallel()
 		report := boundTestReport(run.GetRunId(), evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL)
 		report.FailureReasons = []string{"assignment assign-1: missing window"}
 		records, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC())
@@ -1132,7 +1092,6 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	})
 
 	t.Run("malformed bound report fails closed", func(t *testing.T) {
-		t.Parallel()
 		report := boundTestReport(run.GetRunId(), evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 		report.VerifiedAt = nil
 		_, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC())
@@ -1142,7 +1101,6 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 }
 
 func TestBuildRunAggregateViewRecordsHeadlineMetricsShape(t *testing.T) {
-	t.Parallel()
 	span := uint64(200_000_000)
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
@@ -1203,7 +1161,6 @@ func homogeneousAssignment(assignmentID, variantID string, role evalv1.ModelCamp
 }
 
 func TestBuildPlannedModelRoleInvocationSignals_EmitsHeterogeneousRoles(t *testing.T) {
-	t.Parallel()
 	stack := mustHeterogeneousStack(t)
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId: "assignment-hetero",
@@ -1224,7 +1181,6 @@ func TestBuildPlannedModelRoleInvocationSignals_EmitsHeterogeneousRoles(t *testi
 }
 
 func TestBuildRunVerificationApplicability_BindsHeterogeneousStackPopulation(t *testing.T) {
-	t.Parallel()
 	stack := mustHeterogeneousStack(t)
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId:          "assignment-hetero",

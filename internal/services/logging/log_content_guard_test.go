@@ -269,8 +269,6 @@ func receiverLooksLikeLogger(expr ast.Expr) bool {
 // INV-STOR-LOG-01: logger calls in the execution-path packages never use
 // content attribute keys and never build the message from runtime values.
 func TestLoggerCallsCarryNoExecutionContent(t *testing.T) {
-	t.Parallel()
-
 	root, err := filepath.Abs(repoRootFromLoggingPackage)
 	require.NoError(t, err)
 	constants, err := loadStringConstants(filepath.Join(root, "internal", "constants"))
@@ -363,8 +361,6 @@ func TestLoggerCallsCarryNoExecutionContent(t *testing.T) {
 // TestLogContentScanner_DetectsForbiddenPatterns proves the scanner flags each
 // forbidden pattern, so a clean guard result means the sources are clean.
 func TestLogContentScanner_DetectsForbiddenPatterns(t *testing.T) {
-	t.Parallel()
-
 	constants := map[string]string{"ApprovalTypeCommand": "command", "ConnectionStateError": "error"}
 	tests := []struct {
 		name string
@@ -390,8 +386,6 @@ func TestLogContentScanner_DetectsForbiddenPatterns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			src := "package p\nfunc f() {\n" + tt.body + "\n}\n"
 			hits, err := findLogContentHits("p.go", []byte(src), constants)
 			require.NoError(t, err)
@@ -405,8 +399,6 @@ func TestLogContentScanner_DetectsForbiddenPatterns(t *testing.T) {
 }
 
 func TestErrorKind(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name string
 		err  error
@@ -420,8 +412,6 @@ func TestErrorKind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			attr := ErrorKind(tt.err)
 			assert.Equal(t, ErrorKindKey, attr.Key)
 			assert.Equal(t, tt.want, attr.Value.String())

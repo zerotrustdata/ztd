@@ -18,7 +18,6 @@ import (
 )
 
 func TestBuildHeterogeneousAssignmentMatrix_MaterializesStacksByScenarios(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, testFormationCatalogVariants())
@@ -39,7 +38,6 @@ func TestBuildHeterogeneousAssignmentMatrix_MaterializesStacksByScenarios(t *tes
 }
 
 func TestBuildHeterogeneousAssignmentMatrix_PreservesCatalogOrderAfterReload(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	stackSet, err := testFormationStackSet("workflow-campaign", 11, testFormationCatalogVariants())

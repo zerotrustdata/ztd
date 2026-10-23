@@ -20,8 +20,6 @@ import (
 // TestNilAuditStore_WritesFailClosed pins M4: every write path on a nil store
 // returns ErrAuditStoreDisabled, matching the read paths, never a silent success.
 func TestNilAuditStore_WritesFailClosed(t *testing.T) {
-	t.Parallel()
-
 	var ass *SQLAuditStore
 	event := &Event{OperatorSessionID: "s", Type: constants.Event.Operator.Audit.Command}
 
@@ -42,8 +40,6 @@ func TestNilAuditStore_WritesFailClosed(t *testing.T) {
 // TestEncryptAuditContent_LockedVaultFailsClosedForEmptyContent pins L2: a missing
 // or locked vault fails regardless of content length.
 func TestEncryptAuditContent_LockedVaultFailsClosedForEmptyContent(t *testing.T) {
-	t.Parallel()
-
 	_, err := encryptAuditContent(nil, auditColumnEventContentText, "1", "")
 	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 	_, err = encryptAuditContent(nil, auditColumnEventContentText, "1", "content")

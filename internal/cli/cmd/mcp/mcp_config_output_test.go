@@ -26,11 +26,9 @@ import (
 // CLI and app keys are sealed under the keystore master key, so no mTLS client
 // configuration (ztd.local, IP Address, or any key/cert path) may be emitted.
 func TestMCPConfigOutput_AgentShowStdioOnly(t *testing.T) {
-	t.Parallel()
 	for _, integration := range agent.All() {
 		agentID := string(integration.ID)
 		t.Run(agentID, func(t *testing.T) {
-			t.Parallel()
 			cmd := &cobra.Command{}
 			var buf bytes.Buffer
 			cmd.SetOut(&buf)
@@ -68,7 +66,6 @@ func TestMCPConfigOutput_AgentShowStdioOnly(t *testing.T) {
 // path and the "mcp stdio" args. This covers the stdio transport section of
 // the agent show output that the deleted E2E test did not explicitly verify.
 func TestMCPConfigOutput_StdioConfigJSON(t *testing.T) {
-	t.Parallel()
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)

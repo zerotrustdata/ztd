@@ -17,7 +17,6 @@ import (
 )
 
 func TestDecisionPinnedOperatorNeverFallsBack(t *testing.T) {
-	t.Parallel()
 	pinned := capableOp("decision-session")
 	pinned.RuntimeConfig.InferenceDecisionBackend = "ollama-systemone"
 	pinned.RuntimeConfig.InferenceDecisionModels = []string{"tev1:0.8b"}

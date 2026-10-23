@@ -35,22 +35,17 @@ func TestParseProviderParameterCount(t *testing.T) {
 
 func TestParseProviderParameterCountPrefersMetadataAndRejectsInvalidCounts(t *testing.T) {
 	t.Parallel()
-
 	count, err := parseProviderParameterCount("8.0B", map[string]json.RawMessage{"general.parameter_count": json.RawMessage("8030261248")})
 	require.NoError(t, err)
 	assert.Equal(t, uint64(8_030_261_248), count)
 	for _, encoded := range []string{"null", "0", "-1", "1.5", `"8030261248"`, "18446744073709551616"} {
 		t.Run(encoded, func(t *testing.T) {
-			t.Parallel()
-
 			_, err := parseProviderParameterCount("8.0B", map[string]json.RawMessage{"general.parameter_count": json.RawMessage(encoded)})
 			require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
 		})
 	}
 	for _, label := range []string{"NaNB", "+InfB", "-1B", "18446744074B"} {
 		t.Run(label, func(t *testing.T) {
-			t.Parallel()
-
 			_, err := parseProviderParameterCount(label, nil)
 			require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
 		})
@@ -59,7 +54,6 @@ func TestParseProviderParameterCountPrefersMetadataAndRejectsInvalidCounts(t *te
 
 func TestParseProviderContextLimit(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		parameters string
@@ -89,7 +83,6 @@ func TestParseProviderContextLimit(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-
 			assert.Equal(t, test.want, parseProviderContextLimit(test.parameters, test.modelInfo))
 		})
 	}

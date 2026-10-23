@@ -18,7 +18,6 @@ import (
 )
 
 func TestPlatformEnrollmentTransitionValidateAllowsOnlyLifecycleEdges(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name string
 		from PlatformEnrollmentState
@@ -42,7 +41,6 @@ func TestPlatformEnrollmentTransitionValidateAllowsOnlyLifecycleEdges(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			transition := PlatformEnrollmentTransition{RequestID: "req-1", From: tt.from, To: tt.to}
 			if tt.from == PlatformEnrollmentStateIssuing || tt.to == PlatformEnrollmentStateIssuing {
 				transition.LeaseOwner = "lease-1"
@@ -53,7 +51,6 @@ func TestPlatformEnrollmentTransitionValidateAllowsOnlyLifecycleEdges(t *testing
 }
 
 func TestPlatformEnrollmentTransitionValidateRequiresTheIssuanceLease(t *testing.T) {
-	t.Parallel()
 	acquire := PlatformEnrollmentTransition{RequestID: "req-1", From: PlatformEnrollmentStateApproved, To: PlatformEnrollmentStateIssuing}
 	require.ErrorIs(t, acquire.Validate(), constants.ErrPlatformEnrollmentInvalidState, "acquiring names the new holder")
 
@@ -71,7 +68,6 @@ func TestPlatformEnrollmentTransitionValidateRequiresTheIssuanceLease(t *testing
 }
 
 func TestPlatformEnrollmentStateExpiresWithRequest(t *testing.T) {
-	t.Parallel()
 	assert.True(t, PlatformEnrollmentStatePending.ExpiresWithRequest())
 	assert.True(t, PlatformEnrollmentStateApproved.ExpiresWithRequest())
 	assert.False(t, PlatformEnrollmentStateIssuing.ExpiresWithRequest(), "issuance is bounded by its lease")
@@ -79,7 +75,6 @@ func TestPlatformEnrollmentStateExpiresWithRequest(t *testing.T) {
 }
 
 func TestPlatformEnrollmentCreateRequestValidateShape(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		request PlatformEnrollmentCreateRequest
@@ -190,7 +185,6 @@ func TestPlatformEnrollmentCreateRequestValidateShape(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tt.request.TokenHash = strings.Repeat("a", 64)
 			err := tt.request.ValidateShape()
 			assert.ErrorIs(t, err, tt.wantErr)
@@ -199,7 +193,6 @@ func TestPlatformEnrollmentCreateRequestValidateShape(t *testing.T) {
 }
 
 func TestPlatformEnrollmentCreateRequestRequiresLowercaseSHA256TokenHash(t *testing.T) {
-	t.Parallel()
 	base := PlatformEnrollmentCreateRequest{
 		ComponentKind: PlatformComponentDashboard,
 		InstanceID:    "dashboard-1",
@@ -218,7 +211,6 @@ func TestPlatformEnrollmentCreateRequestRequiresLowercaseSHA256TokenHash(t *test
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			req := base
 			req.TokenHash = tt.hash
 			assert.ErrorIs(t, req.ValidateShape(), tt.wantErr)
@@ -227,7 +219,6 @@ func TestPlatformEnrollmentCreateRequestRequiresLowercaseSHA256TokenHash(t *test
 }
 
 func TestPlatformEnrollmentComponentCanonicalName(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		kind PlatformComponentKind
 		name string
@@ -246,7 +237,6 @@ func TestPlatformEnrollmentComponentCanonicalName(t *testing.T) {
 }
 
 func TestValidateAppNameRejectsReservedPlatformNames(t *testing.T) {
-	t.Parallel()
 	reserved := []string{
 		"ztd", "ztdg", "ztdo", "ztde", "ztdd",
 		"ztd-gateway", "ztd-operator", "ztd-ensemble", "ztd-dashboard", "ztd-cli",
@@ -254,7 +244,6 @@ func TestValidateAppNameRejectsReservedPlatformNames(t *testing.T) {
 	}
 	for _, name := range reserved {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			err := ValidateAppName(name)
 			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidAppName)
 			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentReservedIdentity)
@@ -273,7 +262,6 @@ func TestValidateAppNameRejectsReservedPlatformNames(t *testing.T) {
 }
 
 func TestValidateAppNameEnforcesFormatAndLength(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name string
 		app  string
@@ -291,7 +279,6 @@ func TestValidateAppNameEnforcesFormatAndLength(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			if tt.err == nil {
 				assert.NoError(t, ValidateAppName(tt.app))
 				return

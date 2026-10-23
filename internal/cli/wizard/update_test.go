@@ -17,8 +17,6 @@ import (
 // --- Update: Ctrl+C cancel ---
 
 func TestUpdate_CtrlC_SetsQuitting(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	final := m2.(Model)
@@ -27,8 +25,6 @@ func TestUpdate_CtrlC_SetsQuitting(t *testing.T) {
 }
 
 func TestUpdate_CtrlC_ResultIsCancelled(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	result := m2.(Model).result()
@@ -38,8 +34,6 @@ func TestUpdate_CtrlC_ResultIsCancelled(t *testing.T) {
 // --- Update: Esc back navigation ---
 
 func TestUpdate_EscFromRouting_GoesToPosture(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -47,8 +41,6 @@ func TestUpdate_EscFromRouting_GoesToPosture(t *testing.T) {
 }
 
 func TestUpdate_EscFromPosture_GoesToNetwork(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -56,16 +48,12 @@ func TestUpdate_EscFromPosture_GoesToNetwork(t *testing.T) {
 }
 
 func TestUpdate_EscFromNetwork_NoOp(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	assert.Equal(t, StepNetwork, m2.(Model).step)
 }
 
 func TestUpdate_Esc_ResetsValidationError(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.validationError = "some error"
@@ -74,8 +62,6 @@ func TestUpdate_Esc_ResetsValidationError(t *testing.T) {
 }
 
 func TestUpdate_Esc_ResetsFocusIndex(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.focusIndex = 3
@@ -86,8 +72,6 @@ func TestUpdate_Esc_ResetsFocusIndex(t *testing.T) {
 // --- Update: Enter step transitions ---
 
 func TestUpdate_EnterFromNetwork_AdvancesToPosture(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{InitialConfig: Config{PublicBaseURL: "https://demo.zerotrustdata.io"}})
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
@@ -98,8 +82,6 @@ func TestUpdate_EnterFromNetwork_AdvancesToPosture(t *testing.T) {
 }
 
 func TestUpdate_EnterFromPosture_AdvancesToRouting(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -111,8 +93,6 @@ func TestUpdate_EnterFromPosture_AdvancesToRouting(t *testing.T) {
 }
 
 func TestUpdate_EnterFromRouting_AdvancesToReview(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -124,8 +104,6 @@ func TestUpdate_EnterFromRouting_AdvancesToReview(t *testing.T) {
 }
 
 func TestUpdate_EnterFromReview_SetsConfirmedAndQuit(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepReview
 	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -136,8 +114,6 @@ func TestUpdate_EnterFromReview_SetsConfirmedAndQuit(t *testing.T) {
 // --- Update: Enter validation failures ---
 
 func TestUpdate_EnterFromNetwork_InvalidURL_KeepsStep(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("not-a-url")
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -146,8 +122,6 @@ func TestUpdate_EnterFromNetwork_InvalidURL_KeepsStep(t *testing.T) {
 }
 
 func TestUpdate_EnterFromNetwork_EmptyURL_KeepsStep(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("")
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -156,8 +130,6 @@ func TestUpdate_EnterFromNetwork_EmptyURL_KeepsStep(t *testing.T) {
 }
 
 func TestUpdate_EnterFromRouting_MCPEnabled_InvalidURL_KeepsStep(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToMCP = true
@@ -168,8 +140,6 @@ func TestUpdate_EnterFromRouting_MCPEnabled_InvalidURL_KeepsStep(t *testing.T) {
 }
 
 func TestUpdate_EnterFromPosture_EmptyRpName_KeepsStep(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.postureChoice = 1
@@ -182,8 +152,6 @@ func TestUpdate_EnterFromPosture_EmptyRpName_KeepsStep(t *testing.T) {
 // --- Update: stepTransitionMsg ---
 
 func TestUpdate_StepTransitionMsg_AdvancesStep(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m2, _ := m.Update(stepTransitionMsg{to: StepPosture})
 	assert.Equal(t, StepPosture, m2.(Model).step)
@@ -191,8 +159,6 @@ func TestUpdate_StepTransitionMsg_AdvancesStep(t *testing.T) {
 }
 
 func TestUpdate_StepTransitionMsg_DoneReturnsQuit(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m2, cmd := m.Update(stepTransitionMsg{to: StepDone})
 	assert.Equal(t, StepDone, m2.(Model).step)
@@ -200,8 +166,6 @@ func TestUpdate_StepTransitionMsg_DoneReturnsQuit(t *testing.T) {
 }
 
 func TestUpdate_StepTransitionMsg_ClearsValidationError(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.validationError = "some error"
 	m2, _ := m.Update(stepTransitionMsg{to: StepPosture})
@@ -211,8 +175,6 @@ func TestUpdate_StepTransitionMsg_ClearsValidationError(t *testing.T) {
 // --- Update: WindowSizeMsg ---
 
 func TestUpdate_WindowSizeMsg_SetsDimensions(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m2, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	assert.Equal(t, 120, m2.(Model).width)
@@ -222,8 +184,6 @@ func TestUpdate_WindowSizeMsg_SetsDimensions(t *testing.T) {
 // --- handleUp: cert mode (Bug #1) ---
 
 func TestHandleUp_CertModeAtFocusIndexOne_Decrements(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 1
@@ -233,8 +193,6 @@ func TestHandleUp_CertModeAtFocusIndexOne_Decrements(t *testing.T) {
 }
 
 func TestHandleUp_CertModeAtFocusIndexOne_ClampsAtZero(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 1
@@ -244,8 +202,6 @@ func TestHandleUp_CertModeAtFocusIndexOne_ClampsAtZero(t *testing.T) {
 }
 
 func TestHandleUp_CertModeAtFocusIndexZero_NoOp(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 0
@@ -257,8 +213,6 @@ func TestHandleUp_CertModeAtFocusIndexZero_NoOp(t *testing.T) {
 // --- handleDown: cert mode (Bug #1) ---
 
 func TestHandleDown_CertModeAtFocusIndexOne_Increments(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 1
@@ -268,8 +222,6 @@ func TestHandleDown_CertModeAtFocusIndexOne_Increments(t *testing.T) {
 }
 
 func TestHandleDown_CertModeAtFocusIndexOne_ClampsAtOne(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 1
@@ -279,8 +231,6 @@ func TestHandleDown_CertModeAtFocusIndexOne_ClampsAtOne(t *testing.T) {
 }
 
 func TestHandleDown_CertModeAtFocusIndexZero_NoOp(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 0
@@ -292,8 +242,6 @@ func TestHandleDown_CertModeAtFocusIndexZero_NoOp(t *testing.T) {
 // --- handleUp/handleDown: web frontend toggle ---
 
 func TestHandleUp_WebFrontendToggle_TogglesOn(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 2
@@ -303,8 +251,6 @@ func TestHandleUp_WebFrontendToggle_TogglesOn(t *testing.T) {
 }
 
 func TestHandleDown_WebFrontendToggle_TogglesOff(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 2
@@ -316,8 +262,6 @@ func TestHandleDown_WebFrontendToggle_TogglesOff(t *testing.T) {
 // --- handleUp/handleDown: posture choice ---
 
 func TestHandleUp_PostureChoice_Decrements(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.focusIndex = 0
@@ -327,8 +271,6 @@ func TestHandleUp_PostureChoice_Decrements(t *testing.T) {
 }
 
 func TestHandleUp_PostureChoice_ClampsAtZero(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.focusIndex = 0
@@ -338,8 +280,6 @@ func TestHandleUp_PostureChoice_ClampsAtZero(t *testing.T) {
 }
 
 func TestHandleDown_PostureChoice_Increments(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.focusIndex = 0
@@ -349,8 +289,6 @@ func TestHandleDown_PostureChoice_Increments(t *testing.T) {
 }
 
 func TestHandleDown_PostureChoice_ClampsAtThree(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.focusIndex = 0
@@ -362,8 +300,6 @@ func TestHandleDown_PostureChoice_ClampsAtThree(t *testing.T) {
 // --- handleUp/handleDown: routing toggles ---
 
 func TestHandleUp_RouteToMCP_TogglesOn(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.focusIndex = 0
@@ -373,8 +309,6 @@ func TestHandleUp_RouteToMCP_TogglesOn(t *testing.T) {
 }
 
 func TestHandleDown_RouteToMCP_TogglesOff(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.focusIndex = 0
@@ -384,8 +318,6 @@ func TestHandleDown_RouteToMCP_TogglesOff(t *testing.T) {
 }
 
 func TestHandleUp_RouteToA2A_TogglesOn(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.focusIndex = 2
@@ -395,8 +327,6 @@ func TestHandleUp_RouteToA2A_TogglesOn(t *testing.T) {
 }
 
 func TestHandleDown_RouteToA2A_TogglesOff(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.focusIndex = 2
@@ -408,8 +338,6 @@ func TestHandleDown_RouteToA2A_TogglesOff(t *testing.T) {
 // --- handleTab: focus wrapping (Bug #6) ---
 
 func TestHandleTab_NetworkStep_WrapsAtMaxWithoutWebFrontend(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 2
@@ -418,8 +346,6 @@ func TestHandleTab_NetworkStep_WrapsAtMaxWithoutWebFrontend(t *testing.T) {
 }
 
 func TestHandleTab_NetworkStep_WrapsAtMaxWithWebFrontend(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.needsWebFrontend = true
@@ -429,8 +355,6 @@ func TestHandleTab_NetworkStep_WrapsAtMaxWithWebFrontend(t *testing.T) {
 }
 
 func TestHandleTab_NetworkStep_AdvancesFromZero(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 0
@@ -439,8 +363,6 @@ func TestHandleTab_NetworkStep_AdvancesFromZero(t *testing.T) {
 }
 
 func TestHandleTab_PostureStep_WrapsAtMax(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.focusIndex = 3
@@ -449,8 +371,6 @@ func TestHandleTab_PostureStep_WrapsAtMax(t *testing.T) {
 }
 
 func TestHandleTab_RoutingStep_WrapsWithA2A(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = true
@@ -460,8 +380,6 @@ func TestHandleTab_RoutingStep_WrapsWithA2A(t *testing.T) {
 }
 
 func TestHandleTab_RoutingStep_WrapsWithoutA2A(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = false
@@ -473,8 +391,6 @@ func TestHandleTab_RoutingStep_WrapsWithoutA2A(t *testing.T) {
 // --- handleShiftTab: focus wrapping (Bug #6) ---
 
 func TestHandleShiftTab_NetworkStep_WrapsFromZeroToMax(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 0
@@ -483,8 +399,6 @@ func TestHandleShiftTab_NetworkStep_WrapsFromZeroToMax(t *testing.T) {
 }
 
 func TestHandleShiftTab_NetworkStep_WrapsFromZeroToMaxWithWebFrontend(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.needsWebFrontend = true
@@ -494,8 +408,6 @@ func TestHandleShiftTab_NetworkStep_WrapsFromZeroToMaxWithWebFrontend(t *testing
 }
 
 func TestHandleShiftTab_NetworkStep_DecrementsFromOne(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 1
@@ -504,8 +416,6 @@ func TestHandleShiftTab_NetworkStep_DecrementsFromOne(t *testing.T) {
 }
 
 func TestHandleShiftTab_PostureStep_WrapsFromZeroToMax(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.focusIndex = 0
@@ -516,7 +426,6 @@ func TestHandleShiftTab_PostureStep_WrapsFromZeroToMax(t *testing.T) {
 // --- stepFocusMax (Bug #6) ---
 
 func TestStepFocusMax_NetworkWithoutWebFrontend(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.needsWebFrontend = false
@@ -524,7 +433,6 @@ func TestStepFocusMax_NetworkWithoutWebFrontend(t *testing.T) {
 }
 
 func TestStepFocusMax_NetworkWithWebFrontend(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.needsWebFrontend = true
@@ -532,14 +440,12 @@ func TestStepFocusMax_NetworkWithWebFrontend(t *testing.T) {
 }
 
 func TestStepFocusMax_Posture(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepPosture
 	assert.Equal(t, 3, m.stepFocusMax())
 }
 
 func TestStepFocusMax_RoutingWithoutA2A(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = false
@@ -547,7 +453,6 @@ func TestStepFocusMax_RoutingWithoutA2A(t *testing.T) {
 }
 
 func TestStepFocusMax_RoutingWithA2A(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = true
@@ -555,7 +460,6 @@ func TestStepFocusMax_RoutingWithA2A(t *testing.T) {
 }
 
 func TestStepFocusMax_Review(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepReview
 	assert.Equal(t, 0, m.stepFocusMax())
@@ -564,8 +468,6 @@ func TestStepFocusMax_Review(t *testing.T) {
 // --- handleTextInput: clears validation error ---
 
 func TestHandleTextInput_ClearsValidationError(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepNetwork
 	m.focusIndex = 0
@@ -577,28 +479,24 @@ func TestHandleTextInput_ClearsValidationError(t *testing.T) {
 // --- validateNetwork ---
 
 func TestValidateNetwork_ValidURL_NoError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("https://demo.zerotrustdata.io")
 	assert.Empty(t, m.validateNetwork())
 }
 
 func TestValidateNetwork_EmptyURL_ReturnsError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("")
 	assert.NotEmpty(t, m.validateNetwork())
 }
 
 func TestValidateNetwork_InvalidURL_ReturnsError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("not-a-url")
 	assert.NotEmpty(t, m.validateNetwork())
 }
 
 func TestValidateNetwork_WebFrontendEnabled_EmptyCORS_ReturnsError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("https://demo.zerotrustdata.io")
 	m.needsWebFrontend = true
@@ -607,7 +505,6 @@ func TestValidateNetwork_WebFrontendEnabled_EmptyCORS_ReturnsError(t *testing.T)
 }
 
 func TestValidateNetwork_WebFrontendEnabled_InvalidCORS_ReturnsError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("https://demo.zerotrustdata.io")
 	m.needsWebFrontend = true
@@ -616,7 +513,6 @@ func TestValidateNetwork_WebFrontendEnabled_InvalidCORS_ReturnsError(t *testing.
 }
 
 func TestValidateNetwork_WebFrontendEnabled_ValidCORS_NoError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.publicBaseURLInput.SetValue("https://demo.zerotrustdata.io")
 	m.needsWebFrontend = true
@@ -627,8 +523,6 @@ func TestValidateNetwork_WebFrontendEnabled_ValidCORS_NoError(t *testing.T) {
 // --- validatePosture ---
 
 func TestValidatePosture_Doctrine_NoConsensusRequired(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.postureChoice = 0
@@ -637,8 +531,6 @@ func TestValidatePosture_Doctrine_NoConsensusRequired(t *testing.T) {
 }
 
 func TestValidatePosture_Ratify_NoConsensusRequired(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.postureChoice = 2
@@ -647,8 +539,6 @@ func TestValidatePosture_Ratify_NoConsensusRequired(t *testing.T) {
 }
 
 func TestValidatePosture_EmptyRpName_ReturnsError(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.postureChoice = 0
@@ -657,8 +547,6 @@ func TestValidatePosture_EmptyRpName_ReturnsError(t *testing.T) {
 }
 
 func TestValidatePosture_InvalidPasskeyOrigin_ReturnsError(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.step = StepPosture
 	m.postureChoice = 0
@@ -670,7 +558,6 @@ func TestValidatePosture_InvalidPasskeyOrigin_ReturnsError(t *testing.T) {
 // --- validateRouting ---
 
 func TestValidateRouting_NoToggles_NoError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToMCP = false
@@ -679,7 +566,6 @@ func TestValidateRouting_NoToggles_NoError(t *testing.T) {
 }
 
 func TestValidateRouting_MCPEnabled_EmptyURL_ReturnsError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToMCP = true
@@ -688,7 +574,6 @@ func TestValidateRouting_MCPEnabled_EmptyURL_ReturnsError(t *testing.T) {
 }
 
 func TestValidateRouting_MCPEnabled_ValidURL_NoError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToMCP = true
@@ -697,7 +582,6 @@ func TestValidateRouting_MCPEnabled_ValidURL_NoError(t *testing.T) {
 }
 
 func TestValidateRouting_A2AEnabled_EmptyURL_ReturnsError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = true
@@ -706,7 +590,6 @@ func TestValidateRouting_A2AEnabled_EmptyURL_ReturnsError(t *testing.T) {
 }
 
 func TestValidateRouting_A2AEnabled_ValidURL_NoError(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.step = StepRouting
 	m.routeToA2A = true

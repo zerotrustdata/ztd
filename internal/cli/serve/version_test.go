@@ -15,7 +15,6 @@ import (
 )
 
 func TestVersionInfo_Fields(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		version   string
@@ -48,7 +47,6 @@ func TestVersionInfo_Fields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			vi := VersionInfo{
 				Version:   tt.version,
 				BuildID:   tt.buildID,
@@ -65,7 +63,6 @@ func TestVersionInfo_Fields(t *testing.T) {
 }
 
 func TestVersionInfo_Equality(t *testing.T) {
-	t.Parallel()
 	a := VersionInfo{Version: "1.0.0", BuildID: "b1", BuildTime: "t1", Platform: "linux/amd64"}
 	b := VersionInfo{Version: "1.0.0", BuildID: "b1", BuildTime: "t1", Platform: "linux/amd64"}
 	c := VersionInfo{Version: "1.0.0", BuildID: "b1", BuildTime: "t1", Platform: "darwin/arm64"}
@@ -75,7 +72,6 @@ func TestVersionInfo_Equality(t *testing.T) {
 }
 
 func TestVersionInfo_Mutation(t *testing.T) {
-	t.Parallel()
 	vi := VersionInfo{Version: "1.0.0", BuildID: "old", BuildTime: "old-time", Platform: "linux/amd64"}
 
 	vi.Version = "2.0.0"

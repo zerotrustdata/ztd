@@ -46,8 +46,6 @@ func overlayFormation(t *testing.T, root, id string) evaluation.Formation {
 }
 
 func TestFormationsAdd_ResolvesRolesFromServedTags(t *testing.T) {
-	t.Parallel()
-
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -72,8 +70,6 @@ func TestFormationsAdd_ResolvesRolesFromServedTags(t *testing.T) {
 }
 
 func TestFormationsAdd_RejectsBudgetOverflowWithoutWritingOverlay(t *testing.T) {
-	t.Parallel()
-
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -89,8 +85,6 @@ func TestFormationsAdd_RejectsBudgetOverflowWithoutWritingOverlay(t *testing.T) 
 }
 
 func TestFormationsAdd_RejectsUnparseableVRAMBudget(t *testing.T) {
-	t.Parallel()
-
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
@@ -103,8 +97,6 @@ func TestFormationsAdd_RejectsUnparseableVRAMBudget(t *testing.T) {
 }
 
 func TestFormationsAdd_UnresolvedTagNamesMissingFieldsUntilSupplied(t *testing.T) {
-	t.Parallel()
-
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 	args := []string{"add", "custom-lite",
@@ -128,8 +120,6 @@ func TestFormationsAdd_UnresolvedTagNamesMissingFieldsUntilSupplied(t *testing.T
 }
 
 func TestFormationsAdd_RequiresEveryRoleTag(t *testing.T) {
-	t.Parallel()
-
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 

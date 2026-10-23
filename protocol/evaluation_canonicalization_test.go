@@ -65,7 +65,6 @@ var canonicalJSONValuesVectorJSON []byte
 var agentTraceVectorJSON []byte
 
 func TestEvaluationReportCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(evaluationCanonicalizationVectorJSON, &vector))
 	assert.Equal(t, "EvaluationReport", vector.MessageType)
@@ -84,7 +83,6 @@ func TestEvaluationReportCanonicalizationMatchesCrossLanguageVector(t *testing.T
 }
 
 func TestEvaluationCanonicalParserRejectsUnknownAndNoncanonicalJSON(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		encoded []byte
@@ -94,7 +92,6 @@ func TestEvaluationCanonicalParserRejectsUnknownAndNoncanonicalJSON(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := evalv1.UnmarshalCanonical(tt.encoded, &evalv1.EvaluationReport{})
 			require.Error(t, err)
 		})
@@ -102,7 +99,6 @@ func TestEvaluationCanonicalParserRejectsUnknownAndNoncanonicalJSON(t *testing.T
 }
 
 func TestEvaluationCampaignSpecCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(modelCampaignSpecVectorJSON, &vector))
 	assert.Equal(t, "EvaluationCampaignSpec", vector.MessageType)
@@ -119,7 +115,6 @@ func TestEvaluationCampaignSpecCanonicalizationMatchesCrossLanguageVector(t *tes
 }
 
 func TestEvaluationAssignmentResultCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(modelAssignmentResultVectorJSON, &vector))
 	assert.Equal(t, "EvaluationAssignmentResult", vector.MessageType)
@@ -136,7 +131,6 @@ func TestEvaluationAssignmentResultCanonicalizationMatchesCrossLanguageVector(t 
 }
 
 func TestEnrichedEvaluationAssignmentResultCanonicalizationPreservesPresence(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(enrichedModelAssignmentResultVectorJSON, &vector))
 	result := &evalv1.EvaluationAssignmentResult{}
@@ -151,7 +145,6 @@ func TestEnrichedEvaluationAssignmentResultCanonicalizationPreservesPresence(t *
 }
 
 func TestEnrichedPublicAssignmentResultCanonicalizationIncludesApprovedFamilies(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(enrichedPublicAssignmentResultVectorJSON, &vector))
 	projection := &evalv1.PublicAssignmentResultProjection{}
@@ -165,7 +158,6 @@ func TestEnrichedPublicAssignmentResultCanonicalizationIncludesApprovedFamilies(
 }
 
 func TestBoundEvaluationVerificationReportCanonicalizationIncludesPopulationBinding(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(boundVerificationReportVectorJSON, &vector))
 	report := &evalv1.EvaluationVerificationReport{}
@@ -179,7 +171,6 @@ func TestBoundEvaluationVerificationReportCanonicalizationIncludesPopulationBind
 }
 
 func TestCanonicalJSONValuesMatchCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector struct {
 		MessageType string `json:"message_type"`
 		Cases       []struct {
@@ -194,7 +185,6 @@ func TestCanonicalJSONValuesMatchCrossLanguageVector(t *testing.T) {
 
 	for _, tc := range vector.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
 			var decoded any
 			require.NoError(t, json.Unmarshal([]byte(tc.Input), &decoded))
 			got, err := evaluation.MarshalCanonicalJSONObject(decoded)
@@ -205,7 +195,6 @@ func TestCanonicalJSONValuesMatchCrossLanguageVector(t *testing.T) {
 }
 
 func TestPublicAssignmentResultProjectionCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(publicAssignmentResultVectorJSON, &vector))
 	assert.Equal(t, "PublicAssignmentResultProjection", vector.MessageType)
@@ -221,7 +210,6 @@ func TestPublicAssignmentResultProjectionCanonicalizationMatchesCrossLanguageVec
 }
 
 func TestFailedPublicAssignmentResultCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(failedPublicAssignmentResultVectorJSON, &vector))
 	require.Equal(t, "PublicAssignmentResultProjection", vector.MessageType)
@@ -258,7 +246,6 @@ func TestFailedPublicAssignmentResultCanonicalizationMatchesCrossLanguageVector(
 }
 
 func TestPublicLiveEventCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(publicLiveEventVectorJSON, &vector))
 	require.Equal(t, "PublicLiveEvent", vector.MessageType)
@@ -301,7 +288,6 @@ func TestPublicLiveEventCanonicalizationMatchesCrossLanguageVector(t *testing.T)
 }
 
 func TestAgentTraceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector evaluationCanonicalizationVector
 	require.NoError(t, json.Unmarshal(agentTraceVectorJSON, &vector))
 	assert.Equal(t, "AgentTrace", vector.MessageType)
@@ -348,7 +334,6 @@ func TestAgentTraceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
 }
 
 func TestEvaluationProtocolRegistersNativeRecordSet(t *testing.T) {
-	t.Parallel()
 	requiredMessages := []string{
 		"EvaluationRun",
 		"EvaluationAttempt",
@@ -370,7 +355,6 @@ func TestEvaluationProtocolRegistersNativeRecordSet(t *testing.T) {
 	}
 	for _, name := range requiredMessages {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			messageType, err := protoregistry.GlobalTypes.FindMessageByName(protoreflect.FullName("ztd.eval.v1." + name))
 			require.NoError(t, err)
 			assert.NotNil(t, messageType)
@@ -379,7 +363,6 @@ func TestEvaluationProtocolRegistersNativeRecordSet(t *testing.T) {
 }
 
 func TestEvaluationProtocolUsesExternalVerificationArtifactAndTypedRegistryFields(t *testing.T) {
-	t.Parallel()
 	reportFields := (&evalv1.EvaluationReport{}).ProtoReflect().Descriptor().Fields()
 	assert.Nil(t, reportFields.ByName("verification_report"))
 
@@ -395,13 +378,11 @@ func TestEvaluationProtocolUsesExternalVerificationArtifactAndTypedRegistryField
 }
 
 func TestEvaluationLaneIncludesModelCampaignLanes(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE, evalv1.EvaluationLane(2))
 	assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, evalv1.EvaluationLane(3))
 }
 
 func TestPublicAssignmentProjectionOmitsPrivateEvidenceFields(t *testing.T) {
-	t.Parallel()
 	forbidden := []string{
 		"prompt",
 		"output",
@@ -422,7 +403,6 @@ func TestPublicAssignmentProjectionOmitsPrivateEvidenceFields(t *testing.T) {
 }
 
 func TestEvaluationAssignmentResultRetainsPrivateInferenceBindings(t *testing.T) {
-	t.Parallel()
 	fields := (&evalv1.EvaluationAssignmentResult{}).ProtoReflect().Descriptor().Fields()
 	assert.NotNil(t, fields.ByName("model_inferences"))
 	assert.NotNil(t, fields.ByName("governed_actions"))
@@ -430,7 +410,6 @@ func TestEvaluationAssignmentResultRetainsPrivateInferenceBindings(t *testing.T)
 }
 
 func TestEvaluationValuePreservesTypedArtifactReference(t *testing.T) {
-	t.Parallel()
 	reference := &compliancev1.ComplianceEvidenceReference{
 		ArtifactId:   "action-receipt:sha256:abc",
 		ArtifactType: "action-receipt",

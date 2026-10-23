@@ -35,7 +35,6 @@ func resetPrivateIPAllowlistForTest() {
 }
 
 func TestValidateHTTPRequestURL(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		url     string
@@ -115,7 +114,6 @@ func TestValidateHTTPRequestURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			parsed, err := validateHTTPRequestURL(tt.url)
 			if tt.wantErr {
 				require.Error(t, err, tt.url)
@@ -129,7 +127,6 @@ func TestValidateHTTPRequestURL(t *testing.T) {
 }
 
 func TestValidateSQLQuery(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		query   string
@@ -229,7 +226,6 @@ func TestValidateSQLQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateSQLQuery(tt.query)
 			if tt.wantErr {
 				assert.Error(t, err, tt.query)
@@ -241,7 +237,6 @@ func TestValidateSQLQuery(t *testing.T) {
 }
 
 func TestValidateGitRepoPath(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		path    string
@@ -296,7 +291,6 @@ func TestValidateGitRepoPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateGitRepoPath(tt.path)
 			if tt.wantErr {
 				assert.Error(t, err, tt.path)
@@ -308,7 +302,6 @@ func TestValidateGitRepoPath(t *testing.T) {
 }
 
 func TestValidateGitRef(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		ref     string
@@ -443,7 +436,6 @@ func TestValidateGitRef(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateGitRef(tt.ref)
 			if tt.wantErr {
 				assert.Error(t, err, tt.ref)
@@ -455,7 +447,6 @@ func TestValidateGitRef(t *testing.T) {
 }
 
 func TestValidateK8sResourceName(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		nameStr string
@@ -540,7 +531,6 @@ func TestValidateK8sResourceName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateK8sResourceName(tt.nameStr)
 			if tt.wantErr {
 				assert.Error(t, err, tt.nameStr)
@@ -552,7 +542,6 @@ func TestValidateK8sResourceName(t *testing.T) {
 }
 
 func TestValidateK8sNamespace(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		namespace string
@@ -637,7 +626,6 @@ func TestValidateK8sNamespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateK8sNamespace(tt.namespace)
 			if tt.wantErr {
 				assert.Error(t, err, tt.namespace)
@@ -649,7 +637,6 @@ func TestValidateK8sNamespace(t *testing.T) {
 }
 
 func TestValidateCloudMetadataOperation(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		operation string
@@ -704,7 +691,6 @@ func TestValidateCloudMetadataOperation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateCloudMetadataOperation(tt.operation)
 			if tt.wantErr {
 				assert.Error(t, err, tt.operation)
@@ -716,7 +702,6 @@ func TestValidateCloudMetadataOperation(t *testing.T) {
 }
 
 func TestValidateProcNetPath(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		protocol string
@@ -771,7 +756,6 @@ func TestValidateProcNetPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateProcNetPath(tt.protocol)
 			if tt.wantErr {
 				assert.Error(t, err, tt.protocol)
@@ -782,26 +766,22 @@ func TestValidateProcNetPath(t *testing.T) {
 	}
 }
 
-func TestSetPrivateIPAllowlist(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSetPrivateIPAllowlist(t *testing.T) {
 	t.Cleanup(func() {
 		resetPrivateIPAllowlistForTest()
 	})
 
-	t.Run("valid CIDRs", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("valid CIDRs", func(t *testing.T) {
 		setPrivateIPAllowlistForTest(t, []string{"10.43.0.0/24", "127.0.0.0/8"})
 	})
 
-	t.Run("empty slice resets allowlist", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("empty slice resets allowlist", func(t *testing.T) {
 		resetPrivateIPAllowlistForTest()
 		assert.False(t, isIPAllowed(net.ParseIP("10.43.0.40")))
 	})
 }
 
-func TestIsIPAllowed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestIsIPAllowed(t *testing.T) {
 	t.Cleanup(func() {
 		resetPrivateIPAllowlistForTest()
 	})
@@ -820,9 +800,8 @@ func TestIsIPAllowed(t *testing.T) { //nolint:paralleltest // mutates package-le
 		{"not allowed public 8.8.8.8", "8.8.8.8", false},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			ip := net.ParseIP(tt.ip)
 			require.NotNil(t, ip)
 			assert.Equal(t, tt.expected, isIPAllowed(ip))
@@ -830,43 +809,37 @@ func TestIsIPAllowed(t *testing.T) { //nolint:paralleltest // mutates package-le
 	}
 }
 
-func TestValidateHTTPRequestURL_WithAllowlist(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestValidateHTTPRequestURL_WithAllowlist(t *testing.T) {
 	t.Cleanup(func() {
 		resetPrivateIPAllowlistForTest()
 	})
 
 	setPrivateIPAllowlistForTest(t, []string{"10.43.0.0/24"})
 
-	t.Run("allowlisted private IP passes", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("allowlisted private IP passes", func(t *testing.T) {
 		parsed, err := validateHTTPRequestURL("http://10.43.0.40:9000/slew")
 		require.NoError(t, err)
 		assert.NotNil(t, parsed)
 	})
 
-	t.Run("non-allowlisted private IP still blocked", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("non-allowlisted private IP still blocked", func(t *testing.T) {
 		_, err := validateHTTPRequestURL("http://10.42.0.1")
 		assert.Error(t, err)
 	})
 
-	t.Run("non-allowlisted loopback still blocked", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("non-allowlisted loopback still blocked", func(t *testing.T) {
 		_, err := validateHTTPRequestURL("http://127.0.0.1:8080")
 		assert.Error(t, err)
 	})
 
-	t.Run("public URL still allowed", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("public URL still allowed", func(t *testing.T) {
 		parsed, err := validateHTTPRequestURL("http://example.com")
 		require.NoError(t, err)
 		assert.NotNil(t, parsed)
 	})
 }
 
-func TestValidateHTTPRequestURL_DefaultBlocksPrivate(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestValidateHTTPRequestURL_DefaultBlocksPrivate(t *testing.T) {
 	t.Cleanup(func() {
 		resetPrivateIPAllowlistForTest()
 	})

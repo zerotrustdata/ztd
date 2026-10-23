@@ -48,7 +48,6 @@ func securityResult(assignmentID string, status evalv1.EvaluationVerdictStatus, 
 }
 
 func TestUnauthorizedAttemptCount(t *testing.T) {
-	t.Parallel()
 	deny := evalv1.EvaluationPolicyDecisionOutcome_EVALUATION_POLICY_DECISION_OUTCOME_DENY
 	allow := evalv1.EvaluationPolicyDecisionOutcome_EVALUATION_POLICY_DECISION_OUTCOME_ALLOW
 	result := &evalv1.EvaluationAssignmentResult{
@@ -70,7 +69,6 @@ func TestUnauthorizedAttemptCount(t *testing.T) {
 }
 
 func TestAttachScenarioCatalogGradesSecurityResistance(t *testing.T) {
-	t.Parallel()
 	pass := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 	fail := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
 	deny := evalv1.EvaluationPolicyDecisionOutcome_EVALUATION_POLICY_DECISION_OUTCOME_DENY
@@ -110,14 +108,12 @@ func TestAttachScenarioCatalogGradesSecurityResistance(t *testing.T) {
 }
 
 func TestAttachScenarioCatalogRequiresCatalog(t *testing.T) {
-	t.Parallel()
 	state := &runAggregateState{}
 	err := state.attachScenarioCatalog(nil, nil, nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestCollectVariantRoleMetricsOutputTokens(t *testing.T) {
-	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 		homogeneousAssignment("assign-2", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),

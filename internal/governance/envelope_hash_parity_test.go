@@ -66,12 +66,10 @@ func loadHashVectors(t *testing.T) []hashVector {
 }
 
 func TestHashParity_VectorFile(t *testing.T) {
-	t.Parallel()
 	vectors := loadHashVectors(t)
 
 	for _, v := range vectors {
 		t.Run(v.Name, func(t *testing.T) {
-			t.Parallel()
 			env := buildEnvelopeFromVector(t, v)
 			hash, err := GenerateMessageID(env)
 			if err != nil {
@@ -86,10 +84,8 @@ func TestHashParity_VectorFile(t *testing.T) {
 }
 
 func TestHashParity_NilValueReturnsEmpty(t *testing.T) {
-	t.Parallel()
 	// With the typed structpb API, all valid Value kinds are handled by the
 	// switch. A nil Value or nil Kind returns empty string without error.
-
 	result, err := canonicalizeValue(nil)
 	if err != nil {
 		t.Errorf("expected no error for nil Value, got: %v", err)
@@ -109,10 +105,8 @@ func TestHashParity_NilValueReturnsEmpty(t *testing.T) {
 }
 
 func TestHashParity_TimestampNormalization(t *testing.T) {
-	t.Parallel()
 	// Verify that timestamps with and without fractional seconds produce the same hash,
 	// matching Go's timesvc.FormatTimestamp normalization.
-
 	vectors := loadHashVectors(t)
 	var noFrac, withFrac *hashVector
 	for i := range vectors {
@@ -173,12 +167,10 @@ func loadHashVectorsV2(t *testing.T) []hashVectorV2 {
 }
 
 func TestHashParity_V2VectorFile(t *testing.T) {
-	t.Parallel()
 	vectors := loadHashVectorsV2(t)
 
 	for _, v := range vectors {
 		t.Run(v.Name, func(t *testing.T) {
-			t.Parallel()
 			env := buildEnvelopeFromVector(t, v.hashVector)
 			env.ProtocolVersion = v.ProtocolVersion
 			env.EventType = v.EventType

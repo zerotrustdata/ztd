@@ -33,11 +33,7 @@ func newPlatformTestFileSvc(t *testing.T, baseDir string) fs.RuntimeFileService 
 }
 
 func TestNewProcessManager(t *testing.T) {
-	t.Parallel()
-
 	t.Run("returns error for nil fileSvc", func(t *testing.T) {
-		t.Parallel()
-
 		_, err := NewProcessManager(nil)
 		if err == nil {
 			t.Error("expected error for nil fileSvc")
@@ -45,8 +41,6 @@ func TestNewProcessManager(t *testing.T) {
 	})
 
 	t.Run("accepts valid fileSvc", func(t *testing.T) {
-		t.Parallel()
-
 		tmpDir := testutil.TempDir(t)
 		fileSvc := newPlatformTestFileSvc(t, tmpDir)
 
@@ -73,8 +67,6 @@ func TestNewProcessManager(t *testing.T) {
 }
 
 func TestEnsureDirectories(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -115,8 +107,6 @@ func TestEnsureDirectories(t *testing.T) {
 }
 
 func TestReadPID(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -163,7 +153,6 @@ func TestReadPID(t *testing.T) {
 }
 
 func TestWritePID(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -207,7 +196,6 @@ func TestWritePID(t *testing.T) {
 }
 
 func TestDeletePID(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -244,8 +232,6 @@ func TestDeletePID(t *testing.T) {
 }
 
 func TestIsProcessRunning(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -273,8 +259,6 @@ func TestIsProcessRunning(t *testing.T) {
 }
 
 func TestOperatorStatus(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -338,8 +322,6 @@ func TestOperatorStatus(t *testing.T) {
 }
 
 func TestStopOperator(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -388,7 +370,6 @@ func TestStopOperator(t *testing.T) {
 }
 
 func TestGetLogPath(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -405,7 +386,6 @@ func TestGetLogPath(t *testing.T) {
 }
 
 func TestCopyBinaryToBinDir_CopiesExecutableToBinDir(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -451,8 +431,6 @@ func TestCopyBinaryToBinDir_CopiesExecutableToBinDir(t *testing.T) {
 }
 
 func TestClean(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -493,8 +471,6 @@ func TestClean(t *testing.T) {
 }
 
 func TestStopProcess(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -514,7 +490,6 @@ func TestStopProcess(t *testing.T) {
 }
 
 func TestTailLog(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	logFile := filepath.Join(tmpDir, "test.log")
 
@@ -545,9 +520,7 @@ func TestTailLog(t *testing.T) {
 }
 
 func TestConstants(t *testing.T) {
-	t.Parallel()
 	// Verify constants are set correctly
-
 	if constants.OperatorPIDFilename == "" {
 		t.Error("constants.OperatorPIDFilename should not be empty")
 	}
@@ -566,8 +539,6 @@ func TestConstants(t *testing.T) {
 }
 
 func TestProcessManagerConcurrency(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -601,8 +572,6 @@ func TestProcessManagerConcurrency(t *testing.T) {
 }
 
 func TestProcessManagerDirectoryPermissions(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -642,8 +611,6 @@ func TestProcessManagerDirectoryPermissions(t *testing.T) {
 }
 
 func TestProcessManagerErrorHandling(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -668,7 +635,6 @@ func TestProcessManagerErrorHandling(t *testing.T) {
 }
 
 func TestWritePIDPermissions(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -701,8 +667,6 @@ func TestWritePIDPermissions(t *testing.T) {
 }
 
 func TestReadPIDEmptyFile(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -727,7 +691,6 @@ func TestReadPIDEmptyFile(t *testing.T) {
 }
 
 func TestReadPIDWhitespace(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -755,7 +718,6 @@ func TestReadPIDWhitespace(t *testing.T) {
 }
 
 func TestDeletePIDNonExistent(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -774,8 +736,6 @@ func TestDeletePIDNonExistent(t *testing.T) {
 }
 
 func TestIsProcessRunningNegativePID(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -790,7 +750,6 @@ func TestIsProcessRunningNegativePID(t *testing.T) {
 }
 
 func TestCopyBinaryToBinDir_SkipsWhenIdentical(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)
@@ -831,8 +790,6 @@ func TestCopyBinaryToBinDir_SkipsWhenIdentical(t *testing.T) {
 }
 
 func TestCleanWithNonExistentRuntime(t *testing.T) {
-	t.Parallel()
-
 	tmpDir := testutil.TempDir(t)
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
 	pm, err := NewProcessManager(fileSvc)

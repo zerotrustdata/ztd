@@ -21,7 +21,6 @@ import (
 // Every non-UNSPECIFIED wire code names exactly one sentinel, and that
 // sentinel maps back to the same code.
 func TestFailureCodes_RoundTripEveryCode(t *testing.T) {
-	t.Parallel()
 	for value, name := range operatorv1.InferenceDispatchFailureCode_name {
 		code := operatorv1.InferenceDispatchFailureCode(value)
 		if code == operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED {
@@ -34,7 +33,6 @@ func TestFailureCodes_RoundTripEveryCode(t *testing.T) {
 }
 
 func TestFailureCode_WrappedSentinelAndUnknown(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED,
 		FailureCode(fmt.Errorf("dispatch: %w", constants.ErrInferenceToolsUnsupported)))
 	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED,

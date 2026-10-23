@@ -41,7 +41,6 @@ func (m *errorConsensusPolicyStore) GetConsensusPolicy(_ context.Context, id str
 // the envelope.
 func TestL4Warden_ConsensusPolicyStoreError_FailClosed(t *testing.T) {
 	t.Parallel()
-
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -81,7 +80,6 @@ func TestL4Warden_ConsensusPolicyStoreError_FailClosed(t *testing.T) {
 // members disagree on safety.
 func TestL4Warden_L2SplitVote_QuorumNotMet(t *testing.T) {
 	t.Parallel()
-
 	pub1, priv1, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -304,7 +302,6 @@ func TestL4Warden_L2VoteOrderingIndependence(t *testing.T) {
 // would have passed instead of returning ErrL2SignatureInvalid.
 func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 	t.Parallel()
-
 	pub1, priv1, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -490,7 +487,6 @@ func corruptSignature(vote *commonv1.L2Vote) *commonv1.L2Vote {
 // (INV-CON-WARD-06). Non-member votes are ignored.
 func TestVerifyL2Posture_VoteFaults(t *testing.T) {
 	t.Parallel()
-
 	pub1, priv1, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -654,7 +650,6 @@ func TestVerifyL2Posture_VoteFaults(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), priv1, "consensus")
 			env.Governance.L2.ConsensusSetId = "fault-consensus"
 			env.Governance.L2.Votes = tc.votes(env.TransactionHash)

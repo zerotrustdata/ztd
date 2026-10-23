@@ -15,10 +15,8 @@ import (
 )
 
 func TestConsensusDecisionAtomicGatesAndNemesisNegation(t *testing.T) {
-	t.Parallel()
 	for _, member := range AllMembers {
 		t.Run(string(member), func(t *testing.T) {
-			t.Parallel()
 			req, err := ConsensusDecisionRequest(member, ConsensusSubject{PayloadJSON: `{"command":"inspect"}`}, false)
 			require.NoError(t, err)
 			result := &operatorv1.InferenceDecisionResult{}

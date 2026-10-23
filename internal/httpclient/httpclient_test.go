@@ -17,7 +17,6 @@ import (
 )
 
 func TestConstants(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, 30*time.Second, DefaultTimeout)
 	assert.Equal(t, 10*time.Second, DefaultDialTimeout)
 	assert.Equal(t, 10*time.Second, DefaultTLSTimeout)
@@ -25,7 +24,6 @@ func TestConstants(t *testing.T) {
 }
 
 func TestWebSocketDialerWithTLS(t *testing.T) {
-	t.Parallel()
 	customTLS := &tls.Config{
 		MinVersion: tls.VersionTLS13,
 	}

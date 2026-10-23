@@ -21,8 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestOperatorCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorCmd(t *testing.T) {
 	tests := []struct {
 		name     string
 		use      string
@@ -39,9 +38,8 @@ func TestOperatorCmd(t *testing.T) { //nolint:paralleltest // mutates package-le
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			cmd := Cmd()
 			assert.Equal(t, tt.use, cmd.Use)
 			assert.Contains(t, cmd.Aliases, "operators")
@@ -51,7 +49,6 @@ func TestOperatorCmd(t *testing.T) { //nolint:paralleltest // mutates package-le
 	}
 
 	t.Run("operator command has all subcommands", func(t *testing.T) {
-
 		cmd := Cmd()
 		expectedSubcommands := map[string]bool{
 			"list":   false,
@@ -78,7 +75,6 @@ func TestOperatorCmd(t *testing.T) { //nolint:paralleltest // mutates package-le
 }
 
 func TestOperatorListCmd(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		use   string
@@ -95,7 +91,6 @@ func TestOperatorListCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			cmd := operatorListCmd()
 			assert.Equal(t, tt.use, cmd.Use)
 			assert.Contains(t, cmd.Short, tt.short)
@@ -104,7 +99,6 @@ func TestOperatorListCmd(t *testing.T) {
 	}
 
 	t.Run("list command has no required flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := operatorListCmd()
 		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 			assert.False(t, flag.Changed, "flag should not be required")
@@ -113,7 +107,6 @@ func TestOperatorListCmd(t *testing.T) {
 }
 
 func TestOperatorCpCmd(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		use   string
@@ -130,7 +123,6 @@ func TestOperatorCpCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			cmd := operatorCpCmd()
 			assert.Equal(t, tt.use, cmd.Use)
 			assert.Contains(t, cmd.Short, tt.short)
@@ -139,7 +131,6 @@ func TestOperatorCpCmd(t *testing.T) {
 	}
 
 	t.Run("cp command requires exactly one argument", func(t *testing.T) {
-		t.Parallel()
 		cmd := operatorCpCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -151,7 +142,6 @@ func TestOperatorCpCmd(t *testing.T) {
 	})
 
 	t.Run("cp command has no flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := operatorCpCmd()
 		flagCount := 0
 		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
@@ -162,7 +152,6 @@ func TestOperatorCpCmd(t *testing.T) {
 }
 
 func TestOperatorScpCmd(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		use   string
@@ -179,7 +168,6 @@ func TestOperatorScpCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			cmd := operatorScpCmd()
 			assert.Equal(t, tt.use, cmd.Use)
 			assert.Contains(t, cmd.Short, tt.short)
@@ -188,7 +176,6 @@ func TestOperatorScpCmd(t *testing.T) {
 	}
 
 	t.Run("scp command requires exactly one argument", func(t *testing.T) {
-		t.Parallel()
 		cmd := operatorScpCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -200,7 +187,6 @@ func TestOperatorScpCmd(t *testing.T) {
 	})
 
 	t.Run("scp command has all expected flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := operatorScpCmd()
 		flags := cmd.Flags()
 
@@ -225,8 +211,7 @@ func TestOperatorScpCmd(t *testing.T) {
 	})
 }
 
-func TestOperatorDeployCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorDeployCmd(t *testing.T) {
 	tests := []struct {
 		name  string
 		use   string
@@ -241,9 +226,8 @@ func TestOperatorDeployCmd(t *testing.T) { //nolint:paralleltest // mutates pack
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			cmd := operatorDeployCmd()
 			assert.Equal(t, tt.use, cmd.Use)
 			assert.Contains(t, cmd.Short, tt.short)
@@ -252,7 +236,6 @@ func TestOperatorDeployCmd(t *testing.T) { //nolint:paralleltest // mutates pack
 	}
 
 	t.Run("deploy command has all expected flags", func(t *testing.T) {
-
 		cmd := operatorDeployCmd()
 		flags := cmd.Flags()
 
@@ -278,7 +261,6 @@ func TestOperatorDeployCmd(t *testing.T) { //nolint:paralleltest // mutates pack
 }
 
 func TestOperatorDeployRemoteDirPattern(t *testing.T) {
-	t.Parallel()
 	for _, valid := range []string{"~", "~/ztd", "/srv/sandbox/op-00001", "/opt/ztd/", "rel/dir"} {
 		assert.True(t, operatorDeployRemoteDirPattern.MatchString(valid), valid)
 	}
@@ -287,8 +269,7 @@ func TestOperatorDeployRemoteDirPattern(t *testing.T) {
 	}
 }
 
-func TestOperatorStreamCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorStreamCmd(t *testing.T) {
 	tests := []struct {
 		name  string
 		use   string
@@ -303,9 +284,8 @@ func TestOperatorStreamCmd(t *testing.T) { //nolint:paralleltest // mutates pack
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			cmd := operatorStreamCmd()
 			assert.Equal(t, tt.use, cmd.Use)
 			assert.Contains(t, cmd.Short, tt.short)
@@ -314,7 +294,6 @@ func TestOperatorStreamCmd(t *testing.T) { //nolint:paralleltest // mutates pack
 	}
 
 	t.Run("stream command has all expected flags", func(t *testing.T) {
-
 		cmd := operatorStreamCmd()
 		flags := cmd.Flags()
 
@@ -336,7 +315,6 @@ func TestOperatorStreamCmd(t *testing.T) { //nolint:paralleltest // mutates pack
 }
 
 func TestBuildScpArgs(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name        string
 		port        int
@@ -449,7 +427,6 @@ func TestBuildScpArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			result := BuildScpArgs(tt.port, tt.identity, tt.recursive, tt.preserve, tt.verbose, tt.compression, tt.source, tt.target)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -457,7 +434,6 @@ func TestBuildScpArgs(t *testing.T) {
 }
 
 func TestCopyFile(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name       string
 		srcContent []byte
@@ -521,7 +497,6 @@ func TestCopyFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			if tt.skipOn != "" && os.Getenv("GOOS") == tt.skipOn {
 				t.Skipf("Test skipped on %s", tt.skipOn)
 			}
@@ -554,7 +529,6 @@ func TestCopyFile(t *testing.T) {
 }
 
 func TestPromptForScpOptions(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name         string
 		input        string
@@ -649,7 +623,6 @@ func TestPromptForScpOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			cmd := &cobra.Command{}
 			cmd.SetIn(strings.NewReader(tt.input))
 
@@ -697,7 +670,7 @@ func TestResolveOperatorWorkingDir(t *testing.T) {
 		{name: "relative is made absolute", in: "ops", want: filepath.Join(cwd, "ops")},
 		{name: "absolute is cleaned", in: filepath.Join(home, "a", "..", "b"), want: filepath.Join(home, "b")},
 	}
-	for _, tt := range tests { //nolint:paralleltest // sets the process environment
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := resolveOperatorWorkingDir(tt.in)
 			require.NoError(t, err)

@@ -16,8 +16,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestEnforceFilePermissions_NonexistentFileReturnsErrFileWriteFailed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnforceFilePermissions_NonexistentFileReturnsErrFileWriteFailed(t *testing.T) {
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -26,8 +25,7 @@ func TestEnforceFilePermissions_NonexistentFileReturnsErrFileWriteFailed(t *test
 	assert.ErrorIs(t, err, constants.ErrFileWriteFailed)
 }
 
-func TestEnforceDirPermissions_NonexistentDirReturnsErrEnforcePermissions(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnforceDirPermissions_NonexistentDirReturnsErrEnforcePermissions(t *testing.T) {
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -36,8 +34,7 @@ func TestEnforceDirPermissions_NonexistentDirReturnsErrEnforcePermissions(t *tes
 	assert.ErrorIs(t, err, constants.ErrEnforcePermissions)
 }
 
-func TestEnforceDirPermissions_EmptyDirSucceeds(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnforceDirPermissions_EmptyDirSucceeds(t *testing.T) {
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -45,8 +42,7 @@ func TestEnforceDirPermissions_EmptyDirSucceeds(t *testing.T) { //nolint:paralle
 	require.NoError(t, svc.EnforceDirPermissions(ctx, "empty-dir", constants.PermDirPrivate))
 }
 
-func TestEnforceDirPermissions_CancelledContextReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnforceDirPermissions_CancelledContextReturnsError(t *testing.T) {
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -56,8 +52,7 @@ func TestEnforceDirPermissions_CancelledContextReturnsError(t *testing.T) { //no
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestEnforceFilePermissions_CancelledContextReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnforceFilePermissions_CancelledContextReturnsError(t *testing.T) {
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

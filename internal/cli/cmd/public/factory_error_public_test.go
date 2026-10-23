@@ -20,8 +20,7 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", "https://mirror.example"})
@@ -32,8 +31,7 @@ func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:pa
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{"--mirror-origin", "https://mirror.example"})
@@ -44,8 +42,7 @@ func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) { //noli
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicSourceTransitionCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{"--source-id", "deployment-new", "--yes"})
@@ -56,8 +53,7 @@ func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicPublishCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{constants.TestPublicFeedRecordsFilename})
@@ -68,8 +64,7 @@ func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicPushCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -79,8 +74,7 @@ func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:pa
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -90,8 +84,7 @@ func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicRotateKeyCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -101,8 +94,7 @@ func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) { //noli
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicRepairOutboxCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublicRepairOutboxCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicRepairOutboxCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 

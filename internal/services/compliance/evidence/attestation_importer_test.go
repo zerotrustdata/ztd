@@ -92,13 +92,11 @@ func (f *attestationImporterFixture) importer() *AttestationImporter {
 }
 
 func TestAttestationImporter_SourceID(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	assert.Equal(t, "attestation", fixture.importer().SourceID())
 }
 
 func TestAttestationImporter_Import_VerifiesCanonicalCustomerAndAssessorAttestations(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	nodes, err := fixture.importer().Import(context.Background())
 	require.NoError(t, err)
@@ -127,7 +125,6 @@ func TestAttestationImporter_Import_VerifiesCanonicalCustomerAndAssessorAttestat
 }
 
 func TestAttestationImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	fixture.trust.keys = map[string]ed25519.PublicKey{}
 	nodes, err := fixture.importer().Import(context.Background())
@@ -141,7 +138,6 @@ func TestAttestationImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(
 }
 
 func TestAttestationImporter_Import_MarksInvalidSignatureTimeAndRevocationFailed(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*attestationImporterFixture)
@@ -158,7 +154,6 @@ func TestAttestationImporter_Import_MarksInvalidSignatureTimeAndRevocationFailed
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newAttestationImporterFixture(t)
 			test.mutate(fixture)
 			if test.name == "invalid signature" {
@@ -176,7 +171,6 @@ func TestAttestationImporter_Import_MarksInvalidSignatureTimeAndRevocationFailed
 }
 
 func TestAttestationImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	tests := []struct {
 		name     string
@@ -193,7 +187,6 @@ func TestAttestationImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -202,7 +195,6 @@ func TestAttestationImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestAttestationImporter_Import_RejectsMalformedRecords(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*attestationImporterFixture)
@@ -234,7 +226,6 @@ func TestAttestationImporter_Import_RejectsMalformedRecords(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newAttestationImporterFixture(t)
 			test.mutate(fixture)
 			if test.name == "missing signature" {
@@ -250,7 +241,6 @@ func TestAttestationImporter_Import_RejectsMalformedRecords(t *testing.T) {
 }
 
 func TestAttestationImporter_Import_RejectsDigestNoncanonicalAndUnknownFields(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		mutate    func(*attestationImporterFixture)
@@ -272,7 +262,6 @@ func TestAttestationImporter_Import_RejectsDigestNoncanonicalAndUnknownFields(t 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newAttestationImporterFixture(t)
 			test.mutate(fixture)
 			_, err := fixture.importer().Import(context.Background())
@@ -283,7 +272,6 @@ func TestAttestationImporter_Import_RejectsDigestNoncanonicalAndUnknownFields(t 
 }
 
 func TestAttestationImporter_Import_EnforcesRecordLimit(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	templates := append([]attestationRecord(nil), fixture.records...)
 	fixture.records = make([]attestationRecord, constants.AttestationMaxRecords+1)
@@ -298,7 +286,6 @@ func TestAttestationImporter_Import_EnforcesRecordLimit(t *testing.T) {
 }
 
 func TestAttestationImporter_Import_PropagatesTrustAndReadFailures(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	trustErr := fmt.Errorf("attestation trust unavailable")
 	fixture.trust.err = trustErr
@@ -315,7 +302,6 @@ func TestAttestationImporter_Import_PropagatesTrustAndReadFailures(t *testing.T)
 }
 
 func TestAttestationImporter_Import_RespectsCancellation(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -324,7 +310,6 @@ func TestAttestationImporter_Import_RespectsCancellation(t *testing.T) {
 }
 
 func TestAttestationImporter_Import_ProducesValidGraph(t *testing.T) {
-	t.Parallel()
 	fixture := newAttestationImporterFixture(t)
 	nodes, err := fixture.importer().Import(context.Background())
 	require.NoError(t, err)

@@ -112,7 +112,6 @@ func evalInferenceCredTestConfig(t *testing.T, base string, trustBundlePEM []byt
 }
 
 func TestResolveInferenceProbeAppCredentials_NoCandidateReturnsMissingError(t *testing.T) {
-	t.Parallel()
 	fileSvc := newEvalTestFileSvc(t)
 	base := fileSvc.Resolve("")
 	_, _, caBundle := mustGenerateCA(t, "current ztd Root CA")
@@ -130,7 +129,6 @@ func TestResolveInferenceProbeAppCredentials_NoCandidateReturnsMissingError(t *t
 }
 
 func TestResolveInferenceProbeAppCredentials_CurrentAppCertAccepted(t *testing.T) {
-	t.Parallel()
 	fileSvc := newEvalTestFileSvc(t)
 	base := fileSvc.Resolve("")
 	caKey, caCert, caBundle := mustGenerateCA(t, "current ztd Root CA")
@@ -153,7 +151,6 @@ func TestResolveInferenceProbeAppCredentials_CurrentAppCertAccepted(t *testing.T
 }
 
 func TestResolveInferenceProbeAppCredentials_StaleAppCertRejected(t *testing.T) {
-	t.Parallel()
 	fileSvc := newEvalTestFileSvc(t)
 	base := fileSvc.Resolve("")
 	_, _, currentCABundle := mustGenerateCA(t, "current ztd Root CA")
@@ -176,7 +173,6 @@ func TestResolveInferenceProbeAppCredentials_StaleAppCertRejected(t *testing.T) 
 }
 
 func TestResolveInferenceProbeAppCredentials_ExpiredAppCertRejected(t *testing.T) {
-	t.Parallel()
 	fileSvc := newEvalTestFileSvc(t)
 	base := fileSvc.Resolve("")
 	caKey, caCert, caBundle := mustGenerateCA(t, "current ztd Root CA")
@@ -198,7 +194,6 @@ func TestResolveInferenceProbeAppCredentials_ExpiredAppCertRejected(t *testing.T
 }
 
 func TestGatesInference_RequiresModel(t *testing.T) {
-	t.Parallel()
 	cmd := gatesInferenceEvalCmd(nativeEvalDeps{})
 	cmd.SetArgs(nil)
 
@@ -209,7 +204,6 @@ func TestGatesInference_RequiresModel(t *testing.T) {
 }
 
 func TestGatesProbe_TakesModelOnlyAsPositionalArgument(t *testing.T) {
-	t.Parallel()
 	cmd := gatesProbeEvalCmd(nativeEvalDeps{})
 
 	assert.Nil(t, cmd.Flags().Lookup("model"), "the deprecated --model flag must not exist")
@@ -219,14 +213,12 @@ func TestGatesProbe_TakesModelOnlyAsPositionalArgument(t *testing.T) {
 }
 
 func TestGovernedInferenceDispatchDeadline_CoversApprovalAndProviderRequest(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, mcp.ApprovalRequestTTL+inferdispatch.RequestDeadline, governedInferenceDispatchDeadline)
 	assert.Greater(t, governedInferenceDispatchDeadline, mcp.ApprovalRequestTTL+inference.ProviderRequestTimeout,
 		"a probe must outlast the human approval wait plus the provider request")
 }
 
 func TestParseInferenceAcceptanceCases_RejectsAllBlankSelection(t *testing.T) {
-	t.Parallel()
 	_, err := parseInferenceAcceptanceCases(" , ,")
 
 	require.Error(t, err)
@@ -234,7 +226,6 @@ func TestParseInferenceAcceptanceCases_RejectsAllBlankSelection(t *testing.T) {
 }
 
 func TestResolveInferenceProbeAppCredentials_NilParameters(t *testing.T) {
-	t.Parallel()
 	_, err := resolveInferenceProbeAppCredentials(nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInternal)

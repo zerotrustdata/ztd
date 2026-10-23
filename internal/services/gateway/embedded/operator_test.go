@@ -33,7 +33,6 @@ type memStore struct {
 }
 
 func TestService_ExecutionTarget(t *testing.T) {
-	t.Parallel()
 	svc := New(newMemStore(), nil)
 	require.NoError(t, svc.RegisterPending(context.Background()))
 	require.True(t, svc.ExecutesFor(string(constants.DocIDEmbeddedOperator)), "bootstrap can execute before the embedded record is claimed")
@@ -155,7 +154,6 @@ func loadOperator(t *testing.T, store *memStore) *operatorv1.OperatorDocument {
 }
 
 func TestRegisterPending_Idempotent(t *testing.T) {
-	t.Parallel()
 	store := newMemStore()
 	svc := New(store, &memOperatorSessions{})
 
@@ -187,7 +185,6 @@ func TestRegisterPending_Idempotent(t *testing.T) {
 }
 
 func TestClaim_SameUserReclaimIsIdempotent(t *testing.T) {
-	t.Parallel()
 	store := newMemStore()
 	svc := New(store, &memOperatorSessions{})
 	now := time.Now().UTC()
@@ -204,7 +201,6 @@ func TestClaim_SameUserReclaimIsIdempotent(t *testing.T) {
 }
 
 func TestClaim_DifferentUserRejected(t *testing.T) {
-	t.Parallel()
 	store := newMemStore()
 	svc := New(store, &memOperatorSessions{})
 	now := time.Now().UTC()
@@ -218,7 +214,6 @@ func TestClaim_DifferentUserRejected(t *testing.T) {
 }
 
 func TestClaim_MissingPendingDoc_ClaimsAnyway(t *testing.T) {
-	t.Parallel()
 	store := newMemStore()
 	svc := New(store, &memOperatorSessions{})
 
@@ -237,7 +232,6 @@ func TestClaim_MissingPendingDoc_ClaimsAnyway(t *testing.T) {
 }
 
 func TestClaimEmbeddedOperator_PersistsBootstrapSession(t *testing.T) {
-	t.Parallel()
 	store := newMemStore()
 	operatorSessions := &memOperatorSessions{}
 	svc := New(store, operatorSessions)
@@ -267,12 +261,10 @@ func TestClaimEmbeddedOperator_PersistsBootstrapSession(t *testing.T) {
 }
 
 func TestService_OperatorSessionID(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	opsCollection := marshaler.CollectionName(constants.CollectionOperators)
 
 	t.Run("claimed operator returns its session", func(t *testing.T) {
-		t.Parallel()
 		svc := New(newMemStore(), &memOperatorSessions{})
 		require.NoError(t, svc.RegisterPending(ctx))
 		_, want, err := svc.ClaimEmbeddedOperator(ctx, "user-1")
@@ -284,7 +276,6 @@ func TestService_OperatorSessionID(t *testing.T) {
 	})
 
 	t.Run("pending operator is unclaimed", func(t *testing.T) {
-		t.Parallel()
 		svc := New(newMemStore(), nil)
 		require.NoError(t, svc.RegisterPending(ctx))
 
@@ -294,7 +285,6 @@ func TestService_OperatorSessionID(t *testing.T) {
 	})
 
 	t.Run("missing document is unclaimed and is not created", func(t *testing.T) {
-		t.Parallel()
 		store := newMemStore()
 		svc := New(store, nil)
 
@@ -306,7 +296,6 @@ func TestService_OperatorSessionID(t *testing.T) {
 }
 
 func TestService_RuntimeIdentity(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	svc := New(newMemStore(), nil)
 	require.NoError(t, svc.RegisterPending(ctx))

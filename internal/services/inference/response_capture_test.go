@@ -22,8 +22,6 @@ import (
 )
 
 func TestProviderResponseCapture_IngestsRawTailWhileProgressDeliveryIsBlocked(t *testing.T) {
-	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		reader, writer := io.Pipe()
 		defer reader.Close()

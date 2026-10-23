@@ -13,24 +13,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGatewayCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("gw command has correct use and description", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCmd(t *testing.T) {
+	t.Run("gw command has correct use and description", func(t *testing.T) {
 		cmd := Cmd()
 		assert.Equal(t, "gw", cmd.Use)
 		assert.Contains(t, cmd.Short, "ztd Gateway")
 		assert.Contains(t, cmd.Long, "lifecycle")
 	})
 
-	t.Run("gw command has gateway alias", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("gw command has gateway alias", func(t *testing.T) {
 		cmd := Cmd()
 		assert.Contains(t, cmd.Aliases, "gateway")
 	})
 
-	t.Run("gw command has all expected subcommands", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("gw command has all expected subcommands", func(t *testing.T) {
 		cmd := Cmd()
 		subcommands := cmd.Commands()
 		subcommandNames := make(map[string]bool)
@@ -54,18 +50,15 @@ func TestGatewayCmd(t *testing.T) { //nolint:paralleltest // mutates package-lev
 	})
 }
 
-func TestGatewayStartCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("start command has correct use", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd(t *testing.T) {
+	t.Run("start command has correct use", func(t *testing.T) {
 		cmd := gatewayStartCmd()
 		assert.Equal(t, "start", cmd.Use)
 		assert.Contains(t, cmd.Short, "Start")
 		assert.Contains(t, cmd.Short, "ztd Gateway")
 	})
 
-	t.Run("start command has all required flags", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("start command has all required flags", func(t *testing.T) {
 		cmd := gatewayStartCmd()
 		flags := cmd.Flags()
 
@@ -137,17 +130,14 @@ func TestGatewayStartCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Equal(t, "f", followFlag.Shorthand)
 	})
 
-	t.Run("start command has RunE function set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("start command has RunE function set", func(t *testing.T) {
 		cmd := gatewayStartCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
 func TestGatewayStopCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("stop command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayStopCmd()
 		assert.Equal(t, "stop", cmd.Use)
 		assert.Contains(t, cmd.Short, "Stop")
@@ -155,16 +145,13 @@ func TestGatewayStopCmd(t *testing.T) {
 	})
 
 	t.Run("stop command has RunE function set", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayStopCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
 func TestGatewayStatusCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("status command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayStatusCmd()
 		assert.Equal(t, "status", cmd.Use)
 		assert.Contains(t, cmd.Short, "health")
@@ -172,16 +159,13 @@ func TestGatewayStatusCmd(t *testing.T) {
 	})
 
 	t.Run("status command has RunE function set", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayStatusCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
 func TestGatewayRestartCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("restart command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayRestartCmd()
 		assert.Equal(t, "restart", cmd.Use)
 		assert.Contains(t, cmd.Short, "Restart")
@@ -189,23 +173,19 @@ func TestGatewayRestartCmd(t *testing.T) {
 	})
 
 	t.Run("restart command has RunE function set", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayRestartCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
 func TestGatewayLogsCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("logs command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayLogsCmd()
 		assert.Equal(t, "logs", cmd.Use)
 		assert.Contains(t, cmd.Short, "logs")
 	})
 
 	t.Run("logs command has follow flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayLogsCmd()
 		flags := cmd.Flags()
 
@@ -216,32 +196,26 @@ func TestGatewayLogsCmd(t *testing.T) {
 	})
 
 	t.Run("logs command has RunE function set", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayLogsCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
 func TestGatewaySettingsCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("settings command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewaySettingsCmd()
 		assert.Equal(t, "settings", cmd.Use)
 		assert.Contains(t, cmd.Short, "settings")
 	})
 
 	t.Run("settings command has RunE function set", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewaySettingsCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
-func TestGatewayResetCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("reset command has correct use", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayResetCmd(t *testing.T) {
+	t.Run("reset command has correct use", func(t *testing.T) {
 		cmd := gatewayResetCmd()
 		assert.Equal(t, "reset", cmd.Use)
 		assert.Contains(t, cmd.Short, "Reset")
@@ -249,41 +223,35 @@ func TestGatewayResetCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, cmd.Short, "secrets")
 	})
 
-	t.Run("reset has force flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reset has force flag", func(t *testing.T) {
 		cmd := gatewayResetCmd()
 		flag := cmd.Flags().Lookup("force")
 		assert.NotNil(t, flag)
 		assert.Equal(t, "false", flag.DefValue)
 	})
 
-	t.Run("reset has y shorthand flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reset has y shorthand flag", func(t *testing.T) {
 		cmd := gatewayResetCmd()
 		flag := cmd.Flags().Lookup("y")
 		assert.NotNil(t, flag)
 		assert.Equal(t, "false", flag.DefValue)
 	})
 
-	t.Run("reset has yes flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reset has yes flag", func(t *testing.T) {
 		cmd := gatewayResetCmd()
 		flag := cmd.Flags().Lookup("yes")
 		assert.NotNil(t, flag)
 		assert.Equal(t, "false", flag.DefValue)
 	})
 
-	t.Run("reset command has RunE function set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reset command has RunE function set", func(t *testing.T) {
 		cmd := gatewayResetCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
 func TestGatewayCleanCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("clean command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayCleanCmd()
 		assert.Equal(t, "clean", cmd.Use)
 		assert.Contains(t, cmd.Short, "Destructively")
@@ -291,7 +259,6 @@ func TestGatewayCleanCmd(t *testing.T) {
 	})
 
 	t.Run("clean has force flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayCleanCmd()
 		flag := cmd.Flags().Lookup("force")
 		assert.NotNil(t, flag)
@@ -299,7 +266,6 @@ func TestGatewayCleanCmd(t *testing.T) {
 	})
 
 	t.Run("clean has y shorthand flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayCleanCmd()
 		flag := cmd.Flags().Lookup("y")
 		assert.NotNil(t, flag)
@@ -307,7 +273,6 @@ func TestGatewayCleanCmd(t *testing.T) {
 	})
 
 	t.Run("clean has yes flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayCleanCmd()
 		flag := cmd.Flags().Lookup("yes")
 		assert.NotNil(t, flag)
@@ -315,16 +280,13 @@ func TestGatewayCleanCmd(t *testing.T) {
 	})
 
 	t.Run("clean command has RunE function set", func(t *testing.T) {
-		t.Parallel()
 		cmd := gatewayCleanCmd()
 		assert.NotNil(t, cmd.RunE, "RunE should be set")
 	})
 }
 
-func TestGatewayCommandFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCommandFlags(t *testing.T) {
 	t.Run("reset and clean share force flags", func(t *testing.T) {
-
 		resetCmd := gatewayResetCmd()
 		cleanCmd := gatewayCleanCmd()
 

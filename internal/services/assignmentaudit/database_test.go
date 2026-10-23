@@ -144,7 +144,6 @@ func requireScratchRemoved(t *testing.T, files fs.RuntimeFileService) {
 }
 
 func TestBuildAndVerifyDatabaseRoundTrip(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 	header := testHeader()
@@ -161,13 +160,11 @@ func TestBuildAndVerifyDatabaseRoundTrip(t *testing.T) {
 }
 
 func TestVerifyDatabaseRequiresImage(t *testing.T) {
-	t.Parallel()
 	_, _, err := VerifyDatabase(context.Background(), nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestVerifyDatabaseRejectsBytesThatAreNotSQLite(t *testing.T) {
-	t.Parallel()
 	_, _, err := VerifyDatabase(context.Background(), []byte("audit bytes of another assignment, not a database"))
 	require.Error(t, err)
 }
@@ -176,7 +173,6 @@ func TestVerifyDatabaseRejectsBytesThatAreNotSQLite(t *testing.T) {
 // verified records are the records in the image passed in, whatever else is on
 // disk at the database's location.
 func TestVerifyDatabaseReadsOnlyTheGivenImage(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 	header := testHeader()
@@ -195,13 +191,11 @@ func TestVerifyDatabaseReadsOnlyTheGivenImage(t *testing.T) {
 }
 
 func TestBuildDatabaseRequiresFileService(t *testing.T) {
-	t.Parallel()
 	_, err := BuildDatabase(context.Background(), nil, testHeader(), validRecords(t))
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestBuildDatabaseRejectsInvalidInput(t *testing.T) {
-	t.Parallel()
 	files := newTestFiles(t)
 
 	badHash := eventRecord(t, 4, testRunID, testAssignmentID)
@@ -240,7 +234,6 @@ func TestBuildDatabaseRejectsInvalidInput(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			header := testHeader()
 			if tc.header != nil {
 				tc.header(&header)
@@ -252,7 +245,6 @@ func TestBuildDatabaseRejectsInvalidInput(t *testing.T) {
 }
 
 func TestVerifyDatabaseDetectsTamperedRecordBytes(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 	data, err := BuildDatabase(ctx, files, testHeader(), validRecords(t))
@@ -266,7 +258,6 @@ func TestVerifyDatabaseDetectsTamperedRecordBytes(t *testing.T) {
 }
 
 func TestVerifyDatabaseRejectsEventOutsideAssignment(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 	data, err := BuildDatabase(ctx, files, testHeader(), validRecords(t))
@@ -281,7 +272,6 @@ func TestVerifyDatabaseRejectsEventOutsideAssignment(t *testing.T) {
 }
 
 func TestVerifyDatabaseRejectsMissingAssignmentRow(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 	data, err := BuildDatabase(ctx, files, testHeader(), validRecords(t))

@@ -19,7 +19,6 @@ import (
 )
 
 func TestTestCmd_RegistersScale(t *testing.T) {
-	t.Parallel()
 	cmd, _, err := Cmd().Find([]string{"scale"})
 	require.NoError(t, err)
 	assert.Equal(t, "scale", cmd.Name())
@@ -33,7 +32,6 @@ func validScaleConfig() scaleConfig {
 }
 
 func TestScaleConfigValidate_RejectsOutOfRangeInputs(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*scaleConfig)
@@ -52,7 +50,6 @@ func TestScaleConfigValidate_RejectsOutOfRangeInputs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			cfg := validScaleConfig()
 			tt.mutate(&cfg)
 			assert.ErrorIs(t, cfg.validate(), constants.ErrScaleTestInvalidInput)
@@ -61,9 +58,7 @@ func TestScaleConfigValidate_RejectsOutOfRangeInputs(t *testing.T) {
 }
 
 func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
-	t.Parallel()
 	t.Run("empty hosts defaults to local", func(t *testing.T) {
-		t.Parallel()
 		cfg := validScaleConfig()
 		cfg.Hosts = ""
 		require.NoError(t, cfg.validate())
@@ -71,7 +66,6 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 	})
 
 	t.Run("remote host requires operator-endpoint", func(t *testing.T) {
-		t.Parallel()
 		cfg := validScaleConfig()
 		cfg.Hosts = "livingroom"
 		cfg.OperatorEndpoint = ""
@@ -82,7 +76,6 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 	})
 
 	t.Run("remote host rejects loopback endpoint", func(t *testing.T) {
-		t.Parallel()
 		for _, loopback := range []string{"127.0.0.1", "localhost", "127.0.0.1:8080", "http://127.0.0.1:8080", "https://localhost:8443", "[::1]", "0.0.0.0"} {
 			cfg := validScaleConfig()
 			cfg.Hosts = "remote-node"
@@ -95,7 +88,6 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 	})
 
 	t.Run("mixed local and remote host requires valid endpoint", func(t *testing.T) {
-		t.Parallel()
 		cfg := validScaleConfig()
 		cfg.Hosts = "local,livingroom"
 		cfg.OperatorEndpoint = "127.0.0.1"
@@ -106,7 +98,6 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 	})
 
 	t.Run("remote host with valid endpoint succeeds", func(t *testing.T) {
-		t.Parallel()
 		cfg := validScaleConfig()
 		cfg.Hosts = "livingroom"
 		cfg.OperatorEndpoint = "192.168.1.53"
@@ -115,7 +106,6 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 }
 
 func TestScaleConfigValidate_DefaultsScenarioTimeoutFromSoak(t *testing.T) {
-	t.Parallel()
 	cfg := validScaleConfig()
 	require.NoError(t, cfg.validate())
 	assert.Equal(t, cfg.Soak+20*time.Minute, cfg.ScenarioTimeout)
@@ -127,7 +117,6 @@ func TestScaleConfigValidate_DefaultsScenarioTimeoutFromSoak(t *testing.T) {
 }
 
 func TestScaleConfigValidate_DefaultsToWholeFleetAtOnce(t *testing.T) {
-	t.Parallel()
 	cfg := validScaleConfig()
 	cfg.BatchSize = 0
 	cfg.FanOutConcurrency = "16, all"
@@ -145,7 +134,6 @@ func TestScaleConfigValidate_DefaultsToWholeFleetAtOnce(t *testing.T) {
 }
 
 func TestScaleBatches_SplitsCountIntoAppendingStartIndexes(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name        string
 		count, size int
@@ -157,14 +145,12 @@ func TestScaleBatches_SplitsCountIntoAppendingStartIndexes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, scaleBatches(tt.count, tt.size))
 		})
 	}
 }
 
 func TestScaleScenarioEnv_SetsFleetContract(t *testing.T) {
-	t.Parallel()
 	cfg := validScaleConfig()
 	layout := newScaleLayout("root")
 	env := scaleScenarioEnv([]string{"A=1"}, layout, cfg, "bin", scalePorts{HTTP: 18080, HTTPS: 18443})
@@ -183,7 +169,6 @@ func TestScaleScenarioEnv_SetsFleetContract(t *testing.T) {
 }
 
 func TestDefaultScaleRoot_IsUnderLocalDevNeverTemp(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, 10, 9, 14, 5, 6, 0, time.FixedZone("x", 3600))
 	root := defaultScaleRoot(now)
 	assert.Equal(t, filepath.Join(".local.dev", "scale", "2026-10-09T13-05-06Z"), root)

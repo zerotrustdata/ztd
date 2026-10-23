@@ -33,7 +33,6 @@ type collectionsRegistry struct {
 // exactly the CollectionName constants declared in collections.go, by Go name
 // and value.
 func TestCollectionsRegistryMatchesGoConstants(t *testing.T) {
-	t.Parallel()
 	data, err := os.ReadFile("../../protocol/constants/collections.json")
 	require.NoError(t, err)
 	var registry collectionsRegistry
@@ -73,7 +72,6 @@ func TestCollectionsRegistryMatchesGoConstants(t *testing.T) {
 // document set in step with the `_governed` flag in collections.json, which
 // the L4 Warden enforces for DOCUMENT_UPDATE and DOCUMENT_DELETE.
 func TestCollectionIsGovernedDocumentMatchesRegistry(t *testing.T) {
-	t.Parallel()
 	data, err := os.ReadFile("../../protocol/constants/collections.json")
 	require.NoError(t, err)
 
@@ -95,7 +93,6 @@ func TestCollectionIsGovernedDocumentMatchesRegistry(t *testing.T) {
 // TestCollectionIsGovernedDocumentExcludesPlatformAuthority names the
 // collections whose exclusion is the point of the governed document set.
 func TestCollectionIsGovernedDocumentExcludesPlatformAuthority(t *testing.T) {
-	t.Parallel()
 	for _, c := range []CollectionName{
 		CollectionUsers,
 		CollectionTrustedSigners,

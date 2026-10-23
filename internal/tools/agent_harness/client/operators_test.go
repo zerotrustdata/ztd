@@ -28,7 +28,6 @@ func dataOperator(id, sessionID string) *operatorv1.OperatorDocument {
 }
 
 func TestDiscoverRemoteOperator_RequiresAuthenticatedUser(t *testing.T) {
-	t.Parallel()
 	client, err := New(config.Config{MTLSBaseURL: "https://gateway.invalid"})
 	require.NoError(t, err)
 

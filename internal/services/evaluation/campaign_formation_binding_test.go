@@ -44,7 +44,6 @@ func createBoundSystemCampaign(t *testing.T, fixture *archiveFixture, campaignID
 }
 
 func TestCampaignFormationBinding_RejectsMultipleModelsWithoutFormations(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	inventory, err := MaterializeModelRegistry("invalid-multi", testFormationCatalogVariants())
 	require.NoError(t, err)
@@ -97,9 +96,7 @@ func tamperFormationStackRoles(t *testing.T, set *HeterogeneousStackSet) *Hetero
 }
 
 func TestCampaignFormationBinding_ResealedRoleSwapFailsAtScheduleAndExecute(t *testing.T) {
-	t.Parallel()
 	t.Run("schedule", func(t *testing.T) {
-		t.Parallel()
 		fixture := newArchiveFixture(t)
 		_, stackSet := createBoundSystemCampaign(t, fixture, "formation-tamper-schedule")
 		_, err := fixture.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
@@ -125,7 +122,6 @@ func TestCampaignFormationBinding_ResealedRoleSwapFailsAtScheduleAndExecute(t *t
 	})
 
 	t.Run("execute", func(t *testing.T) {
-		t.Parallel()
 		fixture := newArchiveFixture(t)
 		inventory, stackSet := createBoundSystemCampaign(t, fixture, "formation-tamper-execute")
 		_, err := fixture.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
@@ -151,7 +147,6 @@ func TestCampaignFormationBinding_ResealedRoleSwapFailsAtScheduleAndExecute(t *t
 }
 
 func TestCampaignFormationBinding_ValidatesFrozenHistoricalStackWithoutLiveCatalog(t *testing.T) {
-	t.Parallel()
 	fixture := newArchiveFixture(t)
 	campaignID := "formation-historical-freeze"
 	variants := testFormationCatalogVariants()

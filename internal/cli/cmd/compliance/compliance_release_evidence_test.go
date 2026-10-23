@@ -24,7 +24,6 @@ import (
 )
 
 func TestValidateReleaseVersion(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		input   string
@@ -45,7 +44,6 @@ func TestValidateReleaseVersion(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateReleaseVersion(test.input)
 			if test.wantErr {
 				require.Error(t, err)
@@ -81,7 +79,6 @@ func (r *releaseProjectionBundleReader) ListFiles(context.Context) ([]string, er
 }
 
 func TestComplianceReleaseEvidenceProjection_UsesVerifiedPublicBundleScope(t *testing.T) {
-	t.Parallel()
 	scope := &compliancev1.AssessmentScope{ProductVersion: "2.1.12"}
 	scopeBody, err := compliancev1.MarshalCanonical(scope)
 	require.NoError(t, err)
@@ -116,7 +113,6 @@ func TestComplianceReleaseEvidenceProjection_UsesVerifiedPublicBundleScope(t *te
 }
 
 func TestComplianceReleaseEvidenceProjection_RejectsUnverifiedOrRestrictedBundle(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		profile string
@@ -128,7 +124,6 @@ func TestComplianceReleaseEvidenceProjection_RejectsUnverifiedOrRestrictedBundle
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			input := complianceReportBundleInput{
 				bundle: &compliancev1.ComplianceReportBundle{Manifest: &compliancev1.ComplianceReportManifest{BundleProfile: test.profile}},
 				reader: &releaseProjectionBundleReader{},
@@ -149,7 +144,6 @@ func TestComplianceReleaseEvidenceProjection_RejectsUnverifiedOrRestrictedBundle
 }
 
 func TestWriteReleaseProjectionArtifacts_RejectsInvalidInputs(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		outDir  string
@@ -160,7 +154,6 @@ func TestWriteReleaseProjectionArtifacts_RejectsInvalidInputs(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			err := writeReleaseProjectionArtifacts(test.outDir, test.version, nil, nil)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrValidationFailed)

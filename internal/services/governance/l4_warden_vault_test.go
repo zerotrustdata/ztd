@@ -25,8 +25,6 @@ func (lockedRuntimeVault) IsUnlocked() bool { return false }
 // TestL4Warden_RefusesDispatchWhenRuntimeVaultLocked verifies that a locked or absent runtime
 // vault refuses dispatch before any envelope check, so nothing executes unrecorded.
 func TestL4Warden_RefusesDispatchWhenRuntimeVaultLocked(t *testing.T) {
-	t.Parallel()
-
 	env := &govtypes.GovernanceEnvelope{Nonce: "vault-nonce"}
 
 	locked := NewL4Warden(testutil.NewTestLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, lockedRuntimeVault{})

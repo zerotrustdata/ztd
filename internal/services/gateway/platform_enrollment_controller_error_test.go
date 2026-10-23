@@ -23,12 +23,8 @@ import (
 )
 
 func TestPlatformEnrollmentController_ContentionAndCancellationErrors(t *testing.T) {
-	t.Parallel()
-
 	for _, cause := range []error{constants.ErrSQLiteBusy, context.Canceled, context.DeadlineExceeded} {
 		t.Run(cause.Error(), func(t *testing.T) {
-			t.Parallel()
-
 			logger := testutil.NewTestLogger()
 			controller := &PlatformEnrollmentController{logger: logger, responder: response.NewWriter(logger)}
 			rr := httptest.NewRecorder()
@@ -40,8 +36,6 @@ func TestPlatformEnrollmentController_ContentionAndCancellationErrors(t *testing
 }
 
 func TestPlatformEnrollmentPublicError_SendsOnlyTheSentinel(t *testing.T) {
-	t.Parallel()
-
 	cases := []struct {
 		name       string
 		err        error
@@ -58,8 +52,6 @@ func TestPlatformEnrollmentPublicError_SendsOnlyTheSentinel(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			status, public := platformEnrollmentPublicError(tc.err)
 			require.Equal(t, tc.wantStatus, status)
 			require.Same(t, tc.want, public)
@@ -68,7 +60,6 @@ func TestPlatformEnrollmentPublicError_SendsOnlyTheSentinel(t *testing.T) {
 }
 
 func TestPlatformEnrollmentController_ResponseOmitsWrappedDetail(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	controller := &PlatformEnrollmentController{logger: logger, responder: response.NewWriter(logger)}
 	rr := httptest.NewRecorder()
@@ -79,7 +70,6 @@ func TestPlatformEnrollmentController_ResponseOmitsWrappedDetail(t *testing.T) {
 }
 
 func TestOperatorBootstrapErrorFrame_SendsOnlyTheSentinel(t *testing.T) {
-	t.Parallel()
 	frame := operatorBootstrapErrorFrame(fmt.Errorf("%w: sign operator csr: pkcs11 slot 3 offline", constants.ErrPlatformEnrollmentIssuanceFailed))
 	require.Equal(t, models.OperatorBootstrapFrameError, frame.Type)
 	require.NotNil(t, frame.Error)
@@ -92,7 +82,6 @@ func TestOperatorBootstrapErrorFrame_SendsOnlyTheSentinel(t *testing.T) {
 }
 
 func TestPlatformEnrollmentController_TokenConflictUsesHTTPConflict(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	controller := &PlatformEnrollmentController{logger: logger, responder: response.NewWriter(logger)}
 	rr := httptest.NewRecorder()

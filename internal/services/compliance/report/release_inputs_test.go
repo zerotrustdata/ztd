@@ -51,7 +51,6 @@ func validReleaseScopeRequest() ReleaseScopeRequest {
 }
 
 func TestBuildReleaseAssessmentScope_BindsVersionWindowAndGatewayComponent(t *testing.T) {
-	t.Parallel()
 	scope, err := BuildReleaseAssessmentScope(validReleaseScopeRequest())
 	require.NoError(t, err)
 
@@ -71,7 +70,6 @@ func TestBuildReleaseAssessmentScope_BindsVersionWindowAndGatewayComponent(t *te
 }
 
 func TestBuildReleaseAssessmentScope_RejectsIncompleteOrInvalidRequests(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ReleaseScopeRequest)
@@ -85,7 +83,6 @@ func TestBuildReleaseAssessmentScope_RejectsIncompleteOrInvalidRequests(t *testi
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			request := validReleaseScopeRequest()
 			test.mutate(&request)
 			_, err := BuildReleaseAssessmentScope(request)
@@ -102,7 +99,6 @@ func releaseKeyID(t *testing.T) string {
 }
 
 func TestCollectOperationalSignerKeys_ReturnsDistinctSortedKeysFromEverySignedSurface(t *testing.T) {
-	t.Parallel()
 	receiptSigner, persistenceSigner, stageSigner, auditor := "cc", "aa", "dd", "bb"
 	receipt, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
@@ -131,7 +127,6 @@ func TestCollectOperationalSignerKeys_ReturnsDistinctSortedKeysFromEverySignedSu
 }
 
 func TestCollectOperationalSignerKeys_RejectsMissingSnapshotAndMalformedBodies(t *testing.T) {
-	t.Parallel()
 	_, err := CollectOperationalSignerKeys(nil)
 	require.ErrorIs(t, err, constants.ErrValidationFailed)
 
@@ -142,7 +137,6 @@ func TestCollectOperationalSignerKeys_RejectsMissingSnapshotAndMalformedBodies(t
 }
 
 func TestGenerateReportSigningKey_ProducesIdentityThatSignsAndVerifiesUnderReleaseTrust(t *testing.T) {
-	t.Parallel()
 	metadata, privateKeyHex, err := GenerateReportSigningKey(rand.Reader, "v2.2.2-engineering-report-key", releaseWindowStart, constants.ComplianceReleaseNewKeyLifetime)
 	require.NoError(t, err)
 	privateKey, err := hex.DecodeString(privateKeyHex)
@@ -168,7 +162,6 @@ func TestGenerateReportSigningKey_ProducesIdentityThatSignsAndVerifiesUnderRelea
 }
 
 func TestGenerateReportSigningKey_RejectsIncompleteRequest(t *testing.T) {
-	t.Parallel()
 	_, _, err := GenerateReportSigningKey(rand.Reader, "", releaseWindowStart, time.Hour)
 	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	_, _, err = GenerateReportSigningKey(rand.Reader, "key", releaseWindowStart, 0)
@@ -176,7 +169,6 @@ func TestGenerateReportSigningKey_RejectsIncompleteRequest(t *testing.T) {
 }
 
 func TestBuildReleaseEvidenceTrustPolicy_BindsEachSourceSignerToTheReleaseScope(t *testing.T) {
-	t.Parallel()
 	first, second := releaseKeyID(t), releaseKeyID(t)
 	request := ReleaseTrustRequest{
 		PolicyID:         "v2.2.2-gateway-evidence-trust",
@@ -201,7 +193,6 @@ func TestBuildReleaseEvidenceTrustPolicy_BindsEachSourceSignerToTheReleaseScope(
 }
 
 func TestBuildReleaseEvidenceTrustPolicy_RejectsUnusableInputs(t *testing.T) {
-	t.Parallel()
 	request := ReleaseTrustRequest{PolicyID: "p", AssessmentID: "a", AssessorIdentity: "i", ScopeID: "s", AssessedAt: releaseWindowEnd}
 	_, err := BuildReleaseEvidenceTrustPolicy(request, nil)
 	require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed, "a window with no signed evidence cannot yield trust")

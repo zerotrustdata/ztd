@@ -50,7 +50,6 @@ func (r *recordingRunStateReporter) UpdateRunState(_ context.Context, req models
 // after a completed projection. The release reads no run state here, so the
 // lifecycle has no store.
 func TestRunLifecycle_ReleaseOfANoOpRunPostsNothing(t *testing.T) {
-	t.Parallel()
 	reporter := &recordingRunStateReporter{}
 	lifecycle := &runLifecycle{
 		client: reporter,
@@ -63,7 +62,6 @@ func TestRunLifecycle_ReleaseOfANoOpRunPostsNothing(t *testing.T) {
 }
 
 func TestRunLifecycle_RejectedPostIsReturnedToTheCommand(t *testing.T) {
-	t.Parallel()
 	lifecycle := runLifecycle{
 		client:    rejectingRunStateReporter{err: fmt.Errorf("observe producer run-state: %w", constants.ErrHTTPStatusError)},
 		deps:      nativeEvalDeps{now: func() time.Time { return time.Unix(1789657337, 0).UTC() }},
@@ -94,8 +92,6 @@ func (e *runEnv) holdRun(t *testing.T, runID string) {
 // The holder's process exits and no released status ever arrives. The exit
 // settles the lease, and the wait ends on the exit alone.
 func TestRunsCancel_ReturnsWhenTheHolderExitsBeforeAnyReleasedEvent(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)

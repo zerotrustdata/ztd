@@ -17,7 +17,6 @@ import (
 )
 
 func TestBuildFetchHistoryRequestedPayload(t *testing.T) {
-	t.Parallel()
 	payload := BuildFetchHistoryRequestedPayload(t, "exec-006", "session-123", 50, 0)
 	require.NotNil(t, payload)
 
@@ -31,7 +30,6 @@ func TestBuildFetchHistoryRequestedPayload(t *testing.T) {
 }
 
 func TestBuildFetchFileHistoryRequestedPayload(t *testing.T) {
-	t.Parallel()
 	payload := BuildFetchFileHistoryRequestedPayload(t, "exec-007", "/tmp/file.txt", 20, "session-456")
 	require.NotNil(t, payload)
 
@@ -45,7 +43,6 @@ func TestBuildFetchFileHistoryRequestedPayload(t *testing.T) {
 }
 
 func TestBuildRestoreFileRequestedPayload(t *testing.T) {
-	t.Parallel()
 	payload := BuildRestoreFileRequestedPayload(t, "exec-009", "/tmp/file.txt", "abc123", "session-789")
 	require.NotNil(t, payload)
 

@@ -31,8 +31,7 @@ func TestRemoteProviderObservationClient_Load_RejectsMissingInputs(t *testing.T)
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestNewProviderObservationRemote_ReturnsClient(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewProviderObservationRemote_ReturnsClient(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	remote, err := NewProviderObservationRemote(fileSvc, cfg)
@@ -40,8 +39,7 @@ func TestNewProviderObservationRemote_ReturnsClient(t *testing.T) { //nolint:par
 	require.NotNil(t, remote)
 }
 
-func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 	cfg.Paths.Host = "http://127.0.0.1:1"
 
@@ -50,8 +48,7 @@ func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *te
 	assert.Nil(t, capture)
 }
 
-func TestNewCampaignWitnessCapture_WiresRemotesWhenHealthy(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewCampaignWitnessCapture_WiresRemotesWhenHealthy(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 	WithConfiguredGatewayHealthCheck(t, true)
 

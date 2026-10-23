@@ -41,7 +41,6 @@ const (
 // at which point this test is updated to assert the intended shared-model
 // imports rather than the current isolation.
 func TestPhase0Architecture_ComplianceDoesNotImportDemoOrEvalPackages(t *testing.T) {
-	t.Parallel()
 	out, err := exec.Command("go", "list", "-deps", ".").Output()
 	require.NoError(t, err, "go list -deps must succeed for the compliance package")
 
@@ -68,7 +67,6 @@ func TestPhase0Architecture_ComplianceDoesNotImportDemoOrEvalPackages(t *testing
 // TestPhase3Architecture_KSIResultsUseProtocolEvidenceReferences verifies that
 // KSI evaluation no longer exposes the legacy local Evidence string record.
 func TestPhase3Architecture_KSIResultsUseProtocolEvidenceReferences(t *testing.T) {
-	t.Parallel()
 	field, ok := reflect.TypeOf(KSIResult{}).FieldByName("Evidence")
 	require.True(t, ok, phase0RegressionAfterFix)
 	assert.Equal(t, reflect.TypeOf([]*compliancev1.ComplianceEvidenceReference{}), field.Type, phase0RegressionAfterFix)
@@ -78,7 +76,6 @@ func TestPhase3Architecture_KSIResultsUseProtocolEvidenceReferences(t *testing.T
 // the untyped-model gap through protocol-owned records rather than adding
 // parallel models to the legacy compliance package.
 func TestPhase1Architecture_ModelsAreProtocolOwned(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		message  proto.Message
@@ -96,7 +93,6 @@ func TestPhase1Architecture_ModelsAreProtocolOwned(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.fullName, string(tt.message.ProtoReflect().Descriptor().FullName()), phase0RegressionAfterFix)
 		})
 	}

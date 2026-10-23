@@ -22,7 +22,6 @@ import (
 
 func TestListSessions_NilStore(t *testing.T) {
 	t.Parallel()
-
 	var ass *SQLAuditStore
 	sessions, err := ass.ListSessions(10, 0)
 	require.Error(t, err)
@@ -32,7 +31,6 @@ func TestListSessions_NilStore(t *testing.T) {
 
 func TestListSessions_NilDB(t *testing.T) {
 	t.Parallel()
-
 	ass := &SQLAuditStore{db: nil}
 	sessions, err := ass.ListSessions(10, 0)
 	require.Error(t, err)
@@ -42,7 +40,6 @@ func TestListSessions_NilDB(t *testing.T) {
 
 func TestListEvents_NilStore(t *testing.T) {
 	t.Parallel()
-
 	var ass *SQLAuditStore
 	events, err := ass.ListEvents("", 10, 0)
 	require.Error(t, err)
@@ -52,7 +49,6 @@ func TestListEvents_NilStore(t *testing.T) {
 
 func TestListEvents_NilDB(t *testing.T) {
 	t.Parallel()
-
 	ass := &SQLAuditStore{db: nil}
 	events, err := ass.ListEvents("session-1", 10, 0)
 	require.Error(t, err)
@@ -100,7 +96,6 @@ func TestListCommitments_NilDB(t *testing.T) {
 
 func TestListCommitments_Empty(t *testing.T) {
 	t.Parallel()
-
 	cl, _ := setupTestCommitmentLedger(t)
 	commitments, err := cl.ListCommitments()
 	require.NoError(t, err)
@@ -109,7 +104,6 @@ func TestListCommitments_Empty(t *testing.T) {
 
 func TestListCommitments_WithData(t *testing.T) {
 	t.Parallel()
-
 	cl, _ := setupTestCommitmentLedger(t)
 
 	for i := 0; i < 3; i++ {
@@ -146,7 +140,6 @@ func TestListCommitments_WithData(t *testing.T) {
 
 func TestListCommitments_OrderedByCommittedAt(t *testing.T) {
 	t.Parallel()
-
 	cl, _ := setupTestCommitmentLedger(t)
 
 	attestation1 := []byte(`{

@@ -24,7 +24,6 @@ import (
 )
 
 func TestNewWriter(t *testing.T) {
-	t.Parallel()
 	var logger *slog.Logger
 	w := NewWriter(logger)
 	if w == nil {
@@ -37,7 +36,6 @@ func TestNewWriter(t *testing.T) {
 }
 
 func TestJSON(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		status   int
@@ -72,7 +70,6 @@ func TestJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			w := NewWriter((*slog.Logger)(nil))
 			rw := httptest.NewRecorder()
 
@@ -108,7 +105,6 @@ func TestJSON(t *testing.T) {
 }
 
 func TestProtoJSONWritesCanonicalPayloadAndSecurityHeaders(t *testing.T) {
-	t.Parallel()
 	writer := NewWriter(slog.Default())
 	recorder := httptest.NewRecorder()
 	receipt := &operatorv1.ActionReceipt{
@@ -130,7 +126,6 @@ func TestProtoJSONWritesCanonicalPayloadAndSecurityHeaders(t *testing.T) {
 }
 
 func TestProtoJSONMarshalFailureReturnsSecuredJSONError(t *testing.T) {
-	t.Parallel()
 	writer := NewWriter(slog.Default())
 	recorder := httptest.NewRecorder()
 	receipt := &operatorv1.ActionReceipt{TransactionId: string([]byte{0xff})}
@@ -150,7 +145,6 @@ func TestProtoJSONMarshalFailureReturnsSecuredJSONError(t *testing.T) {
 }
 
 func TestError(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		status   int
@@ -179,7 +173,6 @@ func TestError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			w := NewWriter((*slog.Logger)(nil))
 			rw := httptest.NewRecorder()
 
@@ -209,7 +202,6 @@ func TestError(t *testing.T) {
 }
 
 func TestRPCResponse(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		id       interface{}
@@ -263,7 +255,6 @@ func TestRPCResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			w := NewWriter((*slog.Logger)(nil))
 			rw := httptest.NewRecorder()
 
@@ -303,7 +294,6 @@ func TestRPCResponse(t *testing.T) {
 }
 
 func TestRPCResponse_UnmarshalableResult(t *testing.T) {
-	t.Parallel()
 	w := NewWriter(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	rw := httptest.NewRecorder()
 
@@ -336,7 +326,6 @@ func TestRPCResponse_UnmarshalableResult(t *testing.T) {
 }
 
 func TestRPCError(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		id       interface{}
@@ -386,7 +375,6 @@ func TestRPCError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			w := NewWriter((*slog.Logger)(nil))
 			rw := httptest.NewRecorder()
 
@@ -434,7 +422,6 @@ func TestRPCError(t *testing.T) {
 }
 
 func TestErrorCodes(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		code  int
@@ -455,7 +442,6 @@ func TestErrorCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			if tt.code != tt.value {
 				t.Errorf("%s = %v, want %v", tt.name, tt.code, tt.value)
 			}

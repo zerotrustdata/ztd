@@ -39,8 +39,7 @@ import (
 // exists, rather than falling back to posture-only defaults. A stale posture
 // file (from a pre-Phase-2 start) is present but is now inert — restart does
 // not read it.
-func TestGatewayRestartCmd_FailsClosedWhenNoLaunchProfile_AfterFix(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayRestartCmd_FailsClosedWhenNoLaunchProfile_AfterFix(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	// Write a stale posture file (the old persistence format). After the
@@ -77,8 +76,7 @@ func TestGatewayRestartCmd_FailsClosedWhenNoLaunchProfile_AfterFix(t *testing.T)
 // read and attempted to start with the full config. The profile file still
 // contains the complete configuration, proving restart has access to all
 // launch settings.
-func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	// Write a complete launch profile with browser-relevant fields.
@@ -144,10 +142,8 @@ func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing
 // restart path has access to the complete launch configuration rather than
 // posture-only state.
 func TestGatewayRestartCmd_PreservesCompleteConfigFields_AfterFix(t *testing.T) {
-	t.Parallel()
 	// This is the exact configuration a `gw start` with browser flags
 	// would persist to the launch profile.
-
 	restartCfg := serve.GatewayConfig{
 		Posture:          constants.PostureConsensus,
 		HTTPPort:         8080,

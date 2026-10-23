@@ -29,7 +29,6 @@ import (
 )
 
 func TestEncodeDecodeCursor_RoundTrip(t *testing.T) {
-	t.Parallel()
 	original := observeCursor{
 		ObservedAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC),
 		ID:         "run-123",
@@ -44,7 +43,6 @@ func TestEncodeDecodeCursor_RoundTrip(t *testing.T) {
 }
 
 func TestDecodeCursor_EmptyStringIsStart(t *testing.T) {
-	t.Parallel()
 	decoded, err := decodeCursor("")
 	require.NoError(t, err)
 	assert.True(t, decoded.ObservedAt.IsZero())
@@ -52,19 +50,13 @@ func TestDecodeCursor_EmptyStringIsStart(t *testing.T) {
 }
 
 func TestDecodeCursor_InvalidBase64Rejected(t *testing.T) {
-	t.Parallel()
-
 	_, err := decodeCursor("!!!not-base64!!!")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrObserveCursorInvalid, "invalid cursor should wrap ErrObserveCursorInvalid")
 }
 
 func TestDecodeCursor_InvalidJSONRejected(t *testing.T) {
-	t.Parallel(
-
 	// Valid base64url but not valid cursor JSON.
-	)
-
 	encoded := mustEncodeBase64(t, []byte("not-json"))
 	_, err := decodeCursor(encoded)
 	require.Error(t, err)
@@ -72,8 +64,6 @@ func TestDecodeCursor_InvalidJSONRejected(t *testing.T) {
 }
 
 func TestClampLimit_Bounds(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name  string
 		input int
@@ -88,16 +78,12 @@ func TestClampLimit_Bounds(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tc.want, clampLimit(tc.input))
 		})
 	}
 }
 
 func TestExtractID_PathParameterExtraction(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name   string
 		prefix string
@@ -111,15 +97,12 @@ func TestExtractID_PathParameterExtraction(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tc.want, extractID(tc.prefix, tc.path))
 		})
 	}
 }
 
 func TestCompareSortKey_DescOrdering(t *testing.T) {
-	t.Parallel()
 	newer := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	older := time.Date(2026, 9, 9, 11, 0, 0, 0, time.UTC)
 	// Newer timestamp sorts before older (DESC).
@@ -131,7 +114,6 @@ func TestCompareSortKey_DescOrdering(t *testing.T) {
 }
 
 func TestFilterByCursor_EmptyCursorReturnsAll(t *testing.T) {
-	t.Parallel()
 	items := []runProjection{
 		{RunID: "r1", ObservedAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)},
 		{RunID: "r2", ObservedAt: time.Date(2026, 9, 9, 11, 0, 0, 0, time.UTC)},
@@ -143,7 +125,6 @@ func TestFilterByCursor_EmptyCursorReturnsAll(t *testing.T) {
 }
 
 func TestFilterByCursor_ExcludesAtAndBeforeCursor(t *testing.T) {
-	t.Parallel()
 	t1 := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	t2 := time.Date(2026, 9, 9, 11, 0, 0, 0, time.UTC)
 	t3 := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
@@ -165,7 +146,6 @@ func TestFilterByCursor_ExcludesAtAndBeforeCursor(t *testing.T) {
 }
 
 func TestSortRuns_DescByObservedAtThenRunID(t *testing.T) {
-	t.Parallel()
 	t1 := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	t2 := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	runs := []runProjection{
@@ -182,7 +162,6 @@ func TestSortRuns_DescByObservedAtThenRunID(t *testing.T) {
 }
 
 func TestObserveController_ParseLimit_DefaultsWhenEmpty(t *testing.T) {
-	t.Parallel()
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/runs", nil)
 	rec := httptest.NewRecorder()
@@ -193,14 +172,10 @@ func TestObserveController_ParseLimit_DefaultsWhenEmpty(t *testing.T) {
 }
 
 func TestObserveController_ParseLimit_RejectsOutOfBounds(t *testing.T) {
-	t.Parallel()
-
 	c := newTestObserveController(t)
 	tests := []string{"0", "-1", "abc", "101"}
 	for _, raw := range tests {
 		t.Run(raw, func(t *testing.T) {
-			t.Parallel()
-
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/runs?limit="+raw, nil)
 			rec := httptest.NewRecorder()
 			_, ok := c.parseLimit(rec, req)
@@ -211,8 +186,6 @@ func TestObserveController_ParseLimit_RejectsOutOfBounds(t *testing.T) {
 }
 
 func TestObserveController_ParseLimit_AcceptsBounds(t *testing.T) {
-	t.Parallel()
-
 	c := newTestObserveController(t)
 	tests := []struct {
 		raw  string
@@ -224,8 +197,6 @@ func TestObserveController_ParseLimit_AcceptsBounds(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.raw, func(t *testing.T) {
-			t.Parallel()
-
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/runs?limit="+tc.raw, nil)
 			rec := httptest.NewRecorder()
 			limit, ok := c.parseLimit(rec, req)
@@ -236,7 +207,6 @@ func TestObserveController_ParseLimit_AcceptsBounds(t *testing.T) {
 }
 
 func TestObserveController_ParseCursor_EmptyIsValid(t *testing.T) {
-	t.Parallel()
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/runs", nil)
 	rec := httptest.NewRecorder()
@@ -247,8 +217,6 @@ func TestObserveController_ParseCursor_EmptyIsValid(t *testing.T) {
 }
 
 func TestObserveController_ParseCursor_RejectsInvalid(t *testing.T) {
-	t.Parallel()
-
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/runs?cursor=!!!invalid", nil)
 	rec := httptest.NewRecorder()
@@ -258,8 +226,6 @@ func TestObserveController_ParseCursor_RejectsInvalid(t *testing.T) {
 }
 
 func TestObserveController_RequireUserID_MissingContextReturns401(t *testing.T) {
-	t.Parallel()
-
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/bootstrap", nil)
 	rec := httptest.NewRecorder()
@@ -269,7 +235,6 @@ func TestObserveController_RequireUserID_MissingContextReturns401(t *testing.T) 
 }
 
 func TestObserveController_RequireUserID_PresentContextReturnsID(t *testing.T) {
-	t.Parallel()
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/bootstrap", nil)
 	ctx := context.WithValue(req.Context(), constants.ContextKeyUserID, "user-123")
@@ -282,8 +247,6 @@ func TestObserveController_RequireUserID_PresentContextReturnsID(t *testing.T) {
 }
 
 func TestObserveController_RequireUserID_EmptyStringReturns401(t *testing.T) {
-	t.Parallel()
-
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/observe/bootstrap", nil)
 	ctx := context.WithValue(req.Context(), constants.ContextKeyUserID, "")
@@ -314,8 +277,6 @@ func mustEncodeBase64(t *testing.T, b []byte) string {
 }
 
 func TestRouteAuthRegistry_ObservePrefixClassifiedWebSession(t *testing.T) {
-	t.Parallel()
-
 	registry := NewRouteAuthRegistry(false)
 
 	observePaths := []string{
@@ -331,8 +292,6 @@ func TestRouteAuthRegistry_ObservePrefixClassifiedWebSession(t *testing.T) {
 }
 
 func TestRouteAuthRegistry_ObserveByIDPathsClassifiedWebSession(t *testing.T) {
-	t.Parallel()
-
 	registry := NewRouteAuthRegistry(false)
 
 	byIDPaths := []string{
@@ -347,8 +306,6 @@ func TestRouteAuthRegistry_ObserveByIDPathsClassifiedWebSession(t *testing.T) {
 }
 
 func TestRouteAuthRegistry_ObservePrefixDoesNotLeakToOtherRoutes(t *testing.T) {
-	t.Parallel()
-
 	registry := NewRouteAuthRegistry(false)
 
 	// Paths outside the observe prefix must remain fail-closed (RouteAuthMTLS)
@@ -365,7 +322,6 @@ func TestRouteAuthRegistry_ObservePrefixDoesNotLeakToOtherRoutes(t *testing.T) {
 }
 
 func TestRouteAuthRegistry_ObservePrefixFailClosedForUnknownSubPaths(t *testing.T) {
-	t.Parallel()
 	registry := NewRouteAuthRegistry(false)
 
 	// Unknown sub-paths under the observe prefix inherit RouteAuthWebSession
@@ -381,8 +337,6 @@ func TestRouteAuthRegistry_ObservePrefixFailClosedForUnknownSubPaths(t *testing.
 // mTLS producer endpoints classify as RouteAuthMTLS so only app workloads
 // can push agent and run state projections.
 func TestRouteAuthRegistry_ObserveProducerRoutesClassifiedMTLS(t *testing.T) {
-	t.Parallel()
-
 	registry := NewRouteAuthRegistry(false)
 
 	producerPaths := []string{
@@ -400,7 +354,6 @@ func TestRouteAuthRegistry_ObserveProducerRoutesClassifiedMTLS(t *testing.T) {
 // producer prefix classifies as RouteAuthMTLS so unknown producer sub-paths
 // fail closed to mTLS.
 func TestRouteAuthRegistry_ObserveProducerPrefixClassifiedMTLS(t *testing.T) {
-	t.Parallel()
 	registry := NewRouteAuthRegistry(false)
 
 	assert.Equal(t, RouteAuthMTLS, registry.AuthMode(constants.APIPaths.ObserveProducerPrefix+"unknown-sub-path"),
@@ -411,8 +364,6 @@ func TestRouteAuthRegistry_ObserveProducerPrefixClassifiedMTLS(t *testing.T) {
 // producer routes do not inherit RouteAuthWebSession from the broader observe
 // prefix, and that lookalike prefixes fail closed.
 func TestRouteAuthRegistry_ObserveProducerRoutesDoNotLeakWebSession(t *testing.T) {
-	t.Parallel()
-
 	registry := NewRouteAuthRegistry(false)
 
 	// The producer routes are under /api/v1/observe/producer/ which is a
@@ -434,8 +385,6 @@ func TestRouteAuthRegistry_ObserveProducerRoutesDoNotLeakWebSession(t *testing.T
 }
 
 func TestRouteAuthRegistry_GenericRoutesRemainMTLS(t *testing.T) {
-	t.Parallel()
-
 	registry := NewRouteAuthRegistry(false)
 
 	// Generic data, audit, blob, pubsub, SSE push, governance, and PKI
@@ -476,7 +425,6 @@ func TestRouteAuthRegistry_GenericRoutesRemainMTLS(t *testing.T) {
 }
 
 func TestObserveService_PaginateEvals(t *testing.T) {
-	t.Parallel()
 	svc := &ObserveService{}
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	evals := []models.EvalSummary{
@@ -497,7 +445,6 @@ func TestObserveService_PaginateEvals(t *testing.T) {
 }
 
 func TestObserveService_PaginateDownloads(t *testing.T) {
-	t.Parallel()
 	svc := &ObserveService{}
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	downloads := []models.DownloadArtifact{
@@ -512,8 +459,6 @@ func TestObserveService_PaginateDownloads(t *testing.T) {
 }
 
 func TestObserveController_MapDownloadStreamError(t *testing.T) {
-	t.Parallel()
-
 	c := newTestObserveController(t)
 	tests := []struct {
 		name       string
@@ -526,8 +471,6 @@ func TestObserveController_MapDownloadStreamError(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
 			rec := httptest.NewRecorder()
 			c.mapDownloadStreamError(rec, test.err, "user-1", "art-1")
 			assert.Equal(t, test.wantStatus, rec.Code)
@@ -536,7 +479,6 @@ func TestObserveController_MapDownloadStreamError(t *testing.T) {
 }
 
 func TestObserveController_HandleListEvals_RequiresAuth(t *testing.T) {
-	t.Parallel()
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.ObserveEvals, nil)
 	rec := httptest.NewRecorder()
@@ -545,7 +487,6 @@ func TestObserveController_HandleListEvals_RequiresAuth(t *testing.T) {
 }
 
 func TestObserveController_HandleListEvals_RejectsNonGet(t *testing.T) {
-	t.Parallel()
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveEvals, nil)
 	rec := httptest.NewRecorder()
@@ -606,8 +547,6 @@ func seedObserveDownloadProjection(t *testing.T, svc *ObserveService, _ string, 
 }
 
 func TestObserveService_ListEvalsAndDownloads(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	seedObserveEvalProjection(t, svc, "user-1", "eval-run-1", now)
@@ -625,8 +564,6 @@ func TestObserveService_ListEvalsAndDownloads(t *testing.T) {
 }
 
 func TestObserveController_HandleListEvals_ReturnsPage(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveEvalProjection(t, svc, "user-1", "eval-run-1", time.Now().UTC())
 	c := &ObserveController{
@@ -646,8 +583,6 @@ func TestObserveController_HandleListEvals_ReturnsPage(t *testing.T) {
 }
 
 func TestObserveController_HandleListDownloads_ReturnsPage(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveDownloadProjection(t, svc, "user-1", "artifact-1", time.Now().UTC())
 	c := &ObserveController{
@@ -681,8 +616,6 @@ func seedObserveRunProjection(t *testing.T, svc *ObserveService, userID, runID s
 }
 
 func TestObserveController_HandleListRuns_ReturnsPage(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveRunProjection(t, svc, "user-1", "run-1", time.Now().UTC())
 	c := &ObserveController{
@@ -702,7 +635,6 @@ func TestObserveController_HandleListRuns_ReturnsPage(t *testing.T) {
 }
 
 func TestObserveController_HandleListRuns_RequiresAuth(t *testing.T) {
-	t.Parallel()
 	c := newTestObserveController(t)
 	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.ObserveRuns, nil)
 	rec := httptest.NewRecorder()
@@ -711,8 +643,6 @@ func TestObserveController_HandleListRuns_RequiresAuth(t *testing.T) {
 }
 
 func TestObserveController_HandleGetRun_ReturnsDetail(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveRunProjection(t, svc, "user-1", "run-detail-1", time.Now().UTC())
 	c := &ObserveController{
@@ -732,8 +662,6 @@ func TestObserveController_HandleGetRun_ReturnsDetail(t *testing.T) {
 }
 
 func TestObserveController_HandleGetRun_NotFound(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	c := &ObserveController{
 		logger:     testutil.NewTestLogger(),
@@ -748,8 +676,6 @@ func TestObserveController_HandleGetRun_NotFound(t *testing.T) {
 }
 
 func TestObserveController_HandleGetEval_ReturnsDetail(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveEvalProjection(t, svc, "user-1", "eval-detail-1", time.Now().UTC())
 	c := &ObserveController{
@@ -769,8 +695,6 @@ func TestObserveController_HandleGetEval_ReturnsDetail(t *testing.T) {
 }
 
 func TestObserveController_HandleGetDownload_ReturnsMetadata(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveDownloadProjection(t, svc, "user-1", "artifact-meta-1", time.Now().UTC())
 	c := &ObserveController{
@@ -803,8 +727,6 @@ func (s *stubDownloadStreamer) StreamDownload(_ context.Context, _ string, artif
 }
 
 func TestObserveController_HandleGetDownload_StreamsWhenRequested(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveDownloadProjection(t, svc, "user-1", "artifact-stream-1", time.Now().UTC())
 	c := &ObserveController{
@@ -822,8 +744,6 @@ func TestObserveController_HandleGetDownload_StreamsWhenRequested(t *testing.T) 
 }
 
 func TestObserveController_HandleBootstrap_ReturnsSnapshot(t *testing.T) {
-	t.Parallel()
-
 	svc := newObserveServiceUnitTest(t)
 	seedObserveRunProjection(t, svc, "user-1", "run-bootstrap-1", time.Now().UTC())
 	c := &ObserveController{
@@ -843,7 +763,6 @@ func TestObserveController_HandleBootstrap_ReturnsSnapshot(t *testing.T) {
 }
 
 func TestSortEvals_DescByObservedAtThenRunID(t *testing.T) {
-	t.Parallel()
 	t1 := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	evals := []evalProjection{
 		{EvalDetail: models.EvalDetail{RunID: "b", ObservedAt: t1}},
@@ -857,7 +776,6 @@ func TestSortEvals_DescByObservedAtThenRunID(t *testing.T) {
 }
 
 func TestSortDownloads_DescByGeneratedAtThenArtifactID(t *testing.T) {
-	t.Parallel()
 	t1 := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	downloads := []downloadProjection{
 		{DownloadArtifact: models.DownloadArtifact{ArtifactID: "art-b", GeneratedAt: t1}},

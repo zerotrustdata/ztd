@@ -43,10 +43,9 @@ func mustUnmarshalGovernanceEnvelope(t *testing.T, data []byte) *commonv1.Govern
 	return &env
 }
 
-func TestNewPubSubResultsService(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewPubSubResultsService(t *testing.T) {
 	t.Run("returns non-nil service without error", func(t *testing.T) {
-
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -56,10 +55,9 @@ func TestNewPubSubResultsService(t *testing.T) { //nolint:paralleltest // mutate
 	})
 }
 
-func TestPubSubResultsService_PublishHeartbeat(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishHeartbeat(t *testing.T) {
 	t.Run("successful heartbeat publish", func(t *testing.T) {
-
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -82,10 +80,9 @@ func TestPubSubResultsService_PublishHeartbeat(t *testing.T) { //nolint:parallel
 	})
 }
 
-func TestPubSubResultsService_PublishCancellationResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishCancellationResult(t *testing.T) {
 	t.Run("successful cancellation publish", func(t *testing.T) {
-
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -115,10 +112,9 @@ func TestPubSubResultsService_PublishCancellationResult(t *testing.T) { //nolint
 	})
 }
 
-func TestPubSubResultsService_PublishFsListResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("successful fs list publish", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishFsListResult(t *testing.T) {
+	t.Run("successful fs list publish", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -146,8 +142,8 @@ func TestPubSubResultsService_PublishFsListResult(t *testing.T) { //nolint:paral
 		assert.Equal(t, string(constants.Event.Operator.FsList.Completed), env.EventType)
 	})
 
-	t.Run("publishes failed status on error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes failed status on error", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -176,10 +172,9 @@ func TestPubSubResultsService_PublishFsListResult(t *testing.T) { //nolint:paral
 	})
 }
 
-func TestPubSubResultsService_PublishFsGrepResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("successful fs grep publish", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishFsGrepResult(t *testing.T) {
+	t.Run("successful fs grep publish", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
@@ -208,8 +203,8 @@ func TestPubSubResultsService_PublishFsGrepResult(t *testing.T) { //nolint:paral
 		assert.Equal(t, string(constants.Event.Operator.FsGrep.Completed), env.EventType)
 	})
 
-	t.Run("publishes failed status on error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes failed status on error", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -238,10 +233,9 @@ func TestPubSubResultsService_PublishFsGrepResult(t *testing.T) { //nolint:paral
 	})
 }
 
-func TestPubSubResultsService_PublishExecutionResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("successful publish", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishExecutionResult(t *testing.T) {
+	t.Run("successful publish", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -284,8 +278,8 @@ func TestPubSubResultsService_PublishExecutionResult(t *testing.T) { //nolint:pa
 		assert.Equal(t, "req-123", payload.ExecutionId)
 	})
 
-	t.Run("publishes failed status on error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes failed status on error", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -314,8 +308,8 @@ func TestPubSubResultsService_PublishExecutionResult(t *testing.T) { //nolint:pa
 		assert.Equal(t, string(constants.Event.Operator.Command.Failed), env.EventType)
 	})
 
-	t.Run("publishes timeout status on timeout", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes timeout status on timeout", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -345,10 +339,9 @@ func TestPubSubResultsService_PublishExecutionResult(t *testing.T) { //nolint:pa
 	})
 }
 
-func TestPubSubResultsService_PublishFileEditResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("successful publish", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishFileEditResult(t *testing.T) {
+	t.Run("successful publish", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
@@ -378,8 +371,8 @@ func TestPubSubResultsService_PublishFileEditResult(t *testing.T) { //nolint:par
 		assert.Equal(t, string(constants.Event.Operator.FileEdit.Completed), env.EventType)
 	})
 
-	t.Run("publishes failed status on error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes failed status on error", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
@@ -411,10 +404,9 @@ func TestPubSubResultsService_PublishFileEditResult(t *testing.T) { //nolint:par
 	})
 }
 
-func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("publishes running status", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) {
+	t.Run("publishes running status", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -446,8 +438,8 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 		assert.Equal(t, string(constants.Event.Operator.Command.StatusUpdated.Running), env.EventType)
 	})
 
-	t.Run("publishes completed status", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes completed status", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -474,8 +466,8 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 		assert.Equal(t, string(constants.Event.Operator.Command.StatusUpdated.Completed), env.EventType)
 	})
 
-	t.Run("publishes failed status", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes failed status", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -502,8 +494,8 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 		assert.Equal(t, string(constants.Event.Operator.Command.StatusUpdated.Failed), env.EventType)
 	})
 
-	t.Run("publishes cancelled status", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes cancelled status", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -530,8 +522,8 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 		assert.Equal(t, string(constants.Event.Operator.Command.StatusUpdated.Cancelled), env.EventType)
 	})
 
-	t.Run("publishes queued status for unspecified", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("publishes queued status for unspecified", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -558,8 +550,8 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 		assert.Equal(t, string(constants.Event.Operator.Command.StatusUpdated.Queued), env.EventType)
 	})
 
-	t.Run("uses original message ID for correlation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("uses original message ID for correlation", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -586,8 +578,8 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 		assert.Equal(t, "msg-123", env.Id)
 	})
 
-	t.Run("uses custom operator ID when provided", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("uses custom operator ID when provided", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -617,10 +609,9 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) { //nolint:pa
 	})
 }
 
-func TestPubSubResultsService_PublishActionReceipt(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("publishes signed receipt envelope to receipts channel with identity propagation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
+	t.Run("publishes signed receipt envelope to receipts channel with identity propagation", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -692,8 +683,8 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) { //nolint:para
 		assert.Equal(t, "deadbeef", decoded.Signature)
 	})
 
-	t.Run("nil envelope returns error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nil envelope returns error", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -704,8 +695,8 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) { //nolint:para
 		require.Error(t, err)
 	})
 
-	t.Run("nil receipt returns error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nil receipt returns error", func(t *testing.T) {
+		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()

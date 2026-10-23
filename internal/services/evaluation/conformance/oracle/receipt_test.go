@@ -41,7 +41,6 @@ func findStage(receipt *operatorv1.ActionReceipt, kind operatorv1.DeterministicS
 }
 
 func TestVerifyReceipt(t *testing.T) {
-	t.Parallel()
 	type verifyCase struct {
 		name      string
 		anchors   []*evalv1.ConformanceAnchor
@@ -134,7 +133,6 @@ func TestVerifyReceipt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 			if tt.mutate != nil {
 				tt.mutate(t, signer, receipt)
@@ -159,7 +157,6 @@ func TestVerifyReceipt(t *testing.T) {
 }
 
 func TestVerifyReceiptAcceptsAnyOperatorUnderGatewayRuntime(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	set, err := NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor(GatewayRuntimeID)})
 	require.NoError(t, err)
@@ -170,7 +167,6 @@ func TestVerifyReceiptAcceptsAnyOperatorUnderGatewayRuntime(t *testing.T) {
 }
 
 func TestVerifyReceiptRejectsNilReceipt(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	set, err := NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor("op-1")})
 	require.NoError(t, err)

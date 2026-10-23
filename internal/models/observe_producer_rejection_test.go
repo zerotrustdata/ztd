@@ -21,7 +21,6 @@ import (
 )
 
 func TestObserveProducerRejection_EveryCodeRoundTripsItsSentinel(t *testing.T) {
-	t.Parallel()
 	seen := map[ObserveProducerRejectionCode]bool{}
 	for _, entry := range observeProducerRejectionCodes {
 		require.False(t, seen[entry.code], "code %s appears twice", entry.code)
@@ -38,7 +37,6 @@ func TestObserveProducerRejection_EveryCodeRoundTripsItsSentinel(t *testing.T) {
 }
 
 func TestObserveProducerRejection_TransitionCrossesTheWire(t *testing.T) {
-	t.Parallel()
 	refused := &ObserveTransitionError{
 		Kind: ObserveProjectionKindRun, ID: "run-a",
 		From: string(RunLifecycleStatusCancelled), To: string(RunLifecycleStatusRunning),
@@ -58,7 +56,6 @@ func TestObserveProducerRejection_TransitionCrossesTheWire(t *testing.T) {
 }
 
 func TestObserveProducerRejection_StaleUpdateCrossesTheWire(t *testing.T) {
-	t.Parallel()
 	projected := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 	refused := &ObserveStaleUpdateError{Kind: ObserveProjectionKindAgent, ID: "agent-a", ObservedAt: projected.Add(-time.Minute), ProjectedAt: projected}
 	rejection := NewObserveProducerRejection(fmt.Errorf("observe producer: update agent state: %w", refused))
@@ -74,14 +71,12 @@ func TestObserveProducerRejection_StaleUpdateCrossesTheWire(t *testing.T) {
 }
 
 func TestObserveProducerRejection_UnclassifiedIsInternalWithoutDetail(t *testing.T) {
-	t.Parallel()
 	rejection := NewObserveProducerRejection(fmt.Errorf("docstore write /secret/path: %w", errors.New("disk full")))
 	assert.Equal(t, ObserveProducerRejectionInternal, rejection.Code)
 	assert.Equal(t, constants.ErrInternal.Error(), rejection.Message)
 }
 
 func TestObserveProducerRejection_ForbiddenCarriesNoDetail(t *testing.T) {
-	t.Parallel()
 	rejection := NewObserveProducerRejection(constants.ErrForbidden)
 	assert.Equal(t, ObserveProducerRejectionForbidden, rejection.Code)
 	assert.Equal(t, constants.ErrForbidden.Error(), rejection.Message)

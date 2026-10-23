@@ -51,7 +51,6 @@ func unavailableTestResultSet() *KSIResultSet {
 }
 
 func TestUnavailableIntervalValidateRejectsCrossBindingFields(t *testing.T) {
-	t.Parallel()
 	binding := unavailableTestBinding()
 	valid := UnavailableInterval{
 		KSIID:       "KSI-MLA-03",
@@ -74,7 +73,6 @@ func TestUnavailableIntervalValidateRejectsCrossBindingFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			candidate := valid
 			tt.mutate(&candidate)
 			err := candidate.Validate()
@@ -84,8 +82,7 @@ func TestUnavailableIntervalValidateRejectsCrossBindingFields(t *testing.T) {
 	}
 }
 
-func TestUnavailableIntervalStoreAppendFromResultSetPersistsOnlyFailures(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestUnavailableIntervalStoreAppendFromResultSetPersistsOnlyFailures(t *testing.T) {
 	fileSvc := setupHistoryTestFS(t)
 	store := NewUnavailableIntervalStore(fileSvc, filepath.Join(constants.DataDirname, constants.ComplianceDirname))
 	rs := unavailableTestResultSet()
@@ -100,8 +97,7 @@ func TestUnavailableIntervalStoreAppendFromResultSetPersistsOnlyFailures(t *test
 	assert.Equal(t, rs.Binding, intervals[0].Binding)
 }
 
-func TestUnavailableIntervalStoreAppendFromResultSetRejectsMismatchedResultBinding(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestUnavailableIntervalStoreAppendFromResultSetRejectsMismatchedResultBinding(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*EvaluationBinding)
@@ -114,9 +110,8 @@ func TestUnavailableIntervalStoreAppendFromResultSetRejectsMismatchedResultBindi
 		{name: "another scenario", mutate: func(binding *EvaluationBinding) { binding.AssertionAssessments.ScenarioIDs = []string{"scenario-2"} }},
 		{name: "another action", mutate: func(binding *EvaluationBinding) { binding.AssertionAssessments.ActionIDs = []string{"action-2"} }},
 	}
-	for _, test := range tests { //nolint:paralleltest // mutates package-level state
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			fileSvc := setupHistoryTestFS(t)
 			store := NewUnavailableIntervalStore(fileSvc, filepath.Join(constants.DataDirname, constants.ComplianceDirname))
 			resultSet := unavailableTestResultSet()
@@ -128,8 +123,7 @@ func TestUnavailableIntervalStoreAppendFromResultSetRejectsMismatchedResultBindi
 	}
 }
 
-func TestUnavailableIntervalStoreRejectsMalformedPersistedRecord(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestUnavailableIntervalStoreRejectsMalformedPersistedRecord(t *testing.T) {
 	fileSvc := setupHistoryTestFS(t)
 	dir := filepath.Join(constants.DataDirname, constants.ComplianceDirname)
 	store := NewUnavailableIntervalStore(fileSvc, dir)
@@ -140,8 +134,7 @@ func TestUnavailableIntervalStoreRejectsMalformedPersistedRecord(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrKSIUnavailableParseFailed)
 }
 
-func TestUnavailableIntervalStoreListMissingFileIsEmpty(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestUnavailableIntervalStoreListMissingFileIsEmpty(t *testing.T) {
 	fileSvc := setupHistoryTestFS(t)
 	store := NewUnavailableIntervalStore(fileSvc, filepath.Join(constants.DataDirname, constants.ComplianceDirname))
 
@@ -150,8 +143,7 @@ func TestUnavailableIntervalStoreListMissingFileIsEmpty(t *testing.T) { //nolint
 	assert.Empty(t, intervals)
 }
 
-func TestUnavailableIntervalStoreAppendFromResultSetRejectsNil(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestUnavailableIntervalStoreAppendFromResultSetRejectsNil(t *testing.T) {
 	fileSvc := setupHistoryTestFS(t)
 	store := NewUnavailableIntervalStore(fileSvc, filepath.Join(constants.DataDirname, constants.ComplianceDirname))
 

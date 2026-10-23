@@ -27,7 +27,6 @@ func write(t *testing.T, directory, name string) string {
 }
 
 func TestResetPreservesDataAndOtherIdentities(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	for _, name := range identityFiles {
 		write(t, dir, name)
@@ -50,7 +49,6 @@ func TestResetPreservesDataAndOtherIdentities(t *testing.T) {
 }
 
 func TestResetRefusesGateway(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cert := write(t, dir, "cli.crt")
 	write(t, dir, constants.GatewayRuntimeMarker)
@@ -60,7 +58,6 @@ func TestResetRefusesGateway(t *testing.T) {
 }
 
 func TestResetRefusesSymlinkBeforeRemovingCredentials(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cert := write(t, dir, "cli.crt")
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".ztd/pki"), 0700))

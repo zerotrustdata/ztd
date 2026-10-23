@@ -38,7 +38,6 @@ func (m *mockGitRunner) IsRepo(path string) bool {
 }
 
 func TestGitOpsTool_Metadata(t *testing.T) {
-	t.Parallel()
 	tool := &GitOpsTool{}
 	assert.Equal(t, "git_ops", tool.Name())
 	assert.Contains(t, tool.Description(), "git repository operations")
@@ -46,7 +45,6 @@ func TestGitOpsTool_Metadata(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_NotARepo(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		isRepoFunc: func(path string) bool { return false },
 	}
@@ -65,7 +63,6 @@ func TestGitOpsTool_Execute_NotARepo(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_Status(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			subcommand := args[0]
@@ -97,7 +94,6 @@ func TestGitOpsTool_Execute_Status(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_Log(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			return "hash1|author1|email1|date1|msg1\nhash2|author2|email2|date2|msg2", nil
@@ -120,7 +116,6 @@ func TestGitOpsTool_Execute_Log(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_Branches(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			subcommand := args[0]
@@ -151,7 +146,6 @@ func TestGitOpsTool_Execute_Branches(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_Remotes(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			return "origin\thttps://github.com/org/repo.git (fetch)\norigin\thttps://github.com/org/repo.git (push)", nil
@@ -174,7 +168,6 @@ func TestGitOpsTool_Execute_Remotes(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_RemoteURL(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		url      string
 		platform string
@@ -187,7 +180,6 @@ func TestGitOpsTool_Execute_RemoteURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.platform, func(t *testing.T) {
-			t.Parallel()
 			runner := &mockGitRunner{
 				runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 					return tt.url, nil
@@ -211,7 +203,6 @@ func TestGitOpsTool_Execute_RemoteURL(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_Diff(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			return "diff --git a/file1.go b/file1.go\nindex 123..456 100644\n--- a/file1.go\n+++ b/file1.go\n@@ -1,1 +1,1 @@\n-old\n+new", nil
@@ -235,7 +226,6 @@ func TestGitOpsTool_Execute_Diff(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_Diff_NoChanges(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			return "", nil
@@ -257,7 +247,6 @@ func TestGitOpsTool_Execute_Diff_NoChanges(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_InvalidArgs(t *testing.T) {
-	t.Parallel()
 	tool := &GitOpsTool{}
 	ctx := context.Background()
 
@@ -267,7 +256,6 @@ func TestGitOpsTool_Execute_InvalidArgs(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_UnsupportedOperation(t *testing.T) {
-	t.Parallel()
 	tool := &GitOpsTool{runner: &mockGitRunner{}}
 	ctx := context.Background()
 
@@ -278,7 +266,6 @@ func TestGitOpsTool_Execute_UnsupportedOperation(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_GitCommandError(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{
 		runFunc: func(ctx context.Context, repoPath string, args ...string) (string, error) {
 			return "fatal: not a git repository", fmt.Errorf("exit status 128")
@@ -298,7 +285,6 @@ func TestGitOpsTool_Execute_GitCommandError(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_PathTraversal(t *testing.T) {
-	t.Parallel()
 	tool := &GitOpsTool{}
 	ctx := context.Background()
 
@@ -313,7 +299,6 @@ func TestGitOpsTool_Execute_PathTraversal(t *testing.T) {
 }
 
 func TestGitOpsTool_Execute_InvalidRef(t *testing.T) {
-	t.Parallel()
 	runner := &mockGitRunner{}
 	tool := &GitOpsTool{runner: runner}
 	ctx := context.Background()

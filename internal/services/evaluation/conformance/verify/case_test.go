@@ -21,7 +21,6 @@ import (
 )
 
 func TestVerifyErrorClassMapsEachVerificationSentinel(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		err       error
@@ -38,14 +37,12 @@ func TestVerifyErrorClassMapsEachVerificationSentinel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.wantClass, verifyErrorClass(tt.err))
 		})
 	}
 }
 
 func TestInvalidEvidenceClassSeparatesForgeryFromBehaviour(t *testing.T) {
-	t.Parallel()
 	invalid := []evalv1.ConformanceFailureClass{
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN,
@@ -72,7 +69,6 @@ func TestInvalidEvidenceClassSeparatesForgeryFromBehaviour(t *testing.T) {
 }
 
 func TestA2ACarriesMarkerOnlyForExactStrictMarkerPayload(t *testing.T) {
-	t.Parallel()
 	const marker = "ztd-conformance run-1 attempt-1\n"
 	tests := []struct {
 		name    string
@@ -90,14 +86,12 @@ func TestA2ACarriesMarkerOnlyForExactStrictMarkerPayload(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, a2aCarriesMarker(tt.payload, marker))
 		})
 	}
 }
 
 func TestEffectOfReadsTheLastExecutedExpectation(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		expect []cases.Expect
@@ -113,14 +107,12 @@ func TestEffectOfReadsTheLastExecutedExpectation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, effectOf(cases.Case{Expect: tt.expect}))
 		})
 	}
 }
 
 func TestRejectionCodeMatchesNeverAcceptsUnspecifiedOrUnclassified(t *testing.T) {
-	t.Parallel()
 	l1 := operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
 	unclassified := operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
 	unspecified := operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
@@ -132,7 +124,6 @@ func TestRejectionCodeMatchesNeverAcceptsUnspecifiedOrUnclassified(t *testing.T)
 }
 
 func TestRefusalCodeMatchesNeverAcceptsUnspecifiedOrUnclassified(t *testing.T) {
-	t.Parallel()
 	missing := operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD
 	unclassified := operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED
 	unspecified := operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED

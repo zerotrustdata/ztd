@@ -86,10 +86,8 @@ func memberPublicKeys(s *SyntheticL2) []ed25519.PublicKey {
 }
 
 func TestL2Mutators_ChangeOnlyGovernanceL2AndLeaveHashUnchanged(t *testing.T) {
-	t.Parallel()
 	for _, fault := range l2Faults6 {
 		t.Run(string(fault), func(t *testing.T) {
-			t.Parallel()
 			src, err := NewSyntheticL2(2)
 			require.NoError(t, err)
 			env, a := l2Envelope(t, fault)
@@ -111,21 +109,18 @@ func TestL2Mutators_ChangeOnlyGovernanceL2AndLeaveHashUnchanged(t *testing.T) {
 }
 
 func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	src, err := NewSyntheticL2(2)
 	require.NoError(t, err)
 	pubs := memberPublicKeys(src)
 
 	t.Run("missing leaves l2 nil", func(t *testing.T) {
-		t.Parallel()
 		env, a := l2Envelope(t, cases.FaultL2Missing)
 		require.NoError(t, L2Mutators(src)[cases.FaultL2Missing].Apply(ctx, env, a))
 		assert.Nil(t, env.GetGovernance().GetL2())
 	})
 
 	t.Run("below quorum keeps the first K-1 votes", func(t *testing.T) {
-		t.Parallel()
 		env, a := l2Envelope(t, cases.FaultL2BelowQuorum)
 		valid, err := src.Proof(ctx, env)
 		require.NoError(t, err)
@@ -137,7 +132,6 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 	})
 
 	t.Run("a single application falls below quorum with zero votes", func(t *testing.T) {
-		t.Parallel()
 		one, err := NewSyntheticL2(1)
 		require.NoError(t, err)
 		env, a := l2Envelope(t, cases.FaultL2BelowQuorum)
@@ -148,7 +142,6 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 	})
 
 	t.Run("duplicate signer appends a copy of vote 0 to the full quorum", func(t *testing.T) {
-		t.Parallel()
 		env, a := l2Envelope(t, cases.FaultL2DuplicateSigner)
 		valid, err := src.Proof(ctx, env)
 		require.NoError(t, err)
@@ -162,7 +155,6 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 	})
 
 	t.Run("signature flipped changes one hex digit of vote 0 and fails verification", func(t *testing.T) {
-		t.Parallel()
 		env, a := l2Envelope(t, cases.FaultL2SignatureFlipped)
 		valid, err := src.Proof(ctx, env)
 		require.NoError(t, err)
@@ -185,7 +177,6 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 	})
 
 	t.Run("non-member replaces vote 0 with a vote from a key outside the set", func(t *testing.T) {
-		t.Parallel()
 		env, a := l2Envelope(t, cases.FaultL2NonMember)
 		valid, err := src.Proof(ctx, env)
 		require.NoError(t, err)
@@ -201,7 +192,6 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 	})
 
 	t.Run("unknown set names the unknown consensus set and keeps the votes", func(t *testing.T) {
-		t.Parallel()
 		env, a := l2Envelope(t, cases.FaultL2UnknownSet)
 		valid, err := src.Proof(ctx, env)
 		require.NoError(t, err)
@@ -213,7 +203,6 @@ func TestL2Mutators_FaultShapesAgainstValidProof(t *testing.T) {
 }
 
 func TestNonMemberVote_VerifiesAgainstItsOwnFreshKeyOnly(t *testing.T) {
-	t.Parallel()
 	src, err := NewSyntheticL2(2)
 	require.NoError(t, err)
 	env := mustEnvelope(t, cases.FaultL2NonMember)
@@ -231,7 +220,6 @@ func TestNonMemberVote_VerifiesAgainstItsOwnFreshKeyOnly(t *testing.T) {
 }
 
 func TestSyntheticL2_ProofVerifiesUnderItsMemberKeys(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	src, err := NewSyntheticL2(3)
 	require.NoError(t, err)
@@ -255,7 +243,6 @@ func TestSyntheticL2_ProofVerifiesUnderItsMemberKeys(t *testing.T) {
 }
 
 func TestL2Mutators_FailWhenTheProofCannotBeCut(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	tests := []struct {
@@ -270,7 +257,6 @@ func TestL2Mutators_FailWhenTheProofCannotBeCut(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			env, a := l2Envelope(t, tt.fault)
 			err := L2Mutators(tt.src)[tt.fault].Apply(ctx, env, a)
 			require.ErrorIs(t, err, constants.ErrMissingRequiredField)
@@ -280,10 +266,8 @@ func TestL2Mutators_FailWhenTheProofCannotBeCut(t *testing.T) {
 }
 
 func TestL2Mutators_PropagateDeliberationFailure(t *testing.T) {
-	t.Parallel()
 	for _, fault := range l2Faults6 {
 		t.Run(string(fault), func(t *testing.T) {
-			t.Parallel()
 			env, a := l2Envelope(t, fault)
 			err := L2Mutators(failingL2{})[fault].Apply(context.Background(), env, a)
 			require.Error(t, err)
@@ -293,7 +277,6 @@ func TestL2Mutators_PropagateDeliberationFailure(t *testing.T) {
 }
 
 func TestSyntheticL2_RejectsZeroVotesAndNilEnvelope(t *testing.T) {
-	t.Parallel()
 	_, err := NewSyntheticL2(0)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 

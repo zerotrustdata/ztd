@@ -21,7 +21,6 @@ type documentUpdateTestPayload struct {
 }
 
 func TestDecodeDocumentUpdateFields_UsesTypedJSONObject(t *testing.T) {
-	t.Parallel()
 	payload, err := json.Marshal(documentUpdateTestPayload{Active: false, Name: "worker-a"})
 	require.NoError(t, err)
 
@@ -35,8 +34,6 @@ func TestDecodeDocumentUpdateFields_UsesTypedJSONObject(t *testing.T) {
 }
 
 func TestDecodeDocumentUpdateFields_RejectsNonObjectAndEmptyObject(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name    string
 		payload json.RawMessage
@@ -47,8 +44,6 @@ func TestDecodeDocumentUpdateFields_RejectsNonObjectAndEmptyObject(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			_, err := decodeDocumentUpdateFields(tt.payload)
 			require.Error(t, err)
 		})

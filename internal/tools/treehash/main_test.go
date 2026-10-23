@@ -16,7 +16,6 @@ import (
 )
 
 func TestRunTreehash_DefaultsToExplicitManifestCollection(t *testing.T) {
-	t.Parallel()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	called := false
@@ -40,7 +39,6 @@ func TestRunTreehash_DefaultsToExplicitManifestCollection(t *testing.T) {
 }
 
 func TestRunTreehash_RejectsInvalidInvocation(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name string
 		args []string
@@ -50,7 +48,6 @@ func TestRunTreehash_RejectsInvalidInvocation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
 			code := runTreehash(test.args, &stdout, &stderr, func(string, []string, []string) (string, error) {
@@ -64,7 +61,6 @@ func TestRunTreehash_RejectsInvalidInvocation(t *testing.T) {
 }
 
 func TestRunTreehash_PropagatesExcludesAndCollectorErrors(t *testing.T) {
-	t.Parallel()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := runTreehash([]string{"-exclude", " .git, ,bin ", "cmd"}, &stdout, &stderr, func(base string, entries, excludes []string) (string, error) {
@@ -81,10 +77,8 @@ func TestRunTreehash_PropagatesExcludesAndCollectorErrors(t *testing.T) {
 }
 
 func TestRunTreehash_RejectsGitAndAutoModes(t *testing.T) {
-	t.Parallel()
 	for _, mode := range []string{"git", "auto"} {
 		t.Run(mode, func(t *testing.T) {
-			t.Parallel()
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
 

@@ -69,13 +69,11 @@ func newAuditRecordFixture(t *testing.T) *auditRecordFixture {
 }
 
 func TestAuditRecordImporter_SourceID(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	assert.Equal(t, "audit-record", NewAuditRecordImporter(fixture.reader, fixture.binding).SourceID())
 }
 
 func TestAuditRecordImporter_Import_LoadsCanonicalEvent(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	nodes, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)
@@ -96,7 +94,6 @@ func TestAuditRecordImporter_Import_LoadsCanonicalEvent(t *testing.T) {
 }
 
 func TestAuditRecordImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	tests := []struct {
 		name     string
@@ -112,7 +109,6 @@ func TestAuditRecordImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -121,7 +117,6 @@ func TestAuditRecordImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestAuditRecordImporter_Import_RejectsContentMutations(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		mutate    func(*testing.T, *auditRecordFixture)
@@ -146,7 +141,6 @@ func TestAuditRecordImporter_Import_RejectsContentMutations(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newAuditRecordFixture(t)
 			test.mutate(t, fixture)
 			_, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -157,7 +151,6 @@ func TestAuditRecordImporter_Import_RejectsContentMutations(t *testing.T) {
 }
 
 func TestAuditRecordImporter_Import_RejectsSessionAndTimestampMismatch(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		mutate    func(*testing.T, *auditRecordFixture)
@@ -177,7 +170,6 @@ func TestAuditRecordImporter_Import_RejectsSessionAndTimestampMismatch(t *testin
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newAuditRecordFixture(t)
 			test.mutate(t, fixture)
 			_, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -188,7 +180,6 @@ func TestAuditRecordImporter_Import_RejectsSessionAndTimestampMismatch(t *testin
 }
 
 func TestAuditRecordImporter_Import_WrapsReadFailure(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	readErr := fmt.Errorf("audit source unavailable")
 	_, err := NewAuditRecordImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
@@ -198,7 +189,6 @@ func TestAuditRecordImporter_Import_WrapsReadFailure(t *testing.T) {
 }
 
 func TestAuditRecordImporter_Import_RespectsCancellation(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -207,7 +197,6 @@ func TestAuditRecordImporter_Import_RespectsCancellation(t *testing.T) {
 }
 
 func TestAuditRecordImporter_Import_ProducesValidGraph(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	nodes, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)
@@ -221,7 +210,6 @@ func TestAuditRecordImporter_Import_ProducesValidGraph(t *testing.T) {
 }
 
 func TestAuditRecordImporter_Import_PreservesMissingArtifactError(t *testing.T) {
-	t.Parallel()
 	fixture := newAuditRecordFixture(t)
 	fixture.reader.files = map[string][]byte{}
 	_, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())

@@ -19,8 +19,6 @@ import (
 )
 
 func TestIsValidAgentTransition_EmptyCurrentAcceptsAnyTarget(t *testing.T) {
-	t.Parallel()
-
 	for _, status := range []models.AgentLifecycleStatus{
 		models.AgentLifecycleStatusIdle,
 		models.AgentLifecycleStatusQueued,
@@ -36,8 +34,6 @@ func TestIsValidAgentTransition_EmptyCurrentAcceptsAnyTarget(t *testing.T) {
 }
 
 func TestIsValidAgentTransition_SameStatusIsIdempotent(t *testing.T) {
-	t.Parallel()
-
 	for _, status := range []models.AgentLifecycleStatus{
 		models.AgentLifecycleStatusIdle,
 		models.AgentLifecycleStatusQueued,
@@ -53,8 +49,6 @@ func TestIsValidAgentTransition_SameStatusIsIdempotent(t *testing.T) {
 }
 
 func TestIsValidAgentTransition_ValidTransitions(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name  string
 		from  models.AgentLifecycleStatus
@@ -79,16 +73,12 @@ func TestIsValidAgentTransition_ValidTransitions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tc.valid, isValidAgentTransition(tc.from, tc.to))
 		})
 	}
 }
 
 func TestIsValidAgentTransition_InvalidTransitions(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name  string
 		from  models.AgentLifecycleStatus
@@ -106,16 +96,12 @@ func TestIsValidAgentTransition_InvalidTransitions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tc.valid, isValidAgentTransition(tc.from, tc.to))
 		})
 	}
 }
 
 func TestIsValidRunTransition_EmptyCurrentAcceptsAnyTarget(t *testing.T) {
-	t.Parallel()
-
 	for _, status := range []models.RunLifecycleStatus{
 		models.RunLifecycleStatusQueued,
 		models.RunLifecycleStatusRunning,
@@ -130,8 +116,6 @@ func TestIsValidRunTransition_EmptyCurrentAcceptsAnyTarget(t *testing.T) {
 }
 
 func TestIsValidRunTransition_SameStatusIsIdempotent(t *testing.T) {
-	t.Parallel()
-
 	for _, status := range []models.RunLifecycleStatus{
 		models.RunLifecycleStatusQueued,
 		models.RunLifecycleStatusRunning,
@@ -146,8 +130,6 @@ func TestIsValidRunTransition_SameStatusIsIdempotent(t *testing.T) {
 }
 
 func TestIsValidRunTransition_ValidTransitions(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name  string
 		from  models.RunLifecycleStatus
@@ -166,16 +148,12 @@ func TestIsValidRunTransition_ValidTransitions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tc.valid, isValidRunTransition(tc.from, tc.to))
 		})
 	}
 }
 
 func TestIsValidRunTransition_TerminalStateRegressionRejected(t *testing.T) {
-	t.Parallel()
-
 	terminalStates := []models.RunLifecycleStatus{
 		models.RunLifecycleStatusCompleted,
 		models.RunLifecycleStatusFailed,
@@ -189,8 +167,6 @@ func TestIsValidRunTransition_TerminalStateRegressionRejected(t *testing.T) {
 	for _, terminal := range terminalStates {
 		for _, target := range nonTerminalTargets {
 			t.Run(string(terminal)+"->"+string(target), func(t *testing.T) {
-				t.Parallel()
-
 				assert.False(t, isValidRunTransition(terminal, target),
 					"terminal state %s must not regress to %s", terminal, target)
 			})
@@ -199,14 +175,11 @@ func TestIsValidRunTransition_TerminalStateRegressionRejected(t *testing.T) {
 }
 
 func TestIsValidRunTransition_InvalidStatusRejected(t *testing.T) {
-	t.Parallel()
-
 	assert.False(t, isValidRunTransition(models.RunLifecycleStatusRunning, models.RunLifecycleStatus("bogus")))
 	assert.False(t, isValidRunTransition(models.RunLifecycleStatus("bogus"), models.RunLifecycleStatusRunning))
 }
 
 func TestSSEEventEnvelope_MarshalRoundTrip(t *testing.T) {
-	t.Parallel()
 	data := []byte(`{"agent_id":"a1","status":"running"}`)
 	env := sseEventEnvelope{
 		Type: string(constants.EventAppAgentStatusUpdated),
@@ -219,13 +192,10 @@ func TestSSEEventEnvelope_MarshalRoundTrip(t *testing.T) {
 }
 
 func TestObserveProducerID_IsStableIdentifier(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "ztd-gateway-observe-producer", observeProducerID)
 }
 
 func TestAgentTransitions_AllStatusesHaveEntry(t *testing.T) {
-	t.Parallel()
-
 	allStatuses := []models.AgentLifecycleStatus{
 		models.AgentLifecycleStatusIdle,
 		models.AgentLifecycleStatusQueued,
@@ -242,8 +212,6 @@ func TestAgentTransitions_AllStatusesHaveEntry(t *testing.T) {
 }
 
 func TestRunTransitions_AllStatusesHaveEntry(t *testing.T) {
-	t.Parallel()
-
 	allStatuses := []models.RunLifecycleStatus{
 		models.RunLifecycleStatusQueued,
 		models.RunLifecycleStatusRunning,
@@ -262,8 +230,6 @@ func TestRunTransitions_AllStatusesHaveEntry(t *testing.T) {
 // agent state can reach at least one terminal state (completed or failed) so
 // agents do not get stuck in non-terminal states without a valid exit.
 func TestAgentTransitions_EveryNonTerminalCanReachTerminal(t *testing.T) {
-	t.Parallel()
-
 	nonTerminal := []models.AgentLifecycleStatus{
 		models.AgentLifecycleStatusIdle,
 		models.AgentLifecycleStatusQueued,
@@ -281,8 +247,6 @@ func TestAgentTransitions_EveryNonTerminalCanReachTerminal(t *testing.T) {
 // TestRunTransitions_EveryNonTerminalCanReachTerminal ensures every
 // non-terminal run state can reach at least one terminal state.
 func TestRunTransitions_EveryNonTerminalCanReachTerminal(t *testing.T) {
-	t.Parallel()
-
 	nonTerminal := []models.RunLifecycleStatus{
 		models.RunLifecycleStatusQueued,
 		models.RunLifecycleStatusRunning,
@@ -300,7 +264,6 @@ func TestRunTransitions_EveryNonTerminalCanReachTerminal(t *testing.T) {
 // TestErrorConstants_ObserveProducerErrorsAreDistinct ensures the producer
 // error constants are distinct and wrappable with errors.Is.
 func TestErrorConstants_ObserveProducerErrorsAreDistinct(t *testing.T) {
-	t.Parallel()
 	assert.NotEqual(t, constants.ErrObserveInvalidTransition, constants.ErrObserveStaleUpdate)
 	assert.NotErrorIs(t, constants.ErrObserveInvalidTransition, constants.ErrObserveStaleUpdate)
 }
@@ -310,7 +273,6 @@ func TestErrorConstants_ObserveProducerErrorsAreDistinct(t *testing.T) {
 // distinguish agent vs run ownership mismatches with errors.Is, while both
 // map to the same forbidden HTTP response at the controller boundary.
 func TestErrorConstants_ObserveAgentAndRunNotFoundAreDistinct(t *testing.T) {
-	t.Parallel()
 	assert.NotEqual(t, constants.ErrObserveAgentNotFound, constants.ErrObserveRunNotFound)
 	assert.NotErrorIs(t, constants.ErrObserveAgentNotFound, constants.ErrObserveRunNotFound,
 		"agent and run ownership sentinels must be distinguishable")

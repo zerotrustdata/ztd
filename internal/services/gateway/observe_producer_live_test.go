@@ -94,8 +94,6 @@ func (tap *stopRequestTap) received() []liveStopRequest {
 // persists the cycle state projection before emitting the
 // ai.eval.cycle.started SSE event.
 func TestStartCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-start-cycle"
@@ -150,8 +148,6 @@ func TestStartCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // persists the cycle state projection before emitting the
 // ai.eval.cycle.completed SSE event.
 func TestCompleteCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-complete-cycle"
@@ -203,8 +199,6 @@ func TestCompleteCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // StartAssignment persists the assignment progress projection before emitting
 // the ai.eval.assignment.started SSE event.
 func TestStartAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-start-assignment"
@@ -259,8 +253,6 @@ func TestStartAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // CompleteAssignment persists the assignment progress projection before
 // emitting the ai.eval.assignment.completed SSE event with terminal status.
 func TestCompleteAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-complete-assignment"
@@ -314,8 +306,6 @@ func TestCompleteAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // with exact served model tag, backend, and quantization from the provider
 // boundary.
 func TestRecordModelRoleInvocation_EmitsSSEWithExactIdentity(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-role-invoke"
@@ -352,8 +342,6 @@ func TestRecordModelRoleInvocation_EmitsSSEWithExactIdentity(t *testing.T) {
 // RecordMetricAvailability emits an ai.eval.metric.available SSE event with
 // per-variant aggregation, numerator, denominator, rate, and unit.
 func TestRecordMetricAvailable_EmitsSSEWithPerVariantAggregation(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-metric"
@@ -399,8 +387,6 @@ func TestRecordMetricAvailable_EmitsSSEWithPerVariantAggregation(t *testing.T) {
 // CompleteVerifier persists the verification progress projection before
 // emitting the ai.eval.verifier.completed SSE event.
 func TestCompleteVerifier_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-verifier"
@@ -444,8 +430,6 @@ func TestCompleteVerifier_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // RecordProofAvailability persists the publication progress projection
 // before emitting the ai.eval.proof.available SSE event.
 func TestRecordProofAvailability_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-proof"
@@ -480,8 +464,6 @@ func TestRecordProofAvailability_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // CompletePublication persists the publication progress projection before
 // emitting the ai.eval.publication.completed SSE event.
 func TestCompletePublication_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-pub"
@@ -530,8 +512,6 @@ func TestCompletePublication_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // persists the source freshness projection before emitting the
 // ai.eval.heartbeat SSE event.
 func TestEmitHeartbeat_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-heartbeat"
@@ -576,8 +556,6 @@ func TestEmitHeartbeat_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // persists the supervisor state projection before emitting the
 // ai.eval.stop.requested SSE event with typed stop reason.
 func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-stop"
@@ -619,8 +597,6 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 // rejected before any projection is persisted or event emitted, so the event
 // can never reach a session without naming the run it stops.
 func TestRequestStop_RequiresRunID(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, _ := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-stop-no-run"
@@ -643,8 +619,6 @@ func TestRequestStop_RequiresRunID(t *testing.T) {
 // session is delivered on that session's route only, and that the delivered
 // event names the run it stops.
 func TestRequestStop_CLIRouteCarriesRunID(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-stop-cli"
@@ -670,8 +644,6 @@ func TestRequestStop_CLIRouteCarriesRunID(t *testing.T) {
 // safety stop reason sets the safety_stopped freshness and safety_stopped
 // supervisor status.
 func TestRequestStop_SafetyStopSetsSafetyStoppedFreshness(t *testing.T) {
-	t.Parallel()
-
 	producer, docStore, _ := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-safety-stop"
@@ -697,8 +669,6 @@ func TestRequestStop_SafetyStopSetsSafetyStoppedFreshness(t *testing.T) {
 // TestMonotonicSourceSequence verifies that source_sequence values are
 // monotonically increasing across multiple live events.
 func TestMonotonicSourceSequence(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-seq"
@@ -732,8 +702,6 @@ func TestMonotonicSourceSequence(t *testing.T) {
 // TestDuplicateEventIDSuppression verifies that a duplicate event_id is
 // rejected with ErrObserveDuplicateEventID.
 func TestDuplicateEventIDSuppression(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-dup"
@@ -767,8 +735,6 @@ func TestDuplicateEventIDSuppression(t *testing.T) {
 // event is emitted when projection persistence fails. We simulate this by
 // closing the document store database before calling a live producer method.
 func TestPersistBeforeEvent_NoSSEOnPersistenceFailure(t *testing.T) {
-	t.Parallel()
-
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
 	db, err := sqliteutil.OpenDB(cfg, logger)
@@ -801,8 +767,6 @@ func TestPersistBeforeEvent_NoSSEOnPersistenceFailure(t *testing.T) {
 // TestLiveEvents_CrossUserIsolation verifies that live events from one user
 // do not appear in another user's SSE stream.
 func TestLiveEvents_CrossUserIsolation(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userA := "user-live-a"
@@ -827,8 +791,6 @@ func TestLiveEvents_CrossUserIsolation(t *testing.T) {
 // TestStartCycle_MissingCycleIDReturnsError verifies that StartCycle returns
 // an error when cycle_id is empty.
 func TestStartCycle_MissingCycleIDReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 	route := SSERoute{UserID: "user", WebSessionID: "web"}
 	err := producer.StartCycle(context.Background(), "user", route, models.CycleStateProjection{
@@ -840,8 +802,6 @@ func TestStartCycle_MissingCycleIDReturnsError(t *testing.T) {
 // TestStartCycle_MissingCampaignIDReturnsError verifies that StartCycle
 // returns an error when campaign_id is empty.
 func TestStartCycle_MissingCampaignIDReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 	route := SSERoute{UserID: "user", WebSessionID: "web"}
 	err := producer.StartCycle(context.Background(), "user", route, models.CycleStateProjection{
@@ -853,8 +813,6 @@ func TestStartCycle_MissingCampaignIDReturnsError(t *testing.T) {
 // TestStartAssignment_MissingAssignmentIDReturnsError verifies that
 // StartAssignment returns an error when assignment_id is empty.
 func TestStartAssignment_MissingAssignmentIDReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 	route := SSERoute{UserID: "user", WebSessionID: "web"}
 	err := producer.StartAssignment(context.Background(), "user", route, models.AssignmentProgressProjection{
@@ -866,8 +824,6 @@ func TestStartAssignment_MissingAssignmentIDReturnsError(t *testing.T) {
 // TestEmitHeartbeat_MissingSourceIDReturnsError verifies that EmitHeartbeat
 // returns an error when source_id is empty.
 func TestEmitHeartbeat_MissingSourceIDReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 	route := SSERoute{UserID: "user", WebSessionID: "web"}
 	err := producer.EmitHeartbeat(context.Background(), "user", route, "", "campaign")
@@ -880,9 +836,7 @@ func TestEmitHeartbeat_MissingSourceIDReturnsError(t *testing.T) {
 // we verify that the known fields round-trip correctly and the wire shape
 // matches the protocol JSON.
 func TestLiveEventPayloads_RoundTripSerialization(t *testing.T) {
-	t.Parallel()
 	// EvalCycleStartedPayload
-
 	original := models.EvalCycleStartedPayload{
 		SchemaVersion:       "1.0.0",
 		SourceSequence:      42,
@@ -924,8 +878,6 @@ func TestLiveEventPayloads_RoundTripSerialization(t *testing.T) {
 // cycle, complete verifier, record proof, complete publication) emits all
 // events in order with monotonically increasing source_sequence values.
 func TestFullCampaignLifecycle_EventsInOrder(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-full"
@@ -1047,8 +999,6 @@ func TestFullCampaignLifecycle_EventsInOrder(t *testing.T) {
 // TestUnavailableMeasurementStatus verifies that an assignment with
 // unavailable terminal status is correctly persisted and emitted.
 func TestUnavailableMeasurementStatus(t *testing.T) {
-	t.Parallel()
-
 	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
 
 	userID := "user-live-unavail"
@@ -1082,8 +1032,6 @@ func TestUnavailableMeasurementStatus(t *testing.T) {
 // TestStaleAndStopTransitions verifies that stop events carry the correct
 // freshness labels for graceful vs safety stops.
 func TestStaleAndStopTransitions(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 
 	// Graceful stop -> intentionally_stopped.
@@ -1116,7 +1064,6 @@ func TestStaleAndStopTransitions(t *testing.T) {
 // RoleCombinationProjection struct correctly binds all three exact variant
 // identities with served model tags, backends, and quantization.
 func TestRoleCombinationProjection_ExactBinding(t *testing.T) {
-	t.Parallel()
 	proj := models.RoleCombinationProjection{
 		RoleCombinationID:     "combo-exact",
 		CampaignID:            "campaign-exact",
@@ -1150,7 +1097,6 @@ func TestRoleCombinationProjection_ExactBinding(t *testing.T) {
 // ObservedMeasurement struct carries scope, collector_version, and
 // evidence_hash fields.
 func TestObservedMeasurement_ExtendedFields(t *testing.T) {
-	t.Parallel()
 	meas := models.ObservedMeasurement{
 		SchemaVersion:    "1.0.0",
 		MetricID:         "latency",
@@ -1175,7 +1121,6 @@ func TestObservedMeasurement_ExtendedFields(t *testing.T) {
 // TestEvalDetail_ExtendedFields verifies that the extended EvalDetail struct
 // carries the new role-combination, benchmark, environment, and proof fields.
 func TestEvalDetail_ExtendedFields(t *testing.T) {
-	t.Parallel()
 	detail := models.EvalDetail{
 		SchemaVersion:       "1.0.0",
 		RunID:               "run-ext",
@@ -1222,8 +1167,6 @@ func TestEvalDetail_ExtendedFields(t *testing.T) {
 // TestLiveEvent_InvalidRouteReturnsError verifies that live producer methods
 // reject invalid SSE routes.
 func TestLiveEvent_InvalidRouteReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 
 	// Missing session ID.
@@ -1235,8 +1178,6 @@ func TestLiveEvent_InvalidRouteReturnsError(t *testing.T) {
 // TestRecordMetricAvailability_MissingCampaignIDReturnsError verifies that
 // RecordMetricAvailability returns an error when campaign_id is empty.
 func TestRecordMetricAvailability_MissingCampaignIDReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 	route := SSERoute{UserID: "user", WebSessionID: "web"}
 	err := producer.RecordMetricAvailability(context.Background(), "user", route, models.EvalMetricAvailablePayload{
@@ -1248,8 +1189,6 @@ func TestRecordMetricAvailability_MissingCampaignIDReturnsError(t *testing.T) {
 // TestRecordModelRoleInvocation_MissingVariantIDReturnsError verifies that
 // RecordModelRoleInvocation returns an error when variant_id is empty.
 func TestRecordModelRoleInvocation_MissingVariantIDReturnsError(t *testing.T) {
-	t.Parallel()
-
 	producer, _, _ := newObserveProducerLiveTestEnv(t)
 	route := SSERoute{UserID: "user", WebSessionID: "web"}
 	err := producer.RecordModelRoleInvocation(context.Background(), "user", route, models.AssignmentProgressProjection{
@@ -1262,8 +1201,6 @@ func TestRecordModelRoleInvocation_MissingVariantIDReturnsError(t *testing.T) {
 // TestErrors_NotNil verifies that the new error constants are non-nil and
 // distinct.
 func TestErrors_NotNil(t *testing.T) {
-	t.Parallel()
-
 	errs := []error{
 		constants.ErrObserveCampaignIDRequired,
 		constants.ErrObserveCycleIDRequired,

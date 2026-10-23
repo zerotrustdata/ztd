@@ -47,7 +47,7 @@ func setupGatewayTestEnv(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(protocolDir, "paths.json"), []byte(cmdtest.MinimalPathsJSON(t)), constants.PermFilePublic))
 }
 
-func TestGatewayStopCmd_NoConfigReturnsError(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayStopCmd_NoConfigReturnsError(t *testing.T) {
 	cmdtest.ChdirTemp(t)
 
 	originalLoader := shared.ConfigLoad
@@ -65,7 +65,7 @@ func TestGatewayStopCmd_NoConfigReturnsError(t *testing.T) { //nolint:parallelte
 	require.Error(t, err)
 }
 
-func TestGatewayStatusCmd_NoConfigReturnsError(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayStatusCmd_NoConfigReturnsError(t *testing.T) {
 	cmdtest.ChdirTemp(t)
 
 	originalLoader := shared.ConfigLoad
@@ -83,7 +83,7 @@ func TestGatewayStatusCmd_NoConfigReturnsError(t *testing.T) { //nolint:parallel
 	require.Error(t, err)
 }
 
-func TestGatewaySettingsCmd_NoConfigReturnsError(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewaySettingsCmd_NoConfigReturnsError(t *testing.T) {
 	cmdtest.ChdirTemp(t)
 
 	cmd := gatewaySettingsCmd()
@@ -95,7 +95,7 @@ func TestGatewaySettingsCmd_NoConfigReturnsError(t *testing.T) { //nolint:parall
 	require.Error(t, err)
 }
 
-func TestGatewayResetCmd_NoConfigReturnsError(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayResetCmd_NoConfigReturnsError(t *testing.T) {
 	cmdtest.ChdirTemp(t)
 
 	originalLoader := shared.ConfigLoad
@@ -114,7 +114,7 @@ func TestGatewayResetCmd_NoConfigReturnsError(t *testing.T) { //nolint:parallelt
 	require.Error(t, err)
 }
 
-func TestGatewayCleanCmd_NoConfigReturnsError(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayCleanCmd_NoConfigReturnsError(t *testing.T) {
 	cmdtest.ChdirTemp(t)
 
 	originalLoader := shared.ConfigLoad
@@ -132,7 +132,7 @@ func TestGatewayCleanCmd_NoConfigReturnsError(t *testing.T) { //nolint:parallelt
 	require.Error(t, err)
 }
 
-func TestGatewayCleanCmd_AbortsOnNoResponse(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayCleanCmd_AbortsOnNoResponse(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -152,7 +152,7 @@ func TestGatewayCleanCmd_AbortsOnNoResponse(t *testing.T) { //nolint:paralleltes
 	assert.Contains(t, buf.String(), "Aborted")
 }
 
-func TestGatewayResetCmd_AbortsOnNoResponse(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayResetCmd_AbortsOnNoResponse(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayResetCmd()
@@ -172,7 +172,7 @@ func TestGatewayResetCmd_AbortsOnNoResponse(t *testing.T) { //nolint:paralleltes
 	assert.Contains(t, buf.String(), "Aborted")
 }
 
-func TestGatewayStartCmd_InvalidPostureReturnsError(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayStartCmd_InvalidPostureReturnsError(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayStartCmd()
@@ -186,7 +186,7 @@ func TestGatewayStartCmd_InvalidPostureReturnsError(t *testing.T) { //nolint:par
 	assert.ErrorIs(t, err, constants.ErrInvalidPosture)
 }
 
-func TestGatewayStopCmd_NotRunningReturnsNil(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayStopCmd_NotRunningReturnsNil(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayStopCmd()
@@ -199,7 +199,7 @@ func TestGatewayStopCmd_NotRunningReturnsNil(t *testing.T) { //nolint:parallelte
 	assert.Contains(t, buf.String(), "not running")
 }
 
-func TestGatewayStatusCmd_NotRunningReturnsStopped(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayStatusCmd_NotRunningReturnsStopped(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayStatusCmd()
@@ -232,8 +232,7 @@ func (m *statusMockClient) Post(string, interface{}) ([]byte, error) { return ni
 func (m *statusMockClient) Put(string, interface{}) ([]byte, error)  { return nil, nil }
 func (m *statusMockClient) Delete(string) ([]byte, error)            { return nil, nil }
 
-func TestGatewayStatusCmd_ReportsConnectedOperators(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStatusCmd_ReportsConnectedOperators(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	healthResp, _ := json.Marshal(models.HealthResponse{
@@ -309,8 +308,7 @@ func TestGatewayStatusCmd_ReportsConnectedOperators(t *testing.T) { //nolint:par
 	assert.NotContains(t, out, "old-stopped-op")
 }
 
-func TestGatewayStatusCmd_ReportsNoConnectedOperatorsWhenEmpty(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStatusCmd_ReportsNoConnectedOperatorsWhenEmpty(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	healthResp, _ := json.Marshal(models.HealthResponse{
@@ -347,8 +345,7 @@ func TestGatewayStatusCmd_ReportsNoConnectedOperatorsWhenEmpty(t *testing.T) { /
 	assert.Contains(t, out, "Operators  none")
 }
 
-func TestGatewayStatusCmd_ReportsEnrollmentSections(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStatusCmd_ReportsEnrollmentSections(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	healthResp, _ := json.Marshal(models.HealthResponse{Status: constants.GatewayModeStatusOK, PID: 9999})
@@ -400,8 +397,7 @@ func TestGatewayStatusCmd_ReportsEnrollmentSections(t *testing.T) { //nolint:par
 
 }
 
-func TestGatewayStatusCmd_ReportsEmptyEnrollmentSections(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStatusCmd_ReportsEmptyEnrollmentSections(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	healthResp, _ := json.Marshal(models.HealthResponse{Status: constants.GatewayModeStatusOK, PID: 9999})
@@ -434,8 +430,7 @@ func TestGatewayStatusCmd_ReportsEmptyEnrollmentSections(t *testing.T) { //nolin
 	assert.Contains(t, out, "Operators  none")
 }
 
-func TestGatewayStatusCmd_EnrollmentListUnavailable(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStatusCmd_EnrollmentListUnavailable(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	healthResp, _ := json.Marshal(models.HealthResponse{Status: constants.GatewayModeStatusOK, PID: 9999})
@@ -462,7 +457,7 @@ func TestGatewayStatusCmd_EnrollmentListUnavailable(t *testing.T) { //nolint:par
 
 }
 
-func TestGatewayLogsCmd_NoLogFileReturnsMessage(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayLogsCmd_NoLogFileReturnsMessage(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayLogsCmd()
@@ -475,7 +470,7 @@ func TestGatewayLogsCmd_NoLogFileReturnsMessage(t *testing.T) { //nolint:paralle
 	assert.Contains(t, buf.String(), "No log file found")
 }
 
-func TestGatewayCleanCmd_ForceFlagSkipsPrompt(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayCleanCmd_ForceFlagSkipsPrompt(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -489,7 +484,7 @@ func TestGatewayCleanCmd_ForceFlagSkipsPrompt(t *testing.T) { //nolint:parallelt
 	assert.Contains(t, buf.String(), "Clean complete")
 }
 
-func TestGatewayCleanCmd_AbortedOutputContainsNoDestructiveAction(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayCleanCmd_AbortedOutputContainsNoDestructiveAction(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -510,7 +505,7 @@ func TestGatewayCleanCmd_AbortedOutputContainsNoDestructiveAction(t *testing.T) 
 	assert.NotContains(t, buf.String(), "Clean complete")
 }
 
-func TestGatewayResetCmd_WarningMessagesPrintedBeforePrompt(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayResetCmd_WarningMessagesPrintedBeforePrompt(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayResetCmd()
@@ -534,7 +529,7 @@ func TestGatewayResetCmd_WarningMessagesPrintedBeforePrompt(t *testing.T) { //no
 	assert.Contains(t, output, "Aborted")
 }
 
-func TestGatewayCleanCmd_WarningMessagesPrintedBeforePrompt(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayCleanCmd_WarningMessagesPrintedBeforePrompt(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -557,7 +552,7 @@ func TestGatewayCleanCmd_WarningMessagesPrintedBeforePrompt(t *testing.T) { //no
 	assert.Contains(t, output, "Aborted")
 }
 
-func TestGatewayStatusCmd_StoppedOutputIsOneLine(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestGatewayStatusCmd_StoppedOutputIsOneLine(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayStatusCmd()

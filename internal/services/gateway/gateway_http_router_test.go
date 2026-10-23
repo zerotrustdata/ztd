@@ -22,8 +22,6 @@ import (
 // --- handleSwaggerUI ---
 
 func TestHandleSwaggerUI_ReturnsHTMLContentType(t *testing.T) {
-	t.Parallel()
-
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/swagger/", nil)
 
@@ -34,8 +32,6 @@ func TestHandleSwaggerUI_ReturnsHTMLContentType(t *testing.T) {
 }
 
 func TestHandleSwaggerUI_BodyContainsSwaggerUIElements(t *testing.T) {
-	t.Parallel()
-
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil)
 
@@ -48,14 +44,10 @@ func TestHandleSwaggerUI_BodyContainsSwaggerUIElements(t *testing.T) {
 }
 
 func TestHandleSwaggerUI_IgnoresMethod(t *testing.T) {
-	t.Parallel()
-
 	methods := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			t.Parallel()
-
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(method, "/swagger/", nil)
 
@@ -70,21 +62,19 @@ func TestHandleSwaggerUI_IgnoresMethod(t *testing.T) {
 // --- registerMCPRoutes ---
 
 func TestRegisterMCPRoutes_RegistersMCPAndA2APaths(t *testing.T) {
-	t.Parallel()
+	mux := http.NewServeMux()
+	handlerCalled := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerCalled++
+		w.WriteHeader(http.StatusOK)
+	})
+
+	registerMCPRoutes(mux, handler, true)
 
 	paths := []string{constants.APIPaths.MCPEndpoint, constants.APIPaths.A2ACall}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			t.Parallel()
-
-			mux := http.NewServeMux()
-			handlerCalled := 0
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				handlerCalled++
-				w.WriteHeader(http.StatusOK)
-			})
-			registerMCPRoutes(mux, handler, true)
-
+			handlerCalled = 0
 			req := httptest.NewRequest(http.MethodPost, path, nil)
 			rr := httptest.NewRecorder()
 			mux.ServeHTTP(rr, req)
@@ -96,7 +86,6 @@ func TestRegisterMCPRoutes_RegistersMCPAndA2APaths(t *testing.T) {
 }
 
 func TestRegisterMCPRoutes_A2ANotMountedWithoutDownstream(t *testing.T) {
-	t.Parallel()
 	mux := http.NewServeMux()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -114,7 +103,6 @@ func TestRegisterMCPRoutes_A2ANotMountedWithoutDownstream(t *testing.T) {
 }
 
 func TestRegisterMCPRoutes_UnregisteredPathsReturn404(t *testing.T) {
-	t.Parallel()
 	mux := http.NewServeMux()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -130,8 +118,6 @@ func TestRegisterMCPRoutes_UnregisteredPathsReturn404(t *testing.T) {
 }
 
 func TestRegisterMCPRoutes_BothPathsDeferToSameHandler(t *testing.T) {
-	t.Parallel()
-
 	mux := http.NewServeMux()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Test-Handler", "called")
@@ -142,8 +128,6 @@ func TestRegisterMCPRoutes_BothPathsDeferToSameHandler(t *testing.T) {
 
 	for _, path := range []string{constants.APIPaths.MCPEndpoint, constants.APIPaths.A2ACall} {
 		t.Run(path, func(t *testing.T) {
-			t.Parallel()
-
 			req := httptest.NewRequest(http.MethodPost, path, nil)
 			rr := httptest.NewRecorder()
 			mux.ServeHTTP(rr, req)
@@ -157,8 +141,6 @@ func TestRegisterMCPRoutes_BothPathsDeferToSameHandler(t *testing.T) {
 // --- handleSwaggerDoc ---
 
 func TestHandleSwaggerDoc_ServesEmbeddedSpec(t *testing.T) {
-	t.Parallel()
-
 	rr := httptest.NewRecorder()
 	handleSwaggerDoc(rr, httptest.NewRequest(http.MethodGet, constants.SwaggerDocPath, nil))
 
@@ -175,8 +157,6 @@ func TestHandleSwaggerDoc_ServesEmbeddedSpec(t *testing.T) {
 }
 
 func TestHandleSwaggerDoc_RejectsWrites(t *testing.T) {
-	t.Parallel()
-
 	rr := httptest.NewRecorder()
 	handleSwaggerDoc(rr, httptest.NewRequest(http.MethodPost, constants.SwaggerDocPath, nil))
 

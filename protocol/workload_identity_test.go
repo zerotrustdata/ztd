@@ -16,7 +16,6 @@ import (
 )
 
 func TestGatewayPeerSPIFFEID(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	gatewayID := "gw-12345"
 
@@ -29,7 +28,6 @@ func TestGatewayPeerSPIFFEID(t *testing.T) {
 }
 
 func TestGatewayPeerSPIFFEURL(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	gatewayID := "gw-12345"
 
@@ -45,7 +43,6 @@ func TestGatewayPeerSPIFFEURL(t *testing.T) {
 }
 
 func TestMatchesGatewayPeer(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	gatewayID := "gw-12345"
 
@@ -65,7 +62,6 @@ func TestMatchesGatewayPeer(t *testing.T) {
 }
 
 func TestExtractGatewayID(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	gatewayID := "gw-12345"
 	spiffeID := wid.GatewayPeerSPIFFEID(gatewayID)
@@ -98,7 +94,6 @@ func TestExtractGatewayID(t *testing.T) {
 }
 
 func TestOperatorAndCLIIdentityHelpers(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 
 	operatorID := wid.OperatorSPIFFEID("org-1", "op-1", "sess-1")
@@ -131,7 +126,6 @@ func TestOperatorAndCLIIdentityHelpers(t *testing.T) {
 }
 
 func TestAppUserAndHubIdentityHelpers(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 
 	appID := wid.AppSPIFFEID("agent-1")
@@ -167,7 +161,6 @@ func TestAppUserAndHubIdentityHelpers(t *testing.T) {
 }
 
 func TestExtractOperatorSessionID(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	spiffeID := wid.OperatorSPIFFEID("org-1", "op-1", "sess-9")
 	sessionID, ok := wid.ExtractOperatorSessionID(spiffeID)
@@ -180,7 +173,6 @@ func TestExtractOperatorSessionID(t *testing.T) {
 }
 
 func TestWorkloadIdentityExtractorsRejectMalformedPathSegments(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	tests := []struct {
 		name      string
@@ -200,7 +192,6 @@ func TestWorkloadIdentityExtractorsRejectMalformedPathSegments(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got, ok := tt.extract(tt.spiffeID)
 			if tt.wantValue == "" {
 				assert.False(t, ok)
@@ -214,7 +205,6 @@ func TestWorkloadIdentityExtractorsRejectMalformedPathSegments(t *testing.T) {
 }
 
 func TestMatchesCLISessionOnlyRequiresCanonicalCLIIdentity(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	valid := wid.CLISPIFFEID("user-1", "session-1")
 	for _, tt := range []struct {
@@ -229,14 +219,12 @@ func TestMatchesCLISessionOnlyRequiresCanonicalCLIIdentity(t *testing.T) {
 		{name: "empty session", spiffeID: "spiffe://ztd.local/cli/user-1/", sessionID: "", want: false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, wid.MatchesCLISessionOnly(tt.spiffeID, tt.sessionID))
 		})
 	}
 }
 
 func TestExtractUserIDFromUserSANRejectsPathTraversal(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	for _, spiffeID := range []string{
 		"spiffe://ztd.local/user/",
@@ -263,7 +251,6 @@ func assertOperatorURL(t *testing.T, got *url.URL, want string) {
 }
 
 func TestGatewayPeerSPIFFEIDFormat(t *testing.T) {
-	t.Parallel()
 	wid := NewWorkloadIdentity()
 	gatewayID := "test-gateway-with-dashes"
 

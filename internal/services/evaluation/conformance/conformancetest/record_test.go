@@ -44,7 +44,6 @@ func gzipBytes(t *testing.T, payload []byte) []byte {
 }
 
 func TestDoctrineRecordIsTheCanonicalRecordOfTheOutboundDataOperatorRun(t *testing.T) {
-	t.Parallel()
 	raw, digest := DoctrineRecord(t)
 
 	record := &evalv1.ConformanceRunRecord{}
@@ -55,7 +54,6 @@ func TestDoctrineRecordIsTheCanonicalRecordOfTheOutboundDataOperatorRun(t *testi
 }
 
 func TestEmbeddedDoctrineRecordRanEveryCaseOnTheEmbeddedExecutor(t *testing.T) {
-	t.Parallel()
 	raw, digest := EmbeddedDoctrineRecord(t)
 
 	record := &evalv1.ConformanceRunRecord{}
@@ -70,7 +68,6 @@ func TestEmbeddedDoctrineRecordRanEveryCaseOnTheEmbeddedExecutor(t *testing.T) {
 }
 
 func TestDoctrineRecordReturnsFreshBytesOnEachCall(t *testing.T) {
-	t.Parallel()
 	first, _ := DoctrineRecord(t)
 	first[0] ^= 0xff
 
@@ -80,7 +77,6 @@ func TestDoctrineRecordReturnsFreshBytesOnEachCall(t *testing.T) {
 }
 
 func TestDecodePinnedRecordRejectsTamperedPayloadAgainstPin(t *testing.T) {
-	t.Parallel()
 	raw, digest := DoctrineRecord(t)
 	tampered := append([]byte(nil), raw...)
 	tampered[len(tampered)/2] ^= 0x01
@@ -94,7 +90,6 @@ func TestDecodePinnedRecordRejectsTamperedPayloadAgainstPin(t *testing.T) {
 }
 
 func TestDecodePinnedRecordRejectsWrongPinForUnchangedRecord(t *testing.T) {
-	t.Parallel()
 	raw, _ := DoctrineRecord(t)
 	recorder := &fatalRecorder{}
 
@@ -105,7 +100,6 @@ func TestDecodePinnedRecordRejectsWrongPinForUnchangedRecord(t *testing.T) {
 }
 
 func TestDecodePinnedRecordRejectsBytesThatAreNotGzip(t *testing.T) {
-	t.Parallel()
 	recorder := &fatalRecorder{}
 
 	got, _ := decodePinnedRecord(recorder, []byte("not gzip"), doctrineRecordSHA256)

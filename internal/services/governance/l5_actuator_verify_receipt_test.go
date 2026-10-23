@@ -43,7 +43,6 @@ func newSignedPersistedReceipt(t *testing.T, actuator *L5Actuator) *operatorv1.A
 
 func TestVerifyActionReceipt(t *testing.T) {
 	t.Parallel()
-
 	actuator, publicKey := newTestActuator(t)
 	wrongPublicKey, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -126,8 +125,6 @@ func TestVerifyActionReceipt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			err := VerifyActionReceipt(tt.receipt(t), tt.publicKey)
 			if tt.wantErr == nil {
 				assert.NoError(t, err)

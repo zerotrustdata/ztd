@@ -16,11 +16,7 @@ import (
 )
 
 func TestReceiptRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns returns expected headers", func(t *testing.T) {
-		t.Parallel()
-
 		cols := ReceiptRow{}.Columns()
 		assert.Contains(t, cols, "transaction_id")
 		assert.Contains(t, cols, "transaction_hash")
@@ -31,8 +27,6 @@ func TestReceiptRow(t *testing.T) {
 	})
 
 	t.Run("Record returns values in column order", func(t *testing.T) {
-		t.Parallel()
-
 		r := ReceiptRow{
 			TransactionID:   "tx-001",
 			TransactionHash: "hash123",
@@ -56,11 +50,7 @@ func TestReceiptRow(t *testing.T) {
 }
 
 func TestSessionRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := SessionRow{
 			ID:           "sess-1",
 			SessionType:  "operator",
@@ -75,11 +65,7 @@ func TestSessionRow(t *testing.T) {
 }
 
 func TestEventRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns returns expected headers", func(t *testing.T) {
-		t.Parallel()
-
 		cols := EventRow{}.Columns()
 		assert.Contains(t, cols, "id")
 		assert.Contains(t, cols, "type")
@@ -88,8 +74,6 @@ func TestEventRow(t *testing.T) {
 	})
 
 	t.Run("Record with non-None exit code", func(t *testing.T) {
-		t.Parallel()
-
 		r := EventRow{
 			ID:           42,
 			SessionID:    "sess-1",
@@ -106,8 +90,6 @@ func TestEventRow(t *testing.T) {
 	})
 
 	t.Run("Record with ExitCodeNone produces empty string", func(t *testing.T) {
-		t.Parallel()
-
 		r := EventRow{
 			ID:       1,
 			ExitCode: constants.ExitCodeNone,
@@ -118,11 +100,7 @@ func TestEventRow(t *testing.T) {
 }
 
 func TestFileMutationRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := FileMutationRow{
 			ID:               1,
 			EventID:          10,
@@ -141,11 +119,7 @@ func TestFileMutationRow(t *testing.T) {
 }
 
 func TestCommitmentRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := CommitmentRow{
 			Seq:                 1,
 			CommittedAtUTC:      "2026-01-01T00:00:00Z",
@@ -168,11 +142,7 @@ func TestCommitmentRow(t *testing.T) {
 }
 
 func TestLedgerCommitRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := LedgerCommitRow{
 			CommitHash:   "abc123",
 			ParentHash:   "def456",
@@ -190,11 +160,7 @@ func TestLedgerCommitRow(t *testing.T) {
 }
 
 func TestLedgerMerkleRootRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := LedgerMerkleRootRow{
 			MerkleRoot:    "root-hash",
 			CapturedAtUTC: "2026-01-01T00:00:00Z",
@@ -208,11 +174,7 @@ func TestLedgerMerkleRootRow(t *testing.T) {
 }
 
 func TestReplayNonceRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := ReplayNonceRow{
 			Nonce:         "nonce-123",
 			Status:        "used",
@@ -230,11 +192,7 @@ func TestReplayNonceRow(t *testing.T) {
 }
 
 func TestSuspendedTxRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := SuspendedTxRow{
 			TxHash:       "tx-hash",
 			UserID:       "user-1",
@@ -253,11 +211,7 @@ func TestSuspendedTxRow(t *testing.T) {
 }
 
 func TestVerificationRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := VerificationRow{
 			Check:   "commitment_chain",
 			Scope:   "commitment_ledger",
@@ -274,11 +228,7 @@ func TestVerificationRow(t *testing.T) {
 }
 
 func TestManifestRow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("Columns and Record match", func(t *testing.T) {
-		t.Parallel()
-
 		r := ManifestRow{
 			File:           "event_receipts.csv",
 			RecordType:     "event_receipts",

@@ -26,8 +26,6 @@ import (
 // collection is marked _governed in protocol/constants/collections.json, so a
 // bound or app-authenticated envelope cannot rewrite platform authority.
 func TestL4Warden_DocumentActionCollectionScope(t *testing.T) {
-	t.Parallel()
-
 	collections := []struct {
 		collection constants.CollectionName
 		governed   bool
@@ -60,8 +58,6 @@ func TestL4Warden_DocumentActionCollectionScope(t *testing.T) {
 	for actionType, build := range payloads {
 		for _, tc := range collections {
 			t.Run(string(actionType)+"/"+string(tc.collection), func(t *testing.T) {
-				t.Parallel()
-
 				verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 				payload, err := proto.Marshal(build(tc.collection))
 				require.NoError(t, err)

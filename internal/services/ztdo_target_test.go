@@ -19,7 +19,6 @@ import (
 )
 
 func TestZtdoService_ExecutionTarget(t *testing.T) {
-	t.Parallel()
 	svc := &ZtdoService{config: &config.Config{OperatorID: "operator-1"}}
 	require.True(t, svc.ExecutesFor("operator-1"))
 	require.False(t, svc.ExecutesFor("operator-2"))
@@ -31,7 +30,6 @@ func TestZtdoService_ExecutionTarget(t *testing.T) {
 }
 
 func TestZtdoService_RuntimeIdentity(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	svc := &ZtdoService{config: &config.Config{OperatorID: "operator-1", OperatorSessionId: "session-1"}}
 	identity, err := svc.RuntimeIdentity(ctx)

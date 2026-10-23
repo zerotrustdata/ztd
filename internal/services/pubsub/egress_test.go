@@ -36,7 +36,6 @@ func newEgressScrubber(t *testing.T, enabled bool) *scrubbing.ScrubbingService {
 }
 
 func TestEgressScrubbed_WithholdsContentWithoutActiveScrubber(t *testing.T) {
-	t.Parallel()
 	payload := &operatorv1.FetchLogsResult{ExecutionId: "exec-1", Stdout: egressSecretEmail}
 
 	tests := []struct {
@@ -48,7 +47,6 @@ func TestEgressScrubbed_WithholdsContentWithoutActiveScrubber(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			out, err := egressScrubbed(context.Background(), payload, tt.s)
 			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 			assert.Nil(t, out)
@@ -57,7 +55,6 @@ func TestEgressScrubbed_WithholdsContentWithoutActiveScrubber(t *testing.T) {
 }
 
 func TestEgressScrubbed_ScrubsContentFields(t *testing.T) {
-	t.Parallel()
 	s := newEgressScrubber(t, true)
 	payload := &operatorv1.FetchFileDiffResult{
 		Success:     true,
@@ -86,15 +83,13 @@ func TestEgressScrubbed_ScrubsContentFields(t *testing.T) {
 }
 
 func TestEgressScrubbed_PassesContentFreePayloadsThrough(t *testing.T) {
-	t.Parallel()
 	payload := &operatorv1.HeartbeatResult{}
 	out, err := egressScrubbed(context.Background(), payload, nil)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(payload, out))
 }
 
-func TestPublishLFAATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublishLFAATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -118,7 +113,6 @@ func TestPublishLFAATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T
 }
 
 func TestEgressFailureEvent_CoversContentPayloads(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, constants.Event.Operator.FetchLogs.Failed, egressFailureEvent(constants.Event.Operator.FetchLogs.Completed, &operatorv1.FetchLogsResult{}))
 	assert.Equal(t, constants.Event.Operator.FetchFileDiff.Failed, egressFailureEvent(constants.Event.Operator.FetchFileDiff.Completed, &operatorv1.FetchFileDiffResult{}))
 	assert.Equal(t, constants.Event.Operator.FsRead.Failed, egressFailureEvent(constants.Event.Operator.FsRead.Completed, &operatorv1.FsReadResult{}))
@@ -128,13 +122,11 @@ func TestEgressFailureEvent_CoversContentPayloads(t *testing.T) {
 
 // A cancellation result is a CommandResult, so the outcome event selects its typed failure.
 func TestEgressFailureEvent_CancellationMapsToCancelFailed(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, constants.Event.Operator.Command.CancelFailed,
 		egressFailureEvent(constants.Event.Operator.Command.Cancelled, &operatorv1.CommandResult{}))
 }
 
-func TestPubSubResultsService_WithheldCancellationPublishesCancelFailed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPubSubResultsService_WithheldCancellationPublishesCancelFailed(t *testing.T) {
 	db := pubsubtest.NewMockOperatorPubSubClient()
 	cfg := testutil.NewTestConfig(t)
 	// A nil scrubber withholds the CommandResult error text, so the cancellation must publish its typed failure.
@@ -199,10 +191,8 @@ func egressResultPayloadTypes() map[string]struct {
 }
 
 func TestEgressContentFields_ClassifiesEveryResultType(t *testing.T) {
-	t.Parallel()
 	for name, tt := range egressResultPayloadTypes() {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			fields, class, err := egressContentFields(tt.msg)
 			require.NoError(t, err, "result type %s must be classified", name)
 			assert.Equal(t, tt.class, class)
@@ -214,9 +204,7 @@ func TestEgressContentFields_ClassifiesEveryResultType(t *testing.T) {
 }
 
 func TestEgressScrubbed_UnclassifiedTypeFailsLoudly(t *testing.T) {
-	t.Parallel()
 	// A request message is not a result payload and has no classification.
-
 	payload := &operatorv1.CheckPortRequested{Host: egressSecretEmail, Port: 22}
 	s := newEgressScrubber(t, true)
 
@@ -229,7 +217,6 @@ func TestEgressScrubbed_UnclassifiedTypeFailsLoudly(t *testing.T) {
 }
 
 func TestEgressScrubbed_ScrubsFileHistoryAndRestoreResults(t *testing.T) {
-	t.Parallel()
 	s := newEgressScrubber(t, true)
 
 	history := &operatorv1.FetchFileHistoryResult{
@@ -266,7 +253,6 @@ func TestEgressScrubbed_ScrubsFileHistoryAndRestoreResults(t *testing.T) {
 // Progress is scrubbed at the source (inference stream segmenter), so egress does not rewrite it and
 // does not require a scrubber: a rewrite here would break the OutputHash binding.
 func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testing.T) {
-	t.Parallel()
 	progress := &operatorv1.InferenceProgressEvent{
 		ProviderAttemptId: "attempt-1",
 		Sequence:          1,
@@ -279,7 +265,6 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 		"nil scrubber":     nil,
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			out, err := egressScrubbed(context.Background(), progress, s)
 			require.NoError(t, err)
 			assert.True(t, proto.Equal(progress, out.(*operatorv1.InferenceProgressEvent)))
@@ -287,8 +272,7 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 	}
 }
 
-func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) {
 	rawError := "failed to retrieve execution: /home/alice/" + egressSecretEmail + "/out.log"
 	msg := &PubSubCommandMessage{
 		ID:                "msg-error-text",
@@ -298,7 +282,6 @@ func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) { 
 	}
 
 	t.Run("enabled scrubber redacts the error text", func(t *testing.T) {
-
 		client := pubsubtest.NewMockOperatorPubSubClient()
 		publishLFAAErrorTo(context.Background(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg,
 			constants.Event.Operator.FetchLogs.Failed, rawError, nil, newEgressScrubber(t, true))
@@ -308,7 +291,7 @@ func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) { 
 		assert.Contains(t, string(published.Data), string(constants.Event.Operator.FetchLogs.Failed))
 	})
 
-	for _, tt := range []struct { //nolint:paralleltest // mutates package-level state
+	for _, tt := range []struct {
 		name string
 		s    *scrubbing.ScrubbingService
 	}{
@@ -316,7 +299,6 @@ func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) { 
 		{name: "disabled scrubber", s: newEgressScrubber(t, false)},
 	} {
 		t.Run(tt.name+" publishes generic text", func(t *testing.T) {
-
 			client := pubsubtest.NewMockOperatorPubSubClient()
 			publishLFAAErrorTo(context.Background(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg,
 				constants.Event.Operator.FetchLogs.Failed, rawError, nil, tt.s)

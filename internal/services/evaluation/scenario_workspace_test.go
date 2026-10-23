@@ -19,7 +19,6 @@ import (
 )
 
 func TestNewScenarioWorkspaceOperatorHostStyles(t *testing.T) {
-	t.Parallel()
 	posix, err := NewScenarioWorkspace("/srv/ztd/", "run-1", "attempt-1")
 	require.NoError(t, err)
 	assert.Equal(t, "/srv/ztd", posix.OperatorWorkingDirectory)
@@ -38,7 +37,6 @@ func TestNewScenarioWorkspaceOperatorHostStyles(t *testing.T) {
 }
 
 func TestScenarioWorkspaceResolveWindowsOperator(t *testing.T) {
-	t.Parallel()
 	ws, err := NewScenarioWorkspace(`D:\ztd\work`, "run-1", "attempt-1")
 	require.NoError(t, err)
 	file := ws.Root + "/notes.txt"
@@ -59,7 +57,6 @@ func TestScenarioWorkspaceResolveWindowsOperator(t *testing.T) {
 }
 
 func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
-	t.Parallel()
 	ws, err := NewScenarioWorkspace("/srv/ztd", "run-1", "attempt-1")
 	require.NoError(t, err)
 	assert.Equal(t, "/srv/ztd/sub/a.txt", ws.Resolve("sub/a.txt"))
@@ -69,7 +66,6 @@ func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
 }
 
 func TestValidateAgentDataOperator(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name    string
 		wd      string
@@ -91,7 +87,6 @@ func TestValidateAgentDataOperator(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			err := ValidateAgentDataOperator(tc.wd, tc.project)
 			if tc.ok {
 				require.NoError(t, err)
@@ -103,7 +98,6 @@ func TestValidateAgentDataOperator(t *testing.T) {
 }
 
 func TestScenarioWorkspaceSentinelPathSitsBesideRootOutsideTheWorkspace(t *testing.T) {
-	t.Parallel()
 	posix, err := NewScenarioWorkspace("/srv/ztd", "run-1", "attempt-1")
 	require.NoError(t, err)
 	assert.Equal(t, path.Dir(posix.Root)+"/"+path.Base(posix.Root)+constants.EvaluationWorkspaceSentinelSuffix, posix.SentinelPath(),

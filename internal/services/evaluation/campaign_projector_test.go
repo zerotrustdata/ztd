@@ -21,7 +21,6 @@ import (
 )
 
 func TestBuildAssignmentLifecycleProjection(t *testing.T) {
-	t.Parallel()
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId:    "assign-1",
 		RunId:           "run-1",
@@ -45,7 +44,6 @@ func TestBuildAssignmentLifecycleProjection(t *testing.T) {
 }
 
 func TestMarshalCampaignProjectionEnvelope(t *testing.T) {
-	t.Parallel()
 	projection := &evalv1.PublicAssignmentLifecycleRecord{
 		AssignmentId:     "assign-1",
 		RunId:            "run-1",
@@ -65,7 +63,6 @@ func TestMarshalCampaignProjectionEnvelope(t *testing.T) {
 }
 
 func TestDerivePublicSummaryStatus(t *testing.T) {
-	t.Parallel()
 	pass := &evalv1.EvaluationAssignmentResult{
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		DeterministicGrades: []*evalv1.DeterministicGrade{{
@@ -92,7 +89,6 @@ func TestDerivePublicSummaryStatus(t *testing.T) {
 }
 
 func TestAssignmentTerminalOutcome_EveryTerminalLifecycleHasItsOwnOutcome(t *testing.T) {
-	t.Parallel()
 	failedGrade := &evalv1.EvaluationAssignmentResult{
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		DeterministicGrades: []*evalv1.DeterministicGrade{{
@@ -119,7 +115,6 @@ func TestAssignmentTerminalOutcome_EveryTerminalLifecycleHasItsOwnOutcome(t *tes
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got, err := AssignmentTerminalOutcome(tt.lifecycle, tt.result)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -128,13 +123,11 @@ func TestAssignmentTerminalOutcome_EveryTerminalLifecycleHasItsOwnOutcome(t *tes
 }
 
 func TestAssignmentTerminalOutcome_NonTerminalLifecycleIsAnErrorNotAModelFailure(t *testing.T) {
-	t.Parallel()
 	_, err := AssignmentTerminalOutcome(evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING, nil)
 	assert.ErrorIs(t, err, constants.ErrEvaluationLifecycleUnknown)
 }
 
 func TestBuildAssignmentLifecycleProjection_HeterogeneousSetsPrimaryVariant(t *testing.T) {
-	t.Parallel()
 	stack := mustHeterogeneousStack(t)
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId:    "assign-heterogeneous-1",
@@ -155,7 +148,6 @@ func TestBuildAssignmentLifecycleProjection_HeterogeneousSetsPrimaryVariant(t *t
 }
 
 func TestBuildAssignmentResultProjection_HeterogeneousSetsPrimaryVariant(t *testing.T) {
-	t.Parallel()
 	stack := mustHeterogeneousStack(t)
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId: "assign-heterogeneous-1",
@@ -187,7 +179,6 @@ func TestBuildAssignmentResultProjection_HeterogeneousSetsPrimaryVariant(t *test
 }
 
 func TestBuildAssignmentResultProjection(t *testing.T) {
-	t.Parallel()
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId: "assign-1",
 		RunId:        "run-1",
@@ -221,7 +212,6 @@ func TestBuildAssignmentResultProjection(t *testing.T) {
 }
 
 func TestBuildAssignmentResultProjection_DecomposedScoresTaskScore(t *testing.T) {
-	t.Parallel()
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId: "assign-1",
 		RunId:        "run-1",

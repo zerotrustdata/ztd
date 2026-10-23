@@ -21,7 +21,6 @@ import (
 )
 
 func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *testing.T) {
-	t.Parallel()
 	blueprint := recoveryErrorGuidedRetry()
 	blueprint.Input.ScenarioID = blueprint.ScenarioID
 	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, "run-retry", "attempt-retry")
@@ -57,7 +56,6 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			req := AssignmentExecutionRequest{
 				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: "assign-retry", RunId: "run-retry"},
 				ScenarioInput: blueprint.Input,
@@ -145,7 +143,6 @@ func routerTrace(callClass evalv1.EvaluationCallClassification) *AgentTrace {
 // leave Gold.Players criteria absent from the grades, and absent grades are not
 // failures in the verdict.
 func TestGradeHomogeneousScenario_PlayerGradingErrorFailsClosed(t *testing.T) {
-	t.Parallel()
 	triage := &ScenarioPlayerExpectations{
 		Triage: &TriageExpectation{
 			Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
@@ -155,9 +152,7 @@ func TestGradeHomogeneousScenario_PlayerGradingErrorFailsClosed(t *testing.T) {
 	}
 
 	t.Run("trace step rejected by persona fails the grade", func(t *testing.T) {
-		t.Parallel()
 		// A scored-chain step without a call class is rejected by persona.orderedSteps.
-
 		req := playerGradingErrorRequest(triage)
 		trace := routerTrace(evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_UNSPECIFIED)
 
@@ -167,9 +162,7 @@ func TestGradeHomogeneousScenario_PlayerGradingErrorFailsClosed(t *testing.T) {
 	})
 
 	t.Run("invalid player labels fail the grade", func(t *testing.T) {
-		t.Parallel()
 		// An empty risk level is not a label persona.Labels.Validate accepts.
-
 		players := &ScenarioPlayerExpectations{
 			Triage: triage.Triage,
 			Marshal: &MarshalExpectation{
@@ -229,7 +222,6 @@ func verifiedGradingRequest(trace *AgentTrace, players *ScenarioPlayerExpectatio
 // would wrap it as ErrEvaluationAssignmentExecutionFailed, which the controller
 // treats as recoverable and retries.
 func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvidence(t *testing.T) {
-	t.Parallel()
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
 		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
@@ -263,7 +255,6 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			trace := verifiedGradingTrace(t, tc.callClass)
 			req := verifiedGradingRequest(trace, tc.players)
 			_, gradeErr := GradeHomogeneousScenario(req, trace, completed)
@@ -279,9 +270,7 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 	}
 
 	t.Run("grader failure that is not evidence stays an error", func(t *testing.T) {
-		t.Parallel()
 		// A missing scenario ID is an executor input fault, not a verdict on the trace.
-
 		trace := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
 		req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: triage})
 		req.ScenarioInput.ScenarioID = ""
@@ -310,7 +299,6 @@ func relabelAgentTrace(t *testing.T, trace *AgentTrace, version string) {
 // INVALID_EVIDENCE with no grades, and the detail names the expected and actual
 // versions.
 func TestImportAssignmentResultFromAgentTrace_RelabelledEarlierVersionIsInvalidEvidence(t *testing.T) {
-	t.Parallel()
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
 		Intent:     []constants.TriageIntent{constants.TriageIntentAction},

@@ -42,7 +42,6 @@ func (s *stubCollector) Collect(_ context.Context, observedAt time.Time) (*evalv
 }
 
 func TestComputeObservationDigest_IsStable(t *testing.T) {
-	t.Parallel()
 	window := &evalv1.ProviderBoundaryObservationWindow{
 		SchemaVersion:              SchemaVersion,
 		ProviderAttemptId:          "attempt-1",
@@ -77,7 +76,6 @@ func TestHostRAMCollector_ReadsHostRAM(t *testing.T) {
 }
 
 func TestProcMeminfoCollector_ReadsHostRAM(t *testing.T) {
-	t.Parallel()
 	if _, err := os.Stat("/proc/meminfo"); err != nil {
 		t.Skip("proc meminfo unavailable")
 	}

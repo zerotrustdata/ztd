@@ -21,7 +21,6 @@ import (
 
 func TestL1Doctrine_AnalyzeCommand_DestructiveCommands(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -65,7 +64,6 @@ func TestL1Doctrine_AnalyzeCommand_DestructiveCommands(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 
 			if tt.expectBlock {
@@ -93,7 +91,6 @@ func TestL1Doctrine_AnalyzeCommand_DestructiveCommands(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_ReverseShells(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -121,7 +118,6 @@ func TestL1Doctrine_AnalyzeCommand_ReverseShells(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 
 			if tt.expectBlock {
@@ -141,7 +137,6 @@ func TestL1Doctrine_AnalyzeCommand_ReverseShells(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_PrivilegeEscalation(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -164,7 +159,6 @@ func TestL1Doctrine_AnalyzeCommand_PrivilegeEscalation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 
 			if tt.expectBlock {
@@ -184,7 +178,6 @@ func TestL1Doctrine_AnalyzeCommand_PrivilegeEscalation(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeMCPArguments(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 	tmpDir := testutil.TempDir(t)
 
@@ -217,7 +210,6 @@ func TestL1Doctrine_AnalyzeMCPArguments(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals, err := doctrine.AnalyzeMCPArguments(tt.arguments)
 
 			if tt.expectError {
@@ -243,7 +235,6 @@ func TestL1Doctrine_AnalyzeMCPArguments(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_SystemTampering(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -263,7 +254,6 @@ func TestL1Doctrine_AnalyzeCommand_SystemTampering(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			found := false
@@ -280,7 +270,6 @@ func TestL1Doctrine_AnalyzeCommand_SystemTampering(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_SecurityBypass(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -297,7 +286,6 @@ func TestL1Doctrine_AnalyzeCommand_SecurityBypass(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundBypass := false
@@ -314,7 +302,6 @@ func TestL1Doctrine_AnalyzeCommand_SecurityBypass(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_MalwareDeployment(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -330,7 +317,6 @@ func TestL1Doctrine_AnalyzeCommand_MalwareDeployment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundMalware := false
@@ -347,7 +333,6 @@ func TestL1Doctrine_AnalyzeCommand_MalwareDeployment(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllReverseShells(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -369,7 +354,6 @@ func TestL1Doctrine_AnalyzeCommand_AllReverseShells(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundRevShell := false
@@ -388,7 +372,6 @@ func TestL1Doctrine_AnalyzeCommand_AllReverseShells(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllPrivilegeEscalation(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -405,7 +388,6 @@ func TestL1Doctrine_AnalyzeCommand_AllPrivilegeEscalation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundPrivEsc := false
@@ -422,7 +404,6 @@ func TestL1Doctrine_AnalyzeCommand_AllPrivilegeEscalation(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllCredentialAccess(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -444,7 +425,6 @@ func TestL1Doctrine_AnalyzeCommand_AllCredentialAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundCredAccess := false
@@ -461,7 +441,6 @@ func TestL1Doctrine_AnalyzeCommand_AllCredentialAccess(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllDefenseEvasion(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -485,7 +464,6 @@ func TestL1Doctrine_AnalyzeCommand_AllDefenseEvasion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundEvasion := false
@@ -502,7 +480,6 @@ func TestL1Doctrine_AnalyzeCommand_AllDefenseEvasion(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_ClearAuditTrail(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	blocked := []string{
@@ -524,7 +501,6 @@ func TestL1Doctrine_AnalyzeCommand_ClearAuditTrail(t *testing.T) {
 	for _, cmd := range blocked {
 		t.Run(cmd, func(t *testing.T) {
 			t.Parallel()
-
 			found := false
 			for _, sig := range doctrine.AnalyzeCommand(cmd) {
 				if sig.Indicator == "evasion_clear_audit_trail" {
@@ -552,7 +528,6 @@ func TestL1Doctrine_AnalyzeCommand_ClearAuditTrail(t *testing.T) {
 	for _, cmd := range allowed {
 		t.Run(cmd, func(t *testing.T) {
 			t.Parallel()
-
 			for _, sig := range doctrine.AnalyzeCommand(cmd) {
 				assert.NotEqual(t, "evasion_clear_audit_trail", sig.Indicator, "unexpected match for: %s", cmd)
 			}
@@ -562,7 +537,6 @@ func TestL1Doctrine_AnalyzeCommand_ClearAuditTrail(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_Cryptominer(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -577,7 +551,6 @@ func TestL1Doctrine_AnalyzeCommand_Cryptominer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundMiner := false
@@ -594,7 +567,6 @@ func TestL1Doctrine_AnalyzeCommand_Cryptominer(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_KernelModule(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -608,7 +580,6 @@ func TestL1Doctrine_AnalyzeCommand_KernelModule(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundKernel := false
@@ -625,7 +596,6 @@ func TestL1Doctrine_AnalyzeCommand_KernelModule(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_SafeCommands(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	safeCommands := []string{
@@ -651,7 +621,6 @@ func TestL1Doctrine_AnalyzeCommand_SafeCommands(t *testing.T) {
 	for _, cmd := range safeCommands {
 		t.Run(cmd, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(cmd)
 			// Safe commands may have non-blocking signals (e.g., privileged container flag)
 			for _, sig := range signals {
@@ -663,7 +632,6 @@ func TestL1Doctrine_AnalyzeCommand_SafeCommands(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_MITREMapping(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -707,7 +675,6 @@ func TestL1Doctrine_AnalyzeCommand_MITREMapping(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals)
 
@@ -726,7 +693,6 @@ func TestL1Doctrine_AnalyzeCommand_MITREMapping(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_Persistence(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -742,7 +708,6 @@ func TestL1Doctrine_AnalyzeCommand_Persistence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundPersistence := false
@@ -760,7 +725,6 @@ func TestL1Doctrine_AnalyzeCommand_Persistence(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_Exfiltration(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -776,7 +740,6 @@ func TestL1Doctrine_AnalyzeCommand_Exfiltration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundExfil := false
@@ -794,7 +757,6 @@ func TestL1Doctrine_AnalyzeCommand_Exfiltration(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_NetworkManipulation(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -811,7 +773,6 @@ func TestL1Doctrine_AnalyzeCommand_NetworkManipulation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundNetworkManip := false
@@ -829,7 +790,6 @@ func TestL1Doctrine_AnalyzeCommand_NetworkManipulation(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_CaseInsensitivity(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -846,7 +806,6 @@ func TestL1Doctrine_AnalyzeCommand_CaseInsensitivity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should block case-insensitive: %s", tt.command)
 		})
@@ -878,7 +837,6 @@ func TestL1Doctrine_AnalyzeCommand_EmptyAndBenign(t *testing.T) {
 
 func TestL1Doctrine_isCriticalSystemFile(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	criticalPaths := []string{
@@ -903,7 +861,6 @@ func TestL1Doctrine_isCriticalSystemFile(t *testing.T) {
 	for _, path := range criticalPaths {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
-
 			assert.True(t, doctrine.isCriticalSystemFile(path), "Should be critical: %s", path)
 		})
 	}
@@ -920,7 +877,6 @@ func TestL1Doctrine_isCriticalSystemFile(t *testing.T) {
 	for _, path := range nonCriticalPaths {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
-
 			assert.False(t, doctrine.isCriticalSystemFile(path), "Should not be critical: %s", path)
 		})
 	}
@@ -928,12 +884,10 @@ func TestL1Doctrine_isCriticalSystemFile(t *testing.T) {
 
 func TestL1Doctrine_CriticalSystemDirs_ExactMatch(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	t.Run("exact directory path is critical", func(t *testing.T) {
 		t.Parallel()
-
 		exactDirs := []string{"/bin", "/sbin", "/usr/bin", "/usr/sbin", "/lib", "/lib64", "/boot", "/proc", "/sys", "/dev"}
 		for _, dir := range exactDirs {
 			assert.True(t, doctrine.isCriticalSystemFile(dir), "Exact dir should be critical: %s", dir)
@@ -942,7 +896,6 @@ func TestL1Doctrine_CriticalSystemDirs_ExactMatch(t *testing.T) {
 
 	t.Run("files within critical dirs are critical", func(t *testing.T) {
 		t.Parallel()
-
 		assert.True(t, doctrine.isCriticalSystemFile("/bin/ls"))
 		assert.True(t, doctrine.isCriticalSystemFile("/sbin/init"))
 		assert.True(t, doctrine.isCriticalSystemFile("/usr/bin/sudo"))
@@ -956,7 +909,6 @@ func TestL1Doctrine_CriticalSystemDirs_ExactMatch(t *testing.T) {
 
 	t.Run("similar but non-critical paths", func(t *testing.T) {
 		t.Parallel()
-
 		tmpDir := testutil.TempDir(t)
 		assert.False(t, doctrine.isCriticalSystemFile("/home/bin"))
 		assert.False(t, doctrine.isCriticalSystemFile("/opt/bin/myapp"))
@@ -966,7 +918,6 @@ func TestL1Doctrine_CriticalSystemDirs_ExactMatch(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllDataDestruction(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -993,7 +944,6 @@ func TestL1Doctrine_AnalyzeCommand_AllDataDestruction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundDestruction := false
@@ -1011,7 +961,6 @@ func TestL1Doctrine_AnalyzeCommand_AllDataDestruction(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllSystemTampering(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -1038,7 +987,6 @@ func TestL1Doctrine_AnalyzeCommand_AllSystemTampering(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundTampering := false
@@ -1056,7 +1004,6 @@ func TestL1Doctrine_AnalyzeCommand_AllSystemTampering(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllMalwareDeployment(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -1075,7 +1022,6 @@ func TestL1Doctrine_AnalyzeCommand_AllMalwareDeployment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundMalware := false
@@ -1093,7 +1039,6 @@ func TestL1Doctrine_AnalyzeCommand_AllMalwareDeployment(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllCryptominer(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -1122,7 +1067,6 @@ func TestL1Doctrine_AnalyzeCommand_AllCryptominer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundMiner := false
@@ -1140,7 +1084,6 @@ func TestL1Doctrine_AnalyzeCommand_AllCryptominer(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeCommand_AllNetworkManipulation(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -1162,7 +1105,6 @@ func TestL1Doctrine_AnalyzeCommand_AllNetworkManipulation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := doctrine.AnalyzeCommand(tt.command)
 			assert.NotEmpty(t, signals, "Should detect threat: %s", tt.command)
 			foundNetworkManip := false
@@ -1180,7 +1122,6 @@ func TestL1Doctrine_AnalyzeCommand_AllNetworkManipulation(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeMCPArguments_RecursiveAnalysis(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 	tmpDir := testutil.TempDir(t)
 
@@ -1230,7 +1171,6 @@ func TestL1Doctrine_AnalyzeMCPArguments_RecursiveAnalysis(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals, err := doctrine.AnalyzeMCPArguments(tt.arguments)
 			require.NoError(t, err)
 
@@ -1258,7 +1198,6 @@ func TestL1Doctrine_AnalyzeMCPArguments_RecursiveAnalysis(t *testing.T) {
 
 func TestL1Doctrine_AnalyzeMCPArguments_AllThreatCategories(t *testing.T) {
 	t.Parallel()
-
 	doctrine := NewL1Doctrine()
 
 	tests := []struct {
@@ -1326,7 +1265,6 @@ func TestL1Doctrine_AnalyzeMCPArguments_AllThreatCategories(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals, err := doctrine.AnalyzeMCPArguments(tt.arguments)
 			require.NoError(t, err)
 			assert.NotEmpty(t, signals, "Expected threat signals for: %s", tt.arguments)
@@ -1448,7 +1386,6 @@ func TestNewL1DoctrineFromDir_EmptyDir_FallsBack(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_LoadsPatterns(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test_source","version":"1.0","doctrines":[
@@ -1479,7 +1416,6 @@ func TestNewL1DoctrineFromDir_LoadsPatterns(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_InvalidJSON_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{invalid json"), 0o644))
 
@@ -1489,7 +1425,6 @@ func TestNewL1DoctrineFromDir_InvalidJSON_ReturnsError(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_DisabledEntriesSkipped(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","doctrines":[
@@ -1518,7 +1453,6 @@ func TestNewL1DoctrineFromDir_DisabledEntriesSkipped(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_PHIExfilBlocked(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"healthcare_phi_hipaa","version":"1.0","doctrines":[
@@ -1543,7 +1477,6 @@ func TestNewL1DoctrineFromDir_PHIExfilBlocked(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_MultipleFiles(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	doc1 := `{"source":"src_a","version":"1.0","doctrines":[
@@ -1581,7 +1514,6 @@ func TestNewL1DoctrineFromDir_MultipleFiles(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_UnknownCategoryMappedToCustom(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","doctrines":[
@@ -1606,7 +1538,6 @@ func TestNewL1DoctrineFromDir_UnknownCategoryMappedToCustom(t *testing.T) {
 
 func TestL1Doctrine_FedRAMPPrivilegeEscalation_NoFalsePositiveOnResourceIDs(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"FedRAMP Program Management Office","version":"1.0","doctrines":[
@@ -1657,7 +1588,6 @@ func TestL1Doctrine_FedRAMPPrivilegeEscalation_NoFalsePositiveOnResourceIDs(t *t
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals, err := d.AnalyzeMCPArguments(tt.arguments)
 			require.NoError(t, err)
 
@@ -1680,14 +1610,12 @@ func TestL1Doctrine_FedRAMPPrivilegeEscalation_NoFalsePositiveOnResourceIDs(t *t
 
 func TestNewL1DoctrineFromDir_NonExistentDir_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	_, err := NewL1DoctrineFromDir("/nonexistent/path/that/does/not/exist")
 	assert.Error(t, err)
 }
 
 func TestNewL1DoctrineFromDir_KSIControlOverlayProjection(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test_compliance","version":"1.0","last_updated":"2026-01-15","license":"BUSL-1.1","doctrines":[
@@ -1724,7 +1652,6 @@ func TestNewL1DoctrineFromDir_KSIControlOverlayProjection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			signals := d.AnalyzeCommand(tt.input)
 			if tt.wantKSI == nil {
 				for _, sig := range signals {
@@ -1750,7 +1677,6 @@ func TestNewL1DoctrineFromDir_KSIControlOverlayProjection(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_KSIProjectionViaMCPArguments(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test_compliance","version":"1.0","doctrines":[
@@ -1780,7 +1706,6 @@ func TestNewL1DoctrineFromDir_KSIProjectionViaMCPArguments(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_LastUpdatedLicenseParsed(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","last_updated":"2026-03-01","license":"MIT","doctrines":[
@@ -1804,7 +1729,6 @@ func TestNewL1DoctrineFromDir_LastUpdatedLicenseParsed(t *testing.T) {
 
 func TestNewL1DoctrineFromDir_EmptyKSIFields_DefaultToNil(t *testing.T) {
 	t.Parallel()
-
 	dir := testutil.TempDir(t)
 
 	docJSON := `{"source":"test","version":"1.0","doctrines":[

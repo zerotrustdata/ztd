@@ -19,13 +19,11 @@ import (
 )
 
 func TestFSDiskProfileTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	require.Equal(t, "fs_disk_profile", tool.Name())
 }
 
 func TestFSDiskProfileTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "directory")
@@ -33,7 +31,6 @@ func TestFSDiskProfileTool_Description(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	schema := tool.InputSchema()
 
@@ -51,7 +48,6 @@ func TestFSDiskProfileTool_InputSchema(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -61,7 +57,6 @@ func TestFSDiskProfileTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_MissingPath(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -75,7 +70,6 @@ func TestFSDiskProfileTool_Execute_MissingPath(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_EmptyPath(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -89,7 +83,6 @@ func TestFSDiskProfileTool_Execute_EmptyPath(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_NonExistentPath(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -103,7 +96,6 @@ func TestFSDiskProfileTool_Execute_NonExistentPath(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_SingleFile(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -139,7 +131,6 @@ func TestFSDiskProfileTool_Execute_SingleFile(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_DirectoryStructure(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -193,7 +184,6 @@ func TestFSDiskProfileTool_Execute_DirectoryStructure(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_MaxDepth(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -243,7 +233,6 @@ func TestFSDiskProfileTool_Execute_MaxDepth(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_DefaultMaxDepth(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -283,7 +272,6 @@ func TestFSDiskProfileTool_Execute_DefaultMaxDepth(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_ZeroMaxDepth(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -315,7 +303,6 @@ func TestFSDiskProfileTool_Execute_ZeroMaxDepth(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_NegativeMaxDepth(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -341,7 +328,6 @@ func TestFSDiskProfileTool_Execute_NegativeMaxDepth(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_ContextCancellation(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 
 	// Create a context that's already cancelled
@@ -365,7 +351,6 @@ func TestFSDiskProfileTool_Execute_ContextCancellation(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_SizeCalculation(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -398,7 +383,6 @@ func TestFSDiskProfileTool_Execute_SizeCalculation(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_ModificationTime(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -439,7 +423,6 @@ func TestFSDiskProfileTool_Execute_ModificationTime(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_EmptyDirectory(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -465,7 +448,6 @@ func TestFSDiskProfileTool_Execute_EmptyDirectory(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_SymlinkSkip(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 
@@ -499,7 +481,6 @@ func TestFSDiskProfileTool_Execute_SymlinkSkip(t *testing.T) {
 }
 
 func TestFSDiskProfileTool_Execute_LargeMaxDepth(t *testing.T) {
-	t.Parallel()
 	tool := &FSDiskProfileTool{}
 	ctx := context.Background()
 

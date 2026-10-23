@@ -58,7 +58,6 @@ func TestIsRecoverableAssignmentExecutionError_UsesTypedSentinel(t *testing.T) {
 }
 
 func TestExecuteNextAssignment_PersistsResultOnRecoverableExecutorFailure(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	executor := &failingCampaignExecutor{message: "evaluation: execute assignment"}
@@ -103,7 +102,6 @@ func (r *rejectingCampaignFeedExporter) ExportBatch(context.Context, []CampaignP
 // A publication failure after the terminal result is persisted returns that
 // result as executed, so the run continues past it.
 func TestExecuteNextAssignment_PublicationFailureKeepsPersistedResult(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	executor := &failingCampaignExecutor{message: "evaluation: execute assignment"}
@@ -135,7 +133,6 @@ func TestExecuteNextAssignment_PublicationFailureKeepsPersistedResult(t *testing
 }
 
 func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -175,7 +172,6 @@ func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T
 // lacks is resolved as a scenario_contract_invalid failure that verifies; a
 // running assignment with a valid contract stays unresolved.
 func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
@@ -243,7 +239,6 @@ func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract
 // different lifecycle, keeps the stored completion time and the trace bytes,
 // and leaves an agreeing result alone.
 func TestRegradeAssignmentsFromAgentTraces_ReimportsDisagreeingResult(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignRuntimeFileService(t))
 	run := completedTestCampaign(t, store)
@@ -304,7 +299,6 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, ClassifyExecutionFailure(tt.err))
 		})
 	}

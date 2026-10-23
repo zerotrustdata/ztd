@@ -44,8 +44,7 @@ func setupAuditAPITestEnv(t *testing.T) *config.Config {
 
 // --- Receipts ---
 
-func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[{"transaction_hash":"abc123","action_type":"file_edit","target_resource":"/path/to/file","status":2,"executed_at":"2026-01-01T00:00:00Z","l2_valid":true,"l3_valid":false}]}`)}
@@ -66,8 +65,7 @@ func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltes
 	assert.Contains(t, buf.String(), "L2 valid: 1")
 }
 
-func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	rawJSON := `{"event_receipts":[]}`
@@ -89,8 +87,7 @@ func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) { //nolint:paralleltest /
 	assert.Contains(t, buf.String(), `[]`)
 }
 
-func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[]}`)}
@@ -109,8 +106,7 @@ func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) { //nolint:paralleltes
 	assert.Contains(t, buf.String(), "No event receipts found")
 }
 
-func TestAuditReceiptsCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetErr: errMockNetwork}
@@ -129,8 +125,7 @@ func TestAuditReceiptsCmd_API_GetError(t *testing.T) { //nolint:paralleltest // 
 	assert.ErrorIs(t, err, errMockNetwork)
 }
 
-func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`not json {{{`)}
@@ -149,8 +144,7 @@ func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest 
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestAuditReceiptsCmd_API_ClientFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReceiptsCmd_API_ClientFactoryError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -171,8 +165,7 @@ func TestAuditReceiptsCmd_API_ClientFactoryError(t *testing.T) { //nolint:parall
 
 // --- Export ---
 
-func TestAuditExportCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditExportCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	tmpDir := testutil.TempDir(t)
 
@@ -199,8 +192,7 @@ func TestAuditExportCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest 
 	assert.Equal(t, exportData, string(data))
 }
 
-func TestAuditExportCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditExportCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetErr: errMockNetwork}
@@ -221,8 +213,7 @@ func TestAuditExportCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mu
 
 // --- Report ---
 
-func TestAuditReportCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReportCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	tmpDir := testutil.TempDir(t)
 
@@ -246,8 +237,7 @@ func TestAuditReportCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest 
 	assert.Contains(t, buf.String(), "Event receipts: 3")
 }
 
-func TestAuditReportCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReportCmd_API_InvalidJSON(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	tmpDir := testutil.TempDir(t)
 
@@ -268,8 +258,7 @@ func TestAuditReportCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest //
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestAuditReportCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditReportCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	tmpDir := testutil.TempDir(t)
 
@@ -292,8 +281,7 @@ func TestAuditReportCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mu
 
 // --- Consensus votes ---
 
-func TestAuditVotesCmd_API_PrintsEachMemberVote(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditVotesCmd_API_PrintsEachMemberVote(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	votesJSON := `{"success":true,"transaction_id":"tx-1","votes":[` +
@@ -320,8 +308,7 @@ func TestAuditVotesCmd_API_PrintsEachMemberVote(t *testing.T) { //nolint:paralle
 	}
 }
 
-func TestAuditVotesCmd_API_NoVotes(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditVotesCmd_API_NoVotes(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"transaction_id":"tx-2","votes":[]}`)}
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -338,8 +325,7 @@ func TestAuditVotesCmd_API_NoVotes(t *testing.T) { //nolint:paralleltest // muta
 
 // --- Events ---
 
-func TestAuditEventsCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditEventsCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	eventsJSON := `{"success":true,"events":[{"id":1,"operator_session_id":"op-sess-test","timestamp":"2026-01-01T00:00:00Z","type":"file_edit","command_raw":"echo hello","command_exit_code":0}],"count":1}`
@@ -361,8 +347,7 @@ func TestAuditEventsCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest 
 	assert.Contains(t, buf.String(), "Total: 1 events")
 }
 
-func TestAuditEventsCmd_API_JSONOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditEventsCmd_API_JSONOutput(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	rawJSON := `{"success":true,"events":[],"count":0}`
@@ -384,8 +369,7 @@ func TestAuditEventsCmd_API_JSONOutput(t *testing.T) { //nolint:paralleltest // 
 	assert.Contains(t, buf.String(), `"count": 0`)
 }
 
-func TestAuditEventsCmd_API_EmptyEvents(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditEventsCmd_API_EmptyEvents(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"events":[],"count":0}`)}
@@ -404,8 +388,7 @@ func TestAuditEventsCmd_API_EmptyEvents(t *testing.T) { //nolint:paralleltest //
 	assert.Contains(t, buf.String(), "No audit events found")
 }
 
-func TestAuditEventsCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditEventsCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetErr: errMockNetwork}
@@ -424,8 +407,7 @@ func TestAuditEventsCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mu
 	assert.ErrorIs(t, err, errMockNetwork)
 }
 
-func TestAuditEventsCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditEventsCmd_API_InvalidJSON(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`not json {{{`)}
@@ -446,8 +428,7 @@ func TestAuditEventsCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest //
 
 // --- Summary ---
 
-func TestAuditSummaryCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditSummaryCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	summaryJSON := `{"success":true,"events_summary":{"file_edit":5,"file_read":10},"events_total":15,"receipts_summary":{"approved":3,"rejected":1},"receipts_total":4,"total_records":19}`
@@ -469,8 +450,7 @@ func TestAuditSummaryCmd_API_MockHappyPath(t *testing.T) { //nolint:paralleltest
 	assert.Contains(t, buf.String(), "Total records: 19")
 }
 
-func TestAuditSummaryCmd_API_EmptyRecords(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditSummaryCmd_API_EmptyRecords(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"events_summary":{},"events_total":0,"receipts_summary":{},"receipts_total":0,"total_records":0}`)}
@@ -489,8 +469,7 @@ func TestAuditSummaryCmd_API_EmptyRecords(t *testing.T) { //nolint:paralleltest 
 	assert.Contains(t, buf.String(), "No audit records found")
 }
 
-func TestAuditSummaryCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditSummaryCmd_API_InvalidJSON(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`not json {{{`)}
@@ -509,8 +488,7 @@ func TestAuditSummaryCmd_API_InvalidJSON(t *testing.T) { //nolint:paralleltest /
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestAuditSummaryCmd_API_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuditSummaryCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetErr: errMockNetwork}

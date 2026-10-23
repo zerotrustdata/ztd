@@ -43,8 +43,7 @@ func newTestGovernanceController(t *testing.T) *GovernanceController {
 	return c
 }
 
-func TestGovernanceEnvelope_NotConfigured_Returns503_Unit(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGovernanceEnvelope_NotConfigured_Returns503_Unit(t *testing.T) {
 	c := newTestGovernanceController(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
@@ -94,8 +93,7 @@ func mutationEnvelopeBytes(t *testing.T, actionType constants.ActionType, operat
 // operator_session_id is rejected at the transport boundary with
 // ErrIdentityBindingFailed rather than passing through to the downstream
 // processor (the previous fail-open behavior).
-func TestVerifyEnvelopeIdentityBinding_DocumentUpdateEmptyIdentity_FailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_DocumentUpdateEmptyIdentity_FailsClosed(t *testing.T) {
 	req := identityBindingRequest(t, "spiffe://ztd.local/operator/org-1/op-1/sess-1")
 	env := mutationEnvelopeBytes(t, constants.ActionTypeDocumentUpdate, "", "", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
@@ -105,8 +103,7 @@ func TestVerifyEnvelopeIdentityBinding_DocumentUpdateEmptyIdentity_FailsClosed(t
 
 // TestVerifyEnvelopeIdentityBinding_DocumentDeleteEmptyIdentity_FailsClosed
 // asserts the same fail-closed guarantee for DOCUMENT_DELETE.
-func TestVerifyEnvelopeIdentityBinding_DocumentDeleteEmptyIdentity_FailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_DocumentDeleteEmptyIdentity_FailsClosed(t *testing.T) {
 	req := identityBindingRequest(t, "spiffe://ztd.local/operator/org-1/op-1/sess-1")
 	env := mutationEnvelopeBytes(t, constants.ActionTypeDocumentDelete, "", "", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
@@ -116,8 +113,7 @@ func TestVerifyEnvelopeIdentityBinding_DocumentDeleteEmptyIdentity_FailsClosed(t
 
 // TestVerifyEnvelopeIdentityBinding_FileEditEmptyIdentity_FailsClosed asserts
 // the same fail-closed guarantee for FILE_EDIT.
-func TestVerifyEnvelopeIdentityBinding_FileEditEmptyIdentity_FailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_FileEditEmptyIdentity_FailsClosed(t *testing.T) {
 	req := identityBindingRequest(t, "spiffe://ztd.local/operator/org-1/op-1/sess-1")
 	env := mutationEnvelopeBytes(t, constants.ActionTypeFileEdit, "", "", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
@@ -142,8 +138,7 @@ func appMutationEnvelopeBytes(t *testing.T, actingAppID string, source commonv1.
 // app-only write path (an app persisting platform records for a browser session,
 // where no Operator is in the loop): admitted only when acting_app_id matches
 // the mTLS app SPIFFE ID from an AGENT/CLIENT source.
-func TestVerifyEnvelopeIdentityBinding_AppMutationEmptyOperatorFields(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_AppMutationEmptyOperatorFields(t *testing.T) {
 	tests := []struct {
 		name    string
 		spiffe  string
@@ -157,9 +152,8 @@ func TestVerifyEnvelopeIdentityBinding_AppMutationEmptyOperatorFields(t *testing
 		{"non-app source", "spiffe://ztd.local/app/test-app", appMutationEnvelopeBytes(t, "test-app", commonv1.Component_COMPONENT_ZTDO), false},
 		{"operator cert for app claim", "spiffe://ztd.local/operator/org-1/op-1/sess-1", appMutationEnvelopeBytes(t, "test-app", commonv1.Component_COMPONENT_AGENT), false},
 	}
-	for _, tc := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-
 			err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(identityBindingRequest(t, tc.spiffe), tc.env)
 			if tc.allowed {
 				require.NoError(t, err)
@@ -176,8 +170,7 @@ func TestVerifyEnvelopeIdentityBinding_AppMutationEmptyOperatorFields(t *testing
 // other Operator actions, so an app certificate with no Operator claim must
 // reach only the platform-record writes it exists for: DOCUMENT_UPDATE and
 // DOCUMENT_DELETE. Every other mutation still needs an Operator binding.
-func TestVerifyEnvelopeIdentityBinding_AppBindingAdmitsOnlyDocumentMutations(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_AppBindingAdmitsOnlyDocumentMutations(t *testing.T) {
 	appEnvelope := func(actionType constants.ActionType) []byte {
 		b, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
 			ActionType:      string(actionType),
@@ -187,12 +180,11 @@ func TestVerifyEnvelopeIdentityBinding_AppBindingAdmitsOnlyDocumentMutations(t *
 		require.NoError(t, err)
 		return b
 	}
-	for _, actionType := range constants.AllActionTypes { //nolint:paralleltest // mutates package-level state
+	for _, actionType := range constants.AllActionTypes {
 		if !actionType.IsMutation() {
 			continue
 		}
 		t.Run(string(actionType), func(t *testing.T) {
-
 			err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(identityBindingRequest(t, "spiffe://ztd.local/app/test-app"), appEnvelope(actionType))
 			switch actionType {
 			case constants.ActionTypeDocumentUpdate, constants.ActionTypeDocumentDelete:
@@ -208,16 +200,14 @@ func TestVerifyEnvelopeIdentityBinding_AppBindingAdmitsOnlyDocumentMutations(t *
 // is the positive counterpart: a DOCUMENT_UPDATE envelope carrying both
 // operator_id and operator_session_id, presented via a matching operator
 // SPIFFE cert, is admitted (returns nil).
-func TestVerifyEnvelopeIdentityBinding_MutationWithMatchingOperatorCert_Admitted(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_MutationWithMatchingOperatorCert_Admitted(t *testing.T) {
 	req := identityBindingRequest(t, "spiffe://ztd.local/operator/org-1/op-1/sess-1")
 	env := mutationEnvelopeBytes(t, constants.ActionTypeDocumentUpdate, "op-1", "sess-1", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
 	require.NoError(t, err)
 }
 
-func TestVerifyEnvelopeIdentityBinding_ReplacementCLISessionUsesAuthenticatedContext(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_ReplacementCLISessionUsesAuthenticatedContext(t *testing.T) {
 	req := identityBindingRequest(t, "spiffe://ztd.local/cli/user-1/predecessor-cli-session")
 	ctx := context.WithValue(req.Context(), constants.ContextKeyCLISessionID, "replacement-cli-session")
 	ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, "op-1")
@@ -248,8 +238,7 @@ func TestVerifyEnvelopeIdentityBinding_ReplacementCLISessionUsesAuthenticatedCon
 	require.ErrorIs(t, newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, withApp), constants.ErrIdentityBindingFailed)
 }
 
-func TestVerifyEnvelopeIdentityBinding_AuthenticatedContextRejectsClaimMismatch(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_AuthenticatedContextRejectsClaimMismatch(t *testing.T) {
 	req := identityBindingRequest(t, "spiffe://ztd.local/cli/user-1/predecessor-cli-session")
 	ctx := context.WithValue(req.Context(), constants.ContextKeyCLISessionID, "replacement-cli-session")
 	ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, "op-1")
@@ -269,8 +258,7 @@ func TestVerifyEnvelopeIdentityBinding_AuthenticatedContextRejectsClaimMismatch(
 
 // TestNewGovernanceController_RequiresCLISessions pins the required dependency:
 // a controller without its CLI session service is never constructed.
-func TestNewGovernanceController_RequiresCLISessions(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewGovernanceController_RequiresCLISessions(t *testing.T) {
 	c, err := newGovernanceController(GovernanceControllerDeps{
 		Cfg:    testutil.NewTestConfig(t),
 		Logger: testutil.NewTestLogger(),
@@ -317,8 +305,7 @@ func requireCLISessionClaimVerdict(t *testing.T, c *GovernanceController, req *h
 // certificate. The claim must name an active, unexpired session that is owned
 // by the authenticated user and bound to the envelope's operator_session_id. An
 // empty claim is not checked.
-func TestVerifyEnvelopeIdentityBinding_OperatorCertCLISessionClaim(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_OperatorCertCLISessionClaim(t *testing.T) {
 	c := newTestGovernanceController(t)
 	svc := c.cliSessions
 	persistActiveCLISessionForBinding(t, svc, "cli-owned", "user-1", "op-sess-1")
@@ -342,9 +329,8 @@ func TestVerifyEnvelopeIdentityBinding_OperatorCertCLISessionClaim(t *testing.T)
 		{name: "unknown session rejected", claim: "cli-unknown", wantReason: constants.ErrCLISessionNotFound},
 		{name: "session bound to another operator session rejected", claim: "cli-bound-elsewhere", wantReason: constants.ErrGatewayCLISessionBindingMismatch},
 	}
-	for _, tc := range cases { //nolint:paralleltest // mutates package-level state
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-
 			req := identityBindingRequest(t, "spiffe://ztd.local/operator/org-1/op-1/op-sess-1")
 			req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, "user-1"))
 			envelope, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
@@ -364,8 +350,7 @@ func TestVerifyEnvelopeIdentityBinding_OperatorCertCLISessionClaim(t *testing.T)
 // TestVerifyEnvelopeIdentityBinding_AppCertCLISessionClaim applies the same
 // claim check to an app certificate's platform-record write. That envelope names
 // no operator_session_id, so the claimed session must also be unbound.
-func TestVerifyEnvelopeIdentityBinding_AppCertCLISessionClaim(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_AppCertCLISessionClaim(t *testing.T) {
 	c := newTestGovernanceController(t)
 	svc := c.cliSessions
 	persistActiveCLISessionForBinding(t, svc, "cli-owned-unbound", "user-1", "")
@@ -383,9 +368,8 @@ func TestVerifyEnvelopeIdentityBinding_AppCertCLISessionClaim(t *testing.T) { //
 		{name: "operator-bound session rejected without an operator_session_id", claim: "cli-owned-bound", wantReason: constants.ErrGatewayCLISessionBindingMismatch},
 		{name: "unknown session rejected", claim: "cli-unknown", wantReason: constants.ErrCLISessionNotFound},
 	}
-	for _, tc := range cases { //nolint:paralleltest // mutates package-level state
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-
 			req := identityBindingRequest(t, "spiffe://ztd.local/app/test-app")
 			req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, "user-1"))
 			envelope, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
@@ -410,8 +394,7 @@ func TestVerifyEnvelopeIdentityBinding_AppCertCLISessionClaim(t *testing.T) { //
 // only unbound envelope this boundary admits is the app record write of
 // INV-AUTH-ID-05, whichever certificate presents it. A CLI session claim alone
 // is not an Operator binding.
-func TestVerifyEnvelopeIdentityBinding_UnboundEnvelopeAdmitsOnlyAppRecordWrites(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestVerifyEnvelopeIdentityBinding_UnboundEnvelopeAdmitsOnlyAppRecordWrites(t *testing.T) {
 	unboundEnvelope := func(actionType constants.ActionType, cliSessionID, actingAppID string, source commonv1.Component) []byte {
 		b, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
 			ActionType:      string(actionType),
@@ -434,10 +417,9 @@ func TestVerifyEnvelopeIdentityBinding_UnboundEnvelopeAdmitsOnlyAppRecordWrites(
 		{"cli session cert", "spiffe://ztd.local/cli/user-1/cli-sess-1", "cli-sess-1", "", commonv1.Component_COMPONENT_CLIENT, false},
 		{"app cert", "spiffe://ztd.local/app/test-app", "", "test-app", commonv1.Component_COMPONENT_AGENT, true},
 	}
-	for _, p := range presenters { //nolint:paralleltest // mutates package-level state
+	for _, p := range presenters {
 		for _, actionType := range constants.AllActionTypes {
 			t.Run(p.name+"/"+string(actionType), func(t *testing.T) {
-
 				err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(identityBindingRequest(t, p.spiffe), unboundEnvelope(actionType, p.cliSessionID, p.actingAppID, p.source))
 				if p.appPath && isAppRecordWrite(actionType) {
 					require.NoError(t, err)

@@ -104,7 +104,6 @@ func testEvaluationBinding(t *testing.T) compliance.EvaluationBinding {
 }
 
 func TestBuildEvaluationBindingPreservesExplicitEvidenceCollectionWindow(t *testing.T) {
-	t.Parallel()
 	const windowStartUnixMs int64 = 1_700_000_000_000
 	const windowEndUnixMs int64 = 1_700_000_001_000
 
@@ -115,8 +114,6 @@ func TestBuildEvaluationBindingPreservesExplicitEvidenceCollectionWindow(t *test
 }
 
 func TestComplianceKSICmd_RejectsEachMissingEvaluationBindingFlag(t *testing.T) {
-	t.Parallel()
-
 	requiredFlags := []struct {
 		name  string
 		value string
@@ -129,8 +126,6 @@ func TestComplianceKSICmd_RejectsEachMissingEvaluationBindingFlag(t *testing.T) 
 	}
 	for _, omitted := range requiredFlags {
 		t.Run("missing "+omitted.name, func(t *testing.T) {
-			t.Parallel()
-
 			cmd := complianceKSICmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), keystore.Options{})
 			args := make([]string, 0, (len(requiredFlags)-1)*2)
 			for _, flag := range requiredFlags {
@@ -160,8 +155,6 @@ func writeTestOverlays(t *testing.T, dir string, overlayCat *compliance.OverlayC
 // TestComplianceCmd_Structure asserts that complianceCmd() is non-nil and has
 // the expected compliance subcommands.
 func TestComplianceCmd_Structure(t *testing.T) {
-	t.Parallel()
-
 	cmd := Cmd()
 	require.NotNil(t, cmd)
 	assert.Equal(t, "compliance", cmd.Use)
@@ -187,8 +180,6 @@ func TestComplianceCmd_Structure(t *testing.T) {
 // TestComplianceKSICmd_FileSvcFactoryError asserts that the ksi subcommand
 // wraps fileSvcFactory errors with ErrFileServiceInit.
 func TestComplianceKSICmd_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
-
 	cmd := complianceKSICmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), keystore.Options{})
 	require.NoError(t, cmd.Flags().Set("scope-id", "test-scope"))
 	require.NoError(t, cmd.Flags().Set("run-id", "test-run"))
@@ -208,7 +199,6 @@ func TestComplianceKSICmd_FileSvcFactoryError(t *testing.T) {
 // TestComplianceKSIHistoryCmd_FileSvcFactoryError asserts that the ksi-history
 // subcommand wraps fileSvcFactory errors with ErrFileServiceInit.
 func TestComplianceKSIHistoryCmd_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := complianceKSIHistoryCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -223,7 +213,6 @@ func TestComplianceKSIHistoryCmd_FileSvcFactoryError(t *testing.T) {
 // TestComplianceOverlayCmd_FileSvcFactoryError asserts that the overlay subcommand
 // wraps fileSvcFactory errors with ErrFileServiceInit.
 func TestComplianceOverlayCmd_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := complianceOverlayCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -237,7 +226,6 @@ func TestComplianceOverlayCmd_FileSvcFactoryError(t *testing.T) {
 
 // TestValidateCertClass asserts valid and invalid certification class inputs.
 func TestValidateCertClass(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		input   string
@@ -255,7 +243,6 @@ func TestValidateCertClass(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			class, err := validateCertClass(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
@@ -269,8 +256,7 @@ func TestValidateCertClass(t *testing.T) {
 }
 
 // TestComplianceKSICmd_ValidationErrors asserts validation failures for the ksi subcommand.
-func TestComplianceKSICmd_ValidationErrors(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 	tests := []struct {
 		name        string
 		setup       func(t *testing.T, fileSvc fs.RuntimeFileService) (catalogPath, certClass string)
@@ -296,9 +282,8 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) { //nolint:paralleltest
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 			catPath, certClass := tt.setup(t, fileSvc)
 
@@ -329,8 +314,7 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) { //nolint:paralleltest
 
 // TestComplianceKSICmd_StoresUnavailable asserts that ksi subcommand fails gracefully
 // when storage dependencies are unavailable.
-func TestComplianceKSICmd_StoresUnavailable(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceKSICmd_StoresUnavailable(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	catPath := writeTestKSICatalog(t, fileSvc)
 
@@ -359,8 +343,7 @@ func TestComplianceKSICmd_StoresUnavailable(t *testing.T) { //nolint:paralleltes
 
 // TestComplianceKSICmd_Success_OutputsJSON asserts that compliance ksi evaluates
 // the live state, outputs a valid KSIResultSet JSON, and saves history.
-func TestComplianceKSICmd_Success_OutputsJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceKSICmd_Success_OutputsJSON(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	catPath := writeTestKSICatalog(t, fileSvc)
 
@@ -408,8 +391,7 @@ func TestComplianceKSICmd_Success_OutputsJSON(t *testing.T) { //nolint:parallelt
 
 // TestComplianceKSIHistoryCmd_EmptyHistory asserts that reading history when no
 // snapshots exist prints an empty JSON array.
-func TestComplianceKSIHistoryCmd_EmptyHistory(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceKSIHistoryCmd_EmptyHistory(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 
 	cmd := complianceKSIHistoryCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
@@ -424,8 +406,7 @@ func TestComplianceKSIHistoryCmd_EmptyHistory(t *testing.T) { //nolint:parallelt
 
 // TestComplianceKSIHistoryCmd_ListSnapshots asserts that all persisted history
 // snapshots are listed in chronological order.
-func TestComplianceKSIHistoryCmd_ListSnapshots(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceKSIHistoryCmd_ListSnapshots(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	ctx := context.Background()
 	historyStore := newKSIHistoryStore(fileSvc)
@@ -463,8 +444,7 @@ func TestComplianceKSIHistoryCmd_ListSnapshots(t *testing.T) { //nolint:parallel
 }
 
 // TestComplianceKSIHistoryCmd_FilterByKSI asserts filtering history by a specific KSI ID.
-func TestComplianceKSIHistoryCmd_FilterByKSI(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceKSIHistoryCmd_FilterByKSI(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	ctx := context.Background()
 	historyStore := newKSIHistoryStore(fileSvc)
@@ -478,8 +458,7 @@ func TestComplianceKSIHistoryCmd_FilterByKSI(t *testing.T) { //nolint:parallelte
 	}
 	require.NoError(t, saveKSIHistorySnapshot(ctx, historyStore, rs))
 
-	t.Run("existing KSI ID", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("existing KSI ID", func(t *testing.T) {
 		cmd := complianceKSIHistoryCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 		require.NoError(t, cmd.Flags().Set("ksi", "KSI-CMT-01"))
 
@@ -496,8 +475,7 @@ func TestComplianceKSIHistoryCmd_FilterByKSI(t *testing.T) { //nolint:parallelte
 		assert.Equal(t, "KSI-CMT-01", results[0].ID)
 	})
 
-	t.Run("nonexistent KSI ID returns error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nonexistent KSI ID returns error", func(t *testing.T) {
 		cmd := complianceKSIHistoryCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 		require.NoError(t, cmd.Flags().Set("ksi", "KSI-NONEXISTENT"))
 
@@ -512,10 +490,8 @@ func TestComplianceKSIHistoryCmd_FilterByKSI(t *testing.T) { //nolint:parallelte
 }
 
 // TestComplianceOverlayCmd_ValidationAndErrors asserts error handling for overlay commands.
-func TestComplianceOverlayCmd_ValidationAndErrors(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("nonexistent overlay directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceOverlayCmd_ValidationAndErrors(t *testing.T) {
+	t.Run("nonexistent overlay directory", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		cmd := complianceOverlayCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 		require.NoError(t, cmd.Flags().Set("overlay-dir", constants.TestPathNonexistentOverlayDir))
@@ -529,8 +505,7 @@ func TestComplianceOverlayCmd_ValidationAndErrors(t *testing.T) { //nolint:paral
 		assert.Contains(t, err.Error(), "load overlays")
 	})
 
-	t.Run("invalid catalog path with valid overlays", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("invalid catalog path with valid overlays", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		overlayDir := fileSvc.Resolve(constants.TestOverlaysDirname)
 		writeTestOverlays(t, overlayDir, &compliance.OverlayCatalog{
@@ -556,8 +531,7 @@ func TestComplianceOverlayCmd_ValidationAndErrors(t *testing.T) { //nolint:paral
 }
 
 // TestComplianceOverlayCmd_EmptyOverlayDir asserts that an empty overlay directory outputs "[]".
-func TestComplianceOverlayCmd_EmptyOverlayDir(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceOverlayCmd_EmptyOverlayDir(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	emptyDir := fileSvc.Resolve(constants.TestOverlaysDirname)
 	require.NoError(t, os.MkdirAll(emptyDir, constants.PermDirStandard))
@@ -576,8 +550,7 @@ func TestComplianceOverlayCmd_EmptyOverlayDir(t *testing.T) { //nolint:parallelt
 
 // TestComplianceOverlayCmd_Success_NoDanglingRefs asserts that overlay validation passes
 // without warnings when all overlay control references match KSIs in the catalog.
-func TestComplianceOverlayCmd_Success_NoDanglingRefs(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceOverlayCmd_Success_NoDanglingRefs(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	catPath := writeTestKSICatalog(t, fileSvc)
 	overlayDir := fileSvc.Resolve(constants.TestOverlaysDirname)
@@ -612,8 +585,7 @@ func TestComplianceOverlayCmd_Success_NoDanglingRefs(t *testing.T) { //nolint:pa
 
 // TestComplianceOverlayCmd_Success_WithDanglingRefs asserts that dangling overlay references
 // are reported as warnings while still outputting the overlay catalog JSON.
-func TestComplianceOverlayCmd_Success_WithDanglingRefs(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceOverlayCmd_Success_WithDanglingRefs(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 
 	// Write KSI catalog with a dangling overlay ref.
@@ -661,18 +633,15 @@ func TestComplianceOverlayCmd_Success_WithDanglingRefs(t *testing.T) { //nolint:
 
 // TestOpenVault_Scenarios asserts openVault fails closed: every state in which
 // the runtime vault cannot be unlocked returns an error and no vault.
-func TestOpenVault_Scenarios(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("missing key store is an error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOpenVault_Scenarios(t *testing.T) {
+	t.Run("missing key store is an error", func(t *testing.T) {
 		v, cleanup, err := openVault(nil)
 		require.ErrorIs(t, err, constants.ErrVaultKeyReadFailed)
 		assert.Nil(t, v)
 		assert.Nil(t, cleanup)
 	})
 
-	t.Run("keystore without vault key is an error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("keystore without vault key is an error", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 		require.NoError(t, err)
@@ -684,8 +653,7 @@ func TestOpenVault_Scenarios(t *testing.T) { //nolint:paralleltest // mutates pa
 		assert.Nil(t, cleanup)
 	})
 
-	t.Run("valid key and header unlocks vault", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("valid key and header unlocks vault", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 		require.NoError(t, err)
@@ -700,8 +668,7 @@ func TestOpenVault_Scenarios(t *testing.T) { //nolint:paralleltest // mutates pa
 		assert.False(t, v.IsUnlocked(), "cleanup locks the vault")
 	})
 
-	t.Run("key mismatch with vault header is an error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("key mismatch with vault header is an error", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 		require.NoError(t, err)
@@ -721,7 +688,6 @@ func TestOpenVault_Scenarios(t *testing.T) { //nolint:paralleltest // mutates pa
 
 // TestRunCleanups_LifoOrder asserts that cleanups run in last-in, first-out order.
 func TestRunCleanups_LifoOrder(t *testing.T) {
-	t.Parallel()
 	var executionOrder []int
 
 	cleanups := []func(){
@@ -736,8 +702,7 @@ func TestRunCleanups_LifoOrder(t *testing.T) {
 }
 
 // TestSaveKSIHistorySnapshot_Pruning asserts that saving a snapshot triggers pruning.
-func TestSaveKSIHistorySnapshot_Pruning(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSaveKSIHistorySnapshot_Pruning(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	ctx := context.Background()
 	historyStore := newKSIHistoryStore(fileSvc)
@@ -759,8 +724,7 @@ func TestSaveKSIHistorySnapshot_Pruning(t *testing.T) { //nolint:paralleltest //
 }
 
 // TestEvaluateKSIs_NilContextHandling asserts that evaluateKSIs handles nil context safely.
-func TestEvaluateKSIs_NilContextHandling(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEvaluateKSIs_NilContextHandling(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -783,8 +747,7 @@ func TestEvaluateKSIs_NilContextHandling(t *testing.T) { //nolint:paralleltest /
 }
 
 // TestSaveKSIHistorySnapshot_NilResultSetReturnsError asserts error when saving nil result set.
-func TestSaveKSIHistorySnapshot_NilResultSetReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSaveKSIHistorySnapshot_NilResultSetReturnsError(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	historyStore := newKSIHistoryStore(fileSvc)
 
@@ -795,8 +758,7 @@ func TestSaveKSIHistorySnapshot_NilResultSetReturnsError(t *testing.T) { //nolin
 
 // TestOpenEvaluatorDeps_DatabaseError asserts that openEvaluatorDeps fails and cleans up
 // when data directory cannot be initialized.
-func TestOpenEvaluatorDeps_DatabaseError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOpenEvaluatorDeps_DatabaseError(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	dataDir := fileSvc.Resolve(constants.DataDirname)
 	require.NoError(t, os.RemoveAll(dataDir))

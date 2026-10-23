@@ -168,11 +168,9 @@ func frameworkGraderBaseRequest(t *testing.T) evidence.FrameworkGradingRequest {
 }
 
 func TestGradeFrameworkControls_DoesNotSatisfyControlFromInsufficientMappings(t *testing.T) {
-	t.Parallel()
 	tests := []string{"supporting", "partial"}
 	for _, mappingType := range tests {
 		t.Run(mappingType, func(t *testing.T) {
-			t.Parallel()
 			request := frameworkGraderBaseRequest(t)
 			for _, mapping := range request.Crosswalks.GetMappings() {
 				mapping.MappingType = mappingType
@@ -192,7 +190,6 @@ func TestGradeFrameworkControls_DoesNotSatisfyControlFromInsufficientMappings(t 
 }
 
 func TestGradeFrameworkControls_NotSatisfiedWhenAnyFullyMappedAssertionNotSatisfied(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.Crosswalks.Mappings[0].MappingType = "full"
 	request.AssertionAssessments[0] = frameworkTestAssessment("ZTD-GOV-BLOCK-001", "not_satisfied", "L3")
@@ -204,7 +201,6 @@ func TestGradeFrameworkControls_NotSatisfiedWhenAnyFullyMappedAssertionNotSatisf
 }
 
 func TestGradeFrameworkControls_StatusPrecedenceMatrix(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		statuses []string
@@ -220,7 +216,6 @@ func TestGradeFrameworkControls_StatusPrecedenceMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			request := frameworkGraderBaseRequest(t)
 			request.Crosswalks.Mappings[0].MappingType = "full"
 			request.Crosswalks.Mappings[0].AssertionRefs = append(request.Crosswalks.Mappings[0].AssertionRefs, &compliancev1.VersionedReference{Id: "ZTD-GOV-ALLOW-001", Version: "1.0.0"})
@@ -235,7 +230,6 @@ func TestGradeFrameworkControls_StatusPrecedenceMatrix(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_UnverifiableWhenAssertionAssessmentMissing(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments = request.AssertionAssessments[:1]
 	assessments, err := evidence.GradeFrameworkControls(context.Background(), request)
@@ -247,7 +241,6 @@ func TestGradeFrameworkControls_UnverifiableWhenAssertionAssessmentMissing(t *te
 }
 
 func TestGradeFrameworkControls_CustomerAttestationRequiredWhenAssertionRequiresIt(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks := frameworkTestCatalogs(t)
 	frameworks.Frameworks[0].Controls[0].Responsibility = "customer"
 	crosswalks.Mappings[0].Responsibility = "customer"
@@ -271,7 +264,6 @@ func TestGradeFrameworkControls_CustomerAttestationRequiredWhenAssertionRequires
 }
 
 func TestGradeFrameworkControls_NotApplicableWhenAllMappingsNotApplicable(t *testing.T) {
-	t.Parallel()
 	assertions := frameworkTestAssertionCatalog("ZTD-GOV-BLOCK-001")
 	framework := frameworkTestFramework("fedramp-20x", "CR26-2026-06-24",
 		frameworkTestControl("KSI-MLA-07"),
@@ -301,7 +293,6 @@ func TestGradeFrameworkControls_NotApplicableWhenAllMappingsNotApplicable(t *tes
 }
 
 func TestGradeFrameworkControls_UnverifiableWhenAllAssertionsUnverifiable(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments[0] = frameworkTestAssessment("ZTD-GOV-BLOCK-001", "unverifiable", "L0")
 	request.AssertionAssessments[1] = frameworkTestAssessment("ZTD-GOV-ALLOW-001", "unverifiable", "L0")
@@ -315,7 +306,6 @@ func TestGradeFrameworkControls_UnverifiableWhenAllAssertionsUnverifiable(t *tes
 }
 
 func TestGradeFrameworkControls_UnverifiableWhenFullMappingRequiresHigherEvidenceLevel(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.Crosswalks.Mappings[0].MappingType = "full"
 	request.Crosswalks.Mappings[0].RequiredEvidenceLevel = "L4"
@@ -328,7 +318,6 @@ func TestGradeFrameworkControls_UnverifiableWhenFullMappingRequiresHigherEvidenc
 }
 
 func TestGradeFrameworkControls_EvidenceLevelIsMinimumAcrossAssertions(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks := frameworkTestCatalogs(t)
 	crosswalks.Mappings[0].MappingType = "full"
 	crosswalks.Mappings[0].AssertionRefs = append(crosswalks.Mappings[0].AssertionRefs,
@@ -354,7 +343,6 @@ func TestGradeFrameworkControls_EvidenceLevelIsMinimumAcrossAssertions(t *testin
 }
 
 func TestGradeFrameworkControls_ResponsibilityMatchesControl(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	assessments, err := evidence.GradeFrameworkControls(context.Background(), request)
 	require.NoError(t, err)
@@ -364,7 +352,6 @@ func TestGradeFrameworkControls_ResponsibilityMatchesControl(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_DeterministicAssessmentIDs(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	assessments1, err := evidence.GradeFrameworkControls(context.Background(), request)
 	require.NoError(t, err)
@@ -377,7 +364,6 @@ func TestGradeFrameworkControls_DeterministicAssessmentIDs(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_RejectsIncompleteRequests(t *testing.T) {
-	t.Parallel()
 	valid := frameworkGraderBaseRequest(t)
 	tests := []struct {
 		name   string
@@ -391,7 +377,6 @@ func TestGradeFrameworkControls_RejectsIncompleteRequests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			request := valid
 			tt.mutate(&request)
 			_, err := evidence.GradeFrameworkControls(context.Background(), request)
@@ -402,7 +387,6 @@ func TestGradeFrameworkControls_RejectsIncompleteRequests(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_RejectsAssertionAssessmentFromAnotherScope(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments[0].ScopeId = "scope-2"
 	_, err := evidence.GradeFrameworkControls(context.Background(), request)
@@ -411,7 +395,6 @@ func TestGradeFrameworkControls_RejectsAssertionAssessmentFromAnotherScope(t *te
 }
 
 func TestGradeFrameworkControls_RejectsNilAssertionAssessment(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments = append(request.AssertionAssessments, nil)
 	_, err := evidence.GradeFrameworkControls(context.Background(), request)
@@ -420,7 +403,6 @@ func TestGradeFrameworkControls_RejectsNilAssertionAssessment(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_RejectsDuplicateAssertionAssessments(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments = append(request.AssertionAssessments, request.AssertionAssessments[0])
 	_, err := evidence.GradeFrameworkControls(context.Background(), request)
@@ -429,7 +411,6 @@ func TestGradeFrameworkControls_RejectsDuplicateAssertionAssessments(t *testing.
 }
 
 func TestGradeFrameworkControls_RejectsMalformedAssertionAssessment(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments[0].Status = "unknown"
 	_, err := evidence.GradeFrameworkControls(context.Background(), request)
@@ -438,7 +419,6 @@ func TestGradeFrameworkControls_RejectsMalformedAssertionAssessment(t *testing.T
 }
 
 func TestGradeFrameworkControls_StopsOnCancellation(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -447,7 +427,6 @@ func TestGradeFrameworkControls_StopsOnCancellation(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_SkipsUnsupportedControls(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks := frameworkTestCatalogs(t)
 	frameworks.Frameworks[0].Controls = append(frameworks.Frameworks[0].Controls,
 		&compliancev1.FrameworkControlDefinition{
@@ -478,7 +457,6 @@ func TestGradeFrameworkControls_SkipsUnsupportedControls(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_EmitsLimitationsForSupportingMappings(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	assessments, err := evidence.GradeFrameworkControls(context.Background(), request)
 	require.NoError(t, err)
@@ -496,7 +474,6 @@ func TestGradeFrameworkControls_EmitsLimitationsForSupportingMappings(t *testing
 }
 
 func TestGradeFrameworkControls_EmitsAssessmentForEveryMappedControl(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 	assertionAssessments := make([]*compliancev1.ControlAssertionAssessment, 0, len(assertions.GetAssertions()))
@@ -540,7 +517,6 @@ func TestGradeFrameworkControls_EmitsAssessmentForEveryMappedControl(t *testing.
 }
 
 func TestGradeFrameworkControls_MultipleFrameworks(t *testing.T) {
-	t.Parallel()
 	assertions := frameworkTestAssertionCatalog("ZTD-GOV-BLOCK-001")
 	framework1 := frameworkTestFramework("fedramp-20x", "CR26-2026-06-24", frameworkTestControl("KSI-MLA-07"))
 	framework2 := frameworkTestFramework("nist-sp-800-53", "rev5", frameworkTestControl("AU-12"))
@@ -578,7 +554,6 @@ func TestGradeFrameworkControls_MultipleFrameworks(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_MultipleMappingsPerControl(t *testing.T) {
-	t.Parallel()
 	assertions := frameworkTestAssertionCatalog("ZTD-GOV-BLOCK-001", "ZTD-GOV-ALLOW-001")
 	framework := frameworkTestFramework("fedramp-20x", "CR26-2026-06-24", frameworkTestControl("KSI-MLA-07"))
 	frameworks := &compliancev1.FrameworkCatalog{CatalogId: "test", CatalogVersion: "1.0.0", Sha256: frameworkTestSHA256, Frameworks: []*compliancev1.FrameworkDefinition{framework}}
@@ -614,7 +589,6 @@ func TestGradeFrameworkControls_MultipleMappingsPerControl(t *testing.T) {
 }
 
 func TestGradeFrameworkControls_SupportingNegativeDoesNotBecomeControlVerdict(t *testing.T) {
-	t.Parallel()
 	request := frameworkGraderBaseRequest(t)
 	request.AssertionAssessments[0] = frameworkTestAssessment("ZTD-GOV-BLOCK-001", "satisfied", "L3")
 	request.AssertionAssessments[1] = frameworkTestAssessment("ZTD-GOV-ALLOW-001", "not_satisfied", "L3")

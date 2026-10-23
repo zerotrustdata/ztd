@@ -22,7 +22,6 @@ import (
 )
 
 func TestInvestigationCatalog_LoadsAndValidatesAllPlantedFaultScenarios(t *testing.T) {
-	t.Parallel()
 	catalog, artifacts, err := LoadInvestigationsScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
@@ -51,7 +50,6 @@ func TestInvestigationCatalog_LoadsAndValidatesAllPlantedFaultScenarios(t *testi
 }
 
 func TestInvestigationBlueprint_CarriesFileStateGovernedProbeAndToolCallEvidence(t *testing.T) {
-	t.Parallel()
 	blueprints, err := InvestigationScenarioBlueprints()
 	require.NoError(t, err)
 	require.Len(t, blueprints, 3)
@@ -66,7 +64,6 @@ func TestInvestigationBlueprint_CarriesFileStateGovernedProbeAndToolCallEvidence
 }
 
 func TestInvestigationGrading_ZeroToolCallsFailsTrajectoryWithNoToolCall(t *testing.T) {
-	t.Parallel()
 	blueprints, err := InvestigationScenarioBlueprints()
 	require.NoError(t, err)
 	var bp ScenarioBlueprint
@@ -111,7 +108,6 @@ func TestInvestigationGrading_ZeroToolCallsFailsTrajectoryWithNoToolCall(t *test
 }
 
 func TestInvestigationGrading_FixedWorkspacePassesFileStateAndGovernedProbe(t *testing.T) {
-	t.Parallel()
 	blueprints, err := InvestigationScenarioBlueprints()
 	require.NoError(t, err)
 	var bp ScenarioBlueprint

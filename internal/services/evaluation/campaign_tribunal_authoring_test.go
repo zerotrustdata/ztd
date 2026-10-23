@@ -94,7 +94,6 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 }
 
 func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-denied",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -117,7 +116,6 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 	}
 
 	t.Run("signed L2 rejection is retained as governance outcome", func(t *testing.T) {
-		t.Parallel()
 		run := newRun()
 		failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{member})
 		assert.Equal(t, tribunalGovernanceRejected, failure)
@@ -131,7 +129,6 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 	})
 
 	t.Run("missing receipt remains an internal failure", func(t *testing.T) {
-		t.Parallel()
 		run := newRun()
 		withoutReceipt := proto.Clone(member).(*tribunalv1.TribunalMemberCall)
 		withoutReceipt.Receipt = nil
@@ -144,10 +141,8 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 }
 
 func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
-	t.Parallel()
 	const proposal = `{"command":"echo","args":["hello"]}`
 	t.Run("native dispatches MCP directly", func(t *testing.T) {
-		t.Parallel()
 		tools := &tribunalAuthoringTools{outcome: shellToolOutcome(`{"exit_code":0,"stdout":"hello\n"}`)}
 		inference := &tribunalAuthoringInference{result: &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED}}
 		run := newTribunalAuthoringRun(t, false, inference, tools)
@@ -166,7 +161,6 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 	})
 
 	t.Run("Tribunal uses intent and does not dispatch native MCP", func(t *testing.T) {
-		t.Parallel()
 		tools := &tribunalAuthoringTools{}
 		inference := &tribunalAuthoringInference{result: &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED}}
 		run := newTribunalAuthoringRun(t, true, inference, tools)
@@ -183,9 +177,7 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 }
 
 func TestRunToolRejectsHostnamesBeforeTribunalIntent(t *testing.T) {
-	t.Parallel()
 	t.Run("Tribunal rejects hostnames", func(t *testing.T) {
-		t.Parallel()
 		tools := &tribunalAuthoringTools{outcome: shellToolOutcome(`{"exit_code":0}`)}
 		inference := &tribunalAuthoringInference{result: &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED}}
 		run := newTribunalAuthoringRun(t, true, inference, tools)
@@ -203,7 +195,6 @@ func TestRunToolRejectsHostnamesBeforeTribunalIntent(t *testing.T) {
 }
 
 func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *testing.T) {
-	t.Parallel()
 	proposal := `{"command":"echo","args":["before"]}`
 	approved := models.RunShellCommandRequest{Command: "printf", Args: []string{"%s", "approved"}, Timeout: 30, WorkingDir: "/operator/workspace"}
 	approvedJSON := approved.CanonicalJSON()
@@ -216,7 +207,6 @@ func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *test
 		{name: "execution failure", summary: `{"exit_code":2,"stderr":"failed"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			run := &agentRun{}
 			record, err := run.runApprovedShellCommand(AgentToolCall{
 				CallID: "call-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: proposal,

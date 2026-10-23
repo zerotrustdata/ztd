@@ -18,15 +18,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestGatewayReExecArgs_PreserveSpectatorAndFollowingFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	for _, enabled := range []bool{false, true} { //nolint:paralleltest // mutates package-level state
+func TestGatewayReExecArgs_PreserveSpectatorAndFollowingFlags(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
 		name := "disabled"
 		if enabled {
 			name = "enabled"
 		}
 		t.Run(name, func(t *testing.T) {
-
 			cfg := serve.GatewayConfig{
 				Posture:                    constants.PostureDoctrine,
 				HTTPPort:                   18080,

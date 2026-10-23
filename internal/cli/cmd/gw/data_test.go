@@ -30,9 +30,7 @@ import (
 )
 
 func TestDataCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("data command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataCmd()
 		assert.Equal(t, "data", cmd.Use)
 		assert.Contains(t, cmd.Short, "Administer")
@@ -41,9 +39,7 @@ func TestDataCmd(t *testing.T) {
 }
 
 func TestDataUsersCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("users command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataUsersCmd()
 		assert.Equal(t, "users", cmd.Use)
 		assert.Contains(t, cmd.Short, "Manage user accounts")
@@ -51,9 +47,7 @@ func TestDataUsersCmd(t *testing.T) {
 }
 
 func TestDataOperatorsCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("operators command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataOperatorsCmd()
 		assert.Equal(t, "operators", cmd.Use)
 		assert.Contains(t, cmd.Short, "Manage Operator instances")
@@ -61,9 +55,7 @@ func TestDataOperatorsCmd(t *testing.T) {
 }
 
 func TestDataSettingsCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("settings command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataSettingsCmd()
 		assert.Equal(t, "settings", cmd.Use)
 		assert.Contains(t, cmd.Short, "Manage Gateway settings")
@@ -71,23 +63,19 @@ func TestDataSettingsCmd(t *testing.T) {
 }
 
 func TestDataStoreCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("store command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataStoreCmd()
 		assert.Equal(t, "store", cmd.Use)
 		assert.Contains(t, cmd.Short, "Manage document storage")
 	})
 
 	t.Run("store has collection flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataStoreCmd()
 		flag := cmd.Flags().Lookup("collection")
 		assert.NotNil(t, flag)
 	})
 
 	t.Run("store has document-id flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataStoreCmd()
 		flag := cmd.Flags().Lookup("document-id")
 		assert.NotNil(t, flag)
@@ -96,23 +84,19 @@ func TestDataStoreCmd(t *testing.T) {
 }
 
 func TestDataAuditCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("audit command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditCmd()
 		assert.Equal(t, "audit", cmd.Use)
 		assert.Contains(t, cmd.Short, "Query the Gateway audit store")
 	})
 
 	t.Run("audit has operator-session-id flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditListCmd()
 		flag := cmd.Flags().Lookup("operator-session-id")
 		assert.NotNil(t, flag)
 	})
 
 	t.Run("audit has limit flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditListCmd()
 		flag := cmd.Flags().Lookup("limit")
 		assert.NotNil(t, flag)
@@ -120,8 +104,7 @@ func TestDataAuditCmd(t *testing.T) {
 
 }
 
-func TestDataCommandsRequireAuthentication(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataCommandsRequireAuthentication(t *testing.T) {
 	testCases := []struct {
 		name string
 		cmd  func(func(string) (*config.Config, error), authcmd.APIClientFactory, func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command
@@ -134,9 +117,8 @@ func TestDataCommandsRequireAuthentication(t *testing.T) { //nolint:paralleltest
 		{"audit summary", dataAuditSummaryCmdWithConfig},
 	}
 
-	for _, tc := range testCases { //nolint:paralleltest // mutates package-level state
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			loader := func(_ string) (*config.Config, error) { return cfg, nil }
 			cmd := tc.cmd(loader, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
@@ -152,9 +134,7 @@ func TestDataCommandsRequireAuthentication(t *testing.T) { //nolint:paralleltest
 }
 
 func TestDataCommandFlags(t *testing.T) {
-	t.Parallel()
 	t.Run("audit limit flag has default", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditListCmd()
 		limitFlag := cmd.Flags().Lookup("limit")
 		assert.NotNil(t, limitFlag)
@@ -163,16 +143,13 @@ func TestDataCommandFlags(t *testing.T) {
 }
 
 func TestDataAuditSummaryCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("summary command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditSummaryCmd()
 		assert.Equal(t, string(constants.StreamStatusSummary), cmd.Use)
 		assert.Contains(t, cmd.Short, "Show audit event summary")
 	})
 
 	t.Run("summary has operator-session-id flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditSummaryCmd()
 		flag := cmd.Flags().Lookup("operator-session-id")
 		assert.NotNil(t, flag)
@@ -180,14 +157,11 @@ func TestDataAuditSummaryCmd(t *testing.T) {
 
 }
 
-func TestDataStoreCmdFlagValidation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("store fails without collection flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCmdFlagValidation(t *testing.T) {
+	t.Run("store fails without collection flag", func(t *testing.T) {
 		// This test verifies that the collection flag is required
 		// Note: The actual command checks the flag AFTER config load and client creation
 		// So we verify the flag exists and is required by checking the command definition
-
 		cmd := dataStoreCmd()
 		flag := cmd.Flags().Lookup("collection")
 		assert.NotNil(t, flag)
@@ -195,8 +169,7 @@ func TestDataStoreCmdFlagValidation(t *testing.T) { //nolint:paralleltest // mut
 		assert.Empty(t, flag.DefValue)
 	})
 
-	t.Run("store list mode with collection flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("store list mode with collection flag", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		loader := func(_ string) (*config.Config, error) { return cfg, nil }
 		cmd := dataStoreCmdWithConfig(loader, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
@@ -213,14 +186,11 @@ func TestDataStoreCmdFlagValidation(t *testing.T) { //nolint:paralleltest // mut
 	})
 }
 
-func TestDataAuditListCmdFlagValidation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("audit list requires operator-session-id flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditListCmdFlagValidation(t *testing.T) {
+	t.Run("audit list requires operator-session-id flag", func(t *testing.T) {
 		// This test verifies that the operator-session-id flag is required
 		// Note: The actual command checks the flag AFTER config load and client creation
 		// So we verify the flag exists and is required by checking the command definition
-
 		cmd := dataAuditListCmd()
 		flag := cmd.Flags().Lookup("operator-session-id")
 		assert.NotNil(t, flag)
@@ -228,8 +198,7 @@ func TestDataAuditListCmdFlagValidation(t *testing.T) { //nolint:paralleltest //
 		assert.Empty(t, flag.DefValue)
 	})
 
-	t.Run("audit list with operator-session-id flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("audit list with operator-session-id flag", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		loader := func(_ string) (*config.Config, error) { return cfg, nil }
 		cmd := dataAuditListCmdWithConfig(loader, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
@@ -247,9 +216,7 @@ func TestDataAuditListCmdFlagValidation(t *testing.T) { //nolint:paralleltest //
 }
 
 func TestDataAuditCmdStructure(t *testing.T) {
-	t.Parallel()
 	t.Run("audit command has correct subcommands", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditCmd()
 		subcommands := cmd.Commands()
 		subcommandNames := make(map[string]bool)
@@ -263,7 +230,6 @@ func TestDataAuditCmdStructure(t *testing.T) {
 }
 
 func TestDataCommandJSONUnmarshaling(t *testing.T) {
-	t.Parallel()
 	testCases := []struct {
 		name        string
 		jsonData    string
@@ -300,7 +266,6 @@ func TestDataCommandJSONUnmarshaling(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			err := json.Unmarshal([]byte(tc.jsonData), tc.targetType)
 			if tc.expectError {
 				require.Error(t, err)
@@ -312,9 +277,7 @@ func TestDataCommandJSONUnmarshaling(t *testing.T) {
 }
 
 func TestDataDocFilterTypes(t *testing.T) {
-	t.Parallel()
 	t.Run("DocFilter struct serialization", func(t *testing.T) {
-		t.Parallel()
 		filter := models.DocFilter{
 			Field: "test_field",
 			Op:    "==",
@@ -334,7 +297,6 @@ func TestDataDocFilterTypes(t *testing.T) {
 	})
 
 	t.Run("DocQueryRequest struct serialization", func(t *testing.T) {
-		t.Parallel()
 		req := models.DocQueryRequest{
 			Filters: []models.DocFilter{
 				{Field: "field1", Op: "==", Value: json.RawMessage(`"value1"`)},
@@ -355,7 +317,6 @@ func TestDataDocFilterTypes(t *testing.T) {
 	})
 
 	t.Run("DocQueryRequest with limit serialization", func(t *testing.T) {
-		t.Parallel()
 		req := models.DocQueryRequest{
 			Filters: []models.DocFilter{
 				{Field: "session_id", Op: "==", Value: json.RawMessage(`"sess-123"`)},
@@ -375,7 +336,6 @@ func TestDataDocFilterTypes(t *testing.T) {
 	})
 
 	t.Run("DocFilter with numeric value", func(t *testing.T) {
-		t.Parallel()
 		filter := models.DocFilter{
 			Field: "count",
 			Op:    ">",
@@ -395,7 +355,6 @@ func TestDataDocFilterTypes(t *testing.T) {
 	})
 
 	t.Run("DocFilter with null value", func(t *testing.T) {
-		t.Parallel()
 		filter := models.DocFilter{
 			Field: "deleted_at",
 			Op:    "==",
@@ -415,7 +374,6 @@ func TestDataDocFilterTypes(t *testing.T) {
 	})
 
 	t.Run("DocQueryRequest with zero limit", func(t *testing.T) {
-		t.Parallel()
 		req := models.DocQueryRequest{
 			Filters: []models.DocFilter{},
 			Limit:   0,
@@ -432,10 +390,8 @@ func TestDataDocFilterTypes(t *testing.T) {
 	})
 }
 
-func TestDataStoreCommandModes(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("store command defaults to list mode when document-id not provided", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataStoreCommandModes(t *testing.T) {
+	t.Run("store command defaults to list mode when document-id not provided", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		loader := func(_ string) (*config.Config, error) { return cfg, nil }
 		cmd := dataStoreCmdWithConfig(loader, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
@@ -451,8 +407,7 @@ func TestDataStoreCommandModes(t *testing.T) { //nolint:paralleltest // mutates 
 		assert.NotContains(t, err.Error(), "--collection is required")
 	})
 
-	t.Run("store command uses document mode when document-id provided", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("store command uses document mode when document-id provided", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		loader := func(_ string) (*config.Config, error) { return cfg, nil }
 		cmd := dataStoreCmdWithConfig(loader, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
@@ -471,12 +426,9 @@ func TestDataStoreCommandModes(t *testing.T) { //nolint:paralleltest // mutates 
 }
 
 func TestDataCommandErrorHandling(t *testing.T) {
-	t.Parallel()
 	t.Run("users command handles JSON parse errors", func(t *testing.T) {
-		t.Parallel()
 		// This test verifies that the users command properly handles invalid JSON responses
 		// Since we can't mock the API client easily, we test the struct unmarshaling directly
-
 		invalidJSON := `not valid json`
 		var users []models.User
 		err := json.Unmarshal([]byte(invalidJSON), &users)
@@ -485,7 +437,6 @@ func TestDataCommandErrorHandling(t *testing.T) {
 	})
 
 	t.Run("operators command handles JSON parse errors", func(t *testing.T) {
-		t.Parallel()
 		invalidJSON := `{invalid}`
 		var operators []*operatorv1.OperatorDocument
 		err := json.Unmarshal([]byte(invalidJSON), &operators)
@@ -493,7 +444,6 @@ func TestDataCommandErrorHandling(t *testing.T) {
 	})
 
 	t.Run("settings command handles JSON parse errors", func(t *testing.T) {
-		t.Parallel()
 		invalidJSON := `{invalid}`
 		var settings models.SettingsDocument
 		err := json.Unmarshal([]byte(invalidJSON), &settings)
@@ -501,9 +451,7 @@ func TestDataCommandErrorHandling(t *testing.T) {
 	})
 
 	t.Run("settings command handles missing settings field", func(t *testing.T) {
-		t.Parallel()
 		// Valid JSON but missing required field
-
 		invalidJSON := `{"other_field": "value"}`
 		var settings models.SettingsDocument
 		err := json.Unmarshal([]byte(invalidJSON), &settings)
@@ -513,9 +461,7 @@ func TestDataCommandErrorHandling(t *testing.T) {
 }
 
 func TestDataDocFilterEdgeCases(t *testing.T) {
-	t.Parallel()
 	t.Run("DocFilter with empty field", func(t *testing.T) {
-		t.Parallel()
 		filter := models.DocFilter{
 			Field: "",
 			Op:    "==",
@@ -533,7 +479,6 @@ func TestDataDocFilterEdgeCases(t *testing.T) {
 	})
 
 	t.Run("DocFilter with empty operator", func(t *testing.T) {
-		t.Parallel()
 		filter := models.DocFilter{
 			Field: "field",
 			Op:    "",
@@ -551,7 +496,6 @@ func TestDataDocFilterEdgeCases(t *testing.T) {
 	})
 
 	t.Run("DocFilter with complex value (object)", func(t *testing.T) {
-		t.Parallel()
 		complexValue := struct {
 			Nested string `json:"nested"`
 			Number int    `json:"number"`
@@ -578,7 +522,6 @@ func TestDataDocFilterEdgeCases(t *testing.T) {
 	})
 
 	t.Run("DocFilter with array value", func(t *testing.T) {
-		t.Parallel()
 		arrayValue := []string{"value1", "value2", "value3"}
 		valueBytes, err := json.Marshal(arrayValue)
 		require.NoError(t, err)
@@ -603,16 +546,13 @@ func TestDataDocFilterEdgeCases(t *testing.T) {
 }
 
 func TestDataCommandLongDescription(t *testing.T) {
-	t.Parallel()
 	t.Run("data command has long description", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataCmd()
 		assert.NotEmpty(t, cmd.Long)
 		assert.Contains(t, cmd.Long, "Data management")
 	})
 
 	t.Run("users command has long description", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataUsersCmd()
 		assert.NotEmpty(t, cmd.Long)
 		assert.Contains(t, cmd.Long, "user accounts")
@@ -620,9 +560,7 @@ func TestDataCommandLongDescription(t *testing.T) {
 }
 
 func TestDataCommandSubcommandRegistration(t *testing.T) {
-	t.Parallel()
 	t.Run("data command registers all expected subcommands", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataCmd()
 		subcommands := cmd.Commands()
 		subcommandNames := make(map[string]bool)
@@ -638,7 +576,6 @@ func TestDataCommandSubcommandRegistration(t *testing.T) {
 	})
 
 	t.Run("audit command registers list and summary subcommands", func(t *testing.T) {
-		t.Parallel()
 		cmd := dataAuditCmd()
 		subcommands := cmd.Commands()
 		subcommandNames := make(map[string]bool)
@@ -651,8 +588,7 @@ func TestDataCommandSubcommandRegistration(t *testing.T) {
 	})
 }
 
-func TestDataAuditSummaryCmdWithConfig_ValidResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditSummaryCmdWithConfig_ValidResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -673,8 +609,7 @@ func TestDataAuditSummaryCmdWithConfig_ValidResponse(t *testing.T) { //nolint:pa
 	assert.Equal(t, []string{constants.APIPaths.AuditSummary}, client.GetCalls)
 }
 
-func TestDataAuditSummaryCmdWithConfig_SessionFilterSendsQueryParameter(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditSummaryCmdWithConfig_SessionFilterSendsQueryParameter(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -691,8 +626,7 @@ func TestDataAuditSummaryCmdWithConfig_SessionFilterSendsQueryParameter(t *testi
 	assert.Equal(t, []string{constants.APIPaths.AuditSummary + "?operator_session_id=sess-1"}, client.GetCalls)
 }
 
-func TestDataAuditSummaryCmdWithConfig_EmptyResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditSummaryCmdWithConfig_EmptyResult(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -708,8 +642,7 @@ func TestDataAuditSummaryCmdWithConfig_EmptyResult(t *testing.T) { //nolint:para
 	assert.NotContains(t, buf.String(), "Audit Event Summary")
 }
 
-func TestDataAuditSummaryCmdWithConfig_GetError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditSummaryCmdWithConfig_GetError(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
@@ -724,8 +657,7 @@ func TestDataAuditSummaryCmdWithConfig_GetError(t *testing.T) { //nolint:paralle
 	assert.Contains(t, err.Error(), "fetch audit summary")
 }
 
-func TestDataAuditSummaryCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDataAuditSummaryCmdWithConfig_InvalidJSONResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }

@@ -17,7 +17,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestTempDir_CleanupSurvivesWorkingDirectoryChange(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestTempDir_CleanupSurvivesWorkingDirectoryChange(t *testing.T) {
 	original, err := os.Getwd()
 	require.NoError(t, err)
 	discoveryDir := TempDir(t)
@@ -35,10 +35,9 @@ func TestTempDir_CleanupSurvivesWorkingDirectoryChange(t *testing.T) { //nolint:
 	require.ErrorIs(t, err, os.ErrNotExist, "the owning test must remove its root even after directory discovery changes")
 }
 
-func TestTempDirAndOperatorDirLiveUnderModuleRuntime(t *testing.T) { //nolint:tparallel // the parent checks cleanup after the subtest returns
-	t.Parallel()
+func TestTempDirAndOperatorDirLiveUnderModuleRuntime(t *testing.T) {
 	var scratch, operator string
-	t.Run("allocate", func(t *testing.T) { //nolint:tparallel // the parent checks cleanup after the subtest returns
+	t.Run("allocate", func(t *testing.T) {
 		scratch, operator = TempDir(t), OperatorDir(t)
 		require.Equal(t, filepath.Join(runtimeRoot, constants.TmpDirname), filepath.Dir(scratch))
 		require.Equal(t, filepath.Join(runtimeRoot, constants.OperatorsDirname), filepath.Dir(operator))

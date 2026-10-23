@@ -31,8 +31,6 @@ func listedOperator(id string, status constants.OperatorStatus, staleAt time.Tim
 }
 
 func TestOperatorStatusAt_DerivesStaleFromStaleAt(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 	cases := []struct {
 		name   string
@@ -49,8 +47,6 @@ func TestOperatorStatusAt_DerivesStaleFromStaleAt(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			op := listedOperator("op-1", tc.status, tc.staleA)
 			assert.Equal(t, tc.want, operatorStatusAt(op, now))
 		})
@@ -58,7 +54,6 @@ func TestOperatorStatusAt_DerivesStaleFromStaleAt(t *testing.T) {
 }
 
 func TestDisplayOperators_DerivesStatusWithoutChangingListedDocuments(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 	listed := []*operatorv1.OperatorDocument{
 		listedOperator("silent", constants.OperatorStatusActive, now.Add(-time.Second)),
@@ -74,13 +69,9 @@ func TestDisplayOperators_DerivesStatusWithoutChangingListedDocuments(t *testing
 }
 
 func TestNextOperatorStaleAt_EarliestFutureDeadlineOrNone(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 
 	t.Run("earliest future stale_at wins", func(t *testing.T) {
-		t.Parallel()
-
 		ops := []*operatorv1.OperatorDocument{
 			listedOperator("late", constants.OperatorStatusActive, now.Add(3*time.Minute)),
 			listedOperator("past", constants.OperatorStatusStale, now.Add(-time.Minute)),
@@ -92,24 +83,19 @@ func TestNextOperatorStaleAt_EarliestFutureDeadlineOrNone(t *testing.T) {
 	})
 
 	t.Run("none when no Operator has a stale_at", func(t *testing.T) {
-		t.Parallel()
-
 		ops := []*operatorv1.OperatorDocument{listedOperator("stopped", constants.OperatorStatusStopped, time.Time{})}
 		_, ok := nextOperatorStaleAt(ops, now)
 		assert.False(t, ok)
 	})
 
 	t.Run("none when every stale_at has passed", func(t *testing.T) {
-		t.Parallel()
-
 		ops := []*operatorv1.OperatorDocument{listedOperator("silent", constants.OperatorStatusStale, now.Add(-time.Second))}
 		_, ok := nextOperatorStaleAt(ops, now)
 		assert.False(t, ok)
 	})
 }
 
-func TestApplyOperatorHeartbeat_UpdatesListedOperatorInPlace(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApplyOperatorHeartbeat_UpdatesListedOperatorInPlace(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	originalTimeNow := timeNow
 	t.Cleanup(func() { timeNow = originalTimeNow })
@@ -138,8 +124,6 @@ func TestApplyOperatorHeartbeat_UpdatesListedOperatorInPlace(t *testing.T) { //n
 }
 
 func TestApplyOperatorHeartbeat_ReadsStaleAsActiveAgain(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 	m := NewModel(Options{})
 	m.operators = []*operatorv1.OperatorDocument{listedOperator("op-1", constants.OperatorStatusStale, now.Add(-time.Second))}
@@ -154,7 +138,6 @@ func TestApplyOperatorHeartbeat_ReadsStaleAsActiveAgain(t *testing.T) {
 }
 
 func TestOperatorHeartbeat_IsDecodedFromStreamAndNotLedgered(t *testing.T) {
-	t.Parallel()
 	data := `{"type":"ztd.v1.operator.heartbeat.received","data":{"operator_id":"op-1","last_heartbeat_at":"2026-06-15T10:00:00Z","stale_at":"2026-06-15T10:01:30Z"}}`
 	msgs := translateSSEEvents(string(constants.EventOperatorHeartbeatReceived), data)
 	require.Len(t, msgs, 1)
@@ -166,13 +149,9 @@ func TestOperatorHeartbeat_IsDecodedFromStreamAndNotLedgered(t *testing.T) {
 }
 
 func TestOperatorStaleDeadline_ArmsOneGenerationAndIgnoresSuperseded(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 
 	t.Run("no stale_at arms no deadline", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m.operators = []*operatorv1.OperatorDocument{listedOperator("op-1", constants.OperatorStatusActive, time.Time{})}
 		next, cmd := m.armOperatorStaleDeadline(now)
@@ -181,8 +160,6 @@ func TestOperatorStaleDeadline_ArmsOneGenerationAndIgnoresSuperseded(t *testing.
 	})
 
 	t.Run("a superseded deadline is ignored, the current one re-renders and re-arms", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m.operators = []*operatorv1.OperatorDocument{listedOperator("op-1", constants.OperatorStatusActive, now.Add(time.Minute))}
 		armed, cmd := m.armOperatorStaleDeadline(now)
@@ -204,8 +181,7 @@ func TestOperatorStaleDeadline_ArmsOneGenerationAndIgnoresSuperseded(t *testing.
 	})
 }
 
-func TestOperatorView_RendersDerivedStaleStatusAfterStaleAt(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorView_RendersDerivedStaleStatusAfterStaleAt(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 	originalTimeNow := timeNow
 	t.Cleanup(func() { timeNow = originalTimeNow })

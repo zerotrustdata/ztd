@@ -479,7 +479,7 @@ func TestVaultHeaderExists(t *testing.T) {
 func TestVaultHeaderValidatePrivateKey(t *testing.T) {
 	t.Parallel()
 	header, dek, _ := NewVaultHeader(testPrivateKey1)
-	t.Cleanup(func() { SecureZero(dek) })
+	defer SecureZero(dek)
 
 	t.Run("correct key validates", func(t *testing.T) {
 		t.Parallel()

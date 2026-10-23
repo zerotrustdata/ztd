@@ -14,7 +14,6 @@ import (
 )
 
 func TestActionTypeStateChangeClassification(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name            string
 		action          ActionType
@@ -36,7 +35,6 @@ func TestActionTypeStateChangeClassification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			require.Equal(t, tt.wantStateChange, tt.action.IsStateChange(), "IsStateChange")
 			require.Equal(t, tt.wantChanges, tt.action.ChangesState(tt.target), "ChangesState(%q)", tt.target)
 		})

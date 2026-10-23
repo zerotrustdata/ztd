@@ -372,7 +372,6 @@ func listedNames(t *testing.T, tools []json.RawMessage) []string {
 }
 
 func TestListToolsNoDownstreamListsNativeToolsOnly(t *testing.T) {
-	t.Parallel()
 	g := newTestGatewayService(t)
 	res, err := g.listToolsResult(context.Background())
 	require.NoError(t, err)

@@ -22,7 +22,6 @@ import (
 )
 
 func TestCanonicalComplianceCatalogMatchesReviewedPhase1Scope(t *testing.T) {
-	t.Parallel()
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 
@@ -45,7 +44,6 @@ func TestCanonicalComplianceCatalogMatchesReviewedPhase1Scope(t *testing.T) {
 }
 
 func TestCanonicalCrosswalkMapsEveryInitialAssertion(t *testing.T) {
-	t.Parallel()
 	assertions, _, crosswalks, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 
@@ -62,7 +60,6 @@ func TestCanonicalCrosswalkMapsEveryInitialAssertion(t *testing.T) {
 }
 
 func TestCanonicalFrameworkCatalogSupportDispositionsMatchCrosswalkCoverage(t *testing.T) {
-	t.Parallel()
 	_, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 
@@ -80,7 +77,6 @@ func TestCanonicalFrameworkCatalogSupportDispositionsMatchCrosswalkCoverage(t *t
 }
 
 func TestCanonicalFrameworkCatalogResolvesKSIAndOverlayControlReferences(t *testing.T) {
-	t.Parallel()
 	_, frameworks, _, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 	fedRAMP := catalog.FindFramework(frameworks, "fedramp-20x", "CR26-2026-06-24")

@@ -25,11 +25,7 @@ import (
 )
 
 func TestNewModel(t *testing.T) {
-	t.Parallel()
-
 	t.Run("defaults to 5 idle pipeline stages", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		assert.Len(t, m.pipeline, 5)
 		for i, stage := range m.pipeline {
@@ -38,8 +34,6 @@ func TestNewModel(t *testing.T) {
 	})
 
 	t.Run("starts with empty ledger, no posture, and ledger focus", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		assert.Empty(t, m.ledger)
 		assert.Empty(t, m.posture)
@@ -47,8 +41,6 @@ func TestNewModel(t *testing.T) {
 	})
 
 	t.Run("has gateway access only with a session", func(t *testing.T) {
-		t.Parallel()
-
 		assert.Nil(t, NewModel(Options{}).gw)
 		m := NewModel(Options{Session: &testSession{}, Identity: Identity{UserID: "user-1"}})
 		require.NotNil(t, m.gw)
@@ -57,8 +49,6 @@ func TestNewModel(t *testing.T) {
 }
 
 func TestSessionRotationReplacesRequestsAndSSESession(t *testing.T) {
-	t.Parallel()
-
 	oldSession := &testSession{}
 	newSession := &testSession{}
 	manager := newSessionManager(oldSession, "user-old")
@@ -82,8 +72,6 @@ func TestSessionRotationReplacesRequestsAndSSESession(t *testing.T) {
 }
 
 func TestApplyPipelineMsg(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name       string
 		stage      PipelineStage
@@ -142,8 +130,6 @@ func TestApplyPipelineMsg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			m := NewModel(Options{})
 			msg := PipelineMsg{
 				Stage:  tt.stage,
@@ -162,8 +148,6 @@ func TestApplyPipelineMsg(t *testing.T) {
 	}
 
 	t.Run("does not update activeTx when TxID is empty", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m.activeTx = "existing-tx"
 		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL2, Status: StatusActive, TxID: ""})
@@ -171,8 +155,6 @@ func TestApplyPipelineMsg(t *testing.T) {
 	})
 
 	t.Run("ignores out-of-range stage index", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		msg := PipelineMsg{Stage: PipelineStage(99), Status: StatusActive}
 		m = m.applyPipelineMsg(msg)
@@ -182,15 +164,13 @@ func TestApplyPipelineMsg(t *testing.T) {
 	})
 }
 
-func TestApplyLedgerMsg(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApplyLedgerMsg(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	originalTimeNow := timeNow
 	t.Cleanup(func() { timeNow = originalTimeNow })
 	timeNow = func() time.Time { return fixedTime }
 
-	t.Run("appends entry with provided time", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("appends entry with provided time", func(t *testing.T) {
 		m := NewModel(Options{})
 		msgTime := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 		m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "test entry", Time: msgTime})
@@ -200,16 +180,14 @@ func TestApplyLedgerMsg(t *testing.T) { //nolint:paralleltest // mutates package
 		assert.Equal(t, msgTime, m.ledger[0].time)
 	})
 
-	t.Run("uses timeNow when time is zero", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("uses timeNow when time is zero", func(t *testing.T) {
 		m := NewModel(Options{})
 		m = m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "auto time", Time: time.Time{}})
 		require.Len(t, m.ledger, 1)
 		assert.Equal(t, fixedTime, m.ledger[0].time)
 	})
 
-	t.Run("retains all entries without trimming", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("retains all entries without trimming", func(t *testing.T) {
 		m := NewModel(Options{})
 		for i := 0; i < 505; i++ {
 			m = m.applyLedgerMsg(LedgerMsg{
@@ -225,8 +203,6 @@ func TestApplyLedgerMsg(t *testing.T) { //nolint:paralleltest // mutates package
 }
 
 func TestApplyPendingApprovalsMsg(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	pending := PendingApprovalsMsg{Transactions: []models.SuspendedTxResponse{{TransactionHash: "tx-aaaaaaaaaaaaaaaaaaaa", ToolName: "run_command"}}}
 
@@ -270,11 +246,7 @@ var (
 )
 
 func TestPendingApprovalSelection(t *testing.T) {
-	t.Parallel()
-
 	t.Run("tab focuses approvals and j/k select within them", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{}).applyPendingApprovalsMsg(pendingTxs("tx-1", "tx-2", "tx-3"))
 		m, _ = press(t, m, keyTab)
 		assert.Equal(t, paneApprovals, m.focus)
@@ -287,8 +259,6 @@ func TestPendingApprovalSelection(t *testing.T) {
 	})
 
 	t.Run("tab cycles through every pane", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		for range paneCount {
 			m, _ = press(t, m, keyTab)
@@ -299,8 +269,6 @@ func TestPendingApprovalSelection(t *testing.T) {
 	})
 
 	t.Run("selection follows the selected transaction across refreshes", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{}).applyPendingApprovalsMsg(pendingTxs("tx-1", "tx-2"))
 		m.pendingSelected = 1
 		m = m.applyPendingApprovalsMsg(pendingTxs("tx-0", "tx-1", "tx-2"))
@@ -311,11 +279,7 @@ func TestPendingApprovalSelection(t *testing.T) {
 }
 
 func TestApproveFlow(t *testing.T) {
-	t.Parallel()
-
 	t.Run("a opens the approval page for the selected transaction", func(t *testing.T) {
-		t.Parallel()
-
 		var opened string
 		m := NewModel(Options{
 			Session:     &testSession{},
@@ -337,8 +301,6 @@ func TestApproveFlow(t *testing.T) {
 	})
 
 	t.Run("enter approves only when the approvals pane has focus", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{
 			ApprovalURL: func(tx string) string { return tx },
 			OpenBrowser: func(string) error { return nil },
@@ -351,8 +313,6 @@ func TestApproveFlow(t *testing.T) {
 	})
 
 	t.Run("a browser failure points the user at the URL", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		model, _ := m.Update(ApprovalOpenedMsg{TxHash: "tx-1", URL: "https://gw/approve/tx-1", Err: constants.ErrNotFound})
 		m = model.(Model)
@@ -362,8 +322,6 @@ func TestApproveFlow(t *testing.T) {
 	})
 
 	t.Run("without the approve flow, a points at the CLI command", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{}).applyPendingApprovalsMsg(pendingTxs("tx-1"))
 		m, cmd := press(t, m, keyA)
 		assert.Nil(t, cmd)
@@ -371,17 +329,21 @@ func TestApproveFlow(t *testing.T) {
 	})
 
 	t.Run("with nothing pending, a does nothing but say so", func(t *testing.T) {
-		t.Parallel()
-
 		m, cmd := press(t, NewModel(Options{}), keyA)
 		assert.Nil(t, cmd)
 		assert.Contains(t, m.ledger[0].message, "No pending approvals")
 	})
 
-	t.Run("approval.completed is verified over mTLS, then pending is re-listed", func(t *testing.T) {
-		t.Parallel()
+	completedReceipt := func(txHash string) *operatorv1.ActionReceipt {
+		return &operatorv1.ActionReceipt{
+			TransactionHash: txHash,
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
+		}
+	}
 
-		session := &testSession{statusJSON: `{"status":"approved","tool_name":"run_command"}`}
+	t.Run("approval.completed with a completed receipt is approved without a status request", func(t *testing.T) {
+		session := &testSession{}
 		m := NewModel(Options{Session: session})
 		m.awaitingApproval["tx-1"] = struct{}{}
 
@@ -398,11 +360,8 @@ func TestApproveFlow(t *testing.T) {
 		assert.Equal(t, []string{constants.APIPaths.ApprovalsCLIList}, session.requestedPaths(), "the executed transaction has left the pending store; only the list is requested")
 	})
 
-	t.Run("a deny is reported denied, never verified as approved", func(t *testing.T) {
-		t.Parallel()
-
-		session := &testSession{statusJSON: `{"status":"approved"}`}
-		m := NewModel(Options{Session: session})
+	t.Run("a deny is reported denied, never approved", func(t *testing.T) {
+		m := NewModel(Options{Session: &testSession{}})
 		m.awaitingApproval["tx-1"] = struct{}{}
 
 		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: &operatorv1.ActionReceipt{
@@ -420,28 +379,48 @@ func TestApproveFlow(t *testing.T) {
 		require.NotNil(t, cmd)
 		_, ok := cmd().(PendingApprovalsMsg)
 		assert.True(t, ok, "a deny re-lists pending approvals")
-		assert.NotContains(t, session.requestedPaths(), constants.APIPaths.ApprovalsCLIStatus+"tx-1")
 	})
 
-	t.Run("a non-approved status is reported as a failure", func(t *testing.T) {
-		t.Parallel()
+	failures := []struct {
+		name    string
+		receipt *operatorv1.ActionReceipt
+		want    string
+	}{
+		{name: "missing receipt", receipt: nil, want: "receipt"},
+		{name: "receipt for another transaction", receipt: completedReceipt("tx-other"), want: "does not match"},
+		{name: "failed execution", receipt: &operatorv1.ActionReceipt{
+			TransactionHash: "tx-1",
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
+		}, want: "did not complete"},
+		{name: "completed without L3 proof", receipt: &operatorv1.ActionReceipt{
+			TransactionHash: "tx-1",
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			L3Status:        operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
+		}, want: "L3 proof"},
+	}
+	for _, tc := range failures {
+		t.Run("an approval with a "+tc.name+" is reported as a failure", func(t *testing.T) {
+			m := NewModel(Options{Session: &testSession{}})
+			m.awaitingApproval["tx-1"] = struct{}{}
 
-		m := NewModel(Options{Session: &testSession{statusJSON: `{"status":"expired_or_not_found"}`}})
-		_, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1"})
-		verified := cmd().(ApprovalVerifiedMsg)
-		require.Error(t, verified.Err)
-
-		model, _ := m.Update(verified)
-		m = model.(Model)
-		last := m.ledger[len(m.ledger)-1]
-		assert.Equal(t, LevelWarn, last.level)
-		assert.Contains(t, last.message, "expired or not found")
-	})
+			model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: tc.receipt})
+			m = model.(Model)
+			assert.Equal(t, StatusFailed, m.pipeline[StageL3].status)
+			assert.NotContains(t, m.awaitingApproval, "tx-1")
+			last := m.ledger[len(m.ledger)-1]
+			assert.Equal(t, LevelWarn, last.level)
+			assert.Contains(t, last.message, "Approval failed")
+			assert.Contains(t, last.message, tc.want)
+			assert.NotContains(t, last.message, "approved")
+			require.NotNil(t, cmd)
+			_, ok := cmd().(PendingApprovalsMsg)
+			assert.True(t, ok, "a failed approval re-lists pending approvals")
+		})
+	}
 }
 
 func TestApplyOperatorsMsg(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m = m.applyOperatorsMsg(OperatorsMsg{Operators: []*operatorv1.OperatorDocument{
 		{Id: "op-1", Status: string(constants.OperatorStatusActive)},
@@ -459,8 +438,6 @@ func TestApplyOperatorsMsg(t *testing.T) {
 }
 
 func TestApplyHealthMsg(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m = m.applyHealthMsg(HealthMsg{Health: models.HealthResponse{Posture: constants.PostureRatify, Version: "v2.3.2"}})
 	require.NotEmpty(t, m.posture)
@@ -473,8 +450,6 @@ func TestApplyHealthMsg(t *testing.T) {
 }
 
 func TestSessionExpiry(t *testing.T) {
-	t.Parallel()
-
 	expired := &api.StatusError{StatusCode: http.StatusUnauthorized, Body: "CLI session expired"}
 	for name, msg := range map[string]tea.Msg{
 		"pending approvals": PendingApprovalsMsg{Err: expired},
@@ -482,8 +457,6 @@ func TestSessionExpiry(t *testing.T) {
 		"health":            HealthMsg{Err: expired},
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			model, _ := NewModel(Options{}).Update(msg)
 			m := model.(Model)
 			assert.Equal(t, ConnFailed, m.connStatus)
@@ -492,8 +465,6 @@ func TestSessionExpiry(t *testing.T) {
 	}
 
 	t.Run("other errors leave the connection state alone", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m.connStatus = ConnConnected
 		model, _ := m.Update(PendingApprovalsMsg{Err: &api.StatusError{StatusCode: http.StatusInternalServerError}})
@@ -502,11 +473,7 @@ func TestSessionExpiry(t *testing.T) {
 }
 
 func TestRefreshKey(t *testing.T) {
-	t.Parallel()
-
 	t.Run("r re-fetches approvals, operators, and health", func(t *testing.T) {
-		t.Parallel()
-
 		session := &testSession{}
 		_, cmd := press(t, NewModel(Options{Session: session}), keyR)
 		require.NotNil(t, cmd)
@@ -522,19 +489,13 @@ func TestRefreshKey(t *testing.T) {
 	})
 
 	t.Run("r without a session does nothing", func(t *testing.T) {
-		t.Parallel()
-
 		_, cmd := press(t, NewModel(Options{}), keyR)
 		assert.Nil(t, cmd)
 	})
 }
 
 func TestTickMsgBlinkToggle(t *testing.T) {
-	t.Parallel()
-
 	t.Run("toggles blink and reschedules when blinking state exists", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusWaiting, Detail: "FIDO2"})
 		assert.False(t, m.blinkOn)
@@ -550,8 +511,6 @@ func TestTickMsgBlinkToggle(t *testing.T) {
 	})
 
 	t.Run("toggles blink but does not reschedule when no blinking state", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		assert.False(t, m.blinkOn)
 
@@ -562,15 +521,13 @@ func TestTickMsgBlinkToggle(t *testing.T) {
 	})
 }
 
-func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestKeyMsgScroll(t *testing.T) {
 	fixedTime := time.Date(2026, 6, 15, 10, 30, 0, 0, time.UTC)
 	originalTimeNow := timeNow
 	t.Cleanup(func() { timeNow = originalTimeNow })
 	timeNow = func() time.Time { return fixedTime }
 
-	t.Run("up/k increases scroll offset", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("up/k increases scroll offset", func(t *testing.T) {
 		m := NewModel(Options{})
 		for i := 0; i < 10; i++ {
 			m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "entry", Time: fixedTime})
@@ -586,8 +543,7 @@ func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-l
 		assert.Equal(t, 2, m.ledgerScroll)
 	})
 
-	t.Run("down/j decreases scroll offset", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("down/j decreases scroll offset", func(t *testing.T) {
 		m := NewModel(Options{})
 		for i := 0; i < 10; i++ {
 			m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "entry", Time: fixedTime})
@@ -599,8 +555,7 @@ func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-l
 		assert.Equal(t, 2, m.ledgerScroll)
 	})
 
-	t.Run("down does not go below zero", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("down does not go below zero", func(t *testing.T) {
 		m := NewModel(Options{})
 		m.ledgerScroll = 0
 		model, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -608,8 +563,7 @@ func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-l
 		assert.Equal(t, 0, m.ledgerScroll)
 	})
 
-	t.Run("up does not exceed ledger length minus one", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("up does not exceed ledger length minus one", func(t *testing.T) {
 		m := NewModel(Options{})
 		for i := 0; i < 3; i++ {
 			m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "entry", Time: fixedTime})
@@ -621,8 +575,7 @@ func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-l
 		assert.Equal(t, 2, m.ledgerScroll)
 	})
 
-	t.Run("g jumps to top (max scroll)", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("g jumps to top (max scroll)", func(t *testing.T) {
 		m := NewModel(Options{})
 		for i := 0; i < 10; i++ {
 			m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "entry", Time: fixedTime})
@@ -636,8 +589,7 @@ func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-l
 		assert.Equal(t, 9, m.ledgerScroll)
 	})
 
-	t.Run("G jumps to bottom (zero scroll)", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("G jumps to bottom (zero scroll)", func(t *testing.T) {
 		m := NewModel(Options{})
 		for i := 0; i < 10; i++ {
 			m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "entry", Time: fixedTime})
@@ -650,11 +602,7 @@ func TestKeyMsgScroll(t *testing.T) { //nolint:paralleltest // mutates package-l
 }
 
 func TestQuitKeyMsg(t *testing.T) {
-	t.Parallel()
-
 	t.Run("q sets quitting and returns tea.Quit", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 		m = model.(Model)
@@ -663,8 +611,6 @@ func TestQuitKeyMsg(t *testing.T) {
 	})
 
 	t.Run("ctrl+c sets quitting and returns tea.Quit", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 		m = model.(Model)
@@ -674,8 +620,6 @@ func TestQuitKeyMsg(t *testing.T) {
 }
 
 func TestQuitMsg(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	model, cmd := m.Update(QuitMsg{})
 	m = model.(Model)
@@ -684,8 +628,6 @@ func TestQuitMsg(t *testing.T) {
 }
 
 func TestScenarioCompleteMsg_AppendsTypedPresentationCheckpoint(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name    string
 		status  ScenarioStatus
@@ -700,8 +642,6 @@ func TestScenarioCompleteMsg_AppendsTypedPresentationCheckpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			model, _ := NewModel(Options{}).Update(ScenarioCompleteMsg{Status: tt.status})
 			m := model.(Model)
 			require.Len(t, m.ledger, 1)
@@ -712,8 +652,6 @@ func TestScenarioCompleteMsg_AppendsTypedPresentationCheckpoint(t *testing.T) {
 }
 
 func TestWindowSizeMsg(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	model, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = model.(Model)
@@ -722,8 +660,6 @@ func TestWindowSizeMsg(t *testing.T) {
 }
 
 func TestShortHash(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name  string
 		input string
@@ -737,50 +673,36 @@ func TestShortHash(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tt.want, shortHash(tt.input))
 		})
 	}
 }
 
 func TestViewInit(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	cmd := m.Init()
 	assert.NotNil(t, cmd)
 }
 
 func TestHasBlinkingState(t *testing.T) {
-	t.Parallel()
-
 	t.Run("false when all stages idle", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		assert.False(t, m.hasBlinkingState())
 	})
 
 	t.Run("true when a stage is waiting", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusWaiting})
 		assert.True(t, m.hasBlinkingState())
 	})
 
 	t.Run("true when a stage is failed", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL1, Status: StatusFailed})
 		assert.True(t, m.hasBlinkingState())
 	})
 
 	t.Run("false when stages are passed or active", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL1, Status: StatusPassed})
 		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL2, Status: StatusActive})
@@ -789,11 +711,7 @@ func TestHasBlinkingState(t *testing.T) {
 }
 
 func TestPipelineMsgSchedulesTickForBlinkingState(t *testing.T) {
-	t.Parallel()
-
 	t.Run("schedules tick when waiting status introduced", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		model, cmd := m.Update(PipelineMsg{Stage: StageL3, Status: StatusWaiting, Detail: "FIDO2"})
 		m = model.(Model)
@@ -802,8 +720,6 @@ func TestPipelineMsgSchedulesTickForBlinkingState(t *testing.T) {
 	})
 
 	t.Run("does not schedule tick when no blinking status", func(t *testing.T) {
-		t.Parallel()
-
 		m := NewModel(Options{})
 		model, cmd := m.Update(PipelineMsg{Stage: StageL1, Status: StatusActive, Detail: "processing"})
 		m = model.(Model)
@@ -813,16 +729,12 @@ func TestPipelineMsgSchedulesTickForBlinkingState(t *testing.T) {
 }
 
 func TestViewQuitting(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.quitting = true
 	assert.Empty(t, m.View())
 }
 
 func TestViewRenders(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.width = 120
 	m.height = 40

@@ -36,19 +36,16 @@ func (m *mockKubectlRunner) runCommand(ctx context.Context, args ...string) (str
 }
 
 func TestK8sInspectTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &K8sInspectTool{}
 	require.Equal(t, "k8s_inspect", tool.Name())
 }
 
 func TestK8sInspectTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &K8sInspectTool{}
 	require.NotEmpty(t, tool.Description())
 }
 
 func TestK8sInspectTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &K8sInspectTool{}
 	schema := tool.InputSchema()
 	require.NotNil(t, schema)
@@ -60,7 +57,6 @@ func TestK8sInspectTool_InputSchema(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	tool := &K8sInspectTool{}
 	_, err := tool.Execute(context.Background(), json.RawMessage(`{invalid}`))
 	require.Error(t, err)
@@ -68,7 +64,6 @@ func TestK8sInspectTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_KubectlNotFound(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return false
@@ -83,7 +78,6 @@ func TestK8sInspectTool_Execute_KubectlNotFound(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_InvalidNamespace(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -103,7 +97,6 @@ func TestK8sInspectTool_Execute_InvalidNamespace(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_DefaultOperation(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -128,7 +121,6 @@ func TestK8sInspectTool_Execute_DefaultOperation(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_Pods(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -172,7 +164,6 @@ func TestK8sInspectTool_Execute_Pods(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_Nodes(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -221,7 +212,6 @@ func TestK8sInspectTool_Execute_Nodes(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_Services(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -263,7 +253,6 @@ func TestK8sInspectTool_Execute_Services(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_Deployments(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -319,7 +308,6 @@ func TestK8sInspectTool_Execute_Deployments(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_Namespaces(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -360,7 +348,6 @@ func TestK8sInspectTool_Execute_Namespaces(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_ClusterInfo(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -395,7 +382,6 @@ func TestK8sInspectTool_Execute_ClusterInfo(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodLogs(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -424,7 +410,6 @@ func TestK8sInspectTool_Execute_PodLogs(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodLogs_Truncated(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -455,7 +440,6 @@ func TestK8sInspectTool_Execute_PodLogs_Truncated(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodLogs_MissingName(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -470,7 +454,6 @@ func TestK8sInspectTool_Execute_PodLogs_MissingName(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodLogs_InvalidName(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -490,7 +473,6 @@ func TestK8sInspectTool_Execute_PodLogs_InvalidName(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodDescribe(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -519,7 +501,6 @@ func TestK8sInspectTool_Execute_PodDescribe(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodDescribe_MissingName(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -534,7 +515,6 @@ func TestK8sInspectTool_Execute_PodDescribe_MissingName(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_PodDescribe_InvalidName(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -554,7 +534,6 @@ func TestK8sInspectTool_Execute_PodDescribe_InvalidName(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_UnsupportedOperation(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -569,7 +548,6 @@ func TestK8sInspectTool_Execute_UnsupportedOperation(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_KubectlCommandError(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -592,7 +570,6 @@ func TestK8sInspectTool_Execute_KubectlCommandError(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_DefaultLimit(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -616,7 +593,6 @@ func TestK8sInspectTool_Execute_DefaultLimit(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_CustomLimit(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -640,7 +616,6 @@ func TestK8sInspectTool_Execute_CustomLimit(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_DeploymentWithNilReplicas(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -676,7 +651,6 @@ func TestK8sInspectTool_Execute_DeploymentWithNilReplicas(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_NodeWithoutReadyCondition(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -711,7 +685,6 @@ func TestK8sInspectTool_Execute_NodeWithoutReadyCondition(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_ClusterInfoWithContextError(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true
@@ -741,7 +714,6 @@ func TestK8sInspectTool_Execute_ClusterInfoWithContextError(t *testing.T) {
 }
 
 func TestK8sInspectTool_Execute_DeploymentNilReplicasPointer(t *testing.T) {
-	t.Parallel()
 	mock := &mockKubectlRunner{
 		lookPathFunc: func() bool {
 			return true

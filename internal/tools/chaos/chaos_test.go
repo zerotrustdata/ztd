@@ -29,7 +29,6 @@ import (
 )
 
 func TestPickCategory(t *testing.T) {
-	t.Parallel()
 	r := rand.New(rand.NewPCG(12345, 67890))
 
 	categoryCounts := make(map[category]int)
@@ -67,8 +66,7 @@ func TestPickCategory(t *testing.T) {
 	}
 }
 
-func TestClampMin(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestClampMin(t *testing.T) {
 	tests := []struct {
 		name string
 		a    int
@@ -83,9 +81,8 @@ func TestClampMin(t *testing.T) { //nolint:paralleltest // mutates package-level
 		{"negative a", -5, 5, -5},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if got := clampMin(tt.a, tt.b); got != tt.want {
 				t.Errorf("clampMin(%d, %d) = %d, want %d", tt.a, tt.b, got, tt.want)
 			}
@@ -93,8 +90,7 @@ func TestClampMin(t *testing.T) { //nolint:paralleltest // mutates package-level
 	}
 }
 
-func TestSignedEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSignedEnvelope(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -167,9 +163,8 @@ func TestSignedEnvelope(t *testing.T) { //nolint:paralleltest // mutates package
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			env, err := signedEnvelope(tt.actionType, tt.target, stateRoot, "test-nonce", tt.payload, tt.isMutation, privKey, keyID, sessionID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("signedEnvelope() error = %v, wantErr %v", err, tt.wantErr)
@@ -198,7 +193,6 @@ func TestSignedEnvelope(t *testing.T) { //nolint:paralleltest // mutates package
 }
 
 func TestBuildGoodActorEnvelope(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -228,7 +222,6 @@ func TestBuildGoodActorEnvelope(t *testing.T) {
 }
 
 func TestBuildPromptInjEnvelope(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -258,7 +251,6 @@ func TestBuildPromptInjEnvelope(t *testing.T) {
 }
 
 func TestBuildFileMutationEnvelope(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -288,7 +280,6 @@ func TestBuildFileMutationEnvelope(t *testing.T) {
 }
 
 func TestBuildMitMEnvelope(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -317,14 +308,12 @@ func TestBuildMitMEnvelope(t *testing.T) {
 	}
 }
 
-func TestMemReplayStore(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestMemReplayStore(t *testing.T) {
 	store := newMemReplayStore()
 	nonce := "test-nonce-123"
 	expiry := time.Now().Add(1 * time.Hour)
 
-	t.Run("ReserveNonce first use", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("ReserveNonce first use", func(t *testing.T) {
 		seen, err := store.ReserveNonce(nonce, expiry)
 		if err != nil {
 			t.Fatalf("ReserveNonce() error = %v", err)
@@ -334,8 +323,7 @@ func TestMemReplayStore(t *testing.T) { //nolint:paralleltest // mutates package
 		}
 	})
 
-	t.Run("ReserveNonce second use", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("ReserveNonce second use", func(t *testing.T) {
 		seen, err := store.ReserveNonce(nonce, expiry)
 		if err != nil {
 			t.Fatalf("ReserveNonce() error = %v", err)
@@ -345,16 +333,14 @@ func TestMemReplayStore(t *testing.T) { //nolint:paralleltest // mutates package
 		}
 	})
 
-	t.Run("FinalizeNonce", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("FinalizeNonce", func(t *testing.T) {
 		err := store.FinalizeNonce(nonce)
 		if err != nil {
 			t.Fatalf("FinalizeNonce() error = %v", err)
 		}
 	})
 
-	t.Run("ReleaseNonce", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("ReleaseNonce", func(t *testing.T) {
 		err := store.ReleaseNonce(nonce)
 		if err != nil {
 			t.Fatalf("ReleaseNonce() error = %v", err)
@@ -371,8 +357,7 @@ func TestMemReplayStore(t *testing.T) { //nolint:paralleltest // mutates package
 	})
 }
 
-func TestChaosL3Notary(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestChaosL3Notary(t *testing.T) {
 	notary := &chaosL3Notary{}
 
 	tests := []struct {
@@ -395,9 +380,8 @@ func TestChaosL3Notary(t *testing.T) { //nolint:paralleltest // mutates package-
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			got, err := notary.VerifyL3Proof(context.Background(), tt.userID, tt.transactionHash, tt.cliSessionID, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("VerifyL3Proof() error = %v, wantErr %v", err, tt.wantErr)
@@ -410,12 +394,10 @@ func TestChaosL3Notary(t *testing.T) { //nolint:paralleltest // mutates package-
 	}
 }
 
-func TestDynamicStateRoot(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDynamicStateRoot(t *testing.T) {
 	provider := &dynamicStateRoot{root: "initial-root"}
 
-	t.Run("GetCurrentStateRoot", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("GetCurrentStateRoot", func(t *testing.T) {
 		root, err := provider.GetCurrentStateRoot(t.Context())
 		if err != nil {
 			t.Fatalf("GetCurrentStateRoot() error = %v", err)
@@ -425,8 +407,7 @@ func TestDynamicStateRoot(t *testing.T) { //nolint:paralleltest // mutates packa
 		}
 	})
 
-	t.Run("UpdateRoot", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("UpdateRoot", func(t *testing.T) {
 		newRoot := "updated-root"
 		provider.UpdateRoot(newRoot)
 
@@ -440,8 +421,7 @@ func TestDynamicStateRoot(t *testing.T) { //nolint:paralleltest // mutates packa
 	})
 }
 
-func TestClassifyRejection(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestClassifyRejection(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -489,9 +469,8 @@ func TestClassifyRejection(t *testing.T) { //nolint:paralleltest // mutates pack
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if got := classifyRejection(tt.err); got != tt.want {
 				t.Errorf("classifyRejection() = %s, want %s", got, tt.want)
 			}
@@ -499,8 +478,7 @@ func TestClassifyRejection(t *testing.T) { //nolint:paralleltest // mutates pack
 	}
 }
 
-func TestContains(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestContains(t *testing.T) {
 	tests := []struct {
 		name string
 		s    string
@@ -539,9 +517,8 @@ func TestContains(t *testing.T) { //nolint:paralleltest // mutates package-level
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if got := contains(tt.s, tt.sub); got != tt.want {
 				t.Errorf("contains() = %v, want %v", got, tt.want)
 			}
@@ -549,8 +526,7 @@ func TestContains(t *testing.T) { //nolint:paralleltest // mutates package-level
 	}
 }
 
-func TestCategoryName(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCategoryName(t *testing.T) {
 	tests := []struct {
 		name string
 		cat  category
@@ -583,9 +559,8 @@ func TestCategoryName(t *testing.T) { //nolint:paralleltest // mutates package-l
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if got := categoryName(tt.cat); got != tt.want {
 				t.Errorf("categoryName() = %s, want %s", got, tt.want)
 			}
@@ -593,8 +568,7 @@ func TestCategoryName(t *testing.T) { //nolint:paralleltest // mutates package-l
 	}
 }
 
-func TestPct(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPct(t *testing.T) {
 	tests := []struct {
 		name  string
 		n     int64
@@ -639,9 +613,8 @@ func TestPct(t *testing.T) { //nolint:paralleltest // mutates package-level stat
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			got := pct(tt.n, tt.total)
 			if got != tt.want {
 				t.Errorf("pct() = %f, want %f", got, tt.want)
@@ -650,8 +623,7 @@ func TestPct(t *testing.T) { //nolint:paralleltest // mutates package-level stat
 	}
 }
 
-func TestBuildEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBuildEnvelope(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -693,9 +665,8 @@ func TestBuildEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			env, err := buildEnvelope(1, tt.cat, stateRoot, privKey, keyID, sessionID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("buildEnvelope() error = %v, wantErr %v", err, tt.wantErr)
@@ -708,10 +679,8 @@ func TestBuildEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-
 	}
 }
 
-func TestBatchEventWriter(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("queueEvent adds events", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBatchEventWriter(t *testing.T) {
+	t.Run("queueEvent adds events", func(t *testing.T) {
 		writer := &batchEventWriter{
 			events:    make([]*storagetest.ChaosEvent, 0, 10),
 			flushSize: 100,
@@ -736,8 +705,7 @@ func TestBatchEventWriter(t *testing.T) { //nolint:paralleltest // mutates packa
 		}
 	})
 
-	t.Run("flush with nil audit vault", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("flush with nil audit vault", func(t *testing.T) {
 		writer := &batchEventWriter{
 			chaosStore: nil,
 			events: []*storagetest.ChaosEvent{
@@ -759,8 +727,7 @@ func TestBatchEventWriter(t *testing.T) { //nolint:paralleltest // mutates packa
 		}
 	})
 
-	t.Run("flush with empty events", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("flush with empty events", func(t *testing.T) {
 		writer := &batchEventWriter{
 			events:    make([]*storagetest.ChaosEvent, 0),
 			flushSize: 2,
@@ -770,8 +737,7 @@ func TestBatchEventWriter(t *testing.T) { //nolint:paralleltest // mutates packa
 		writer.flush()
 	})
 
-	t.Run("auto-flush on reaching flushSize", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("auto-flush on reaching flushSize", func(t *testing.T) {
 		writer := &batchEventWriter{
 			events:    make([]*storagetest.ChaosEvent, 0, 5),
 			flushSize: 3,
@@ -799,8 +765,7 @@ func TestBatchEventWriter(t *testing.T) { //nolint:paralleltest // mutates packa
 		}
 	})
 
-	t.Run("multiple flushes", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("multiple flushes", func(t *testing.T) {
 		writer := &batchEventWriter{
 			events:    make([]*storagetest.ChaosEvent, 0, 2),
 			flushSize: 2,
@@ -830,12 +795,10 @@ func TestBatchEventWriter(t *testing.T) { //nolint:paralleltest // mutates packa
 	})
 }
 
-func TestCounters(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCounters(t *testing.T) {
 	var cnt counters
 
 	t.Run("atomic operations", func(t *testing.T) {
-
 		cnt.executed.Add(1)
 		cnt.l1Blocked.Add(2)
 		cnt.hashFail.Add(3)
@@ -865,7 +828,6 @@ func TestCounters(t *testing.T) { //nolint:paralleltest // mutates package-level
 }
 
 func TestEnvelopeConstructionWithDifferentIDs(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -896,7 +858,6 @@ func TestEnvelopeConstructionWithDifferentIDs(t *testing.T) {
 }
 
 func TestForbiddenCommands(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -920,7 +881,6 @@ func TestForbiddenCommands(t *testing.T) {
 }
 
 func TestSignedEnvelopeTimestamp(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -956,7 +916,6 @@ func TestSignedEnvelopeTimestamp(t *testing.T) {
 }
 
 func TestSignedEnvelopeSessionID(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -975,7 +934,6 @@ func TestSignedEnvelopeSessionID(t *testing.T) {
 }
 
 func TestSignedEnvelopeOperatorID(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -992,7 +950,6 @@ func TestSignedEnvelopeOperatorID(t *testing.T) {
 }
 
 func TestSignedEnvelopeStateRoot(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1011,7 +968,6 @@ func TestSignedEnvelopeStateRoot(t *testing.T) {
 }
 
 func TestSignedEnvelopeL2Signature(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1046,7 +1002,6 @@ func TestSignedEnvelopeL2Signature(t *testing.T) {
 }
 
 func TestSignedEnvelopeNonceFormat(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1069,10 +1024,8 @@ func TestSignedEnvelopeNonceFormat(t *testing.T) {
 	}
 }
 
-func TestRecordRejection(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("with nil audit vault", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestRecordRejection(t *testing.T) {
+	t.Run("with nil audit vault", func(t *testing.T) {
 		writer := &batchEventWriter{
 			chaosStore: nil,
 		}
@@ -1088,11 +1041,9 @@ func TestRecordRejection(t *testing.T) { //nolint:paralleltest // mutates packag
 		writer.recordRejection(1, catGoodActor, env, errors.New("test error"))
 	})
 
-	t.Run("event structure validation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("event structure validation", func(t *testing.T) {
 		// Test the event structure directly without going through recordRejection
 		// since it requires a non-nil audit vault
-
 		env := &govpkg.GovernanceEnvelope{
 			OperatorSessionId: "test-session",
 			TransactionHash:   "test-hash",
@@ -1121,8 +1072,7 @@ func TestRecordRejection(t *testing.T) { //nolint:paralleltest // mutates packag
 		}
 	})
 
-	t.Run("different rejection reasons", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("different rejection reasons", func(t *testing.T) {
 		testErrors := []struct {
 			err  error
 			want string
@@ -1143,8 +1093,7 @@ func TestRecordRejection(t *testing.T) { //nolint:paralleltest // mutates packag
 		}
 	})
 
-	t.Run("different categories", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("different categories", func(t *testing.T) {
 		categories := []category{catGoodActor, catPromptInj, catMitM, catFileMutation}
 		for _, cat := range categories {
 			catName := categoryName(cat)
@@ -1155,10 +1104,8 @@ func TestRecordRejection(t *testing.T) { //nolint:paralleltest // mutates packag
 	})
 }
 
-func TestRecordExecution(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("with nil audit vault", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestRecordExecution(t *testing.T) {
+	t.Run("with nil audit vault", func(t *testing.T) {
 		writer := &batchEventWriter{
 			chaosStore: nil,
 		}
@@ -1174,11 +1121,9 @@ func TestRecordExecution(t *testing.T) { //nolint:paralleltest // mutates packag
 		writer.recordExecution(1, catGoodActor, env, nil)
 	})
 
-	t.Run("event structure validation - success", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("event structure validation - success", func(t *testing.T) {
 		// Test the event structure directly without going through recordExecution
 		// since it requires a non-nil audit vault
-
 		env := &govpkg.GovernanceEnvelope{
 			OperatorSessionId: "test-session",
 			TransactionHash:   "test-hash-123456789012",
@@ -1201,11 +1146,9 @@ func TestRecordExecution(t *testing.T) { //nolint:paralleltest // mutates packag
 		}
 	})
 
-	t.Run("event structure validation - failure", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("event structure validation - failure", func(t *testing.T) {
 		// Test the event structure directly without going through recordExecution
 		// since it requires a non-nil audit vault
-
 		env := &govpkg.GovernanceEnvelope{
 			OperatorSessionId: "test-session",
 			TransactionHash:   "test-hash-123456789012",
@@ -1231,7 +1174,6 @@ func TestRecordExecution(t *testing.T) { //nolint:paralleltest // mutates packag
 }
 
 func TestFormatSummaryRow_MarksWhetherTheCountMatches(t *testing.T) {
-	t.Parallel()
 	matched := formatSummaryRow("GOOD_ACTOR", 10, "EXECUTED", 10)
 	if !strings.Contains(matched, "GOOD_ACTOR") || !strings.Contains(matched, "EXECUTED") || !strings.Contains(matched, "✓") {
 		t.Fatalf("matched row = %q", matched)
@@ -1247,7 +1189,6 @@ func TestFormatSummaryRow_MarksWhetherTheCountMatches(t *testing.T) {
 }
 
 func TestFormatDemoQueries_InterpolatesTheDatabasePath(t *testing.T) {
-	t.Parallel()
 	text := formatDemoQueries("chaos-run/chaos.db")
 	for _, want := range []string{
 		"# sqlite3 'chaos-run/chaos.db'",
@@ -1261,15 +1202,13 @@ func TestFormatDemoQueries_InterpolatesTheDatabasePath(t *testing.T) {
 	}
 }
 
-func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestChaosExecutionHandler(t *testing.T) {
 	handler := &chaosExecutionHandler{
 		ledger:    nil,
 		stateRoot: &dynamicStateRoot{root: "test-root"},
 	}
 
-	t.Run("nil cmdMsg returns empty", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nil cmdMsg returns empty", func(t *testing.T) {
 		result, err := handler.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.FsList.Requested, nil)
 		if err != nil {
 			t.Errorf("ExecuteVerifiedTransaction() error = %v", err)
@@ -1279,8 +1218,7 @@ func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("nil ledger with FileEdit does not panic", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nil ledger with FileEdit does not panic", func(t *testing.T) {
 		handlerNilLedger := &chaosExecutionHandler{
 			ledger:    nil,
 			stateRoot: &dynamicStateRoot{root: "test-root"},
@@ -1309,8 +1247,7 @@ func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("non-FileEdit event type", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("non-FileEdit event type", func(t *testing.T) {
 		payload, _ := proto.Marshal(&operatorv1.FsListRequested{
 			Path:        "/test",
 			ExecutionId: "exec-123",
@@ -1333,8 +1270,7 @@ func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("mutation count tracking", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("mutation count tracking", func(t *testing.T) {
 		handlerWithCount := &chaosExecutionHandler{
 			ledger:        nil,
 			stateRoot:     &dynamicStateRoot{root: "test-root"},
@@ -1347,8 +1283,7 @@ func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("invalid payload unmarshal", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("invalid payload unmarshal", func(t *testing.T) {
 		handlerInvalid := &chaosExecutionHandler{
 			ledger:    nil,
 			stateRoot: &dynamicStateRoot{root: "test-root"},
@@ -1371,8 +1306,7 @@ func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("nil state root", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("nil state root", func(t *testing.T) {
 		handlerNilState := &chaosExecutionHandler{
 			ledger:    nil,
 			stateRoot: nil,
@@ -1401,14 +1335,12 @@ func TestChaosExecutionHandler(t *testing.T) { //nolint:paralleltest // mutates 
 	})
 }
 
-func TestMemReplayStoreConcurrency(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestMemReplayStoreConcurrency(t *testing.T) {
 	store := newMemReplayStore()
 	nonce := "concurrent-nonce"
 	expiry := time.Now().Add(1 * time.Hour)
 
-	t.Run("concurrent ReserveNonce", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("concurrent ReserveNonce", func(t *testing.T) {
 		const goroutines = 100
 		results := make(chan bool, goroutines)
 
@@ -1435,8 +1367,7 @@ func TestMemReplayStoreConcurrency(t *testing.T) { //nolint:paralleltest // muta
 		}
 	})
 
-	t.Run("concurrent ReleaseNonce and ReserveNonce", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("concurrent ReleaseNonce and ReserveNonce", func(t *testing.T) {
 		store2 := newMemReplayStore()
 		nonce2 := "concurrent-nonce-2"
 		expiry2 := time.Now().Add(1 * time.Hour)
@@ -1466,12 +1397,10 @@ func TestMemReplayStoreConcurrency(t *testing.T) { //nolint:paralleltest // muta
 	})
 }
 
-func TestDynamicStateRootConcurrency(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDynamicStateRootConcurrency(t *testing.T) {
 	provider := &dynamicStateRoot{root: "initial"}
 
-	t.Run("concurrent GetCurrentStateRoot", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("concurrent GetCurrentStateRoot", func(t *testing.T) {
 		const goroutines = 100
 		var wg sync.WaitGroup
 		errors := make(chan error, goroutines)
@@ -1495,8 +1424,7 @@ func TestDynamicStateRootConcurrency(t *testing.T) { //nolint:paralleltest // mu
 		}
 	})
 
-	t.Run("concurrent UpdateRoot and GetCurrentStateRoot", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("concurrent UpdateRoot and GetCurrentStateRoot", func(t *testing.T) {
 		provider2 := &dynamicStateRoot{root: "initial"}
 		const goroutines = 50
 		var wg sync.WaitGroup
@@ -1526,15 +1454,13 @@ func TestDynamicStateRootConcurrency(t *testing.T) { //nolint:paralleltest // mu
 	})
 }
 
-func TestSignedEnvelopePayloadEdgeCases(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSignedEnvelopePayloadEdgeCases(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
-	t.Run("empty payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("empty payload", func(t *testing.T) {
 		env, err := signedEnvelope("FS_LIST", "/test", "state-root", "nonce", []byte{}, false, privKey, "key-id", "session-id")
 		if err != nil {
 			t.Fatalf("signedEnvelope() error = %v", err)
@@ -1548,8 +1474,7 @@ func TestSignedEnvelopePayloadEdgeCases(t *testing.T) { //nolint:paralleltest //
 		}
 	})
 
-	t.Run("small payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("small payload", func(t *testing.T) {
 		env, err := signedEnvelope("FS_LIST", "/test", "state-root", "nonce", []byte("a"), false, privKey, "key-id", "session-id")
 		if err != nil {
 			t.Fatalf("signedEnvelope() error = %v", err)
@@ -1559,8 +1484,7 @@ func TestSignedEnvelopePayloadEdgeCases(t *testing.T) { //nolint:paralleltest //
 		}
 	})
 
-	t.Run("large payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("large payload", func(t *testing.T) {
 		largePayload := make([]byte, 10000)
 		for i := range largePayload {
 			largePayload[i] = byte(i % 256)
@@ -1575,8 +1499,7 @@ func TestSignedEnvelopePayloadEdgeCases(t *testing.T) { //nolint:paralleltest //
 	})
 }
 
-func TestBuildEnvelopeErrors(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBuildEnvelopeErrors(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1586,11 +1509,9 @@ func TestBuildEnvelopeErrors(t *testing.T) { //nolint:paralleltest // mutates pa
 	keyID := "test-key-id"
 	sessionID := "test-session-id"
 
-	t.Run("buildGoodActorEnvelope with invalid proto marshal", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("buildGoodActorEnvelope with invalid proto marshal", func(t *testing.T) {
 		// This test verifies error handling in the envelope builders
 		// Since proto.Marshal rarely fails with valid inputs, we test the error path exists
-
 		env, err := buildGoodActorEnvelope(1, stateRoot, privKey, keyID, sessionID)
 		if err != nil {
 			t.Fatalf("buildGoodActorEnvelope() unexpected error = %v", err)
@@ -1600,8 +1521,7 @@ func TestBuildEnvelopeErrors(t *testing.T) { //nolint:paralleltest // mutates pa
 		}
 	})
 
-	t.Run("buildFileMutationEnvelope with L3 proof", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("buildFileMutationEnvelope with L3 proof", func(t *testing.T) {
 		env, err := buildFileMutationEnvelope(1, stateRoot, privKey, keyID, sessionID)
 		if err != nil {
 			t.Fatalf("buildFileMutationEnvelope() error = %v", err)
@@ -1628,10 +1548,8 @@ func TestBuildEnvelopeErrors(t *testing.T) { //nolint:paralleltest // mutates pa
 	})
 }
 
-func TestConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("default config", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestConfig(t *testing.T) {
+	t.Run("default config", func(t *testing.T) {
 		cfg := Config{}
 		if cfg.Count != 0 {
 			t.Errorf("Count = %d, want 0", cfg.Count)
@@ -1644,8 +1562,7 @@ func TestConfig(t *testing.T) { //nolint:paralleltest // mutates package-level s
 		}
 	})
 
-	t.Run("config with values", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("config with values", func(t *testing.T) {
 		cfg := Config{
 			Count:   100,
 			DataDir: "/test/test-data",
@@ -1663,10 +1580,8 @@ func TestConfig(t *testing.T) { //nolint:paralleltest // mutates package-level s
 	})
 }
 
-func TestCategoryConstants(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("category values are distinct", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCategoryConstants(t *testing.T) {
+	t.Run("category values are distinct", func(t *testing.T) {
 		categories := []category{catGoodActor, catPromptInj, catMitM, catFileMutation}
 		seen := make(map[category]bool)
 
@@ -1682,8 +1597,7 @@ func TestCategoryConstants(t *testing.T) { //nolint:paralleltest // mutates pack
 		}
 	})
 
-	t.Run("category iota ordering", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("category iota ordering", func(t *testing.T) {
 		if catGoodActor != 0 {
 			t.Errorf("catGoodActor = %d, want 0", catGoodActor)
 		}
@@ -1700,7 +1614,6 @@ func TestCategoryConstants(t *testing.T) { //nolint:paralleltest // mutates pack
 }
 
 func TestChaosTestCorruptedHash(t *testing.T) {
-	t.Parallel()
 	if chaosTestCorruptedHash == "" {
 		t.Error("chaosTestCorruptedHash should not be empty")
 	}
@@ -1710,7 +1623,6 @@ func TestChaosTestCorruptedHash(t *testing.T) {
 }
 
 func TestSignedEnvelopeSourceComponent(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1727,7 +1639,6 @@ func TestSignedEnvelopeSourceComponent(t *testing.T) {
 }
 
 func TestSignedEnvelopeProtocolVersion(t *testing.T) {
-	t.Parallel()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1743,15 +1654,13 @@ func TestSignedEnvelopeProtocolVersion(t *testing.T) {
 	}
 }
 
-func TestMemReplayStoreMultipleNonces(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestMemReplayStoreMultipleNonces(t *testing.T) {
 	store := newMemReplayStore()
 	expiry := time.Now().Add(1 * time.Hour)
 
 	nonces := []string{"nonce-1", "nonce-2", "nonce-3"}
 
-	t.Run("reserve multiple nonces", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reserve multiple nonces", func(t *testing.T) {
 		for _, nonce := range nonces {
 			seen, err := store.ReserveNonce(nonce, expiry)
 			if err != nil {
@@ -1763,8 +1672,7 @@ func TestMemReplayStoreMultipleNonces(t *testing.T) { //nolint:paralleltest // m
 		}
 	})
 
-	t.Run("re-reserve multiple nonces", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("re-reserve multiple nonces", func(t *testing.T) {
 		for _, nonce := range nonces {
 			seen, err := store.ReserveNonce(nonce, expiry)
 			if err != nil {
@@ -1776,8 +1684,7 @@ func TestMemReplayStoreMultipleNonces(t *testing.T) { //nolint:paralleltest // m
 		}
 	})
 
-	t.Run("release specific nonce", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("release specific nonce", func(t *testing.T) {
 		err := store.ReleaseNonce("nonce-2")
 		if err != nil {
 			t.Errorf("ReleaseNonce() error = %v", err)
@@ -1802,13 +1709,11 @@ func TestMemReplayStoreMultipleNonces(t *testing.T) { //nolint:paralleltest // m
 	})
 }
 
-func TestMemReplayStoreEmptyNonce(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestMemReplayStoreEmptyNonce(t *testing.T) {
 	store := newMemReplayStore()
 	expiry := time.Now().Add(1 * time.Hour)
 
 	t.Run("empty string nonce", func(t *testing.T) {
-
 		seen, err := store.ReserveNonce("", expiry)
 		if err != nil {
 			t.Errorf("ReserveNonce() error = %v", err)
@@ -1827,12 +1732,10 @@ func TestMemReplayStoreEmptyNonce(t *testing.T) { //nolint:paralleltest // mutat
 	})
 }
 
-func TestDynamicStateRootEmpty(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDynamicStateRootEmpty(t *testing.T) {
 	provider := &dynamicStateRoot{root: ""}
 
-	t.Run("empty root", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("empty root", func(t *testing.T) {
 		root, err := provider.GetCurrentStateRoot(t.Context())
 		if err != nil {
 			t.Errorf("GetCurrentStateRoot() error = %v", err)
@@ -1842,8 +1745,7 @@ func TestDynamicStateRootEmpty(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("update to empty root", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("update to empty root", func(t *testing.T) {
 		provider.UpdateRoot("")
 		root, err := provider.GetCurrentStateRoot(t.Context())
 		if err != nil {
@@ -1855,15 +1757,13 @@ func TestDynamicStateRootEmpty(t *testing.T) { //nolint:paralleltest // mutates 
 	})
 }
 
-func TestSignedEnvelopeL3ProofStructure(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSignedEnvelopeL3ProofStructure(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
-	t.Run("mutation has L3 proof", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("mutation has L3 proof", func(t *testing.T) {
 		env, err := signedEnvelope("FILE_EDIT", "/test/test.txt", "state-root", "nonce", []byte("content"), true, privKey, "key-id", "session-id")
 		if err != nil {
 			t.Fatalf("signedEnvelope() error = %v", err)
@@ -1883,8 +1783,7 @@ func TestSignedEnvelopeL3ProofStructure(t *testing.T) { //nolint:paralleltest //
 		}
 	})
 
-	t.Run("non-mutation has no L3 proof", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("non-mutation has no L3 proof", func(t *testing.T) {
 		env, err := signedEnvelope("FS_LIST", "/test", "state-root", "nonce", []byte("content"), false, privKey, "key-id", "session-id")
 		if err != nil {
 			t.Fatalf("signedEnvelope() error = %v", err)
@@ -1899,8 +1798,7 @@ func TestSignedEnvelopeL3ProofStructure(t *testing.T) { //nolint:paralleltest //
 	})
 }
 
-func TestBuildPromptInjEnvelopeVariations(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBuildPromptInjEnvelopeVariations(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1911,7 +1809,6 @@ func TestBuildPromptInjEnvelopeVariations(t *testing.T) { //nolint:paralleltest 
 	sessionID := "test-session-id"
 
 	t.Run("different IDs use different commands", func(t *testing.T) {
-
 		envs := make([]*govpkg.GovernanceEnvelope, 10)
 		for i := 0; i < 10; i++ {
 			env, err := buildPromptInjEnvelope(i, stateRoot, privKey, keyID, sessionID)
@@ -1930,8 +1827,7 @@ func TestBuildPromptInjEnvelopeVariations(t *testing.T) { //nolint:paralleltest 
 	})
 }
 
-func TestBuildGoodActorEnvelopeVariations(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBuildGoodActorEnvelopeVariations(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1942,7 +1838,6 @@ func TestBuildGoodActorEnvelopeVariations(t *testing.T) { //nolint:paralleltest 
 	sessionID := "test-session-id"
 
 	t.Run("different IDs produce different paths", func(t *testing.T) {
-
 		env1, err := buildGoodActorEnvelope(1, stateRoot, privKey, keyID, sessionID)
 		if err != nil {
 			t.Fatalf("buildGoodActorEnvelope() error = %v", err)
@@ -1963,8 +1858,7 @@ func TestBuildGoodActorEnvelopeVariations(t *testing.T) { //nolint:paralleltest 
 	})
 }
 
-func TestBuildFileMutationEnvelopeVariations(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBuildFileMutationEnvelopeVariations(t *testing.T) {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
@@ -1975,7 +1869,6 @@ func TestBuildFileMutationEnvelopeVariations(t *testing.T) { //nolint:parallelte
 	sessionID := "test-session-id"
 
 	t.Run("different IDs produce different file paths", func(t *testing.T) {
-
 		env1, err := buildFileMutationEnvelope(1, stateRoot, privKey, keyID, sessionID)
 		if err != nil {
 			t.Fatalf("buildFileMutationEnvelope() error = %v", err)

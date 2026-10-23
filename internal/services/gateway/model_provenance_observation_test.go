@@ -61,8 +61,6 @@ func (s *stubModelProvenanceOperatorLister) ListOperatorsForProvenance(context.C
 }
 
 func TestModelProvenanceObservationCoordinator_EnsureOperator_SubscribesToProvenanceOperator(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
@@ -92,8 +90,6 @@ func TestModelProvenanceObservationCoordinator_EnsureOperator_SubscribesToProven
 }
 
 func TestModelProvenanceObservationCoordinator_IngestPersistsAttestationWindow(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
@@ -146,8 +142,6 @@ func (r *recordingEvidenceAnnouncer) WindowRecorded(_ context.Context, eventType
 }
 
 func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCmdSubscriber(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)
@@ -194,8 +188,6 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 // sentinel for both phases. Campaign authority is decided by the dispatch layer,
 // so the coordinator must never turn the miss into a silent nil receipt.
 func TestModelProvenanceObservationCoordinator_ZeroProvenanceOperatorReportsNotFound(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := model_provenance.NewWindowStore(fileSvc)

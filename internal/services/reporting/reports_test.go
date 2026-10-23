@@ -44,8 +44,6 @@ func newReportingTestFileSvc(t *testing.T, baseDir string) fs.RuntimeFileService
 // ---------------------------------------------------------------------------
 
 func TestReportReceipts_EmptyStore(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -68,8 +66,6 @@ func TestReportReceipts_EmptyStore(t *testing.T) {
 }
 
 func TestReportReceipts_WithRecords(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	sessionID := "test-session-receipts"
 	require.NoError(t, store.CreateSession(sessionID, "operator", "Test", "user@test.com"))
@@ -120,8 +116,6 @@ func TestReportReceipts_WithRecords(t *testing.T) {
 }
 
 func TestReportReceipts_CancelledContext(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -138,8 +132,6 @@ func TestReportReceipts_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportSessions_EmptyStore(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -150,8 +142,6 @@ func TestReportSessions_EmptyStore(t *testing.T) {
 }
 
 func TestReportSessions_WithRecords(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	require.NoError(t, store.CreateSession("sess-1", "operator", "Session 1", "user1@test.com"))
 	require.NoError(t, store.CreateSession("sess-2", "operator", "Session 2", "user2@test.com"))
@@ -174,8 +164,6 @@ func TestReportSessions_WithRecords(t *testing.T) {
 }
 
 func TestReportSessions_CancelledContext(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -192,8 +180,6 @@ func TestReportSessions_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportEvents_EmptyStore(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -204,8 +190,6 @@ func TestReportEvents_EmptyStore(t *testing.T) {
 }
 
 func TestReportEvents_WithRecords(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	sessionID := "test-session-events"
 	require.NoError(t, store.CreateSession(sessionID, "operator", "Test", "user@test.com"))
@@ -244,8 +228,6 @@ func TestReportEvents_WithRecords(t *testing.T) {
 }
 
 func TestReportEvents_CancelledContext(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -262,8 +244,6 @@ func TestReportEvents_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportFileMutations_EmptyStore(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -274,8 +254,6 @@ func TestReportFileMutations_EmptyStore(t *testing.T) {
 }
 
 func TestReportFileMutations_WithRecords(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	eventID := createSessionAndEvent(t, store)
 
@@ -312,8 +290,6 @@ func TestReportFileMutations_WithRecords(t *testing.T) {
 }
 
 func TestReportFileMutations_CancelledContext(t *testing.T) {
-	t.Parallel()
-
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
@@ -330,7 +306,6 @@ func TestReportFileMutations_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportCommitments_EmptyLedger(t *testing.T) {
-	t.Parallel()
 	cl, _, _ := setupTestCommitmentLedger(t)
 	outDir := testutil.TempDir(t)
 
@@ -341,7 +316,6 @@ func TestReportCommitments_EmptyLedger(t *testing.T) {
 }
 
 func TestReportCommitments_WithRecords(t *testing.T) {
-	t.Parallel()
 	cl, _, _ := setupTestCommitmentLedger(t)
 	firstHash := insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
 	insertCommitment(t, cl, "tx-2", "hash-2", firstHash, "FS_WRITE", "/file2")
@@ -364,7 +338,6 @@ func TestReportCommitments_WithRecords(t *testing.T) {
 }
 
 func TestReportCommitments_CancelledContext(t *testing.T) {
-	t.Parallel()
 	cl, _, _ := setupTestCommitmentLedger(t)
 	outDir := testutil.TempDir(t)
 
@@ -392,7 +365,6 @@ func newTestReplayStore(t *testing.T) *storage.ReplayStore {
 }
 
 func TestReportReplayNonces_EmptyStore(t *testing.T) {
-	t.Parallel()
 	rs := newTestReplayStore(t)
 
 	outDir := testutil.TempDir(t)
@@ -403,7 +375,6 @@ func TestReportReplayNonces_EmptyStore(t *testing.T) {
 }
 
 func TestReportReplayNonces_WithRecords(t *testing.T) {
-	t.Parallel()
 	rs := newTestReplayStore(t)
 
 	expiresAt := time.Now().UTC().Add(time.Hour)
@@ -428,7 +399,6 @@ func TestReportReplayNonces_WithRecords(t *testing.T) {
 }
 
 func TestReportReplayNonces_CancelledContext(t *testing.T) {
-	t.Parallel()
 	rs := newTestReplayStore(t)
 
 	outDir := testutil.TempDir(t)
@@ -460,7 +430,6 @@ func newTestSuspendedStore(t *testing.T) *storage.SuspendedTransactionService {
 }
 
 func TestReportSuspendedTransactions_EmptyStore(t *testing.T) {
-	t.Parallel()
 	sts := newTestSuspendedStore(t)
 
 	outDir := testutil.TempDir(t)
@@ -471,7 +440,6 @@ func TestReportSuspendedTransactions_EmptyStore(t *testing.T) {
 }
 
 func TestReportSuspendedTransactions_WithRecords(t *testing.T) {
-	t.Parallel()
 	sts := newTestSuspendedStore(t)
 
 	ctx := context.Background()
@@ -536,7 +504,6 @@ func TestReportSuspendedTransactions_WithRecords(t *testing.T) {
 }
 
 func TestReportSuspendedTransactions_CancelledContext(t *testing.T) {
-	t.Parallel()
 	sts := newTestSuspendedStore(t)
 
 	outDir := testutil.TempDir(t)
@@ -553,7 +520,6 @@ func TestReportSuspendedTransactions_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportLedgerMerkleRoot_NilLedger(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -565,7 +531,6 @@ func TestReportLedgerMerkleRoot_NilLedger(t *testing.T) {
 }
 
 func TestReportLedgerCommits_NilLedger(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -581,7 +546,6 @@ func TestReportLedgerCommits_NilLedger(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestOpenVault_NoKeyProvided_FailsClosed(t *testing.T) {
-	t.Parallel()
 	tempDir := testutil.TempDir(t)
 	fileSvc := newReportingTestFileSvc(t, tempDir)
 
@@ -597,7 +561,6 @@ func TestOpenVault_NoKeyProvided_FailsClosed(t *testing.T) {
 }
 
 func TestOpenVault_VaultKeyNotFound(t *testing.T) {
-	t.Parallel()
 	tempDir := testutil.TempDir(t)
 	fileSvc := newReportingTestFileSvc(t, tempDir)
 
@@ -617,7 +580,6 @@ func TestOpenVault_VaultKeyNotFound(t *testing.T) {
 }
 
 func TestOpenVault_UnlockFailed(t *testing.T) {
-	t.Parallel()
 	tempDir := testutil.TempDir(t)
 	fileSvc := newReportingTestFileSvc(t, tempDir)
 
@@ -641,7 +603,6 @@ func TestOpenVault_UnlockFailed(t *testing.T) {
 }
 
 func TestOpenVault_ValidKey(t *testing.T) {
-	t.Parallel()
 	tempDir := testutil.TempDir(t)
 	fileSvc := newReportingTestFileSvc(t, tempDir)
 
@@ -661,7 +622,6 @@ func TestOpenVault_ValidKey(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRecordTypeForFile_EdgeCases(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "manifest", recordTypeForFile("manifest.csv"))
 	assert.Equal(t, "suspended_transactions", recordTypeForFile("/a/b/suspended_transactions.csv"))
 }

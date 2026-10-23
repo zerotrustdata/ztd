@@ -13,7 +13,6 @@ import (
 )
 
 func TestAssignmentOutcomeSummary_NamesEveryFailedGrade(t *testing.T) {
-	t.Parallel()
 	result := &evalv1.EvaluationAssignmentResult{
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		DeterministicGrades: []*evalv1.DeterministicGrade{
@@ -30,7 +29,6 @@ func TestAssignmentOutcomeSummary_NamesEveryFailedGrade(t *testing.T) {
 }
 
 func TestAssignmentOutcomeSummary_PassingResultListsNoFailures(t *testing.T) {
-	t.Parallel()
 	result := &evalv1.EvaluationAssignmentResult{
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		DeterministicGrades: []*evalv1.DeterministicGrade{
@@ -43,7 +41,6 @@ func TestAssignmentOutcomeSummary_PassingResultListsNoFailures(t *testing.T) {
 }
 
 func TestAssignmentOutcomeSummary_ProviderFailureShowsCauseWithoutCascadingGradeFailures(t *testing.T) {
-	t.Parallel()
 	result := &evalv1.EvaluationAssignmentResult{
 		LifecycleStatus:     evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED,
 		PublicFailureReason: "Provider rejected a requested capability (capability_unsupported); no final response was produced.",

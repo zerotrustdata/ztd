@@ -19,7 +19,6 @@ import (
 )
 
 func TestValidatePublicDisclosureMetricsAndStrings(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name string
 		fn   func() error
@@ -56,7 +55,6 @@ func TestValidatePublicDisclosureMetricsAndStrings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := tt.fn()
 			if tt.want == nil {
 				require.NoError(t, err)
@@ -69,7 +67,6 @@ func TestValidatePublicDisclosureMetricsAndStrings(t *testing.T) {
 }
 
 func TestValidateAssignmentAndFeedRecordsRejectMalformedInput(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name string
 		fn   func() error
@@ -89,7 +86,6 @@ func TestValidateAssignmentAndFeedRecordsRejectMalformedInput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := tt.fn()
 			require.Error(t, err)
 			assert.ErrorIs(t, err, tt.want)
@@ -98,7 +94,6 @@ func TestValidateAssignmentAndFeedRecordsRejectMalformedInput(t *testing.T) {
 }
 
 func TestValidatePublicDisclosureResultsAndBindings(t *testing.T) {
-	t.Parallel()
 	validBinding := &evalv1.PublicEvidenceBinding{Sha256: strings.Repeat("a", 64), SchemaRef: "schema@1.0.0", Kind: "proof"}
 	require.NoError(t, validateBindings([]*evalv1.PublicEvidenceBinding{validBinding}))
 	require.ErrorIs(t, validateBindings([]*evalv1.PublicEvidenceBinding{{Sha256: "bad"}}), constants.ErrEvidenceArtifactMalformed)
@@ -108,7 +103,6 @@ func TestValidatePublicDisclosureResultsAndBindings(t *testing.T) {
 }
 
 func TestValidateAssignmentRecordAcceptsCurrentSchemas(t *testing.T) {
-	t.Parallel()
 	lifecycle := []byte(`{"schema_version":"1.0.0","message_type":"PublicAssignmentLifecycleRecord","idempotency_key":"run-1:assignment-1:lifecycle","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1"}}`)
 	require.NoError(t, ValidateAssignmentRecord("1.0.0", lifecycle))
 	result := []byte(`{"schema_version":"1.1.0","message_type":"PublicAssignmentResultProjection","idempotency_key":"run-1:assignment-1:result","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","result_digest":"` + strings.Repeat("a", 64) + `","benchmark_observations":{"grade_summaries":[]},"resource_summary":{"latency_ms":{"value":1}}}}`)
@@ -116,13 +110,11 @@ func TestValidateAssignmentRecordAcceptsCurrentSchemas(t *testing.T) {
 }
 
 func TestValidateRoleTranscriptsAcceptsApprovedArguments(t *testing.T) {
-	t.Parallel()
 	raw := json.RawMessage(`[{"role":"lite","tool_calls":[{"tool_name":"run_shell_command","arguments_json":"{\"command\":\"cat app/service.conf\"}","approved_arguments_json":"{\"args\":[\"app/service.conf\"],\"command\":\"cat\"}","success":true}]}]`)
 	require.NoError(t, ValidateRoleTranscripts(raw))
 }
 
 func TestValidateAssignmentRecordTrajectoryFieldsRequireEnvelope120(t *testing.T) {
-	t.Parallel()
 	record := func(version, extra string) []byte {
 		return []byte(`{"schema_version":"` + version + `","message_type":"PublicAssignmentResultProjection","idempotency_key":"run-1:assignment-1:result","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","result_digest":"` + strings.Repeat("a", 64) + `"` + extra + `}}`)
 	}
@@ -142,7 +134,6 @@ func TestValidateAssignmentRecordTrajectoryFieldsRequireEnvelope120(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := ValidateAssignmentRecord(tt.version, record(tt.version, tt.extra))
 			if tt.wantErr {
 				assert.ErrorIs(t, err, constants.ErrEvidenceSchemaMismatch)
@@ -154,7 +145,6 @@ func TestValidateAssignmentRecordTrajectoryFieldsRequireEnvelope120(t *testing.T
 }
 
 func TestValidatePublicDisclosureEvents(t *testing.T) {
-	t.Parallel()
 	event := []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-01-01T00:00:00Z","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":1,"total":1}`)
 	require.NoError(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, event))
 	require.ErrorIs(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"bad","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":1,"total":1}`)), constants.ErrPublicFeedRecordSchemaInvalid)
@@ -162,7 +152,6 @@ func TestValidatePublicDisclosureEvents(t *testing.T) {
 }
 
 func TestValidatePublicLiveEventIsTypedAndFailsClosed(t *testing.T) {
-	t.Parallel()
 	const head = `{"schema_version":"1.6.0","kind":"metric_updated","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-10-02T12:00:00Z","event_id":"event-1","run_id":"run-1","lifecycle_status":"running"`
 	tests := []struct {
 		name string
@@ -185,7 +174,6 @@ func TestValidatePublicLiveEventIsTypedAndFailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(tt.body))
 			if tt.ok {
 				require.NoError(t, err)
@@ -197,7 +185,6 @@ func TestValidatePublicLiveEventIsTypedAndFailsClosed(t *testing.T) {
 }
 
 func TestValidatePublicProofManifestAndKeyRevocationRecords(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	manifest, err := json.Marshal(models.PublicProofManifest{SchemaVersion: "1.0.0", ProofRootSHA256: strings.Repeat("a", 64), CampaignID: "campaign-1", CampaignRevision: "revision-1", VerifiedIndexGenerationHash: strings.Repeat("b", 64), ArtifactCount: 1, Artifacts: []models.PublicProofCatalogEntry{{ArtifactID: "artifact-1"}}, VerifierInstructions: "offline", GeneratedAt: now, SigningKeyID: "key-1", Signature: "signature"})
 	require.NoError(t, err)
@@ -208,7 +195,6 @@ func TestValidatePublicProofManifestAndKeyRevocationRecords(t *testing.T) {
 }
 
 func TestValidatePublicDisclosureEnvelopeAndJSONDecoding(t *testing.T) {
-	t.Parallel()
 	projection := []byte(`{"schema_version":"1.5.0","kind":"evaluation_summary","dataset_id":"ds","quality_state":"unavailable","observed_at":"2026-01-01T00:00:00Z"}`)
 	require.NoError(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeProjection, projection))
 	fields, err := decodeObject(projection)
@@ -219,7 +205,6 @@ func TestValidatePublicDisclosureEnvelopeAndJSONDecoding(t *testing.T) {
 }
 
 func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
-	t.Parallel()
 	assert.True(t, toolDimension("tool_selection"))
 	assert.False(t, toolDimension("unknown"))
 	assert.True(t, unavailableReason("no_scored_calls"))

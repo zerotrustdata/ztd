@@ -14,20 +14,17 @@ import (
 )
 
 func TestSysEnvVarsTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &SysEnvVarsTool{}
 	require.Equal(t, "sys_env_vars", tool.Name())
 }
 
 func TestSysEnvVarsTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &SysEnvVarsTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "environment")
 }
 
 func TestSysEnvVarsTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &SysEnvVarsTool{}
 	schema := tool.InputSchema()
 
@@ -44,20 +41,17 @@ func TestSysEnvVarsTool_InputSchema(t *testing.T) {
 }
 
 func TestSysInfoTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	require.Equal(t, "sys_info", tool.Name())
 }
 
 func TestSysInfoTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "system")
 }
 
 func TestSysInfoTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	schema := tool.InputSchema()
 
@@ -66,20 +60,17 @@ func TestSysInfoTool_InputSchema(t *testing.T) {
 }
 
 func TestSysServiceStatusTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &SysServiceStatusTool{}
 	require.Equal(t, "sys_service_status", tool.Name())
 }
 
 func TestSysServiceStatusTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &SysServiceStatusTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "service")
 }
 
 func TestSysServiceStatusTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &SysServiceStatusTool{}
 	schema := tool.InputSchema()
 
@@ -94,7 +85,6 @@ func TestSysServiceStatusTool_InputSchema(t *testing.T) {
 }
 
 func TestMatchPattern(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		key     string
@@ -148,7 +138,6 @@ func TestMatchPattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got := matchPattern(tt.key, tt.pattern)
 			require.False(t, tt.wantErr)
 			require.Equal(t, tt.want, got)
@@ -157,7 +146,6 @@ func TestMatchPattern(t *testing.T) {
 }
 
 func TestRedactEnvValue(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		key   string
@@ -216,7 +204,6 @@ func TestRedactEnvValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got := redactEnvValue(tt.key, tt.value)
 			require.Equal(t, tt.want, got)
 		})
@@ -224,7 +211,6 @@ func TestRedactEnvValue(t *testing.T) {
 }
 
 func TestGetProp(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		props    map[string]string
@@ -259,7 +245,6 @@ func TestGetProp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got := getProp(tt.props, tt.key)
 			require.Equal(t, tt.expected, got)
 		})
@@ -267,20 +252,17 @@ func TestGetProp(t *testing.T) {
 }
 
 func TestCloudMetadataTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &CloudMetadataTool{}
 	require.Equal(t, "cloud_metadata", tool.Name())
 }
 
 func TestCloudMetadataTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &CloudMetadataTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "cloud")
 }
 
 func TestCloudMetadataTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &CloudMetadataTool{}
 	schema := tool.InputSchema()
 
@@ -296,20 +278,17 @@ func TestCloudMetadataTool_InputSchema(t *testing.T) {
 }
 
 func TestConfigDiffMaskTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &ConfigDiffMaskTool{}
 	require.Equal(t, "config_diff_mask", tool.Name())
 }
 
 func TestConfigDiffMaskTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &ConfigDiffMaskTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "config")
 }
 
 func TestConfigDiffMaskTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &ConfigDiffMaskTool{}
 	schema := tool.InputSchema()
 
@@ -318,20 +297,17 @@ func TestConfigDiffMaskTool_InputSchema(t *testing.T) {
 }
 
 func TestDBDiscoverTopologyTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &DBDiscoverTopologyTool{}
 	require.Equal(t, "db_discover_topology", tool.Name())
 }
 
 func TestDBDiscoverTopologyTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &DBDiscoverTopologyTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "database")
 }
 
 func TestDBDiscoverTopologyTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &DBDiscoverTopologyTool{}
 	schema := tool.InputSchema()
 

@@ -27,24 +27,24 @@ import (
 
 // TestGatewayAuditAttribution keeps caller attribution separate from the
 // embedded Operator that executes Gateway-local calls.
-func newAuditAttributionGateway(t *testing.T) (*GatewayService, *auditAttributionCaptureProcessor) {
-	t.Helper()
+func TestGatewayAuditAttribution(t *testing.T) {
+	t.Parallel()
+
 	processor := &fakeEnvelopeProcessor{
 		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-audit-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		},
 	}
-	capture := &auditAttributionCaptureProcessor{delegate: processor}
-	return newTestGatewayService(t, withEnvProc(capture)), capture
-}
 
-func TestGatewayAuditAttribution(t *testing.T) {
-	t.Parallel()
+	capture := &auditAttributionCaptureProcessor{
+		delegate: processor,
+	}
+
+	g := newTestGatewayService(t, withEnvProc(capture))
 
 	t.Run("attribution from operator session context", func(t *testing.T) {
-		t.Parallel()
-		g, capture := newAuditAttributionGateway(t)
+		capture.lastEnvelope = nil
 		opID := "op-123"
 		opSessionID := "opsess-456"
 
@@ -67,8 +67,7 @@ func TestGatewayAuditAttribution(t *testing.T) {
 	})
 
 	t.Run("attribution from app identity context (priority)", func(t *testing.T) {
-		t.Parallel()
-		g, capture := newAuditAttributionGateway(t)
+		capture.lastEnvelope = nil
 		appID := "spiffe://ztd.local/app/my-app"
 		opID := "op-123"
 		opSessionID := "opsess-456"
@@ -96,8 +95,7 @@ func TestGatewayAuditAttribution(t *testing.T) {
 	})
 
 	t.Run("attribution empty when no context present", func(t *testing.T) {
-		t.Parallel()
-		g, capture := newAuditAttributionGateway(t)
+		capture.lastEnvelope = nil
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sys_info","arguments":{}}}`
 		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody))
 

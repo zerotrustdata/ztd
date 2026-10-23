@@ -140,7 +140,6 @@ func TestStreamSegmenter_LongLineWithoutNewlineIsHeldUntilFinish(t *testing.T) {
 
 func TestStreamSegmenter_ThinkingAndTextKeepTheirOrder(t *testing.T) {
 	t.Parallel()
-
 	s := mustNewScrubbingSvc(t)
 
 	published, terminal := segmenterRun(t, s, [][]*operatorv1.InferenceResponsePart{
@@ -162,7 +161,6 @@ func TestStreamSegmenter_ThinkingAndTextKeepTheirOrder(t *testing.T) {
 
 func TestStreamSegmenter_ToolCallIsScrubbedWholeAfterTheTextBeforeIt(t *testing.T) {
 	t.Parallel()
-
 	s := mustNewScrubbingSvc(t)
 	toolCall := &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 		CallId:        "call-1",
@@ -219,7 +217,6 @@ func TestStreamSegmenter_PEMBlockIsHeldUntilItsEndLineCompletes(t *testing.T) {
 // the terminal result must reconcile with the progress stream.
 func TestStreamSegmenter_WhitespacePatternsNeverLeakAcrossAnySplit(t *testing.T) {
 	t.Parallel()
-
 	s := mustNewScrubbingSvc(t)
 	cases := []struct {
 		name    string
@@ -282,11 +279,7 @@ func TestStreamSegmenter_WhitespacePatternsNeverLeakAcrossAnySplit(t *testing.T)
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel(
-
 			// A trailing line gives the single-line cases the lookahead that lets them release before finish.
-			)
-
 			assertNoLeakAcrossSplits(t, s, tc.text+"ok\n", tc.secrets)
 		})
 	}
@@ -296,7 +289,6 @@ func TestStreamSegmenter_WhitespacePatternsNeverLeakAcrossAnySplit(t *testing.T)
 // any number of blank lines. The raw value must never be emitted at any split.
 func TestStreamSegmenter_ValueOnNextLineNeverLeaks(t *testing.T) {
 	t.Parallel()
-
 	s := mustNewScrubbingSvc(t)
 	cases := []struct {
 		name    string
@@ -320,8 +312,6 @@ func TestStreamSegmenter_ValueOnNextLineNeverLeaks(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			assertNoLeakAcrossSplits(t, s, tc.text, tc.secrets)
 		})
 	}
@@ -382,7 +372,6 @@ func TestStreamSegmenter_FailsClosedWithoutAnEnabledScrubber(t *testing.T) {
 		"disabled scrubber": disabled,
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			stream, err := newStreamSegmenter(s, func(*operatorv1.InferenceProgressEvent) error { return nil }, "attempt-x")
 			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 			assert.Nil(t, stream)
@@ -393,7 +382,6 @@ func TestStreamSegmenter_FailsClosedWithoutAnEnabledScrubber(t *testing.T) {
 // A nil *ScrubbingService must read as disabled, never panic, so a typed-nil scrubber fails closed.
 func TestScrubbingService_NilReceiverIsDisabled(t *testing.T) {
 	t.Parallel()
-
 	var s *scrubbing.ScrubbingService
 	assert.False(t, s.IsEnabled())
 	_, err := newStreamSegmenter(s, func(*operatorv1.InferenceProgressEvent) error { return nil }, "attempt-nil")
@@ -404,7 +392,6 @@ func TestScrubbingService_NilReceiverIsDisabled(t *testing.T) {
 // again and must not change what the progress stream published.
 func TestScrubText_IsIdempotentOnItsOwnOutput(t *testing.T) {
 	t.Parallel()
-
 	inputs := []string{
 		"contact " + segmenterSecretEmail + " and " + segmenterSecretKey + " now",
 		"Connect to 10.0.0.1:5432 and 192.168.1.1",

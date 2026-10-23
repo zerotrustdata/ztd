@@ -33,7 +33,6 @@ func newRenderCmd() (*cobra.Command, *bytes.Buffer) {
 // output contains the normalized origin, derived RP ID, RP name, Gateway API
 // URL, and Gateway state.
 func TestRenderConnectReview_PrintsOriginRPIDAndAPIURL(t *testing.T) {
-	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -51,7 +50,6 @@ func TestRenderConnectReview_PrintsOriginRPIDAndAPIURL(t *testing.T) {
 // TestRenderConnectReview_PrintsMatchingState verifies that the matching
 // state label is printed when the Gateway is already correctly configured.
 func TestRenderConnectReview_PrintsMatchingState(t *testing.T) {
-	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -64,7 +62,6 @@ func TestRenderConnectReview_PrintsMatchingState(t *testing.T) {
 // TestRenderConfigDelta_PrintsChangedFields verifies that config deltas are
 // printed with the field name, current value, and proposed value.
 func TestRenderConfigDelta_PrintsChangedFields(t *testing.T) {
-	t.Parallel()
 	cmd, buf := newRenderCmd()
 	deltas := []configDelta{
 		{Field: "CORS origin (--cors-origin)", Current: "https://old.lovable.app", Proposed: "https://new.lovable.app"},
@@ -84,7 +81,6 @@ func TestRenderConfigDelta_PrintsChangedFields(t *testing.T) {
 // TestRenderConfigDelta_EmptyDeltasPrintsNothing verifies that an empty delta
 // slice produces no output.
 func TestRenderConfigDelta_EmptyDeltasPrintsNothing(t *testing.T) {
-	t.Parallel()
 	cmd, buf := newRenderCmd()
 	renderConfigDelta(cmd, nil)
 	assert.Empty(t, buf.String())
@@ -93,7 +89,6 @@ func TestRenderConfigDelta_EmptyDeltasPrintsNothing(t *testing.T) {
 // TestRenderConfigDelta_UnsetCurrentPrintsUnsetLabel verifies that an empty
 // current value is displayed as "(unset)".
 func TestRenderConfigDelta_UnsetCurrentPrintsUnsetLabel(t *testing.T) {
-	t.Parallel()
 	cmd, buf := newRenderCmd()
 	deltas := []configDelta{
 		{Field: "CORS origin (--cors-origin)", Current: "", Proposed: "https://new.lovable.app"},
@@ -105,7 +100,6 @@ func TestRenderConfigDelta_UnsetCurrentPrintsUnsetLabel(t *testing.T) {
 // TestRenderVerificationReport_PrintsPassAndFailChecks verifies that the
 // report output contains PASS/FAIL markers for each check with its detail.
 func TestRenderVerificationReport_PrintsPassAndFailChecks(t *testing.T) {
-	t.Parallel()
 	cmd, buf := newRenderCmd()
 	report := frontendverify.Report{
 		Checks: []frontendverify.CheckResult{
@@ -126,7 +120,6 @@ func TestRenderVerificationReport_PrintsPassAndFailChecks(t *testing.T) {
 // frontend prompt contains the Gateway API URL, the credentials instruction,
 // and the next-action line about opening the app in a new tab.
 func TestRenderFrontendPrompt_PrintsPromptAndNextAction(t *testing.T) {
-	t.Parallel()
 	cmd, buf := newRenderCmd()
 	renderFrontendPrompt(cmd, "https://localhost:8443")
 
@@ -141,7 +134,6 @@ func TestRenderFrontendPrompt_PrintsPromptAndNextAction(t *testing.T) {
 // manual trust instructions contain the Gateway HTTPS URL and root CA
 // fingerprint, and never recommend disabling TLS.
 func TestRenderManualTrustInstructions_PrintsURLAndFingerprint(t *testing.T) {
-	t.Parallel()
 	cmd, buf := newRenderCmd()
 	renderManualTrustInstructions(cmd, "https://localhost:8443", "abc123fingerprint")
 
@@ -154,7 +146,6 @@ func TestRenderManualTrustInstructions_PrintsURLAndFingerprint(t *testing.T) {
 // TestConnectAPIBaseURL_DefaultsToOperatorHttpsPort verifies that a zero
 // httpsPort defaults to the configured Operator HTTPS port.
 func TestConnectAPIBaseURL_DefaultsToOperatorHttpsPort(t *testing.T) {
-	t.Parallel()
 	url := connectAPIBaseURL(0)
 	assert.Contains(t, url, "https://localhost:")
 	assert.Contains(t, url, "8443")
@@ -163,7 +154,6 @@ func TestConnectAPIBaseURL_DefaultsToOperatorHttpsPort(t *testing.T) {
 // TestConnectAPIBaseURL_UsesProvidedPort verifies that a non-zero port is
 // used in the URL.
 func TestConnectAPIBaseURL_UsesProvidedPort(t *testing.T) {
-	t.Parallel()
 	url := connectAPIBaseURL(9000)
 	assert.Contains(t, url, "9000")
 }

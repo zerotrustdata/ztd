@@ -19,7 +19,6 @@ import (
 )
 
 func TestSysInfoTool_Execute_Success(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	ctx := context.Background()
 
@@ -50,7 +49,6 @@ func TestSysInfoTool_Execute_Success(t *testing.T) {
 }
 
 func TestSysInfoTool_Execute_ContextCancelled(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -61,7 +59,6 @@ func TestSysInfoTool_Execute_ContextCancelled(t *testing.T) {
 }
 
 func TestSysInfoTool_Execute_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	ctx := context.Background()
 
@@ -71,38 +68,32 @@ func TestSysInfoTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestGetKernelVersion_Parsing(t *testing.T) {
-	t.Parallel()
 	// Since getKernelVersion reads /proc/version, we can't easily mock it without refactoring.
 	// But we can check that it returns something.
-
 	ctx := context.Background()
 	version := getKernelVersion(ctx)
 	require.NotEmpty(t, version)
 }
 
 func TestGetOSVersion_Parsing(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	version := getOSVersion(ctx)
 	require.NotEmpty(t, version)
 }
 
 func TestGetUptime_Parsing(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	uptime := getUptime(ctx)
 	require.NotEmpty(t, uptime)
 }
 
 func TestGetLoadAverage_Parsing(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	load := getLoadAverage(ctx)
 	require.NotEmpty(t, load)
 }
 
 func TestSysInfoTool_Execute_Timeout(t *testing.T) {
-	t.Parallel()
 	tool := &SysInfoTool{}
 	// Use a deadline in the past so the context is already expired
 	// deterministically, without relying on timer resolution or sleep.
@@ -115,7 +106,6 @@ func TestSysInfoTool_Execute_Timeout(t *testing.T) {
 }
 
 func TestFormatUptime(t *testing.T) {
-	t.Parallel()
 	require.Equal(t, "unknown", formatUptime(-1))
 	require.Equal(t, "0d 0h 0m", formatUptime(0))
 	require.Equal(t, "0d 0h 59m", formatUptime(59*60))

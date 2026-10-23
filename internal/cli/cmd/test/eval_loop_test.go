@@ -18,7 +18,6 @@ import (
 )
 
 func TestEvalLoopCommandSelectsOnlyOwnedCrossProcessQualification(t *testing.T) {
-	t.Parallel()
 	var command string
 	var args []string
 	cmd := testEvalLoopCmdWithRunner(func(_ context.Context, name string, argv ...string) (int, error) {
@@ -35,7 +34,6 @@ func TestEvalLoopCommandSelectsOnlyOwnedCrossProcessQualification(t *testing.T) 
 }
 
 func TestEvalLoopCommandSelectsLiveTargetWithTestBinaryFlags(t *testing.T) {
-	t.Parallel()
 	var args []string
 	cmd := testEvalLoopCmdWithRunner(func(_ context.Context, _ string, argv ...string) (int, error) {
 		args = argv
@@ -50,7 +48,6 @@ func TestEvalLoopCommandSelectsLiveTargetWithTestBinaryFlags(t *testing.T) {
 }
 
 func TestEvalLoopCommandGivesEachLivePostureItsOwnDeadline(t *testing.T) {
-	t.Parallel()
 	var args []string
 	cmd := testEvalLoopCmdWithRunner(func(_ context.Context, _ string, argv ...string) (int, error) {
 		args = argv
@@ -63,7 +60,6 @@ func TestEvalLoopCommandGivesEachLivePostureItsOwnDeadline(t *testing.T) {
 }
 
 func TestEvalLoopCommandRejectsIncompleteLiveTargetBeforeStarting(t *testing.T) {
-	t.Parallel()
 	for _, flags := range [][]string{
 		{"--live-ollama-endpoint", "http://192.0.2.10:11434"},
 		{"--live-model", "qwen3:4b"},
@@ -79,7 +75,6 @@ func TestEvalLoopCommandRejectsIncompleteLiveTargetBeforeStarting(t *testing.T) 
 }
 
 func TestEvalLoopCommandRejectsUnsupportedPostureBeforeStarting(t *testing.T) {
-	t.Parallel()
 	cmd := testEvalLoopCmdWithRunner(func(context.Context, string, ...string) (int, error) {
 		t.Fatal("invalid posture started a child test")
 		return 0, nil

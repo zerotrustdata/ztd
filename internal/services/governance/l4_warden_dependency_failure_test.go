@@ -43,7 +43,6 @@ func (m *errorStateRootProvider) GetCurrentStateRoot(context.Context) (string, e
 // transaction rather than silently accepting it.
 func TestL4Warden_ReplayStoreError_FailClosed(t *testing.T) {
 	t.Parallel()
-
 	verifier, privKey := createStrictVerifier(
 		t,
 		&errorReplayStore{},
@@ -66,7 +65,6 @@ func TestL4Warden_ReplayStoreError_FailClosed(t *testing.T) {
 // fails closed and rejects the transaction.
 func TestL4Warden_StateRootProviderError_FailClosed(t *testing.T) {
 	t.Parallel()
-
 	verifier, privKey := createStrictVerifier(
 		t,
 		testutil.NewStatefulMockReplayStore(),
@@ -91,7 +89,6 @@ func TestL4Warden_StateRootProviderError_FailClosed(t *testing.T) {
 // on retry.
 func TestL4Warden_PartialValidation_NonceNotLeaked(t *testing.T) {
 	t.Parallel()
-
 	replayStore := testutil.NewStatefulMockReplayStore()
 
 	// First attempt: state root mismatch causes stateful validation to fail

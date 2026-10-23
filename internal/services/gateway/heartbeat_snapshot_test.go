@@ -22,7 +22,6 @@ import (
 )
 
 func TestHeartbeatResultFromEnvelope_BinaryPayload(t *testing.T) {
-	t.Parallel()
 	heartbeat := &operatorv1.HeartbeatResult{
 		OperatorId:        "op-1",
 		OperatorSessionId: "sess-1",
@@ -51,7 +50,6 @@ func TestHeartbeatResultFromEnvelope_BinaryPayload(t *testing.T) {
 }
 
 func TestHeartbeatResultFromEnvelope_IntentDataProtojson(t *testing.T) {
-	t.Parallel()
 	heartbeat := &operatorv1.HeartbeatResult{
 		OperatorId: "op-1",
 		Status:     "automatic",
@@ -76,8 +74,6 @@ func TestHeartbeatResultFromEnvelope_IntentDataProtojson(t *testing.T) {
 }
 
 func TestHeartbeatResultFromEnvelope_RejectsEmptyEnvelope(t *testing.T) {
-	t.Parallel()
-
 	_, err := heartbeatResultFromEnvelope(&commonv1.GovernanceEnvelope{
 		OperatorId: "op-1",
 	})
@@ -86,8 +82,6 @@ func TestHeartbeatResultFromEnvelope_RejectsEmptyEnvelope(t *testing.T) {
 }
 
 func TestHeartbeatResultFromEnvelope_RejectsEmptyBinaryPayload(t *testing.T) {
-	t.Parallel()
-
 	_, err := heartbeatResultFromEnvelope(&commonv1.GovernanceEnvelope{
 		OperatorId: "op-1",
 		Payload:    []byte{0x00},
@@ -96,7 +90,6 @@ func TestHeartbeatResultFromEnvelope_RejectsEmptyBinaryPayload(t *testing.T) {
 }
 
 func TestMarshalHeartbeatSnapshot_UsesProtoFieldNames(t *testing.T) {
-	t.Parallel()
 	heartbeat := &operatorv1.HeartbeatResult{
 		Status: "automatic",
 		SystemIdentity: &operatorv1.SystemIdentity{
@@ -123,7 +116,6 @@ func TestMarshalHeartbeatSnapshot_UsesProtoFieldNames(t *testing.T) {
 }
 
 func TestCurrentHostnameFromHeartbeat(t *testing.T) {
-	t.Parallel()
 	assert.Empty(t, currentHostnameFromHeartbeat(nil))
 	assert.Empty(t, currentHostnameFromHeartbeat(&operatorv1.HeartbeatResult{}))
 	assert.Equal(t, "edge-node", currentHostnameFromHeartbeat(&operatorv1.HeartbeatResult{

@@ -26,7 +26,6 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		cfg     config.Config
@@ -62,7 +61,6 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			client, err := New(tt.cfg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
@@ -76,7 +74,6 @@ func TestNew(t *testing.T) {
 }
 
 func TestNew_WithValidCerts(t *testing.T) {
-	t.Parallel()
 	caPEM, _ := testutil.GenerateTestCertificate(t, "test-ca")
 	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
 	if err := os.WriteFile(caPath, []byte(caPEM), 0600); err != nil {
@@ -121,14 +118,12 @@ func writeIdentity(t *testing.T, name string) config.Auth {
 // cannot be loaded is an error, never a client that silently runs without its identity or
 // trust anchor.
 func TestNew_FailsClosedOnConfiguredMaterial(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	identity := writeIdentity(t, "valid")
 	noPEM := filepath.Join(dir, "no-certs.pem")
 	require.NoError(t, os.WriteFile(noPEM, []byte("not a certificate"), 0600))
 
 	t.Run("missing client certificate file", func(t *testing.T) {
-		t.Parallel()
 		_, err := New(config.Config{Auth: config.Auth{
 			ClientCert: filepath.Join(dir, "missing.crt"),
 			ClientKey:  identity.ClientKey,
@@ -138,7 +133,6 @@ func TestNew_FailsClosedOnConfiguredMaterial(t *testing.T) {
 	})
 
 	t.Run("missing CLI client certificate file", func(t *testing.T) {
-		t.Parallel()
 		_, err := New(config.Config{CLIAuth: config.Auth{
 			ClientCert: filepath.Join(dir, "missing-cli.crt"),
 			ClientKey:  identity.ClientKey,
@@ -148,27 +142,23 @@ func TestNew_FailsClosedOnConfiguredMaterial(t *testing.T) {
 	})
 
 	t.Run("unreadable CA bundle", func(t *testing.T) {
-		t.Parallel()
 		_, err := New(config.Config{Auth: config.Auth{CABundle: filepath.Join(dir, "missing-ca.pem")}})
 		require.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
 		require.ErrorIs(t, err, fs.ErrNotExist)
 	})
 
 	t.Run("CA bundle with no PEM certificates", func(t *testing.T) {
-		t.Parallel()
 		_, err := New(config.Config{Auth: config.Auth{CABundle: noPEM}})
 		require.ErrorIs(t, err, constants.ErrFailedToParseTrustBundle)
 	})
 
 	t.Run("certificate named without its key", func(t *testing.T) {
-		t.Parallel()
 		_, err := New(config.Config{Auth: config.Auth{ClientCert: identity.ClientCert}})
 		require.ErrorIs(t, err, constants.ErrIncompleteCredentialPair)
 	})
 }
 
 func TestNew_InvalidKeyPair(t *testing.T) {
-	t.Parallel()
 	tempDir := testutil.TempDir(t)
 	certPath := filepath.Join(tempDir, "client.crt")
 	keyPath := filepath.Join(tempDir, "client.key")
@@ -195,7 +185,6 @@ func TestNew_InvalidKeyPair(t *testing.T) {
 }
 
 func TestClient_Config(t *testing.T) {
-	t.Parallel()
 	cfg := config.Config{
 		MTLSBaseURL: "https://example.com",
 		Auth:        config.Auth{},
@@ -213,7 +202,6 @@ func TestClient_Config(t *testing.T) {
 }
 
 func TestClient_Record(t *testing.T) {
-	t.Parallel()
 	cfg := config.Config{Auth: config.Auth{}}
 	client, err := New(cfg)
 	if err != nil {
@@ -232,7 +220,6 @@ func TestClient_Record(t *testing.T) {
 }
 
 func TestAttachBody(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []byte
@@ -279,7 +266,6 @@ func TestAttachBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			var j json.RawMessage
 			var raw string
 
@@ -299,7 +285,6 @@ func TestAttachBody(t *testing.T) {
 }
 
 func TestExchange_Marshal(t *testing.T) {
-	t.Parallel()
 	ex := Exchange{
 		Persona:   "test-client",
 		Method:    "GET",
@@ -333,7 +318,6 @@ func TestExchange_Marshal(t *testing.T) {
 }
 
 func TestPersona(t *testing.T) {
-	t.Parallel()
 	p := Persona{
 		ID:                "test-id",
 		UserAgent:         "TestAgent/1.0",
@@ -364,9 +348,7 @@ func TestPersona(t *testing.T) {
 }
 
 func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
-	t.Parallel()
 	t.Run("cliHTTP is nil when CLIAuth equals Auth", func(t *testing.T) {
-		t.Parallel()
 		cfg := config.Config{Auth: config.Auth{}}
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -375,7 +357,6 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 	})
 
 	t.Run("the CLI identity is the Operator client when CLIAuth matches Auth", func(t *testing.T) {
-		t.Parallel()
 		same := writeIdentity(t, "same")
 		c, err := New(config.Config{Auth: same, CLIAuth: same})
 		require.NoError(t, err)
@@ -384,7 +365,6 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 	})
 
 	t.Run("cliHTTP is a separate client when CLIAuth differs from Auth", func(t *testing.T) {
-		t.Parallel()
 		c, err := New(config.Config{Auth: writeIdentity(t, "operator"), CLIAuth: writeIdentity(t, "cli")})
 		require.NoError(t, err)
 		assert.NotNil(t, c.cliHTTP, "cliHTTP should be built when CLIAuth differs from Auth")
@@ -393,7 +373,6 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 	})
 
 	t.Run("the CLI identity keeps its own trust anchors when only its CA bundle differs", func(t *testing.T) {
-		t.Parallel()
 		operator := writeIdentity(t, "shared")
 		cli := operator
 		cli.CABundle = operator.ClientCert
@@ -406,7 +385,6 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 }
 
 func TestClient_SubscribeApprovalsRequiresCLISession(t *testing.T) {
-	t.Parallel()
 	c, err := New(config.Config{
 		PublicBaseURL: "https://127.0.0.1:1",
 		Auth:          writeIdentity(t, "operator"),

@@ -131,7 +131,6 @@ func trace(finalReply string, steps ...*evalv1.AgentStep) *evalv1.AgentTrace {
 }
 
 func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatch(t *testing.T) {
-	t.Parallel()
 	dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 		if req.GetProviderAttemptId() == "judge-"+string(SubjectFinalReply) {
 			return judgmentResponse(req, `{"score": 4, "rationale": "answers the objective"}`), nil
@@ -192,7 +191,6 @@ func requestUserText(req *operatorv1.InferenceDispatchRequest) string {
 }
 
 func TestScoreTrace_TraceWithoutFinalReplyOrMemoryWriteGivesNoScoresAndNoDispatch(t *testing.T) {
-	t.Parallel()
 	cases := map[string]*evalv1.AgentTrace{
 		"nil trace":                      nil,
 		"empty trace":                    {},
@@ -204,7 +202,6 @@ func TestScoreTrace_TraceWithoutFinalReplyOrMemoryWriteGivesNoScoresAndNoDispatc
 	}
 	for name, tr := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, `{"score": 5, "rationale": "x"}`), nil
 			}}
@@ -219,7 +216,6 @@ func TestScoreTrace_TraceWithoutFinalReplyOrMemoryWriteGivesNoScoresAndNoDispatc
 }
 
 func TestScoreTrace_OnlyLastPostTurnMemoryWriteIsJudged(t *testing.T) {
-	t.Parallel()
 	dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 		return judgmentResponse(req, `{"score": 2, "rationale": "x"}`), nil
 	}}
@@ -241,7 +237,6 @@ func TestScoreTrace_OnlyLastPostTurnMemoryWriteIsJudged(t *testing.T) {
 }
 
 func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name     string
 		respond  func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error)
@@ -326,7 +321,6 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			dispatcher := &fakeDispatcher{respond: tc.respond}
 			j := newTestJudge(t, dispatcher, nil)
 
@@ -342,7 +336,6 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 }
 
 func TestScoreTrace_CampaignAuthorityMismatchFailsWithoutDispatch(t *testing.T) {
-	t.Parallel()
 	dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 		return judgmentResponse(req, `{"score": 3, "rationale": "x"}`), nil
 	}}
@@ -356,7 +349,6 @@ func TestScoreTrace_CampaignAuthorityMismatchFailsWithoutDispatch(t *testing.T) 
 }
 
 func TestScoreTrace_MissingRunAssignmentOrScenarioIDFailsWithoutDispatch(t *testing.T) {
-	t.Parallel()
 	cases := map[string]func(*Config){
 		"empty run id":        func(cfg *Config) { cfg.RunID = "" },
 		"empty assignment id": func(cfg *Config) { cfg.AssignmentID = "" },
@@ -364,7 +356,6 @@ func TestScoreTrace_MissingRunAssignmentOrScenarioIDFailsWithoutDispatch(t *test
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, `{"score": 3, "rationale": "x"}`), nil
 			}}
@@ -384,7 +375,6 @@ func TestScoreTrace_MissingRunAssignmentOrScenarioIDFailsWithoutDispatch(t *test
 }
 
 func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *testing.T) {
-	t.Parallel()
 	cases := map[string]func(*operatorv1.InferenceResult){
 		"another run":        func(r *operatorv1.InferenceResult) { r.RunId = "other-run" },
 		"another assignment": func(r *operatorv1.InferenceResult) { r.AssignmentId = "other-assignment" },
@@ -393,7 +383,6 @@ func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *
 	}
 	for name, forge := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			j := newTestJudge(t, &fakeDispatcher{}, nil)
 			req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, judgeFinalReply)
 			require.NoError(t, err)
@@ -406,7 +395,6 @@ func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *
 		})
 	}
 	t.Run("result carrying the requested identity validates", func(t *testing.T) {
-		t.Parallel()
 		j := newTestJudge(t, &fakeDispatcher{}, nil)
 		req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, judgeFinalReply)
 		require.NoError(t, err)
@@ -416,7 +404,6 @@ func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *
 }
 
 func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name      string
 		text      string
@@ -438,7 +425,6 @@ func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			result := &operatorv1.InferenceResult{
 				Parts: []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: tc.text}}},
 			}
@@ -459,7 +445,6 @@ func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {
 // TestJudgmentJSONSchema_IsCanonical guards the response schema against the
 // Inference Operator's canonical-JSON check, which refuses the whole dispatch.
 func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
-	t.Parallel()
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal([]byte(judgmentJSONSchema), &decoded))
 	canonical, err := json.Marshal(decoded)
@@ -468,7 +453,6 @@ func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
 }
 
 func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name          string
 		nilDispatcher bool
@@ -483,7 +467,6 @@ func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			var d Dispatcher = &fakeDispatcher{}
 			if tc.nilDispatcher {
 				d = nil
@@ -493,7 +476,6 @@ func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
 		})
 	}
 	t.Run("valid configuration constructs a judge", func(t *testing.T) {
-		t.Parallel()
 		_, err := New(&fakeDispatcher{}, judgeConfig(t, nil))
 		require.NoError(t, err)
 	})

@@ -16,8 +16,7 @@ import (
 	oscalschema "github.com/zerotrustdata/ztd/protocol/schemas/oscal"
 )
 
-func TestCompiler_CompilesOSCALSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCompiler_CompilesOSCALSchema(t *testing.T) {
 	schemaBytes, err := oscalschema.SchemaBytes()
 	require.NoError(t, err)
 	c := NewCompiler()
@@ -29,7 +28,6 @@ func TestCompiler_CompilesOSCALSchema(t *testing.T) { //nolint:paralleltest // m
 }
 
 func TestCompiler_CompilesBooleanTrueSchema(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`true`))
 	require.NoError(t, err)
@@ -37,7 +35,6 @@ func TestCompiler_CompilesBooleanTrueSchema(t *testing.T) {
 }
 
 func TestCompiler_CompilesBooleanFalseSchema(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`false`))
 	require.NoError(t, err)
@@ -45,7 +42,6 @@ func TestCompiler_CompilesBooleanFalseSchema(t *testing.T) {
 }
 
 func TestCompiler_RejectsInvalidJSON(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{invalid`))
 	require.Error(t, err)
@@ -55,7 +51,6 @@ func TestCompiler_RejectsInvalidJSON(t *testing.T) {
 }
 
 func TestCompiler_RejectsDuplicateObjectKeys(t *testing.T) {
-	t.Parallel()
 	compiler := NewCompiler()
 	_, err := compiler.Compile([]byte(`{"type":"object","type":"array"}`))
 	require.Error(t, err)
@@ -65,14 +60,12 @@ func TestCompiler_RejectsDuplicateObjectKeys(t *testing.T) {
 }
 
 func TestCompiler_RejectsTrailingData(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{}` + "\n" + `{}`))
 	require.Error(t, err)
 }
 
 func TestCompiler_RejectsUnresolvedRef(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{"$ref": "#/definitions/NonExistent"}`))
 	require.Error(t, err)
@@ -82,7 +75,6 @@ func TestCompiler_RejectsUnresolvedRef(t *testing.T) {
 }
 
 func TestCompiler_RejectsDuplicateID(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{
 		"definitions": {
@@ -97,7 +89,6 @@ func TestCompiler_RejectsDuplicateID(t *testing.T) {
 }
 
 func TestCompiler_RejectsInvalidRegex(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{"pattern": "[invalid"}`))
 	require.Error(t, err)
@@ -107,7 +98,6 @@ func TestCompiler_RejectsInvalidRegex(t *testing.T) {
 }
 
 func TestCompiler_RejectsUnsupportedFormat(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{"type": "string", "format": "unknown-format"}`))
 	require.Error(t, err)
@@ -117,7 +107,6 @@ func TestCompiler_RejectsUnsupportedFormat(t *testing.T) {
 }
 
 func TestCompiler_ResolvesFragmentRef(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"$id": "http://example.com/root.json",
@@ -138,7 +127,6 @@ func TestCompiler_ResolvesFragmentRef(t *testing.T) {
 }
 
 func TestCompiler_ResolvesJSONPointerRef(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"definitions": {
@@ -155,7 +143,6 @@ func TestCompiler_ResolvesJSONPointerRef(t *testing.T) {
 }
 
 func TestCompiler_HandlesRecursiveDefinition(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"definitions": {
@@ -185,7 +172,6 @@ func TestCompiler_HandlesRecursiveDefinition(t *testing.T) {
 }
 
 func TestCompiler_RefOverridesAllOtherKeywords(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"definitions": {
@@ -204,7 +190,6 @@ func TestCompiler_RefOverridesAllOtherKeywords(t *testing.T) {
 }
 
 func TestCompiler_SecondCompileUsesTheNewSchema(t *testing.T) {
-	t.Parallel()
 	c := NewCompiler()
 	v := NewValidator()
 
@@ -220,7 +205,6 @@ func TestCompiler_SecondCompileUsesTheNewSchema(t *testing.T) {
 }
 
 func TestCompiler_NeverPanicsOnMalformedInput(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		input   string
 		wantErr bool
@@ -239,7 +223,6 @@ func TestCompiler_NeverPanicsOnMalformedInput(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.input, func(t *testing.T) {
-			t.Parallel()
 			schema, err := NewCompiler().Compile([]byte(tt.input))
 			if tt.wantErr {
 				require.Error(t, err)
@@ -256,9 +239,7 @@ func TestCompiler_NeverPanicsOnMalformedInput(t *testing.T) {
 }
 
 func TestCompiler_DoesNotPerformNetworkLoading(t *testing.T) {
-	t.Parallel()
 	// An absolute URI ref must fail (no network loading)
-
 	c := NewCompiler()
 	_, err := c.Compile([]byte(`{"$ref": "http://example.com/schema.json"}`))
 	require.Error(t, err)

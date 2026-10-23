@@ -30,8 +30,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 )
 
-func TestExecute(t *testing.T) { //nolint:paralleltest // mutates the process environment
-	t.Run("root command structure matches main.go implementation", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecute(t *testing.T) {
+	t.Run("root command structure matches main.go implementation", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		assert.Equal(t, "ztd", rootCmd.Use)
@@ -41,7 +41,7 @@ func TestExecute(t *testing.T) { //nolint:paralleltest // mutates the process en
 		assert.Len(t, rootCmd.Commands(), 18)
 	})
 
-	t.Run("root command has all expected subcommands", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("root command has all expected subcommands", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		expectedCommands := []string{"gw", "login", "logout", "auth", "consensus", "mcp", "operator", "autochthon", "vault", "test", "audit", "swagger", "report", "public", "tui", "version", "compliance", "eval"}
@@ -57,13 +57,13 @@ func TestExecute(t *testing.T) { //nolint:paralleltest // mutates the process en
 		}
 	})
 
-	t.Run("root command has correct completion options", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("root command has correct completion options", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		assert.True(t, rootCmd.CompletionOptions.DisableDefaultCmd, "default completion command should be disabled")
 	})
 
-	t.Run("root command help displays correctly", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("root command help displays correctly", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		var buf bytes.Buffer
@@ -86,7 +86,7 @@ func TestExecute(t *testing.T) { //nolint:paralleltest // mutates the process en
 		assert.Contains(t, output, "eval")
 	})
 
-	t.Run("root command long description contains key components", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("root command long description contains key components", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		assert.Contains(t, rootCmd.Long, "zero-trust execution platform")
@@ -96,7 +96,7 @@ func TestExecute(t *testing.T) { //nolint:paralleltest // mutates the process en
 	})
 }
 
-func TestRootCommandValidation(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestRootCommandValidation(t *testing.T) {
 	tests := []struct {
 		name           string
 		expectedUse    string
@@ -115,7 +115,7 @@ func TestRootCommandValidation(t *testing.T) { //nolint:paralleltest // mutates 
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates the process environment
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
@@ -138,8 +138,8 @@ func TestRootCommandValidation(t *testing.T) { //nolint:paralleltest // mutates 
 	}
 }
 
-func TestCommandExecutionErrorHandling(t *testing.T) { //nolint:paralleltest // mutates the process environment
-	t.Run("invalid command returns error", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestCommandExecutionErrorHandling(t *testing.T) {
+	t.Run("invalid command returns error", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		var buf bytes.Buffer
@@ -152,7 +152,7 @@ func TestCommandExecutionErrorHandling(t *testing.T) { //nolint:paralleltest // 
 		assert.Error(t, err)
 	})
 
-	t.Run("no arguments shows help", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("no arguments shows help", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		var buf bytes.Buffer
@@ -170,10 +170,8 @@ func TestCommandExecutionErrorHandling(t *testing.T) { //nolint:paralleltest // 
 	})
 }
 
-func TestSubcommandRegistration(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("all subcommands are non-nil", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSubcommandRegistration(t *testing.T) {
+	t.Run("all subcommands are non-nil", func(t *testing.T) {
 		assert.NotNil(t, gw.Cmd(), "gatewayCmd should not be nil")
 		assert.NotNil(t, authcmd.Cmd(), "authCmd should not be nil")
 		assert.NotNil(t, mcp.Cmd(), "mcpCmd should not be nil")
@@ -185,8 +183,7 @@ func TestSubcommandRegistration(t *testing.T) { //nolint:paralleltest // mutates
 		assert.NotNil(t, eval.Cmd(), "evalCmd should not be nil")
 	})
 
-	t.Run("all subcommands have valid cobra.Command structure", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("all subcommands have valid cobra.Command structure", func(t *testing.T) {
 		commands := []*cobra.Command{
 			gw.Cmd(),
 			authcmd.Cmd(),
@@ -207,7 +204,7 @@ func TestSubcommandRegistration(t *testing.T) { //nolint:paralleltest // mutates
 	})
 }
 
-func TestExecuteStderrErrorOutput(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteStderrErrorOutput(t *testing.T) {
 	t.Run("error is written to stderr on command failure", func(t *testing.T) {
 		oldStderr := os.Stderr
 		r, w, _ := os.Pipe()
@@ -236,8 +233,8 @@ func TestExecuteStderrErrorOutput(t *testing.T) { //nolint:paralleltest // mutat
 	})
 }
 
-func TestRootCommandConsistency(t *testing.T) { //nolint:paralleltest // mutates the process environment
-	t.Run("subcommand names are unique", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestRootCommandConsistency(t *testing.T) {
+	t.Run("subcommand names are unique", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		cmdNames := make(map[string]bool)
@@ -248,7 +245,7 @@ func TestRootCommandConsistency(t *testing.T) { //nolint:paralleltest // mutates
 		}
 	})
 
-	t.Run("subcommand aliases are consistent", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("subcommand aliases are consistent", func(t *testing.T) {
 		commands := []*cobra.Command{
 			gw.Cmd(),
 			authcmd.Cmd(),
@@ -271,8 +268,8 @@ func TestRootCommandConsistency(t *testing.T) { //nolint:paralleltest // mutates
 	})
 }
 
-func TestExecuteWithHelpFlag(t *testing.T) { //nolint:paralleltest // mutates the process environment
-	t.Run("--help flag displays help", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteWithHelpFlag(t *testing.T) {
+	t.Run("--help flag displays help", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		var buf bytes.Buffer
@@ -289,7 +286,7 @@ func TestExecuteWithHelpFlag(t *testing.T) { //nolint:paralleltest // mutates th
 		assert.Contains(t, output, "zero-trust execution platform")
 	})
 
-	t.Run("help command displays help", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
+	t.Run("help command displays help", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 		var buf bytes.Buffer
@@ -306,7 +303,7 @@ func TestExecuteWithHelpFlag(t *testing.T) { //nolint:paralleltest // mutates th
 	})
 }
 
-func TestExecuteVersionConsistency(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteVersionConsistency(t *testing.T) {
 	t.Run("version command is available if configured", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
@@ -318,7 +315,7 @@ func TestExecuteVersionConsistency(t *testing.T) { //nolint:paralleltest // muta
 	})
 }
 
-func TestRootCommandRunFunction(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestRootCommandRunFunction(t *testing.T) {
 	t.Run("root command without subcommand shows help", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 		rootCmd.RunE = nil
@@ -341,9 +338,7 @@ func TestRootCommandRunFunction(t *testing.T) { //nolint:paralleltest // mutates
 }
 
 func TestErrorFormatting(t *testing.T) {
-	t.Parallel()
 	t.Run("error message format is consistent", func(t *testing.T) {
-		t.Parallel()
 		testErr := fmt.Errorf("test error")
 		var buf bytes.Buffer
 
@@ -355,14 +350,14 @@ func TestErrorFormatting(t *testing.T) {
 	})
 }
 
-func TestRootCommand_RuntimeErrorsAreRenderedOnceWithoutUsage(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestRootCommand_RuntimeErrorsAreRenderedOnceWithoutUsage(t *testing.T) {
 	rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
 	assert.True(t, rootCmd.SilenceErrors, "ExecuteWithVersionInfo owns error rendering")
 	assert.True(t, rootCmd.SilenceUsage, "runtime failures must not print command usage")
 }
 
-func TestExecuteRootCmd_RendersFailureOnceOnConfiguredStderr(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteRootCmd_RendersFailureOnceOnConfiguredStderr(t *testing.T) {
 	root := NewRootCmd("dev", serve.VersionInfo{})
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)

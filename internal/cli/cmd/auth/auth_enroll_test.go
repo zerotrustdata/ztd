@@ -26,8 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-func TestEnrollCmdWithConfig_ConfigLoaderError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_ConfigLoaderError(t *testing.T) {
 	failLoader := func(string) (*config.Config, error) {
 		return nil, fmt.Errorf("config load error")
 	}
@@ -42,8 +41,7 @@ func TestEnrollCmdWithConfig_ConfigLoaderError(t *testing.T) { //nolint:parallel
 	assert.Contains(t, err.Error(), "config load error")
 }
 
-func TestEnrollCmdWithConfig_OperatorNotRunningReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_OperatorNotRunningReturnsError(t *testing.T) {
 	config.SetEndpointOverride("127.0.0.1:1")
 	defer config.SetEndpointOverride("")
 
@@ -62,8 +60,7 @@ func TestEnrollCmdWithConfig_OperatorNotRunningReturnsError(t *testing.T) { //no
 	require.Error(t, err)
 }
 
-func TestEnrollCmdWithConfig_NoTPMFlagOnNonWindows(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_NoTPMFlagOnNonWindows(t *testing.T) {
 	cmd := enrollUserCmdWithConfig(shared.LoadConfig, shared.NewFileSvc, auth.CheckOperatorRunning, NewDefaultEnrollmentCoordinator)
 	tpmFlag := cmd.Flags().Lookup("tpm")
 	if tpmFlag != nil {
@@ -71,8 +68,7 @@ func TestEnrollCmdWithConfig_NoTPMFlagOnNonWindows(t *testing.T) { //nolint:para
 	}
 }
 
-func TestEnrollCmdWithConfig_HasRunE(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_HasRunE(t *testing.T) {
 	cmd := enrollUserCmdWithConfig(shared.LoadConfig, shared.NewFileSvc, auth.CheckOperatorRunning, NewDefaultEnrollmentCoordinator)
 	require.NotNil(t, cmd.RunE)
 }
@@ -81,8 +77,7 @@ func TestEnrollCmdWithConfig_HasRunE(t *testing.T) { //nolint:paralleltest // mu
 // --no-system-trust and --rotate-cli flags with the correct defaults. The
 // coordinator itself is exercised by internal/cli/auth tests; this asserts the
 // command adapter exposes the new options.
-func TestEnrollCmdWithConfig_FlagsRegistered(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_FlagsRegistered(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := enrollUserCmdWithConfig(func(string) (*config.Config, error) { return cfg, nil }, cmdtest.FileSvcFactoryFor(fileSvc), auth.CheckOperatorRunning, NewDefaultEnrollmentCoordinator)
 	noSystemTrustFlag := cmd.Flags().Lookup("no-system-trust")
@@ -93,8 +88,7 @@ func TestEnrollCmdWithConfig_FlagsRegistered(t *testing.T) { //nolint:parallelte
 	assert.Equal(t, "false", rotateFlag.DefValue)
 }
 
-func TestEnrollCmdWithConfig_UsesInjectedConfigLoader(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_UsesInjectedConfigLoader(t *testing.T) {
 	called := false
 	loader := func(string) (*config.Config, error) {
 		called = true
@@ -107,8 +101,7 @@ func TestEnrollCmdWithConfig_UsesInjectedConfigLoader(t *testing.T) { //nolint:p
 	assert.True(t, called, "config loader should have been called")
 }
 
-func TestEnrollCmdWithConfig_PropagatesConfigError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_PropagatesConfigError(t *testing.T) {
 	expectedErr := constants.ErrConfigLoadFailed
 	loader := func(string) (*config.Config, error) {
 		return nil, expectedErr
@@ -124,8 +117,7 @@ func TestEnrollCmdWithConfig_PropagatesConfigError(t *testing.T) { //nolint:para
 // unreachable, the command returns an error rather than silently succeeding.
 // This replaces the old TestPerformEnroll_* tests that exercised the deleted
 // performEnroll function.
-func TestEnrollCmdWithConfig_GatewayDownReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfig_GatewayDownReturnsError(t *testing.T) {
 	config.SetEndpointOverride("127.0.0.1:1")
 	defer config.SetEndpointOverride("")
 
@@ -150,8 +142,7 @@ func TestEnrollCmdWithConfig_GatewayDownReturnsError(t *testing.T) { //nolint:pa
 // through CredentialStore.Clear and removes the local CLI credential material
 // (credentials JSON, CLI cert, CLI key) while leaving the OS root CA untouched
 // (Clear never touches the OS trust store).
-func TestLogoutCmdWithConfig_RemovesLocalCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmdWithConfig_RemovesLocalCredentials(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	creds := &auth.Credentials{
@@ -239,8 +230,7 @@ func noopCheckOperatorRunning(_ *config.Config) error { return nil }
 
 // TestEnrollCmd_OptionPropagation verifies that --no-system-trust and
 // --rotate-cli flag values reach EnrollmentOptions on the coordinator.
-func TestEnrollCmd_OptionPropagation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_OptionPropagation(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        []string
@@ -252,9 +242,8 @@ func TestEnrollCmd_OptionPropagation(t *testing.T) { //nolint:paralleltest // mu
 		{"rotate-cli only", []string{"--rotate-cli"}, false, true},
 		{"both flags", []string{"--no-system-trust", "--rotate-cli"}, true, true},
 	}
-	for _, tc := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			mock := &mockEnroller{
 				result: &auth.EnrollmentResult{
@@ -289,8 +278,7 @@ func TestEnrollCmd_OptionPropagation(t *testing.T) { //nolint:paralleltest // mu
 // coordinator is returned by the command (covers the trust-failure-stops-
 // before-browser case at the command layer: the coordinator returns
 // ErrSystemTrustInstallFailed and the command surfaces it).
-func TestEnrollCmd_CoordinatorErrorPropagates(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_CoordinatorErrorPropagates(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	expectedErr := constants.ErrSystemTrustInstallFailed
 	mock := &mockEnroller{err: expectedErr}
@@ -317,8 +305,7 @@ func TestEnrollCmd_CoordinatorErrorPropagates(t *testing.T) { //nolint:parallelt
 // is the command-layer assertion of the "healthy auth enroll does not rotate"
 // invariant — the mock coordinator records that it was called with
 // RotateCLI=false and returns Reused=true.
-func TestEnrollCmd_HealthyReusedIdentityNoRotate(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_HealthyReusedIdentityNoRotate(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockEnroller{
 		result: &auth.EnrollmentResult{
@@ -352,8 +339,7 @@ func TestEnrollCmd_HealthyReusedIdentityNoRotate(t *testing.T) { //nolint:parall
 // TestEnrollCmd_RotateCLIFlagForcesRotation verifies that --rotate-cli sets
 // RotateCLI=true on the coordinator options, which is the command-layer
 // assertion that the flag is wired through to the rotation path.
-func TestEnrollCmd_RotateCLIFlagForcesRotation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_RotateCLIFlagForcesRotation(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockEnroller{
 		result: &auth.EnrollmentResult{
@@ -384,8 +370,7 @@ func TestEnrollCmd_RotateCLIFlagForcesRotation(t *testing.T) { //nolint:parallel
 // ensureSystemTrust method skips the installer when this is true (already
 // tested in internal/cli/auth); this test asserts the flag reaches the
 // coordinator from the command layer.
-func TestEnrollCmd_NoSystemTrustFlagWired(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_NoSystemTrustFlagWired(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockEnroller{
 		result: &auth.EnrollmentResult{
@@ -416,8 +401,7 @@ func TestEnrollCmd_NoSystemTrustFlagWired(t *testing.T) { //nolint:paralleltest 
 // layer — the coordinator's blocking browser-restart gate handles that at
 // the correct time (before the passkey ceremony), so the final summary line
 // is a simple confirmation that trust was installed.
-func TestEnrollCmd_SystemTrustInstalledOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_SystemTrustInstalledOutput(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockEnroller{
 		result: &auth.EnrollmentResult{
@@ -453,8 +437,7 @@ func TestEnrollCmd_SystemTrustInstalledOutput(t *testing.T) { //nolint:parallelt
 // deps. This is the wiring test mirroring the existing Confirm injection —
 // the interactive `auth enroll` command must supply a stdin-reading ContinueFunc
 // so the blocking browser-restart gate can prompt the user.
-func TestEnrollCmd_StdinContinueInjected(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmd_StdinContinueInjected(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	// The production factory builds a real coordinator. We cannot inspect
@@ -471,8 +454,7 @@ func TestEnrollCmd_StdinContinueInjected(t *testing.T) { //nolint:paralleltest /
 // TestLogoutCmd_OSRootCARetained verifies that logout removes local CLI
 // credential material but does NOT delete the OS root CA file. This is the
 // §11.5 3.9 assertion: the OS root CA is shared and must survive logout.
-func TestLogoutCmd_OSRootCARetained(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_OSRootCARetained(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	// Seed credentials + CLI cert/key + trust bundle (the OS root CA file).

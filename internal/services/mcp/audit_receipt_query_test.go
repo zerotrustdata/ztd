@@ -103,7 +103,6 @@ func sampleReceiptRecord(txID, _ string, actionType string, executedAt time.Time
 }
 
 func TestAuditReceiptListTool_Name_Description_Schema(t *testing.T) {
-	t.Parallel()
 	tool := &AuditReceiptListTool{}
 	assert.Equal(t, "audit_receipt_list", tool.Name())
 	assert.NotEmpty(t, tool.Description())
@@ -120,7 +119,6 @@ func TestAuditReceiptListTool_Name_Description_Schema(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_InputSchemaAcceptsOperatorLocalSessionlessQuery(t *testing.T) {
-	t.Parallel()
 	schemaWire, err := json.Marshal((&AuditReceiptListTool{}).InputSchema())
 	require.NoError(t, err)
 	compiled, err := jsonschema.NewCompiler().Compile(schemaWire)
@@ -131,7 +129,6 @@ func TestAuditReceiptListTool_InputSchemaAcceptsOperatorLocalSessionlessQuery(t 
 }
 
 func TestAuditReceiptListTool_Execute_Success(t *testing.T) {
-	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
 		listBySession: []*models.EventReceiptRecord{
@@ -159,7 +156,6 @@ func TestAuditReceiptListTool_Execute_Success(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_InvestigationOnlyScopeFailsBeforeQuery(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, err := json.Marshal(AuditReceiptListRequest{
@@ -173,7 +169,6 @@ func TestAuditReceiptListTool_Execute_InvestigationOnlyScopeFailsBeforeQuery(t *
 }
 
 func TestAuditReceiptListTool_Execute_BothScopes(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, err := json.Marshal(AuditReceiptListRequest{
@@ -189,7 +184,6 @@ func TestAuditReceiptListTool_Execute_BothScopes(t *testing.T) {
 }
 
 func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing.T) {
-	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	receipt := sampleReceiptRecord("tx-command", "session-old", "EXECUTE_BASH", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	receipt.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: "tx-command", Signature: "sig-tx-command"}
@@ -220,7 +214,6 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 }
 
 func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{}
 	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub, newTestFsGrep(t, testutil.TempDir(t)))
 	require.NoError(t, err)
@@ -242,7 +235,6 @@ func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *test
 }
 
 func TestNewOperatorNativeToolHandler_RequiresIdentityAndLocalStore(t *testing.T) {
-	t.Parallel()
 	grep := newTestFsGrep(t, testutil.TempDir(t))
 	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{}, grep)
 	require.ErrorIs(t, err, constants.ErrOperatorIDMissing)
@@ -253,7 +245,6 @@ func TestNewOperatorNativeToolHandler_RequiresIdentityAndLocalStore(t *testing.T
 }
 
 func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {
-	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
 		listBySession: []*models.EventReceiptRecord{
@@ -276,7 +267,6 @@ func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_NotBeforeFilter(t *testing.T) {
-	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
 		listBySession: []*models.EventReceiptRecord{
@@ -304,7 +294,6 @@ func TestAuditReceiptListTool_Execute_NotBeforeFilter(t *testing.T) {
 // The egress scrub keeps a receipt list decodable: deterministic stage timings
 // shaped like phone (10-digit) and card (16-digit) numbers stay numbers.
 func TestAuditReceiptListTool_Execute_ScrubbedResultDecodes(t *testing.T) {
-	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	record := sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	record.ActionReceipt = &operatorv1.ActionReceipt{
@@ -339,7 +328,6 @@ func TestAuditReceiptListTool_Execute_ScrubbedResultDecodes(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_Pagination(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{listBySession: nil}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1", Limit: 10, Offset: 20})
@@ -352,7 +340,6 @@ func TestAuditReceiptListTool_Execute_Pagination(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_MissingOperatorSessionID(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, _ := json.Marshal(AuditReceiptListRequest{})
@@ -365,7 +352,6 @@ func TestAuditReceiptListTool_Execute_MissingOperatorSessionID(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_QueryNotConfigured(t *testing.T) {
-	t.Parallel()
 	args, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
 
 	tool := &AuditReceiptListTool{}
@@ -375,7 +361,6 @@ func TestAuditReceiptListTool_Execute_QueryNotConfigured(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_InvalidNotBefore(t *testing.T) {
-	t.Parallel()
 	ctx := withAuditReceiptQuery(context.Background(), &stubAuditReceiptQuery{})
 	args, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1", NotBefore: "not-a-timestamp"})
 
@@ -386,7 +371,6 @@ func TestAuditReceiptListTool_Execute_InvalidNotBefore(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_QueryError(t *testing.T) {
-	t.Parallel()
 	queryErr := errors.New("db offline")
 	stub := &stubAuditReceiptQuery{listErr: queryErr}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
@@ -399,7 +383,6 @@ func TestAuditReceiptListTool_Execute_QueryError(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	ctx := withAuditReceiptQuery(context.Background(), &stubAuditReceiptQuery{})
 	tool := &AuditReceiptListTool{}
 	_, err := tool.Execute(ctx, json.RawMessage(`{invalid`))
@@ -407,7 +390,6 @@ func TestAuditReceiptListTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Name_Description_Schema(t *testing.T) {
-	t.Parallel()
 	tool := &AuditReceiptGetTool{}
 	assert.Equal(t, "audit_receipt_get", tool.Name())
 	assert.NotEmpty(t, tool.Description())
@@ -419,7 +401,6 @@ func TestAuditReceiptGetTool_Name_Description_Schema(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_Success(t *testing.T) {
-	t.Parallel()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	rec := sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-1": rec}}
@@ -441,7 +422,6 @@ func TestAuditReceiptGetTool_Execute_Success(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_NotFound(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{}}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, _ := json.Marshal(AuditReceiptGetRequest{TransactionID: "missing"})
@@ -456,7 +436,6 @@ func TestAuditReceiptGetTool_Execute_NotFound(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_MissingTransactionID(t *testing.T) {
-	t.Parallel()
 	ctx := withAuditReceiptQuery(context.Background(), &stubAuditReceiptQuery{})
 	args, _ := json.Marshal(AuditReceiptGetRequest{})
 
@@ -467,7 +446,6 @@ func TestAuditReceiptGetTool_Execute_MissingTransactionID(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_QueryNotConfigured(t *testing.T) {
-	t.Parallel()
 	args, _ := json.Marshal(AuditReceiptGetRequest{TransactionID: "tx-1"})
 
 	tool := &AuditReceiptGetTool{}
@@ -477,7 +455,6 @@ func TestAuditReceiptGetTool_Execute_QueryNotConfigured(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_QueryError(t *testing.T) {
-	t.Parallel()
 	queryErr := errors.New("db offline")
 	stub := &stubAuditReceiptQuery{getErr: queryErr}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
@@ -490,7 +467,6 @@ func TestAuditReceiptGetTool_Execute_QueryError(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	ctx := withAuditReceiptQuery(context.Background(), &stubAuditReceiptQuery{})
 	tool := &AuditReceiptGetTool{}
 	_, err := tool.Execute(ctx, json.RawMessage(`{invalid`))
@@ -501,7 +477,6 @@ func TestAuditReceiptGetTool_Execute_InvalidJSON(t *testing.T) {
 // configured AuditReceiptQuery into the execution context so the audit
 // receipt tools can access the configured local audit store.
 func TestNativeToolHandler_SetAuditReceiptQuery(t *testing.T) {
-	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
@@ -527,7 +502,6 @@ func TestNativeToolHandler_SetAuditReceiptQuery(t *testing.T) {
 // fails closed when no AuditReceiptQuery is wired, proving the audit receipt
 // tools cannot execute without a configured audit vault.
 func TestNativeToolHandler_AuditReceiptQueryNotConfigured(t *testing.T) {
-	t.Parallel()
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
@@ -541,7 +515,6 @@ func TestNativeToolHandler_AuditReceiptQueryNotConfigured(t *testing.T) {
 // vault reaches the caller as ErrAuditStoreVaultLocked on both read tools, never
 // as an empty receipt list or a silent not-found.
 func TestAuditReceiptTools_VaultLockedIsSurfaced(t *testing.T) {
-	t.Parallel()
 	stub := &stubAuditReceiptQuery{listErr: constants.ErrAuditStoreVaultLocked, getErr: constants.ErrAuditStoreVaultLocked}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 

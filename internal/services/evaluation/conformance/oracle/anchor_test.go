@@ -48,7 +48,6 @@ func exportJSON(algorithm, keyID, publicKeyHex string) string {
 }
 
 func TestLoadAnchor(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	pubHex := hex.EncodeToString(signer.Pub)
 	shortHex := hex.EncodeToString(signer.Pub[:31])
@@ -71,7 +70,6 @@ func TestLoadAnchor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			files := newRuntimeFiles(t)
 			if !tt.missing {
 				writeExport(t, files, tt.body)
@@ -93,7 +91,6 @@ func TestLoadAnchor(t *testing.T) {
 }
 
 func TestLoadAnchorRejectsEmptyRuntimeID(t *testing.T) {
-	t.Parallel()
 	files := newRuntimeFiles(t)
 	_, err := LoadAnchor(context.Background(), files, "")
 	assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
@@ -112,7 +109,6 @@ func boundDocument(signer oracletest.Signer) *operatorv1.OperatorDocument {
 }
 
 func TestBoundAnchor(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	otherSigner := oracletest.NewSigner(t)
 
@@ -141,7 +137,6 @@ func TestBoundAnchor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			anchor, err := BoundAnchor(tt.doc)
 			if tt.want != nil {
 				assert.ErrorIs(t, err, tt.want)
@@ -157,7 +152,6 @@ func TestBoundAnchor(t *testing.T) {
 }
 
 func TestCheckedBoundAnchor(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	other := oracletest.NewSigner(t)
 	pubHex := hex.EncodeToString(signer.Pub)
@@ -185,7 +179,6 @@ func TestCheckedBoundAnchor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			files := newRuntimeFiles(t)
 			if !tt.missing {
 				writeExport(t, files, tt.body)
@@ -211,7 +204,6 @@ func TestCheckedBoundAnchor(t *testing.T) {
 }
 
 func TestNewAnchorSet(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	other := oracletest.NewSigner(t)
 
@@ -232,7 +224,6 @@ func TestNewAnchorSet(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			set, err := NewAnchorSet(tt.anchors)
 			if tt.want != nil {
 				assert.ErrorIs(t, err, tt.want)
@@ -245,7 +236,6 @@ func TestNewAnchorSet(t *testing.T) {
 }
 
 func TestAnchorSetKey(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	unpinned := oracletest.NewSigner(t)
 	set, err := NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor("op-1")})

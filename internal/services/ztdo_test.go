@@ -76,8 +76,8 @@ func newTestPubSubClientFactory() PubSubClientFactory {
 	}
 }
 
-func TestNewZtdoService_InitialState(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_InitialState(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
@@ -105,8 +105,8 @@ func TestNewZtdoService_InitialState(t *testing.T) { //nolint:paralleltest // mu
 	assert.Nil(t, service.evidence)
 }
 
-func TestNewZtdoService_RequiresCanonicalDB(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_RequiresCanonicalDB(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 
 	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), nil, newTestPubSubClientFactory())
@@ -115,8 +115,8 @@ func TestNewZtdoService_RequiresCanonicalDB(t *testing.T) { //nolint:paralleltes
 	assert.ErrorIs(t, err, constants.ErrGatewayDatabaseServiceNotConfigured)
 }
 
-func TestNewZtdoService_RequiresPubSubClientFactory(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_RequiresPubSubClientFactory(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 
 	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), nil)
@@ -125,8 +125,8 @@ func TestNewZtdoService_RequiresPubSubClientFactory(t *testing.T) { //nolint:par
 	assert.ErrorIs(t, err, constants.ErrInternal)
 }
 
-func TestNewZtdoService_PreservesConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_PreservesConfig(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	cfg.MaxConcurrentTasks = 42
 	logger := testutil.NewTestLogger()
@@ -140,8 +140,8 @@ func TestNewZtdoService_PreservesConfig(t *testing.T) { //nolint:paralleltest //
 	assert.Equal(t, cfg.OperatorSessionId, service.config.OperatorSessionId)
 }
 
-func TestNewZtdoService_IndependentInstances(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_IndependentInstances(t *testing.T) {
+	t.Parallel()
 	cfg1 := testutil.NewTestConfig(t)
 	cfg2 := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
@@ -156,8 +156,8 @@ func TestNewZtdoService_IndependentInstances(t *testing.T) { //nolint:parallelte
 	assert.NotEqual(t, svc1.config.OperatorSessionId, svc2.config.OperatorSessionId)
 }
 
-func TestZtdoService_Stop(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestZtdoService_Stop(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
@@ -178,8 +178,8 @@ func TestZtdoService_Stop(t *testing.T) { //nolint:paralleltest // mutates packa
 	assert.False(t, running)
 }
 
-func TestZtdoService_ConcurrentStateAccess(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestZtdoService_ConcurrentStateAccess(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
@@ -216,8 +216,8 @@ func TestZtdoService_ConcurrentStateAccess(t *testing.T) { //nolint:paralleltest
 	}
 }
 
-func TestZtdoService_NewInferenceBackend_RejectsABadEndpoint(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestZtdoService_NewInferenceBackend_RejectsABadEndpoint(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	cfg.Inference.OllamaEndpoint = "not-a-url"
 	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())

@@ -75,8 +75,6 @@ func mustUUID(t *testing.T) string {
 }
 
 func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) {
-	t.Parallel()
-
 	actuator, publicKey := newTestActuator(t)
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:    "test-transaction",
@@ -121,8 +119,6 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			err := VerifyActionReceiptSignature(tt.receipt, tt.publicKey)
 			if tt.wantErr == nil {
 				assert.NoError(t, err)
@@ -151,8 +147,6 @@ func (*operatorAuditSummaryCommandWithoutTypedResult) SetPayload([]byte)        
 func (*operatorAuditSummaryCommandWithoutTypedResult) InferenceResultDigest() string { return "" }
 
 func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
-	t.Parallel()
-
 	actuator, publicKey := newTestActuator(t)
 	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_list"})
 	require.NoError(t, err)
@@ -233,8 +227,6 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			vtCopy := proto.Clone(vt.Envelope).(*govtypes.GovernanceEnvelope)
 			verified := *vt
 			verified.Envelope = vtCopy
@@ -252,7 +244,6 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 
 func TestVerifyReceiptPersistenceAttestationRejectsSemanticallyUnboundFields(t *testing.T) {
 	t.Parallel()
-
 	actuator, publicKey := newTestActuator(t)
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "test-transaction",
@@ -278,29 +269,21 @@ func TestVerifyReceiptPersistenceAttestationRejectsSemanticallyUnboundFields(t *
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			local := &operatorv1.ActionReceipt{
-				TransactionId: receipt.TransactionId,
-				SignerKeyId:   receipt.SignerKeyId,
-				Signature:     receipt.Signature,
-			}
-			attestation, err := actuator.signReceiptPersistenceAttestation(local)
+			attestation, err := actuator.signReceiptPersistenceAttestation(receipt)
 			require.NoError(t, err)
 			tt.mutate(attestation)
 			canonical, err := CanonicalizeReceiptPersistenceAttestation(attestation)
 			require.NoError(t, err)
 			attestation.Signature = hex.EncodeToString(ed25519.Sign(actuator.SigningKey, canonical))
-			local.FinalPersistenceAttestation = attestation
+			receipt.FinalPersistenceAttestation = attestation
 
-			assert.ErrorIs(t, VerifyReceiptPersistenceAttestation(local, publicKey), constants.ErrReceiptPersistenceAttestationInvalid)
+			assert.ErrorIs(t, VerifyReceiptPersistenceAttestation(receipt, publicKey), constants.ErrReceiptPersistenceAttestationInvalid)
 		})
 	}
 }
 
 func TestL5ActuatorExecuteMissingSigningKey(t *testing.T) {
 	t.Parallel()
-
 	actuator, _ := newTestActuator(t)
 	actuator.SigningKey = nil
 
@@ -328,7 +311,6 @@ func TestL5ActuatorExecuteMissingSigningKey(t *testing.T) {
 
 func TestL5ActuatorExecuteMissingExecutionHandler(t *testing.T) {
 	t.Parallel()
-
 	actuator, _ := newTestActuator(t)
 	actuator.ExecutionHandler = nil
 
@@ -367,7 +349,6 @@ func rehydrationTestVT() *VerifiedTransaction {
 
 func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
 	t.Parallel()
-
 	actuator, _ := newTestActuator(t)
 	token, err := actuator.Scrubbing.GetTokenForValue(context.Background(), "s3cret-value")
 	require.NoError(t, err)
@@ -381,7 +362,6 @@ func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
 // so the caller has nothing to dispatch.
 func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
 	t.Parallel()
-
 	actuator, _ := newTestActuator(t)
 	original := []byte(`{"command":"login --password {{UEI_999999}}"}`)
 
@@ -397,7 +377,6 @@ func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
 // since its handler would act on the token text.
 func TestL5RehydratePayloadForeignTokenByActionType(t *testing.T) {
 	t.Parallel()
-
 	ctx := context.Background()
 	actuator, _ := newTestActuator(t)
 	other, err := scrubbing.NewScrubbingService(ctx, nil, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
@@ -410,7 +389,6 @@ func TestL5RehydratePayloadForeignTokenByActionType(t *testing.T) {
 
 	t.Run("inference keeps the foreign token opaque", func(t *testing.T) {
 		t.Parallel()
-
 		vt := rehydrationTestVT()
 		vt.ActionType = constants.ActionTypeInference
 		msg := &rehydrationCommandMessage{payload: payload}
@@ -420,7 +398,6 @@ func TestL5RehydratePayloadForeignTokenByActionType(t *testing.T) {
 
 	t.Run("shell command fails closed", func(t *testing.T) {
 		t.Parallel()
-
 		vt := rehydrationTestVT()
 		vt.ActionType = constants.ActionTypeExecuteBash
 		msg := &rehydrationCommandMessage{payload: payload}
@@ -436,7 +413,6 @@ func TestL5RehydratePayloadForeignTokenByActionType(t *testing.T) {
 // refused; a payload with no token passes unchanged.
 func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
 	t.Parallel()
-
 	actuator, _ := newTestActuator(t)
 	actuator.Scrubbing = nil
 
@@ -457,7 +433,6 @@ func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
 // REHYDRATION_FAILED so the signed receipt names the cause.
 func TestClassifyReceiptFailureRehydration(t *testing.T) {
 	t.Parallel()
-
 	for _, sentinel := range []error{constants.ErrScrubbingTokenUnresolved, constants.ErrScrubbingKeyCollision} {
 		wrapped := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, sentinel)
 		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(wrapped), sentinel.Error())
@@ -526,7 +501,6 @@ func TestCanonicalizeCommitmentAttestation_ProtocolVector(t *testing.T) {
 
 func TestSignatureDigest_ProtocolVectors(t *testing.T) {
 	t.Parallel()
-
 	tests := []struct {
 		name       string
 		signatures []string
@@ -538,8 +512,6 @@ func TestSignatureDigest_ProtocolVectors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			input := append([]string(nil), tt.signatures...)
 			assert.Equal(t, tt.expected, SignatureDigest(input))
 			assert.Equal(t, tt.signatures, input)
@@ -548,8 +520,6 @@ func TestSignatureDigest_ProtocolVectors(t *testing.T) {
 }
 
 func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name       string
 		receipt    *operatorv1.ActionReceipt
@@ -564,8 +534,6 @@ func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
 			actionType, err := DeterministicStageActionType(test.receipt)
 			if test.expectsErr {
 				require.Error(t, err)
@@ -580,8 +548,6 @@ func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing
 }
 
 func TestClassifyReceiptFailure_MapsTypedSentinelsToCodes(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name    string
 		execErr error
@@ -612,8 +578,6 @@ func TestClassifyReceiptFailure_MapsTypedSentinelsToCodes(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, test.want, classifyReceiptFailure(test.execErr))
 		})
 	}

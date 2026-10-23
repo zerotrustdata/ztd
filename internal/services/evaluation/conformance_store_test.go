@@ -35,7 +35,6 @@ func newConformanceRecord(runID string) *evalv1.ConformanceRunRecord {
 }
 
 func TestConformanceStoreRoundTripKeepsCanonicalBytesAndDigest(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
@@ -55,7 +54,6 @@ func TestConformanceStoreRoundTripKeepsCanonicalBytesAndDigest(t *testing.T) {
 }
 
 func TestConformanceStoreRefusesToOverwriteRecord(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
@@ -70,7 +68,6 @@ func TestConformanceStoreRefusesToOverwriteRecord(t *testing.T) {
 }
 
 func TestConformanceStoreRejectsInvalidRunID(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)

@@ -22,7 +22,6 @@ import (
 )
 
 func TestParseModulesTxt(t *testing.T) {
-	t.Parallel()
 	input := `# github.com/z/beta v1.2.0
 ## explicit; go 1.21
 github.com/z/beta
@@ -59,13 +58,11 @@ example.com/local
 }
 
 func TestParseModulesTxtRejectsMalformedModuleLine(t *testing.T) {
-	t.Parallel()
 	_, err := parseModulesTxt(strings.NewReader("# a b c\n"))
 	assert.Error(t, err)
 }
 
 func TestCollectGoModulesReadsLicenseFiles(t *testing.T) {
-	t.Parallel()
 	repo := testutil.TempDir(t)
 	vendor := filepath.Join(repo, "vendor")
 	modRoot := filepath.Join(vendor, "example.com", "lib")
@@ -86,7 +83,6 @@ func TestCollectGoModulesReadsLicenseFiles(t *testing.T) {
 }
 
 func TestNPMPackageName(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "react", npmPackageName("node_modules/react"))
 	assert.Equal(t, "@tanstack/react-table", npmPackageName("node_modules/@tanstack/react-table"))
 	assert.Equal(t, "b", npmPackageName("node_modules/a/node_modules/b"))
@@ -94,14 +90,12 @@ func TestNPMPackageName(t *testing.T) {
 }
 
 func TestParseNPMLicense(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "MIT", parseNPMLicense(json.RawMessage(`"MIT"`)))
 	assert.Equal(t, "BSD-3-Clause", parseNPMLicense(json.RawMessage(`{"type":"BSD-3-Clause"}`)))
 	assert.Equal(t, "UNKNOWN", parseNPMLicense(nil))
 }
 
 func TestWriteLicenseBlockFenceSurvivesBackticks(t *testing.T) {
-	t.Parallel()
 	var b bytes.Buffer
 	writeLicenseBlock(&b, LicenseFile{Name: "NOTICE", Text: "a ```` b\n"})
 	assert.Contains(t, b.String(), "`````text\n")

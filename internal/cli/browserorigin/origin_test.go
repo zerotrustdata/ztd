@@ -17,7 +17,6 @@ import (
 )
 
 func TestParse_HTTPS_HostedOrigin(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app", o.URL)
@@ -28,7 +27,6 @@ func TestParse_HTTPS_HostedOrigin(t *testing.T) {
 }
 
 func TestParse_HTTPS_HostedOrigin_WithExplicitPort(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app:8443")
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app:8443", o.URL)
@@ -38,7 +36,6 @@ func TestParse_HTTPS_HostedOrigin_WithExplicitPort(t *testing.T) {
 }
 
 func TestParse_HTTPS_DefaultPortOmitted(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app:443")
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app", o.URL, "default port 443 must be omitted")
@@ -46,7 +43,6 @@ func TestParse_HTTPS_DefaultPortOmitted(t *testing.T) {
 }
 
 func TestParse_HTTP_Loopback(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("http://localhost:3003")
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost:3003", o.URL)
@@ -57,7 +53,6 @@ func TestParse_HTTP_Loopback(t *testing.T) {
 }
 
 func TestParse_HTTP_127_IPLoopback(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("http://127.0.0.1:8080")
 	require.NoError(t, err)
 	assert.Equal(t, "http://127.0.0.1:8080", o.URL)
@@ -66,7 +61,6 @@ func TestParse_HTTP_127_IPLoopback(t *testing.T) {
 }
 
 func TestParse_HTTP_IPv6Loopback(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("http://[::1]:8080")
 	require.NoError(t, err)
 	assert.Equal(t, "localhost", o.RPID)
@@ -74,14 +68,12 @@ func TestParse_HTTP_IPv6Loopback(t *testing.T) {
 }
 
 func TestParse_HTTP_DefaultPortOmitted(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("http://localhost:80")
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost", o.URL, "default port 80 must be omitted")
 }
 
 func TestParse_LowercaseCanonicalization(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("HTTPS://Your-App.Lovable.APP")
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app", o.URL)
@@ -90,7 +82,6 @@ func TestParse_LowercaseCanonicalization(t *testing.T) {
 }
 
 func TestParse_IDNAHostnameCanonicalized(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://bücher.example")
 	require.NoError(t, err)
 	assert.Equal(t, "https://xn--bcher-kva.example", o.URL)
@@ -99,42 +90,36 @@ func TestParse_IDNAHostnameCanonicalized(t *testing.T) {
 }
 
 func TestParse_TrailingSlashNormalized(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app/")
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app", o.URL, "trailing slash must be stripped")
 }
 
 func TestParse_RejectsPath(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("https://your-app.lovable.app/app")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsQuery(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("https://your-app.lovable.app?q=1")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsFragment(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("https://your-app.lovable.app#frag")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsUserInfo(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("https://user:pass@your-app.lovable.app")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsNonLoopbackHTTP(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("http://your-app.lovable.app")
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrValidationFailed)
@@ -142,7 +127,6 @@ func TestParse_RejectsNonLoopbackHTTP(t *testing.T) {
 }
 
 func TestParse_RejectsNonLoopbackIP(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("https://192.168.1.1")
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrValidationFailed)
@@ -150,35 +134,30 @@ func TestParse_RejectsNonLoopbackIP(t *testing.T) {
 }
 
 func TestParse_RejectsUnsupportedScheme(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("ftp://your-app.lovable.app")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsEmpty(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsWhitespaceOnly(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("   ")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RejectsNoHost(t *testing.T) {
-	t.Parallel()
 	_, err := Parse("https://")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestParse_RPIDNeverContainsPort(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app:8443")
 	require.NoError(t, err)
 	assert.NotContains(t, o.RPID, ":")
@@ -186,7 +165,6 @@ func TestParse_RPIDNeverContainsPort(t *testing.T) {
 }
 
 func TestValidateRPID_ExactMatch(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "your-app.lovable.app")
@@ -195,7 +173,6 @@ func TestValidateRPID_ExactMatch(t *testing.T) {
 }
 
 func TestValidateRPID_ParentSuffix(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://api.example.com")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "example.com")
@@ -204,7 +181,6 @@ func TestValidateRPID_ParentSuffix(t *testing.T) {
 }
 
 func TestValidateRPID_Empty(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	_, err = ValidateRPID(o, "")
@@ -213,7 +189,6 @@ func TestValidateRPID_Empty(t *testing.T) {
 }
 
 func TestValidateRPID_UnrelatedDomain(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	_, err = ValidateRPID(o, "other.com")
@@ -222,7 +197,6 @@ func TestValidateRPID_UnrelatedDomain(t *testing.T) {
 }
 
 func TestValidateRPID_PublicSuffixICANN(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.example.com")
 	require.NoError(t, err)
 	_, err = ValidateRPID(o, "com")
@@ -232,7 +206,6 @@ func TestValidateRPID_PublicSuffixICANN(t *testing.T) {
 }
 
 func TestValidateRPID_PublicSuffixMultiPart(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.co.uk")
 	require.NoError(t, err)
 	_, err = ValidateRPID(o, "co.uk")
@@ -242,7 +215,6 @@ func TestValidateRPID_PublicSuffixMultiPart(t *testing.T) {
 }
 
 func TestValidateRPID_LoopbackExactMatch(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("http://localhost:3003")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "localhost")
@@ -251,7 +223,6 @@ func TestValidateRPID_LoopbackExactMatch(t *testing.T) {
 }
 
 func TestValidateRPID_CaseInsensitive(t *testing.T) {
-	t.Parallel()
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "YOUR-APP.LOVABLE.APP")

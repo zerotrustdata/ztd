@@ -57,7 +57,6 @@ func ultraEfficientSpeedsterBindingRequest(t *testing.T) FormationBindingRequest
 }
 
 func TestFormationBindingFromCatalog_MaterializesUltraEfficientSpeedsterStack(t *testing.T) {
-	t.Parallel()
 	binding, err := FormationBindingFromCatalog("ultra-efficient-speedster", ultraEfficientSpeedsterRegistryVariants())
 	require.NoError(t, err)
 	assert.Equal(t, "ultra-efficient-speedster", binding.Stack.GetStackId())
@@ -66,7 +65,6 @@ func TestFormationBindingFromCatalog_MaterializesUltraEfficientSpeedsterStack(t 
 }
 
 func TestBindFormation_BindsUltraEfficientSpeedsterDigestsFromFrozenRegistry(t *testing.T) {
-	t.Parallel()
 	req := ultraEfficientSpeedsterBindingRequest(t)
 
 	formation, err := BindFormation(req)
@@ -78,7 +76,6 @@ func TestBindFormation_BindsUltraEfficientSpeedsterDigestsFromFrozenRegistry(t *
 }
 
 func TestFormationBindingFromCatalog_PrefersServedTagOverCollidingVariantID(t *testing.T) {
-	t.Parallel()
 	variants := formationCatalogTestVariants()
 	variants = append(variants, &evalv1.ModelVariant{
 		VariantId:      "gemma4-e4b",
@@ -100,7 +97,6 @@ func TestFormationBindingFromCatalog_PrefersServedTagOverCollidingVariantID(t *t
 // Frozen inventory IDs routinely differ from catalog IDs; the sealed stack must
 // carry the inventory IDs so binding never depends on the live catalog.
 func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t *testing.T) {
-	t.Parallel()
 	variants := []*evalv1.ModelVariant{
 		{
 			VariantId:      "qwen3-5-4b",
@@ -143,7 +139,6 @@ func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t
 }
 
 func TestBindFormation_RejectsMissingRegistryVariant(t *testing.T) {
-	t.Parallel()
 	req := ultraEfficientSpeedsterBindingRequest(t)
 	req.Variants = req.Variants[:2]
 
@@ -153,7 +148,6 @@ func TestBindFormation_RejectsMissingRegistryVariant(t *testing.T) {
 }
 
 func TestBindFormation_RejectsEmptySovereignDigest(t *testing.T) {
-	t.Parallel()
 	req := ultraEfficientSpeedsterBindingRequest(t)
 	req.Variants[0].ModelDigest = ""
 
@@ -163,7 +157,6 @@ func TestBindFormation_RejectsEmptySovereignDigest(t *testing.T) {
 }
 
 func TestFormationBindingFromCatalog_RejectsServedTagMismatch(t *testing.T) {
-	t.Parallel()
 	variants := ultraEfficientSpeedsterRegistryVariants()
 	variants[0].ServedModelTag = "wrong:tag"
 
@@ -173,7 +166,6 @@ func TestFormationBindingFromCatalog_RejectsServedTagMismatch(t *testing.T) {
 }
 
 func TestBindFormation_RejectsInvalidStackDigest(t *testing.T) {
-	t.Parallel()
 	req := ultraEfficientSpeedsterBindingRequest(t)
 	req.Stack.StackDigest = "invalid"
 
@@ -182,7 +174,6 @@ func TestBindFormation_RejectsInvalidStackDigest(t *testing.T) {
 }
 
 func TestFormationBindingFromCatalog_RejectsUnknownFormationID(t *testing.T) {
-	t.Parallel()
 	_, err := FormationBindingFromCatalog("missing-formation", ultraEfficientSpeedsterRegistryVariants())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrFormationInvalid)

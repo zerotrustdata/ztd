@@ -54,8 +54,7 @@ func generateTestPEMCert(t *testing.T) []byte {
 
 // --- Security Validate with valid PEM ---
 
-func TestSecurityValidateCmd_API_ValidPEMSuccess(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSecurityValidateCmd_API_ValidPEMSuccess(t *testing.T) {
 	tmpDir := testutil.TempDir(t)
 	pkiDir := filepath.Join(tmpDir, "pki")
 	secretsDir := filepath.Join(tmpDir, "secrets")
@@ -87,8 +86,7 @@ func TestSecurityValidateCmd_API_ValidPEMSuccess(t *testing.T) { //nolint:parall
 	assert.Contains(t, buf.String(), "Trust bundle is valid PEM")
 }
 
-func TestSecurityValidateCmd_API_InvalidPEM(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSecurityValidateCmd_API_InvalidPEM(t *testing.T) {
 	tmpDir := testutil.TempDir(t)
 	pkiDir := filepath.Join(tmpDir, "pki")
 	secretsDir := filepath.Join(tmpDir, "secrets")
@@ -118,8 +116,7 @@ func TestSecurityValidateCmd_API_InvalidPEM(t *testing.T) { //nolint:paralleltes
 	assert.Contains(t, buf.String(), "Trust bundle is not valid PEM")
 }
 
-func TestSecurityValidateCmd_API_PortCheckOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSecurityValidateCmd_API_PortCheckOutput(t *testing.T) {
 	tmpDir := testutil.TempDir(t)
 	pkiDir := filepath.Join(tmpDir, "pki")
 	secretsDir := filepath.Join(tmpDir, "secrets")

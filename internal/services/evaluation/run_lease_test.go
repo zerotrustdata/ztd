@@ -39,7 +39,6 @@ func leaseFixture(pid int) RunLease {
 func liveness(alive bool) LeaseLiveness { return func(RunLease) bool { return alive } }
 
 func TestRunLeaseAcquireWritesDurableHandle(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	ctx := context.Background()
 
@@ -58,7 +57,6 @@ func TestRunLeaseAcquireWritesDurableHandle(t *testing.T) {
 }
 
 func TestRunLeaseAcquireRejectsLiveHolderAndReplacesStaleOne(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	ctx := context.Background()
 	_, err := store.AcquireRunLease(ctx, leaseFixture(100), liveness(false))
@@ -80,7 +78,6 @@ func TestRunLeaseAcquireRejectsLiveHolderAndReplacesStaleOne(t *testing.T) {
 }
 
 func TestRunLeaseAcquireRequiresRunAndProcess(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	_, err := store.AcquireRunLease(context.Background(), RunLease{RunID: "run-1"}, liveness(false))
 	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
@@ -89,7 +86,6 @@ func TestRunLeaseAcquireRequiresRunAndProcess(t *testing.T) {
 }
 
 func TestRunLeaseReleaseRemovesOnlyTheHoldersLease(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	ctx := context.Background()
 	_, err := store.AcquireRunLease(ctx, leaseFixture(100), liveness(false))
@@ -107,7 +103,6 @@ func TestRunLeaseReleaseRemovesOnlyTheHoldersLease(t *testing.T) {
 }
 
 func TestRunLeaseCancelRequestIsRecordedOnTheLease(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	ctx := context.Background()
 
@@ -129,7 +124,6 @@ func TestRunLeaseCancelRequestIsRecordedOnTheLease(t *testing.T) {
 }
 
 func TestRunLeaseClearRemovesAnyHolder(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	ctx := context.Background()
 	_, err := store.AcquireRunLease(ctx, leaseFixture(100), liveness(false))
@@ -141,7 +135,6 @@ func TestRunLeaseClearRemovesAnyHolder(t *testing.T) {
 }
 
 func TestRunLeaseRejectsInvalidRunID(t *testing.T) {
-	t.Parallel()
 	store := newLeaseStore(t)
 	_, err := store.LoadRunLease(context.Background(), "../escape")
 	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)

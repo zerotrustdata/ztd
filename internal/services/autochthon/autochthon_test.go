@@ -32,7 +32,6 @@ func newTestFiles(t *testing.T) fs.RuntimeFileService {
 }
 
 func TestGenomeLayout(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, 248, genomeN)
 	assert.Equal(t, cultureHeaderN+popN*genomeN*4, cultureSize)
 	target := [outN]float32{0.2, -0.4, 0.1, 0.8}
@@ -40,7 +39,6 @@ func TestGenomeLayout(t *testing.T) {
 }
 
 func TestTermUnit(t *testing.T) {
-	t.Parallel()
 	assert.Zero(t, termUnit(""))
 	a, b := termUnit("xterm-256color"), termUnit("dumb")
 	assert.NotEqual(t, a, b)
@@ -52,14 +50,12 @@ func TestTermUnit(t *testing.T) {
 }
 
 func TestZeroGenomeIsPersistence(t *testing.T) {
-	t.Parallel()
 	var g genome
 	s := sense{v: [senseN]float32{0.2, 0.4, termUnit("dumb"), 0.5, 0.1, 0.2, 0.3, 1}, d: [outN]float32{0.1, -0.2, 0, 0.3}}
 	assert.Equal(t, s.target(), g.forecast(&s))
 }
 
 func TestCultureHoldsAConstantHostAndRoundTrips(t *testing.T) {
-	t.Parallel()
 	c := newCulture()
 	s := sense{term: "dumb", v: [senseN]float32{0.2, 0.4, termUnit("dumb"), 0.5, 0.1, 0.2, 0.3, 1}}
 
@@ -87,7 +83,6 @@ func TestCultureHoldsAConstantHostAndRoundTrips(t *testing.T) {
 // An oscillating load is the simplest host persistence cannot predict. The
 // champion's episode fit must never fall and must end above persistence.
 func TestCultureLearnsAnOscillatingHost(t *testing.T) {
-	t.Parallel()
 	c := newCulture()
 	lo := sense{v: [senseN]float32{0.2, 0.4, 0, 0.5, 0.1, 0.2, 0.3, 1}}
 	hi := lo
@@ -117,7 +112,6 @@ func TestCultureLearnsAnOscillatingHost(t *testing.T) {
 // process count that flips by that much each sample, which persistence
 // always misses, and keep most of the skill a perfect forecast would have.
 func TestCultureLearnsAFineOscillation(t *testing.T) {
-	t.Parallel()
 	const amp = 0.002
 	c := newCulture()
 	prev := sense{v: [senseN]float32{0.2, 0.4, 0, 0.5, 0.1, 0.2, 0.3, 1}}
@@ -140,7 +134,6 @@ func TestCultureLearnsAFineOscillation(t *testing.T) {
 
 // A load past the CPUs still moves the load sense.
 func TestLoadSenseDoesNotSaturate(t *testing.T) {
-	t.Parallel()
 	assert.Zero(t, loadSense(0, 8))
 	assert.InDelta(t, 0.5, loadSense(8, 8), 1e-6)
 	assert.Greater(t, loadSense(16, 8), loadSense(15.9, 8))
@@ -154,7 +147,6 @@ func TestLoadSenseDoesNotSaturate(t *testing.T) {
 // to twice the CPUs that come and go, the culture must beat persistence on
 // the rises and decays.
 func TestCultureLearnsTheLoadRefresh(t *testing.T) {
-	t.Parallel()
 	decay := math.Exp(-5.0 / 60)
 	var load, skill float64
 	var n int
@@ -186,7 +178,6 @@ func TestCultureLearnsTheLoadRefresh(t *testing.T) {
 // champion back once quiet samples outweigh the oscillation in the window,
 // and keep it from then on.
 func TestCultureFallsBackToPersistenceAfterARegimeChange(t *testing.T) {
-	t.Parallel()
 	c := newCulture()
 	lo := sense{v: [senseN]float32{0.2, 0.4, 0, 0.5, 0.1, 0.2, 0.3, 1}}
 	hi := lo
@@ -219,7 +210,6 @@ func TestCultureFallsBackToPersistenceAfterARegimeChange(t *testing.T) {
 // A restart refills the window from the tally: the last windowN pairs, with
 // each sample's change taken from the one before it.
 func TestCultureRecallsTheWindow(t *testing.T) {
-	t.Parallel()
 	past := make([]sense, windowN+10)
 	for i := range past {
 		past[i].v[6] = float32(i%3) / 4
@@ -234,7 +224,6 @@ func TestCultureRecallsTheWindow(t *testing.T) {
 }
 
 func TestTallyChainsAndReplays(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -265,7 +254,6 @@ func TestTallyChainsAndReplays(t *testing.T) {
 }
 
 func TestRunWritesTallyAndCulture(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -283,7 +271,6 @@ func TestRunWritesTallyAndCulture(t *testing.T) {
 }
 
 func TestReadStatusReportsSkillAndSurprises(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -320,7 +307,6 @@ func TestReadStatusReportsSkillAndSurprises(t *testing.T) {
 }
 
 func TestReadStatusPendingLineAndBrokenChain(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -346,7 +332,6 @@ func TestReadStatusPendingLineAndBrokenChain(t *testing.T) {
 }
 
 func TestReadStatusOfAnEmptyRootWritesNothing(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -364,7 +349,6 @@ func TestReadStatusOfAnEmptyRootWritesNothing(t *testing.T) {
 }
 
 func TestRunRefusesARootThatIsAlreadyRunning(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -381,7 +365,6 @@ func TestRunRefusesARootThatIsAlreadyRunning(t *testing.T) {
 }
 
 func TestReadStatusAnchor(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	files := newTestFiles(t)
 
@@ -423,7 +406,6 @@ func TestReadStatusAnchor(t *testing.T) {
 }
 
 func TestParseAnchor(t *testing.T) {
-	t.Parallel()
 	a, err := ParseAnchor("133:" + strings.Repeat("ab", 32))
 	require.NoError(t, err)
 	assert.Equal(t, Anchor{Lines: 133, Head: strings.Repeat("ab", 32)}, a)

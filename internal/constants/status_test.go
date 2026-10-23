@@ -35,7 +35,6 @@ func loadStatusJSON(t *testing.T) map[string]map[string]statusEntry {
 }
 
 func TestComponentStatusConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst ComponentStatus
 		value   string
@@ -52,7 +51,6 @@ func TestComponentStatusConstants(t *testing.T) {
 }
 
 func TestWorkflowTypeConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst WorkflowType
 		value   string
@@ -69,13 +67,11 @@ func TestWorkflowTypeConstants(t *testing.T) {
 }
 
 func TestVersionStabilityExtendedConstants(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "unstable", string(VersionStabilityUnstable))
 	assert.Equal(t, "deprecated", string(VersionStabilityDeprecated))
 }
 
 func TestAITaskIdConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst AITaskId
 		value   string
@@ -118,7 +114,6 @@ func TestAITaskIdConstants(t *testing.T) {
 }
 
 func TestConsensusMemberConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst ConsensusMember
 		value   string
@@ -135,21 +130,18 @@ func TestConsensusMemberConstants(t *testing.T) {
 }
 
 func TestConsensusAuditModeConstants(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "unanimous", string(ConsensusAuditModeUnanimous))
 	assert.Equal(t, "majority", string(ConsensusAuditModeMajority))
 	assert.Equal(t, "tied", string(ConsensusAuditModeTied))
 }
 
 func TestConsensusAuditStatusConstants(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "ok", string(ConsensusAuditStatusOk))
 	assert.Equal(t, "revised", string(ConsensusAuditStatusRevised))
 	assert.Equal(t, "swap", string(ConsensusAuditStatusSwap))
 }
 
 func TestAuditorReasonConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst AuditorReason
 		value   string
@@ -170,19 +162,16 @@ func TestAuditorReasonConstants(t *testing.T) {
 }
 
 func TestTieBreakReasonConstants(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "shortest", string(TieBreakReasonShortest))
 	assert.Equal(t, "excluded_nemesis", string(TieBreakReasonExcludedNemesis))
 }
 
 func TestReasoningAgentConstants(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "sage", string(ReasoningAgentSage))
 	assert.Equal(t, "dash", string(ReasoningAgentDash))
 }
 
 func TestErrorCodeConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst ErrorCode
 		value   string
@@ -242,7 +231,6 @@ func TestErrorCodeConstants(t *testing.T) {
 }
 
 func TestErrorCategoryConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst ErrorCategory
 		value   string
@@ -271,7 +259,6 @@ func TestErrorCategoryConstants(t *testing.T) {
 }
 
 func TestErrorSeverityConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst ErrorSeverity
 		value   string
@@ -288,14 +275,12 @@ func TestErrorSeverityConstants(t *testing.T) {
 }
 
 func TestStatusJSONValidity(t *testing.T) {
-	t.Parallel()
 	data, err := os.ReadFile("../../protocol/constants/status.json")
 	require.NoError(t, err)
 	assert.True(t, json.Valid(data), "status.json is valid JSON")
 }
 
 func TestStatusJSONGoConstPresence(t *testing.T) {
-	t.Parallel()
 	statusJSON := loadStatusJSON(t)
 	for catName, entries := range statusJSON {
 		for key, meta := range entries {
@@ -311,7 +296,6 @@ func TestStatusJSONGoConstPresence(t *testing.T) {
 }
 
 func TestStatusJSONComponentStatusMatches(t *testing.T) {
-	t.Parallel()
 	statusJSON := loadStatusJSON(t)
 	cat, ok := statusJSON["component_status"]
 	require.True(t, ok, "component_status category exists")
@@ -330,7 +314,6 @@ func TestStatusJSONComponentStatusMatches(t *testing.T) {
 }
 
 func TestStatusJSONOperatorTypeMatches(t *testing.T) {
-	t.Parallel()
 	statusJSON := loadStatusJSON(t)
 	cat, ok := statusJSON["operator_type"]
 	require.True(t, ok, "operator_type category exists")
@@ -346,7 +329,6 @@ func TestStatusJSONOperatorTypeMatches(t *testing.T) {
 }
 
 func TestStatusJSONConsensusMemberMatches(t *testing.T) {
-	t.Parallel()
 	statusJSON := loadStatusJSON(t)
 	cat, ok := statusJSON["consensus_member"]
 	require.True(t, ok, "consensus_member category exists")
@@ -365,7 +347,6 @@ func TestStatusJSONConsensusMemberMatches(t *testing.T) {
 }
 
 func TestInfrastructureStatusConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst InfrastructureStatus
 		value   string
@@ -384,7 +365,6 @@ func TestInfrastructureStatusConstants(t *testing.T) {
 }
 
 func TestAuthMethodConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst AuthMethod
 		value   string
@@ -401,7 +381,6 @@ func TestAuthMethodConstants(t *testing.T) {
 }
 
 func TestToolCallStatusConstants(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		goConst ToolCallStatus
 		value   string
@@ -416,7 +395,6 @@ func TestToolCallStatusConstants(t *testing.T) {
 }
 
 func TestStatusJSONOperatorCapabilitiesMatchesCentralVocabulary(t *testing.T) {
-	t.Parallel()
 	category := loadStatusJSON(t)["operator_capability"]
 	capabilities := OperatorCapabilities{OperatorCapabilityData, OperatorCapabilityInference, OperatorCapabilityProvenance, OperatorCapabilityObserver}
 	require.Len(t, category, len(capabilities))
@@ -426,7 +404,6 @@ func TestStatusJSONOperatorCapabilitiesMatchesCentralVocabulary(t *testing.T) {
 }
 
 func TestOperatorStaleAfter(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		interval time.Duration
@@ -442,7 +419,6 @@ func TestOperatorStaleAfter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, OperatorStaleAfter(tt.interval))
 		})
 	}

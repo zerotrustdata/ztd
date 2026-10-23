@@ -22,7 +22,6 @@ import (
 )
 
 func TestCampaignExporter_ReleaseProvenanceMatchesTheCampaign(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		legacy  bool
@@ -35,7 +34,6 @@ func TestCampaignExporter_ReleaseProvenanceMatchesTheCampaign(t *testing.T) {
 		{name: "unknown", legacy: true, basis: ReleaseBasisUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			ctx := context.Background()
 			f := newArchiveFixture(t)
 			runID := f.runIDs[0]
@@ -89,7 +87,6 @@ func TestCampaignExporter_ReleaseProvenanceMatchesTheCampaign(t *testing.T) {
 }
 
 func TestCampaignExporter_RejectsMalformedReleaseTags(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	saveLegacyCampaign(t, f, "legacy-export")

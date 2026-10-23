@@ -17,7 +17,6 @@ import (
 )
 
 func TestGenerateTestCSR(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name        string
 		commonName  string
@@ -42,7 +41,6 @@ func TestGenerateTestCSR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			csrPEM := GenerateTestCSR(t, tt.commonName)
 
 			// Verify PEM encoding
@@ -59,9 +57,7 @@ func TestGenerateTestCSR(t *testing.T) {
 }
 
 func TestGenerateTestCSR_Deterministic(t *testing.T) {
-	t.Parallel()
 	// Test that multiple calls with the same CN produce valid CSRs
-
 	cn := "test-deterministic"
 	csr1 := GenerateTestCSR(t, cn)
 	csr2 := GenerateTestCSR(t, cn)
@@ -91,7 +87,6 @@ func TestGenerateTestCSR_Deterministic(t *testing.T) {
 }
 
 func TestGenerateTestCSR_PEMFormat(t *testing.T) {
-	t.Parallel()
 	csrPEM := GenerateTestCSR(t, "test-pem-format")
 
 	// Verify PEM header/footer format

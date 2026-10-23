@@ -19,9 +19,7 @@ import (
 )
 
 func TestTunnelCmdStructure(t *testing.T) {
-	t.Parallel()
 	t.Run("tunnel command has correct use", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelCmd()
 		assert.Equal(t, "tunnel", cmd.Use)
 		assert.NotEmpty(t, cmd.Short)
@@ -29,7 +27,6 @@ func TestTunnelCmdStructure(t *testing.T) {
 	})
 
 	t.Run("tunnel command has expected subcommands", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelCmd()
 		require.NotNil(t, cmd)
 
@@ -48,9 +45,7 @@ func TestTunnelCmdStructure(t *testing.T) {
 }
 
 func TestTunnelCreateCmdFlags(t *testing.T) {
-	t.Parallel()
 	t.Run("create command has all expected flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelCreateCmd()
 		require.NotNil(t, cmd)
 
@@ -62,7 +57,6 @@ func TestTunnelCreateCmdFlags(t *testing.T) {
 	})
 
 	t.Run("create command name defaults to ztd", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelCreateCmd()
 		flag := cmd.Flags().Lookup("name")
 		require.NotNil(t, flag)
@@ -70,7 +64,6 @@ func TestTunnelCreateCmdFlags(t *testing.T) {
 	})
 
 	t.Run("origin-server-name without ca-bundle fails closed", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelCreateCmd()
 		require.NoError(t, cmd.Flags().Set("origin-server-name", "gateway.corp.example"))
 		err := cmd.RunE(cmd, nil)
@@ -80,9 +73,7 @@ func TestTunnelCreateCmdFlags(t *testing.T) {
 }
 
 func TestTunnelRunCmdFlags(t *testing.T) {
-	t.Parallel()
 	t.Run("run command has all expected flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelRunCmd()
 		require.NotNil(t, cmd)
 
@@ -95,7 +86,6 @@ func TestTunnelRunCmdFlags(t *testing.T) {
 }
 
 func TestBuildTunnelRunArgs_ConfigPrecedesTunnelSubcommand(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		tunnel    string
@@ -116,16 +106,13 @@ func TestBuildTunnelRunArgs_ConfigPrecedesTunnelSubcommand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.expected, buildTunnelRunArgs(tt.tunnel, tt.configDir))
 		})
 	}
 }
 
 func TestTunnelStatusCmdFlags(t *testing.T) {
-	t.Parallel()
 	t.Run("status command has all expected flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := tunnelStatusCmd()
 		require.NotNil(t, cmd)
 
@@ -138,9 +125,7 @@ func TestTunnelStatusCmdFlags(t *testing.T) {
 }
 
 func TestGenerateTunnelConfig(t *testing.T) {
-	t.Parallel()
 	t.Run("generates config with noTLSVerify when no CA bundle", func(t *testing.T) {
-		t.Parallel()
 		config := generateTunnelConfig(
 			"abc123",
 			"/home/user/.cloudflared/abc123.json",
@@ -160,7 +145,6 @@ func TestGenerateTunnelConfig(t *testing.T) {
 	})
 
 	t.Run("generates config with CA bundle and originServerName", func(t *testing.T) {
-		t.Parallel()
 		caBundle := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.PkiFileGatewayBundle)
 		config := generateTunnelConfig(
 			"abc123",
@@ -177,7 +161,6 @@ func TestGenerateTunnelConfig(t *testing.T) {
 	})
 
 	t.Run("CA bundle without override defaults originServerName to the Gateway certificate SAN", func(t *testing.T) {
-		t.Parallel()
 		caBundle := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.PkiFileGatewayBundle)
 		config := generateTunnelConfig(
 			"abc123",
@@ -194,7 +177,6 @@ func TestGenerateTunnelConfig(t *testing.T) {
 	})
 
 	t.Run("explicit origin server name overrides the CA bundle default", func(t *testing.T) {
-		t.Parallel()
 		caBundle := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.PkiFileGatewayBundle)
 		config := generateTunnelConfig(
 			"abc123",
@@ -210,7 +192,6 @@ func TestGenerateTunnelConfig(t *testing.T) {
 	})
 
 	t.Run("no CA bundle omits originServerName", func(t *testing.T) {
-		t.Parallel()
 		config := generateTunnelConfig(
 			"abc123",
 			"/home/user/.cloudflared/abc123.json",
@@ -224,7 +205,6 @@ func TestGenerateTunnelConfig(t *testing.T) {
 	})
 
 	t.Run("uses custom HTTPS port", func(t *testing.T) {
-		t.Parallel()
 		config := generateTunnelConfig(
 			"abc123",
 			"/home/user/.cloudflared/abc123.json",
@@ -238,7 +218,6 @@ func TestGenerateTunnelConfig(t *testing.T) {
 	})
 
 	t.Run("uses plain HTTP mirror service without TLS origin settings", func(t *testing.T) {
-		t.Parallel()
 		config := generateTunnelConfig(
 			"abc123",
 			"/home/user/.cloudflared/abc123.json",
@@ -256,16 +235,13 @@ func TestGenerateTunnelConfig(t *testing.T) {
 }
 
 func TestParseTunnelID(t *testing.T) {
-	t.Parallel()
 	t.Run("extracts UUID from create output", func(t *testing.T) {
-		t.Parallel()
 		output := []byte("Created tunnel ztd with id 12345678-1234-1234-1234-123456789abc")
 		id := parseTunnelID(output)
 		assert.Equal(t, "12345678-1234-1234-1234-123456789abc", id)
 	})
 
 	t.Run("returns empty for no UUID", func(t *testing.T) {
-		t.Parallel()
 		output := []byte("No tunnel created")
 		id := parseTunnelID(output)
 		assert.Empty(t, id)
@@ -273,9 +249,7 @@ func TestParseTunnelID(t *testing.T) {
 }
 
 func TestCloudflaredAuthenticated(t *testing.T) {
-	t.Parallel()
 	t.Run("returns true when cert.pem exists", func(t *testing.T) {
-		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		certPath := filepath.Join(tmpDir, "cert.pem")
 		require.NoError(t, os.WriteFile(certPath, []byte("fake cert"), 0o600))
@@ -284,7 +258,6 @@ func TestCloudflaredAuthenticated(t *testing.T) {
 	})
 
 	t.Run("returns false when cert.pem does not exist", func(t *testing.T) {
-		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		assert.False(t, cloudflaredAuthenticated(tmpDir))
 	})

@@ -64,7 +64,6 @@ func newRepo(t *testing.T, platform, declared string) string {
 }
 
 func TestRun_CheckPassesWhenInSync(t *testing.T) {
-	t.Parallel()
 	root := newRepo(t, "1.2.3", "1.2.3")
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, run([]string{"-check"}, root, &stdout, &stderr), stderr.String())
@@ -73,7 +72,6 @@ func TestRun_CheckPassesWhenInSync(t *testing.T) {
 }
 
 func TestRun_CheckReportsDriftWithoutWriting(t *testing.T) {
-	t.Parallel()
 	root := newRepo(t, "1.2.4", "1.2.3")
 	var stdout, stderr bytes.Buffer
 	assert.Equal(t, 1, run([]string{"-check"}, root, &stdout, &stderr))
@@ -83,7 +81,6 @@ func TestRun_CheckReportsDriftWithoutWriting(t *testing.T) {
 }
 
 func TestRun_WriteSyncsOnlyVersionSpans(t *testing.T) {
-	t.Parallel()
 	root := newRepo(t, "2.0.0", "1.2.3")
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, run([]string{"-write"}, root, &stdout, &stderr), stderr.String())
@@ -101,7 +98,6 @@ func TestRun_WriteSyncsOnlyVersionSpans(t *testing.T) {
 
 // Windows checkouts with core.autocrlf=true see CRLF lockfiles.
 func TestRun_CheckAcceptsCRLFLockfiles(t *testing.T) {
-	t.Parallel()
 	root := newRepo(t, "1.2.3", "1.2.3")
 	for _, pkg := range []string{"console", "protocol/node"} {
 		writeFile(t, root, pkg+"/package-lock.json", strings.ReplaceAll(packageLockJSON("1.2.3"), "\n", "\r\n"))
@@ -111,7 +107,6 @@ func TestRun_CheckAcceptsCRLFLockfiles(t *testing.T) {
 }
 
 func TestRun_AmbiguousDeclarationFails(t *testing.T) {
-	t.Parallel()
 	root := newRepo(t, "1.0.0", "1.0.0")
 	writeFile(t, root, "protocol/docs/a2a.md", "Version: v1.0.0\nVersion: v1.0.0\n")
 	var stdout, stderr bytes.Buffer
@@ -120,7 +115,6 @@ func TestRun_AmbiguousDeclarationFails(t *testing.T) {
 }
 
 func TestRun_RejectsBadModesAndVersion(t *testing.T) {
-	t.Parallel()
 	root := newRepo(t, "1.0.0", "1.0.0")
 	var stdout, stderr bytes.Buffer
 	assert.Equal(t, 2, run(nil, root, &stdout, &stderr))

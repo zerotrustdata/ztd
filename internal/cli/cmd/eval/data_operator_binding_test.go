@@ -35,7 +35,6 @@ func activeOperatorSessionDoc(id, sessionID string) *operatorv1.OperatorDocument
 }
 
 func TestChatEvalBindDataOperator(t *testing.T) {
-	t.Parallel()
 	const dataSession = "data-session"
 	errGateway := fmt.Errorf("gateway unavailable")
 	operators := []*operatorv1.OperatorDocument{
@@ -102,7 +101,6 @@ func TestChatEvalBindDataOperator(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			root := testutil.TempDir(t)
 			fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
 			require.NoError(t, err)

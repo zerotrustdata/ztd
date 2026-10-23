@@ -118,7 +118,6 @@ func conformanceVerificationBundlePath(runID string) string {
 }
 
 func TestBundleVerifierConformanceReplayFailsWhenRecordByteIsFlipped(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-replay-flipped"
 	bodies := conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID))
 	recordPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
@@ -134,7 +133,6 @@ func TestBundleVerifierConformanceReplayFailsWhenRecordByteIsFlipped(t *testing.
 }
 
 func TestBundleVerifierConformanceReplayFailsWhenReportNamesAnotherRun(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-replay-other"
 	v := conformanceReplayVerifier(conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID)))
 
@@ -145,7 +143,6 @@ func TestBundleVerifierConformanceReplayFailsWhenReportNamesAnotherRun(t *testin
 }
 
 func TestBundleVerifierConformanceReplayFailsWithoutDigestSidecar(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-replay-no-sidecar"
 	bodies := conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID))
 	delete(bodies, path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordDigestFilename))
@@ -161,7 +158,6 @@ func TestBundleVerifierConformanceReplayFailsWithoutDigestSidecar(t *testing.T) 
 // replay. The synthetic record carries no posture, so replay rejects it as not
 // a PASS; that replay failure is the only one.
 func TestBundleVerifierConformanceSourceClearsInventoryGate(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-gate-admitted"
 	v := conformanceSourceVerifier(conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID)), runID)
 
@@ -177,7 +173,6 @@ func TestBundleVerifierConformanceSourceClearsInventoryGate(t *testing.T) {
 // when the record and sidecar are present. A flipped record byte passes the
 // inventory gate and fails at replay.
 func TestBundleVerifierConformanceSourceInventoryGateFailsClosed(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-gate-negative"
 	runtimeDir := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname)
 	recordPath := path.Join(runtimeDir, constants.ConformanceRecordFilename)
@@ -242,7 +237,6 @@ func TestBundleVerifierConformanceSourceInventoryGateFailsClosed(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			bodies := conformanceReplayBodies(t, runID, syntheticConformanceRecord(t, runID))
 			test.mutate(bodies)
 			v := conformanceSourceVerifier(bodies, runID)
@@ -259,7 +253,6 @@ func TestBundleVerifierConformanceSourceInventoryGateFailsClosed(t *testing.T) {
 // ErrEvidenceDuplicateID. A bundle body map cannot hold two copies of one path,
 // so the check is exercised on the inventory directly.
 func TestBundleVerifierConformanceRuntimeArtifactRejectsDuplicates(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-gate-duplicate"
 	tests := []struct {
 		name string
@@ -270,7 +263,6 @@ func TestBundleVerifierConformanceRuntimeArtifactRejectsDuplicates(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, test.file)
 			parts := strings.Split(bundlePath, "/")
 			v := conformanceReplayVerifier(map[string][]byte{})
@@ -424,7 +416,6 @@ func conformanceMediaType(bundlePath string) string {
 // offline: the source gate admits its bundled copy, replay verifies it to PASS,
 // and the importer reproduces the protected analysis.
 func TestVerifyComplianceReportBundle_AcceptsPinnedDoctrineRecordConformanceSource(t *testing.T) {
-	t.Parallel()
 	raw, runID := pinnedConformanceRecord(t)
 	bundle, reader, policy, verifiedAt := conformanceSignedBundleFixture(t, raw, runID, nil)
 
@@ -442,7 +433,6 @@ func TestVerifyComplianceReportBundle_AcceptsPinnedDoctrineRecordConformanceSour
 // proves one flipped byte in the bundled record fails the conformance source at
 // replay, against the same bundle that otherwise passes.
 func TestVerifyComplianceReportBundle_RejectsPinnedDoctrineRecordWithFlippedByte(t *testing.T) {
-	t.Parallel()
 	raw, runID := pinnedConformanceRecord(t)
 	recordPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
 	bundle, reader, policy, verifiedAt := conformanceSignedBundleFixture(t, raw, runID, func(bodies map[string][]byte) {

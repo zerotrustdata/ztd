@@ -42,7 +42,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 
 	ctx := context.Background()
 
-	t.Run("creates and resolves dirs including home expansion", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("creates and resolves dirs including home expansion", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		relDir := filepath.Join(tempDir, "relative", "sub")
 		homeDir := "~/ztd-test-deploy"
@@ -69,7 +69,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 		require.Equal(t, testutil.FileMode(constants.PermDirPrivate, true), info2.Mode().Perm())
 	})
 
-	t.Run("empty dirs error", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("empty dirs error", func(t *testing.T) {
 		_, err := ExecuteDeployHostPrepare(ctx, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dirs list must not be empty")
@@ -79,7 +79,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 		require.Contains(t, err.Error(), "dirs list must not be empty")
 	})
 
-	t.Run("context cancelled", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
 		_, err := ExecuteDeployHostPrepare(cancelCtx, []string{testutil.TempDir(t)})
@@ -88,11 +88,9 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 }
 
 func TestExecuteDeployHostInstall(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("copies binary atomically and sets executable permissions", func(t *testing.T) {
-		t.Parallel()
 		srcDir := testutil.TempDir(t)
 		destDir := testutil.TempDir(t)
 
@@ -114,7 +112,6 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	})
 
 	t.Run("missing source", func(t *testing.T) {
-		t.Parallel()
 		destDir := testutil.TempDir(t)
 		err := ExecuteDeployHostInstall(ctx, "", filepath.Join(destDir, "bin"))
 		require.Error(t, err)
@@ -122,7 +119,6 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	})
 
 	t.Run("missing target", func(t *testing.T) {
-		t.Parallel()
 		srcDir := testutil.TempDir(t)
 		err := ExecuteDeployHostInstall(ctx, filepath.Join(srcDir, "bin"), "")
 		require.Error(t, err)
@@ -130,7 +126,6 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	})
 
 	t.Run("source file does not exist", func(t *testing.T) {
-		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		err := ExecuteDeployHostInstall(ctx, filepath.Join(tempDir, "nonexistent"), filepath.Join(tempDir, "target"))
 		require.Error(t, err)
@@ -138,7 +133,6 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	})
 
 	t.Run("context cancelled", func(t *testing.T) {
-		t.Parallel()
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
 		err := ExecuteDeployHostInstall(cancelCtx, "src", "target")
@@ -147,11 +141,9 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 }
 
 func TestExecuteDeployHostLink(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("creates hard link via staging", func(t *testing.T) {
-		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		binDir := filepath.Join(tempDir, "bin")
 		destDir := filepath.Join(tempDir, "dest")
@@ -172,7 +164,6 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	})
 
 	t.Run("default binary name ztd", func(t *testing.T) {
-		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		binDir := filepath.Join(tempDir, "bin")
 		destDir := filepath.Join(tempDir, "dest")
@@ -193,21 +184,18 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	})
 
 	t.Run("missing binary_dir", func(t *testing.T) {
-		t.Parallel()
 		err := ExecuteDeployHostLink(ctx, "", "dest", "ztd")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "binary_dir required")
 	})
 
 	t.Run("missing dest_dir", func(t *testing.T) {
-		t.Parallel()
 		err := ExecuteDeployHostLink(ctx, "bin", "", "ztd")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dest_dir required")
 	})
 
 	t.Run("source binary not found", func(t *testing.T) {
-		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		err := ExecuteDeployHostLink(ctx, tempDir, filepath.Join(tempDir, "dest"), "ztd")
 		require.Error(t, err)
@@ -215,7 +203,6 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	})
 
 	t.Run("context cancelled", func(t *testing.T) {
-		t.Parallel()
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
 		err := ExecuteDeployHostLink(cancelCtx, "bin", "dest", "ztd")
@@ -280,27 +267,27 @@ func TestExecuteDeployHostStart(t *testing.T) {
 		require.NoError(t, platform.WaitForProcessExit(exitCtx, pid))
 	})
 
-	t.Run("missing working_dir", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("missing working_dir", func(t *testing.T) {
 		_, err := ExecuteDeployHostStart(ctx, "", "ztd", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "working_dir required")
 	})
 
-	t.Run("noncanonical worker binary name rejected", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("noncanonical worker binary name rejected", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		_, err := ExecuteDeployHostStart(ctx, tempDir, "custom-ztd", nil)
 		require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 		require.Contains(t, err.Error(), "must be named ztd")
 	})
 
-	t.Run("canonical binary missing", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("canonical binary missing", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		_, err := ExecuteDeployHostStart(ctx, tempDir, "ztd", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
 	})
 
-	t.Run("context cancelled", func(t *testing.T) { //nolint:paralleltest // sets the process environment
+	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
 		_, err := ExecuteDeployHostStart(cancelCtx, testutil.TempDir(t), "ztd", nil)
@@ -308,12 +295,10 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	})
 }
 
-func TestExecuteDeployHostState(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecuteDeployHostState(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("reads deployment state successfully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reads deployment state successfully", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		now := time.Now().UTC().Truncate(time.Second)
 		stateJSON := fmt.Sprintf(`{
@@ -336,16 +321,14 @@ func TestExecuteDeployHostState(t *testing.T) { //nolint:paralleltest // mutates
 		require.Equal(t, now, state.UpdatedAt)
 	})
 
-	t.Run("file not found returns nil without error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("file not found returns nil without error", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		state, err := ExecuteDeployHostState(ctx, fileSvc)
 		require.NoError(t, err)
 		require.Nil(t, state)
 	})
 
-	t.Run("invalid state json returns error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("invalid state json returns error", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		statePath := filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator)
 		require.NoError(t, fileSvc.WriteFile(ctx, statePath, []byte("invalid-json"), constants.PermFilePrivate))
@@ -357,30 +340,25 @@ func TestExecuteDeployHostState(t *testing.T) { //nolint:paralleltest // mutates
 }
 
 func TestExecuteDeployHostPreflight(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("invalid host fails validation", func(t *testing.T) {
-		t.Parallel()
 		err := ExecuteDeployHostPreflight(ctx, []string{"invalid$$host"})
 		require.Error(t, err)
 		require.ErrorIs(t, err, constants.ErrPathValidation)
 	})
 
 	t.Run("no args fails validation", func(t *testing.T) {
-		t.Parallel()
 		err := ExecuteDeployHostPreflight(ctx, []string{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "accepts 1 arg(s)")
 	})
 }
 
-func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecuteDeployHostStop(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("discovery mock handles matches and escalates TERM to KILL", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("discovery mock handles matches and escalates TERM to KILL", func(t *testing.T) {
 		destDir := testutil.TempDir(t)
 		workingDir := filepath.Join(destDir, "worker-1")
 		otherDir := testutil.TempDir(t)
@@ -447,8 +425,7 @@ func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates 
 		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 
-	t.Run("PID metadata cannot authorize termination", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("PID metadata cannot authorize termination", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("uses a POSIX subprocess to verify a recorded PID remains alive")
 		}
@@ -460,8 +437,7 @@ func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates 
 			{name: "discovery error", discover: func() ([]localOperatorProcess, error) { return nil, errors.New("discovery unavailable") }, wantErr: true},
 			{name: "successful discovery with no matching worker", discover: func() ([]localOperatorProcess, error) { return nil, nil }},
 		} {
-			t.Run(tc.name, func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+			t.Run(tc.name, func(t *testing.T) {
 				origDiscoverer := defaultLocalOperatorDiscoverer
 				defaultLocalOperatorDiscoverer = tc.discover
 				t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
@@ -490,8 +466,7 @@ func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("signal and wait failures are returned", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("signal and wait failures are returned", func(t *testing.T) {
 		workerDir := testutil.TempDir(t)
 		for _, tc := range []struct {
 			name string
@@ -501,8 +476,7 @@ func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates 
 			{name: "signal", proc: localOperatorProcess{pid: 301, dir: workerDir, signal: func(bool) error { return errors.New("signal failed") }}, want: "send TERM"},
 			{name: "wait", proc: localOperatorProcess{pid: 302, dir: workerDir, signal: func(bool) error { return nil }, wait: func(time.Duration) (bool, error) { return false, errors.New("wait failed") }}, want: "wait for Operator PID"},
 		} {
-			t.Run(tc.name, func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+			t.Run(tc.name, func(t *testing.T) {
 				origDiscoverer := defaultLocalOperatorDiscoverer
 				defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) { return []localOperatorProcess{tc.proc}, nil }
 				t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
@@ -514,8 +488,7 @@ func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates 
 		}
 	})
 
-	t.Run("cancelled context stops before discovery", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("cancelled context stops before discovery", func(t *testing.T) {
 		called := false
 		origDiscoverer := defaultLocalOperatorDiscoverer
 		defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) {
@@ -531,20 +504,17 @@ func TestExecuteDeployHostStop(t *testing.T) { //nolint:paralleltest // mutates 
 		require.False(t, called)
 	})
 
-	t.Run("missing both dest_dir and working_dir returns error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("missing both dest_dir and working_dir returns error", func(t *testing.T) {
 		_, err := ExecuteDeployHostStop(ctx, "", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dest_dir or working_dir required")
 	})
 }
 
-func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecuteDeployHost_Router(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("dispatches prepare action", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("dispatches prepare action", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		req := models.DeployHostRequest{
 			Action: models.DeployHostActionPrepare,
@@ -555,8 +525,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 		require.Len(t, resp.ResolvedDirs, 1)
 	})
 
-	t.Run("dispatches install action with target", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("dispatches install action with target", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		src := filepath.Join(tempDir, "src")
 		target := filepath.Join(tempDir, "target")
@@ -574,8 +543,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 		require.NoError(t, err)
 	})
 
-	t.Run("dispatches install action with DestDir fallback", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("dispatches install action with DestDir fallback", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		src := filepath.Join(tempDir, "src")
 		destDir := filepath.Join(tempDir, "dest")
@@ -594,8 +562,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 		require.NoError(t, err)
 	})
 
-	t.Run("dispatches link action", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("dispatches link action", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		binDir := filepath.Join(tempDir, "bin")
 		destDir := filepath.Join(tempDir, "dest")
@@ -616,8 +583,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 		require.NoError(t, err)
 	})
 
-	t.Run("dispatches state action", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("dispatches state action", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 		now := time.Now().UTC().Truncate(time.Second)
 		stateJSON := fmt.Sprintf(`{
@@ -642,8 +608,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 		require.Equal(t, models.OperatorDeploymentPhaseReady, resp.State.Phase)
 	})
 
-	t.Run("dispatches stop action", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("dispatches stop action", func(t *testing.T) {
 		origDiscoverer := defaultLocalOperatorDiscoverer
 		defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) {
 			return nil, nil
@@ -661,8 +626,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 		require.Equal(t, 0, resp.StoppedCount)
 	})
 
-	t.Run("unknown action returns error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("unknown action returns error", func(t *testing.T) {
 		req := models.DeployHostRequest{
 			Action: "invalid-action",
 		}
@@ -673,9 +637,7 @@ func TestExecuteDeployHost_Router(t *testing.T) { //nolint:paralleltest // mutat
 }
 
 func TestOperatorDeployHostCmd_Protocol(t *testing.T) {
-	t.Parallel()
 	t.Run("valid json request on stdin returns json response on stdout", func(t *testing.T) {
-		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		req := models.DeployHostRequest{
 			Action: models.DeployHostActionPrepare,
@@ -700,7 +662,6 @@ func TestOperatorDeployHostCmd_Protocol(t *testing.T) {
 	})
 
 	t.Run("invalid json on stdin returns error response", func(t *testing.T) {
-		t.Parallel()
 		cmd := operatorDeployHostCmd()
 		var stdout bytes.Buffer
 		cmd.SetIn(strings.NewReader("not-valid-json"))
@@ -717,7 +678,6 @@ func TestOperatorDeployHostCmd_Protocol(t *testing.T) {
 	})
 
 	t.Run("action failure returns error response and command error", func(t *testing.T) {
-		t.Parallel()
 		req := models.DeployHostRequest{
 			Action: "unknown-action",
 		}

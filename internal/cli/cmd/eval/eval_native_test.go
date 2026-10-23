@@ -48,8 +48,6 @@ func panickingNativeEvalDeps(t *testing.T) nativeEvalDeps {
 }
 
 func TestEvalCmd_ContainsProgramGroups(t *testing.T) {
-	t.Parallel()
-
 	command := evalCmdWithConfig(panickingNativeEvalDeps(t))
 	names := make([]string, 0, len(command.Commands()))
 	for _, child := range command.Commands() {

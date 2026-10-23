@@ -31,7 +31,6 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestLoadClientAuthContext_ReturnsIdentityOnlyWhenCredentialsAndKeyMaterialAreComplete(t *testing.T) {
-	t.Parallel()
 	fileSvc, cfg := newAuthTestEnv(t)
 	userID, cliSessionID := writeCompleteIdentity(t, fileSvc, cfg)
 	require.NoError(t, SaveCredentials(fileSvc, cfg, &Credentials{
@@ -51,11 +50,7 @@ func TestLoadClientAuthContext_ReturnsIdentityOnlyWhenCredentialsAndKeyMaterialA
 }
 
 func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *testing.T) {
-	t.Parallel()
-
 	t.Run("no credentials on disk", func(t *testing.T) {
-		t.Parallel()
-
 		fileSvc, cfg := newAuthTestEnv(t)
 
 		got, err := LoadClientAuthContext(fileSvc, cfg)
@@ -66,8 +61,6 @@ func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *te
 	})
 
 	t.Run("credentials without a CLI session", func(t *testing.T) {
-		t.Parallel()
-
 		fileSvc, cfg := newAuthTestEnv(t)
 		require.NoError(t, SaveCredentials(fileSvc, cfg, &Credentials{UserID: "u"}))
 
@@ -79,8 +72,6 @@ func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *te
 	})
 
 	t.Run("credentials without a user", func(t *testing.T) {
-		t.Parallel()
-
 		fileSvc, cfg := newAuthTestEnv(t)
 		require.NoError(t, SaveCredentials(fileSvc, cfg, &Credentials{CLISessionID: "c"}))
 
@@ -91,8 +82,6 @@ func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *te
 	})
 
 	t.Run("credentials missing both identifiers names both", func(t *testing.T) {
-		t.Parallel()
-
 		fileSvc, cfg := newAuthTestEnv(t)
 		require.NoError(t, SaveCredentials(fileSvc, cfg, &Credentials{OperatorID: "op"}))
 
@@ -107,8 +96,6 @@ func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *te
 		"CLI key missing":         func(cfg *config.Config) string { return cfg.CLIKeyFile() },
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			fileSvc, cfg := newAuthTestEnv(t)
 			writeCompleteIdentity(t, fileSvc, cfg)
 			rel, err := fileSvc.RelFromAbs(path(cfg))
@@ -124,8 +111,6 @@ func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *te
 	}
 
 	t.Run("corrupt credentials file", func(t *testing.T) {
-		t.Parallel()
-
 		fileSvc, cfg := newAuthTestEnv(t)
 		rel, err := fileSvc.RelFromAbs(cfg.CredentialsFile())
 		require.NoError(t, err)
@@ -147,7 +132,6 @@ func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *te
 // ---------------------------------------------------------------------------
 
 func TestCredentialStore_ResolvedPathsMatchTheConfiguredLocations(t *testing.T) {
-	t.Parallel()
 	fileSvc, cfg := newAuthTestEnv(t)
 	store := NewCredentialStore(fileSvc, cfg)
 
@@ -162,8 +146,6 @@ func TestCredentialStore_ResolvedPathsMatchTheConfiguredLocations(t *testing.T) 
 // ---------------------------------------------------------------------------
 
 func TestLocalIdentity_RecoveryAndRotationDecisions(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name         string
 		identity     LocalIdentity
@@ -181,8 +163,6 @@ func TestLocalIdentity_RecoveryAndRotationDecisions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tt.wantRecovery, tt.identity.NeedsRecovery(), "NeedsRecovery")
 			assert.Equal(t, tt.wantRotation, tt.identity.NeedsRotation(), "NeedsRotation")
 		})
@@ -194,7 +174,6 @@ func TestLocalIdentity_RecoveryAndRotationDecisions(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTrustBundle_FingerprintPinning(t *testing.T) {
-	t.Parallel()
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
 	bundle, err := ParseTrustBundle([]byte(artifacts.TrustBundlePEM), time.Now())
 	require.NoError(t, err)
@@ -207,7 +186,6 @@ func TestTrustBundle_FingerprintPinning(t *testing.T) {
 	}
 
 	t.Run("ContainsFingerprint matches any certificate in the bundle", func(t *testing.T) {
-		t.Parallel()
 		assert.True(t, bundle.ContainsFingerprint(rootFP))
 		assert.False(t, bundle.ContainsFingerprint(otherFP), "a different fingerprint must not match")
 		assert.False(t, bundle.ContainsFingerprint(""), "an empty fingerprint never matches")
@@ -216,7 +194,6 @@ func TestTrustBundle_FingerprintPinning(t *testing.T) {
 	})
 
 	t.Run("VerifyFingerprintPin", func(t *testing.T) {
-		t.Parallel()
 		require.NoError(t, bundle.VerifyFingerprintPin(""), "no pin configured is a no-op")
 		require.NoError(t, bundle.VerifyFingerprintPin(rootFP))
 		require.ErrorIs(t, bundle.VerifyFingerprintPin(otherFP), constants.ErrValidationFailed)
@@ -227,12 +204,10 @@ func TestTrustBundle_FingerprintPinning(t *testing.T) {
 }
 
 func TestTrustBundleDiskHelpers_Write(t *testing.T) {
-	t.Parallel()
+	fileSvc, cfg := newAuthTestEnv(t)
 	bundlePEM := []byte(buildTestArtifacts(t, EnrollmentSourceBootstrap).TrustBundlePEM)
 
 	t.Run("an empty bundle is never written", func(t *testing.T) {
-		t.Parallel()
-		fileSvc, cfg := newAuthTestEnv(t)
 		require.ErrorIs(t, WriteTrustBundleToDisk(t.Context(), fileSvc, cfg, nil), constants.ErrEmptyTrustBundle)
 		parsed, err := ReadTrustBundleFromDisk(t.Context(), fileSvc, cfg)
 		require.NoError(t, err)
@@ -240,8 +215,6 @@ func TestTrustBundleDiskHelpers_Write(t *testing.T) {
 	})
 
 	t.Run("a written bundle reads back", func(t *testing.T) {
-		t.Parallel()
-		fileSvc, cfg := newAuthTestEnv(t)
 		require.NoError(t, WriteTrustBundleToDisk(t.Context(), fileSvc, cfg, bundlePEM))
 		parsed, err := ReadTrustBundleFromDisk(t.Context(), fileSvc, cfg)
 		require.NoError(t, err)
@@ -255,8 +228,6 @@ func TestTrustBundleDiskHelpers_Write(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFileKeyProvider_GeneratesP256KeyAndMatchingSignedCSR(t *testing.T) {
-	t.Parallel()
-
 	csrPEM, key, err := FileKeyProvider{}.GenerateCLIKeyAndCSR(t.Context(), "ztd-cli-test-user")
 
 	require.NoError(t, err)
@@ -283,12 +254,10 @@ func TestFileKeyProvider_GeneratesP256KeyAndMatchingSignedCSR(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAppEnrollment_ParseECPrivateKeyPEM(t *testing.T) {
-	t.Parallel()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
 	t.Run("round-trips SEC1 and PKCS8 encodings", func(t *testing.T) {
-		t.Parallel()
 		sec1, err := encodeECPrivateKeyPEM(key)
 		require.NoError(t, err)
 		parsed, err := parseECPrivateKeyPEM(sec1)
@@ -303,7 +272,6 @@ func TestAppEnrollment_ParseECPrivateKeyPEM(t *testing.T) {
 	})
 
 	t.Run("rejects anything else", func(t *testing.T) {
-		t.Parallel()
 		rsaLike := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: []byte("x")}))
 		cases := map[string]string{
 			"no PEM":              "garbage",
@@ -320,8 +288,6 @@ func TestAppEnrollment_ParseECPrivateKeyPEM(t *testing.T) {
 }
 
 func TestAppEnrollment_ParseRetryAfter(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		in   string
 		want time.Duration
@@ -330,15 +296,12 @@ func TestAppEnrollment_ParseRetryAfter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tt.want, parseRetryAfter(tt.in))
 		})
 	}
 }
 
-func TestAppEnrollment_UsesConfigDiscoveryEndpoint(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAppEnrollment_UsesConfigDiscoveryEndpoint(t *testing.T) {
 	config.SetEndpointOverride("")
 	t.Cleanup(func() { config.SetEndpointOverride("") })
 	defaultURL := fmt.Sprintf("http://localhost:%d", constants.Ports.OperatorHttp)
@@ -351,9 +314,8 @@ func TestAppEnrollment_UsesConfigDiscoveryEndpoint(t *testing.T) { //nolint:para
 		{"host:port uses the canonical local discovery endpoint", "gw.example:9000", defaultURL},
 		{"bare host uses the canonical local discovery endpoint", "gw.example", defaultURL},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			fileSvc, cfg := newAuthTestEnv(t)
 			cfg.Paths.Host = tt.host
 			client, err := NewAppPlatformEnrollmentClient("test-app", fileSvc, cfg, nil)
@@ -364,7 +326,6 @@ func TestAppEnrollment_UsesConfigDiscoveryEndpoint(t *testing.T) { //nolint:para
 }
 
 func TestAppEnrollment_PendingStateLoading(t *testing.T) {
-	t.Parallel()
 	newClient := func(t *testing.T) *AppPlatformEnrollmentClient {
 		t.Helper()
 		fileSvc, cfg := newAuthTestEnv(t)
@@ -374,7 +335,6 @@ func TestAppEnrollment_PendingStateLoading(t *testing.T) {
 	}
 
 	t.Run("absent state loads as nothing to resume", func(t *testing.T) {
-		t.Parallel()
 		client := newClient(t)
 
 		state, err := client.loadPendingState(client.pendingStatePath())
@@ -384,7 +344,6 @@ func TestAppEnrollment_PendingStateLoading(t *testing.T) {
 	})
 
 	t.Run("persisted state round-trips with private permissions", func(t *testing.T) {
-		t.Parallel()
 		client := newClient(t)
 		want := &appPendingState{
 			RequestID: "req-1", Token: "tok", AppFingerprint: "fp", KeyPEM: "KEY",
@@ -413,7 +372,6 @@ func TestAppEnrollment_PendingStateLoading(t *testing.T) {
 	})
 
 	t.Run("pending state is sealed on disk, never plaintext", func(t *testing.T) {
-		t.Parallel()
 		client := newClient(t)
 		path := client.pendingStatePath()
 		require.NoError(t, client.fileSvc.MkdirAll(t.Context(), filepath.Dir(path), constants.PermDirPrivate))
@@ -428,7 +386,6 @@ func TestAppEnrollment_PendingStateLoading(t *testing.T) {
 	})
 
 	t.Run("plaintext state is refused, not an empty resume", func(t *testing.T) {
-		t.Parallel()
 		client := newClient(t)
 		path := client.pendingStatePath()
 		require.NoError(t, client.fileSvc.MkdirAll(t.Context(), filepath.Dir(path), constants.PermDirPrivate))
@@ -441,7 +398,6 @@ func TestAppEnrollment_PendingStateLoading(t *testing.T) {
 	})
 
 	t.Run("corrupt sealed state is an error, not an empty resume", func(t *testing.T) {
-		t.Parallel()
 		client := newClient(t)
 		path := client.pendingStatePath()
 		require.NoError(t, client.fileSvc.MkdirAll(t.Context(), filepath.Dir(path), constants.PermDirPrivate))

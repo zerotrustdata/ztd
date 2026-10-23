@@ -17,7 +17,6 @@ import (
 )
 
 func TestImportAssignmentResultFromAgentTrace_HeldTraceMustRunInTheHeldWorkspace(t *testing.T) {
-	t.Parallel()
 	const runID = "run-held-workspace"
 	held, err := NewScenarioWorkspace(agentTestWorkingDirectory, runID, "attempt-1")
 	require.NoError(t, err)
@@ -40,7 +39,6 @@ func TestImportAssignmentResultFromAgentTrace_HeldTraceMustRunInTheHeldWorkspace
 }
 
 func TestAgentTraceConversation_ToolCallCountMismatchIsMalformed(t *testing.T) {
-	t.Parallel()
 	trace := &AgentTrace{
 		Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "prompt"}}},
 		ModelCalls: []AgentModelCall{{

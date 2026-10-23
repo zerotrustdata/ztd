@@ -28,8 +28,7 @@ func (f appEnrollerFunc) Enroll(ctx context.Context, out io.Writer) (*models.Pla
 	return f(ctx, out)
 }
 
-func TestEnrollAppCmd_SigningKeyOption(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollAppCmd_SigningKeyOption(t *testing.T) {
 	for _, signing := range []bool{false, true} {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		called := false

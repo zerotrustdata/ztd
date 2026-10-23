@@ -21,8 +21,6 @@ import (
 )
 
 func TestAuthMiddleware_PublicHealthAndMissingClientCertificate(t *testing.T) {
-	t.Parallel()
-
 	logger := testutil.NewTestLogger()
 	auth := NewAuthService(nil, nil, logger, nil, nil, response.NewWriter(logger), nil, "", "", "")
 	for _, tc := range []struct {
@@ -34,8 +32,6 @@ func TestAuthMiddleware_PublicHealthAndMissingClientCertificate(t *testing.T) {
 		{"settings mutation requires certificate", http.MethodPut, constants.APIPaths.DataSettings + "/" + string(constants.DocIDPlatformSettings), http.StatusUnauthorized},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			called := false
 			handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				called = true

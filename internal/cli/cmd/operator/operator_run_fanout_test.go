@@ -62,7 +62,6 @@ func fanoutTargets(n int) []operator.Target {
 }
 
 func TestDispatchOperatorRunNeverExceedsConcurrency(t *testing.T) {
-	t.Parallel()
 	client := &inflightClient{postResp: mustMarshalDispatchSuccess(t, "ok"), hold: 5 * time.Millisecond}
 
 	results := dispatchOperatorRun(client, fanoutTargets(40), "uname -n", "cli-1", 4)
@@ -73,7 +72,6 @@ func TestDispatchOperatorRunNeverExceedsConcurrency(t *testing.T) {
 }
 
 func TestDispatchOperatorRunKeepsTargetOrderAndSetsTiming(t *testing.T) {
-	t.Parallel()
 	client := &inflightClient{postResp: mustMarshalDispatchSuccess(t, "ok"), hold: 2 * time.Millisecond}
 	targets := fanoutTargets(12)
 
@@ -116,8 +114,7 @@ func fanoutOperators() []*operatorv1.OperatorDocument {
 	}
 }
 
-func TestOperatorRunCmd_AllActiveTargetsOnlyActiveSessionsAndEmitsSummary(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorRunCmd_AllActiveTargetsOnlyActiveSessionsAndEmitsSummary(t *testing.T) {
 	cmd, mockClient, seen := fanoutFixture(t, fanoutOperators())
 	root := &cobra.Command{Use: "ztd"}
 	root.PersistentFlags().Bool("json", false, "")
@@ -142,8 +139,7 @@ func TestOperatorRunCmd_AllActiveTargetsOnlyActiveSessionsAndEmitsSummary(t *tes
 	assert.Equal(t, 8, (*seen)[0].MaxIdleConnsPerHost, "connection pool is sized to the requested concurrency")
 }
 
-func TestOperatorRunCmd_DefaultConcurrencyIsBoundedAndTextOutputHasNoSummary(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorRunCmd_DefaultConcurrencyIsBoundedAndTextOutputHasNoSummary(t *testing.T) {
 	cmd, _, seen := fanoutFixture(t, fanoutOperators())
 	cmd.SetArgs([]string{"session-a", "--cmd", "uname -n"})
 	var buf bytes.Buffer
@@ -158,8 +154,7 @@ func TestOperatorRunCmd_DefaultConcurrencyIsBoundedAndTextOutputHasNoSummary(t *
 	assert.NotContains(t, buf.String(), "summary")
 }
 
-func TestOperatorRunCmd_RejectsConflictingOrInvalidSelection(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorRunCmd_RejectsConflictingOrInvalidSelection(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -170,9 +165,8 @@ func TestOperatorRunCmd_RejectsConflictingOrInvalidSelection(t *testing.T) { //n
 		{"zero concurrency", []string{"session-a", "--cmd", "x", "--concurrency", "0"}, constants.ErrOperatorRunInvalidConcurrency},
 		{"negative concurrency", []string{"--all-active", "--cmd", "x", "--concurrency", "-3"}, constants.ErrOperatorRunInvalidConcurrency},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			cmd, mockClient, seen := fanoutFixture(t, fanoutOperators())
 			cmd.SetArgs(tt.args)
 			cmd.SetOut(&bytes.Buffer{})
@@ -187,8 +181,7 @@ func TestOperatorRunCmd_RejectsConflictingOrInvalidSelection(t *testing.T) { //n
 	}
 }
 
-func TestOperatorRunCmd_AllActiveWithNoActiveOperatorsFails(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorRunCmd_AllActiveWithNoActiveOperatorsFails(t *testing.T) {
 	cmd, mockClient, _ := fanoutFixture(t, []*operatorv1.OperatorDocument{
 		{Id: "op-b", OperatorSessionId: "session-b", OperatorType: string(constants.OperatorTypeRemote), Status: string(constants.OperatorStatusStale)},
 	})
@@ -200,8 +193,7 @@ func TestOperatorRunCmd_AllActiveWithNoActiveOperatorsFails(t *testing.T) { //no
 	assert.Empty(t, mockClient.PostCalls)
 }
 
-func TestOperatorListCmd_JSONIncludesLastHeartbeatAt(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorListCmd_JSONIncludesLastHeartbeatAt(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	beat := time.Date(2026, 10, 7, 12, 0, 5, 0, time.UTC)

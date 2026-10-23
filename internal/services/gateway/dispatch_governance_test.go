@@ -122,7 +122,6 @@ func testDoctrine() *governance.L1Doctrine {
 // the envelope carries L1.Validated=true only because the doctrine actually
 // validated it (not because the builder asserted it).
 func TestBuildGovernanceEnvelope_DoctrineScreeningPassesForCleanPayload(t *testing.T) {
-	t.Parallel()
 	env, err := BuildGovernanceEnvelope(baseEnvelopeParams(
 		constants.Event.Operator.FsRead.Requested, fsReadPayload(t), constants.PostureDoctrine, testDoctrine(),
 	))
@@ -136,8 +135,6 @@ func TestBuildGovernanceEnvelope_DoctrineScreeningPassesForCleanPayload(t *testi
 // doctrine fails closed: the builder cannot assert L1.Validated=true without a
 // doctrine to run screening against.
 func TestBuildGovernanceEnvelope_NilDoctrineFailsClosed(t *testing.T) {
-	t.Parallel()
-
 	params := baseEnvelopeParams(constants.Event.Operator.FsRead.Requested, fsReadPayload(t), constants.PostureDoctrine, nil)
 	_, err := BuildGovernanceEnvelope(params)
 	require.Error(t, err)
@@ -148,8 +145,6 @@ func TestBuildGovernanceEnvelope_NilDoctrineFailsClosed(t *testing.T) {
 // that cannot be decoded into the typed proto for its action type fails closed
 // with ErrTxPayloadDecodeFailed rather than skipping L1.
 func TestBuildGovernanceEnvelope_DecodeFailureFailsClosed(t *testing.T) {
-	t.Parallel()
-
 	params := baseEnvelopeParams(constants.Event.Operator.FsRead.Requested, []byte{0xFF, 0xFF, 0xFF}, constants.PostureDoctrine, testDoctrine())
 	_, err := BuildGovernanceEnvelope(params)
 	require.Error(t, err)
@@ -160,8 +155,6 @@ func TestBuildGovernanceEnvelope_DecodeFailureFailsClosed(t *testing.T) {
 // whose content triggers a doctrine forbidden-pattern violation fails closed
 // with ErrTxL1ValidationFailed rather than reaching the operator.
 func TestBuildGovernanceEnvelope_L1ViolationFailsClosed(t *testing.T) {
-	t.Parallel()
-
 	params := baseEnvelopeParams(constants.Event.Operator.Command.Requested, maliciousCommandPayload(t), constants.PostureDoctrine, testDoctrine())
 	_, err := BuildGovernanceEnvelope(params)
 	require.Error(t, err)
@@ -172,7 +165,6 @@ func TestBuildGovernanceEnvelope_L1ViolationFailsClosed(t *testing.T) {
 // action type now flows through L1 screening: a clean InferenceRequested
 // payload passes, and the envelope carries L1.Validated=true.
 func TestBuildGovernanceEnvelope_InferenceDecodesAndScreens(t *testing.T) {
-	t.Parallel()
 	env, err := BuildGovernanceEnvelope(baseEnvelopeParams(
 		constants.Event.Operator.Inference.Requested, inferencePayload(t), constants.PostureDoctrine, testDoctrine(),
 	))
@@ -185,8 +177,6 @@ func TestBuildGovernanceEnvelope_InferenceDecodesAndScreens(t *testing.T) {
 // posture, a mutation-classified action (inference) is rejected early because
 // the gateway dispatch path cannot mint L3 human proofs.
 func TestBuildGovernanceEnvelope_RatifyRejectsMutation(t *testing.T) {
-	t.Parallel()
-
 	params := baseEnvelopeParams(constants.Event.Operator.Inference.Requested, inferencePayload(t), constants.PostureRatify, testDoctrine())
 	_, err := BuildGovernanceEnvelope(params)
 	require.Error(t, err)
@@ -196,8 +186,6 @@ func TestBuildGovernanceEnvelope_RatifyRejectsMutation(t *testing.T) {
 // TestBuildGovernanceEnvelope_NotaryRejectsMutation proves that under notary
 // posture, a mutation-classified action is rejected early for the same reason.
 func TestBuildGovernanceEnvelope_NotaryRejectsMutation(t *testing.T) {
-	t.Parallel()
-
 	params := baseEnvelopeParams(constants.Event.Operator.Inference.Requested, inferencePayload(t), constants.PostureNotary, testDoctrine())
 	_, err := BuildGovernanceEnvelope(params)
 	require.Error(t, err)
@@ -209,8 +197,6 @@ func TestBuildGovernanceEnvelope_NotaryRejectsMutation(t *testing.T) {
 // command is refused as ErrTxL1ValidationFailed under ratify and notary too,
 // where a clean mutation is refused as ErrTxL3ProofUnmintable.
 func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testing.T) {
-	t.Parallel()
-
 	postures := []constants.Posture{
 		constants.PostureDoctrine,
 		constants.PostureConsensus,
@@ -219,8 +205,6 @@ func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testin
 	}
 	for _, posture := range postures {
 		t.Run(string(posture), func(t *testing.T) {
-			t.Parallel()
-
 			params := baseEnvelopeParams(constants.Event.Operator.Command.Requested, maliciousCommandPayload(t), posture, testDoctrine())
 			_, err := BuildGovernanceEnvelope(params)
 			require.Error(t, err)
@@ -234,7 +218,6 @@ func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testin
 // posture, a read-only (non-mutation) action still passes because L3 is not
 // required for reads.
 func TestBuildGovernanceEnvelope_RatifyAllowsReadOnly(t *testing.T) {
-	t.Parallel()
 	env, err := BuildGovernanceEnvelope(baseEnvelopeParams(
 		constants.Event.Operator.FsRead.Requested, fsReadPayload(t), constants.PostureRatify, testDoctrine(),
 	))
@@ -249,8 +232,6 @@ func TestBuildGovernanceEnvelope_RatifyAllowsReadOnly(t *testing.T) {
 // any posture. Under notary, the mutation is rejected before deliberation
 // because the path cannot mint L3 proofs.
 func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 
@@ -297,8 +278,6 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			broker := NewGatewayWebSocketHandler(logger)
 			deliberator := &stubL2Deliberator{}
 			actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
@@ -356,8 +335,6 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 // deliberator returns an error under a posture that requires L2, the dispatch
 // fails closed rather than publishing an unsigned envelope.
 func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	broker := NewGatewayWebSocketHandler(logger)
@@ -396,8 +373,6 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 // Dispatch returns ErrDispatchNoDelivery straight after the deliberation gate
 // and never waits for a result.
 func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	enrollmentPayload, err := proto.Marshal(&commonv1.PlatformEnrollmentGovernancePayload{})
@@ -432,8 +407,6 @@ func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			broker := NewGatewayWebSocketHandler(logger)
 			newService := func(deliberator L2ConsensusDeliberator) *DispatchService {
 				return NewDispatchService(

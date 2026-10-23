@@ -22,7 +22,6 @@ import (
 )
 
 func TestValidatePublicAssignmentRecordAcceptsHistoricalAndEnrichedRecords(t *testing.T) {
-	t.Parallel()
 	projection := validDisclosureProjection(t)
 
 	tests := []struct {
@@ -60,7 +59,6 @@ func TestValidatePublicAssignmentRecordAcceptsHistoricalAndEnrichedRecords(t *te
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			body := assignmentEnvelope(t, tt.version, projection, tt.extensions)
 			require.NoError(t, ValidatePublicAssignmentRecord("", body))
 		})
@@ -68,7 +66,6 @@ func TestValidatePublicAssignmentRecordAcceptsHistoricalAndEnrichedRecords(t *te
 }
 
 func TestValidatePublicAssignmentRecordRejectsMalformedAssignmentGrammar(t *testing.T) {
-	t.Parallel()
 	projection := validDisclosureProjection(t)
 	tests := []struct {
 		name       string
@@ -96,7 +93,6 @@ func TestValidatePublicAssignmentRecordRejectsMalformedAssignmentGrammar(t *test
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			body := assignmentEnvelope(t, tt.version, projection, tt.extensions)
 			var envelope CampaignProjectionEnvelope
 			require.NoError(t, json.Unmarshal(body, &envelope))
@@ -118,7 +114,6 @@ func TestValidatePublicAssignmentRecordRejectsMalformedAssignmentGrammar(t *test
 }
 
 func TestValidatePublicAssignmentRecordLeavesOtherPublicProjectionsToGeneralValidation(t *testing.T) {
-	t.Parallel()
 	require.NoError(t, ValidatePublicAssignmentRecord("", []byte(`{"kind":"model_summary","detail":"not an assignment envelope"}`)))
 	assert.Error(t, ValidatePublicAssignmentRecord("", []byte(`{"schema_version":"1.1.0","message_type":"UnknownCampaignRecord","record":{}}`)))
 }

@@ -21,7 +21,6 @@ import (
 // becomes: a signed L3_DENIED governance rejection is a REJECTION carrying the receipt, and an
 // executed receipt is a RECEIPT.
 func TestAttendedDecisionObservationMapsDenyToRejection(t *testing.T) {
-	t.Parallel()
 	denied := &operatorv1.ActionReceipt{
 		TransactionHash: "tx-deny",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -44,7 +43,6 @@ func TestAttendedDecisionObservationMapsDenyToRejection(t *testing.T) {
 // open until a human decides: governed dispatch on both executors and the CLI. MCP and A2A
 // answer with a suspension instead.
 func TestAttendedBlocksUntilDecisionOnlyForHeldIngresses(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		ingress cases.Ingress
 		want    bool
@@ -64,7 +62,6 @@ func TestAttendedBlocksUntilDecisionOnlyForHeldIngresses(t *testing.T) {
 // TestAttendedSuspensionMustBeTheOnlyObservation checks the one answer that starts a wait for a
 // human: exactly one SUSPENDED observation and nothing else.
 func TestAttendedSuspensionMustBeTheOnlyObservation(t *testing.T) {
-	t.Parallel()
 	suspended := func(txHash string) *evalv1.ConformanceObservation {
 		return &evalv1.ConformanceObservation{
 			Kind:            evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED,
@@ -85,7 +82,6 @@ func TestAttendedSuspensionMustBeTheOnlyObservation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tt.want, isSuspendedOnly(tt.driven))
 		})
 	}

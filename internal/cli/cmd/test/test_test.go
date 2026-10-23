@@ -16,9 +16,7 @@ import (
 )
 
 func TestTestCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("test command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "test", cmd.Use)
 		assert.Contains(t, cmd.Short, "Run test suites")
@@ -26,7 +24,6 @@ func TestTestCmd(t *testing.T) {
 	})
 
 	t.Run("test command has expected subcommands", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		require.NotNil(t, cmd)
 
@@ -45,7 +42,6 @@ func TestTestCmd(t *testing.T) {
 }
 
 func TestTestPublicLoopCmd_RequiresCandidateAndOutput(t *testing.T) {
-	t.Parallel()
 	called := false
 	cmd := publicLoopCmdWithRunner(func(_ context.Context, candidatePath, outputPath string) error {
 		called = true
@@ -60,9 +56,7 @@ func TestTestPublicLoopCmd_RequiresCandidateAndOutput(t *testing.T) {
 }
 
 func TestTestUnitCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("unit command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := testUnitCmd()
 		assert.Equal(t, "unit", cmd.Use)
 		assert.Contains(t, cmd.Short, "Tier 1")
@@ -72,9 +66,7 @@ func TestTestUnitCmd(t *testing.T) {
 }
 
 func TestTestIntegrationCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("integration command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := testIntegrationCmd()
 		assert.Equal(t, "integration", cmd.Use)
 		assert.Contains(t, cmd.Short, "Tier 2")
@@ -84,7 +76,6 @@ func TestTestIntegrationCmd(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_DelegatesToMakefileTarget(t *testing.T) {
-	t.Parallel()
 	var capturedCmd string
 	var capturedArgs []string
 	runner := func(_ context.Context, name string, args ...string) (int, error) {
@@ -101,7 +92,6 @@ func TestTestIntegrationCmd_DelegatesToMakefileTarget(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_EvalStackDelegatesToMakefileTarget(t *testing.T) {
-	t.Parallel()
 	var capturedCmd string
 	var capturedArgs []string
 	runner := func(_ context.Context, name string, args ...string) (int, error) {
@@ -119,7 +109,6 @@ func TestTestIntegrationCmd_EvalStackDelegatesToMakefileTarget(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_EvalStackNarrowRunSetsTagAndTimeout(t *testing.T) {
-	t.Parallel()
 	var capturedArgs []string
 	runner := func(_ context.Context, _ string, args ...string) (int, error) {
 		capturedArgs = args
@@ -137,9 +126,7 @@ func TestTestIntegrationCmd_EvalStackNarrowRunSetsTagAndTimeout(t *testing.T) {
 }
 
 func TestTestE2ECmd(t *testing.T) {
-	t.Parallel()
 	t.Run("e2e command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := testE2ECmd()
 		assert.Equal(t, "e2e", cmd.Use)
 		assert.Contains(t, cmd.Short, "Tier 3")
@@ -149,7 +136,6 @@ func TestTestE2ECmd(t *testing.T) {
 }
 
 func TestTestE2ECmd_RunFlagDefaultsEmpty(t *testing.T) {
-	t.Parallel()
 	cmd := testE2ECmd()
 	flag := cmd.Flags().Lookup("run")
 	require.NotNil(t, flag)
@@ -157,9 +143,7 @@ func TestTestE2ECmd_RunFlagDefaultsEmpty(t *testing.T) {
 }
 
 func TestTestCoverageCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("coverage command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := testCoverageCmd()
 		assert.Equal(t, "coverage", cmd.Use)
 		assert.Contains(t, cmd.Short, "coverage")
@@ -168,7 +152,6 @@ func TestTestCoverageCmd(t *testing.T) {
 	})
 
 	t.Run("coverage command has pkg flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := testCoverageCmd()
 		flag := cmd.Flags().Lookup("pkg")
 		assert.NotNil(t, flag)
@@ -176,7 +159,6 @@ func TestTestCoverageCmd(t *testing.T) {
 	})
 
 	t.Run("coverage command has verbose flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := testCoverageCmd()
 		flag := cmd.Flags().Lookup("verbose")
 		assert.NotNil(t, flag)
@@ -185,9 +167,7 @@ func TestTestCoverageCmd(t *testing.T) {
 }
 
 func TestTestLintCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("lint command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := testLintCmd()
 		assert.Equal(t, "lint", cmd.Use)
 		assert.Contains(t, cmd.Short, "linting")
@@ -197,9 +177,7 @@ func TestTestLintCmd(t *testing.T) {
 }
 
 func TestTestSummaryCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("summary command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := testSummaryCmd()
 		assert.Equal(t, "summary", cmd.Use)
 		assert.Contains(t, cmd.Short, "chaos test summary")

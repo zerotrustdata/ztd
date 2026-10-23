@@ -91,13 +91,11 @@ func (f *commitmentFixture) replaceAttestation(t *testing.T) {
 }
 
 func TestCommitmentImporter_SourceID(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	assert.Equal(t, "commitment", NewCommitmentImporter(fixture.reader, fixture.trust, fixture.binding, fixture.verifiedAt).SourceID())
 }
 
 func TestCommitmentImporter_Import_VerifiesCanonicalAttestation(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	importer := NewCommitmentImporter(fixture.reader, fixture.trust, fixture.binding, fixture.verifiedAt)
 	nodes, err := importer.Import(context.Background())
@@ -122,7 +120,6 @@ func TestCommitmentImporter_Import_VerifiesCanonicalAttestation(t *testing.T) {
 }
 
 func TestCommitmentImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	fixture.trust.keys = map[string]ed25519.PublicKey{}
 	nodes, err := NewCommitmentImporter(fixture.reader, fixture.trust, fixture.binding, fixture.verifiedAt).Import(context.Background())
@@ -133,7 +130,6 @@ func TestCommitmentImporter_Import_PreservesUnverifiedStatusWithoutAssessedKey(t
 }
 
 func TestCommitmentImporter_Import_MarksCryptographicMutationsFailed(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*commitmentFixture)
@@ -143,7 +139,6 @@ func TestCommitmentImporter_Import_MarksCryptographicMutationsFailed(t *testing.
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newCommitmentFixture(t)
 			test.mutate(fixture)
 			fixture.replaceAttestation(t)
@@ -157,7 +152,6 @@ func TestCommitmentImporter_Import_MarksCryptographicMutationsFailed(t *testing.
 }
 
 func TestCommitmentImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	tests := []struct {
 		name     string
@@ -175,7 +169,6 @@ func TestCommitmentImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -184,7 +177,6 @@ func TestCommitmentImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestCommitmentImporter_Import_RejectsContentAndBindingMutations(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name      string
 		mutate    func(*testing.T, *commitmentFixture)
@@ -207,7 +199,6 @@ func TestCommitmentImporter_Import_RejectsContentAndBindingMutations(t *testing.
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newCommitmentFixture(t)
 			test.mutate(t, fixture)
 			_, err := NewCommitmentImporter(fixture.reader, fixture.trust, fixture.binding, fixture.verifiedAt).Import(context.Background())
@@ -218,7 +209,6 @@ func TestCommitmentImporter_Import_RejectsContentAndBindingMutations(t *testing.
 }
 
 func TestCommitmentImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	trustErr := fmt.Errorf("commitment trust unavailable")
 	fixture.trust.err = trustErr
@@ -229,7 +219,6 @@ func TestCommitmentImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T
 }
 
 func TestCommitmentImporter_Import_WrapsReadFailure(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	readErr := fmt.Errorf("commitment source unavailable")
 	_, err := NewCommitmentImporter(&failingArtifactReader{err: readErr}, fixture.trust, fixture.binding, fixture.verifiedAt).Import(context.Background())
@@ -239,7 +228,6 @@ func TestCommitmentImporter_Import_WrapsReadFailure(t *testing.T) {
 }
 
 func TestCommitmentImporter_Import_RespectsCancellation(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -248,7 +236,6 @@ func TestCommitmentImporter_Import_RespectsCancellation(t *testing.T) {
 }
 
 func TestCommitmentImporter_Import_ProducesValidGraph(t *testing.T) {
-	t.Parallel()
 	fixture := newCommitmentFixture(t)
 	nodes, err := NewCommitmentImporter(fixture.reader, fixture.trust, fixture.binding, fixture.verifiedAt).Import(context.Background())
 	require.NoError(t, err)

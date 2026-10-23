@@ -38,10 +38,8 @@ func writeFile(t *testing.T, name, content string) string {
 }
 
 func TestPrepare_EveryRegisteredAgentWritesAndVerifies(t *testing.T) {
-	t.Parallel()
 	for _, integration := range All() {
 		t.Run(string(integration.ID), func(t *testing.T) {
-			t.Parallel()
 			prepared, err := integration.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", string(integration.ID), true)
 			require.NoError(t, err)
 			t.Cleanup(prepared.Cleanup)
@@ -61,7 +59,6 @@ func TestPrepare_EveryRegisteredAgentWritesAndVerifies(t *testing.T) {
 }
 
 func TestVerifyIsolated_ReportsTheAgentThatFailsVerification(t *testing.T) {
-	t.Parallel()
 	integration := All()[0]
 	integration.VerifyHooks = []VerifyHook{func(VerifyInput) error { return verifyFailure("lockdown drift") }}
 
@@ -72,7 +69,6 @@ func TestVerifyIsolated_ReportsTheAgentThatFailsVerification(t *testing.T) {
 }
 
 func TestPrepare_VerifyFalseSkipsHooks(t *testing.T) {
-	t.Parallel()
 	broken := Integration{
 		ID:             "broken",
 		ConfigStrategy: ConfigTempJSON,
@@ -89,7 +85,6 @@ func TestPrepare_VerifyFalseSkipsHooks(t *testing.T) {
 }
 
 func TestPrepare_FailureCleansUpTempConfig(t *testing.T) {
-	t.Parallel()
 	var seen string
 	broken := Integration{
 		ID:             "broken",
@@ -109,13 +104,11 @@ func TestPrepare_FailureCleansUpTempConfig(t *testing.T) {
 }
 
 func TestPrepare_UnknownStrategyFailsClosed(t *testing.T) {
-	t.Parallel()
 	_, err := Integration{ID: "bogus", ConfigStrategy: "bogus"}.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "bogus", true)
 	require.ErrorIs(t, err, constants.ErrAgentNotSupported)
 }
 
 func TestVerifyHooks(t *testing.T) {
-	t.Parallel()
 	const ztdServerJSON = `{"mcpServers":{"ztd":{"command":"ztd","args":["mcp","stdio"]}}}`
 	strict := []string{"--mcp-config", "x", "--strict-mcp-config", "--disallowed-tools", "Bash"}
 	gooseArgs := []string{"session", "--no-profile", "--with-extension", "/fake/ztd mcp stdio"}
@@ -281,7 +274,6 @@ func TestVerifyHooks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			err := tt.hook(tt.in(t))
 			if tt.wantErr == "" {
 				require.NoError(t, err)

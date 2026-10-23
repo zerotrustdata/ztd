@@ -18,7 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 )
 
-func TestExecuteWithVersionInfo_HelpFlagPrintsUsageAndExitsZero(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteWithVersionInfo_HelpFlagPrintsUsageAndExitsZero(t *testing.T) {
 	originalArgs := os.Args
 	os.Args = []string{"ztd", "--help"}
 	t.Cleanup(func() { os.Args = originalArgs })
@@ -45,7 +45,7 @@ func TestExecuteWithVersionInfo_HelpFlagPrintsUsageAndExitsZero(t *testing.T) { 
 	assert.Contains(t, output, "zero-trust execution platform")
 }
 
-func TestExecuteWithVersionInfo_VersionFlagPrintsVersion(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteWithVersionInfo_VersionFlagPrintsVersion(t *testing.T) {
 	originalArgs := os.Args
 	os.Args = []string{"ztd", "--version"}
 	t.Cleanup(func() { os.Args = originalArgs })
@@ -71,7 +71,7 @@ func TestExecuteWithVersionInfo_VersionFlagPrintsVersion(t *testing.T) { //nolin
 	assert.Contains(t, output, "1.2.3-test")
 }
 
-func TestExecuteWithVersionInfo_InvalidCommandReturnsError(t *testing.T) { //nolint:paralleltest // mutates the process environment
+func TestExecuteWithVersionInfo_InvalidCommandReturnsError(t *testing.T) {
 	originalArgs := os.Args
 	os.Args = []string{"ztd", "nonexistent-command"}
 	t.Cleanup(func() { os.Args = originalArgs })

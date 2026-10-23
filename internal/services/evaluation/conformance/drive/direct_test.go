@@ -56,7 +56,6 @@ func refusalBody(t *testing.T) []byte {
 }
 
 func TestNewDirectRejectsFaultInTwoSets(t *testing.T) {
-	t.Parallel()
 	c, err := client.New(config.Config{MTLSBaseURL: "http://127.0.0.1:1"})
 	require.NoError(t, err)
 
@@ -67,7 +66,6 @@ func TestNewDirectRejectsFaultInTwoSets(t *testing.T) {
 }
 
 func TestNewDirectRejectsNilClient(t *testing.T) {
-	t.Parallel()
 	_, err := NewDirect(nil, testIdentity().Persona, testIdentity().Target, nil)
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }

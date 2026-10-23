@@ -112,7 +112,6 @@ func runLogoutCmd(t *testing.T, env logoutEnv, client *fakeLogoutClient, args ..
 }
 
 func TestLogoutCmd_Structure(t *testing.T) {
-	t.Parallel()
 	logout := LogoutCmd()
 	assert.Equal(t, "logout", logout.Name())
 
@@ -128,8 +127,7 @@ func TestLogoutCmd_Structure(t *testing.T) {
 	assert.Nil(t, byName["web"].Flags().Lookup("local-only"), "web logout clears no local credentials, so --local-only makes no sense")
 }
 
-func TestLogoutCmd_NoActiveSessionDoesNotContactGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_NoActiveSessionDoesNotContactGateway(t *testing.T) {
 	env := newLogoutEnv(t, false)
 	client := &fakeLogoutClient{result: successfulLogoutResult()}
 
@@ -140,8 +138,7 @@ func TestLogoutCmd_NoActiveSessionDoesNotContactGateway(t *testing.T) { //nolint
 	assert.Empty(t, client.scopes, "with no local identity there is nothing to authenticate a logout with")
 }
 
-func TestLogoutCmd_BareLogoutEndsEverythingThenClearsLocalCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_BareLogoutEndsEverythingThenClearsLocalCredentials(t *testing.T) {
 	env := newLogoutEnv(t, true)
 	client := &fakeLogoutClient{result: successfulLogoutResult()}
 
@@ -158,8 +155,7 @@ func TestLogoutCmd_BareLogoutEndsEverythingThenClearsLocalCredentials(t *testing
 	assert.True(t, env.fileExists(t, env.cfg.ResolvedTrustBundlePath()), "the shared OS root CA must survive logout")
 }
 
-func TestLogoutCmd_CLISubcommandEndsCLISessionsAndClearsLocalCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_CLISubcommandEndsCLISessionsAndClearsLocalCredentials(t *testing.T) {
 	env := newLogoutEnv(t, true)
 	client := &fakeLogoutClient{result: successfulLogoutResult()}
 
@@ -172,8 +168,7 @@ func TestLogoutCmd_CLISubcommandEndsCLISessionsAndClearsLocalCredentials(t *test
 	env.requireLocalCredentials(t, false)
 }
 
-func TestLogoutCmd_WebSubcommandKeepsLocalCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_WebSubcommandKeepsLocalCredentials(t *testing.T) {
 	env := newLogoutEnv(t, true)
 	client := &fakeLogoutClient{result: successfulLogoutResult()}
 
@@ -186,8 +181,7 @@ func TestLogoutCmd_WebSubcommandKeepsLocalCredentials(t *testing.T) { //nolint:p
 	env.requireLocalCredentials(t, true)
 }
 
-func TestLogoutCmd_GatewayFailureChangesNothingLocally(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_GatewayFailureChangesNothingLocally(t *testing.T) {
 	for _, args := range [][]string{nil, {"cli"}} {
 		env := newLogoutEnv(t, true)
 		boom := errors.New("gateway unreachable")
@@ -201,8 +195,7 @@ func TestLogoutCmd_GatewayFailureChangesNothingLocally(t *testing.T) { //nolint:
 	}
 }
 
-func TestLogoutCmd_LocalOnlySkipsGatewayAndSaysSo(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_LocalOnlySkipsGatewayAndSaysSo(t *testing.T) {
 	for _, args := range [][]string{{"--local-only"}, {"cli", "--local-only"}} {
 		env := newLogoutEnv(t, true)
 		client := &fakeLogoutClient{err: errors.New("must not be called")}
@@ -217,8 +210,7 @@ func TestLogoutCmd_LocalOnlySkipsGatewayAndSaysSo(t *testing.T) { //nolint:paral
 	}
 }
 
-func TestLogoutCmd_RejectsInvalidInvocations(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_RejectsInvalidInvocations(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -227,9 +219,8 @@ func TestLogoutCmd_RejectsInvalidInvocations(t *testing.T) { //nolint:parallelte
 		{"stray argument", []string{"web", "extra"}},
 		{"web has no local-only flag", []string{"web", "--local-only"}},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			env := newLogoutEnv(t, true)
 			client := &fakeLogoutClient{result: successfulLogoutResult()}
 
@@ -242,8 +233,7 @@ func TestLogoutCmd_RejectsInvalidInvocations(t *testing.T) { //nolint:parallelte
 	}
 }
 
-func TestLogoutCmd_JSONOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_JSONOutput(t *testing.T) {
 	env := newLogoutEnv(t, true)
 	client := &fakeLogoutClient{result: successfulLogoutResult()}
 
@@ -263,8 +253,7 @@ func TestLogoutCmd_JSONOutput(t *testing.T) { //nolint:paralleltest // mutates p
 	assert.Equal(t, []string{"op-sess-1", "op-sess-2"}, got.UnboundOperatorSessionIDs)
 }
 
-func TestLogoutCmd_ConfigLoaderErrorPropagates(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmd_ConfigLoaderErrorPropagates(t *testing.T) {
 	env := newLogoutEnv(t, true)
 	boom := errors.New("config load error")
 	logout := logoutCmdWithConfig(func(string) (*config.Config, error) { return nil, boom }, cmdtest.FileSvcFactoryFor(env.fileSvc), fakeLogoutFactory(&fakeLogoutClient{}))

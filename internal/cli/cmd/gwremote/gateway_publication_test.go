@@ -18,8 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestShouldPublishViaGatewayWithoutHostExportConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestShouldPublishViaGatewayWithoutHostExportConfig(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	original := GatewayHealthCheck
 	GatewayHealthCheck = func() bool { return true }
@@ -29,8 +28,7 @@ func TestShouldPublishViaGatewayWithoutHostExportConfig(t *testing.T) { //nolint
 	assert.True(t, ShouldPublishViaGateway(context.Background(), fileSvc))
 }
 
-func TestShouldPublishViaGatewayReturnsFalseWhenGatewayUnhealthy(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestShouldPublishViaGatewayReturnsFalseWhenGatewayUnhealthy(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	original := GatewayHealthCheck
 	GatewayHealthCheck = func() bool { return false }
@@ -41,20 +39,17 @@ func TestShouldPublishViaGatewayReturnsFalseWhenGatewayUnhealthy(t *testing.T) {
 }
 
 func TestIsPublicFeedSequenceOutOfOrder(t *testing.T) {
-	t.Parallel()
 	assert.True(t, isPublicFeedSequenceOutOfOrder(fmt.Errorf("gateway export batch: %w", constants.ErrPublicFeedSequenceOutOfOrder)))
 	assert.False(t, isPublicFeedSequenceOutOfOrder(nil))
 	assert.False(t, isPublicFeedSequenceOutOfOrder(fmt.Errorf("other error")))
 }
 
 func TestIsPublicFeedSnapshotNotFound(t *testing.T) {
-	t.Parallel()
 	assert.True(t, isPublicFeedSnapshotNotFound(fmt.Errorf("snapshot lookup: %w", constants.ErrPublicFeedSnapshotNotFound)))
 	assert.False(t, isPublicFeedSnapshotNotFound(nil))
 }
 
-func TestNewCampaignFeedExporter_RequiresHealthyGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewCampaignFeedExporter_RequiresHealthyGateway(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 	cfg.Paths.Host = "http://127.0.0.1:1"
 

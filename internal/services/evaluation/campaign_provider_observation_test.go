@@ -307,7 +307,6 @@ func TestMarshalAssignmentResultProjectionEnvelope_IncludesBenchmarkObservations
 }
 
 func TestCampaignRunVerifier_WithReaders(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	reader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)

@@ -88,13 +88,11 @@ func (f *buildConfigImporterFixture) replaceRecords(t *testing.T) {
 }
 
 func TestBuildConfigImporter_SourceID(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	assert.Equal(t, "build-config", NewBuildConfigImporter(fixture.reader, fixture.binding).SourceID())
 }
 
 func TestBuildConfigImporter_Import_LoadsCanonicalAttestations(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	nodes, err := NewBuildConfigImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)
@@ -120,7 +118,6 @@ func TestBuildConfigImporter_Import_LoadsCanonicalAttestations(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	tests := []struct {
 		name     string
@@ -138,7 +135,6 @@ func TestBuildConfigImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
@@ -147,7 +143,6 @@ func TestBuildConfigImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	fixture.binding.Reference = constants.BuildAttestationReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
 	_, err := NewBuildConfigImporter(fixture.reader, fixture.binding).Import(context.Background())
@@ -156,7 +151,6 @@ func TestBuildConfigImporter_Import_RejectsSourceDigestMismatch(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_RejectsNoncanonicalAndUnknownFields(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*buildConfigImporterFixture)
@@ -170,7 +164,6 @@ func TestBuildConfigImporter_Import_RejectsNoncanonicalAndUnknownFields(t *testi
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newBuildConfigImporterFixture(t)
 			test.mutate(fixture)
 			fixture.reader.files[fixture.binding.Path] = fixture.body
@@ -183,7 +176,6 @@ func TestBuildConfigImporter_Import_RejectsNoncanonicalAndUnknownFields(t *testi
 }
 
 func TestBuildConfigImporter_Import_RejectsInvalidRecordBindings(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*buildConfigImporterFixture)
@@ -216,7 +208,6 @@ func TestBuildConfigImporter_Import_RejectsInvalidRecordBindings(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newBuildConfigImporterFixture(t)
 			test.mutate(fixture)
 			fixture.replaceRecords(t)
@@ -228,7 +219,6 @@ func TestBuildConfigImporter_Import_RejectsInvalidRecordBindings(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_EnforcesRecordLimit(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	fixture.records = make([]buildConfigAttestationRecord, constants.BuildAttestationMaxRecords+1)
 	for index := range fixture.records {
@@ -245,7 +235,6 @@ func TestBuildConfigImporter_Import_EnforcesRecordLimit(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_WrapsReadFailure(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	readErr := fmt.Errorf("build attestation source unavailable")
 	_, err := NewBuildConfigImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
@@ -255,7 +244,6 @@ func TestBuildConfigImporter_Import_WrapsReadFailure(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_RespectsCancellation(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -264,7 +252,6 @@ func TestBuildConfigImporter_Import_RespectsCancellation(t *testing.T) {
 }
 
 func TestBuildConfigImporter_Import_ProducesValidGraph(t *testing.T) {
-	t.Parallel()
 	fixture := newBuildConfigImporterFixture(t)
 	nodes, err := NewBuildConfigImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.NoError(t, err)

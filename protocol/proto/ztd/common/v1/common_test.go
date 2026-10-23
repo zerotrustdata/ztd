@@ -17,8 +17,7 @@ import (
 // PLATFORM_COMPONENT_KIND_ENSEMBLE value (number 2): its number and name must
 // stay reserved in the descriptor so they are never reused, and no live enum
 // value may carry either of them.
-func TestPlatformComponentKindRetiredValueStaysReserved(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPlatformComponentKindRetiredValueStaysReserved(t *testing.T) {
 	enum := File_ztd_common_v1_common_proto.Enums().ByName("PlatformComponentKind")
 	if !assert.NotNil(t, enum) {
 		return

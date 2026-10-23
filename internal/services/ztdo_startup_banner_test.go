@@ -15,8 +15,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestPrintOperatorStartupBanner_LogsIdentityAndCapabilityBoundary(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPrintOperatorStartupBanner_LogsIdentityAndCapabilityBoundary(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	cfg.Endpoint = "gateway.example"
 	cfg.HTTPSPort = 8443
@@ -32,8 +32,8 @@ func TestPrintOperatorStartupBanner_LogsIdentityAndCapabilityBoundary(t *testing
 	assert.Contains(t, text, "Awaiting cryptographically signed agentic intents")
 }
 
-func TestNewZtdoService_NilTLSConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_NilTLSConfig(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 
@@ -41,8 +41,8 @@ func TestNewZtdoService_NilTLSConfig(t *testing.T) { //nolint:paralleltest // mu
 	assert.ErrorIs(t, err, constants.ErrInternal)
 }
 
-func TestNewZtdoService_NilL2Trust(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewZtdoService_NilL2Trust(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 
 	_, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), nil, newTestFileSvc(t), nil, newTestPubSubClientFactory())

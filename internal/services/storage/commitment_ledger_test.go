@@ -397,11 +397,9 @@ func TestCommitmentLedger_JSONUnmarshal_InvalidTimestamp(t *testing.T) {
 }
 
 func TestCommitmentLedger_NilReceiverSafety(t *testing.T) {
-	t.Parallel(
+	t.Parallel()
 
 	// Test that methods handle nil receiver gracefully
-	)
-
 	var cl *CommitmentLedger
 
 	// AppendCommitmentJSON
@@ -433,11 +431,9 @@ func TestCommitmentLedger_ConstructorWithNilLogger(t *testing.T) {
 }
 
 func TestCommitmentLedger_ErrorMessages(t *testing.T) {
-	t.Parallel(
+	t.Parallel()
 
 	// Test that error messages are descriptive
-	)
-
 	var cl *CommitmentLedger
 
 	err := cl.AppendCommitmentJSON([]byte{}, "prior", "hash")

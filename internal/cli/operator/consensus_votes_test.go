@@ -37,7 +37,6 @@ func (f *fakeGetter) Get(path string) ([]byte, error) {
 var quorumNotMet = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET.String()
 
 func TestAttachConsensusVotesOnlyForL2QuorumRejections(t *testing.T) {
-	t.Parallel()
 	getter := &fakeGetter{bodies: map[string][]byte{
 		ConsensusVotesPath("tx-l2"): []byte(`{"success":true,"transaction_id":"tx-l2","votes":[{"member_app_id":"tribunal-1","outcome":"deny","reason":"unsafe","quorum":3}]}`),
 	}}
@@ -61,7 +60,6 @@ func TestAttachConsensusVotesOnlyForL2QuorumRejections(t *testing.T) {
 }
 
 func TestAttachConsensusVotesRecordsFetchFailure(t *testing.T) {
-	t.Parallel()
 	getter := &fakeGetter{err: errors.New("forbidden")}
 	results := []RunResult{{TransactionID: "tx-l2", RejectionCode: quorumNotMet}}
 
@@ -72,7 +70,6 @@ func TestAttachConsensusVotesRecordsFetchFailure(t *testing.T) {
 }
 
 func TestWriteConsensusVotes(t *testing.T) {
-	t.Parallel()
 	var buf bytes.Buffer
 	WriteConsensusVotes(&buf, "  ", "tx-1", []models.ConsensusVoteRecord{
 		{ConsensusSetID: "tribunal", ModelTag: "gemma4:e2b", Quorum: 3, MemberAppID: "tribunal-1", Outcome: models.ConsensusVoteOutcomeApprove, Reason: "read-only"},

@@ -24,8 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-func TestAuthContextCmdWithConfig_ExportsCanonicalCLIIdentity(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuthContextCmdWithConfig_ExportsCanonicalCLIIdentity(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	creds := &auth.Credentials{
 		OperatorSessionID: "operator-session-123",
@@ -52,8 +51,7 @@ func TestAuthContextCmdWithConfig_ExportsCanonicalCLIIdentity(t *testing.T) { //
 	assert.Equal(t, cfg.CLIKeyFile(), got.ClientKey)
 }
 
-func TestAuthContextCmdWithConfig_UsesExplicitProjectRoot(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuthContextCmdWithConfig_UsesExplicitProjectRoot(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	creds := &auth.Credentials{
 		OperatorSessionID: "operator-session-123",
@@ -86,8 +84,7 @@ func TestAuthContextCmdWithConfig_UsesExplicitProjectRoot(t *testing.T) { //noli
 // from the gateway's authoritative CLI session record (GET
 // /api/v1/auth/cli/session) — not from an operator listing query — and
 // that the resolved pair is persisted back to local credentials.
-func TestAuthContextCmdWithConfig_ResolvesBindingFromCLISessionEndpoint(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuthContextCmdWithConfig_ResolvesBindingFromCLISessionEndpoint(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	creds := &auth.Credentials{UserID: "user-123", CLISessionID: "cli-session-123"}
 	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, creds))
@@ -126,8 +123,7 @@ func TestAuthContextCmdWithConfig_ResolvesBindingFromCLISessionEndpoint(t *testi
 // CLI session record with no persisted operator binding fails closed with
 // ErrNotAuthenticated and directs the caller to the refresh path that
 // resyncs the binding.
-func TestAuthContextCmdWithConfig_UnboundSessionFailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuthContextCmdWithConfig_UnboundSessionFailsClosed(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	creds := &auth.Credentials{UserID: "user-123", CLISessionID: "cli-session-123"}
 	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, creds))
@@ -149,8 +145,7 @@ func TestAuthContextCmdWithConfig_UnboundSessionFailsClosed(t *testing.T) { //no
 	assert.Equal(t, []string{constants.APIPaths.AuthCLISession}, client.GetCalls)
 }
 
-func TestAuthContextCmdWithConfig_RejectsIncompleteIdentity(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuthContextCmdWithConfig_RejectsIncompleteIdentity(t *testing.T) {
 	tests := []struct {
 		name  string
 		creds *auth.Credentials
@@ -159,9 +154,8 @@ func TestAuthContextCmdWithConfig_RejectsIncompleteIdentity(t *testing.T) { //no
 		{name: "missing session", creds: &auth.Credentials{UserID: "user-123", CLISessionID: "cli-session-123"}},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			if tt.creds != nil {
 				require.NoError(t, auth.SaveCredentials(fileSvc, cfg, tt.creds))

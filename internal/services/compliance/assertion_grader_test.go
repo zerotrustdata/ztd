@@ -97,7 +97,6 @@ func gradeAssertionTestGraph(t *testing.T, graph *evidence.EvidenceGraph, assert
 }
 
 func TestGradeControlAssertions_SatisfiesAllRequiredVerifiedEvidence(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assertions := assertionGraderCatalog("unverifiable")
 	assessment := gradeAssertionTestGraph(t, assertionGraderGraph(t, now, 1), assertions, now)
@@ -114,7 +113,6 @@ func TestGradeControlAssertions_SatisfiesAllRequiredVerifiedEvidence(t *testing.
 }
 
 func TestGradeControlAssertions_FailsWhenRequiredGraderReportsFailure(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assessment := gradeAssertionTestGraph(t, assertionGraderGraph(t, now, 0), assertionGraderCatalog("unverifiable"), now)
 
@@ -124,7 +122,6 @@ func TestGradeControlAssertions_FailsWhenRequiredGraderReportsFailure(t *testing
 }
 
 func TestGradeControlAssertions_UnverifiableWhenMetricVerificationIsNotVerified(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := assertionGraderGraph(t, now, 1)
 	for _, node := range graph.NodesByScope("scope-1") {
@@ -142,7 +139,6 @@ func TestGradeControlAssertions_UnverifiableWhenMetricVerificationIsNotVerified(
 }
 
 func TestGradeControlAssertions_UnverifiableWhenMetricBodyIsMalformed(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := assertionGraderGraph(t, now, 1)
 	for _, node := range graph.NodesByScope("scope-1") {
@@ -160,7 +156,6 @@ func TestGradeControlAssertions_UnverifiableWhenMetricBodyIsMalformed(t *testing
 }
 
 func TestGradeControlAssertions_DoesNotTreatVerifiedReceiptAsPolicyOutcome(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := evidence.NewEvidenceGraph(0, nil)
 	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
@@ -173,7 +168,6 @@ func TestGradeControlAssertions_DoesNotTreatVerifiedReceiptAsPolicyOutcome(t *te
 }
 
 func TestGradeControlAssertions_DerivesDemonstratedLevelFromBoundIndependentObservation(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assertions := assertionGraderCatalog("unverifiable")
 	assertions.Assertions[0].RequiredEvidenceTypes = []string{"action_receipt", "state_observation"}
@@ -197,7 +191,6 @@ func TestGradeControlAssertions_DerivesDemonstratedLevelFromBoundIndependentObse
 }
 
 func TestGradeControlAssertions_DoesNotCombineRequirementsAcrossSubjects(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name          string
@@ -211,7 +204,6 @@ func TestGradeControlAssertions_DoesNotCombineRequirementsAcrossSubjects(t *test
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			graph := evidence.NewEvidenceGraph(0, nil)
 			receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 			metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
@@ -228,7 +220,6 @@ func TestGradeControlAssertions_DoesNotCombineRequirementsAcrossSubjects(t *test
 }
 
 func TestGradeControlAssertions_DoesNotTreatObservationAsIndependentStateMeasurement(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assertions := assertionGraderCatalog("unverifiable")
 	assertions.Assertions[0].RequiredEvidenceTypes = []string{"state_observation"}
@@ -243,7 +234,6 @@ func TestGradeControlAssertions_DoesNotTreatObservationAsIndependentStateMeasure
 }
 
 func TestGradeControlAssertions_DoesNotTreatReceiptAsNotaryProof(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assertions := assertionGraderCatalog("unverifiable")
 	assertions.Assertions[0].RequiredVerifierRefs = []*compliancev1.VersionedReference{{Id: "notary_proof", Version: "1.0.0"}}
@@ -258,7 +248,6 @@ func TestGradeControlAssertions_DoesNotTreatReceiptAsNotaryProof(t *testing.T) {
 }
 
 func TestGradeControlAssertions_DoesNotTreatConfigArtifactAsFIPSOperation(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assertions := assertionGraderCatalog("unverifiable")
 	assertions.Assertions[0].RequiredEvidenceTypes = []string{"config_attestation"}
@@ -273,7 +262,6 @@ func TestGradeControlAssertions_DoesNotTreatConfigArtifactAsFIPSOperation(t *tes
 }
 
 func TestGradeControlAssertions_IgnoresUnverifiedEvidence(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := assertionGraderGraph(t, now, 1)
 	for _, node := range graph.NodesByScope("scope-1") {
@@ -288,7 +276,6 @@ func TestGradeControlAssertions_IgnoresUnverifiedEvidence(t *testing.T) {
 }
 
 func TestGradeControlAssertions_IgnoresEvidenceFromAnotherScope(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := evidence.NewEvidenceGraph(0, nil)
 	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
@@ -304,7 +291,6 @@ func TestGradeControlAssertions_IgnoresEvidenceFromAnotherScope(t *testing.T) {
 }
 
 func TestGradeControlAssertions_ReportsStaleRequiredEvidence(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := assertionGraderGraph(t, now, 1)
 	for _, node := range graph.NodesByScope("scope-1") {
@@ -320,7 +306,6 @@ func TestGradeControlAssertions_ReportsStaleRequiredEvidence(t *testing.T) {
 }
 
 func TestGradeControlAssertions_AppliesMissingEvidencePolicy(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		policy string
@@ -331,7 +316,6 @@ func TestGradeControlAssertions_AppliesMissingEvidencePolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.policy, func(t *testing.T) {
-			t.Parallel()
 			assessment := gradeAssertionTestGraph(t, evidence.NewEvidenceGraph(0, nil), assertionGraderCatalog(tt.policy), now)
 			assert.Equal(t, tt.status, assessment.GetStatus())
 			assert.Equal(t, "incomplete", assessment.GetFreshnessStatus())
@@ -341,7 +325,6 @@ func TestGradeControlAssertions_AppliesMissingEvidencePolicy(t *testing.T) {
 }
 
 func TestGradeControlAssertions_NotApplicableOnlyForExplicitlyExcludedPopulation(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
 		ScopeID:     "scope-1",
@@ -365,7 +348,6 @@ func TestGradeControlAssertions_NotApplicableOnlyForExplicitlyExcludedPopulation
 }
 
 func TestGradeControlAssertions_MatchingPopulationWithoutEvidenceIsUnverifiable(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assessments, err := evidence.GradeControlAssertions(context.Background(), evidence.AssertionGradingRequest{
 		ScopeID:     "scope-1",
@@ -387,7 +369,6 @@ func TestGradeControlAssertions_MatchingPopulationWithoutEvidenceIsUnverifiable(
 }
 
 func TestGradeControlAssertions_AppliesAssertionValidationCycle(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := assertionGraderGraph(t, now, 1)
 	for _, node := range graph.NodesByScope("scope-1") {
@@ -437,7 +418,6 @@ func gradeAssertionPopulation(t *testing.T, graph *evidence.EvidenceGraph, subje
 }
 
 func TestGradeControlAssertions_SelectedPopulationRequiresEverySubjectToPass(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	passed := 1
 	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &passed, "scenario-2": nil}), []evidence.AssertionSubject{{SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-1"}, {SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-2"}}, now)
@@ -460,7 +440,6 @@ func TestGradeControlAssertions_SelectedPopulationRequiresEverySubjectToPass(t *
 }
 
 func TestGradeControlAssertions_KnownPopulationFailurePrecedesUnavailableSubjects(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	failed := 0
 	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &failed, "scenario-2": nil}), []evidence.AssertionSubject{{SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-1"}, {SourceAdmissionID: "source-1", RunID: "run-1", ScenarioID: "scenario-2"}}, now)
@@ -472,7 +451,6 @@ func TestGradeControlAssertions_KnownPopulationFailurePrecedesUnavailableSubject
 }
 
 func TestGradeControlAssertions_IgnoresSubjectsOutsideSelectedPopulation(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	passed := 1
 	failed := 0
@@ -484,7 +462,6 @@ func TestGradeControlAssertions_IgnoresSubjectsOutsideSelectedPopulation(t *test
 }
 
 func TestGradeControlAssertions_EmptySelectedPopulationCannotPass(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	passed := 1
 	assessment := gradeAssertionPopulation(t, assertionPopulationGraph(t, now, map[string]*int{"scenario-1": &passed}), []evidence.AssertionSubject{}, now)
@@ -496,7 +473,6 @@ func TestGradeControlAssertions_EmptySelectedPopulationCannotPass(t *testing.T) 
 }
 
 func TestGradeControlAssertions_RejectsIncompleteRequests(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	valid := evidence.AssertionGradingRequest{ScopeID: "scope-1", WindowStart: now.Add(-time.Hour), WindowEnd: now, EvaluatedAt: now, Assertions: assertionGraderCatalog("unverifiable"), Graph: evidence.NewEvidenceGraph(0, nil)}
 	tests := []struct {
@@ -524,7 +500,6 @@ func TestGradeControlAssertions_RejectsIncompleteRequests(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			request := valid
 			tt.mutate(&request)
 			_, err := evidence.GradeControlAssertions(context.Background(), request)
@@ -535,7 +510,6 @@ func TestGradeControlAssertions_RejectsIncompleteRequests(t *testing.T) {
 }
 
 func TestGradeControlAssertions_StopsOnCancellation(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -545,7 +519,6 @@ func TestGradeControlAssertions_StopsOnCancellation(t *testing.T) {
 }
 
 func TestGradeControlAssertions_RejectsInvalidGraph(t *testing.T) {
-	t.Parallel()
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := assertionGraderGraph(t, now, 1)
 	graph.NodesByScope("scope-1")[0].References = []string{"missing"}
@@ -557,7 +530,6 @@ func TestGradeControlAssertions_RejectsInvalidGraph(t *testing.T) {
 }
 
 func TestGradeControlAssertions_EmitsAssessmentForEveryCanonicalAssertion(t *testing.T) {
-	t.Parallel()
 	assertions, _, _, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)

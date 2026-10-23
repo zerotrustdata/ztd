@@ -133,7 +133,6 @@ var phase0ClaimInventory = []ClaimInventoryEntry{
 // every claim inventory entry has a recognized classification. This is the
 // typed inventory record required by Phase 0 exit criteria.
 func TestPhase0ClaimInventory_EveryEntryHasValidClassification(t *testing.T) {
-	t.Parallel()
 	valid := map[ClaimClassification]bool{
 		ClaimClassPlatformTechnical: true,
 		ClaimClassCustomer:          true,
@@ -157,7 +156,6 @@ func TestPhase0ClaimInventory_EveryEntryHasValidClassification(t *testing.T) {
 // TestPhase0ClaimInventory_CoversAllFrameworks validates that the inventory
 // covers every framework section present in compliance-alignment.md.
 func TestPhase0ClaimInventory_CoversAllFrameworks(t *testing.T) {
-	t.Parallel()
 	required := []string{
 		"SOC 2", "ISO 27001", "GDPR", "HIPAA", "NIST SP 800-53",
 		"PCI DSS", "NSA ZIG", "NIST SP 800-63B", "FedRAMP 20x", "All",
@@ -181,7 +179,6 @@ func TestPhase0ClaimInventory_CoversAllFrameworks(t *testing.T) {
 // overclaiming mitigation: the inventory must distinguish what ztd proves
 // from what the customer, assessor, or a future release must provide.
 func TestPhase0ClaimInventory_CustomerAndPlannedClaimsAreExplicit(t *testing.T) {
-	t.Parallel()
 	require.NotEmpty(t, phase0ClaimInventory)
 
 	counts := make(map[ClaimClassification]int)

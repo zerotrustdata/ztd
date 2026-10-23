@@ -200,7 +200,6 @@ func releasePrepareSignerKey(t *testing.T) string {
 }
 
 func TestRunReleasePrepare_DerivesInputsThenGeneratesExportsVerifiesAndProjectsInOrder(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	receiptSigner, auditor := releasePrepareSignerKey(t), releasePrepareSignerKey(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 999_000_000, time.UTC)
@@ -261,7 +260,6 @@ func TestRunReleasePrepare_DerivesInputsThenGeneratesExportsVerifiesAndProjectsI
 }
 
 func TestRunReleasePrepare_StopsBeforeProjectionWhenVerificationFails(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 0, time.UTC)
 	fixture.seedRuntimeDatabase(t, releasePrepareSignerKey(t), releasePrepareSignerKey(t), []time.Time{commitAt.Add(-time.Second)}, []time.Time{commitAt})
@@ -274,7 +272,6 @@ func TestRunReleasePrepare_StopsBeforeProjectionWhenVerificationFails(t *testing
 }
 
 func TestRunReleasePrepare_RejectsWindowWithoutReceiptsBeforeGenerating(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 0, time.UTC)
 	fixture.seedRuntimeDatabase(t, releasePrepareSignerKey(t), releasePrepareSignerKey(t), []time.Time{commitAt.Add(-time.Hour)}, []time.Time{commitAt})
@@ -286,7 +283,6 @@ func TestRunReleasePrepare_RejectsWindowWithoutReceiptsBeforeGenerating(t *testi
 }
 
 func TestRunReleasePrepare_RefusesRerunBeforeWritingAnything(t *testing.T) {
-	t.Parallel()
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 0, time.UTC)
 	workDir := func(fixture *releasePrepareFixture) string {
 		return filepath.Join(fixture.projectRoot, constants.ComplianceReleaseWorkDirname, "v2.2.2")
@@ -306,7 +302,6 @@ func TestRunReleasePrepare_RefusesRerunBeforeWritingAnything(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			fixture := newReleasePrepareFixture(t)
 			fixture.seedRuntimeDatabase(t, releasePrepareSignerKey(t), releasePrepareSignerKey(t), []time.Time{commitAt.Add(-time.Second)}, []time.Time{commitAt})
 			existing := seed(t, fixture)
@@ -323,7 +318,6 @@ func TestRunReleasePrepare_RefusesRerunBeforeWritingAnything(t *testing.T) {
 }
 
 func TestRunReleasePrepare_RejectsLoneSigningKeyPath(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	fixture.opts.signingMetadata = ""
 
@@ -335,7 +329,6 @@ func TestRunReleasePrepare_RejectsLoneSigningKeyPath(t *testing.T) {
 }
 
 func TestRunReleasePrepare_RequiresRuntimeDatabaseBeforeGenerating(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 
 	err := runReleasePrepare(context.Background(), fixture.deps, fixture.opts, &bytes.Buffer{}, &bytes.Buffer{})
@@ -345,7 +338,6 @@ func TestRunReleasePrepare_RequiresRuntimeDatabaseBeforeGenerating(t *testing.T)
 }
 
 func TestRunReleasePrepare_FailsClosedWhenRuntimeVaultCannotUnlock(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 0, time.UTC)
 	fixture.seedRuntimeDatabase(t, releasePrepareSignerKey(t), releasePrepareSignerKey(t), []time.Time{commitAt.Add(-time.Second)}, []time.Time{commitAt})
@@ -369,11 +361,9 @@ func releasePrepareFileService(t *testing.T, projectRoot string) fs.RuntimeFileS
 }
 
 func TestResolveSigningKeyPaths(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("defaults to the runtime secrets directory", func(t *testing.T) {
-		t.Parallel()
 		fileSvc := releasePrepareFileService(t, newReleasePrepareFixture(t).projectRoot)
 		opts := releasePrepareOptions{newKey: true}
 		location, err := resolveSigningKeyPaths(ctx, &opts, fileSvc)
@@ -385,7 +375,6 @@ func TestResolveSigningKeyPaths(t *testing.T) {
 	})
 
 	t.Run("a missing key names --new-key", func(t *testing.T) {
-		t.Parallel()
 		fileSvc := releasePrepareFileService(t, newReleasePrepareFixture(t).projectRoot)
 		_, err := resolveSigningKeyPaths(ctx, &releasePrepareOptions{}, fileSvc)
 		require.ErrorIs(t, err, constants.ErrValidationFailed)
@@ -393,7 +382,6 @@ func TestResolveSigningKeyPaths(t *testing.T) {
 	})
 
 	t.Run("an existing key is reused without --new-key", func(t *testing.T) {
-		t.Parallel()
 		fileSvc := releasePrepareFileService(t, newReleasePrepareFixture(t).projectRoot)
 		for _, name := range []string{constants.ComplianceReleaseSigningMetadataFilename, constants.ComplianceReleaseSigningPrivateFilename} {
 			require.NoError(t, fileSvc.WriteFile(ctx, filepath.Join(constants.SecretsDirname, name), []byte("x"), constants.PermFilePrivate))
@@ -403,7 +391,6 @@ func TestResolveSigningKeyPaths(t *testing.T) {
 	})
 
 	t.Run("explicit paths are kept and must be set together", func(t *testing.T) {
-		t.Parallel()
 		fileSvc := releasePrepareFileService(t, newReleasePrepareFixture(t).projectRoot)
 		opts := releasePrepareOptions{newKey: true, signingMetadata: "m.json", signingPrivateKey: "k.hex"}
 		location, err := resolveSigningKeyPaths(ctx, &opts, fileSvc)
@@ -416,7 +403,6 @@ func TestResolveSigningKeyPaths(t *testing.T) {
 }
 
 func TestWriteNewReleaseSigningKey_DefaultLocationGoesThroughRuntimeFileService(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	// A runtime root that has no secrets directory yet: the fixture's keystore
 	// already created one through the file service's 0755 parent-directory
@@ -462,7 +448,6 @@ func (r *recordingRuntimeFileService) ReadFile(ctx context.Context, relPath stri
 }
 
 func TestLoadSigningIdentity_DefaultLocationReadsThroughRuntimeFileService(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	fixture := newReleasePrepareFixture(t)
 	fileSvc := &recordingRuntimeFileService{RuntimeFileService: releasePrepareFileService(t, fixture.projectRoot)}
@@ -478,7 +463,6 @@ func TestLoadSigningIdentity_DefaultLocationReadsThroughRuntimeFileService(t *te
 }
 
 func TestWriteNewReleaseSigningKey_CreatesMissingKeyDirectory(t *testing.T) {
-	t.Parallel()
 	dir := filepath.Join(testutil.TempDir(t), "nested", constants.SecretsDirname)
 	opts := releasePrepareOptions{
 		signingMetadata:   filepath.Join(dir, constants.ComplianceReleaseSigningMetadataFilename),
@@ -492,7 +476,6 @@ func TestWriteNewReleaseSigningKey_CreatesMissingKeyDirectory(t *testing.T) {
 }
 
 func TestResolveReleasePaths_DefaultsFollowTheVersionFile(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 
 	prepared, err := resolveReleasePaths(fixture.opts)
@@ -508,7 +491,6 @@ func TestResolveReleasePaths_DefaultsFollowTheVersionFile(t *testing.T) {
 }
 
 func TestResolveReleaseWindow_ExplicitBoundsMustBeSetTogether(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	explicit := fixture.opts
 	explicit.windowStart, explicit.windowEnd = "2026-09-28T02:58:19Z", "2026-09-28T02:58:52.999Z"
@@ -526,7 +508,6 @@ func TestResolveReleaseWindow_ExplicitBoundsMustBeSetTogether(t *testing.T) {
 		"malformed end":   func(o *releasePrepareOptions) { o.windowEnd = "today" },
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			options := explicit
 			mutate(&options)
 			err := resolveReleaseWindow(context.Background(), "", nil, options, &releasePrepareContext{})
@@ -536,7 +517,6 @@ func TestResolveReleaseWindow_ExplicitBoundsMustBeSetTogether(t *testing.T) {
 }
 
 func TestResolveReleaseIdentity_QueriesRuntimeOnlyForFactsTheOperatorOmitted(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	prepared := &releasePrepareContext{repoRoot: fixture.repoRoot, windowEnd: releasePrepareTestNow}
 
@@ -555,14 +535,12 @@ func TestResolveReleaseIdentity_QueriesRuntimeOnlyForFactsTheOperatorOmitted(t *
 }
 
 func TestDefaultBinaryDigest_HashesTheRunningExecutable(t *testing.T) {
-	t.Parallel()
 	digest, err := defaultBinaryDigest()
 	require.NoError(t, err)
 	assert.Regexp(t, sha256HexRegexp, digest)
 }
 
 func TestWriteNewReleaseSigningKey_RefusesToOverwriteAnExistingIdentity(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	require.NoError(t, writeNewReleaseSigningKey(context.Background(), rand.Reader, fixture.opts, signingKeyLocation{}, "v2.2.2", releasePrepareTestNow))
 
@@ -575,7 +553,6 @@ func TestWriteNewReleaseSigningKey_RefusesToOverwriteAnExistingIdentity(t *testi
 }
 
 func TestRequireSigningKeyValidAt_RejectsExpiredAndNotYetValidKeys(t *testing.T) {
-	t.Parallel()
 	fixture := newReleasePrepareFixture(t)
 	require.NoError(t, writeNewReleaseSigningKey(context.Background(), rand.Reader, fixture.opts, signingKeyLocation{}, "v2.2.2", releasePrepareTestNow))
 	identity, err := loadComplianceReportSigningIdentity(context.Background(), signingKeyLocation{}, fixture.metadata, fixture.privateKey)

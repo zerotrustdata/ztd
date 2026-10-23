@@ -16,7 +16,6 @@ import (
 )
 
 func TestRegisterNativeTools_Success(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 	err := RegisterNativeTools(registry)
 	if err != nil {
@@ -73,7 +72,6 @@ func TestRegisterNativeTools_Success(t *testing.T) {
 }
 
 func TestRegisterNativeTools_DuplicateError(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	// Register once
@@ -93,7 +91,6 @@ func TestRegisterNativeTools_DuplicateError(t *testing.T) {
 }
 
 func TestRegisterNativeTools_NilRegistry(t *testing.T) {
-	t.Parallel()
 	err := RegisterNativeTools(nil)
 	if err == nil {
 		t.Fatal("Expected error when registry is nil, got nil")
@@ -105,7 +102,6 @@ func TestRegisterNativeTools_NilRegistry(t *testing.T) {
 }
 
 func TestNativeTools_InterfaceCompliance(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 	_ = RegisterNativeTools(registry)
 

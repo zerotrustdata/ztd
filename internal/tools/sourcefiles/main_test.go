@@ -20,7 +20,6 @@ import (
 )
 
 func TestRunSourcefiles_PrintsSlashSeparatedDependencies(t *testing.T) {
-	t.Parallel()
 	root := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "ui", "src"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "ui", "tests"), 0o755))
@@ -37,7 +36,6 @@ func TestRunSourcefiles_PrintsSlashSeparatedDependencies(t *testing.T) {
 }
 
 func TestRunSourcefiles_RejectsMissingEntries(t *testing.T) {
-	t.Parallel()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 

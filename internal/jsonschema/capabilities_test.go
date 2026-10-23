@@ -155,8 +155,7 @@ func scanSchema(t *testing.T) *schemaWalker {
 	return w
 }
 
-func TestOSCALProfile_KeywordCountsMatchEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_KeywordCountsMatchEmbeddedSchema(t *testing.T) {
 	w := scanSchema(t)
 	// Only check keywords that are in our profile; the walker counts all
 	// keyword occurrences including property names that happen to match
@@ -167,8 +166,7 @@ func TestOSCALProfile_KeywordCountsMatchEmbeddedSchema(t *testing.T) { //nolint:
 	}
 }
 
-func TestOSCALProfile_FormatsMatchEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_FormatsMatchEmbeddedSchema(t *testing.T) {
 	w := scanSchema(t)
 	assert.Len(t, w.formatCounts, len(OSCALProfile.Formats))
 	for _, f := range OSCALProfile.Formats {
@@ -176,8 +174,7 @@ func TestOSCALProfile_FormatsMatchEmbeddedSchema(t *testing.T) { //nolint:parall
 	}
 }
 
-func TestOSCALProfile_DefinitionCountMatchesEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_DefinitionCountMatchesEmbeddedSchema(t *testing.T) {
 	schemaBytes, err := oscalschema.SchemaBytes()
 	require.NoError(t, err)
 	var raw map[string]any
@@ -187,14 +184,12 @@ func TestOSCALProfile_DefinitionCountMatchesEmbeddedSchema(t *testing.T) { //nol
 	assert.Len(t, defs, OSCALProfile.DefinitionCount)
 }
 
-func TestOSCALProfile_BooleanSchemaCountMatchesEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_BooleanSchemaCountMatchesEmbeddedSchema(t *testing.T) {
 	w := scanSchema(t)
 	assert.Equal(t, OSCALProfile.BooleanSchemaCount, w.boolSchemaCount)
 }
 
-func TestOSCALProfile_HasRecursiveDefs(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_HasRecursiveDefs(t *testing.T) {
 	schemaBytes, err := oscalschema.SchemaBytes()
 	require.NoError(t, err)
 	var raw map[string]any
@@ -233,15 +228,13 @@ func TestOSCALProfile_HasRecursiveDefs(t *testing.T) { //nolint:paralleltest // 
 }
 
 func TestOSCALCapabilityInventory_EveryKeywordIsSupported(t *testing.T) {
-	t.Parallel()
 	for _, cap := range OSCALCapabilityInventory {
 		assert.True(t, SupportedKeyword(cap.Keyword),
 			"inventory keyword %s is not supported by the compiler", cap.Keyword)
 	}
 }
 
-func TestOSCALCapabilityInventory_EveryExercisedKeywordAppearsInSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALCapabilityInventory_EveryExercisedKeywordAppearsInSchema(t *testing.T) {
 	w := scanSchema(t)
 	for _, cap := range OSCALCapabilityInventory {
 		if cap.ExercisedByOSCAL {
@@ -253,8 +246,7 @@ func TestOSCALCapabilityInventory_EveryExercisedKeywordAppearsInSchema(t *testin
 	}
 }
 
-func TestOSCALProfile_RefFormsMatchEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_RefFormsMatchEmbeddedSchema(t *testing.T) {
 	w := scanSchema(t)
 	for form, expected := range OSCALProfile.RefForms {
 		assert.Equal(t, expected, w.refCounts[string(form)],
@@ -264,27 +256,23 @@ func TestOSCALProfile_RefFormsMatchEmbeddedSchema(t *testing.T) { //nolint:paral
 	assert.Equal(t, 0, w.refCounts["root"], "no root refs expected")
 }
 
-func TestOSCALProfile_TotalRefCount(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_TotalRefCount(t *testing.T) {
 	w := scanSchema(t)
 	assert.Equal(t, OSCALProfile.TotalRefCount, w.totalRefs)
 }
 
-func TestOSCALProfile_PatternCount(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_PatternCount(t *testing.T) {
 	w := scanSchema(t)
 	assert.Equal(t, OSCALProfile.PatternCount, w.patternCount)
 }
 
 func TestSupportedFormats_CoversAllOSCALFormats(t *testing.T) {
-	t.Parallel()
 	for _, f := range OSCALProfile.Formats {
 		assert.True(t, SupportedFormats[f], "format %s is not supported", f)
 	}
 }
 
 func TestOSCALProfile_CanBeMarshaled(t *testing.T) {
-	t.Parallel()
 	data, err := json.Marshal(OSCALProfile)
 	require.NoError(t, err)
 	assert.NotEmpty(t, data)
@@ -295,14 +283,12 @@ func TestOSCALProfile_CanBeMarshaled(t *testing.T) {
 }
 
 func TestAllValidationKeywordsAreSupported(t *testing.T) {
-	t.Parallel()
 	for kw := range ValidationKeywords {
 		assert.True(t, SupportedKeyword(kw), "validation keyword %s not supported", kw)
 	}
 }
 
-func TestNoUnrecognizedKeywordsInOSCALSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNoUnrecognizedKeywordsInOSCALSchema(t *testing.T) {
 	schemaBytes, err := oscalschema.SchemaBytes()
 	require.NoError(t, err)
 	var raw map[string]any
@@ -361,8 +347,7 @@ func TestNoUnrecognizedKeywordsInOSCALSchema(t *testing.T) { //nolint:parallelte
 	}
 }
 
-func TestOSCALProfile_MaxNestingDepth(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOSCALProfile_MaxNestingDepth(t *testing.T) {
 	w := scanSchema(t)
 	// The walker counts schema-node depth (each schema-valued keyword
 	// increments depth). The profile value is computed from the same

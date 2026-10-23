@@ -69,8 +69,8 @@ func TestStreamingWriter_TruncationLogsMetadataOnly(t *testing.T) {
 
 // TestExecuteCommand_LogsNoExecutionContent runs a real command at debug level
 // and asserts neither the command line, its arguments, nor its output reach the log.
-func TestExecuteCommand_LogsNoExecutionContent(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecuteCommand_LogsNoExecutionContent(t *testing.T) {
+	t.Parallel()
 	logger, logs := debugLogger()
 	svc := NewExecutionService(testutil.NewTestConfig(t), logger)
 

@@ -42,7 +42,6 @@ func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, re
 // returns once the dispatch answer is a completed receipt. The lane has no
 // receipt lookup, so the fake client cannot be asked for one.
 func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsCompletedReceipt(t *testing.T) {
-	t.Parallel()
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	fakeClient := &laneTestClient{
 		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt()}),
@@ -70,7 +69,6 @@ func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsComplete
 }
 
 func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotACompletedReceipt(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		outcome *client.GovernedOutcome
@@ -88,7 +86,6 @@ func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotAComple
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome, dispatchErr: tt.err}, client.Persona{})
 
 			err := lane.WriteWorkspaceFile(context.Background(), Target{OperatorID: "operator-1", SessionID: "session-1"}, "run-1", "tool-arg-file-path", "attempt-1", "/home/op/workspaces/ws-0123456789abcdef/net/network-summary.txt", "upstream_host=payments.internal.example")
@@ -102,7 +99,6 @@ func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotAComple
 }
 
 func TestCommandLane_WriteWorkspaceFile_RequiresOperatorTargetAndPath(t *testing.T) {
-	t.Parallel()
 	lane := NewCommandLane(&laneTestClient{}, client.Persona{})
 
 	err := lane.WriteWorkspaceFile(context.Background(), Target{}, "run-1", "scenario-1", "attempt-1", "", "x")
@@ -111,7 +107,6 @@ func TestCommandLane_WriteWorkspaceFile_RequiresOperatorTargetAndPath(t *testing
 }
 
 func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent(t *testing.T) {
-	t.Parallel()
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	absPath := "/home/op/workspaces/ws-0123456789abcdef/canary/probe.txt"
 	payload, err := proto.Marshal(&operatorv1.FsReadResult{
@@ -143,7 +138,6 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 // Setup and probe receipts must never appear when the scored investigation's
 // ledger is queried, even when they share an attempt and Data Operator.
 func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
-	t.Parallel()
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	readResult, err := proto.Marshal(&operatorv1.FsReadResult{
 		Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Content: "fixture",
@@ -169,7 +163,6 @@ func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
 }
 
 func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
-	t.Parallel()
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	failed, err := proto.Marshal(&operatorv1.FsReadResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "no such file"})
 	require.NoError(t, err)
@@ -188,7 +181,6 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome, dispatchErr: tt.err}, client.Persona{})
 
 			_, err := lane.ReadWorkspaceFile(context.Background(), target, "run-1", "environment-canary", "attempt-1", "/home/op/workspaces/ws-0123456789abcdef/missing.txt")
@@ -199,7 +191,6 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 }
 
 func TestCommandLane_ReadWorkspaceFile_RequiresOperatorTargetAndPath(t *testing.T) {
-	t.Parallel()
 	lane := NewCommandLane(&laneTestClient{}, client.Persona{})
 
 	_, err := lane.ReadWorkspaceFile(context.Background(), Target{}, "run-1", "scenario-1", "attempt-1", "")
@@ -211,7 +202,6 @@ func TestCommandLane_ReadWorkspaceFile_RequiresOperatorTargetAndPath(t *testing.
 // a model-visible answer is handed back as the typed outcome it arrived as, with
 // the receipt's transaction and dispatch result read from that outcome.
 func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing.T) {
-	t.Parallel()
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	tests := []struct {
 		name          string
@@ -241,7 +231,6 @@ func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome}, client.Persona{CLISessionID: "cli-session-1"})
 
 			dispatched, err := lane.DispatchAgentTool(context.Background(), target, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/workspaces/ws-0123456789abcdef/out.txt", []byte("payload"))
@@ -256,7 +245,6 @@ func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing
 }
 
 func TestCommandLane_DispatchAgentTool_FailsClosedOnTransportUntypedAndSuspendedAnswers(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		outcome *client.GovernedOutcome
@@ -270,7 +258,6 @@ func TestCommandLane_DispatchAgentTool_FailsClosedOnTransportUntypedAndSuspended
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome, dispatchErr: tt.err}, client.Persona{})
 
 			_, err := lane.DispatchAgentTool(context.Background(), Target{OperatorID: "operator-1", SessionID: "session-1"}, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/out.txt", []byte("payload"))
@@ -284,7 +271,6 @@ func TestCommandLane_DispatchAgentTool_FailsClosedOnTransportUntypedAndSuspended
 }
 
 func TestCommandLane_DispatchAgentTool_RequiresOperatorTargetScopeAndPayload(t *testing.T) {
-	t.Parallel()
 	lane := NewCommandLane(&laneTestClient{}, client.Persona{})
 
 	_, err := lane.DispatchAgentTool(context.Background(), Target{}, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/out.txt", []byte("payload"))
@@ -296,7 +282,6 @@ func TestCommandLane_DispatchAgentTool_RequiresOperatorTargetScopeAndPayload(t *
 // model is shown for a denied answer: the typed rejection error, or the refusal
 // code and error. The HTTP status never appears in the text.
 func TestCommandLane_AnswerMessageRendersTypedMessageNotHTTPStatus(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "rejected", answerMessage(laneRejectionOutcome(t)))
 	assert.Equal(t, "INGRESS_REFUSAL_CODE_MALFORMED_REQUEST: malformed", answerMessage(laneRefusalOutcome(t, http.StatusBadRequest, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, Error: "malformed"})))
 	assert.Empty(t, answerMessage(laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt()})))

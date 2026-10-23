@@ -41,7 +41,6 @@ func newTestFsGrep(t *testing.T, workDir string) *execution.FsGrepService {
 }
 
 func TestSearchFileTool(t *testing.T) {
-	t.Parallel()
 	workDir := testutil.TempDir(t)
 	logsDir := filepath.Join(workDir, "logs")
 	require.NoError(t, os.Mkdir(logsDir, 0755))
@@ -50,7 +49,6 @@ func TestSearchFileTool(t *testing.T) {
 	handler := newSearchToolHandler(t, workDir)
 
 	t.Run("returns scrubbed matching lines with line numbers", func(t *testing.T) {
-		t.Parallel()
 		args, err := json.Marshal(SearchFileRequest{Path: filepath.Join("logs", "app.log"), Pattern: "AUTH_FAILURE"})
 		require.NoError(t, err)
 		result, err := handler.HandleTool(context.Background(), constants.MCPToolSearchFile, args)
@@ -66,7 +64,6 @@ func TestSearchFileTool(t *testing.T) {
 	})
 
 	t.Run("scrubs every secret kind", func(t *testing.T) {
-		t.Parallel()
 		secretsFile := filepath.Join(logsDir, "secrets.log")
 		require.NoError(t, os.WriteFile(secretsFile, []byte("password=secret123\napi_key=sk-12345\ntoken=abc123\nsecret=mysecret\n"), 0644))
 		args, err := json.Marshal(SearchFileRequest{Path: filepath.Join("logs", "secrets.log"), Pattern: "="})
@@ -83,7 +80,6 @@ func TestSearchFileTool(t *testing.T) {
 	})
 
 	t.Run("rejects a directory and names the directory tool", func(t *testing.T) {
-		t.Parallel()
 		args, err := json.Marshal(SearchFileRequest{Path: "logs", Pattern: "AUTH_FAILURE"})
 		require.NoError(t, err)
 		_, err = handler.HandleTool(context.Background(), constants.MCPToolSearchFile, args)
@@ -92,7 +88,6 @@ func TestSearchFileTool(t *testing.T) {
 	})
 
 	t.Run("requires path and pattern", func(t *testing.T) {
-		t.Parallel()
 		_, err := handler.HandleTool(context.Background(), constants.MCPToolSearchFile, json.RawMessage(`{"path":"logs/app.log"}`))
 		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 		_, err = handler.HandleTool(context.Background(), constants.MCPToolSearchFile, json.RawMessage(`{"pattern":"x"}`))
@@ -100,7 +95,6 @@ func TestSearchFileTool(t *testing.T) {
 	})
 
 	t.Run("fails closed without the runtime search service", func(t *testing.T) {
-		t.Parallel()
 		unwired, err := NewNativeToolHandler(nil)
 		require.NoError(t, err)
 		args, err := json.Marshal(SearchFileRequest{Path: logFile, Pattern: "AUTH_FAILURE"})

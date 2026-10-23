@@ -14,7 +14,6 @@ import (
 )
 
 func TestCampaignQueueBuildBatchPlan(t *testing.T) {
-	t.Parallel()
 	queue := &CampaignQueue{
 		Models: []CampaignQueueModel{
 			{VariantID: "granite3-3-2b", Status: QueueStatusVerified},
@@ -37,7 +36,6 @@ func TestCampaignQueueBuildBatchPlan(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			var got []string
 			for _, entry := range queue.BuildBatchPlan(test.req) {
 				got = append(got, entry.VariantID)
@@ -48,7 +46,6 @@ func TestCampaignQueueBuildBatchPlan(t *testing.T) {
 }
 
 func TestCampaignQueueBuildBatchPlan_SkipVerifiedKeepsStaleVerifiedEntries(t *testing.T) {
-	t.Parallel()
 	queue := &CampaignQueue{
 		Models: []CampaignQueueModel{
 			{VariantID: "current", Status: QueueStatusVerified},

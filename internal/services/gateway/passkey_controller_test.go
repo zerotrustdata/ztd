@@ -35,14 +35,12 @@ func newTestPasskeyController(t *testing.T) *PasskeyController {
 }
 
 func TestNewPasskeyController_Wiring(t *testing.T) {
-	t.Parallel()
 	c := newTestPasskeyController(t)
 
 	assert.NotNil(t, c.PasskeyHandler(), "PasskeyHandler accessor should return the wrapped handler")
 }
 
 func TestNewPasskeyController_NilDeps(t *testing.T) {
-	t.Parallel()
 	c := newPasskeyController(PasskeyControllerDeps{})
 	require.NotNil(t, c)
 	assert.Nil(t, c.PasskeyHandler(), "PasskeyHandler accessor should be nil when no handler is wired")
@@ -53,8 +51,6 @@ func TestNewPasskeyController_NilDeps(t *testing.T) {
 // the underlying PasskeyHandler. A GET request hits the underlying handler's
 // POST-only method guard and returns 405, proving the call reached it.
 func TestPasskeyController_CfgReturningMethods_Delegate(t *testing.T) {
-	t.Parallel()
-
 	c := newTestPasskeyController(t)
 	cfg := passkeyHandlerConfig{}
 
@@ -69,8 +65,6 @@ func TestPasskeyController_CfgReturningMethods_Delegate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			hf := tc.fn(cfg)
 			require.NotNil(t, hf, "cfg-returning method should produce a non-nil handler")
 
@@ -89,11 +83,9 @@ func TestPasskeyController_CfgReturningMethods_Delegate(t *testing.T) {
 // Each is exercised via an early-return guard (wrong method or missing user
 // context) so no DB access is needed.
 func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
-	t.Parallel()
 	c := newTestPasskeyController(t)
 
 	t.Run("cliStatus/POST->405", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/auth/passkeys/cli/status", nil)
 		rr := httptest.NewRecorder()
 		c.cliStatus(rr, req)
@@ -101,7 +93,6 @@ func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
 	})
 
 	t.Run("handleApprovalPage/POST->405", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/approve/abc", nil)
 		rr := httptest.NewRecorder()
 		c.handleApprovalPage(rr, req)
@@ -109,23 +100,13 @@ func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
 	})
 
 	t.Run("handleApprovalAction/no-user->401", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/approvals/abc/challenge", nil)
 		rr := httptest.NewRecorder()
 		c.handleApprovalAction(rr, req)
 		assert.Equal(t, http.StatusUnauthorized, rr.Code)
 	})
 
-	t.Run("handleCLIApprovalStatus/POST->405", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/approvals/cli/abc/status", nil)
-		rr := httptest.NewRecorder()
-		c.handleCLIApprovalStatus(rr, req)
-		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
-	})
-
 	t.Run("handleCLIListSuspended/POST->405", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/approvals/cli", nil)
 		rr := httptest.NewRecorder()
 		c.handleCLIListSuspended(rr, req)
@@ -133,7 +114,6 @@ func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
 	})
 
 	t.Run("handleListSuspendedTransactions/POST->405", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/approvals", nil)
 		rr := httptest.NewRecorder()
 		c.handleListSuspendedTransactions(rr, req)
@@ -141,7 +121,6 @@ func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
 	})
 
 	t.Run("listCredentials/POST->405", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/passkeys", nil)
 		rr := httptest.NewRecorder()
 		c.listCredentials(rr, req)
@@ -149,9 +128,7 @@ func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
 	})
 
 	t.Run("revokeCredential/POST->405", func(t *testing.T) {
-		t.Parallel()
 		// RevokeCredential guards on DELETE; POST hits the 405 path.
-
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/passkeys/cred1", nil)
 		rr := httptest.NewRecorder()
 		c.revokeCredential(rr, req)

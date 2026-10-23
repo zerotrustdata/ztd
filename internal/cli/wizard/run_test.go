@@ -18,7 +18,6 @@ import (
 // --- Run: headless cancel via Ctrl+C ---
 
 func TestRun_HeadlessCancel(t *testing.T) {
-	t.Parallel()
 	opts := Options{
 		InitialConfig: Config{PublicBaseURL: "https://demo.zerotrustdata.io"},
 		ProgramOptions: []tea.ProgramOption{
@@ -36,7 +35,6 @@ func TestRun_HeadlessCancel(t *testing.T) {
 // --- Run: headless confirm via model state ---
 
 func TestRun_HeadlessConfirm_ModelState(t *testing.T) {
-	t.Parallel()
 	opts := Options{
 		InitialConfig: Config{
 			PublicBaseURL:    "https://demo.zerotrustdata.io",
@@ -58,8 +56,6 @@ func TestRun_HeadlessConfirm_ModelState(t *testing.T) {
 // --- Run: error wrapping ---
 
 func TestRun_ErrorWrapping_Format(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{})
 	m.quitting = true
 	result := m.result()
@@ -70,7 +66,6 @@ func TestRun_ErrorWrapping_Format(t *testing.T) {
 // --- Config type ---
 
 func TestConfig_ZeroValue(t *testing.T) {
-	t.Parallel()
 	var c Config
 	assert.Empty(t, c.PublicBaseURL)
 	assert.Empty(t, c.CertIdentityMode)
@@ -81,7 +76,6 @@ func TestConfig_ZeroValue(t *testing.T) {
 // --- Options type ---
 
 func TestOptions_ZeroValue(t *testing.T) {
-	t.Parallel()
 	var o Options
 	assert.Empty(t, o.InitialConfig.PublicBaseURL)
 	assert.Nil(t, o.ProgramOptions)
@@ -90,7 +84,6 @@ func TestOptions_ZeroValue(t *testing.T) {
 // --- Result type ---
 
 func TestResult_ZeroValue(t *testing.T) {
-	t.Parallel()
 	var r Result
 	assert.False(t, r.Cancel)
 	assert.Empty(t, r.Config.PublicBaseURL)
@@ -99,8 +92,6 @@ func TestResult_ZeroValue(t *testing.T) {
 // --- Run: full step-through with tea.Program ---
 
 func TestRun_FullStepThrough(t *testing.T) {
-	t.Parallel()
-
 	m := NewModel(Options{
 		InitialConfig: Config{
 			PublicBaseURL: "https://demo.zerotrustdata.io",

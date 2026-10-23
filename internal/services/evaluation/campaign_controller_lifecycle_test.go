@@ -34,7 +34,6 @@ func secondTestModelVariant() *evalv1.ModelVariant {
 }
 
 func TestCampaignControllerCreateCampaignIsIdempotentForTheSameFrozenSpec(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	create := CampaignCreateRequest{
@@ -54,7 +53,6 @@ func TestCampaignControllerCreateCampaignIsIdempotentForTheSameFrozenSpec(t *tes
 }
 
 func TestCampaignControllerCreateCampaignRejectsADifferentSpecUnderTheSameID(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	other, err := MaterializeModelRegistry(f.req.CampaignID, []*evalv1.ModelVariant{testModelVariant(), secondTestModelVariant()})
 	require.NoError(t, err)
@@ -83,7 +81,6 @@ func newUnfrozenCampaignFixture(t *testing.T) *archiveFixture {
 }
 
 func TestCampaignControllerCreateCampaignFreezesNoPosture(t *testing.T) {
-	t.Parallel()
 	f := newUnfrozenCampaignFixture(t)
 	spec, err := f.controller.CreateCampaign(context.Background(), CampaignCreateRequest{
 		Platform:          testPlatform,
@@ -99,7 +96,6 @@ func TestCampaignControllerCreateCampaignFreezesNoPosture(t *testing.T) {
 }
 
 func TestCampaignControllerStartRunFreezesEachRunsLiveGovernance(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	tribunal, err := NewRunGovernance(consensusPosture, testTribunalBinding())
@@ -116,7 +112,6 @@ func TestCampaignControllerStartRunFreezesEachRunsLiveGovernance(t *testing.T) {
 }
 
 func TestCampaignControllerStartRunRejectsMissingGovernance(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	for name, governance := range map[string]RunGovernance{
 		"no posture":   {Consensus: &evalv1.EvaluationConsensusIdentity{}},
@@ -133,14 +128,12 @@ func TestCampaignControllerStartRunRejectsMissingGovernance(t *testing.T) {
 }
 
 func TestCampaignControllerCreateCampaignRequiresInputs(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	_, err := f.controller.CreateCampaign(context.Background(), CampaignCreateRequest{Platform: testPlatform, CampaignID: f.req.CampaignID})
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestCampaignControllerStartRunBindsANewRunToAnExistingCampaign(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
@@ -165,7 +158,6 @@ func TestCampaignControllerStartRunBindsANewRunToAnExistingCampaign(t *testing.T
 }
 
 func TestCampaignControllerStartRunRejectsUnspecifiedWitnessPolicies(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	_, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance,
 		PlatformRelease:           testPlatform.Release,
@@ -202,7 +194,6 @@ func createMultiModelCampaign(t *testing.T, f *archiveFixture, campaignID string
 }
 
 func TestCampaignControllerStartRunRejectsAMultiModelModelRoleCampaign(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	createMultiModelCampaign(t, f, "multi-model")
 
@@ -219,7 +210,6 @@ func TestCampaignControllerStartRunRejectsAMultiModelModelRoleCampaign(t *testin
 }
 
 func TestCampaignControllerStartRunAllowsAMultiModelSystemCampaign(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	createMultiModelCampaign(t, f, "multi-system")
 
@@ -234,7 +224,6 @@ func TestCampaignControllerStartRunAllowsAMultiModelSystemCampaign(t *testing.T)
 }
 
 func TestCampaignControllerStartRunRejectsExistingRunAndMissingCampaign(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
@@ -249,7 +238,6 @@ func TestCampaignControllerStartRunRejectsExistingRunAndMissingCampaign(t *testi
 }
 
 func TestCampaignControllerCancelRunStopsEveryAssignmentWithoutAResult(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	binding := CampaignExecutionBinding{
@@ -288,7 +276,6 @@ func TestCampaignControllerCancelRunStopsEveryAssignmentWithoutAResult(t *testin
 }
 
 func TestCampaignControllerCancelRunStopsAnUnresolvedRunningAssignment(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	assignments, err := f.store.ListAssignments(ctx, "run-a")
@@ -311,13 +298,11 @@ func TestCampaignControllerCancelRunStopsAnUnresolvedRunningAssignment(t *testin
 }
 
 func TestCampaignControllerCancelRunRequiresAStoreAndKnownRun(t *testing.T) {
-	t.Parallel()
 	_, err := (*CampaignController)(nil).CancelRun(context.Background(), "run-a")
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestCampaignControllerStartRunRejectsABuildThatIsNotTheRecordedRelease(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 
 	_, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: f.req.CampaignID, RunID: "run-other-build", PlatformRelease: "v2.2.9"})
@@ -328,7 +313,6 @@ func TestCampaignControllerStartRunRejectsABuildThatIsNotTheRecordedRelease(t *t
 }
 
 func TestCampaignControllerStartRunEnforcesNoReleaseOnACampaignFrozenBeforeReleasesWereRecorded(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	saveLegacyCampaign(t, f, "legacy-campaign")
 

@@ -26,7 +26,6 @@ import (
 )
 
 func TestPayloadToExecutionRequest(t *testing.T) {
-	t.Parallel()
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
 		req := &operatorv1.CommandRequested{
@@ -124,10 +123,9 @@ func TestPayloadToExecutionRequest(t *testing.T) {
 	})
 }
 
-func TestCommandService_HandleExecutionRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects oversized payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCommandService_HandleExecutionRequest(t *testing.T) {
+	t.Run("rejects oversized payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -143,8 +141,8 @@ func TestCommandService_HandleExecutionRequest(t *testing.T) { //nolint:parallel
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects invalid protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -159,8 +157,8 @@ func TestCommandService_HandleExecutionRequest(t *testing.T) { //nolint:parallel
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects missing command field", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects missing command field", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -177,8 +175,8 @@ func TestCommandService_HandleExecutionRequest(t *testing.T) { //nolint:parallel
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects ollama service command without opt in", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects ollama service command without opt in", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		cfg.ProviderBoundaryObserver.Enabled = true
 		logger := testutil.NewTestLogger()
@@ -197,8 +195,8 @@ func TestCommandService_HandleExecutionRequest(t *testing.T) { //nolint:parallel
 	})
 }
 
-func TestNewCommandService(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewCommandService(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	execSvc := execution.NewExecutionService(cfg, logger)
@@ -206,7 +204,7 @@ func TestNewCommandService(t *testing.T) { //nolint:paralleltest // mutates pack
 	auditStore := storagetest.NewTestAuditStore(t)
 
 	t.Run("binds every dependency", func(t *testing.T) {
-
+		t.Parallel()
 		svc, err := NewCommandService(cfg, logger, execSvc, results, auditStore)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
@@ -228,9 +226,9 @@ func TestNewCommandService(t *testing.T) { //nolint:paralleltest // mutates pack
 		{name: "nil results publisher", cfg: cfg, execSvc: execSvc, auditStore: auditStore, wantErr: constants.ErrPubSubResultsPublisher},
 		{name: "nil audit store", cfg: cfg, execSvc: execSvc, results: results, wantErr: constants.ErrAuditStoreRequired},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-
+			t.Parallel()
 			svc, err := NewCommandService(tt.cfg, logger, tt.execSvc, tt.results, tt.auditStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
@@ -238,10 +236,9 @@ func TestNewCommandService(t *testing.T) { //nolint:paralleltest // mutates pack
 	}
 }
 
-func TestCommandService_HandleCancelRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects oversized payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCommandService_HandleCancelRequest(t *testing.T) {
+	t.Run("rejects oversized payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -257,8 +254,8 @@ func TestCommandService_HandleCancelRequest(t *testing.T) { //nolint:paralleltes
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects invalid protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -273,8 +270,8 @@ func TestCommandService_HandleCancelRequest(t *testing.T) { //nolint:paralleltes
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects missing execution_id", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects missing execution_id", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -292,10 +289,9 @@ func TestCommandService_HandleCancelRequest(t *testing.T) { //nolint:paralleltes
 	})
 }
 
-func TestCommandService_runStatusTicker(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("returns zero when done channel closes immediately", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestCommandService_runStatusTicker(t *testing.T) {
+	t.Run("returns zero when done channel closes immediately", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -312,8 +308,8 @@ func TestCommandService_runStatusTicker(t *testing.T) { //nolint:paralleltest //
 		assert.Equal(t, 0, count)
 	})
 
-	t.Run("returns count when context cancelled", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("returns count when context cancelled", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})

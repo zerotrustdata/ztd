@@ -22,7 +22,6 @@ import (
 )
 
 func TestProjectMetricAvailabilityEvent_RejectsMissingRole(t *testing.T) {
-	t.Parallel()
 	_, err := ProjectMetricAvailabilityEvent(PublicMetricAvailabilitySignal{
 		RunID:        "run-live-1",
 		AssignmentID: "assign-1",
@@ -39,7 +38,6 @@ func TestProjectMetricAvailabilityEvent_RejectsMissingRole(t *testing.T) {
 }
 
 func TestProjectMetricAvailabilityEvent_RejectsInvalidProgress(t *testing.T) {
-	t.Parallel()
 	_, err := ProjectMetricAvailabilityEvent(PublicMetricAvailabilitySignal{
 		RunID:        "run-live-1",
 		AssignmentID: "assign-1",
@@ -57,7 +55,6 @@ func TestProjectMetricAvailabilityEvent_RejectsInvalidProgress(t *testing.T) {
 }
 
 func TestProjectModelRoleInvocationEvent_ExcludesProviderBoundaryFields(t *testing.T) {
-	t.Parallel()
 	event, err := ProjectModelRoleInvocationEvent(PublicModelRoleInvocationSignal{
 		RunID:        "run-live-1",
 		AssignmentID: "assign-1",
@@ -84,7 +81,6 @@ func TestProjectModelRoleInvocationEvent_ExcludesProviderBoundaryFields(t *testi
 }
 
 func TestProjectMetricAvailabilityEvent_ProjectsPassRateDelta(t *testing.T) {
-	t.Parallel()
 	event, err := ProjectMetricAvailabilityEvent(PublicMetricAvailabilitySignal{
 		RunID:        "run-live-1",
 		AssignmentID: "assign-1",
@@ -113,7 +109,6 @@ func TestProjectMetricAvailabilityEvent_ProjectsPassRateDelta(t *testing.T) {
 }
 
 func TestProjectMetricAvailabilityEvent_ZeroDenominatorIsUnavailable(t *testing.T) {
-	t.Parallel()
 	event, err := ProjectMetricAvailabilityEvent(PublicMetricAvailabilitySignal{
 		RunID:        "run-live-1",
 		AssignmentID: "assign-1",
@@ -135,7 +130,6 @@ func TestProjectMetricAvailabilityEvent_ZeroDenominatorIsUnavailable(t *testing.
 }
 
 func TestMarshalPublicLiveEvent_KeepsZeroProgressAndAMeasuredZero(t *testing.T) {
-	t.Parallel()
 	zero := 0.0
 	event, err := ProjectMetricAvailabilityEvent(PublicMetricAvailabilitySignal{
 		RunID:        "run-live-1",
@@ -175,13 +169,11 @@ func TestMarshalPublicLiveEvent_KeepsZeroProgressAndAMeasuredZero(t *testing.T) 
 }
 
 func TestMarshalPublicLiveEvent_RejectsNil(t *testing.T) {
-	t.Parallel()
 	_, err := MarshalPublicLiveEvent(nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestProjectLiveEvents_CarryTheCampaignReleaseIdentity(t *testing.T) {
-	t.Parallel()
 	release := CampaignRelease{Release: "v2.3.0", Basis: ReleaseBasisRecorded, SourceRevision: "abc123"}
 	invoked, err := ProjectModelRoleInvocationEvent(PublicModelRoleInvocationSignal{
 		Release: release, RunID: "run-live-1", AssignmentID: "assign-1", VariantID: "qwen3-4b", Role: models.ModelRolePrimary,
@@ -202,7 +194,6 @@ func TestProjectLiveEvents_CarryTheCampaignReleaseIdentity(t *testing.T) {
 }
 
 func TestCampaignPublicationCoordinator_ExportsProjectionRecordsOnly(t *testing.T) {
-	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	savePublicRunIdentity(t, store, "run-1", "campaign-1")
@@ -231,7 +222,6 @@ func TestCampaignPublicationCoordinator_ExportsProjectionRecordsOnly(t *testing.
 const campaignPublicationEmitsNativeLiveEvents = true
 
 func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *testing.T) {
-	t.Parallel()
 	require.True(t, campaignPublicationEmitsNativeLiveEvents)
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
@@ -305,7 +295,6 @@ func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *test
 }
 
 func TestCampaignPublication_PublishesInvocationAtAssignmentStart(t *testing.T) {
-	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter)

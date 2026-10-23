@@ -27,8 +27,7 @@ func swapSourceRoot(t *testing.T, root func() (string, error)) {
 	t.Cleanup(func() { CLISourceRoot = original })
 }
 
-func TestAbsUnderSourceRoot_ResolvesRelativePathsAgainstTheSourceRoot(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAbsUnderSourceRoot_ResolvesRelativePathsAgainstTheSourceRoot(t *testing.T) {
 	root := testutil.TempDir(t)
 	swapSourceRoot(t, func() (string, error) { return root, nil })
 
@@ -42,9 +41,8 @@ func TestAbsUnderSourceRoot_ResolvesRelativePathsAgainstTheSourceRoot(t *testing
 		{name: "redundant segments are cleaned", input: "a//b/../c", want: filepath.Join(root, "a", "c")},
 		{name: "empty path is the root itself", input: "", want: root},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			got, err := AbsUnderSourceRoot(tt.input)
 
 			require.NoError(t, err)
@@ -53,8 +51,7 @@ func TestAbsUnderSourceRoot_ResolvesRelativePathsAgainstTheSourceRoot(t *testing
 	}
 }
 
-func TestAbsUnderSourceRoot_ReturnsAbsolutePathsCleanedWithoutConsultingTheSourceRoot(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAbsUnderSourceRoot_ReturnsAbsolutePathsCleanedWithoutConsultingTheSourceRoot(t *testing.T) {
 	swapSourceRoot(t, func() (string, error) {
 		return "", errors.New("source root must not be consulted for absolute paths")
 	})
@@ -66,8 +63,7 @@ func TestAbsUnderSourceRoot_ReturnsAbsolutePathsCleanedWithoutConsultingTheSourc
 	assert.Equal(t, filepath.Clean(absolute), got)
 }
 
-func TestAbsUnderSourceRoot_PropagatesSourceRootFailureForRelativePaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAbsUnderSourceRoot_PropagatesSourceRootFailureForRelativePaths(t *testing.T) {
 	cause := errors.New("working directory deleted")
 	swapSourceRoot(t, func() (string, error) { return "", cause })
 
@@ -78,7 +74,6 @@ func TestAbsUnderSourceRoot_PropagatesSourceRootFailureForRelativePaths(t *testi
 }
 
 func TestAbsUnderSourceRoot_MatchesFilepathAbsWithTheDefaultSourceRoot(t *testing.T) {
-	t.Parallel()
 	want, err := filepath.Abs("demos/fedramp")
 	require.NoError(t, err)
 

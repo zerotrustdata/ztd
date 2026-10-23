@@ -18,7 +18,6 @@ import (
 )
 
 func TestDiagnosticFromChildOutput_PrefersErrorRecordCause(t *testing.T) {
-	t.Parallel()
 	output := `2026-10-12T13:54:23.121-07:00 INFO: Gateway servers starting
   - component: gateway
 2026-10-12T13:54:23.124-07:00 ERROR: Gateway service failed
@@ -34,18 +33,15 @@ func TestDiagnosticFromChildOutput_PrefersErrorRecordCause(t *testing.T) {
 }
 
 func TestDiagnosticFromChildOutput_ErrorRecordWithoutCause(t *testing.T) {
-	t.Parallel()
 	output := "2026-10-12T13:54:23.124-07:00 ERROR: Gateway service failed\n  - component: gateway\n"
 	assert.Equal(t, "Gateway service failed", diagnosticFromChildOutput(output))
 }
 
 func TestDiagnosticFromChildOutput_PlainStderrFallsBackToLastLine(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "gateway child startup diagnostic", diagnosticFromChildOutput("noise\ngateway child startup diagnostic\n"))
 }
 
 func TestSpectatorListenerPorts_IncludesEvaluationExplorer(t *testing.T) {
-	t.Parallel()
 	ports, err := spectatorListenerPorts(serve.GatewayConfig{PublicSpectatorEnabled: true})
 	require.NoError(t, err)
 	assert.Equal(t, []spectatorListenerPort{
@@ -63,8 +59,6 @@ func TestSpectatorListenerPorts_IncludesEvaluationExplorer(t *testing.T) {
 }
 
 func TestSpectatorListenerPorts_DisabledAndMalformed(t *testing.T) {
-	t.Parallel()
-
 	ports, err := spectatorListenerPorts(serve.GatewayConfig{EvalExplorerAddr: "127.0.0.1:5999"})
 	require.NoError(t, err)
 	assert.Empty(t, ports, "a disabled spectator binds no listeners")

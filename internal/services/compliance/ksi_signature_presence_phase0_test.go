@@ -16,7 +16,6 @@ import (
 )
 
 func TestKSIReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
-	t.Parallel()
 	deps := fullDeps(t)
 	record := deps.Audit.(*mockAuditReader).receipts[0]
 	record.ActionReceipt.ResultSummary = "tampered-after-signing"
@@ -32,7 +31,6 @@ func TestKSIReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
 }
 
 func TestKSIReceiptVerification_RejectsMissingFinalPersistenceAttestation(t *testing.T) {
-	t.Parallel()
 	deps := fullDeps(t)
 	record := deps.Audit.(*mockAuditReader).receipts[0]
 	record.ActionReceipt.FinalPersistenceAttestation = nil

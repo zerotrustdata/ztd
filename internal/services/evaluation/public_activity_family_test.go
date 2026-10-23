@@ -15,7 +15,6 @@ import (
 )
 
 func TestBuildPublicAssignmentEvidence_EmitsEmptyActivityRecordsOnWire(t *testing.T) {
-	t.Parallel()
 	activity, _, err := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{
 		Result: &evalv1.EvaluationAssignmentResult{},
 	})

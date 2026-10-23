@@ -37,7 +37,6 @@ func newCampaignExportFileService(t *testing.T) fs.RuntimeFileService {
 }
 
 func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
-	t.Parallel()
 	files := newCampaignExportFileService(t)
 	store := NewStore(files)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -126,7 +125,6 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 }
 
 func TestBuildCampaignExportSchemaDocumentUsesTypedFileAndTableContracts(t *testing.T) {
-	t.Parallel()
 	document := buildCampaignExportSchemaDocument()
 	body, err := json.Marshal(document)
 	require.NoError(t, err)
@@ -152,7 +150,6 @@ func TestBuildCampaignExportSchemaDocumentUsesTypedFileAndTableContracts(t *test
 }
 
 func TestCampaignExporter_JSONLUsesCanonicalProtoJSONAndRichExtensions(t *testing.T) {
-	t.Parallel()
 	body, err := marshalJSONL([]CampaignExportAssignmentRecord{{
 		SchemaVersion: campaignExportSchemaVersion,
 		RecordType:    publicMessageTypeAssignmentResult,
@@ -170,7 +167,6 @@ func TestCampaignExporter_JSONLUsesCanonicalProtoJSONAndRichExtensions(t *testin
 }
 
 func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservations(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	reader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)
@@ -208,7 +204,6 @@ func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservatio
 }
 
 func TestCampaignExporter_ExportRunRequiresRunID(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	exporter := NewCampaignExporter(nil)
@@ -217,7 +212,6 @@ func TestCampaignExporter_ExportRunRequiresRunID(t *testing.T) {
 }
 
 func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
-	t.Parallel()
 	files := newCampaignExportFileService(t)
 	store := NewStore(files)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -385,7 +379,6 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 }
 
 func TestBuildAssignmentResultsCSV_EmitsHeaderAndRow(t *testing.T) {
-	t.Parallel()
 	completedAt := timestamppb.New(time.Unix(1_700_000_000, 0).UTC())
 	csvBody, err := buildAssignmentResultsCSV([]CampaignExportAssignmentRecord{
 		{

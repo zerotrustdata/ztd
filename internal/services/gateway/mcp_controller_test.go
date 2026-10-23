@@ -48,25 +48,21 @@ func newTestMCPController(t *testing.T) *MCPController {
 }
 
 func TestNewMCPController_Wiring(t *testing.T) {
-	t.Parallel()
 	c := newTestMCPController(t)
 
 	assert.NotNil(t, c.MCPGateway(), "MCPGateway accessor should return the wrapped service")
 }
 
 func TestMCPController_NewMCPController_NilDeps(t *testing.T) {
-	t.Parallel()
 	// A zero-value MCPControllerDeps must produce a non-nil controller whose
 	// accessor returns nil — this is the posture HTTPHandler would be in if
 	// MCP were not configured.
-
 	c := newMCPController(MCPControllerDeps{})
 	require.NotNil(t, c)
 	assert.Nil(t, c.MCPGateway(), "MCPGateway accessor should be nil when no gateway is wired")
 }
 
 func TestMCPController_HandleMCP_Delegates(t *testing.T) {
-	t.Parallel()
 	c := newTestMCPController(t)
 
 	// HandleMCP rejects non-GET/POST methods with 405 + Allow header. Reaching
@@ -80,7 +76,6 @@ func TestMCPController_HandleMCP_Delegates(t *testing.T) {
 }
 
 func TestMCPController_HandleA2aCall_Delegates(t *testing.T) {
-	t.Parallel()
 	c := newTestMCPController(t)
 
 	// With nil envProc, HandleA2aCall emits a JSON-RPC -32603 "not ready"

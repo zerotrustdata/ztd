@@ -55,7 +55,6 @@ func judgeScoreFixture(t *testing.T) (*oracle.AnchorSet, oracletest.Signer, judg
 // labelled verified only when the result body it was read from is the one the
 // signed receipt commits to. Each case alters one thing the score depends on.
 func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		mutate   func(t *testing.T, s oracletest.Signer, sc *judge.Score)
@@ -139,7 +138,6 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			anchors, signer, sc := judgeScoreFixture(t)
 			tc.mutate(t, signer, &sc)
 

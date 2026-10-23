@@ -24,8 +24,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestLoad(t *testing.T) { //nolint:paralleltest // changes the process working directory
-	t.Run("loads config from any directory using embedded defaults", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestLoad(t *testing.T) {
+	t.Run("loads config from any directory using embedded defaults", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 
 		config, err := Load(tempDir)
@@ -39,7 +39,7 @@ func TestLoad(t *testing.T) { //nolint:paralleltest // changes the process worki
 		assert.NotNil(t, config.Paths)
 	})
 
-	t.Run("uses current directory when project root is empty", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
+	t.Run("uses current directory when project root is empty", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 
 		// Change to temp directory and load with empty project root
@@ -58,7 +58,7 @@ func TestLoad(t *testing.T) { //nolint:paralleltest // changes the process worki
 		assert.Equal(t, actualWd, config.ProjectRoot)
 	})
 
-	t.Run("always uses embedded defaults regardless of file presence", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
+	t.Run("always uses embedded defaults regardless of file presence", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 
 		// Create protocol/constants directory with a paths.json file
@@ -86,9 +86,7 @@ func TestLoad(t *testing.T) { //nolint:paralleltest // changes the process worki
 }
 
 func TestConfig_DefaultTrustBundleRelPath(t *testing.T) {
-	t.Parallel()
 	t.Run("returns canonical runtime-relative path", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{}
 		result := config.DefaultTrustBundleRelPath()
 		assert.Equal(t, constants.PkiDirname+"/"+constants.PkiSubdirTrust+"/"+constants.PkiFileGatewayBundle, result)
@@ -96,9 +94,7 @@ func TestConfig_DefaultTrustBundleRelPath(t *testing.T) {
 }
 
 func TestConfig_CustomTrustBundlePath(t *testing.T) {
-	t.Parallel()
 	t.Run("returns absolute custom path when set", func(t *testing.T) {
-		t.Parallel()
 		caPath := filepath.Join(testutil.TempDir(t), "absolute", "path", "to", "ca.pem")
 		config := &Config{
 			ProjectRoot: "/project/root",
@@ -126,7 +122,6 @@ func TestConfig_CustomTrustBundlePath(t *testing.T) {
 	})
 
 	t.Run("joins relative custom path with project root", func(t *testing.T) {
-		t.Parallel()
 		projectRoot := filepath.Join(string(filepath.Separator), "project", "root")
 		config := &Config{
 			ProjectRoot: projectRoot,
@@ -154,7 +149,6 @@ func TestConfig_CustomTrustBundlePath(t *testing.T) {
 	})
 
 	t.Run("returns empty when CACertPath is empty", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			ProjectRoot: "/project/root",
 			Paths: &PathsConfig{
@@ -181,7 +175,6 @@ func TestConfig_CustomTrustBundlePath(t *testing.T) {
 	})
 
 	t.Run("returns empty when CACertPath matches default runtime location", func(t *testing.T) {
-		t.Parallel()
 		projectRoot := testutil.TempDir(t)
 		runtimeDir := filepath.Join(projectRoot, constants.RuntimeDirname)
 		defaultPath := filepath.Join(runtimeDir, constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
@@ -213,9 +206,7 @@ func TestConfig_CustomTrustBundlePath(t *testing.T) {
 }
 
 func TestConfig_ResolvedTrustBundlePath(t *testing.T) {
-	t.Parallel()
 	t.Run("returns custom path when set", func(t *testing.T) {
-		t.Parallel()
 		caPath := filepath.Join(testutil.TempDir(t), "custom", "ca.pem")
 		config := &Config{
 			ProjectRoot: "/project/root",
@@ -243,7 +234,6 @@ func TestConfig_ResolvedTrustBundlePath(t *testing.T) {
 	})
 
 	t.Run("returns default runtime path when no custom path", func(t *testing.T) {
-		t.Parallel()
 		projectRoot := testutil.TempDir(t)
 		runtimeDir := filepath.Join(projectRoot, constants.RuntimeDirname)
 		config := &Config{
@@ -258,9 +248,7 @@ func TestConfig_ResolvedTrustBundlePath(t *testing.T) {
 }
 
 func TestConfig_CredentialsFile(t *testing.T) {
-	t.Parallel()
 	t.Run("returns credentials file path", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -272,9 +260,7 @@ func TestConfig_CredentialsFile(t *testing.T) {
 }
 
 func TestConfig_CLICertFile(t *testing.T) {
-	t.Parallel()
 	t.Run("returns CLI cert file path", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -286,9 +272,7 @@ func TestConfig_CLICertFile(t *testing.T) {
 }
 
 func TestConfig_CLIKeyFile(t *testing.T) {
-	t.Parallel()
 	t.Run("returns CLI key file path", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -300,9 +284,7 @@ func TestConfig_CLIKeyFile(t *testing.T) {
 }
 
 func TestConfig_OperatorHTTPSPort(t *testing.T) {
-	t.Parallel()
 	t.Run("returns Operator HTTPS port from constants", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: &PathsConfig{},
 		}
@@ -313,9 +295,7 @@ func TestConfig_OperatorHTTPSPort(t *testing.T) {
 }
 
 func TestConfig_OperatorHTTPURL(t *testing.T) {
-	t.Parallel()
 	t.Run("returns Operator HTTPS URL from constants", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: &PathsConfig{},
 		}
@@ -327,9 +307,7 @@ func TestConfig_OperatorHTTPURL(t *testing.T) {
 }
 
 func TestConfig_OperatorPublicURL(t *testing.T) {
-	t.Parallel()
 	t.Run("returns Operator public TLS URL for CSR-based enrollment", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: &PathsConfig{},
 		}
@@ -340,9 +318,7 @@ func TestConfig_OperatorPublicURL(t *testing.T) {
 }
 
 func TestConfig_OperatorDiscoveryURL(t *testing.T) {
-	t.Parallel()
 	t.Run("returns Operator discovery URL for CA download over plain HTTP", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: &PathsConfig{},
 		}
@@ -353,28 +329,22 @@ func TestConfig_OperatorDiscoveryURL(t *testing.T) {
 }
 
 func TestDefaultConstants(t *testing.T) {
-	t.Parallel()
 	t.Run("default runtime dir constant", func(t *testing.T) {
-		t.Parallel()
 		assert.Equal(t, ".ztd", DefaultRuntimeDir)
 	})
 
 	t.Run("default PKI dir constant", func(t *testing.T) {
-		t.Parallel()
 		assert.Equal(t, ".ztd/pki", DefaultPKIDir)
 	})
 
 	t.Run("default secrets dir constant", func(t *testing.T) {
-		t.Parallel()
 		assert.Equal(t, ".ztd/secrets", DefaultSecretsDir)
 	})
 
 }
 
 func TestConfig_AppCertFile(t *testing.T) {
-	t.Parallel()
 	t.Run("returns app cert file path with name", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -385,7 +355,6 @@ func TestConfig_AppCertFile(t *testing.T) {
 	})
 
 	t.Run("handles empty app name", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -397,9 +366,7 @@ func TestConfig_AppCertFile(t *testing.T) {
 }
 
 func TestConfig_AppKeyFile(t *testing.T) {
-	t.Parallel()
 	t.Run("returns app key file path with name", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -410,7 +377,6 @@ func TestConfig_AppKeyFile(t *testing.T) {
 	})
 
 	t.Run("handles empty app name", func(t *testing.T) {
-		t.Parallel()
 		credentialsDir := filepath.Join(string(filepath.Separator), "credentials", "dir")
 		config := &Config{
 			RuntimeDir: credentialsDir,
@@ -422,9 +388,7 @@ func TestConfig_AppKeyFile(t *testing.T) {
 }
 
 func TestConfig_OperatorHTTPURL_Override(t *testing.T) {
-	t.Parallel()
 	t.Run("returns custom URL when Host contains protocol", func(t *testing.T) {
-		t.Parallel()
 		customURL := "https://custom-test-server:8443"
 		config := &Config{
 			Paths: &PathsConfig{
@@ -437,7 +401,6 @@ func TestConfig_OperatorHTTPURL_Override(t *testing.T) {
 	})
 
 	t.Run("returns default localhost URL when Host is simple hostname", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: &PathsConfig{
 				Host: "localhost",
@@ -449,7 +412,6 @@ func TestConfig_OperatorHTTPURL_Override(t *testing.T) {
 	})
 
 	t.Run("returns default localhost URL when Host is IP address", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: &PathsConfig{
 				Host: "127.0.0.1",
@@ -461,7 +423,6 @@ func TestConfig_OperatorHTTPURL_Override(t *testing.T) {
 	})
 
 	t.Run("returns default localhost URL when Paths is nil", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			Paths: nil,
 		}
@@ -471,7 +432,6 @@ func TestConfig_OperatorHTTPURL_Override(t *testing.T) {
 	})
 
 	t.Run("handles http:// protocol override", func(t *testing.T) {
-		t.Parallel()
 		customURL := "http://custom-test-server:8080"
 		config := &Config{
 			Paths: &PathsConfig{
@@ -485,9 +445,7 @@ func TestConfig_OperatorHTTPURL_Override(t *testing.T) {
 }
 
 func TestConfig_CustomTrustBundlePath_NilPaths(t *testing.T) {
-	t.Parallel()
 	t.Run("returns empty when Paths is nil", func(t *testing.T) {
-		t.Parallel()
 		config := &Config{
 			ProjectRoot: "/project/root",
 			Paths:       nil,
@@ -499,9 +457,7 @@ func TestConfig_CustomTrustBundlePath_NilPaths(t *testing.T) {
 }
 
 func TestConfig_ResolvedTrustBundlePath_NilPaths(t *testing.T) {
-	t.Parallel()
 	t.Run("returns default runtime path when Paths is nil", func(t *testing.T) {
-		t.Parallel()
 		projectRoot := testutil.TempDir(t)
 		runtimeDir := filepath.Join(projectRoot, constants.RuntimeDirname)
 		config := &Config{
@@ -515,7 +471,7 @@ func TestConfig_ResolvedTrustBundlePath_NilPaths(t *testing.T) {
 	})
 }
 
-func TestLoadIntegration(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestLoadIntegration(t *testing.T) {
 	// This is an integration test that verifies the embedded-only behavior
 
 	t.Run("loads embedded default paths from any directory", func(t *testing.T) {
@@ -558,8 +514,7 @@ func TestLoadIntegration(t *testing.T) { //nolint:paralleltest // changes the pr
 	})
 }
 
-func TestSetHTTPEndpointOverride_OnlyAffectsDiscoveryURL(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSetHTTPEndpointOverride_OnlyAffectsDiscoveryURL(t *testing.T) {
 	SetEndpointOverride("")
 	t.Cleanup(func() { SetEndpointOverride("") })
 
@@ -572,8 +527,7 @@ func TestSetHTTPEndpointOverride_OnlyAffectsDiscoveryURL(t *testing.T) { //nolin
 	assert.NotContains(t, cfg.OperatorHTTPURL(), "remote.example.com")
 }
 
-func TestSetHTTPSEndpointOverride_OnlyAffectsPublicAndHTTPURL(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSetHTTPSEndpointOverride_OnlyAffectsPublicAndHTTPURL(t *testing.T) {
 	SetEndpointOverride("")
 	t.Cleanup(func() { SetEndpointOverride("") })
 
@@ -587,8 +541,7 @@ func TestSetHTTPSEndpointOverride_OnlyAffectsPublicAndHTTPURL(t *testing.T) { //
 	assert.NotContains(t, cfg.OperatorDiscoveryURL(), "remote.example.com")
 }
 
-func TestSetEndpointOverride_AffectsBoth(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSetEndpointOverride_AffectsBoth(t *testing.T) {
 	SetEndpointOverride("")
 	t.Cleanup(func() { SetEndpointOverride("") })
 
@@ -600,8 +553,7 @@ func TestSetEndpointOverride_AffectsBoth(t *testing.T) { //nolint:paralleltest /
 	assert.Contains(t, cfg.OperatorHTTPURL(), "remote.example.com")
 }
 
-func TestSetEndpointOverride_FullURLReturnedAsIs(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSetEndpointOverride_FullURLReturnedAsIs(t *testing.T) {
 	SetEndpointOverride("")
 	t.Cleanup(func() { SetEndpointOverride("") })
 
@@ -615,9 +567,7 @@ func TestSetEndpointOverride_FullURLReturnedAsIs(t *testing.T) { //nolint:parall
 }
 
 func TestOperatorPublicURL_HostFullURL(t *testing.T) {
-	t.Parallel()
 	t.Run("returns custom URL when Host contains protocol", func(t *testing.T) {
-		t.Parallel()
 		customURL := "https://custom-test-server:8443"
 		cfg := &Config{
 			Paths: &PathsConfig{
@@ -630,7 +580,6 @@ func TestOperatorPublicURL_HostFullURL(t *testing.T) {
 	})
 
 	t.Run("returns default localhost URL when Host is simple hostname", func(t *testing.T) {
-		t.Parallel()
 		cfg := &Config{
 			Paths: &PathsConfig{
 				Host: "localhost",
@@ -642,7 +591,6 @@ func TestOperatorPublicURL_HostFullURL(t *testing.T) {
 	})
 
 	t.Run("returns default localhost URL when Paths is nil", func(t *testing.T) {
-		t.Parallel()
 		cfg := &Config{
 			Paths: nil,
 		}
@@ -655,8 +603,7 @@ func TestOperatorPublicURL_HostFullURL(t *testing.T) {
 // A Gateway that shifted off busy default ports records the ports it bound;
 // the default (no --endpoint) URLs must follow them, while explicit overrides
 // still win.
-func TestSetLocalGatewayPorts_DefaultURLsFollowBoundPorts(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSetLocalGatewayPorts_DefaultURLsFollowBoundPorts(t *testing.T) {
 	SetEndpointOverride("")
 	SetLocalGatewayPorts(0, 0)
 	t.Cleanup(func() {

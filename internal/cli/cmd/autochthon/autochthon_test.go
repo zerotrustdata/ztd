@@ -25,7 +25,6 @@ import (
 )
 
 func TestAutochthonFlags(t *testing.T) {
-	t.Parallel()
 	cmd := Cmd()
 	for _, name := range autochthonFlags {
 		assert.NotNil(t, cmd.Flags().Lookup(name), "autochthon should have --%s", name)
@@ -58,7 +57,6 @@ func newRoot(out *bytes.Buffer, args ...string) *cobra.Command {
 }
 
 func TestAutochthonRefusesGatewayFlags(t *testing.T) {
-	t.Parallel()
 	for _, sub := range [][]string{{"autochthon"}, {"autochthon", "status"}} {
 		for _, flag := range [][]string{{"--endpoint", "gateway.example"}, {"--port", "8443"}} {
 			args := append(append(append([]string{}, sub...), "--working-dir", testutil.TempDir(t)), flag...)
@@ -70,7 +68,6 @@ func TestAutochthonRefusesGatewayFlags(t *testing.T) {
 }
 
 func TestAutochthonStatus(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	files, err := fs.NewRuntimeFileService(dir, testutil.NewTestLogger())
 	require.NoError(t, err)

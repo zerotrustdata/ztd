@@ -124,7 +124,6 @@ func writeTestCLICert(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.C
 }
 
 func TestValidateAppName(t *testing.T) {
-	t.Parallel()
 	require.ErrorIs(t, models.ValidateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
 	require.ErrorIs(t, models.ValidateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
 	require.ErrorIs(t, models.ValidateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
@@ -138,7 +137,6 @@ func TestValidateAppName(t *testing.T) {
 }
 
 func TestLoadAppIdentity_Missing(t *testing.T) {
-	t.Parallel()
 	fileSvc, cfg := newAuthTestEnv(t)
 	cert, err := LoadAppIdentity(fileSvc, cfg, "my-agent")
 	assert.Nil(t, cert)
@@ -147,7 +145,6 @@ func TestLoadAppIdentity_Missing(t *testing.T) {
 }
 
 func TestLoadAppIdentity_Expired(t *testing.T) {
-	t.Parallel()
 	fileSvc, cfg := newAuthTestEnv(t)
 	appName := "my-agent"
 	certPEM, keyPEM := generateTestCertificateWithSPIFFE(t, appName, time.Now().Add(-1*time.Hour))
@@ -165,7 +162,6 @@ func TestLoadAppIdentity_Expired(t *testing.T) {
 }
 
 func TestLoadAppIdentity_Valid(t *testing.T) {
-	t.Parallel()
 	fileSvc, cfg := newAuthTestEnv(t)
 	appName := "my-agent"
 	certPEM, keyPEM := generateTestCertificateWithSPIFFE(t, appName, time.Now().Add(24*time.Hour))
@@ -189,8 +185,6 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestAppPlatformEnrollmentClient_SigningIdentitySurvivesResume(t *testing.T) {
-	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 	var submitted models.PlatformEnrollmentCreateRequest
 	var approved models.PlatformEnrollmentDecisionTarget
@@ -274,8 +268,6 @@ func TestAppPlatformEnrollmentClient_SigningIdentitySurvivesResume(t *testing.T)
 }
 
 func TestAppPlatformEnrollmentClient_RejectsInvalidPendingSigningIdentity(t *testing.T) {
-	t.Parallel()
-
 	for _, seed := range [][]byte{nil, {1, 2, 3}} {
 		fileSvc, cfg := newAuthTestEnv(t)
 		client, err := NewAppPlatformEnrollmentClient("reviewer", fileSvc, cfg, nil, AppEnrollmentOptions{
@@ -293,8 +285,6 @@ func TestAppPlatformEnrollmentClient_RejectsInvalidPendingSigningIdentity(t *tes
 }
 
 func TestLoadAppSigningKey_RejectsPlaintextAndMalformedSeed(t *testing.T) {
-	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 	rel, err := fileSvc.RelFromAbs(cfg.AppSigningKeyFile("reviewer"))
 	require.NoError(t, err)
@@ -307,8 +297,6 @@ func TestLoadAppSigningKey_RejectsPlaintextAndMalformedSeed(t *testing.T) {
 }
 
 func TestAppPlatformEnrollmentClient_Enroll_ApproverL3RequiredPrintsSuspensionAndAwaitsDecision(t *testing.T) {
-	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 	appName := "claude"
 
@@ -378,8 +366,6 @@ func TestAppPlatformEnrollmentClient_Enroll_ApproverL3RequiredPrintsSuspensionAn
 }
 
 func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403ContainingBootstrappedSubstring(t *testing.T) {
-	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 	var hits int
 	mockTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -404,8 +390,7 @@ func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403Containing
 	assert.Equal(t, 1, hits, "unrelated 403 containing 'bootstrapped' substring must not trigger bootstrap retry loop")
 }
 
-func TestNewAppPlatformEnrollmentClient_UsesConfiguredGatewayDiscoveryEndpoint(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewAppPlatformEnrollmentClient_UsesConfiguredGatewayDiscoveryEndpoint(t *testing.T) {
 	fileSvc, cfg := newAuthTestEnv(t)
 	cfg.Paths.Host = "localhost"
 	config.SetHTTPEndpointOverride("http://gateway-fixture.example:19080")

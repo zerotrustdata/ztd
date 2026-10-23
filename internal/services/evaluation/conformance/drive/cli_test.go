@@ -63,7 +63,6 @@ func newTestCLI(t *testing.T, poster operator.CommandPoster) *CLI {
 // text. RunOnce's own decoding is covered in internal/cli/operator; this checks the
 // CLI's mapping of those results to observation kinds.
 func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1"}
 	rejection := &operatorv1.GovernanceRejection{Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-2"}}
 	refusal := &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST}
@@ -83,7 +82,6 @@ func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			obs := cliObservation(tt.result)
 			assert.Equal(t, tt.want, obs.GetKind())
 			assert.Equal(t, int32(0), obs.GetHttpStatus(), "the CLI answer has no HTTP status")
@@ -99,9 +97,7 @@ func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
 // for a doctrine case, and the marker write for the mutation cases. The spy sends no
 // answer, so Drive returns the transport error after the request is recorded.
 func TestCLIDriveCommandPerFault(t *testing.T) {
-	t.Parallel()
 	t.Run("doctrine sends the corpus command", func(t *testing.T) {
-		t.Parallel()
 		spy := &requestSpy{}
 		a := dispatchAttempt(cases.IngressCLI, cases.FaultDoctrine)
 
@@ -112,7 +108,6 @@ func TestCLIDriveCommandPerFault(t *testing.T) {
 
 	for _, fault := range []cases.Fault{cases.FaultNone, cases.FaultAttendedApprove, cases.FaultAttendedDeny} {
 		t.Run("mutation "+string(fault)+" sends the marker command", func(t *testing.T) {
-			t.Parallel()
 			spy := &requestSpy{}
 			a := dispatchAttempt(cases.IngressCLI, fault)
 
@@ -126,7 +121,6 @@ func TestCLIDriveCommandPerFault(t *testing.T) {
 // TestCLIDriveRejectsUnsupportedCases checks that other faults and other ingresses are
 // refused before any dispatch is posted.
 func TestCLIDriveRejectsUnsupportedCases(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		ingress cases.Ingress
@@ -137,7 +131,6 @@ func TestCLIDriveRejectsUnsupportedCases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			spy := &requestSpy{}
 			a := dispatchAttempt(tt.ingress, tt.fault)
 
@@ -150,7 +143,6 @@ func TestCLIDriveRejectsUnsupportedCases(t *testing.T) {
 
 // TestNewCLIRequiresPosterTargetAndSession checks each required input.
 func TestNewCLIRequiresPosterTargetAndSession(t *testing.T) {
-	t.Parallel()
 	target := testDispatchTargets()[cases.ExecutorOutbound]
 	spy := &requestSpy{}
 

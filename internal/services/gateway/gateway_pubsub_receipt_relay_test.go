@@ -171,8 +171,6 @@ func buildSignedReceiptEnvelope(t *testing.T, signerPriv ed25519.PrivateKey, key
 // --- relayActionReceipt table-driven tests ---
 
 func TestRelayActionReceipt_ValidReceiptRecordedAndFannedOut(t *testing.T) {
-	t.Parallel()
-
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -222,8 +220,6 @@ func TestRelayActionReceipt_ValidReceiptRecordedAndFannedOut(t *testing.T) {
 }
 
 func TestRelayActionReceipt_InvalidSignatureRejected(t *testing.T) {
-	t.Parallel()
-
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -270,8 +266,6 @@ func TestRelayActionReceipt_InvalidSignatureRejected(t *testing.T) {
 }
 
 func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *testing.T) {
-	t.Parallel()
-
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	const keyID = "actuator-key-persistence"
@@ -296,8 +290,6 @@ func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *te
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			broker, recorder := newReceiptRelayTestBroker(t, keyID, publicKey)
 			handler := newOperatorSessionHandler(broker, operatorID)
 			var called bool
@@ -310,9 +302,8 @@ func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *te
 			receipt := &operatorv1.ActionReceipt{}
 			require.NoError(t, proto.Unmarshal(envelope.Payload, receipt))
 			tt.mutate(receipt)
-			payload, err := proto.Marshal(receipt)
+			envelope.Payload, err = proto.Marshal(receipt)
 			require.NoError(t, err)
-			envelope.Payload = payload
 			wire, err = protojson.Marshal(envelope)
 			require.NoError(t, err)
 
@@ -325,8 +316,6 @@ func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *te
 }
 
 func TestRelayActionReceipt_UnknownSignerKeyRejected(t *testing.T) {
-	t.Parallel()
-
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	// Register a different key than the one that signs the receipt.
@@ -356,8 +345,6 @@ func TestRelayActionReceipt_UnknownSignerKeyRejected(t *testing.T) {
 }
 
 func TestRelayActionReceipt_ChannelEnvelopeIdentityMismatchRejected(t *testing.T) {
-	t.Parallel()
-
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -385,8 +372,6 @@ func TestRelayActionReceipt_ChannelEnvelopeIdentityMismatchRejected(t *testing.T
 }
 
 func TestRelayActionReceipt_MalformedProtoJSONRejected(t *testing.T) {
-	t.Parallel()
-
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -410,8 +395,6 @@ func TestRelayActionReceipt_MalformedProtoJSONRejected(t *testing.T) {
 }
 
 func TestRelayActionReceipt_MalformedPayloadRejected(t *testing.T) {
-	t.Parallel()
-
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -451,8 +434,6 @@ func TestRelayActionReceipt_MalformedPayloadRejected(t *testing.T) {
 }
 
 func TestRelayActionReceipt_MissingPayloadRejected(t *testing.T) {
-	t.Parallel()
-
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -490,8 +471,6 @@ func TestRelayActionReceipt_MissingPayloadRejected(t *testing.T) {
 }
 
 func TestRelayActionReceipt_RelayDisabledWhenDepsNotConfigured(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
 	// Do NOT call SetReceiptRelayDeps — relay is disabled.
@@ -520,8 +499,6 @@ func TestRelayActionReceipt_RelayDisabledWhenDepsNotConfigured(t *testing.T) {
 }
 
 func TestRelayActionReceipt_SignerStoreErrorRejected(t *testing.T) {
-	t.Parallel()
-
 	_, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -554,8 +531,6 @@ func TestRelayActionReceipt_SignerStoreErrorRejected(t *testing.T) {
 }
 
 func TestRelayActionReceipt_RecorderErrorStillFansOut(t *testing.T) {
-	t.Parallel()
-
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -593,7 +568,6 @@ func TestRelayActionReceipt_RecorderErrorStillFansOut(t *testing.T) {
 }
 
 func TestSetReceiptRelayDeps(t *testing.T) {
-	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
 

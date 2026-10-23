@@ -23,8 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestProbe_EvaluateFailClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestProbe_EvaluateFailClosed(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)

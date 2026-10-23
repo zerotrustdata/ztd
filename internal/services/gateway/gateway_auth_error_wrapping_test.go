@@ -23,7 +23,6 @@ import (
 // revocation-check failure must not match ErrCertParseFailed (the original
 // double-%w bug made errors.Is return true for an unrelated classification).
 func TestRevocationCheckErrorWrapping_SemanticallyCorrect(t *testing.T) {
-	t.Parallel()
 	revocationErr := fmt.Errorf("certificate revoked: serial 0xabc")
 	wrapped := fmt.Errorf("gateway: auth: verify certificate: %w: %s", revocationErr, constants.ErrCertRevocationCheckFailed)
 

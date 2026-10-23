@@ -124,7 +124,6 @@ func TestCredentialStore_RollbackWritesNoCanonicalFiles(t *testing.T) {
 // subprocesses. This is the §4.1 permissions assertion.
 func TestCredentialStore_CommittedFilePermissions(t *testing.T) {
 	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 	store := NewCredentialStore(fileSvc, cfg)
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -213,7 +212,6 @@ func TestCredentialStore_ConcurrentStageCommitNoTornState(t *testing.T) {
 // ownership policy: the OS root CA is shared and must survive logout.
 func TestCredentialStore_ClearRetainsTrustBundle(t *testing.T) {
 	t.Parallel()
-
 	fileSvc, cfg := newAuthTestEnv(t)
 	store := NewCredentialStore(fileSvc, cfg)
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)

@@ -16,7 +16,6 @@ import (
 )
 
 func TestBuildRPOrigins_LocalhostDefaults(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{RpID: "localhost"}
 
 	origins := buildRPOrigins(cfg)
@@ -33,7 +32,6 @@ func TestBuildRPOrigins_LocalhostDefaults(t *testing.T) {
 }
 
 func TestBuildRPOrigins_LocalhostWithCustomPorts(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{
 		RpID:      "localhost",
 		HTTPPort:  8087,
@@ -49,7 +47,6 @@ func TestBuildRPOrigins_LocalhostWithCustomPorts(t *testing.T) {
 }
 
 func TestBuildRPOrigins_LocalhostWithInjectedOrigins(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{
 		RpID:      "localhost",
 		HTTPPort:  8080,
@@ -66,7 +63,6 @@ func TestBuildRPOrigins_LocalhostWithInjectedOrigins(t *testing.T) {
 }
 
 func TestBuildRPOrigins_CustomRpID(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{RpID: "operator.example.com"}
 
 	origins := buildRPOrigins(cfg)
@@ -75,7 +71,6 @@ func TestBuildRPOrigins_CustomRpID(t *testing.T) {
 }
 
 func TestBuildRPOrigins_CustomRpIDWithInjectedOrigins(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{
 		RpID:      "operator.example.com",
 		RpOrigins: []string{"http://localhost:8082", "https://localhost:8445"},
@@ -89,7 +84,6 @@ func TestBuildRPOrigins_CustomRpIDWithInjectedOrigins(t *testing.T) {
 }
 
 func TestBuildRPOrigins_EmptyRpOriginsBackCompat(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{RpID: "localhost"}
 
 	origins := buildRPOrigins(cfg)
@@ -99,7 +93,6 @@ func TestBuildRPOrigins_EmptyRpOriginsBackCompat(t *testing.T) {
 }
 
 func TestBuildRPOrigins_127001Defaults(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{RpID: "127.0.0.1"}
 
 	origins := buildRPOrigins(cfg)
@@ -110,7 +103,6 @@ func TestBuildRPOrigins_127001Defaults(t *testing.T) {
 }
 
 func TestBuildRPOrigins_DefaultPortsUseConstants(t *testing.T) {
-	t.Parallel()
 	cfg := &PasskeyConfig{RpID: "localhost"}
 
 	origins := buildRPOrigins(cfg)

@@ -54,8 +54,6 @@ func fullProtocolChainStages(_, _ string) []*operatorv1.DeterministicStageEviden
 }
 
 func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name    string
 		receipt *operatorv1.ActionReceipt
@@ -82,8 +80,6 @@ func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			chain, err := ValidateDeterministicProtocolChain(tt.receipt)
 			require.NoError(t, err)
 			assert.Len(t, chain.Stages, tt.stages)
@@ -93,8 +89,6 @@ func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t 
 }
 
 func TestValidateDeterministicProtocolChainRejectsMalformedEvidence(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name   string
 		mutate func(*operatorv1.ActionReceipt)
@@ -113,8 +107,6 @@ func TestValidateDeterministicProtocolChainRejectsMalformedEvidence(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			var receipt *operatorv1.ActionReceipt
 			if tt.name != "nil receipt" {
 				receipt = &operatorv1.ActionReceipt{
@@ -132,7 +124,6 @@ func TestValidateDeterministicProtocolChainRejectsMalformedEvidence(t *testing.T
 }
 
 func TestDeterministicStagesContentAddressIsStable(t *testing.T) {
-	t.Parallel()
 	stages := fullProtocolChainStages("tx-1", "hash-1")
 	first, err := DeterministicStagesContentAddress(stages)
 	require.NoError(t, err)
@@ -143,8 +134,6 @@ func TestDeterministicStagesContentAddressIsStable(t *testing.T) {
 }
 
 func TestValidateDeterministicProtocolChainRejectsInconsistentStageOutcomes(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name   string
 		mutate func(*operatorv1.ActionReceipt)
@@ -171,8 +160,6 @@ func TestValidateDeterministicProtocolChainRejectsInconsistentStageOutcomes(t *t
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			receipt := &operatorv1.ActionReceipt{
 				TransactionId: "tx-1", TransactionHash: "hash-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 				StateRootBefore: "before", StateRootAfter: "after", L2Status: operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,

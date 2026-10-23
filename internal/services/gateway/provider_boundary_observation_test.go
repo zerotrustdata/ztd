@@ -48,8 +48,6 @@ func (l *mutableProviderBoundaryOperatorLister) ListOperatorsForObservation(cont
 }
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_SubscribesToOwnerScopedObserver(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -79,8 +77,6 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_SubscribesToOwner
 }
 
 func TestProviderBoundaryObservationCoordinator_NotifyAttemptBegin_FailsWithoutCmdSubscriber(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -114,7 +110,6 @@ func TestProviderBoundaryObservationCoordinator_NotifyAttemptBegin_FailsWithoutC
 }
 
 func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_FailsWithoutCmdSubscriber(t *testing.T) {
-	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -144,8 +139,6 @@ func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_FailsWi
 }
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReSubscribesOnSessionChange(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -226,8 +219,6 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReSubscribesOnSes
 }
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_LogsNotFound(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -302,8 +293,6 @@ func newDuplicateObserverCoordinator(t *testing.T) (*ProviderBoundaryObservation
 }
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReportsAmbiguousWhenFingerprintTiebreakFails(t *testing.T) {
-	t.Parallel()
-
 	coordinator, _ := newDuplicateObserverCoordinator(t)
 
 	err := coordinator.synchronizeObserverSubscription(context.Background())
@@ -314,8 +303,6 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReportsAmbiguousW
 }
 
 func TestProviderBoundaryObservationCoordinator_EnsureObserver_FingerprintBreaksTieBetweenLiveObservers(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -340,8 +327,6 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_FingerprintBreaks
 }
 
 func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCanceled(t *testing.T) {
-	t.Parallel()
-
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)
@@ -411,7 +396,6 @@ func TestProviderBoundaryObservationCoordinator_IngestAfterDispatchContextCancel
 }
 
 func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_EmbeddedObserverUsesProcessor(t *testing.T) {
-	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windowStore, err := provider_observer.NewWindowStore(fileSvc)

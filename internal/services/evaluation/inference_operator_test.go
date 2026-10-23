@@ -101,24 +101,20 @@ func TestSelectInferenceOperatorForHardware(t *testing.T) {
 	}
 
 	t.Run("resolves by system fingerprint", func(t *testing.T) {
-		t.Parallel()
 		selected, err := SelectInferenceOperatorForHardware(operators, "", "fp-host2")
 		require.NoError(t, err)
 		assert.Equal(t, "inf-host2", selected.OperatorID)
 	})
 
 	t.Run("returns not found for non-matching fingerprint", func(t *testing.T) {
-		t.Parallel()
 		_, err := SelectInferenceOperatorForHardware(operators, "", "fp-nonexistent")
 		require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 	})
 }
 
 func TestSelectInferenceOperator_BlendedDeploymentTypes(t *testing.T) {
-	t.Parallel()
 	for _, kind := range []constants.OperatorType{constants.OperatorTypeRemote, constants.OperatorTypeEmbedded} {
 		t.Run(string(kind), func(t *testing.T) {
-			t.Parallel()
 			op := &operatorv1.OperatorDocument{
 				Id: "blend", OperatorSessionId: "blend-session", Status: string(constants.OperatorStatusActive),
 				OperatorType: string(kind), SystemFingerprint: "blend-hardware",
@@ -158,7 +154,6 @@ func TestSelectInferenceOperator_BlendedDeploymentTypes(t *testing.T) {
 }
 
 func TestActiveInferenceOperators_RejectsUnavailableOrIncapableSessions(t *testing.T) {
-	t.Parallel()
 	capable := &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(constants.OperatorCapabilities{constants.OperatorCapabilityInference})}
 	operators := []*operatorv1.OperatorDocument{
 		{Id: "offline", OperatorSessionId: "offline", Status: string(constants.OperatorStatusOffline), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: capable},

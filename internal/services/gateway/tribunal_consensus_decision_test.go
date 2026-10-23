@@ -57,8 +57,6 @@ func (f assertedDecisionInferer) DispatchInference(ctx context.Context, r dispat
 	return f.decisionVoteInferer.DispatchInference(ctx, r)
 }
 func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
-	t.Parallel()
-
 	binding := tribunalTestBinding()
 	binding.VoteKind = models.ConsensusVoteKindDecision
 	binding.InferenceOperatorID = "dedicated-decisions"

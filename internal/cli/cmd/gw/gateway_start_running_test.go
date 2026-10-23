@@ -58,8 +58,7 @@ func writeRunningProfile(t *testing.T, fileSvc fs.RuntimeFileService, capabiliti
 	}))
 }
 
-func TestGatewayStart_RunningWithoutExplicitFlagsReusesGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStart_RunningWithoutExplicitFlagsReusesGateway(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	markGatewayRunning(t, fileSvc)
 	writeRunningProfile(t, fileSvc, constants.OperatorCapabilities{constants.OperatorCapabilityData})
@@ -70,8 +69,7 @@ func TestGatewayStart_RunningWithoutExplicitFlagsReusesGateway(t *testing.T) { /
 	assert.NotContains(t, out, "Detected network identity")
 }
 
-func TestGatewayStart_RunningWithMatchingFlagsReusesGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStart_RunningWithMatchingFlagsReusesGateway(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	markGatewayRunning(t, fileSvc)
 	writeRunningProfile(t, fileSvc, constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference})
@@ -82,8 +80,7 @@ func TestGatewayStart_RunningWithMatchingFlagsReusesGateway(t *testing.T) { //no
 	assert.Contains(t, out, "already running")
 }
 
-func TestGatewayStart_RunningWithDifferentCapabilitiesFails(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStart_RunningWithDifferentCapabilitiesFails(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	pid := markGatewayRunning(t, fileSvc)
 	writeRunningProfile(t, fileSvc, constants.OperatorCapabilities{constants.OperatorCapabilityData})
@@ -101,8 +98,7 @@ func TestGatewayStart_RunningWithDifferentCapabilitiesFails(t *testing.T) { //no
 	assert.Equal(t, pid, string(pidData))
 }
 
-func TestGatewayStart_RunningWithDifferentListenHostFails(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStart_RunningWithDifferentListenHostFails(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	markGatewayRunning(t, fileSvc)
 	writeRunningProfile(t, fileSvc, constants.OperatorCapabilities{constants.OperatorCapabilityData})
@@ -112,8 +108,7 @@ func TestGatewayStart_RunningWithDifferentListenHostFails(t *testing.T) { //noli
 	assert.Contains(t, out, "--listen-host")
 }
 
-func TestGatewayStart_RunningWithoutProfileRejectsExplicitFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStart_RunningWithoutProfileRejectsExplicitFlags(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	markGatewayRunning(t, fileSvc)
 

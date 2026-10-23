@@ -19,16 +19,13 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	t.Parallel()
 	t.Run("nil http client gets default", func(t *testing.T) {
-		t.Parallel()
 		c := NewClient("http://localhost:8080/sse", nil)
 		assert.NotNil(t, c)
 		assert.NotNil(t, c.client)
 	})
 
 	t.Run("provided http client is used", func(t *testing.T) {
-		t.Parallel()
 		hc := &http.Client{Timeout: 5 * time.Second}
 		c := NewClient("http://localhost:8080/sse", hc)
 		assert.Same(t, hc, c.client)
@@ -36,16 +33,13 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestSetHeader(t *testing.T) {
-	t.Parallel()
 	c := NewClient("http://localhost:8080/sse", nil)
 	c.SetHeader("X-Custom", "value")
 	assert.Equal(t, "value", c.headers["X-Custom"])
 }
 
 func TestParseSSEStream(t *testing.T) {
-	t.Parallel()
 	t.Run("dispatches event on blank line", func(t *testing.T) {
-		t.Parallel()
 		input := "event: passkey.registered\ndata: {\"type\":\"passkey.registered\"}\n\n"
 		var events []struct{ event, data string }
 		handler := func(eventType, data string) {
@@ -59,10 +53,8 @@ func TestParseSSEStream(t *testing.T) {
 	})
 
 	t.Run("delivers an approval receipt larger than a megabyte", func(t *testing.T) {
-		t.Parallel()
 		// A resumed receipt carries the tool result; an approved call must not
 		// lose it to the line cap.
-
 		receipt := strings.Repeat("r", 4*1024*1024)
 		input := "event: approval.completed\ndata: " + receipt + "\n\n"
 		var got string
@@ -72,7 +64,6 @@ func TestParseSSEStream(t *testing.T) {
 	})
 
 	t.Run("multiple events", func(t *testing.T) {
-		t.Parallel()
 		input := "event: first\ndata: one\n\nevent: second\ndata: two\n\n"
 		var count int
 		handler := func(eventType, data string) {
@@ -84,7 +75,6 @@ func TestParseSSEStream(t *testing.T) {
 	})
 
 	t.Run("no dispatch for empty data", func(t *testing.T) {
-		t.Parallel()
 		input := "event: noop\n\n"
 		var count int
 		handler := func(eventType, data string) {
@@ -96,7 +86,6 @@ func TestParseSSEStream(t *testing.T) {
 	})
 
 	t.Run("event without explicit event type", func(t *testing.T) {
-		t.Parallel()
 		input := "data: just data\n\n"
 		var events []struct{ event, data string }
 		handler := func(eventType, data string) {
@@ -110,7 +99,6 @@ func TestParseSSEStream(t *testing.T) {
 	})
 
 	t.Run("ignores non-event non-data lines", func(t *testing.T) {
-		t.Parallel()
 		input := ": this is a comment\nevent: test\ndata: payload\n\n"
 		var events []struct{ event, data string }
 		handler := func(eventType, data string) {
@@ -124,9 +112,7 @@ func TestParseSSEStream(t *testing.T) {
 }
 
 func TestParseSSEStream_IDLine(t *testing.T) {
-	t.Parallel()
 	t.Run("parses id line and updates client lastEventID", func(t *testing.T) {
-		t.Parallel()
 		input := "id: 42\ndata: hello\n\n"
 		c := NewClient("http://localhost", nil)
 
@@ -136,7 +122,6 @@ func TestParseSSEStream_IDLine(t *testing.T) {
 	})
 
 	t.Run("ignores invalid id value", func(t *testing.T) {
-		t.Parallel()
 		input := "id: notanumber\ndata: hello\n\n"
 		c := NewClient("http://localhost", nil)
 

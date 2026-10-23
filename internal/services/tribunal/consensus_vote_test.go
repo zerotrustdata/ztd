@@ -17,7 +17,6 @@ import (
 )
 
 func TestConsensusVotePromptSystemEndsWithMemberStance(t *testing.T) {
-	t.Parallel()
 	for _, member := range AllMembers {
 		system, _ := ConsensusVotePrompt(member, ConsensusSubject{})
 		require.True(t, strings.HasPrefix(system, consensusVoteSystemPrompt), "member %s", member)
@@ -28,7 +27,6 @@ func TestConsensusVotePromptSystemEndsWithMemberStance(t *testing.T) {
 }
 
 func TestConsensusVotePromptUserRendersSubject(t *testing.T) {
-	t.Parallel()
 	subject := ConsensusSubject{
 		ActionType:        "run_shell_command",
 		TargetResource:    "host-7",
@@ -51,7 +49,6 @@ func TestConsensusVotePromptUserRendersSubject(t *testing.T) {
 }
 
 func TestParseConsensusVote(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name       string
 		text       string
@@ -74,7 +71,6 @@ func TestParseConsensusVote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			answer := ParseConsensusVote(tt.text)
 			require.Equal(t, tt.want, answer.Approve())
 			require.Equal(t, tt.wantReason, answer.Reason)

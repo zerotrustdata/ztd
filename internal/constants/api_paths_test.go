@@ -21,7 +21,6 @@ import (
 // expected wire values. These routes form the passkey-scoped, read-only
 // observability surface added in v2.1.8.
 func TestObserveAPIPaths(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name     string
 		got      string
@@ -44,7 +43,6 @@ func TestObserveAPIPaths(t *testing.T) {
 // TestObserveAPIPathsJSONSync verifies that the Go observe path constants
 // match the canonical JSON source of truth in protocol/constants/api_paths.json.
 func TestObserveAPIPathsJSONSync(t *testing.T) {
-	t.Parallel()
 	data, err := os.ReadFile("../../protocol/constants/api_paths.json")
 	require.NoError(t, err)
 
@@ -85,7 +83,6 @@ var apiPathsNonRouteAllowList = map[string]string{}
 // matching entry in protocol/constants/api_paths.json with the same value, and
 // that every JSON entry maps back to an APIPaths field.
 func TestAPIPathsJSONBidirectionalSync(t *testing.T) {
-	t.Parallel()
 	data, err := os.ReadFile("../../protocol/constants/api_paths.json")
 	require.NoError(t, err)
 
@@ -129,7 +126,6 @@ func TestAPIPathsJSONBidirectionalSync(t *testing.T) {
 // against accidental route classification that would expose these routes
 // under a different prefix.
 func TestObserveAPIPathsAreUnderObservePrefix(t *testing.T) {
-	t.Parallel()
 	prefix := APIPaths.ObservePrefix
 	routes := []string{
 		APIPaths.ObserveBootstrap,

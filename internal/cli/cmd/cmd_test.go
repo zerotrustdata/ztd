@@ -26,20 +26,20 @@ func commandNamed(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-func TestRootCommandStructure(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestRootCommandStructure(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	assert.Equal(t, "ztd", root.Use)
 	assert.Contains(t, root.Short, "ztd Platform Manager")
 }
 
-func TestCommandRegistration(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestCommandRegistration(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	for _, name := range []string{"gw", "login", "logout", "auth", "mcp", "operator", "autochthon", "vault", "test", "audit", "report", "public", "swagger", "tui", "version", "compliance", "eval"} {
 		assert.NotNil(t, commandNamed(root, name), "root should register %s", name)
 	}
 }
 
-func TestGatewayCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCommandSubcommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	cmd := commandNamed(root, "gw")
 	require.NotNil(t, cmd)
@@ -49,7 +49,7 @@ func TestGatewayCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets
 	}
 }
 
-func TestAuthCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestAuthCommandSubcommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	cmd := commandNamed(root, "auth")
 	require.NotNil(t, cmd)
@@ -59,7 +59,7 @@ func TestAuthCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets th
 	}
 }
 
-func TestLoginAndLogoutAreTopLevelCommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestLoginAndLogoutAreTopLevelCommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 
 	login := commandNamed(root, "login")
@@ -82,7 +82,7 @@ func TestLoginAndLogoutAreTopLevelCommands(t *testing.T) { //nolint:paralleltest
 	assert.Nil(t, commandNamed(auth, "logout"), "the local-only 'auth logout' is superseded by the top-level logout")
 }
 
-func TestDataCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestDataCommandSubcommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	gw := commandNamed(root, "gw")
 	require.NotNil(t, gw)
@@ -94,7 +94,7 @@ func TestDataCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets th
 	}
 }
 
-func TestSecurityCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestSecurityCommandSubcommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	gw := commandNamed(root, "gw")
 	require.NotNil(t, gw)
@@ -103,7 +103,7 @@ func TestSecurityCommandSubcommands(t *testing.T) { //nolint:paralleltest // set
 	assert.NotNil(t, commandNamed(cmd, "validate"), "security command should have validate subcommand")
 }
 
-func TestOperatorCommandSubcommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestOperatorCommandSubcommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	cmd := commandNamed(root, "operator")
 	require.NotNil(t, cmd)
@@ -113,7 +113,7 @@ func TestOperatorCommandSubcommands(t *testing.T) { //nolint:paralleltest // set
 	}
 }
 
-func TestCommandHelpText(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestCommandHelpText(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	for _, name := range []string{"gw", "auth", "operator"} {
 		cmd := commandNamed(root, name)
@@ -123,7 +123,7 @@ func TestCommandHelpText(t *testing.T) { //nolint:paralleltest // sets the proce
 	}
 }
 
-func TestCommandFlagValidation(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestCommandFlagValidation(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	gw := commandNamed(root, "gw")
 	require.NotNil(t, gw)
@@ -148,7 +148,7 @@ func TestCommandFlagValidation(t *testing.T) { //nolint:paralleltest // sets the
 	assert.NotNil(t, validate.Flags().Lookup("secrets-dir"), "security validate should have --secrets-dir flag")
 }
 
-func TestCommandAliases(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestCommandAliases(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	gw := commandNamed(root, "gw")
 	require.NotNil(t, gw)
@@ -158,7 +158,7 @@ func TestCommandAliases(t *testing.T) { //nolint:paralleltest // sets the proces
 	assert.NotNil(t, logs.Flags().ShorthandLookup("f"))
 }
 
-func TestPlaceholderCommands(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestPlaceholderCommands(t *testing.T) {
 	root := NewRootCmd("test", serve.VersionInfo{})
 	auth := commandNamed(root, "auth")
 	require.NotNil(t, auth)

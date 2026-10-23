@@ -134,8 +134,6 @@ func decodeErrorResponse(t *testing.T, w *httptest.ResponseRecorder) string {
 }
 
 func TestObserveProducerController_HandleAgentState_PostSuccess(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerAgentState, strings.NewReader(validAgentBody(t, "agent-ok", models.AgentLifecycleStatusRunning)))
@@ -150,8 +148,6 @@ func TestObserveProducerController_HandleAgentState_PostSuccess(t *testing.T) {
 }
 
 func TestObserveProducerController_HandleRunState_PostSuccess(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerRunState, strings.NewReader(validRunBody(t, "run-ok", models.RunLifecycleStatusRunning)))
@@ -166,8 +162,6 @@ func TestObserveProducerController_HandleRunState_PostSuccess(t *testing.T) {
 }
 
 func TestObserveProducerController_HandleAgentState_MethodRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.ObserveProducerAgentState, nil)
@@ -180,8 +174,6 @@ func TestObserveProducerController_HandleAgentState_MethodRejected(t *testing.T)
 }
 
 func TestObserveProducerController_HandleRunState_MethodRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPut, constants.APIPaths.ObserveProducerRunState, nil)
@@ -194,8 +186,6 @@ func TestObserveProducerController_HandleRunState_MethodRejected(t *testing.T) {
 }
 
 func TestObserveProducerController_HandleAgentState_MissingAppIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerAgentState, strings.NewReader(validAgentBody(t, "agent-noapp", models.AgentLifecycleStatusRunning)))
@@ -211,8 +201,6 @@ func TestObserveProducerController_HandleAgentState_MissingAppIDRejected(t *test
 }
 
 func TestObserveProducerController_HandleAgentState_MissingUserIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerAgentState, strings.NewReader(validAgentBody(t, "agent-nouser", models.AgentLifecycleStatusRunning)))
@@ -227,8 +215,6 @@ func TestObserveProducerController_HandleAgentState_MissingUserIDRejected(t *tes
 }
 
 func TestObserveProducerController_HandleRunState_MissingAppIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerRunState, strings.NewReader(validRunBody(t, "run-noapp", models.RunLifecycleStatusRunning)))
@@ -242,8 +228,6 @@ func TestObserveProducerController_HandleRunState_MissingAppIDRejected(t *testin
 }
 
 func TestObserveProducerController_HandleRunState_MissingUserIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerRunState, strings.NewReader(validRunBody(t, "run-nouser", models.RunLifecycleStatusRunning)))
@@ -257,8 +241,6 @@ func TestObserveProducerController_HandleRunState_MissingUserIDRejected(t *testi
 }
 
 func TestObserveProducerController_HandleAgentState_MalformedJSONRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerAgentState, strings.NewReader("{not json"))
@@ -271,8 +253,6 @@ func TestObserveProducerController_HandleAgentState_MalformedJSONRejected(t *tes
 }
 
 func TestObserveProducerController_HandleRunState_MalformedJSONRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerRunState, strings.NewReader("plain text"))
@@ -285,8 +265,6 @@ func TestObserveProducerController_HandleRunState_MalformedJSONRejected(t *testi
 }
 
 func TestObserveProducerController_HandleAgentState_UnknownFieldRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validAgentBody(t, "agent-unknown", models.AgentLifecycleStatusRunning)
@@ -303,8 +281,6 @@ func TestObserveProducerController_HandleAgentState_UnknownFieldRejected(t *test
 }
 
 func TestObserveProducerController_HandleRunState_UnknownFieldRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validRunBody(t, "run-unknown", models.RunLifecycleStatusRunning)
@@ -320,8 +296,6 @@ func TestObserveProducerController_HandleRunState_UnknownFieldRejected(t *testin
 }
 
 func TestObserveProducerController_HandleAgentState_TrailingJSONRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validAgentBody(t, "agent-trailing", models.AgentLifecycleStatusRunning) + `{"extra":"obj"}`
@@ -336,8 +310,6 @@ func TestObserveProducerController_HandleAgentState_TrailingJSONRejected(t *test
 }
 
 func TestObserveProducerController_HandleRunState_TrailingJSONRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validRunBody(t, "run-trailing", models.RunLifecycleStatusRunning) + `42`
@@ -352,8 +324,6 @@ func TestObserveProducerController_HandleRunState_TrailingJSONRejected(t *testin
 }
 
 func TestObserveProducerController_HandleAgentState_OversizedBodyRejected(t *testing.T) {
-	t.Parallel()
-
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
 	db, err := sqliteutil.OpenDB(cfg, logger)
@@ -386,8 +356,6 @@ func TestObserveProducerController_HandleAgentState_OversizedBodyRejected(t *tes
 }
 
 func TestObserveProducerController_HandleAgentState_WebRouteConstruction(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validAgentBody(t, "agent-web-route", models.AgentLifecycleStatusRunning)
@@ -401,8 +369,6 @@ func TestObserveProducerController_HandleAgentState_WebRouteConstruction(t *test
 }
 
 func TestObserveProducerController_HandleAgentState_CLIRouteConstruction(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerAgentStateRequest{
@@ -426,8 +392,6 @@ func TestObserveProducerController_HandleAgentState_CLIRouteConstruction(t *test
 }
 
 func TestObserveProducerController_HandleRunState_MissingRouteRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	// No web_session_id and no cli_session_id: targetless route.
@@ -452,8 +416,6 @@ func TestObserveProducerController_HandleRunState_MissingRouteRejected(t *testin
 }
 
 func TestObserveProducerController_HandleAgentState_MutuallyExclusiveRouteRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerAgentStateRequest{
@@ -478,8 +440,6 @@ func TestObserveProducerController_HandleAgentState_MutuallyExclusiveRouteReject
 }
 
 func TestObserveProducerController_HandleAgentState_InvalidTransitionRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	// Seed a completed agent.
@@ -500,8 +460,6 @@ func TestObserveProducerController_HandleAgentState_InvalidTransitionRejected(t 
 }
 
 func TestObserveProducerController_HandleRunState_InvalidTransitionRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	// Seed a completed run.
@@ -529,8 +487,6 @@ func TestObserveProducerController_HandleRunState_InvalidTransitionRejected(t *t
 }
 
 func TestObserveProducerController_HandleAgentState_StaleUpdateRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	later := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
@@ -571,8 +527,6 @@ func TestObserveProducerController_HandleAgentState_StaleUpdateRejected(t *testi
 }
 
 func TestObserveProducerController_HandleRunState_CrossUserForbiddenNonDisclosing(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	// Seed a run for user-a.
@@ -600,8 +554,6 @@ func TestObserveProducerController_HandleRunState_CrossUserForbiddenNonDisclosin
 }
 
 func TestObserveProducerController_HandleAgentState_CrossUserForbiddenNonDisclosing(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	// Seed an agent for user-a.
@@ -626,8 +578,6 @@ func TestObserveProducerController_HandleAgentState_CrossUserForbiddenNonDisclos
 }
 
 func TestObserveProducerController_HandleAgentState_RequestBodyCannotOverrideUserID(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	// The request model has no user_id field. Attempting to inject one is
@@ -645,8 +595,6 @@ func TestObserveProducerController_HandleAgentState_RequestBodyCannotOverrideUse
 }
 
 func TestObserveProducerController_HandleRunState_UnknownIdentityFieldRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validRunBody(t, "run-identity", models.RunLifecycleStatusRunning)
@@ -662,8 +610,6 @@ func TestObserveProducerController_HandleRunState_UnknownIdentityFieldRejected(t
 }
 
 func TestObserveProducerController_HandleAgentState_UnsupportedSchemaVersionRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerAgentStateRequest{
@@ -687,8 +633,6 @@ func TestObserveProducerController_HandleAgentState_UnsupportedSchemaVersionReje
 }
 
 func TestObserveProducerController_HandleRunState_MissingDisplayNameRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerRunStateRequest{
@@ -713,8 +657,6 @@ func TestObserveProducerController_HandleRunState_MissingDisplayNameRejected(t *
 }
 
 func TestObserveProducerController_HandleRunState_NegativeTaskCountRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerRunStateRequest{
@@ -740,8 +682,6 @@ func TestObserveProducerController_HandleRunState_NegativeTaskCountRejected(t *t
 }
 
 func TestObserveProducerController_HandleRunState_CompletedExceedsTotalRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerRunStateRequest{
@@ -767,8 +707,6 @@ func TestObserveProducerController_HandleRunState_CompletedExceedsTotalRejected(
 }
 
 func TestObserveProducerController_HandleRunState_ReversedTimestampsRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	started := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
@@ -798,8 +736,6 @@ func TestObserveProducerController_HandleRunState_ReversedTimestampsRejected(t *
 }
 
 func TestObserveProducerController_HandleRunState_ValidZeroCountersAccepted(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerRunStateRequest{
@@ -826,8 +762,6 @@ func TestObserveProducerController_HandleRunState_ValidZeroCountersAccepted(t *t
 }
 
 func TestObserveProducerController_HandleAgentState_UnknownStatusRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerAgentStateRequest{
@@ -851,8 +785,6 @@ func TestObserveProducerController_HandleAgentState_UnknownStatusRejected(t *tes
 }
 
 func TestObserveProducerController_HandleRunState_UnknownRunKindRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerRunStateRequest{
@@ -877,8 +809,6 @@ func TestObserveProducerController_HandleRunState_UnknownRunKindRejected(t *test
 }
 
 func TestObserveProducerController_HandleAgentState_ResponseHasNoOwnershipField(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerAgentState, strings.NewReader(validAgentBody(t, "agent-resp", models.AgentLifecycleStatusRunning)))
@@ -895,8 +825,6 @@ func TestObserveProducerController_HandleAgentState_ResponseHasNoOwnershipField(
 }
 
 func TestObserveProducerController_HandleRunState_ResponseHasNoOwnershipField(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerRunState, strings.NewReader(validRunBody(t, "run-resp", models.RunLifecycleStatusRunning)))
@@ -929,8 +857,6 @@ func validStopBody(t *testing.T, campaignID, runID string) string {
 }
 
 func TestObserveProducerController_HandleStop_PostSuccess(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-stop-ok", "run-stop-ok")))
@@ -945,8 +871,6 @@ func TestObserveProducerController_HandleStop_PostSuccess(t *testing.T) {
 }
 
 func TestObserveProducerController_HandleStop_CLIRouteAccepted(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body, err := json.Marshal(models.ObserveProducerStopRequest{
@@ -970,8 +894,6 @@ func TestObserveProducerController_HandleStop_CLIRouteAccepted(t *testing.T) {
 }
 
 func TestObserveProducerController_HandleStop_MethodRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.ObserveProducerStop, nil)
@@ -987,8 +909,6 @@ func TestObserveProducerController_HandleStop_MethodRejected(t *testing.T) {
 // or Operator caller: the auth middleware stamps a user identity but no app
 // identity, so the controller answers 403 before reading the body.
 func TestObserveProducerController_HandleStop_NonAppIdentityRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-noapp", "run-noapp")))
@@ -1004,8 +924,6 @@ func TestObserveProducerController_HandleStop_NonAppIdentityRejected(t *testing.
 }
 
 func TestObserveProducerController_HandleStop_MissingUserIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-nouser", "run-nouser")))
@@ -1019,8 +937,6 @@ func TestObserveProducerController_HandleStop_MissingUserIDRejected(t *testing.T
 }
 
 func TestObserveProducerController_HandleStop_MalformedJSONRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader("{not json"))
@@ -1033,8 +949,6 @@ func TestObserveProducerController_HandleStop_MalformedJSONRejected(t *testing.T
 }
 
 func TestObserveProducerController_HandleStop_UnknownFieldRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := validStopBody(t, "campaign-unknown", "run-unknown")
@@ -1050,8 +964,6 @@ func TestObserveProducerController_HandleStop_UnknownFieldRejected(t *testing.T)
 }
 
 func TestObserveProducerController_HandleStop_MissingRunIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-norun", "")))
@@ -1065,8 +977,6 @@ func TestObserveProducerController_HandleStop_MissingRunIDRejected(t *testing.T)
 }
 
 func TestObserveProducerController_HandleStop_MissingCampaignIDRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "", "run-nocampaign")))
@@ -1080,8 +990,6 @@ func TestObserveProducerController_HandleStop_MissingCampaignIDRejected(t *testi
 }
 
 func TestObserveProducerController_HandleStop_UnknownStopReasonRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := strings.Replace(validStopBody(t, "campaign-reason", "run-reason"), `"stop_reason":"graceful"`, `"stop_reason":"because"`, 1)
@@ -1097,8 +1005,6 @@ func TestObserveProducerController_HandleStop_UnknownStopReasonRejected(t *testi
 }
 
 func TestObserveProducerController_HandleStop_UnknownStopScopeRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	body := strings.Replace(validStopBody(t, "campaign-scope", "run-scope"), `"stop_scope":"supervisor"`, `"stop_scope":"fleet"`, 1)
@@ -1114,8 +1020,6 @@ func TestObserveProducerController_HandleStop_UnknownStopScopeRejected(t *testin
 }
 
 func TestObserveProducerController_HandleStop_RoutingRejected(t *testing.T) {
-	t.Parallel()
-
 	controller := newProducerControllerTestEnv(t)
 
 	neither := strings.Replace(validStopBody(t, "campaign-route", "run-route"), `,"web_session_id":"web-session-unit"`, "", 1)

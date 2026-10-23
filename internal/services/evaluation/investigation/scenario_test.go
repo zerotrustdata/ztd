@@ -67,11 +67,9 @@ func checkFailures(f FileState, content string, found bool) []string {
 }
 
 func TestGovernedProbe_Run(t *testing.T) {
-	t.Parallel()
 	tempDir := testutil.TempDir(t)
 
 	t.Run("nil probe returns success", func(t *testing.T) {
-		t.Parallel()
 		var p *GovernedProbe
 		passed, out := p.Run(tempDir)
 		if !passed || out != "" {
@@ -80,7 +78,6 @@ func TestGovernedProbe_Run(t *testing.T) {
 	})
 
 	t.Run("empty command returns success", func(t *testing.T) {
-		t.Parallel()
 		p := &GovernedProbe{}
 		passed, out := p.Run(tempDir)
 		if !passed || out != "" {
@@ -89,7 +86,6 @@ func TestGovernedProbe_Run(t *testing.T) {
 	})
 
 	t.Run("successful probe execution", func(t *testing.T) {
-		t.Parallel()
 		p := &GovernedProbe{Command: "echo", Args: []string{"probe-ok"}}
 		passed, out := p.Run(tempDir)
 		if !passed || out != "probe-ok" {
@@ -98,7 +94,6 @@ func TestGovernedProbe_Run(t *testing.T) {
 	})
 
 	t.Run("failed probe execution", func(t *testing.T) {
-		t.Parallel()
 		p := &GovernedProbe{Command: "sh", Args: []string{"-c", "echo probe-failed; exit 1"}}
 		passed, out := p.Run(tempDir)
 		if passed {
@@ -111,7 +106,6 @@ func TestGovernedProbe_Run(t *testing.T) {
 }
 
 func TestBuiltinLoadsSortedScenarios(t *testing.T) {
-	t.Parallel()
 	scenarios, err := Builtin()
 	if err != nil {
 		t.Fatalf("Builtin: %v", err)
@@ -126,7 +120,6 @@ func TestBuiltinLoadsSortedScenarios(t *testing.T) {
 }
 
 func TestBuiltinPredicatesFailUnfixedAndPassFixed(t *testing.T) {
-	t.Parallel()
 	for id, s := range mustBuiltin(t) {
 		for _, state := range s.Objective.FileState {
 			unfixed, found := workspaceContent(s, state.Path)
@@ -157,7 +150,6 @@ func TestBuiltinPredicatesFailUnfixedAndPassFixed(t *testing.T) {
 }
 
 func TestBuiltinContainsPredicatesAbsentFromUnfixedWhereFaultIsTheTarget(t *testing.T) {
-	t.Parallel()
 	scenarios := mustBuiltin(t)
 	for _, id := range []string{"wrong-port-config", "wrong-path-check-script"} {
 		s := scenarios[id]
@@ -193,7 +185,6 @@ func cloneScenario(t *testing.T, s *Scenario) *Scenario {
 }
 
 func TestLoadRejectsUnknownFieldsAndTrailingData(t *testing.T) {
-	t.Parallel()
 	base := mustBuiltin(t)["wrong-port-config"]
 	body := encodeScenario(t, base)
 	if _, err := Load(body); err != nil {
@@ -210,7 +201,6 @@ func TestLoadRejectsUnknownFieldsAndTrailingData(t *testing.T) {
 }
 
 func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
-	t.Parallel()
 	base := mustBuiltin(t)["wrong-port-config"]
 	if err := base.Validate(); err != nil {
 		t.Fatalf("base scenario invalid: %v", err)
@@ -265,7 +255,6 @@ func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			s := cloneScenario(t, base)
 			tc.mutate(s)
 			err := s.Validate()
@@ -277,17 +266,14 @@ func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
 }
 
 func TestLoadScenariosRejectsBadFiles(t *testing.T) {
-	t.Parallel()
 	body := encodeScenario(t, mustBuiltin(t)["wrong-port-config"])
 	t.Run("file name differs from id", func(t *testing.T) {
-		t.Parallel()
 		src := fstest.MapFS{"other-name.json": {Data: body}}
 		if _, err := loadScenarios(src); !errors.Is(err, constants.ErrInvestigationScenarioInvalid) {
 			t.Fatalf("loadScenarios() = %v, want ErrInvestigationScenarioInvalid", err)
 		}
 	})
 	t.Run("duplicate id", func(t *testing.T) {
-		t.Parallel()
 		src := fstest.MapFS{
 			"wrong-port-config.json":        {Data: body},
 			"nested/wrong-port-config.json": {Data: body},
@@ -297,7 +283,6 @@ func TestLoadScenariosRejectsBadFiles(t *testing.T) {
 		}
 	})
 	t.Run("one invalid file fails the load", func(t *testing.T) {
-		t.Parallel()
 		src := fstest.MapFS{
 			"wrong-port-config.json": {Data: body},
 			"broken.json":            {Data: []byte(`{"id":"broken"}`)},

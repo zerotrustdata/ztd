@@ -124,7 +124,6 @@ func newOperationalTrust(signer *operationalCommitmentSigner) *assessedSignerStu
 }
 
 func TestOperationalExportImporter_RejectsBrokenCommitmentSegment(t *testing.T) {
-	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	signer := newOperationalCommitmentSigner(t)
 	first := signer.commitment(t, "tx-1", "", executedAt)
@@ -149,7 +148,6 @@ func TestOperationalExportImporter_RejectsBrokenCommitmentSegment(t *testing.T) 
 }
 
 func TestOperationalExportImporter_AcceptsBoundedCommitmentSegmentWithoutWholeLedgerClaim(t *testing.T) {
-	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	signer := newOperationalCommitmentSigner(t)
 	commitment := signer.commitment(t, "tx-1", "external-prior", executedAt)
@@ -171,7 +169,6 @@ func TestOperationalExportImporter_AcceptsBoundedCommitmentSegmentWithoutWholeLe
 }
 
 func TestOperationalExportImporter_RejectsCommitmentSegmentSequenceGap(t *testing.T) {
-	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	signer := newOperationalCommitmentSigner(t)
 	first := signer.commitment(t, "tx-1", "external-prior", executedAt)
@@ -195,7 +192,6 @@ func TestOperationalExportImporter_RejectsCommitmentSegmentSequenceGap(t *testin
 }
 
 func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t *testing.T) {
-	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	tests := []struct {
 		name   string
@@ -217,7 +213,6 @@ func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			signer := newOperationalCommitmentSigner(t)
 			commitment := signer.commitment(t, "tx-1", "external-prior", executedAt)
 			receipt := newEvalVerifiedChainReceipt(signer.keyID)
@@ -256,7 +251,6 @@ func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t
 }
 
 func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t *testing.T) {
-	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -340,7 +334,6 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 }
 
 func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksReceipts(t *testing.T) {
-	t.Parallel()
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	signer := newOperationalCommitmentSigner(t)
 	commitment := signer.commitment(t, "tx-1", "external-prior", executedAt)

@@ -27,7 +27,6 @@ import (
 const testBinding = "test/binding"
 
 func TestNewWithKeyringAndFS(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -39,7 +38,6 @@ func TestNewWithKeyringAndFS(t *testing.T) {
 }
 
 func TestKeystore_Initialize_GeneratesNewKey(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -56,7 +54,6 @@ func TestKeystore_Initialize_GeneratesNewKey(t *testing.T) {
 }
 
 func TestKeystore_Initialize_RetrievesExistingKey(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -80,7 +77,6 @@ func TestKeystore_Initialize_RetrievesExistingKey(t *testing.T) {
 }
 
 func TestKeystore_Initialize_RejectsInvalidKeyLength(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -98,7 +94,6 @@ func TestKeystore_Initialize_RejectsInvalidKeyLength(t *testing.T) {
 }
 
 func TestKeystore_EncryptSecret(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -117,7 +112,6 @@ func TestKeystore_EncryptSecret(t *testing.T) {
 }
 
 func TestKeystore_EncryptSecret_Atomically(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -135,7 +129,6 @@ func TestKeystore_EncryptSecret_Atomically(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -154,7 +147,6 @@ func TestKeystore_DecryptSecret(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_MissingFile(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -169,7 +161,6 @@ func TestKeystore_DecryptSecret_MissingFile(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_CorruptedFile(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -189,7 +180,6 @@ func TestKeystore_DecryptSecret_CorruptedFile(t *testing.T) {
 }
 
 func TestKeystore_DeleteSecret(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -210,7 +200,6 @@ func TestKeystore_DeleteSecret(t *testing.T) {
 }
 
 func TestKeystore_DeleteSecret_Nonexistent(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -224,7 +213,6 @@ func TestKeystore_DeleteSecret_Nonexistent(t *testing.T) {
 }
 
 func TestKeystore_Purge(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -251,7 +239,6 @@ func TestKeystore_Purge(t *testing.T) {
 }
 
 func TestKeystore_EnsurePermissions(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -285,7 +272,6 @@ func TestKeystore_EnsurePermissions(t *testing.T) {
 }
 
 func TestKeystore_KeyringName(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -297,7 +283,6 @@ func TestKeystore_KeyringName(t *testing.T) {
 }
 
 func TestKeystore_Encrypt(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -314,7 +299,6 @@ func TestKeystore_Encrypt(t *testing.T) {
 }
 
 func TestKeystore_Decrypt(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -333,7 +317,6 @@ func TestKeystore_Decrypt(t *testing.T) {
 }
 
 func TestKeystore_EncryptDecrypt_RoundTrip(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -352,7 +335,6 @@ func TestKeystore_EncryptDecrypt_RoundTrip(t *testing.T) {
 
 	for _, plaintext := range testCases {
 		t.Run(plaintext[:min(20, len(plaintext))], func(t *testing.T) {
-			t.Parallel()
 			encoded, err := ks.Encrypt(testBinding, plaintext)
 			require.NoError(t, err)
 
@@ -364,7 +346,6 @@ func TestKeystore_EncryptDecrypt_RoundTrip(t *testing.T) {
 }
 
 func TestKeystore_Decrypt_InvalidBase64(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -379,7 +360,6 @@ func TestKeystore_Decrypt_InvalidBase64(t *testing.T) {
 }
 
 func TestKeystore_Decrypt_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -395,7 +375,6 @@ func TestKeystore_Decrypt_InvalidJSON(t *testing.T) {
 }
 
 func TestKeystore_Decrypt_UnsupportedVersion(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -419,7 +398,6 @@ func TestKeystore_Decrypt_UnsupportedVersion(t *testing.T) {
 }
 
 func TestKeystore_Decrypt_InvalidCiphertext(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -443,7 +421,6 @@ func TestKeystore_Decrypt_InvalidCiphertext(t *testing.T) {
 }
 
 func TestKeystore_Encrypt_EmptyPlaintext(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -462,7 +439,6 @@ func TestKeystore_Encrypt_EmptyPlaintext(t *testing.T) {
 }
 
 func TestKeystore_Encrypt_LargePlaintext(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -485,7 +461,6 @@ func TestKeystore_Encrypt_LargePlaintext(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -505,7 +480,6 @@ func TestKeystore_DecryptSecret_InvalidJSON(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_UnsupportedVersion(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
@@ -531,7 +505,6 @@ func TestKeystore_DecryptSecret_UnsupportedVersion(t *testing.T) {
 }
 
 func TestKeystore_RejectsUnsafeSecretNames(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -547,7 +520,6 @@ func TestKeystore_RejectsUnsafeSecretNames(t *testing.T) {
 }
 
 func TestKeystore_Initialize_RejectsOrphanedSecrets(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	original, err := keystore.NewWithKeyringAndFS(logger, keystoretest.NewMemoryKeyring(), fileSvc)
@@ -570,7 +542,6 @@ func TestKeystore_Initialize_RejectsOrphanedSecrets(t *testing.T) {
 }
 
 func TestKeystore_KeyMaterialRoundTrip(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -586,7 +557,6 @@ func TestKeystore_KeyMaterialRoundTrip(t *testing.T) {
 }
 
 func TestKeystore_CiphertextIsBoundToName(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -604,7 +574,6 @@ func TestKeystore_CiphertextIsBoundToName(t *testing.T) {
 }
 
 func TestKeystore_ValueIsBoundToBinding(t *testing.T) {
-	t.Parallel()
 	fileSvc, _ := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -625,7 +594,6 @@ func TestKeystore_ValueIsBoundToBinding(t *testing.T) {
 }
 
 func TestKeystore_RejectsVersion1Secrets(t *testing.T) {
-	t.Parallel()
 	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)

@@ -97,7 +97,6 @@ func approvalRespondRequest(body, userID string) *http.Request {
 }
 
 func TestHandleApprovalRespond(t *testing.T) {
-	t.Parallel()
 	const userID = "user-approval-respond-1"
 	const txHash = "tx-approval-respond-1"
 
@@ -117,7 +116,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	}
 
 	t.Run("Failure - method not allowed", func(t *testing.T) {
-		t.Parallel()
 		h := newApprovalRespondHandler(&approvalRespondMCP{}, &approvalRespondStore{})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/approvals/respond", nil)
 		rr := httptest.NewRecorder()
@@ -128,7 +126,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - unauthorized without user context", func(t *testing.T) {
-		t.Parallel()
 		h := newApprovalRespondHandler(&approvalRespondMCP{}, &approvalRespondStore{})
 		rr := httptest.NewRecorder()
 
@@ -138,7 +135,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - no suspended transaction returns 404", func(t *testing.T) {
-		t.Parallel()
 		mcp := &approvalRespondMCP{found: false}
 		store := &approvalRespondStore{}
 		h := newApprovalRespondHandler(mcp, store)
@@ -153,7 +149,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - malformed JSON returns 400", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor(userID)
 		store := &approvalRespondStore{}
 		h := newApprovalRespondHandler(mcp, store)
@@ -167,7 +162,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - missing approval_id returns 400", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor(userID)
 		store := &approvalRespondStore{}
 		h := newApprovalRespondHandler(mcp, store)
@@ -180,7 +174,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - another user's transaction returns 403", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor("user-owner-someone-else")
 		store := &approvalRespondStore{}
 		h := newApprovalRespondHandler(mcp, store)
@@ -194,7 +187,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - approved response is rejected without a signed CLI assertion", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor(userID)
 		mcp.receipt = &operatorv1.ActionReceipt{TransactionId: "transaction-approval-respond-1", TransactionHash: txHash}
 		store := &approvalRespondStore{}
@@ -210,7 +202,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - deny of a transaction that expired before the claim returns 404", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor(userID)
 		mcp.denyErr = fmt.Errorf("gateway: %w", constants.ErrTransactionExpired)
 		h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
@@ -223,7 +214,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Failure - deny receipt for another transaction fails closed", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor(userID)
 		mcp.denyReceipt = &operatorv1.ActionReceipt{TransactionHash: "tx-other"}
 		h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
@@ -235,7 +225,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 	})
 
 	t.Run("Success - deny returns the signed L3_DENIED rejection receipt", func(t *testing.T) {
-		t.Parallel()
 		mcp := suspendedFor(userID)
 		mcp.denyReceipt = &operatorv1.ActionReceipt{
 			TransactionId:   "transaction-approval-respond-1",

@@ -17,8 +17,6 @@ import (
 )
 
 func TestDecodeCLIBindResponse(t *testing.T) {
-	t.Parallel()
-
 	got, err := DecodeCLIBindResponse([]byte(`{"success":true,"cli_session_id":"cli-2","user_id":"user-1","operator_id":"op-1","operator_session_id":"sess-1","bound":[{"operator_id":"op-1","operator_session_id":"sess-1"}]}`), []string{"sess-1"})
 	require.NoError(t, err)
 	assert.Equal(t, "cli-2", got.CLISessionID)
@@ -29,8 +27,6 @@ func TestDecodeCLIBindResponse(t *testing.T) {
 }
 
 func TestDecodeCLIUnbindResponse(t *testing.T) {
-	t.Parallel()
-
 	got, err := DecodeCLIUnbindResponse([]byte(`{"success":true,"cli_session_id":"cli-3","user_id":"user-1"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "cli-3", got.CLISessionID)

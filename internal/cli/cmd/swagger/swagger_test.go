@@ -25,9 +25,7 @@ import (
 )
 
 func TestSwaggerCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("swagger command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "swagger", cmd.Use)
 		assert.Contains(t, cmd.Short, "Swagger")
@@ -39,9 +37,7 @@ func TestSwaggerCmd(t *testing.T) {
 }
 
 func TestSwaggerCmdSubcommands(t *testing.T) {
-	t.Parallel()
 	t.Run("swagger command has expected subcommands", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		require.NotNil(t, cmd)
 
@@ -64,10 +60,8 @@ func TestSwaggerCmdSubcommands(t *testing.T) {
 	})
 }
 
-func TestSwaggerInitCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("init command has correct use and description", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerInitCmd(t *testing.T) {
+	t.Run("init command has correct use and description", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		assert.Equal(t, "init", cmd.Use)
 		assert.Contains(t, cmd.Short, "Generate")
@@ -76,8 +70,7 @@ func TestSwaggerInitCmd(t *testing.T) { //nolint:paralleltest // mutates package
 		assert.Contains(t, cmd.Long, "annotations")
 	})
 
-	t.Run("init command has dir and output flags", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("init command has dir and output flags", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		require.NotNil(t, cmd)
 
@@ -88,8 +81,7 @@ func TestSwaggerInitCmd(t *testing.T) { //nolint:paralleltest // mutates package
 		assert.NotNil(t, outputFlag, "init should have --output flag")
 	})
 
-	t.Run("init fails when swag binary not found and go run fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("init fails when swag binary not found and go run fails", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -107,8 +99,7 @@ func TestSwaggerInitCmd(t *testing.T) { //nolint:paralleltest // mutates package
 		require.Error(t, err)
 	})
 
-	t.Run("init uses default search directory when flag not set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("init uses default search directory when flag not set", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -124,8 +115,7 @@ func TestSwaggerInitCmd(t *testing.T) { //nolint:paralleltest // mutates package
 		require.Error(t, err)
 	})
 
-	t.Run("init uses default output directory when flag not set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("init uses default output directory when flag not set", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -140,10 +130,8 @@ func TestSwaggerInitCmd(t *testing.T) { //nolint:paralleltest // mutates package
 	})
 }
 
-func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("serve command has correct use and description", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerServeCmd(t *testing.T) {
+	t.Run("serve command has correct use and description", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		assert.Equal(t, "serve", cmd.Use)
 		assert.Contains(t, cmd.Short, "Serve")
@@ -153,8 +141,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, cmd.Long, "testing")
 	})
 
-	t.Run("serve command has port and host flags", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve command has port and host flags", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		require.NotNil(t, cmd)
 
@@ -165,8 +152,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.NotNil(t, hostFlag, "serve should have --host flag")
 	})
 
-	t.Run("serve uses default port when flag not set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve uses default port when flag not set", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -187,8 +173,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, output, "8081")
 	})
 
-	t.Run("serve uses default host when flag not set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve uses default host when flag not set", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -209,8 +194,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, output, "localhost")
 	})
 
-	t.Run("serve uses custom port when flag is set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve uses custom port when flag is set", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -233,8 +217,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, output, "9090")
 	})
 
-	t.Run("serve uses custom host when flag is set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve uses custom host when flag is set", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -257,8 +240,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, output, "0.0.0.0")
 	})
 
-	t.Run("serve prints message when swagger.json not found", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve prints message when swagger.json not found", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -277,8 +259,7 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 		assert.Contains(t, output, "Swagger documentation not found")
 	})
 
-	t.Run("serve provides alternative serving instructions", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve provides alternative serving instructions", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -299,10 +280,8 @@ func TestSwaggerServeCmd(t *testing.T) { //nolint:paralleltest // mutates packag
 	})
 }
 
-func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("validate command has correct use and description", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerValidateCmd(t *testing.T) {
+	t.Run("validate command has correct use and description", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		assert.Equal(t, "validate", cmd.Use)
 		assert.Contains(t, cmd.Short, "Validate")
@@ -312,8 +291,7 @@ func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates pac
 		assert.Contains(t, cmd.Long, "compliance")
 	})
 
-	t.Run("validate command has file flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate command has file flag", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		require.NotNil(t, cmd)
 
@@ -321,8 +299,7 @@ func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates pac
 		assert.NotNil(t, fileFlag, "validate should have --file flag")
 	})
 
-	t.Run("validate uses default spec file when flag not set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate uses default spec file when flag not set", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -338,8 +315,7 @@ func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates pac
 		assert.Error(t, err)
 	})
 
-	t.Run("validate fails when spec file does not exist", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate fails when spec file does not exist", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -356,8 +332,7 @@ func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates pac
 		assert.Error(t, err)
 	})
 
-	t.Run("validate uses custom spec file when flag is set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate uses custom spec file when flag is set", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -378,8 +353,7 @@ func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates pac
 		require.NoError(t, err)
 	})
 
-	t.Run("validate provides installation instructions when no tools found", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate provides installation instructions when no tools found", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -409,9 +383,7 @@ func TestSwaggerValidateCmd(t *testing.T) { //nolint:paralleltest // mutates pac
 }
 
 func TestSwaggerCommandHelpText(t *testing.T) {
-	t.Parallel()
 	t.Run("swagger commands have non-empty help text", func(t *testing.T) {
-		t.Parallel()
 		commands := []struct {
 			name string
 			cmd  *cobra.Command
@@ -424,7 +396,6 @@ func TestSwaggerCommandHelpText(t *testing.T) {
 
 		for _, tc := range commands {
 			t.Run(tc.name, func(t *testing.T) {
-				t.Parallel()
 				assert.NotEmpty(t, tc.cmd.Short, tc.name+" should have non-empty Short description")
 				assert.NotEmpty(t, tc.cmd.Long, tc.name+" should have non-empty Long description")
 			})
@@ -433,54 +404,45 @@ func TestSwaggerCommandHelpText(t *testing.T) {
 }
 
 func TestSwaggerCommandFlagValidation(t *testing.T) {
-	t.Parallel()
 	t.Run("init dir flag accepts string value", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerInitCmd()
 		err := cmd.Flags().Set("dir", "custom-dir")
 		require.NoError(t, err)
 	})
 
 	t.Run("init output flag accepts string value", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerInitCmd()
 		err := cmd.Flags().Set("output", "custom-output")
 		require.NoError(t, err)
 	})
 
 	t.Run("serve port flag accepts integer value", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerServeCmd()
 		err := cmd.Flags().Set("port", "9999")
 		require.NoError(t, err)
 	})
 
 	t.Run("serve port flag rejects invalid integer", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerServeCmd()
 		err := cmd.Flags().Set("port", "invalid")
 		require.Error(t, err)
 	})
 
 	t.Run("serve host flag accepts string value", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerServeCmd()
 		err := cmd.Flags().Set("host", "127.0.0.1")
 		require.NoError(t, err)
 	})
 
 	t.Run("validate file flag accepts string value", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerValidateCmd()
 		err := cmd.Flags().Set("file", "/path/to/swagger.json")
 		require.NoError(t, err)
 	})
 }
 
-func TestSwaggerCommandPathResolution(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("init resolves relative paths to absolute", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerCommandPathResolution(t *testing.T) {
+	t.Run("init resolves relative paths to absolute", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -501,8 +463,7 @@ func TestSwaggerCommandPathResolution(t *testing.T) { //nolint:paralleltest // m
 		}
 	})
 
-	t.Run("serve resolves docs path to absolute", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve resolves docs path to absolute", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -523,8 +484,7 @@ func TestSwaggerCommandPathResolution(t *testing.T) { //nolint:paralleltest // m
 		assert.NotContains(t, output, "failed to resolve")
 	})
 
-	t.Run("validate resolves spec file path to absolute", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate resolves spec file path to absolute", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -545,19 +505,15 @@ func TestSwaggerCommandPathResolution(t *testing.T) { //nolint:paralleltest // m
 	})
 }
 
-func TestSwaggerCommandOutputFormatting(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("init prints success message with file paths", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerCommandOutputFormatting(t *testing.T) {
+	t.Run("init prints success message with file paths", func(t *testing.T) {
 		// This test verifies the output format when init succeeds
 		// Since we can't actually run swag, we just verify the command structure
-
 		cmd := swaggerInitCmd()
 		assert.Contains(t, cmd.Long, "swag CLI tool")
 	})
 
-	t.Run("serve prints URL with host and port", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("serve prints URL with host and port", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -582,8 +538,7 @@ func TestSwaggerCommandOutputFormatting(t *testing.T) { //nolint:paralleltest //
 		assert.Contains(t, output, "http://127.0.0.1:9090")
 	})
 
-	t.Run("validate prints tool suggestions when tools missing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate prints tool suggestions when tools missing", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -612,22 +567,18 @@ func TestSwaggerCommandOutputFormatting(t *testing.T) { //nolint:paralleltest //
 	})
 }
 
-func TestSwaggerCommandErrorMessages(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("init provides clear error on path resolution failure", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerCommandErrorMessages(t *testing.T) {
+	t.Run("init provides clear error on path resolution failure", func(t *testing.T) {
 		// Test that path resolution errors are clear
 		// This is difficult to test without actually causing a path resolution error
 		// We verify the error message format in the code
-
 		cmd := swaggerInitCmd()
 		// The error message should contain "failed to resolve" prefix
 		// This is verified by checking the code structure
 		assert.Contains(t, cmd.Long, "swag CLI tool")
 	})
 
-	t.Run("validate provides clear error when file not found", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate provides clear error when file not found", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -643,9 +594,7 @@ func TestSwaggerCommandErrorMessages(t *testing.T) { //nolint:paralleltest // mu
 }
 
 func TestSwaggerCommandDefaultValues(t *testing.T) {
-	t.Parallel()
 	t.Run("init default search directory is correct", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerInitCmd()
 		dirFlag := cmd.Flags().Lookup("dir")
 		assert.NotNil(t, dirFlag)
@@ -654,7 +603,6 @@ func TestSwaggerCommandDefaultValues(t *testing.T) {
 	})
 
 	t.Run("init default output directory is correct", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerInitCmd()
 		outputFlag := cmd.Flags().Lookup("output")
 		assert.NotNil(t, outputFlag)
@@ -663,7 +611,6 @@ func TestSwaggerCommandDefaultValues(t *testing.T) {
 	})
 
 	t.Run("serve default port is correct", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerServeCmd()
 		portFlag := cmd.Flags().Lookup("port")
 		assert.NotNil(t, portFlag)
@@ -672,7 +619,6 @@ func TestSwaggerCommandDefaultValues(t *testing.T) {
 	})
 
 	t.Run("serve default host is correct", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerServeCmd()
 		hostFlag := cmd.Flags().Lookup("host")
 		assert.NotNil(t, hostFlag)
@@ -681,7 +627,6 @@ func TestSwaggerCommandDefaultValues(t *testing.T) {
 	})
 
 	t.Run("validate default file is correct", func(t *testing.T) {
-		t.Parallel()
 		cmd := swaggerValidateCmd()
 		fileFlag := cmd.Flags().Lookup("file")
 		assert.NotNil(t, fileFlag)
@@ -691,9 +636,7 @@ func TestSwaggerCommandDefaultValues(t *testing.T) {
 }
 
 func TestSwaggerCommandIntegration(t *testing.T) {
-	t.Parallel()
 	t.Run("swagger command can be added to parent command", func(t *testing.T) {
-		t.Parallel()
 		parentCmd := &cobra.Command{Use: "parent"}
 		cmd := Cmd()
 		parentCmd.AddCommand(cmd)
@@ -703,7 +646,6 @@ func TestSwaggerCommandIntegration(t *testing.T) {
 	})
 
 	t.Run("swagger subcommands are properly nested", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		subcommands := cmd.Commands()
 
@@ -718,10 +660,8 @@ func TestSwaggerCommandIntegration(t *testing.T) {
 	})
 }
 
-func TestSwaggerCommandEdgeCases(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("serve handles empty docs directory gracefully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestSwaggerCommandEdgeCases(t *testing.T) {
+	t.Run("serve handles empty docs directory gracefully", func(t *testing.T) {
 		cmd := swaggerServeCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -740,8 +680,7 @@ func TestSwaggerCommandEdgeCases(t *testing.T) { //nolint:paralleltest // mutate
 		assert.Contains(t, output, "Swagger documentation not found")
 	})
 
-	t.Run("validate handles empty swagger.json gracefully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("validate handles empty swagger.json gracefully", func(t *testing.T) {
 		cmd := swaggerValidateCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -760,8 +699,7 @@ func TestSwaggerCommandEdgeCases(t *testing.T) { //nolint:paralleltest // mutate
 		require.NoError(t, err)
 	})
 
-	t.Run("init handles comma-separated search directories", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("init handles comma-separated search directories", func(t *testing.T) {
 		cmd := swaggerInitCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -783,9 +721,7 @@ func TestSwaggerCommandEdgeCases(t *testing.T) { //nolint:paralleltest // mutate
 }
 
 func TestSwaggerCommandDocumentation(t *testing.T) {
-	t.Parallel()
 	t.Run("command descriptions are consistent", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		// Verify that the parent command mentions all subcommands
 		lowerLong := strings.ToLower(cmd.Long)
@@ -798,7 +734,6 @@ func TestSwaggerCommandDocumentation(t *testing.T) {
 	})
 
 	t.Run("subcommand descriptions are specific to their function", func(t *testing.T) {
-		t.Parallel()
 		initCmd := swaggerInitCmd()
 		serveCmd := swaggerServeCmd()
 		validateCmd := swaggerValidateCmd()

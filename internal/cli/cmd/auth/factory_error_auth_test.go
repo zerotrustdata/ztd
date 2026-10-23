@@ -22,8 +22,7 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestApproveCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApproveCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := approveCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory), func(string) error { return nil })
@@ -37,8 +36,7 @@ func TestApproveCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paral
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestApproveRecoveryCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApproveRecoveryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := approveRecoveryCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -52,8 +50,7 @@ func TestApproveRecoveryCmdWithConfig_FileSvcFactoryError(t *testing.T) { //noli
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestApprovePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApprovePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := approvePlatformEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -67,8 +64,7 @@ func TestApprovePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestDenyPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDenyPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := denyPlatformEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -82,8 +78,7 @@ func TestDenyPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestRevokePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestRevokePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := revokePlatformEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -98,8 +93,7 @@ func TestRevokePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T)
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPendingPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestPendingPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := pendingPlatformEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -113,8 +107,7 @@ func TestPendingPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestLogoutCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLogoutCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := logoutCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory), fakeLogoutFactory(&fakeLogoutClient{}))
@@ -128,8 +121,7 @@ func TestLogoutCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:parall
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestAuthContextCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestAuthContextCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := authContextCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -143,8 +135,7 @@ func TestAuthContextCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:p
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestEnrollUserCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollUserCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	stubCheckOperatorRunning := func(*config.Config) error { return nil }
 	cmd := enrollUserCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory), stubCheckOperatorRunning, NewDefaultEnrollmentCoordinator)
@@ -157,8 +148,7 @@ func TestEnrollUserCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:pa
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestEnrollAppCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollAppCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := enrollAppCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory), DefaultAppEnrollerFactory)
 	var buf bytes.Buffer

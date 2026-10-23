@@ -19,7 +19,6 @@ import (
 )
 
 func TestSelectProvenanceOperator(t *testing.T) {
-	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{Id: "prov-1", OperatorSessionId: "sess-prov-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}}},
 	}
@@ -61,13 +60,11 @@ func TestSelectProvenanceOperatorBySessionRejectsUnknownSession(t *testing.T) {
 }
 
 func TestSelectProvenanceOperator_NotFound(t *testing.T) {
-	t.Parallel()
 	_, err := SelectProvenanceOperator(nil, "")
 	assert.ErrorIs(t, err, constants.ErrProvenanceOperatorNotFound)
 }
 
 func TestSelectProvenanceOperator_Ambiguous(t *testing.T) {
-	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{Id: "prov-1", OperatorSessionId: "sess-prov-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}}},
 		{Id: "prov-2", OperatorSessionId: "sess-prov-2", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}}},

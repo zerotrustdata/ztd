@@ -45,14 +45,12 @@ func (m *mockTool) Execute(ctx context.Context, args json.RawMessage) (CallToolR
 }
 
 func TestNewToolRegistry(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 	assert.NotNil(t, registry, "NewToolRegistry returned nil")
 	assert.Equal(t, 0, registry.Count(), "Expected empty registry")
 }
 
 func TestToolRegistry_Register(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	tool := &mockTool{
@@ -75,7 +73,6 @@ func TestToolRegistry_Register(t *testing.T) {
 }
 
 func TestToolRegistry_RegisterDuplicate(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	tool1 := &mockTool{
@@ -103,7 +100,6 @@ func TestToolRegistry_RegisterDuplicate(t *testing.T) {
 }
 
 func TestToolRegistry_RegisterNil(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	err := registry.Register(nil)
@@ -112,7 +108,6 @@ func TestToolRegistry_RegisterNil(t *testing.T) {
 }
 
 func TestToolRegistry_RegisterEmptyName(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	tool := &mockTool{
@@ -129,7 +124,6 @@ func TestToolRegistry_RegisterEmptyName(t *testing.T) {
 }
 
 func TestToolRegistry_RegisterInvalidName(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	testCases := []struct {
@@ -145,7 +139,6 @@ func TestToolRegistry_RegisterInvalidName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			tool := &mockTool{
 				name:        tc.toolName,
 				description: "Tool with invalid name",
@@ -162,7 +155,6 @@ func TestToolRegistry_RegisterInvalidName(t *testing.T) {
 }
 
 func TestToolRegistry_RegisterValidNames(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	validNames := []string{
@@ -187,7 +179,6 @@ func TestToolRegistry_RegisterValidNames(t *testing.T) {
 }
 
 func TestToolRegistry_RegisterInvalidSchema(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	testCases := []struct {
@@ -202,7 +193,6 @@ func TestToolRegistry_RegisterInvalidSchema(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			tool := &mockTool{
 				name:        "test_tool",
 				description: "Test tool",
@@ -217,7 +207,6 @@ func TestToolRegistry_RegisterInvalidSchema(t *testing.T) {
 }
 
 func TestToolRegistry_Get(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	tool := &mockTool{
@@ -241,7 +230,6 @@ func TestToolRegistry_Get(t *testing.T) {
 }
 
 func TestToolRegistry_List(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	tools := []*mockTool{
@@ -269,7 +257,6 @@ func TestToolRegistry_List(t *testing.T) {
 }
 
 func TestToolRegistry_Count(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	assert.Equal(t, 0, registry.Count(), "Expected count 0")
@@ -292,7 +279,6 @@ func TestToolRegistry_Count(t *testing.T) {
 }
 
 func TestToolRegistry_ConcurrentAccess(t *testing.T) {
-	t.Parallel()
 	registry := NewToolRegistry()
 
 	// Register tools concurrently
@@ -319,7 +305,6 @@ func TestToolRegistry_ConcurrentAccess(t *testing.T) {
 }
 
 func TestIsValidToolName(t *testing.T) {
-	t.Parallel()
 	validNames := []string{
 		"valid_tool",
 		"tool123",
@@ -348,7 +333,6 @@ func TestIsValidToolName(t *testing.T) {
 }
 
 func TestValidateInputSchema(t *testing.T) {
-	t.Parallel()
 	validSchemas := []*InputSchema{
 		{Type: "object"},
 		{
@@ -387,7 +371,6 @@ func TestValidateInputSchema(t *testing.T) {
 // TestInputSchema_OmitsEmptyRequired pins that a schema without required
 // arguments never serializes "required":null, which strict MCP clients reject.
 func TestInputSchema_OmitsEmptyRequired(t *testing.T) {
-	t.Parallel()
 	raw, err := json.Marshal(&InputSchema{Type: "object", Properties: map[string]*PropertySchema{}})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(raw))

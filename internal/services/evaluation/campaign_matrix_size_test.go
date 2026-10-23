@@ -34,7 +34,6 @@ func truncatedCatalog(t *testing.T, catalog *evalv1.EvaluationScenarioCatalog, s
 }
 
 func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := LoadScenarioCatalog()
 	require.NoError(t, err)
 	small := truncatedCatalog(t, catalog, 3)
@@ -54,7 +53,6 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 }
 
 func TestCampaignControllerRunSummaryExpectsTheFrozenCatalogMatrix(t *testing.T) {
-	t.Parallel()
 	store := NewStore(newCampaignMemoryFileService())
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)

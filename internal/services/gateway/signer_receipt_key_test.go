@@ -19,8 +19,6 @@ import (
 )
 
 func TestReceiptSignerKey_EmbeddedOperatorResolvesToGatewayActuatorKey(t *testing.T) {
-	t.Parallel()
-
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := hex.EncodeToString(pub)
@@ -33,8 +31,6 @@ func TestReceiptSignerKey_EmbeddedOperatorResolvesToGatewayActuatorKey(t *testin
 }
 
 func TestReceiptSignerKey_EmbeddedOperatorRejectsMismatchedSignerKeyID(t *testing.T) {
-	t.Parallel()
-
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	other, _, err := ed25519.GenerateKey(nil)
@@ -47,8 +43,6 @@ func TestReceiptSignerKey_EmbeddedOperatorRejectsMismatchedSignerKeyID(t *testin
 }
 
 func TestReceiptSignerKey_EmbeddedOperatorWithoutGatewayKeyIsNotBound(t *testing.T) {
-	t.Parallel()
-
 	svc := NewSignerStoreService(nil, nil, nil, nil, "")
 
 	_, err := svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),

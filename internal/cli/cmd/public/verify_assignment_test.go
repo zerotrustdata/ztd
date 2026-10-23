@@ -189,7 +189,6 @@ func runVerifyAssignment(t *testing.T, args ...string) (string, error) {
 }
 
 func TestVerifyAssignmentCmd_VerifiesDatabaseInActiveSet(t *testing.T) {
-	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)
@@ -206,7 +205,6 @@ func TestVerifyAssignmentCmd_VerifiesDatabaseInActiveSet(t *testing.T) {
 }
 
 func TestVerifyAssignmentCmd_RejectsDatabaseNotInProof(t *testing.T) {
-	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)
@@ -223,7 +221,6 @@ func TestVerifyAssignmentCmd_RejectsDatabaseNotInProof(t *testing.T) {
 }
 
 func TestVerifyAssignmentCmd_RejectsWithdrawnDatabase(t *testing.T) {
-	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)
@@ -241,7 +238,6 @@ func TestVerifyAssignmentCmd_RejectsWithdrawnDatabase(t *testing.T) {
 }
 
 func TestVerifyAssignmentCmd_RejectsWrongPublicKey(t *testing.T) {
-	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	wrongPub, _, err := ed25519.GenerateKey(rand.Reader)
@@ -259,9 +255,7 @@ func TestVerifyAssignmentCmd_RejectsWrongPublicKey(t *testing.T) {
 }
 
 func TestVerifyAssignmentCmd_RejectsTamperedDatabase(t *testing.T) {
-	t.Parallel()
 	t.Run("bytes changed after the proof was sealed", func(t *testing.T) {
-		t.Parallel()
 		pub, priv, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
 		pubHex := hex.EncodeToString(pub)
@@ -280,7 +274,6 @@ func TestVerifyAssignmentCmd_RejectsTamperedDatabase(t *testing.T) {
 	})
 
 	t.Run("event rewritten and sealed into the proof", func(t *testing.T) {
-		t.Parallel()
 		pub, priv, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
 		pubHex := hex.EncodeToString(pub)
@@ -308,7 +301,6 @@ func TestVerifyAssignmentCmd_RejectsTamperedDatabase(t *testing.T) {
 }
 
 func TestVerifyAssignmentCmd_RequiresOneKeySource(t *testing.T) {
-	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)

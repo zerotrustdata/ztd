@@ -19,7 +19,6 @@ import (
 )
 
 func TestParseCAPool_RejectsEmptyAndCertlessBundles(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		caBundle []byte
@@ -32,7 +31,6 @@ func TestParseCAPool_RejectsEmptyAndCertlessBundles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			pool, err := parseCAPool(tt.caBundle)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, pool)
@@ -41,7 +39,6 @@ func TestParseCAPool_RejectsEmptyAndCertlessBundles(t *testing.T) {
 }
 
 func TestTruncateBody(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []byte
@@ -76,7 +73,6 @@ func TestTruncateBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			result := truncateBody(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -84,16 +80,12 @@ func TestTruncateBody(t *testing.T) {
 }
 
 func TestMaxResponseBytesConstant(t *testing.T) {
-	t.Parallel()
 	// Verify the constant has the expected value (1 MiB)
-
 	assert.Equal(t, 1<<20, maxResponseBytes)
 }
 
 func TestDefaultClientTimeoutConstant(t *testing.T) {
-	t.Parallel()
 	// Verify the constant has the expected value (30 seconds)
-
 	assert.Equal(t, 30*time.Second, defaultClientTimeout)
 }
 
@@ -101,7 +93,6 @@ func TestDefaultClientTimeoutConstant(t *testing.T) {
 // response handlers. It runs as a Tier 1 unit test with no network or platform
 // dependency.
 func TestDecodeJSON(t *testing.T) {
-	t.Parallel()
 	type widget struct {
 		Name  string `json:"name"`
 		Count int    `json:"count"`
@@ -174,7 +165,6 @@ func TestDecodeJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			result, err := decodeJSON[widget](tt.body, tt.label)
 			if tt.expectError {
 				require.Error(t, err)

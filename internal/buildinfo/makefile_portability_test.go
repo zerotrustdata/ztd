@@ -18,7 +18,6 @@ import (
 )
 
 func TestMakefile_FrontendSourceDiscoveryDoesNotDependOnPlatformFind(t *testing.T) {
-	t.Parallel()
 	root, err := RepositoryRoot(".")
 	require.NoError(t, err)
 	body, err := os.ReadFile(filepath.Join(root, "Makefile"))
@@ -40,7 +39,6 @@ func TestMakefile_FrontendSourceDiscoveryDoesNotDependOnPlatformFind(t *testing.
 // fresh-host onboarding runs `make down` from a plain shell, and the website CI
 // job has only Node.
 func TestMakefile_RuntimeGoalsSkipSourceLister(t *testing.T) {
-	t.Parallel()
 	root, err := RepositoryRoot(".")
 	require.NoError(t, err)
 	body, err := os.ReadFile(filepath.Join(root, "Makefile"))

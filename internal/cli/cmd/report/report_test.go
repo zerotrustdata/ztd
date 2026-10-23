@@ -15,11 +15,7 @@ import (
 )
 
 func TestReportCmd(t *testing.T) {
-	t.Parallel()
-
 	t.Run("report command has correct use and description", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := Cmd()
 		assert.Equal(t, "report", cmd.Use)
 		assert.Contains(t, cmd.Short, "CSV evidence reports")
@@ -27,8 +23,6 @@ func TestReportCmd(t *testing.T) {
 	})
 
 	t.Run("report command has expected subcommands", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := Cmd()
 		require.NotNil(t, cmd)
 
@@ -47,11 +41,7 @@ func TestReportCmd(t *testing.T) {
 }
 
 func TestReportAllCmd(t *testing.T) {
-	t.Parallel()
-
 	t.Run("all command has correct use and description", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := reportAllCmd()
 		assert.Equal(t, "all", cmd.Use)
 		assert.Contains(t, cmd.Short, "Export all stores")
@@ -59,8 +49,6 @@ func TestReportAllCmd(t *testing.T) {
 	})
 
 	t.Run("all command has expected flags", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := reportAllCmd()
 		expectedFlags := []string{"out", "data-dir", "runtime-dir", "ledger-dir"}
 		for _, flagName := range expectedFlags {
@@ -71,11 +59,7 @@ func TestReportAllCmd(t *testing.T) {
 }
 
 func TestReportVerifyCmd(t *testing.T) {
-	t.Parallel()
-
 	t.Run("verify command has correct use and description", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := reportVerifyCmd()
 		assert.Equal(t, "verify", cmd.Use)
 		assert.Contains(t, cmd.Short, "verification")
@@ -83,8 +67,6 @@ func TestReportVerifyCmd(t *testing.T) {
 	})
 
 	t.Run("verify command has expected flags", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := reportVerifyCmd()
 		expectedFlags := []string{"out", "data-dir", "runtime-dir", "ledger-dir"}
 		for _, flagName := range expectedFlags {

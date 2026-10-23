@@ -154,7 +154,6 @@ func suspendableEnvelope(t *testing.T, operatorSessionID string) []byte {
 }
 
 func TestGatewayService_HandleToolsCall_ReturnsSignedReceiptProtojson(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-1",
 		TransactionHash: "hash-1",
@@ -184,7 +183,6 @@ func TestGatewayService_HandleToolsCall_ReturnsSignedReceiptProtojson(t *testing
 }
 
 func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-2",
 		TransactionHash: "hash-2",
@@ -208,7 +206,6 @@ func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *t
 }
 
 func TestGatewayService_HandleToolsCall_BindsInvestigationIDIntoGovernanceEnvelope(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-3",
 		TransactionHash: "hash-3",
@@ -232,7 +229,6 @@ func TestGatewayService_HandleToolsCall_BindsInvestigationIDIntoGovernanceEnvelo
 }
 
 func TestGatewayService_HandleToolsCall_ErrorMapping(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name         string
 		GatewayErr   error
@@ -292,7 +288,6 @@ func TestGatewayService_HandleToolsCall_ErrorMapping(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			proc := &fakeEnvelopeProcessor{err: tc.GatewayErr}
 			g := newTestGatewayService(t, withEnvProc(proc))
 
@@ -320,7 +315,6 @@ func TestGatewayService_HandleToolsCall_ErrorMapping(t *testing.T) {
 // A2A return the Operator's signed rejection receipt as typed
 // GovernanceRejection error data, with its rejection_code.
 func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		name    string
 		path    string
@@ -348,7 +342,6 @@ func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			receipt := &operatorv1.ActionReceipt{
 				TransactionId:   "tx-blocked-1",
 				TransactionHash: "tx-blocked-1",
@@ -382,7 +375,6 @@ func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
 }
 
 func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenReceiptIsNil(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{err: governance.ErrL1ValidationFailed}
 	g := newTestGatewayService(t, withEnvProc(proc))
 
@@ -408,7 +400,6 @@ func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenReceiptIsNil(t *tes
 }
 
 func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
 	store := &fakeSuspendedStore{}
 
@@ -452,7 +443,6 @@ func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
 }
 
 func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-call-1",
 		TransactionHash: "hash-call-1",
@@ -480,7 +470,6 @@ func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
 }
 
 func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-a2a-1",
 		TransactionHash: "hash-a2a-1",
@@ -506,14 +495,12 @@ func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
 }
 
 func TestEncodeActionReceipt_FailsClosedOnNilReceipt(t *testing.T) {
-	t.Parallel()
 	encoded, err := encodeActionReceipt(nil)
 	require.ErrorIs(t, err, constants.ErrInternal)
 	assert.Nil(t, encoded, "a governed success must never be returned without its receipt")
 }
 
 func TestGovernedSuspension_MCPAndA2AShareTypedShape(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -572,7 +559,6 @@ func invalidL3ProofRejection(t *testing.T) (*operatorv1.ActionReceipt, error) {
 }
 
 func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForMCPCall(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -588,7 +574,6 @@ func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForMCPCall(t *testi
 }
 
 func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForA2ACall(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -618,7 +603,6 @@ func assertInvalidProofRejectionKeepsSuspension(t *testing.T, g *GatewayService,
 }
 
 func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -654,7 +638,6 @@ func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
 }
 
 func TestGatewayService_ResumeWithL3Proof_ExpiredTransaction(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 
@@ -688,7 +671,6 @@ func l3DeniedRejection() (*operatorv1.ActionReceipt, error) {
 }
 
 func TestDenySuspendedTransaction_ReturnsSignedRejectionForMCPAndA2ACalls(t *testing.T) {
-	t.Parallel()
 	calls := map[string]func(g *GatewayService) func(ctx context.Context, r *http.Request) (string, error){
 		"mcp": func(g *GatewayService) func(ctx context.Context, r *http.Request) (string, error) {
 			return func(ctx context.Context, r *http.Request) (string, error) {
@@ -711,7 +693,6 @@ func TestDenySuspendedTransaction_ReturnsSignedRejectionForMCPAndA2ACalls(t *tes
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			proc := &fakeEnvelopeProcessor{}
 			store := &fakeSuspendedStore{}
 			g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -731,7 +712,6 @@ func TestDenySuspendedTransaction_ReturnsSignedRejectionForMCPAndA2ACalls(t *tes
 }
 
 func TestDenySuspendedTransaction_ExecutionIsNeverADeny(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -751,7 +731,6 @@ func TestDenySuspendedTransaction_ExecutionIsNeverADeny(t *testing.T) {
 }
 
 func TestDenySuspendedTransaction_UnsignedFailureReleasesTheClaim(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -773,15 +752,12 @@ func TestDenySuspendedTransaction_UnsignedFailureReleasesTheClaim(t *testing.T) 
 }
 
 func TestDenySuspendedTransaction_ExpiredTransaction(t *testing.T) {
-	t.Parallel()
 	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{}), withSuspendedStore(&fakeSuspendedStore{}))
 	_, err := g.DenySuspendedTransaction(context.Background(), "expired-hash", "user-1")
 	require.ErrorIs(t, err, constants.ErrTransactionExpired)
 }
 
 func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
-	t.Parallel()
-
 	tempDir := testutil.TempDir(t)
 	vaultDir := filepath.Join(tempDir, "vault")
 
@@ -856,7 +832,6 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 }
 
 func TestGatewayService_RunMaintenanceSweep_KeepsExpiredTransactionsWhenAuditFails(t *testing.T) {
-	t.Parallel()
 	store := &fakeSuspendedStore{}
 	require.NoError(t, store.StoreSuspendedTransaction(context.Background(), &models.SuspendedTransaction{
 		TransactionHash:   "expired-unaudited",
@@ -896,7 +871,6 @@ func (r *sessionFailingAuditEventRecorder) RecordEventOnce(event *storage.Event)
 }
 
 func TestGatewayService_RunMaintenanceSweep_DeletesOnlyAuditedExpiredTransactions(t *testing.T) {
-	t.Parallel()
 	expiredAt := time.Now().UTC().Add(-5 * time.Minute)
 	store := &fakeSuspendedStore{}
 	for hash, session := range map[string]string{
@@ -936,7 +910,6 @@ func TestGatewayService_RunMaintenanceSweep_DeletesOnlyAuditedExpiredTransaction
 }
 
 func TestGatewayService_HandleResourcesRead(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -964,7 +937,6 @@ func TestGatewayService_HandleResourcesRead(t *testing.T) {
 }
 
 func TestGatewayService_HandlePromptsGet(t *testing.T) {
-	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -992,16 +964,13 @@ func TestGatewayService_HandlePromptsGet(t *testing.T) {
 }
 
 func TestGatewayService_CircuitBreaker(t *testing.T) {
-	t.Parallel()
 
 	t.Run("initially closed", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withCircuitBreaker(5, 1*time.Minute))
 		require.False(t, g.isCircuitOpen())
 	})
 
 	t.Run("opens after max failures", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withCircuitBreaker(3, 1*time.Minute))
 
 		for i := 0; i < 3; i++ {
@@ -1011,7 +980,6 @@ func TestGatewayService_CircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("closes after success", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withCircuitBreaker(3, 1*time.Minute))
 
 		// Open the circuit
@@ -1027,7 +995,6 @@ func TestGatewayService_CircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("half-open after cooldown", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withCircuitBreaker(3, 100*time.Millisecond))
 
 		// Open the circuit
@@ -1043,31 +1010,26 @@ func TestGatewayService_CircuitBreaker(t *testing.T) {
 }
 
 func TestGatewayService_IsNativeTool(t *testing.T) {
-	t.Parallel()
 	g := newTestGatewayService(t)
 
 	t.Run("native tool recognized", func(t *testing.T) {
-		t.Parallel()
 		require.True(t, g.isNativeTool("db_discover_topology"))
 		require.True(t, g.isNativeTool("db_query_validate"))
 		require.True(t, g.isNativeTool(constants.MCPToolSearchDirectory))
 	})
 
 	t.Run("non-native tool rejected", func(t *testing.T) {
-		t.Parallel()
 		require.False(t, g.isNativeTool("external_tool"))
 		require.False(t, g.isNativeTool(""))
 	})
 }
 
 func TestGatewayService_ScanForForbiddenPatterns(t *testing.T) {
-	t.Parallel()
 	g := newTestGatewayService(t)
 
 	strVal := func(s string) FieldValue { return FieldValue{Str: &s} }
 
 	t.Run("detects destructive rm rf root", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("sudo rm -rf /"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "L1 hard gate")
@@ -1076,7 +1038,6 @@ func TestGatewayService_ScanForForbiddenPatterns(t *testing.T) {
 	})
 
 	t.Run("detects password credential leak", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("password=secret123"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "L1 hard gate")
@@ -1085,7 +1046,6 @@ func TestGatewayService_ScanForForbiddenPatterns(t *testing.T) {
 	})
 
 	t.Run("detects api_key credential leak", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("api_key=sk-12345"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "L1 hard gate")
@@ -1094,44 +1054,37 @@ func TestGatewayService_ScanForForbiddenPatterns(t *testing.T) {
 	})
 
 	t.Run("detects destructive file operation", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("rm -rf /"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "data_destruction")
 	})
 
 	t.Run("allows safe values", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("safe value 123"))
 		require.NoError(t, err)
 	})
 
 	t.Run("null value allowed", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(FieldValue{Null: true})
 		require.NoError(t, err)
 	})
 
 	t.Run("pseudo-random does not match sudo", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("pseudo-random value"))
 		require.NoError(t, err)
 	})
 
 	t.Run("token field name does not trigger false positive", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("csrf_token column in database"))
 		require.NoError(t, err)
 	})
 
 	t.Run("URL in data does not trigger false positive", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("visit https://example.com"))
 		require.NoError(t, err)
 	})
 
 	t.Run("private key block detected", func(t *testing.T) {
-		t.Parallel()
 		err := g.scanForForbiddenPatterns(strVal("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA..."))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "credential_access")
@@ -1140,11 +1093,9 @@ func TestGatewayService_ScanForForbiddenPatterns(t *testing.T) {
 }
 
 func TestGatewayService_MapGatewayError(t *testing.T) {
-	t.Parallel()
 	g := newTestGatewayService(t)
 
 	t.Run("maps governance errors", func(t *testing.T) {
-		t.Parallel()
 		tests := []struct {
 			err      error
 			wantCode int
@@ -1166,17 +1117,13 @@ func TestGatewayService_MapGatewayError(t *testing.T) {
 	})
 
 	t.Run("unknown error maps to internal error", func(t *testing.T) {
-		t.Parallel()
 		require.Equal(t, -32603, g.mapGatewayError(fmt.Errorf("unknown error"))) // Internal error code
 	})
 }
 
 func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
-	t.Parallel()
 
 	t.Run("stores transaction", func(t *testing.T) {
-		t.Parallel()
-
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1194,8 +1141,6 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("populates submitter CLI session ID from context", func(t *testing.T) {
-		t.Parallel()
-
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1209,8 +1154,6 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("nil store fails closed instead of dropping the suspension", func(t *testing.T) {
-		t.Parallel()
-
 		g := newTestGatewayService(t, withSuspendedStore(nil))
 
 		err := g.StoreSuspendedTransaction(context.Background(), "test-hash", suspendableEnvelope(t, "operator-session-1"), "test-tool", json.RawMessage(`{}`), "user-1", "op-1", "")
@@ -1219,8 +1162,6 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("records approval requested event", func(t *testing.T) {
-		t.Parallel()
-
 		tempDir := testutil.TempDir(t)
 		vaultDir := filepath.Join(tempDir, "vault")
 
@@ -1276,10 +1217,8 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 }
 
 func TestGatewayService_GetSuspendedTransaction(t *testing.T) {
-	t.Parallel()
 
 	t.Run("successful retrieval", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1293,7 +1232,6 @@ func TestGatewayService_GetSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("transaction not found", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1304,7 +1242,6 @@ func TestGatewayService_GetSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("nil store returns false", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withSuspendedStore(nil))
 
 		retrieved, ok, err := g.GetSuspendedTransaction(context.Background(), "test-hash")
@@ -1315,10 +1252,8 @@ func TestGatewayService_GetSuspendedTransaction(t *testing.T) {
 }
 
 func TestGatewayService_DeleteSuspendedTransaction(t *testing.T) {
-	t.Parallel()
 
 	t.Run("successful deletion", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1332,7 +1267,6 @@ func TestGatewayService_DeleteSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("delete nonexistent transaction", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1341,7 +1275,6 @@ func TestGatewayService_DeleteSuspendedTransaction(t *testing.T) {
 	})
 
 	t.Run("nil store does not panic", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withSuspendedStore(nil))
 
 		// Should not panic
@@ -1350,10 +1283,8 @@ func TestGatewayService_DeleteSuspendedTransaction(t *testing.T) {
 }
 
 func TestGatewayService_NewGatewayService(t *testing.T) {
-	t.Parallel()
 
 	t.Run("creates service with dependencies", func(t *testing.T) {
-		t.Parallel()
 		deps := Dependencies{
 			Posture:          constants.PostureDoctrine,
 			Logger:           slog.Default(),
@@ -1379,7 +1310,6 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 	})
 
 	t.Run("initializes field path registry", func(t *testing.T) {
-		t.Parallel()
 		deps := Dependencies{
 			Posture:          constants.PostureDoctrine,
 			Logger:           slog.Default(),
@@ -1397,7 +1327,6 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 	})
 
 	t.Run("returns error when field path registry factory fails", func(t *testing.T) {
-		t.Parallel()
 		factoryErr := fmt.Errorf("simulated registry initialization failure")
 		deps := Dependencies{
 			Posture:          constants.PostureDoctrine,
@@ -1421,7 +1350,6 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 }
 
 func TestGatewayService_NilAuditStore_ReturnsError(t *testing.T) {
-	t.Parallel()
 	deps := Dependencies{
 		Posture:         constants.PostureDoctrine,
 		Logger:          slog.Default(),
@@ -1439,7 +1367,6 @@ func TestGatewayService_NilAuditStore_ReturnsError(t *testing.T) {
 }
 
 func TestGatewayService_AuditStore_InjectedRecorderReceivesEvents(t *testing.T) {
-	t.Parallel()
 	recorder := &recordingAuditEventRecorder{}
 	g := newTestGatewayService(t, withAuditStore(recorder))
 
@@ -1489,9 +1416,7 @@ func (r failingAuditEventRecorder) RecordEventOnce(*storage.Event) (int64, bool,
 }
 
 func TestGatewayService_StoreSuspendedTransaction_FailsClosed(t *testing.T) {
-	t.Parallel()
 	t.Run("envelope without Operator session is not suspended", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		recorder := &recordingAuditEventRecorder{}
 		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
@@ -1504,7 +1429,6 @@ func TestGatewayService_StoreSuspendedTransaction_FailsClosed(t *testing.T) {
 	})
 
 	t.Run("undecodable envelope is not suspended", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store))
 
@@ -1515,7 +1439,6 @@ func TestGatewayService_StoreSuspendedTransaction_FailsClosed(t *testing.T) {
 	})
 
 	t.Run("unrecordable approval event removes the suspension", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(failingAuditEventRecorder{err: constants.ErrAuditSessionUnknown}))
 
@@ -1546,7 +1469,6 @@ func withEmbeddedSession(r EmbeddedSessionResolver) testGatewayOption {
 const testEmbeddedSessionID = "embedded-operator-session"
 
 func TestGatewayService_HandleToolsCall_AppCredentialSuspendsOnEmbeddedSession(t *testing.T) {
-	t.Parallel()
 	store := &fakeSuspendedStore{}
 	recorder := &recordingAuditEventRecorder{}
 	g := newTestGatewayService(t,
@@ -1579,7 +1501,6 @@ func TestGatewayService_HandleToolsCall_AppCredentialSuspendsOnEmbeddedSession(t
 }
 
 func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOperatorUnclaimed(t *testing.T) {
-	t.Parallel()
 	store := &fakeSuspendedStore{}
 	proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
 	g := newTestGatewayService(t,
@@ -1589,7 +1510,6 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 	g.posture = constants.PostureNotary
 
 	t.Run("processGatewayTransaction", func(t *testing.T) {
-		t.Parallel()
 		ctx := context.WithValue(context.Background(), constants.ContextKeyAppID, "calling-app")
 		_, envelope, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
 		require.ErrorIs(t, err, constants.ErrEmbeddedOperatorUnclaimed)
@@ -1597,7 +1517,6 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 	})
 
 	t.Run("HandleMCP", func(t *testing.T) {
-		t.Parallel()
 		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{}}}`))
 		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyAppID, "calling-app"))
 		w := httptest.NewRecorder()
@@ -1611,7 +1530,6 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 }
 
 func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T) {
-	t.Parallel()
 	g, err := NewGatewayService(Dependencies{
 		Posture:         constants.PostureDoctrine,
 		Logger:          slog.Default(),
@@ -1624,7 +1542,6 @@ func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T)
 }
 
 func TestGatewayService_NewGatewayService_RequiresEmbeddedSession(t *testing.T) {
-	t.Parallel()
 	g, err := NewGatewayService(Dependencies{
 		Posture:    constants.PostureDoctrine,
 		Logger:     slog.Default(),
@@ -1636,10 +1553,8 @@ func TestGatewayService_NewGatewayService_RequiresEmbeddedSession(t *testing.T) 
 }
 
 func TestGatewayService_HandleReadField(t *testing.T) {
-	t.Parallel()
 
 	t.Run("field path registry not initialized", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withFieldPathRegistry(nil))
 
 		_, err := g.handleReadField(context.Background(), json.RawMessage(`{}`))
@@ -1648,7 +1563,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("database service not configured", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(nil))
 
@@ -1658,7 +1572,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("invalid JSON arguments", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}))
 
@@ -1668,7 +1581,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("missing required fields", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}))
 
@@ -1685,7 +1597,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				t.Parallel()
 				_, err := g.handleReadField(context.Background(), json.RawMessage(tc.args))
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.error)
@@ -1694,7 +1605,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("field path validation failed", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}))
 
@@ -1705,7 +1615,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("missing session validator rejects field read", func(t *testing.T) {
-		t.Parallel()
 		registry, err := NewFieldPathRegistry(slog.Default())
 		require.NoError(t, err)
 		db := &fakeDBService{}
@@ -1719,7 +1628,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("session lookup error rejects field read", func(t *testing.T) {
-		t.Parallel()
 		registry, err := NewFieldPathRegistry(slog.Default())
 		require.NoError(t, err)
 		db := &fakeDBService{}
@@ -1738,7 +1646,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("session validation failed", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		validator := &fakeSessionValidator{valid: false}
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}), withSessionValidator(validator))
@@ -1750,7 +1657,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("successful field read", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		db := &fakeDBService{}
 		validator := &fakeSessionValidator{valid: true}
@@ -1770,7 +1676,6 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("forbidden pattern in field value", func(t *testing.T) {
-		t.Parallel()
 		registry, _ := NewFieldPathRegistry(slog.Default())
 		s := "password=secret123"
 		db := &fakeDBService{fieldValue: &FieldValue{Str: &s}}
@@ -1785,10 +1690,8 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 }
 
 func TestGatewayService_HandleA2ARequest(t *testing.T) {
-	t.Parallel()
 
 	t.Run("method not allowed", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/mcp/test", nil)
@@ -1802,7 +1705,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("circuit breaker open", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withCircuitBreaker(3, 1*time.Minute))
 
 		// Open the circuit
@@ -1827,7 +1729,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("payload too large", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t, withMaxPayloadBytes(1024))
 
 		largeBody := strings.Repeat("a", 2048)
@@ -1850,7 +1751,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/mcp/test", strings.NewReader(`invalid json`))
@@ -1872,7 +1772,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("invalid JSON-RPC version", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/mcp/test", strings.NewReader(`{"jsonrpc":"1.0","id":1,"method":"test/method"}`))
@@ -1894,7 +1793,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("missing method", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/mcp/test", strings.NewReader(`{"jsonrpc":"2.0","id":1}`))
@@ -1914,7 +1812,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("method mismatch", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/mcp/test", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"wrong/method"}`))
@@ -1934,7 +1831,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("handler error", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/mcp/test", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"test/method"}`))
@@ -1956,7 +1852,6 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 	})
 
 	t.Run("successful request", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/mcp/test", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"test/method"}`))
@@ -1977,16 +1872,13 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 }
 
 func TestGatewayService_Dependencies(t *testing.T) {
-	t.Parallel()
 
 	t.Run("envProc nil before initialization", func(t *testing.T) {
-		t.Parallel()
 		g := &GatewayService{logger: slog.Default(), posture: constants.PostureDoctrine}
 		require.Nil(t, g.envProc, "envProc should be nil initially")
 	})
 
 	t.Run("runtime fields accessible when configured", func(t *testing.T) {
-		t.Parallel()
 		_, privKey, _ := ed25519.GenerateKey(rand.Reader)
 		mock := &mockL2ConsensusDeliberator{}
 		envProc := &fakeEnvelopeProcessor{}
@@ -2011,7 +1903,6 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	})
 
 	t.Run("dispatchMCP returns not-ready error before deps are wired", func(t *testing.T) {
-		t.Parallel()
 		g := &GatewayService{
 			posture:         constants.PostureDoctrine,
 			logger:          slog.Default(),
@@ -2031,7 +1922,6 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	})
 
 	t.Run("dispatchMCP allows initialize without deps", func(t *testing.T) {
-		t.Parallel()
 		g := &GatewayService{
 			posture:         constants.PostureDoctrine,
 			logger:          slog.Default(),
@@ -2050,7 +1940,6 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	})
 
 	t.Run("dispatchMCP allows ping without deps", func(t *testing.T) {
-		t.Parallel()
 		g := &GatewayService{
 			posture:         constants.PostureDoctrine,
 			logger:          slog.Default(),
@@ -2070,7 +1959,6 @@ func TestGatewayService_Dependencies(t *testing.T) {
 }
 
 func TestGatewayService_RunMaintenance(t *testing.T) {
-	t.Parallel()
 	g := newTestGatewayService(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -2250,10 +2138,8 @@ func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayServ
 }
 
 func TestGatewayService_HandleA2aCall(t *testing.T) {
-	t.Parallel()
 
 	t.Run("successful call", func(t *testing.T) {
-		t.Parallel()
 		receipt := &operatorv1.ActionReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -2277,7 +2163,6 @@ func TestGatewayService_HandleA2aCall(t *testing.T) {
 	})
 
 	t.Run("missing skill_name", func(t *testing.T) {
-		t.Parallel()
 		g := newTestGatewayService(t)
 
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"a2a/call","params":{"payload":{}}}`
@@ -2296,7 +2181,6 @@ func TestGatewayService_HandleA2aCall(t *testing.T) {
 	})
 
 	t.Run("L3 proof missing - suspension", func(t *testing.T) {
-		t.Parallel()
 		proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
@@ -2318,7 +2202,6 @@ func TestGatewayService_HandleA2aCall(t *testing.T) {
 }
 
 func TestGatewayService_MCPA2ACallWithoutDownstreamIsMethodNotFound(t *testing.T) {
-	t.Parallel()
 	proc := &fakeEnvelopeProcessor{}
 	g := newTestGatewayService(t, withEnvProc(proc))
 
@@ -2334,9 +2217,7 @@ func TestGatewayService_MCPA2ACallWithoutDownstreamIsMethodNotFound(t *testing.T
 }
 
 func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
-	t.Parallel()
 	t.Run("suspends envelope and returns typed L3 suspension response", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		recorder := &recordingAuditEventRecorder{}
 		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
@@ -2377,7 +2258,6 @@ func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
 	})
 
 	t.Run("fails closed when OperatorSessionId is empty", func(t *testing.T) {
-		t.Parallel()
 		store := &fakeSuspendedStore{}
 		recorder := &recordingAuditEventRecorder{}
 		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))

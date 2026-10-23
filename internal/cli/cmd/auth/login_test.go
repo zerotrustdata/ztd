@@ -48,8 +48,7 @@ func loginResult() *auth.EnrollmentResult {
 	return &auth.EnrollmentResult{UserID: "user-1", CLISessionID: "sess-1"}
 }
 
-func TestLoginCmd_WebUsesBrowserLogin(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLoginCmd_WebUsesBrowserLogin(t *testing.T) {
 	mock := &mockEnroller{result: loginResult()}
 	out, err := runLogin(t, mock, "web")
 
@@ -63,11 +62,9 @@ func TestLoginCmd_WebUsesBrowserLogin(t *testing.T) { //nolint:paralleltest // m
 	assert.Contains(t, out, "CLI Session ID: sess-1")
 }
 
-func TestLoginCmd_DefaultCLIAndHeadlessAliasAreHeadless(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	for _, name := range []string{"", "cli", "headless"} { //nolint:paralleltest // mutates package-level state
+func TestLoginCmd_DefaultCLIAndHeadlessAliasAreHeadless(t *testing.T) {
+	for _, name := range []string{"", "cli", "headless"} {
 		t.Run(name, func(t *testing.T) {
-
 			mock := &mockEnroller{result: loginResult()}
 			var args []string
 			if name != "" {
@@ -87,8 +84,7 @@ func TestLoginCmd_DefaultCLIAndHeadlessAliasAreHeadless(t *testing.T) { //nolint
 	}
 }
 
-func TestLoginCmd_FlagPropagation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLoginCmd_FlagPropagation(t *testing.T) {
 	tests := []struct {
 		name         string
 		args         []string
@@ -102,9 +98,8 @@ func TestLoginCmd_FlagPropagation(t *testing.T) { //nolint:paralleltest // mutat
 		{"cli rotate-cli", []string{"cli", "--rotate-cli"}, true, true, true},
 		{"headless rotate-cli", []string{"headless", "--rotate-cli"}, true, true, true},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			mock := &mockEnroller{result: loginResult()}
 			_, err := runLogin(t, mock, tt.args...)
 
@@ -117,8 +112,7 @@ func TestLoginCmd_FlagPropagation(t *testing.T) { //nolint:paralleltest // mutat
 	}
 }
 
-func TestLoginCmd_RejectsInvalidInvocations(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLoginCmd_RejectsInvalidInvocations(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -129,9 +123,8 @@ func TestLoginCmd_RejectsInvalidInvocations(t *testing.T) { //nolint:paralleltes
 		{"bare login has no no-system-trust flag", []string{"--no-system-trust"}},
 		{"login has no headless flag", []string{"--headless"}},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			mock := &mockEnroller{result: loginResult()}
 			_, err := runLogin(t, mock, tt.args...)
 
@@ -141,8 +134,7 @@ func TestLoginCmd_RejectsInvalidInvocations(t *testing.T) { //nolint:paralleltes
 	}
 }
 
-func TestLoginCmd_CoordinatorErrorPropagates(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLoginCmd_CoordinatorErrorPropagates(t *testing.T) {
 	mock := &mockEnroller{err: constants.ErrSystemTrustInstallFailed}
 
 	_, err := runLogin(t, mock)
@@ -151,7 +143,6 @@ func TestLoginCmd_CoordinatorErrorPropagates(t *testing.T) { //nolint:parallelte
 }
 
 func TestLoginCmd_Structure(t *testing.T) {
-	t.Parallel()
 	login := LoginCmd()
 	assert.Equal(t, "login", login.Name())
 	assert.Contains(t, login.Short, "headless")

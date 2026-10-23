@@ -37,7 +37,6 @@ func TestResolveCommandBinary(t *testing.T) {
 		"ztd operator model residency",
 	} {
 		t.Run(command, func(t *testing.T) {
-			t.Parallel()
 			binary, err := resolveCommandBinary(strings.Fields(command))
 			require.NoError(t, err)
 			assert.Equal(t, executable, binary)
@@ -47,7 +46,6 @@ func TestResolveCommandBinary(t *testing.T) {
 	// non-model ztd subcommands are not widened into self-invocation.
 	for _, command := range []string{"ztd", "ztd operator start", "/ztd operator model pull qwen3:0.6b", "go version"} {
 		t.Run(command, func(t *testing.T) {
-			t.Parallel()
 			parts := strings.Fields(command)
 			want, wantErr := exec.LookPath(parts[0])
 			binary, err := resolveCommandBinary(parts)
@@ -57,14 +55,14 @@ func TestResolveCommandBinary(t *testing.T) {
 	}
 }
 
-func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_ExecuteCommand(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("simple command execution", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("simple command execution", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-1",
 			CaseID:         "test-case-1",
@@ -87,8 +85,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Greater(t, result.DurationSeconds, 0.0)
 	})
 
-	t.Run("command with non-zero exit code", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command with non-zero exit code", func(t *testing.T) {
+		t.Parallel()
 		// Use shell execution to get proper exit code handling
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-2",
@@ -107,8 +105,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Equal(t, 42, result.ReturnCode)
 	})
 
-	t.Run("command not found", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command not found", func(t *testing.T) {
+		t.Parallel()
 		// Use shell execution to get proper shell exit code 127
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-3",
@@ -129,8 +127,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stderr, "not found")
 	})
 
-	t.Run("command timeout", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command timeout", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-4",
 			CaseID:         "test-case-4",
@@ -150,8 +148,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.ErrorMessage, "timed out")
 	})
 
-	t.Run("command with working directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command with working directory", func(t *testing.T) {
+		t.Parallel()
 		workDir := testutil.TempDir(t)
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:      "test-req-5",
@@ -177,8 +175,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, actualStdout, filepath.Base(workDir))
 	})
 
-	t.Run("command with environment variables", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("command with environment variables", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS == "windows" {
 			t.Skip("custom env var inheritance not reliable with POSIX shell on Windows")
 		}
@@ -202,8 +200,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "test_value")
 	})
 
-	t.Run("shell command with pipes", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("shell command with pipes", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-7",
 			CaseID:         "test-case-7",
@@ -221,8 +219,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.Contains(t, result.Stdout, "hello")
 	})
 
-	t.Run("context cancellation during wait", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("context cancellation during wait", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -260,8 +258,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.NotNil(t, result)
 	})
 
-	t.Run("terminal output creation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("terminal output creation", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-9",
 			CaseID:         "test-case-9",
@@ -280,8 +278,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.NotEmpty(t, result.TerminalOutput.CombinedOutput)
 	})
 
-	t.Run("system info collection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("system info collection", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-10",
 			CaseID:         "test-case-10",
@@ -300,8 +298,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 		assert.NotEmpty(t, result.SystemInfo.Architecture)
 	})
 
-	t.Run("environment info collection", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("environment info collection", func(t *testing.T) {
+		t.Parallel()
 		req := &models.ExecutionRequestPayload{
 			ExecutionID:    "test-req-11",
 			CaseID:         "test-case-11",
@@ -318,8 +316,8 @@ func TestExecutionService_ExecuteCommand(t *testing.T) { //nolint:paralleltest /
 	})
 }
 
-func TestExecutionService_BuildCommandString(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_BuildCommandString(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -350,23 +348,23 @@ func TestExecutionService_BuildCommandString(t *testing.T) { //nolint:parallelte
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
+			t.Parallel()
 			result := svc.BuildCommandString(tt.command, tt.args)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestExecutionService_CreateTerminalOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_CreateTerminalOutput(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("basic output", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("basic output", func(t *testing.T) {
+		t.Parallel()
 		output := svc.createTerminalOutput("echo", []string{"test"}, "test output\n", "")
 
 		assert.Equal(t, "echo", output.Command)
@@ -376,16 +374,16 @@ func TestExecutionService_CreateTerminalOutput(t *testing.T) { //nolint:parallel
 		assert.False(t, output.TruncatedStderr)
 	})
 
-	t.Run("output with stderr", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("output with stderr", func(t *testing.T) {
+		t.Parallel()
 		output := svc.createTerminalOutput("test", []string{}, "stdout\n", "stderr\n")
 
 		assert.Contains(t, output.CombinedOutput, "stdout")
 		assert.Contains(t, output.CombinedOutput, "stderr")
 	})
 
-	t.Run("truncated output", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("truncated output", func(t *testing.T) {
+		t.Parallel()
 		// Create output with more than 50 lines
 		stdout := ""
 		for i := 0; i < 100; i++ {
@@ -400,21 +398,20 @@ func TestExecutionService_CreateTerminalOutput(t *testing.T) { //nolint:parallel
 	})
 }
 
-func TestExecutionService_Stop(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_Stop(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
 
-	t.Run("stop with no active executions", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("stop with no active executions", func(t *testing.T) {
+		t.Parallel()
 		assert.NotPanics(t, func() {
 			svc.Stop()
 		})
 	})
 
-	t.Run("stop during initialization race", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("stop during initialization race", func(t *testing.T) {
 		cfg := testutil.NewTestConfig(t)
 		cfg.MaxConcurrentTasks = 1 // Ensure we only need to occupy one slot
 		logger := testutil.NewTestLogger()
@@ -474,8 +471,8 @@ func TestExecutionService_Stop(t *testing.T) { //nolint:paralleltest // mutates 
 	})
 }
 
-func TestExecutionService_GetActiveExecutions(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_GetActiveExecutions(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -485,8 +482,8 @@ func TestExecutionService_GetActiveExecutions(t *testing.T) { //nolint:parallelt
 	assert.Empty(t, active)
 }
 
-func TestExecutionService_CancelExecution(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_CancelExecution(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -546,13 +543,13 @@ func TestExecutionService_CancelExecution(t *testing.T) { //nolint:paralleltest 
 		},
 	}
 
-	for _, tt := range tests { //nolint:paralleltest // subtest functions call t.Parallel
+	for _, tt := range tests {
 		t.Run(tt.name, tt.test)
 	}
 }
 
-func TestExecutionService_CancelExecution_DoesNotSetCancelledStatus(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_CancelExecution_DoesNotSetCancelledStatus(t *testing.T) {
+	t.Parallel()
 	// Regression: CancelExecution previously wrote ExecutionStatusCancelled after
 	// unlocking the mutex, creating a window where it raced with
 	// executeCommandInternal's authoritative status write. The dead write was
@@ -597,8 +594,8 @@ func TestExecutionService_CancelExecution_DoesNotSetCancelledStatus(t *testing.T
 		"CancelExecution must not inject ExecutionStatusCancelled into the result")
 }
 
-func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -659,8 +656,8 @@ func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) { /
 	}
 }
 
-func TestExecutionService_CollectSystemInfo(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_CollectSystemInfo(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -674,8 +671,8 @@ func TestExecutionService_CollectSystemInfo(t *testing.T) { //nolint:paralleltes
 	assert.Positive(t, info.NumCPU)
 }
 
-func TestExecutionService_CollectEnvironmentInfo(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_CollectEnvironmentInfo(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -687,8 +684,8 @@ func TestExecutionService_CollectEnvironmentInfo(t *testing.T) { //nolint:parall
 	assert.Equal(t, "test-project", info.ProjectID)
 }
 
-func TestExecutionService_FinalizeResult(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestExecutionService_FinalizeResult(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
@@ -709,7 +706,6 @@ func TestExecutionService_FinalizeResult(t *testing.T) { //nolint:paralleltest /
 }
 
 func TestGovernedEnviron_WithholdsRegistrySecrets(t *testing.T) {
-	t.Parallel()
 	environ := []string{"PATH=/usr/bin", "HOME=/home/op", "CUSTOM=1=2"}
 	for _, key := range constants.SecretEnvVars {
 		environ = append(environ, string(key)+"=secret-value")

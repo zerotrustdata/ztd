@@ -20,7 +20,6 @@ import (
 )
 
 func TestMapProtoToPayloadType(t *testing.T) {
-	t.Parallel()
 	t.Run("maps CommandResult to execution_result", func(t *testing.T) {
 		t.Parallel()
 		msg := &operatorv1.CommandResult{}
@@ -162,10 +161,9 @@ func TestMapProtoToPayloadType(t *testing.T) {
 	})
 }
 
-func TestBuildUniversalResultEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("builds envelope successfully", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestBuildUniversalResultEnvelope(t *testing.T) {
+	t.Run("builds envelope successfully", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 
@@ -197,8 +195,8 @@ func TestBuildUniversalResultEnvelope(t *testing.T) { //nolint:paralleltest // m
 		assert.NotNil(t, env.IntentData)
 	})
 
-	t.Run("generates ID when not provided", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("generates ID when not provided", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 
@@ -225,8 +223,8 @@ func TestBuildUniversalResultEnvelope(t *testing.T) { //nolint:paralleltest // m
 		assert.Contains(t, env.Id, "res_")
 	})
 
-	t.Run("includes task ID when provided", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("includes task ID when provided", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 		taskID := "task-1"
@@ -253,8 +251,8 @@ func TestBuildUniversalResultEnvelope(t *testing.T) { //nolint:paralleltest // m
 		assert.Equal(t, "task-1", env.TaskId)
 	})
 
-	t.Run("injects payload_type into IntentData", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("injects payload_type into IntentData", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		payload := &operatorv1.CommandResult{ExecutionId: "exec-1"}
 
@@ -284,7 +282,6 @@ func TestBuildUniversalResultEnvelope(t *testing.T) { //nolint:paralleltest // m
 }
 
 func TestUnmarshalPayload(t *testing.T) {
-	t.Parallel()
 	t.Run("rejects oversized payload", func(t *testing.T) {
 		t.Parallel()
 		largePayload := make([]byte, MaxPayloadSize+1)

@@ -32,7 +32,6 @@ func (s *stubAttestor) Attest(_ context.Context, _, _ string, _ time.Time) (*eva
 }
 
 func TestTracker_BeginAndFinalize(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	attestor := &stubAttestor{
@@ -78,7 +77,6 @@ func TestTracker_BeginAndFinalize(t *testing.T) {
 }
 
 func TestTracker_FinalizeWithoutBegin_UsesFinalizeCommandBinding(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	attestor := &stubAttestor{
@@ -109,7 +107,6 @@ func TestTracker_FinalizeWithoutBegin_UsesFinalizeCommandBinding(t *testing.T) {
 }
 
 func TestTracker_Finalize_DigestMismatchFails(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	attestor := &stubAttestor{

@@ -484,7 +484,6 @@ func TestNewEnrollmentCoordinator_NilRequiredDeps(t *testing.T) {
 
 func TestEnroll_AbsentNotBootstrapped_PerformsBootstrap(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -577,8 +576,7 @@ func TestEnroll_AbsentBootstrapped_PerformsRecovery(t *testing.T) {
 //
 // Not parallel: mutates the global config.SetHTTPSEndpointOverride, which
 // leaks to other tests via the process-wide config singleton.
-func TestEnroll_Recovery_RewritesApprovalURLWithEndpointOverride(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnroll_Recovery_RewritesApprovalURLWithEndpointOverride(t *testing.T) {
 	coord, gw, keys, _, browser, _, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceRecovery)
@@ -615,8 +613,6 @@ func TestEnroll_Recovery_RewritesApprovalURLWithEndpointOverride(t *testing.T) {
 // mutates the global config.SetHTTPSEndpointOverride; running in parallel
 // would leak that override into this test.
 func TestEnroll_Recovery_PreservesApprovalURLWithoutOverride(t *testing.T) {
-	t.Parallel()
-
 	coord, gw, keys, _, browser, _, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceRecovery)
@@ -637,7 +633,6 @@ func TestEnroll_Recovery_PreservesApprovalURLWithoutOverride(t *testing.T) {
 
 func TestEnroll_CompleteHealthy_ReusesIdentity(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, trust, browser, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	userID, cliSessionID, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -677,7 +672,6 @@ func TestEnroll_CompleteHealthy_ReusesIdentity(t *testing.T) {
 
 func TestEnroll_CompleteExpiring_RotatesOnce(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write a complete identity with a cert expiring within rotationThreshold.
@@ -712,7 +706,6 @@ func TestEnroll_CompleteExpiring_RotatesOnce(t *testing.T) {
 
 func TestEnroll_CompleteExplicitRotate_RotatesOnce(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write a healthy, non-expiring identity.
@@ -732,7 +725,6 @@ func TestEnroll_CompleteExplicitRotate_RotatesOnce(t *testing.T) {
 
 func TestEnroll_CompleteExpired_UsesRecoveryNotRotation(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, browser, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write a complete identity with an already-expired cert.
@@ -762,7 +754,6 @@ func TestEnroll_CompleteExpired_UsesRecoveryNotRotation(t *testing.T) {
 
 func TestEnroll_PartialState_UsesRecovery(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write only the credentials JSON (no cert/key/bundle) → partial.
@@ -793,7 +784,6 @@ func TestEnroll_PartialState_UsesRecovery(t *testing.T) {
 // state reaches the coordinator, it must not bypass the bootstrap check.
 func TestEnroll_PartialState_NotBootstrapped_PerformsBootstrap(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write only the credentials JSON (no cert/key/bundle) → partial.
@@ -815,7 +805,6 @@ func TestEnroll_PartialState_NotBootstrapped_PerformsBootstrap(t *testing.T) {
 
 func TestEnroll_CorruptState_UsesRecovery(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write credentials JSON + cert but corrupt the key (unparseable).
@@ -852,7 +841,6 @@ func TestEnroll_CorruptState_UsesRecovery(t *testing.T) {
 
 func TestEnroll_RecoveryDenied_ReturnsTypedError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, browser, _, _, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrapped = true
@@ -870,7 +858,6 @@ func TestEnroll_RecoveryDenied_ReturnsTypedError(t *testing.T) {
 
 func TestEnroll_RecoveryExpired_ReturnsTypedError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrapped = true
@@ -887,7 +874,6 @@ func TestEnroll_RecoveryExpired_ReturnsTypedError(t *testing.T) {
 
 func TestEnroll_RecoveryPollsUntilApproved(t *testing.T) {
 	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		coord, gw, keys, _, _, _, _, _, _ := setupCoordinatorTest(t)
 
@@ -916,7 +902,6 @@ func TestEnroll_RecoveryPollsUntilApproved(t *testing.T) {
 
 func TestEnroll_ContextCancelled_AbortsBeforeEnrollment(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, _, _ := setupCoordinatorTest(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -934,7 +919,6 @@ func TestEnroll_ContextCancelled_AbortsBeforeEnrollment(t *testing.T) {
 
 func TestEnroll_RecoveryContextCancelled_AbortsPolling(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, browser, _, _, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrapped = true
@@ -962,7 +946,6 @@ func TestEnroll_RecoveryContextCancelled_AbortsPolling(t *testing.T) {
 
 func TestEnroll_NoSystemTrust_SkipsInstaller(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -985,7 +968,6 @@ func TestEnroll_NoSystemTrust_SkipsInstaller(t *testing.T) {
 
 func TestEnroll_NoSystemTrust_ReusedIdentity_SkipsInstaller(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, trust, _, passkey, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, _ := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -1004,7 +986,6 @@ func TestEnroll_NoSystemTrust_ReusedIdentity_SkipsInstaller(t *testing.T) {
 
 func TestEnroll_SystemTrustFailure_AbortsBeforePasskey(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1021,7 +1002,6 @@ func TestEnroll_SystemTrustFailure_AbortsBeforePasskey(t *testing.T) {
 
 func TestEnroll_SystemTrustAlreadyTrusted_NoPrivilegePrompt(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1039,7 +1019,6 @@ func TestEnroll_SystemTrustAlreadyTrusted_NoPrivilegePrompt(t *testing.T) {
 
 func TestEnroll_SystemTrustInstalled_PrintsBrowserCloseNote(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1058,7 +1037,6 @@ func TestEnroll_SystemTrustInstalled_PrintsBrowserCloseNote(t *testing.T) {
 
 func TestEnroll_SkipPasskey_SuppressesCeremony(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1078,7 +1056,6 @@ func TestEnroll_SkipPasskey_SuppressesCeremony(t *testing.T) {
 // no OS trust installation, no browser-restart prompt, no ceremony.
 func TestEnroll_PasskeyIfMissing_RegisteredPasskeyStaysHeadless(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1106,7 +1083,6 @@ func TestEnroll_PasskeyIfMissing_RegisteredPasskeyStaysHeadless(t *testing.T) {
 // no passkey gets the full web path: trust installation and the ceremony.
 func TestEnroll_PasskeyIfMissing_NoPasskeyRunsCeremony(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1127,7 +1103,6 @@ func TestEnroll_PasskeyIfMissing_NoPasskeyRunsCeremony(t *testing.T) {
 // unverifiable passkey state aborts rather than guessing either way.
 func TestEnroll_PasskeyIfMissing_SessionInfoErrorFailsClosed(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1161,7 +1136,6 @@ func TestPostureLoginOptions(t *testing.T) {
 // The browser opener and passkey registrar must not be called.
 func TestEnroll_Headless_RecoveryPrintsApproveRecoveryCommandAndDoesNotOpenBrowser(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, browser, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write only the credentials JSON (no cert/key/bundle) → partial local
@@ -1198,7 +1172,6 @@ func TestEnroll_Headless_RecoveryPrintsApproveRecoveryCommandAndDoesNotOpenBrows
 
 func TestEnroll_BootstrapStatusError_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, _, _, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrappedErr = constants.ErrServiceUnavailable
@@ -1209,7 +1182,6 @@ func TestEnroll_BootstrapStatusError_ReturnsError(t *testing.T) {
 
 func TestEnroll_BootstrapError_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrapped = false
@@ -1222,7 +1194,6 @@ func TestEnroll_BootstrapError_ReturnsError(t *testing.T) {
 
 func TestEnroll_RecoveryRequestError_ReturnsTypedError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrapped = true
@@ -1236,7 +1207,6 @@ func TestEnroll_RecoveryRequestError_ReturnsTypedError(t *testing.T) {
 
 func TestEnroll_RotationError_ReturnsError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, _ := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(1*time.Hour))
@@ -1250,7 +1220,6 @@ func TestEnroll_RotationError_ReturnsError(t *testing.T) {
 
 func TestEnroll_BrowserOpenFailure_ContinuesRecovery(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, browser, _, recorder, _, _ := setupCoordinatorTest(t)
 
 	gw.bootstrapped = true
@@ -1271,7 +1240,6 @@ func TestEnroll_BrowserOpenFailure_ContinuesRecovery(t *testing.T) {
 
 func TestEnroll_PasskeyFailure_ReturnsTypedError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1289,7 +1257,6 @@ func TestEnroll_PasskeyFailure_ReturnsTypedError(t *testing.T) {
 
 func TestEnroll_TransportMethods_NoHiddenFileWrites(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Use a spying file service wrapper to detect unexpected writes.
@@ -1331,7 +1298,6 @@ func TestEnroll_TransportMethods_NoHiddenFileWrites(t *testing.T) {
 
 func TestEnroll_StageValidationFailure_RollsBackAndReturnsError(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, _, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	gw.bootstrapped = false
@@ -1372,7 +1338,6 @@ func TestEnroll_StageValidationFailure_RollsBackAndReturnsError(t *testing.T) {
 // close directive.
 func TestEnroll_StaleAnchors_Confirmed_RemovesAndInstalls(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1410,7 +1375,6 @@ func TestEnroll_StaleAnchors_Confirmed_RemovesAndInstalls(t *testing.T) {
 // launching the browser.
 func TestEnroll_StaleAnchors_Declined_AbortsBeforeInstall(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1436,7 +1400,6 @@ func TestEnroll_StaleAnchors_Declined_AbortsBeforeInstall(t *testing.T) {
 // normally.
 func TestEnroll_StaleAnchors_None_NoPrompt(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1465,7 +1428,6 @@ func TestEnroll_StaleAnchors_None_NoPrompt(t *testing.T) {
 // ceremony.
 func TestEnroll_StaleAnchors_RemovalError_Aborts(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1492,7 +1454,6 @@ func TestEnroll_StaleAnchors_RemovalError_Aborts(t *testing.T) {
 // not a gate.
 func TestEnroll_StaleAnchors_ListError_ProceedsAsBestEffort(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1522,7 +1483,6 @@ func TestEnroll_StaleAnchors_ListError_ProceedsAsBestEffort(t *testing.T) {
 // prompting.
 func TestEnroll_StaleAnchors_Unsupported_SkipsDetection(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1552,7 +1512,6 @@ func TestEnroll_StaleAnchors_Unsupported_SkipsDetection(t *testing.T) {
 // failing enrollment. The passkey ceremony still runs.
 func TestInstallSystemTrust_UnsupportedPlatformWarns(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1577,7 +1536,6 @@ func TestInstallSystemTrust_UnsupportedPlatformWarns(t *testing.T) {
 // proceeds without failing enrollment.
 func TestInstallSystemTrust_InstallRootUnsupportedWarns(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1607,7 +1565,6 @@ func TestInstallSystemTrust_InstallRootUnsupportedWarns(t *testing.T) {
 // reuse branch and never calls discovery).
 func TestEnroll_ReusedIdentity_StaleBundle_RoutesToRecovery(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, browser, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	// Write a complete identity with a known bundle root fingerprint.
@@ -1656,7 +1613,6 @@ func TestEnroll_ReusedIdentity_StaleBundle_RoutesToRecovery(t *testing.T) {
 // IsTrusted/InstallRoot.
 func TestEnroll_ReusedIdentity_HealthyBundle_ReusesWithLiveFingerprint(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, trust, _, passkey, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -1691,7 +1647,6 @@ func TestEnroll_ReusedIdentity_HealthyBundle_ReusesWithLiveFingerprint(t *testin
 // NOT abort). The user may be intentionally offline.
 func TestEnroll_ReusedIdentity_DiscoveryUnreachable_WarnsAndProceeds(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	writeCompleteIdentity(t, fileSvc, cfg)
@@ -1718,7 +1673,6 @@ func TestEnroll_ReusedIdentity_DiscoveryUnreachable_WarnsAndProceeds(t *testing.
 // warning IS printed and ListStaleAnchors is NOT called.
 func TestEnroll_StaleAnchorNotDetectedWhenDiscoveryFails(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, trust, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, _, _ = writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -1751,7 +1705,6 @@ func TestEnroll_StaleAnchorNotDetectedWhenDiscoveryFails(t *testing.T) {
 // RemoveStaleAnchors is called before recovery runs.
 func TestEnroll_ReusedIdentity_StaleBundle_DetectsStaleOSAnchors(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, browser, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, oldFP, _ := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -1870,7 +1823,6 @@ func TestEnroll_ReusedIdentity_StaleBundle_UnbootstrappedGateway_Bootstraps(t *t
 // even if the CLI skips installation.
 func TestEnroll_NoSystemTrust_StillRunsStaleDetection(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1914,7 +1866,6 @@ func TestEnroll_NoSystemTrust_StillRunsStaleDetection(t *testing.T) {
 // stays correct after the R3 refactor.
 func TestEnroll_Bootstrap_DiscoveryMatchesArtifacts(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, _, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1948,7 +1899,6 @@ func TestEnroll_Bootstrap_DiscoveryMatchesArtifacts(t *testing.T) {
 // Enter (continueFn returns true), the passkey ceremony runs.
 func TestEnroll_BrowserRestartGate_Continue_ProceedsToPasskey(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -1979,7 +1929,6 @@ func TestEnroll_BrowserRestartGate_Continue_ProceedsToPasskey(t *testing.T) {
 // passkey ceremony does NOT run.
 func TestEnroll_BrowserRestartGate_Decline_AbortsBeforePasskey(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -2004,7 +1953,6 @@ func TestEnroll_BrowserRestartGate_Decline_AbortsBeforePasskey(t *testing.T) {
 // ceremony runs directly.
 func TestEnroll_NoBrowserRestartPrompt_WhenTrustUnchanged(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -2033,7 +1981,6 @@ func TestEnroll_NoBrowserRestartPrompt_WhenTrustUnchanged(t *testing.T) {
 // output streams with no actionable consequence.
 func TestEnroll_NoBrowserRestartPrompt_WhenSkipPasskey(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, _, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -2064,7 +2011,6 @@ func TestEnroll_NoBrowserRestartPrompt_WhenSkipPasskey(t *testing.T) {
 // return path.
 func TestEnroll_NoBrowserRestartPrompt_WhenNoSystemTrustAndNoStaleAnchors(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -2094,7 +2040,6 @@ func TestEnroll_NoBrowserRestartPrompt_WhenNoSystemTrustAndNoStaleAnchors(t *tes
 // was needed. After the fix, the continue prompt fires.
 func TestEnroll_BrowserRestartPrompt_WhenNoSystemTrustButStaleAnchorsRemoved(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, keys, trust, _, passkey, _, _, _ := setupCoordinatorTest(t)
 
 	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
@@ -2138,7 +2083,6 @@ func pemEncode(blockType string, der []byte) string {
 // and runs the passkey ceremony. The probe is called exactly once.
 func TestEnroll_ReusedIdentity_HealthyProbe_ProceedsWithReuse(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -2161,7 +2105,6 @@ func TestEnroll_ReusedIdentity_HealthyProbe_ProceedsWithReuse(t *testing.T) {
 // run the passkey ceremony.
 func TestEnroll_ReusedIdentity_ExpiredSession_PrintsActionableMessageAndExits(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -2187,7 +2130,6 @@ func TestEnroll_ReusedIdentity_ExpiredSession_PrintsActionableMessageAndExits(t 
 // ErrCLISessionRefreshRequired.
 func TestEnroll_ReusedIdentity_InvalidSession_PrintsActionableMessageAndExits(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -2211,7 +2153,6 @@ func TestEnroll_ReusedIdentity_InvalidSession_PrintsActionableMessageAndExits(t 
 // --local-only' and 'login' instead and does not reuse the identity.
 func TestEnroll_ReusedIdentity_RevokedCertificate_PointsAtLocalLogoutNotRefresh(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -2237,7 +2178,6 @@ func TestEnroll_ReusedIdentity_RevokedCertificate_PointsAtLocalLogoutNotRefresh(
 // restarted between discovery and probe.
 func TestEnroll_ReusedIdentity_ProbeNetworkError_WarnsAndProceeds(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
 	_, _, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(365*24*time.Hour))
@@ -2258,7 +2198,6 @@ func TestEnroll_ReusedIdentity_ProbeNetworkError_WarnsAndProceeds(t *testing.T) 
 // coordinator skips the probe and proceeds with reuse as before.
 func TestEnroll_ReusedIdentity_DiscoveryUnreachable_ProbeNotCalled(t *testing.T) {
 	t.Parallel()
-
 	coord, gw, _, _, _, passkey, _, fileSvc, cfg := setupCoordinatorTest(t)
 
 	writeCompleteIdentity(t, fileSvc, cfg)

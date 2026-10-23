@@ -16,7 +16,6 @@ import (
 )
 
 func TestGetLocalOSUser(t *testing.T) {
-	t.Parallel()
 	user := getLocalOSUser()
 	require.NotNil(t, user)
 	assert.NotEmpty(t, user.Username)

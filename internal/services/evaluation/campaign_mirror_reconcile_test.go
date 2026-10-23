@@ -15,7 +15,6 @@ import (
 )
 
 func TestCampaignMirrorReconcileRunTimeout_ScalesWithAssignmentCount(t *testing.T) {
-	t.Parallel()
 	base := 5 * time.Minute
 	assert.Equal(t, base, CampaignMirrorReconcileRunTimeout(base, 0))
 	assert.Equal(t, 7*time.Minute, CampaignMirrorReconcileRunTimeout(base, 60))

@@ -36,8 +36,7 @@ func runEvidenceGraphVerifyCommand(t *testing.T, fileSvc fs.RuntimeFileService, 
 	return &report, err
 }
 
-func TestComplianceEvidenceGraphVerifyCmdWithConfig_RecordsImporterFailureAndFailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceEvidenceGraphVerifyCmdWithConfig_RecordsImporterFailureAndFailsClosed(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 
 	report, err := runEvidenceGraphVerifyCommand(t, fileSvc, []string{"missing-eval-run"})
@@ -50,8 +49,7 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_RecordsImporterFailureAndFai
 	assert.NotEmpty(t, report.ImporterErrors[0].Error)
 }
 
-func TestComplianceEvidenceGraphVerifyCmdWithConfig_RejectsInvalidRunIDs(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceEvidenceGraphVerifyCmdWithConfig_RejectsInvalidRunIDs(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	cmd := complianceEvidenceGraphVerifyCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 	require.NoError(t, cmd.Flags().Set("eval-run", "../invalid"))
@@ -61,8 +59,7 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_RejectsInvalidRunIDs(t *test
 	assert.ErrorIs(t, err, constants.ErrPathValidation)
 }
 
-func TestComplianceEvidenceGraphVerifyCmdWithConfig_RejectsMissingRunFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceEvidenceGraphVerifyCmdWithConfig_RejectsMissingRunFlags(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	cmd := complianceEvidenceGraphVerifyCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 
@@ -71,8 +68,7 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_RejectsMissingRunFlags(t *te
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
-func TestComplianceEvidenceGraphVerifyCmdWithConfig_RemovedDemoRunFlag(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestComplianceEvidenceGraphVerifyCmdWithConfig_RemovedDemoRunFlag(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	cmd := complianceEvidenceGraphVerifyCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
 

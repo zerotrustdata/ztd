@@ -20,15 +20,13 @@ import (
 )
 
 func TestLoadConfigSuccess(t *testing.T) {
-	t.Parallel()
 	cfg, err := shared.LoadConfig("")
 	require.NoError(t, err)
 	assert.NotNil(t, cfg)
 	assert.NotEmpty(t, cfg.ProjectRoot)
 }
 
-func TestLoadConfigWrapsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestLoadConfigWrapsError(t *testing.T) {
 	originalLoad := shared.ConfigLoad
 	shared.ConfigLoad = func(string) (*config.Config, error) {
 		return nil, fmt.Errorf("disk read failure")

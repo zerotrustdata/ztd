@@ -79,13 +79,11 @@ var mutatorCases = []mutatorCase{
 // baseline. After the expected fields are reset, the envelope must equal the
 // baseline, which proves nothing else moved.
 func TestBaseMutatorsChangeExactlyOneProperty(t *testing.T) {
-	t.Parallel()
 	set := BaseMutators()
 	require.Len(t, set, len(mutatorCases), "every BaseMutators fault needs a case here")
 
 	for _, mc := range mutatorCases {
 		t.Run(string(mc.fault), func(t *testing.T) {
-			t.Parallel()
 			m, ok := set[mc.fault]
 			require.True(t, ok, "BaseMutators has no mutator for %s", mc.fault)
 
@@ -119,7 +117,6 @@ func TestBaseMutatorsChangeExactlyOneProperty(t *testing.T) {
 // and id against the recomputed hash separately, so each case checks the field
 // it breaks.
 func TestMutatorsFailHashCheckWhenNotRehashed(t *testing.T) {
-	t.Parallel()
 	set := BaseMutators()
 	tests := []struct {
 		fault     cases.Fault
@@ -130,7 +127,6 @@ func TestMutatorsFailHashCheckWhenNotRehashed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.fault), func(t *testing.T) {
-			t.Parallel()
 			a := testAttempt(tt.fault, cases.ActionMutation)
 			env, err := Baseline(a, testIdentity(), "root-1", time.Now())
 			require.NoError(t, err)
@@ -154,7 +150,6 @@ func TestMutatorsFailHashCheckWhenNotRehashed(t *testing.T) {
 // TestProtocolVersionMutatorIsRejectedByHasher proves the "0.0" version cannot
 // be hashed, so the L4 unsupported-version check is what refuses it.
 func TestProtocolVersionMutatorIsRejectedByHasher(t *testing.T) {
-	t.Parallel()
 	a := testAttempt(cases.FaultProtocolVersion, cases.ActionMutation)
 	env, err := Baseline(a, testIdentity(), "root-1", time.Now())
 	require.NoError(t, err)
@@ -167,7 +162,6 @@ func TestProtocolVersionMutatorIsRejectedByHasher(t *testing.T) {
 // TestPayloadTamperRefusesMissingPayload proves the tamper mutator fails closed
 // on an envelope that carries no payload to tamper with.
 func TestPayloadTamperRefusesMissingPayload(t *testing.T) {
-	t.Parallel()
 	a := testAttempt(cases.FaultPayloadTampered, cases.ActionMutation)
 	env := &commonv1.GovernanceEnvelope{}
 	err := BaseMutators()[cases.FaultPayloadTampered].Apply(context.Background(), env, a)

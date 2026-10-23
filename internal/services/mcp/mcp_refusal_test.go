@@ -166,7 +166,6 @@ func TestHandleMCP_RefusalTableIsTypedIngressRefusal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			runRefusalCase(t, func(g *GatewayService) http.HandlerFunc { return g.HandleMCP }, tt)
 		})
 	}
@@ -242,7 +241,6 @@ func TestHandleA2aCall_RefusalTableIsTypedIngressRefusal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			runRefusalCase(t, func(g *GatewayService) http.HandlerFunc { return g.HandleA2aCall }, tt)
 		})
 	}

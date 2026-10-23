@@ -95,8 +95,8 @@ func newFileOpsServiceForTest(t *testing.T, cfg *config.Config, logger *slog.Log
 // Every dependency is required: a FileOpsService missing one could mutate files without a
 // pre-mutation snapshot, publish unscrubbed, or run unrecorded, so construction fails closed
 // with the typed sentinel.
-func TestNewFileOpsService_RequiresEveryDependency(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewFileOpsService_RequiresEveryDependency(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -131,9 +131,9 @@ func TestNewFileOpsService_RequiresEveryDependency(t *testing.T) { //nolint:para
 		{name: "disabled scrubber", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
 		{name: "nil audit store", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-
+			t.Parallel()
 			svc, err := NewFileOpsService(tt.cfg, logger, tt.fileEdit, client, tt.ledger, tt.results, tt.scrubber, tt.auditStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
@@ -142,7 +142,6 @@ func TestNewFileOpsService_RequiresEveryDependency(t *testing.T) { //nolint:para
 }
 
 func TestPayloadToFileEditRequest(t *testing.T) {
-	t.Parallel()
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
@@ -269,7 +268,6 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 }
 
 func TestPayloadToFsListRequest(t *testing.T) {
-	t.Parallel()
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
@@ -362,7 +360,6 @@ func TestPayloadToFsListRequest(t *testing.T) {
 }
 
 func TestPayloadToFsGrepRequest(t *testing.T) {
-	t.Parallel()
 	t.Run("converts valid payload", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
@@ -456,10 +453,9 @@ func TestPayloadToFsGrepRequest(t *testing.T) {
 	})
 }
 
-func TestFileOpsService_HandleFileEditRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("publishes failed result for protected runtime path", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_HandleFileEditRequest(t *testing.T) {
+	t.Run("publishes failed result for protected runtime path", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -497,8 +493,8 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) { //nolint:parallelt
 		assert.ErrorIs(t, statErr, os.ErrNotExist)
 	})
 
-	t.Run("rejects invalid protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -515,8 +511,8 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) { //nolint:parallelt
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects missing file_path", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects missing file_path", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -535,8 +531,8 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) { //nolint:parallelt
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects missing operation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects missing operation", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -560,8 +556,7 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) { //nolint:parallelt
 // EVAL_WORKSPACE_SEED writes only attempt workspace files and sentinels under
 // the Operator working directory, through the same ledgered write path as
 // FILE_EDIT; every other destination is rejected before anything is written.
-func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) {
 	workspace := constants.EvaluationWorkspacePrefix + "0123456789abcdef"
 	seedIn := func(t *testing.T, cfg *config.Config, filePath string) (*fileEditResultsPublisher, *storage.SQLAuditStore, error) {
 		t.Helper()
@@ -580,8 +575,7 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //n
 		return results, auditStore, err
 	}
 
-	t.Run("writes a workspace fixture and records it", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("writes a workspace fixture and records it", func(t *testing.T) {
 		cfg := testutil.NewTestConfig(t)
 		filePath := filepath.Join(cfg.WorkDir, constants.EvaluationWorkspaceDirname, workspace, "logs", "auth.log")
 		results, auditStore, err := seedIn(t, cfg, filePath)
@@ -601,8 +595,7 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //n
 		assert.Equal(t, constants.Event.Operator.Eval.WorkspaceSeed.Completed, events[0].Type)
 	})
 
-	t.Run("overwrites the sentinel", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("overwrites the sentinel", func(t *testing.T) {
 		cfg := testutil.NewTestConfig(t)
 		sentinel := filepath.Join(cfg.WorkDir, constants.EvaluationWorkspaceDirname, workspace+constants.EvaluationWorkspaceSentinelSuffix)
 		for range 2 {
@@ -614,7 +607,7 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //n
 		assert.Equal(t, "fixture", string(content))
 	})
 
-	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
+	for _, tc := range []struct {
 		name string
 		path func(workDir string) string
 	}{
@@ -630,7 +623,6 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //n
 		}},
 	} {
 		t.Run("rejects "+tc.name, func(t *testing.T) {
-
 			cfg := testutil.NewTestConfig(t)
 			filePath := tc.path(cfg.WorkDir)
 			results, _, err := seedIn(t, cfg, filePath)
@@ -645,8 +637,7 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //n
 		})
 	}
 
-	t.Run("rejects a workspace symlinked outside the workspaces directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects a workspace symlinked outside the workspaces directory", func(t *testing.T) {
 		cfg := testutil.NewTestConfig(t)
 		outside := filepath.Join(cfg.WorkDir, "outside")
 		require.NoError(t, os.MkdirAll(outside, constants.PermDirStandard))
@@ -663,10 +654,9 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) { //n
 	})
 }
 
-func TestFileOpsService_HandleFsGrepRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_HandleFsGrepRequest(t *testing.T) {
 	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
-
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -685,10 +675,9 @@ func TestFileOpsService_HandleFsGrepRequest(t *testing.T) { //nolint:paralleltes
 	})
 }
 
-func TestFileOpsService_HandleFsReadRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects invalid protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_HandleFsReadRequest(t *testing.T) {
+	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -709,8 +698,8 @@ func TestFileOpsService_HandleFsReadRequest(t *testing.T) { //nolint:paralleltes
 		assert.Equal(t, "invalid_request", result.ErrorType)
 	})
 
-	t.Run("rejects missing path", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects missing path", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -742,10 +731,9 @@ func decodeFsReadResultForTest(t *testing.T, published *pubsubtest.PublishedMess
 	return &readResult
 }
 
-func TestFileOpsService_HandleFsReadRequest_RuntimePathPolicy(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("refuses protected runtime data and publishes FAILED without content", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_HandleFsReadRequest_RuntimePathPolicy(t *testing.T) {
+	t.Run("refuses protected runtime data and publishes FAILED without content", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -776,8 +764,8 @@ func TestFileOpsService_HandleFsReadRequest_RuntimePathPolicy(t *testing.T) { //
 		assert.Empty(t, readResult.Content, "protected runtime state must not be returned")
 	})
 
-	t.Run("reads an ordinary file inside the workdir", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("reads an ordinary file inside the workdir", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -806,10 +794,9 @@ func TestFileOpsService_HandleFsReadRequest_RuntimePathPolicy(t *testing.T) { //
 	})
 }
 
-func TestFileOpsService_HandleFsListRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects invalid protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_HandleFsListRequest(t *testing.T) {
+	t.Run("rejects invalid protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -827,8 +814,8 @@ func TestFileOpsService_HandleFsListRequest(t *testing.T) { //nolint:paralleltes
 		assert.Zero(t, client.PublishedCount())
 	})
 
-	t.Run("empty path lists the operator work directory", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("empty path lists the operator work directory", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		require.NoError(t, os.WriteFile(filepath.Join(cfg.WorkDir, "from-default.txt"), []byte("x"), constants.PermFilePrivate))
 		logger := testutil.NewTestLogger()
@@ -852,10 +839,9 @@ func TestFileOpsService_HandleFsListRequest(t *testing.T) { //nolint:paralleltes
 	})
 }
 
-func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("snapshots an existing file", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
+	t.Run("snapshots an existing file", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
@@ -876,8 +862,8 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) { //nolint:paral
 		assert.NotNil(t, result)
 	})
 
-	t.Run("returns nil for path traversal attempt", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("returns nil for path traversal attempt", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
@@ -889,8 +875,8 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) { //nolint:paral
 		assert.Nil(t, target)
 	})
 
-	t.Run("returns nil when file does not exist and operation is not create/write", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("returns nil when file does not exist and operation is not create/write", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
@@ -910,10 +896,9 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) { //nolint:paral
 	})
 }
 
-func TestFileOpsService_CompleteLedgerTwoPhaseCommit(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_CompleteLedgerTwoPhaseCommit(t *testing.T) {
 	t.Run("returns nil for nil ledger result", func(t *testing.T) {
-
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
@@ -947,10 +932,9 @@ func newFileOpsLedgerForTest(t *testing.T, tmpDir string, unlocked bool) (*stora
 	return ledger, v
 }
 
-func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("begin failure refuses the edit and publishes FileEdit.Failed", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
+	t.Run("begin failure refuses the edit and publishes FileEdit.Failed", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
@@ -986,8 +970,8 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) { //nolint:parall
 		assert.NotContains(t, string(published.Data), string(constants.Event.Operator.FileEdit.Completed))
 	})
 
-	t.Run("completion failure fails the result and publishes FileEdit.Failed", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("completion failure fails the result and publishes FileEdit.Failed", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir
@@ -1034,8 +1018,8 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) { //nolint:parall
 		assert.NotContains(t, string(published.Data), string(constants.Event.Operator.FileEdit.Completed))
 	})
 
-	t.Run("audit record failure fails the result and returns ErrExecutionRecordFailed", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("audit record failure fails the result and returns ErrExecutionRecordFailed", func(t *testing.T) {
+		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
 		cfg.WorkDir = tmpDir

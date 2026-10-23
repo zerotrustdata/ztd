@@ -22,7 +22,6 @@ import (
 )
 
 func TestComputeAuditEventHash_IsDeterministic(t *testing.T) {
-	t.Parallel()
 	hash1 := computeAuditEventHash(1, auditChainGenesisPrevHash, "ztd.v1.operator.audit.command", "session-1", "2026-01-01T00:00:00.000000Z", "digest", "tx-1")
 	hash2 := computeAuditEventHash(1, auditChainGenesisPrevHash, "ztd.v1.operator.audit.command", "session-1", "2026-01-01T00:00:00.000000Z", "digest", "tx-1")
 	assert.Equal(t, hash1, hash2)
@@ -37,7 +36,6 @@ func newDigestTestVault(t *testing.T) *vault.Vault {
 }
 
 func TestComputeEventContentDigest_ChangesWithPayload(t *testing.T) {
-	t.Parallel()
 	v := newDigestTestVault(t)
 	eventA := &Event{ContentText: "hello", CommandExitCode: constants.ExitCodeNone}
 	eventB := &Event{ContentText: "world", CommandExitCode: constants.ExitCodeNone}
@@ -50,7 +48,6 @@ func TestComputeEventContentDigest_ChangesWithPayload(t *testing.T) {
 }
 
 func TestComputeEventContentDigest_IsKeyedNotPlainSHA256(t *testing.T) {
-	t.Parallel()
 	v := newDigestTestVault(t)
 	event := &Event{ContentText: "approve", CommandExitCode: constants.ExitCodeNone}
 
@@ -73,8 +70,6 @@ func TestComputeEventContentDigest_IsKeyedNotPlainSHA256(t *testing.T) {
 }
 
 func TestComputeEventContentDigest_LockedVaultFailsClosed(t *testing.T) {
-	t.Parallel()
-
 	v := newDigestTestVault(t)
 	v.Lock()
 	_, err := computeEventContentDigest(v, &Event{ContentText: "x"})

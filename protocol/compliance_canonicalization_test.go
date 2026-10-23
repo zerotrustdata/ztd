@@ -45,7 +45,6 @@ var complianceCanonicalizationVectorJSON []byte
 var compliancePhase1VectorJSON []byte
 
 func TestComplianceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	t.Parallel()
 	var vector complianceCanonicalizationVector
 	require.NoError(t, json.Unmarshal(complianceCanonicalizationVectorJSON, &vector))
 	message := &compliancev1.ControlAssertionDefinition{}
@@ -61,7 +60,6 @@ func TestComplianceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
 }
 
 func TestCompliancePhase1RecordsMatchCrossLanguageVectors(t *testing.T) {
-	t.Parallel()
 	validateComplianceVectorSet(t, compliancePhase1VectorJSON, compliancePhase1MessageCount)
 }
 
@@ -77,7 +75,6 @@ func validateComplianceVectorSet(t *testing.T, encodedVectorSet []byte, expected
 		require.False(t, exists, "duplicate vector for %s", vector.MessageType)
 		seen[vector.MessageType] = struct{}{}
 		t.Run(vector.MessageType, func(t *testing.T) {
-			t.Parallel()
 			fullName := protoreflect.FullName("ztd.compliance.v1." + vector.MessageType)
 			messageType, err := protoregistry.GlobalTypes.FindMessageByName(fullName)
 			require.NoError(t, err)

@@ -26,7 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 )
 
-func TestGatewayCleanCmd_ConfirmYesProceedsPastPrompt(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCleanCmd_ConfirmYesProceedsPastPrompt(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -40,7 +40,7 @@ func TestGatewayCleanCmd_ConfirmYesProceedsPastPrompt(t *testing.T) { //nolint:p
 	assert.Contains(t, buf.String(), "Clean complete")
 }
 
-func TestGatewayCleanCmd_ConfirmYesUppercaseProceeds(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCleanCmd_ConfirmYesUppercaseProceeds(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -54,7 +54,7 @@ func TestGatewayCleanCmd_ConfirmYesUppercaseProceeds(t *testing.T) { //nolint:pa
 	assert.Contains(t, buf.String(), "Clean complete")
 }
 
-func TestGatewayCleanCmd_AbortsOnNViaCmdSetIn(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCleanCmd_AbortsOnNViaCmdSetIn(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -69,7 +69,7 @@ func TestGatewayCleanCmd_AbortsOnNViaCmdSetIn(t *testing.T) { //nolint:parallelt
 	assert.NotContains(t, buf.String(), "Clean complete")
 }
 
-func TestGatewayCleanCmd_AbortsOnEmptyResponseViaCmdSetIn(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCleanCmd_AbortsOnEmptyResponseViaCmdSetIn(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -83,7 +83,7 @@ func TestGatewayCleanCmd_AbortsOnEmptyResponseViaCmdSetIn(t *testing.T) { //noli
 	assert.Contains(t, buf.String(), "Aborted")
 }
 
-func TestGatewayResetCmd_AbortsOnNViaCmdSetIn(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayResetCmd_AbortsOnNViaCmdSetIn(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayResetCmd()
@@ -97,7 +97,7 @@ func TestGatewayResetCmd_AbortsOnNViaCmdSetIn(t *testing.T) { //nolint:parallelt
 	assert.Contains(t, buf.String(), "Aborted")
 }
 
-func TestGatewayCleanCmd_ForceFlagSkipsPromptViaCmdSetIn(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCleanCmd_ForceFlagSkipsPromptViaCmdSetIn(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -111,7 +111,7 @@ func TestGatewayCleanCmd_ForceFlagSkipsPromptViaCmdSetIn(t *testing.T) { //nolin
 	assert.Contains(t, buf.String(), "Clean complete")
 }
 
-func TestGatewayCleanCmd_PromptTextContainsWarning(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayCleanCmd_PromptTextContainsWarning(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayCleanCmd()
@@ -130,7 +130,7 @@ func TestGatewayCleanCmd_PromptTextContainsWarning(t *testing.T) { //nolint:para
 	assert.Contains(t, output, "Continue? [y/N]")
 }
 
-func TestGatewayResetCmd_PromptTextContainsResetSteps(t *testing.T) { //nolint:paralleltest // sets the process environment
+func TestGatewayResetCmd_PromptTextContainsResetSteps(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayResetCmd()
@@ -183,8 +183,7 @@ func (m *mockTrustCleaner) RemoveStaleAnchors(_ context.Context, anchors []platf
 // calls ListStaleAnchors with an empty keep-fingerprint (list ALL ztd
 // anchors) and RemoveStaleAnchors for each, BEFORE pm.Clean() wipes the
 // runtime directory.
-func TestGatewayCleanCmd_RemovesOSTrustAnchors(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCleanCmd_RemovesOSTrustAnchors(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockTrustCleaner{
 		anchors: []platform.StaleAnchor{
@@ -223,8 +222,7 @@ func TestGatewayCleanCmd_RemovesOSTrustAnchors(t *testing.T) { //nolint:parallel
 // TestGatewayCleanCmd_NoOSTrustAnchors_NoRemoveCall verifies that when
 // ListStaleAnchors returns no anchors, RemoveStaleAnchors is NOT called
 // and the runtime wipe proceeds normally.
-func TestGatewayCleanCmd_NoOSTrustAnchors_NoRemoveCall(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCleanCmd_NoOSTrustAnchors_NoRemoveCall(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockTrustCleaner{anchors: nil}
 	cmd := gatewayCleanCmdWithConfig(
@@ -248,8 +246,7 @@ func TestGatewayCleanCmd_NoOSTrustAnchors_NoRemoveCall(t *testing.T) { //nolint:
 // TestGatewayCleanCmd_OSTrustUnsupported_ProceedsWithWipe verifies that
 // when ListStaleAnchors returns ErrSystemTrustUnsupported (stub platform),
 // `gw clean` does NOT print a warning and proceeds with the runtime wipe.
-func TestGatewayCleanCmd_OSTrustUnsupported_ProceedsWithWipe(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCleanCmd_OSTrustUnsupported_ProceedsWithWipe(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockTrustCleaner{listErr: constants.ErrSystemTrustUnsupported}
 	cmd := gatewayCleanCmdWithConfig(
@@ -272,8 +269,7 @@ func TestGatewayCleanCmd_OSTrustUnsupported_ProceedsWithWipe(t *testing.T) { //n
 // TestGatewayCleanCmd_OSTrustListError_ProceedsWithWarning verifies that
 // when ListStaleAnchors returns a non-unsupported error, `gw clean` prints
 // a warning and proceeds with the runtime wipe (best-effort).
-func TestGatewayCleanCmd_OSTrustListError_ProceedsWithWarning(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCleanCmd_OSTrustListError_ProceedsWithWarning(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	mock := &mockTrustCleaner{listErr: errFactory}
 	cmd := gatewayCleanCmdWithConfig(
@@ -294,8 +290,7 @@ func TestGatewayCleanCmd_OSTrustListError_ProceedsWithWarning(t *testing.T) { //
 
 // TestGatewayCleanCmd_ArchivesRuntimeInsteadOfDeleting verifies `gw clean`
 // renames .ztd to .ztd-<MMDDHHMM> so the prior state stays recoverable.
-func TestGatewayCleanCmd_ArchivesRuntimeInsteadOfDeleting(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayCleanCmd_ArchivesRuntimeInsteadOfDeleting(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), "data/marker.txt", []byte("keep me"), constants.PermFilePrivate))
 	runtimeDir := fileSvc.Resolve("")
@@ -323,9 +318,8 @@ func TestGatewayCleanCmd_ArchivesRuntimeInsteadOfDeleting(t *testing.T) { //noli
 // TestGatewayCleanCmd_OffersBackupBeforeArchiving verifies the default flow
 // snapshots evaluation evidence before the runtime is moved aside, and that
 // --skip-backup leaves no snapshot behind.
-func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
+func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) {
+	for _, tc := range []struct {
 		name       string
 		skipBackup bool
 		wantBackup bool
@@ -334,7 +328,6 @@ func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) { //nolint:pa
 		{name: "skip-backup opts out", skipBackup: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			keyring := keystoretest.NewMemoryKeyring()
 			fileSvc, cfg := cmdtest.NewEvidenceCmdTestEnvWithKeyring(t, keyring)
 			evidence := constants.EvaluationDataPath + "/" + constants.EvaluationRunsDirname + "/run-1/report.json"

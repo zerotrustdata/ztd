@@ -20,7 +20,6 @@ import (
 )
 
 func TestIsPrivateIP(t *testing.T) {
-	t.Parallel()
 
 	cases := []struct {
 		ip       string
@@ -62,8 +61,6 @@ func TestIsPrivateIP(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.ip, func(t *testing.T) {
-			t.Parallel()
-
 			ip := net.ParseIP(tc.ip)
 			require.NotNil(t, ip, "Failed to parse IP: %s", tc.ip)
 			result := isPrivateIP(ip)
@@ -73,7 +70,6 @@ func TestIsPrivateIP(t *testing.T) {
 }
 
 func TestIsSafeHost(t *testing.T) {
-	t.Parallel()
 
 	cfg := &config.Config{
 		Endpoint: "ztd.local",
@@ -111,8 +107,6 @@ func TestIsSafeHost(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.host, func(t *testing.T) {
-			t.Parallel()
-
 			result := isSafeHost(tc.host, cfg)
 			assert.Equal(t, tc.expected, result)
 		})
@@ -120,8 +114,6 @@ func TestIsSafeHost(t *testing.T) {
 }
 
 func TestPathTraversalGuard(t *testing.T) {
-	t.Parallel()
-
 	h := newMiddlewareTestHandler(t)
 
 	tests := []struct {
@@ -136,8 +128,6 @@ func TestPathTraversalGuard(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			handler := h.pathTraversalGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))
@@ -152,7 +142,6 @@ func TestPathTraversalGuard(t *testing.T) {
 }
 
 func TestBlobSegmentValid(t *testing.T) {
-	t.Parallel()
 	assert.True(t, blobSegmentValid("valid-segment"))
 	assert.False(t, blobSegmentValid(""))
 	assert.False(t, blobSegmentValid(".."))
@@ -162,7 +151,6 @@ func TestBlobSegmentValid(t *testing.T) {
 }
 
 func TestIsMutationPubSubChannelAllowed(t *testing.T) {
-	t.Parallel()
 
 	tests := []struct {
 		name    string
@@ -182,15 +170,12 @@ func TestIsMutationPubSubChannelAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tt.allowed, isMutationPubSubChannelAllowed(tt.channel))
 		})
 	}
 }
 
 func TestHTTPHandler_handleLandingPage(t *testing.T) {
-	t.Parallel()
 	controller := &HealthController{}
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

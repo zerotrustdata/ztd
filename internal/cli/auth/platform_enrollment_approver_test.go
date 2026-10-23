@@ -36,7 +36,6 @@ func ownerApproverTarget() models.PlatformEnrollmentDecisionTarget {
 }
 
 func TestOwnerAppEnrollmentApprover_ApprovesMatchingRequest(t *testing.T) {
-	t.Parallel()
 	target := ownerApproverTarget()
 	decision, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{
 		ReceiptID: "receipt-1",
@@ -64,7 +63,6 @@ func TestOwnerAppEnrollmentApprover_ApprovesMatchingRequest(t *testing.T) {
 }
 
 func TestOwnerAppEnrollmentApprover_RejectsFingerprintMismatch(t *testing.T) {
-	t.Parallel()
 	target := ownerApproverTarget()
 	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t, models.PlatformEnrollmentPendingRequest{
 		RequestID:     target.RequestID,
@@ -79,7 +77,6 @@ func TestOwnerAppEnrollmentApprover_RejectsFingerprintMismatch(t *testing.T) {
 }
 
 func TestOwnerAppEnrollmentApprover_RejectsSigningFingerprintMismatch(t *testing.T) {
-	t.Parallel()
 	target := ownerApproverTarget()
 	target.Fingerprints.SigningKey = "expected-signing-key"
 	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t, models.PlatformEnrollmentPendingRequest{
@@ -91,7 +88,6 @@ func TestOwnerAppEnrollmentApprover_RejectsSigningFingerprintMismatch(t *testing
 }
 
 func TestOwnerAppEnrollmentApprover_RejectsNonApplicationRequest(t *testing.T) {
-	t.Parallel()
 	target := ownerApproverTarget()
 	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t, models.PlatformEnrollmentPendingRequest{
 		RequestID:     target.RequestID,
@@ -106,7 +102,6 @@ func TestOwnerAppEnrollmentApprover_RejectsNonApplicationRequest(t *testing.T) {
 }
 
 func TestOwnerAppEnrollmentApprover_LeavesDecidedRequestAlone(t *testing.T) {
-	t.Parallel()
 	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t)}
 
 	require.NoError(t, auth.OwnerAppEnrollmentApprover(client, "")(context.Background(), ownerApproverTarget()))

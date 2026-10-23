@@ -35,8 +35,6 @@ func newEvalCampaignPublicationServiceTest(t *testing.T) *EvalCampaignPublicatio
 }
 
 func TestNewEvalCampaignPublicationService_RejectsMissingDependencies(t *testing.T) {
-	t.Parallel()
-
 	logger := testutil.NewTestLogger()
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
@@ -49,8 +47,6 @@ func TestNewEvalCampaignPublicationService_RejectsMissingDependencies(t *testing
 }
 
 func TestEvalCampaignPublicationService_DiscardWithoutSpectatorClearsState(t *testing.T) {
-	t.Parallel()
-
 	service := newEvalCampaignPublicationServiceTest(t)
 	runID := "eval-init-nemotron-3-nano-4b-1792241875"
 	require.NoError(t, service.Put(context.Background(), models.EvalCampaignPublicationState{
@@ -66,8 +62,6 @@ func TestEvalCampaignPublicationService_DiscardWithoutSpectatorClearsState(t *te
 }
 
 func TestEvalCampaignPublicationService_PutAndGet(t *testing.T) {
-	t.Parallel()
-
 	service := newEvalCampaignPublicationServiceTest(t)
 	state := models.EvalCampaignPublicationState{
 		SchemaVersion:         evalCampaignPublicationStateSchemaVersion,

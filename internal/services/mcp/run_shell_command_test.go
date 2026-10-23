@@ -18,7 +18,6 @@ import (
 )
 
 func TestRunShellCommandTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &RunShellCommandTool{}
 	require.Equal(t, "run_shell_command", tool.Name())
 }
@@ -27,7 +26,6 @@ func TestRunShellCommandTool_Name(t *testing.T) {
 // from tools/list. They must say command is the executable name and args is
 // the argv array, so a caller does not send a shell command line.
 func TestRunShellCommandTool_DescriptionTeachesArgvContract(t *testing.T) {
-	t.Parallel()
 	tool := &RunShellCommandTool{}
 	desc := tool.Description()
 	require.Contains(t, desc, "executable")
@@ -45,7 +43,6 @@ func TestRunShellCommandTool_DescriptionTeachesArgvContract(t *testing.T) {
 }
 
 func TestRunShellCommandTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &RunShellCommandTool{}
 	schema := tool.InputSchema()
 
@@ -77,7 +74,6 @@ func TestRunShellCommandTool_InputSchema(t *testing.T) {
 }
 
 func TestRunShellCommandTool_Denylist_DangerousCommands(t *testing.T) {
-	t.Parallel()
 	dangerousCommands := []string{
 		"rm", "dd", "mkfs", "fdisk", "killall", "pkill",
 		"reboot", "shutdown", "iptables", "mount", "umount",
@@ -86,7 +82,6 @@ func TestRunShellCommandTool_Denylist_DangerousCommands(t *testing.T) {
 
 	for _, cmd := range dangerousCommands {
 		t.Run(cmd, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(cmd, nil, "")
 			require.Error(t, err)
 			require.Contains(t, strings.ToLower(err.Error()), "blocked by safety policy")
@@ -95,7 +90,6 @@ func TestRunShellCommandTool_Denylist_DangerousCommands(t *testing.T) {
 }
 
 func TestRunShellCommandTool_Denylist_DangerousPatterns(t *testing.T) {
-	t.Parallel()
 	dangerousPatterns := []string{
 		"mkfs.ext4",
 		"> /dev/sda",
@@ -105,7 +99,6 @@ func TestRunShellCommandTool_Denylist_DangerousPatterns(t *testing.T) {
 
 	for _, pattern := range dangerousPatterns {
 		t.Run(pattern, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(pattern, nil, "")
 			require.Error(t, err)
 			require.Contains(t, strings.ToLower(err.Error()), "dangerous pattern")
@@ -114,7 +107,6 @@ func TestRunShellCommandTool_Denylist_DangerousPatterns(t *testing.T) {
 }
 
 func TestRunShellCommandTool_Denylist_ShellInjection(t *testing.T) {
-	t.Parallel()
 	injectionPatterns := []string{
 		"echo $(whoami)",
 		"echo `whoami`",
@@ -124,7 +116,6 @@ func TestRunShellCommandTool_Denylist_ShellInjection(t *testing.T) {
 
 	for _, pattern := range injectionPatterns {
 		t.Run(pattern, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(pattern, nil, "")
 			require.Error(t, err)
 			require.Contains(t, strings.ToLower(err.Error()), "shell injection")
@@ -133,10 +124,8 @@ func TestRunShellCommandTool_Denylist_ShellInjection(t *testing.T) {
 }
 
 func TestRunShellCommandTool_Denylist_CurlWgetAsCommandNameBlocked(t *testing.T) {
-	t.Parallel()
 	for _, cmd := range []string{"curl", "wget"} {
 		t.Run(cmd, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(cmd, []string{"http://example.com"}, "")
 			require.Error(t, err)
 			require.Contains(t, strings.ToLower(err.Error()), "blocked by safety policy")
@@ -145,7 +134,6 @@ func TestRunShellCommandTool_Denylist_CurlWgetAsCommandNameBlocked(t *testing.T)
 }
 
 func TestRunShellCommandTool_Denylist_CurlWgetAsSubstringAllowed(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		command string
 		args    []string
@@ -156,7 +144,6 @@ func TestRunShellCommandTool_Denylist_CurlWgetAsSubstringAllowed(t *testing.T) {
 		{"cat", []string{"wget-log.txt"}},
 	} {
 		t.Run(tc.command, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(tc.command, tc.args, "")
 			require.NoError(t, err)
 		})
@@ -164,7 +151,6 @@ func TestRunShellCommandTool_Denylist_CurlWgetAsSubstringAllowed(t *testing.T) {
 }
 
 func TestRunShellCommandTool_Denylist_AllowsSafeCommands(t *testing.T) {
-	t.Parallel()
 	safeCommands := []struct {
 		command string
 		args    []string
@@ -182,7 +168,6 @@ func TestRunShellCommandTool_Denylist_AllowsSafeCommands(t *testing.T) {
 
 	for _, tc := range safeCommands {
 		t.Run(tc.command, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(tc.command, tc.args, "")
 			require.NoError(t, err)
 		})
@@ -190,14 +175,12 @@ func TestRunShellCommandTool_Denylist_AllowsSafeCommands(t *testing.T) {
 }
 
 func TestRunShellCommandTool_CommandLineInCommandNamesArgvForm(t *testing.T) {
-	t.Parallel()
 	err := validateCommandSafety("cat -n", []string{"/var/log/app.log"}, "")
 	require.ErrorIs(t, err, constants.ErrMCPRunShellCommandNotExecutable)
 	require.Contains(t, err.Error(), `{"args":["-n","/var/log/app.log"],"command":"cat"}`)
 }
 
 func TestValidateForSSHExecution_BlocksShellMetacharacters(t *testing.T) {
-	t.Parallel()
 	tmpDir := "/tmp"
 	if runtime.GOOS == "windows" {
 		tmpDir = "C:\\tmp"
@@ -238,7 +221,6 @@ func TestValidateForSSHExecution_BlocksShellMetacharacters(t *testing.T) {
 
 	for _, tc := range metacharacterTests {
 		t.Run(tc.command+"_"+tc.workingDir, func(t *testing.T) {
-			t.Parallel()
 			err := validateForSSHExecution(tc.command, tc.args, tc.workingDir)
 			if tc.expectError {
 				require.Error(t, err)
@@ -251,14 +233,11 @@ func TestValidateForSSHExecution_BlocksShellMetacharacters(t *testing.T) {
 }
 
 func TestValidateForSSHExecution_StillBlocksDenylist(t *testing.T) {
-	t.Parallel()
 	// Ensure SSH validation still enforces the standard denylist
-
 	dangerousCommands := []string{"rm", "sudo", "su", "dd"}
 
 	for _, cmd := range dangerousCommands {
 		t.Run(cmd, func(t *testing.T) {
-			t.Parallel()
 			err := validateForSSHExecution(cmd, nil, "")
 			require.Error(t, err)
 		})
@@ -266,7 +245,6 @@ func TestValidateForSSHExecution_StillBlocksDenylist(t *testing.T) {
 }
 
 func TestValidateForSSHExecution_AllowsSafeCommands(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	safeCommands := []struct {
 		command    string
@@ -293,7 +271,6 @@ func TestValidateForSSHExecution_AllowsSafeCommands(t *testing.T) {
 
 	for _, tc := range safeCommands {
 		t.Run(tc.command, func(t *testing.T) {
-			t.Parallel()
 			err := validateForSSHExecution(tc.command, tc.args, tc.workingDir)
 			require.NoError(t, err)
 		})
@@ -301,7 +278,6 @@ func TestValidateForSSHExecution_AllowsSafeCommands(t *testing.T) {
 }
 
 func TestValidateCommandSafety_WorkingDirValidation(t *testing.T) {
-	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	workingDirTests := []struct {
 		name        string
@@ -357,7 +333,6 @@ func TestValidateCommandSafety_WorkingDirValidation(t *testing.T) {
 
 	for _, tc := range workingDirTests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateCommandSafety(tc.command, tc.args, tc.workingDir)
 			if tc.expectError {
 				require.Error(t, err)

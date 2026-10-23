@@ -17,7 +17,6 @@ import (
 )
 
 func TestZoneNameForHostname(t *testing.T) {
-	t.Parallel()
 	zone, err := zoneNameForHostname("opendevops.ai")
 	require.NoError(t, err)
 	assert.Equal(t, "opendevops.ai", zone)
@@ -28,7 +27,6 @@ func TestZoneNameForHostname(t *testing.T) {
 }
 
 func TestDNSRecordName(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "opendevops.ai", dnsRecordName("opendevops.ai"))
 	assert.Equal(t, "www", dnsRecordName("www.opendevops.ai"))
 }

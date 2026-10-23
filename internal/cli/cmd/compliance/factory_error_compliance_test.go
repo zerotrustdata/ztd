@@ -25,7 +25,6 @@ import (
 var errFactory = fmt.Errorf("factory boom")
 
 func TestComplianceKSIHistoryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := complianceKSIHistoryCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -37,7 +36,6 @@ func TestComplianceKSIHistoryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestComplianceOverlayCmdWithConfig_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := complianceOverlayCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -49,7 +47,6 @@ func TestComplianceOverlayCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestComplianceEvidenceGraphVerifyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := complianceEvidenceGraphVerifyCmdWithConfig(
 		cmdtest.FailingFileSvcFactory(errFactory),
 	)
@@ -64,7 +61,6 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_FileSvcFactoryError(t *testi
 }
 
 func TestComplianceReportGenerateCmdWithConfig_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := complianceReportGenerateCmdWithConfig(
 		cmdtest.FailingFileSvcFactory(errFactory),
 		func(context.Context, signingKeyLocation, string, string) (*compliancereport.ComplianceReportSigningIdentity, error) {

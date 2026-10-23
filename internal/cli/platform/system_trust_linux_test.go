@@ -127,7 +127,6 @@ func TestLinux_DetectFamily_Unknown(t *testing.T) {
 
 func TestLinux_IsTrustedDebian_AlreadyTrusted(t *testing.T) {
 	t.Parallel()
-
 	rootPEM, _ := testCA(t, "debian-root")
 	rootCert := mustParse(t, rootPEM)
 	fp := certFingerprint(rootCert)
@@ -143,7 +142,6 @@ func TestLinux_IsTrustedDebian_AlreadyTrusted(t *testing.T) {
 
 func TestLinux_IsTrustedDebian_NotPresent(t *testing.T) {
 	t.Parallel()
-
 	rootPEM, _ := testCA(t, "debian-root-not-present")
 	rootCert := mustParse(t, rootPEM)
 	fp := certFingerprint(rootCert)
@@ -159,7 +157,6 @@ func TestLinux_IsTrustedDebian_NotPresent(t *testing.T) {
 
 func TestLinux_IsTrustedRHEL_AlreadyTrusted(t *testing.T) {
 	t.Parallel()
-
 	rootPEM, _ := testCA(t, "rhel-root")
 	rootCert := mustParse(t, rootPEM)
 	fp := certFingerprint(rootCert)
@@ -175,7 +172,6 @@ func TestLinux_IsTrustedRHEL_AlreadyTrusted(t *testing.T) {
 
 func TestLinux_IsTrustedRHEL_DifferentCert(t *testing.T) {
 	t.Parallel()
-
 	rootPEM, _ := testCA(t, "rhel-root-a")
 	otherPEM, _ := testCA(t, "rhel-root-b")
 	rootCert := mustParse(t, rootPEM)
@@ -214,7 +210,6 @@ func TestLinux_IsTrusted_AlreadyTrusted_Debian(t *testing.T) {
 
 func TestLinux_InstallRoot_Debian(t *testing.T) {
 	t.Parallel()
-
 	_, rootCert := testBundle(t)
 	fp := certFingerprint(rootCert)
 
@@ -252,7 +247,6 @@ func TestLinux_InstallRoot_Debian(t *testing.T) {
 
 func TestLinux_InstallRoot_RHEL(t *testing.T) {
 	t.Parallel()
-
 	_, rootCert := testBundle(t)
 	fp := certFingerprint(rootCert)
 
@@ -283,7 +277,6 @@ func TestLinux_InstallRoot_RHEL(t *testing.T) {
 
 func TestLinux_InstallRoot_MissingTool(t *testing.T) {
 	t.Parallel()
-
 	_, rootCert := testBundle(t)
 
 	r := newFakeRunner()
@@ -295,7 +288,6 @@ func TestLinux_InstallRoot_MissingTool(t *testing.T) {
 
 func TestLinux_InstallRoot_SudoFails(t *testing.T) {
 	t.Parallel()
-
 	_, rootCert := testBundle(t)
 
 	r := newFakeRunner()
@@ -309,7 +301,6 @@ func TestLinux_InstallRoot_SudoFails(t *testing.T) {
 
 func TestLinux_InstallRoot_NoShellInjection(t *testing.T) {
 	t.Parallel()
-
 	_, rootCert := testBundle(t)
 
 	r := newFakeRunner()
@@ -333,7 +324,6 @@ func TestLinux_InstallRoot_NoShellInjection(t *testing.T) {
 
 func TestLinux_InstallRoot_ConcurrentCalls(t *testing.T) {
 	t.Parallel()
-
 	_, rootCert := testBundle(t)
 
 	r := newFakeRunner()
@@ -378,7 +368,6 @@ func TestLinux_ListStaleAnchors_NoStaleAnchors(t *testing.T) {
 
 func TestLinux_ListStaleAnchors_FindsStale(t *testing.T) {
 	t.Parallel()
-
 	bundle, rootCert := testBundle(t)
 	currentFP := certFingerprint(rootCert)
 

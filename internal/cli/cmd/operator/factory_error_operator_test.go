@@ -28,7 +28,6 @@ import (
 var errFactory = fmt.Errorf("factory boom")
 
 func TestOperatorDeploymentStateCmd_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := operatorDeploymentStateCmdWithFactory(cmdtest.FailingFileSvcFactory(errFactory))
 	err := cmd.RunE(cmd, nil)
 	require.ErrorIs(t, err, constants.ErrFileServiceInit)
@@ -36,7 +35,6 @@ func TestOperatorDeploymentStateCmd_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestOperatorDeployHostCmd_FileSvcFactoryError(t *testing.T) {
-	t.Parallel()
 	cmd := operatorDeployHostCmdWithFactory(cmdtest.FailingFileSvcFactory(errFactory))
 	req := models.DeployHostRequest{Action: models.DeployHostActionState, WorkingDir: "/some/dir"}
 	reqData, err := json.Marshal(req)
@@ -50,8 +48,7 @@ func TestOperatorDeployHostCmd_FileSvcFactoryError(t *testing.T) {
 	require.ErrorIs(t, err, errFactory)
 }
 
-func TestOperatorStopCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorStopCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := operatorStopCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -65,8 +62,7 @@ func TestOperatorStopCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestOperatorBindCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorBindCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	bindClientFactory := func(*config.Config) operatorBindClient {
 		panic("bind client factory should not be called when fileSvcFactory fails")
@@ -79,8 +75,7 @@ func TestOperatorBindCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestOperatorShowCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorShowCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := operatorShowCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -90,8 +85,7 @@ func TestOperatorShowCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestOperatorRunCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorRunCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	clientFactory := func(fs.RuntimeFileService, *config.Config, api.ClientOptions) (authcmd.APIClient, error) {
 		panic("operator run client factory should not be called when fileSvcFactory fails")
@@ -105,8 +99,7 @@ func TestOperatorRunCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:p
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestOperatorListCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := operatorListCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -118,8 +111,7 @@ func TestOperatorListCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestOperatorDeployCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorDeployCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := operatorDeployCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory), scriptedConnector(false, ""))
 	var buf bytes.Buffer

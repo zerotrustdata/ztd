@@ -16,20 +16,16 @@ import (
 )
 
 func TestCampaignRunStatus(t *testing.T) {
-	t.Parallel()
 	t.Run("unknown without a summary", func(t *testing.T) {
-		t.Parallel()
 		assert.Equal(t, "unknown", CampaignRunStatus(nil, nil, false))
 	})
 
 	t.Run("initialized when no assignments are scheduled", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{ExpectedAssignment: 75}, nil, false)
 		assert.Equal(t, "initialized", status)
 	})
 
 	t.Run("scheduled when assignments are queued but not started", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			QueuedCount:        75,
@@ -38,7 +34,6 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("running only while a live process holds the lease", func(t *testing.T) {
-		t.Parallel()
 		summary := &CampaignRunSummary{
 			ExpectedAssignment: 75,
 			QueuedCount:        10,
@@ -49,13 +44,11 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("live lease reports running between assignments", func(t *testing.T) {
-		t.Parallel()
 		summary := &CampaignRunSummary{ExpectedAssignment: 75, QueuedCount: 10, TerminalCount: 65}
 		assert.Equal(t, "running", CampaignRunStatus(summary, nil, true))
 	})
 
 	t.Run("interrupted when an assignment is running with no live holder", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			QueuedCount:        10,
@@ -66,7 +59,6 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("in_progress when partially complete", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			QueuedCount:        10,
@@ -76,7 +68,6 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("completed when all assignments are terminal", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			TerminalCount:      75,
@@ -85,7 +76,6 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("cancelled when a cancel stopped the remaining assignments", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			TerminalCount:      75,
@@ -95,7 +85,6 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("verified when verification passed", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			TerminalCount:      75,
@@ -106,7 +95,6 @@ func TestCampaignRunStatus(t *testing.T) {
 	})
 
 	t.Run("verify_failed when verification failed", func(t *testing.T) {
-		t.Parallel()
 		status := CampaignRunStatus(&CampaignRunSummary{
 			ExpectedAssignment: 75,
 			TerminalCount:      75,

@@ -22,7 +22,6 @@ import (
 )
 
 func TestCampaignVerificationBinding_BindsExactVerifiedPopulation(t *testing.T) {
-	t.Parallel()
 	catalogRef := &compliancev1.VersionedReference{Id: "catalog-1", Version: "1.0.0"}
 	run := &evalv1.EvaluationRun{
 		RunId: "run-1",
@@ -65,7 +64,6 @@ func TestCampaignVerificationBinding_BindsExactVerifiedPopulation(t *testing.T) 
 }
 
 func TestCampaignRunVerifier_RejectsHomogeneousTargetInSystemRun(t *testing.T) {
-	t.Parallel()
 	f := newArchiveFixture(t)
 	createBoundSystemCampaign(t, f, "system-target-test")
 	_, err := f.controller.StartRun(t.Context(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
@@ -98,7 +96,6 @@ func mustPopulationDigest(t *testing.T, population *evalv1.EvaluationVerifiedPop
 }
 
 func TestVerifyCampaignRunReadOnly_BindsIncompletePopulationWithoutPersistingVerification(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })

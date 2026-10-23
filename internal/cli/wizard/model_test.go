@@ -19,20 +19,17 @@ var _ tea.Model = Model{}
 // --- NewModel: initial state ---
 
 func TestNewModel_InitialStep(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Equal(t, StepNetwork, m.step)
 	assert.False(t, m.quitting)
 }
 
 func TestNewModel_InitialFocusIndex(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Equal(t, 0, m.focusIndex)
 }
 
 func TestNewModel_PublicBaseURLInputFocused(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.True(t, m.publicBaseURLInput.Focused(), "first input should be focused on init")
 }
@@ -40,7 +37,6 @@ func TestNewModel_PublicBaseURLInputFocused(t *testing.T) {
 // --- NewModel: pre-fill from initial config ---
 
 func TestNewModel_PublicBaseURLPreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{PublicBaseURL: "https://demo.zerotrustdata.io"},
 	})
@@ -48,13 +44,11 @@ func TestNewModel_PublicBaseURLPreFilled(t *testing.T) {
 }
 
 func TestNewModel_PublicBaseURLDefaultWhenEmpty(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Empty(t, m.publicBaseURLInput.Value())
 }
 
 func TestNewModel_PasskeyRpOriginPreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			PasskeyRpOrigins: []string{"https://demo.zerotrustdata.io"},
@@ -64,13 +58,11 @@ func TestNewModel_PasskeyRpOriginPreFilled(t *testing.T) {
 }
 
 func TestNewModel_PasskeyRpOriginEmptyWhenNoInitialConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Empty(t, m.passkeyRpOriginInput.Value())
 }
 
 func TestNewModel_CorsOriginPreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			AllowedOrigins: []string{"https://console.zerotrustdata.io"},
@@ -80,13 +72,11 @@ func TestNewModel_CorsOriginPreFilled(t *testing.T) {
 }
 
 func TestNewModel_CorsOriginEmptyWhenNoInitialConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Empty(t, m.corsOriginInput.Value())
 }
 
 func TestNewModel_PasskeyRpIDPreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{PasskeyRpID: "demo.zerotrustdata.io"},
 	})
@@ -94,13 +84,11 @@ func TestNewModel_PasskeyRpIDPreFilled(t *testing.T) {
 }
 
 func TestNewModel_PasskeyRpIDDefaultsToLocalthost(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Equal(t, "localhost", m.passkeyRpIDInput.Value())
 }
 
 func TestNewModel_PasskeyRpNamePreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{PasskeyRpName: "custom"},
 	})
@@ -108,13 +96,11 @@ func TestNewModel_PasskeyRpNamePreFilled(t *testing.T) {
 }
 
 func TestNewModel_PasskeyRpNameDefaultsToZtd(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Equal(t, "ztd", m.passkeyRpNameInput.Value())
 }
 
 func TestNewModel_MCPDownstreamPreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{MCPDownstreamURL: "http://mcp:3000"},
 	})
@@ -122,7 +108,6 @@ func TestNewModel_MCPDownstreamPreFilled(t *testing.T) {
 }
 
 func TestNewModel_A2ADownstreamPreFilled(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{A2ADownstreamURL: "http://a2a:3001"},
 	})
@@ -132,13 +117,11 @@ func TestNewModel_A2ADownstreamPreFilled(t *testing.T) {
 // --- NewModel: cert mode choice from config ---
 
 func TestNewModel_CertModeChoiceLocalhostDefault(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Equal(t, 0, m.certModeChoice)
 }
 
 func TestNewModel_CertModeChoiceFullFromConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{CertIdentityMode: "full"},
 	})
@@ -146,7 +129,6 @@ func TestNewModel_CertModeChoiceFullFromConfig(t *testing.T) {
 }
 
 func TestNewModel_CertModeChoiceLocalhostFromConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{CertIdentityMode: "localhost"},
 	})
@@ -156,13 +138,11 @@ func TestNewModel_CertModeChoiceLocalhostFromConfig(t *testing.T) {
 // --- NewModel: posture choice from config ---
 
 func TestNewModel_PostureChoiceDoctrineDefault(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.Equal(t, 0, m.postureChoice)
 }
 
 func TestNewModel_PostureChoiceConsensusFromConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{Posture: "consensus"},
 	})
@@ -170,7 +150,6 @@ func TestNewModel_PostureChoiceConsensusFromConfig(t *testing.T) {
 }
 
 func TestNewModel_PostureChoiceRatifyFromConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{Posture: "ratify"},
 	})
@@ -178,7 +157,6 @@ func TestNewModel_PostureChoiceRatifyFromConfig(t *testing.T) {
 }
 
 func TestNewModel_PostureChoiceNotaryFromConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{Posture: "notary"},
 	})
@@ -188,7 +166,6 @@ func TestNewModel_PostureChoiceNotaryFromConfig(t *testing.T) {
 // --- NewModel: toggle initialization from config (Bug #5) ---
 
 func TestNewModel_TogglesInitializedFromConfig(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			MCPDownstreamURL: "http://mcp:3000",
@@ -202,7 +179,6 @@ func TestNewModel_TogglesInitializedFromConfig(t *testing.T) {
 }
 
 func TestNewModel_TogglesFalseWhenConfigEmpty(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	assert.False(t, m.routeToMCP)
 	assert.False(t, m.routeToA2A)
@@ -212,7 +188,6 @@ func TestNewModel_TogglesFalseWhenConfigEmpty(t *testing.T) {
 // --- Init ---
 
 func TestInit_ReturnsBlink(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	cmd := m.Init()
 	assert.NotNil(t, cmd)
@@ -221,7 +196,6 @@ func TestInit_ReturnsBlink(t *testing.T) {
 // --- result(): config mapping ---
 
 func TestResult_AllFieldsPopulated(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			PublicBaseURL:    "https://demo.zerotrustdata.io",
@@ -250,7 +224,6 @@ func TestResult_AllFieldsPopulated(t *testing.T) {
 }
 
 func TestResult_DefaultValues(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	result := m.result()
 	cfg := result.Config
@@ -259,7 +232,6 @@ func TestResult_DefaultValues(t *testing.T) {
 }
 
 func TestResult_PasskeyOriginStoresExactValue(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.passkeyRpOriginInput.SetValue("https://demo.zerotrustdata.io:8443/some/path?q=1")
 	result := m.result()
@@ -267,7 +239,6 @@ func TestResult_PasskeyOriginStoresExactValue(t *testing.T) {
 }
 
 func TestResult_PasskeyOriginEmptyWhenNotSet(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	result := m.result()
 	assert.Nil(t, result.Config.PasskeyRpOrigins)
@@ -276,7 +247,6 @@ func TestResult_PasskeyOriginEmptyWhenNotSet(t *testing.T) {
 // --- result(): stale config cleared when toggles disabled (Bug #2) ---
 
 func TestResult_DisabledWebFrontendClearsAllowedOrigins(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			AllowedOrigins: []string{"https://stale.example.com"},
@@ -288,7 +258,6 @@ func TestResult_DisabledWebFrontendClearsAllowedOrigins(t *testing.T) {
 }
 
 func TestResult_DisabledRouteToMCPClearsDownstreamURL(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			MCPDownstreamURL: "http://stale-mcp:3000",
@@ -300,7 +269,6 @@ func TestResult_DisabledRouteToMCPClearsDownstreamURL(t *testing.T) {
 }
 
 func TestResult_DisabledRouteToA2AClearsDownstreamURL(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			A2ADownstreamURL: "http://stale-a2a:3001",
@@ -312,7 +280,6 @@ func TestResult_DisabledRouteToA2AClearsDownstreamURL(t *testing.T) {
 }
 
 func TestResult_EnabledTogglesPreserveValues(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{
 		InitialConfig: Config{
 			AllowedOrigins:   []string{"https://console.zerotrustdata.io"},
@@ -329,7 +296,6 @@ func TestResult_EnabledTogglesPreserveValues(t *testing.T) {
 // --- result(): cancel ---
 
 func TestResult_CancelReturnsCancelTrue(t *testing.T) {
-	t.Parallel()
 	m := NewModel(Options{})
 	m.quitting = true
 	result := m.result()
@@ -339,25 +305,21 @@ func TestResult_CancelReturnsCancelTrue(t *testing.T) {
 // --- newTextInput ---
 
 func TestNewTextInput_SetsPlaceholder(t *testing.T) {
-	t.Parallel()
 	ti := newTextInput("https://example.com", "Label", 40)
 	assert.Equal(t, "https://example.com", ti.Placeholder)
 }
 
 func TestNewTextInput_SetsPrompt(t *testing.T) {
-	t.Parallel()
 	ti := newTextInput("placeholder", "My Label", 40)
 	assert.Equal(t, "My Label: ", ti.Prompt)
 }
 
 func TestNewTextInput_SetsWidth(t *testing.T) {
-	t.Parallel()
 	ti := newTextInput("placeholder", "Label", 50)
 	assert.Equal(t, 50, ti.Width)
 }
 
 func TestNewTextInput_SetsCharLimit(t *testing.T) {
-	t.Parallel()
 	ti := newTextInput("placeholder", "Label", 40)
 	assert.Equal(t, 200, ti.CharLimit)
 }

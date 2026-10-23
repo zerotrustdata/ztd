@@ -28,9 +28,7 @@ import (
 )
 
 func TestApproveCmdStructure(t *testing.T) {
-	t.Parallel()
 	t.Run("approve command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := approveCmd()
 		assert.Contains(t, cmd.Use, "approve")
 		assert.Contains(t, cmd.Short, "Approve")
@@ -41,7 +39,6 @@ func TestApproveCmdStructure(t *testing.T) {
 	})
 
 	t.Run("approve command requires exactly one argument", func(t *testing.T) {
-		t.Parallel()
 		cmd := approveCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -52,10 +49,8 @@ func TestApproveCmdStructure(t *testing.T) {
 	})
 }
 
-func TestApproveCmdWithConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("approve fails when config load fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApproveCmdWithConfig(t *testing.T) {
+	t.Run("approve fails when config load fails", func(t *testing.T) {
 		failLoader := func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load error")
 		}
@@ -67,8 +62,7 @@ func TestApproveCmdWithConfig(t *testing.T) { //nolint:paralleltest // mutates p
 		assert.Error(t, err)
 	})
 
-	t.Run("approve fails when CLI key file does not exist", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("approve fails when CLI key file does not exist", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		loader := func(string) (*config.Config, error) {
@@ -82,8 +76,7 @@ func TestApproveCmdWithConfig(t *testing.T) { //nolint:paralleltest // mutates p
 		assert.Error(t, err)
 	})
 
-	t.Run("approve fails with invalid PEM key", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("approve fails with invalid PEM key", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CLIKeyFile()), []byte("not a pem"), constants.PermFilePrivate))
@@ -99,8 +92,7 @@ func TestApproveCmdWithConfig(t *testing.T) { //nolint:paralleltest // mutates p
 		assert.Error(t, err)
 	})
 
-	t.Run("approve fails with extra data after PEM", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("approve fails with extra data after PEM", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		keyData := append([]byte("-----BEGIN PRIVATE KEY-----\naGVsbG8=\n-----END PRIVATE KEY-----\n"), []byte("extra data")...)
@@ -118,10 +110,8 @@ func TestApproveCmdWithConfig(t *testing.T) { //nolint:paralleltest // mutates p
 	})
 }
 
-func TestApproveCmdWithValidKeyFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestApproveCmdWithValidKeyFile(t *testing.T) {
 	t.Run("approve fails when cert file does not exist after key is read", func(t *testing.T) {
-
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		_, privKey, err := ed25519.GenerateKey(nil)
@@ -143,10 +133,8 @@ func TestApproveCmdWithValidKeyFile(t *testing.T) { //nolint:paralleltest // mut
 	})
 }
 
-func TestEnrollCmdWithConfigErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("enroll fails when config load fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdWithConfigErrorPaths(t *testing.T) {
+	t.Run("enroll fails when config load fails", func(t *testing.T) {
 		failLoader := func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load error")
 		}
@@ -158,8 +146,7 @@ func TestEnrollCmdWithConfigErrorPaths(t *testing.T) { //nolint:paralleltest // 
 		assert.Error(t, err)
 	})
 
-	t.Run("enroll fails when operator not running", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("enroll fails when operator not running", func(t *testing.T) {
 		_, cfg := cmdtest.SetupTestConfig(t, testutil.TempDir(t))
 
 		config.SetEndpointOverride("127.0.0.1:65535")
@@ -177,10 +164,8 @@ func TestEnrollCmdWithConfigErrorPaths(t *testing.T) { //nolint:paralleltest // 
 	})
 }
 
-func TestEnrollCmdStructure(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestEnrollCmdStructure(t *testing.T) {
 	t.Run("enroll user command has correct use and description", func(t *testing.T) {
-
 		cmd := enrollUserCmdWithConfig(func(string) (*config.Config, error) { return nil, nil }, shared.NewFileSvc, auth.CheckOperatorRunning, NewDefaultEnrollmentCoordinator)
 		assert.Equal(t, "user", cmd.Use)
 		assert.Contains(t, cmd.Short, "Enroll")

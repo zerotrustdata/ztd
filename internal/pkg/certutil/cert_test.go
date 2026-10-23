@@ -59,7 +59,6 @@ func mustGenerateChainPEM(t *testing.T, key *ecdsa.PrivateKey) string {
 }
 
 func TestEncodeCertAndKey_LeafWithoutChain(t *testing.T) {
-	t.Parallel()
 	key := mustGenerateECKey(t)
 	certPEM := mustGenerateCertPEM(t, key)
 
@@ -79,7 +78,6 @@ func TestEncodeCertAndKey_LeafWithoutChain(t *testing.T) {
 }
 
 func TestEncodeCertAndKey_LeafWithChain(t *testing.T) {
-	t.Parallel()
 	key := mustGenerateECKey(t)
 	certPEM := mustGenerateCertPEM(t, key)
 	chainPEM := mustGenerateChainPEM(t, key)
@@ -92,7 +90,6 @@ func TestEncodeCertAndKey_LeafWithChain(t *testing.T) {
 }
 
 func TestEncodeCertAndKey_ValidECKeyPEMRoundTrip(t *testing.T) {
-	t.Parallel()
 	key := mustGenerateECKey(t)
 	certPEM := mustGenerateCertPEM(t, key)
 
@@ -108,7 +105,6 @@ func TestEncodeCertAndKey_ValidECKeyPEMRoundTrip(t *testing.T) {
 }
 
 func TestParseCertFromPEM_ValidCertificate(t *testing.T) {
-	t.Parallel()
 	key := mustGenerateECKey(t)
 	certPEM := mustGenerateCertPEM(t, key)
 
@@ -120,14 +116,12 @@ func TestParseCertFromPEM_ValidCertificate(t *testing.T) {
 }
 
 func TestParseCertFromPEM_InvalidPEMReturnsErrPEMDecodeFailed(t *testing.T) {
-	t.Parallel()
 	_, err := ParseCertFromPEM([]byte("not a pem block at all"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrPEMDecodeFailed)
 }
 
 func TestParseCertFromPEM_WrongPEMTypeReturnsErrInvalidPEMType(t *testing.T) {
-	t.Parallel()
 	keyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "EC PRIVATE KEY",
 		Bytes: []byte("dummy"),
@@ -139,7 +133,6 @@ func TestParseCertFromPEM_WrongPEMTypeReturnsErrInvalidPEMType(t *testing.T) {
 }
 
 func TestParseCertFromPEM_MalformedCertBytesReturnsErrCertParseFailed(t *testing.T) {
-	t.Parallel()
 	badCertPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: []byte("not a real certificate"),
@@ -151,14 +144,12 @@ func TestParseCertFromPEM_MalformedCertBytesReturnsErrCertParseFailed(t *testing
 }
 
 func TestEncodeCertAndKey_NilKeyReturnsError(t *testing.T) {
-	t.Parallel()
 	_, _, err := EncodeCertAndKey("cert", "", nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrKeyParseFailed)
 }
 
 func TestEncodeCertAndKey_SeparatorNoDuplicateNewline(t *testing.T) {
-	t.Parallel()
 	key := mustGenerateECKey(t)
 	certPEM := mustGenerateCertPEM(t, key)
 	chainPEM := mustGenerateChainPEM(t, key)

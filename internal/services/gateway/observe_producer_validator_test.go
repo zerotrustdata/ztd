@@ -49,8 +49,6 @@ func validRunReq() models.ObserveProducerRunStateRequest {
 }
 
 func TestValidateAgentProducerRequest_AcceptsEveryValidStatus(t *testing.T) {
-	t.Parallel()
-
 	for _, status := range []models.AgentLifecycleStatus{
 		models.AgentLifecycleStatusIdle, models.AgentLifecycleStatusQueued,
 		models.AgentLifecycleStatusRunning, models.AgentLifecycleStatusWaiting,
@@ -65,7 +63,6 @@ func TestValidateAgentProducerRequest_AcceptsEveryValidStatus(t *testing.T) {
 }
 
 func TestValidateAgentProducerRequest_RejectsUnsupportedSchemaVersion(t *testing.T) {
-	t.Parallel()
 	req := validAgentReq()
 	req.SchemaVersion = "9.9.9"
 	err := validateAgentProducerRequest(req)
@@ -74,7 +71,6 @@ func TestValidateAgentProducerRequest_RejectsUnsupportedSchemaVersion(t *testing
 }
 
 func TestValidateAgentProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
-	t.Parallel()
 	req := validAgentReq()
 	req.DisplayName = ""
 	err := validateAgentProducerRequest(req)
@@ -83,7 +79,6 @@ func TestValidateAgentProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
 }
 
 func TestValidateAgentProducerRequest_RejectsEmptyRole(t *testing.T) {
-	t.Parallel()
 	req := validAgentReq()
 	req.Role = ""
 	err := validateAgentProducerRequest(req)
@@ -92,7 +87,6 @@ func TestValidateAgentProducerRequest_RejectsEmptyRole(t *testing.T) {
 }
 
 func TestValidateAgentProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *testing.T) {
-	t.Parallel()
 	req := validAgentReq()
 	req.Status = models.AgentLifecycleStatus("bogus")
 	err := validateAgentProducerRequest(req)
@@ -102,8 +96,6 @@ func TestValidateAgentProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *te
 }
 
 func TestValidateRunProducerRequest_AcceptsEveryValidRunKindAndStatus(t *testing.T) {
-	t.Parallel()
-
 	for _, kind := range []models.RunKind{
 		models.RunKindInvestigation, models.RunKindEval,
 		models.RunKindDemo, models.RunKindWorkflow,
@@ -123,7 +115,6 @@ func TestValidateRunProducerRequest_AcceptsEveryValidRunKindAndStatus(t *testing
 }
 
 func TestValidateRunProducerRequest_AcceptsValidZeroCounters(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.CompletedTasks = 0
 	req.TotalTasks = 0
@@ -132,7 +123,6 @@ func TestValidateRunProducerRequest_AcceptsValidZeroCounters(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_RejectsUnsupportedSchemaVersion(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.SchemaVersion = "0.0.1"
 	err := validateRunProducerRequest(req)
@@ -141,7 +131,6 @@ func TestValidateRunProducerRequest_RejectsUnsupportedSchemaVersion(t *testing.T
 }
 
 func TestValidateRunProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.DisplayName = ""
 	err := validateRunProducerRequest(req)
@@ -150,7 +139,6 @@ func TestValidateRunProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_RejectsUnknownRunKind(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.RunKind = models.RunKind("bogus")
 	err := validateRunProducerRequest(req)
@@ -159,7 +147,6 @@ func TestValidateRunProducerRequest_RejectsUnknownRunKind(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.Status = models.RunLifecycleStatus("bogus")
 	err := validateRunProducerRequest(req)
@@ -169,7 +156,6 @@ func TestValidateRunProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *test
 }
 
 func TestValidateRunProducerRequest_ReopensOnlyATerminalStatusTowardANonTerminalOne(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.Status = models.RunLifecycleStatusWaiting
 	req.Reopens = models.RunLifecycleStatusCancelled
@@ -186,7 +172,6 @@ func TestValidateRunProducerRequest_ReopensOnlyATerminalStatusTowardANonTerminal
 }
 
 func TestValidateRunProducerRequest_RejectsNegativeCompletedTasks(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.CompletedTasks = -1
 	err := validateRunProducerRequest(req)
@@ -195,7 +180,6 @@ func TestValidateRunProducerRequest_RejectsNegativeCompletedTasks(t *testing.T) 
 }
 
 func TestValidateRunProducerRequest_RejectsNegativeTotalTasks(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.TotalTasks = -1
 	err := validateRunProducerRequest(req)
@@ -204,7 +188,6 @@ func TestValidateRunProducerRequest_RejectsNegativeTotalTasks(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_RejectsCompletedExceedsTotal(t *testing.T) {
-	t.Parallel()
 	req := validRunReq()
 	req.CompletedTasks = 5
 	req.TotalTasks = 3
@@ -214,7 +197,6 @@ func TestValidateRunProducerRequest_RejectsCompletedExceedsTotal(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_RejectsEndedBeforeStarted(t *testing.T) {
-	t.Parallel()
 	started := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	ended := started.Add(-1 * time.Minute)
 	req := validRunReq()
@@ -226,7 +208,6 @@ func TestValidateRunProducerRequest_RejectsEndedBeforeStarted(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_AcceptsEndedEqualToStarted(t *testing.T) {
-	t.Parallel()
 	ts := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := validRunReq()
 	req.StartedAt = &ts
@@ -236,7 +217,6 @@ func TestValidateRunProducerRequest_AcceptsEndedEqualToStarted(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_AcceptsStartedOnly(t *testing.T) {
-	t.Parallel()
 	started := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := validRunReq()
 	req.StartedAt = &started
@@ -245,7 +225,6 @@ func TestValidateRunProducerRequest_AcceptsStartedOnly(t *testing.T) {
 }
 
 func TestValidateRunProducerRequest_AcceptsEndedOnly(t *testing.T) {
-	t.Parallel()
 	ended := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := validRunReq()
 	req.EndedAt = &ended
@@ -256,7 +235,6 @@ func TestValidateRunProducerRequest_AcceptsEndedOnly(t *testing.T) {
 // TestDecodeProducerRequest_RejectsUnknownFields asserts the strict decode
 // helper rejects unknown fields in the request body.
 func TestDecodeProducerRequest_RejectsUnknownFields(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"schema_version":"1.0.0","agent_id":"a","display_name":"A","role":"r","status":"running","observed_at":"2026-09-09T12:00:00Z","web_session_id":"w","evil":"no"}`)
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)
@@ -267,7 +245,6 @@ func TestDecodeProducerRequest_RejectsUnknownFields(t *testing.T) {
 // TestDecodeProducerRequest_RejectsTrailingJSON asserts the strict decode
 // helper rejects trailing JSON after the top-level value.
 func TestDecodeProducerRequest_RejectsTrailingJSON(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"schema_version":"1.0.0","agent_id":"a","display_name":"A","role":"r","status":"running","observed_at":"2026-09-09T12:00:00Z","web_session_id":"w"}{"extra":1}`)
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)
@@ -289,8 +266,6 @@ func validStopReq() models.ObserveProducerStopRequest {
 }
 
 func TestValidateStopProducerRequest_AcceptsEveryStopReasonAndScope(t *testing.T) {
-	t.Parallel()
-
 	for _, reason := range []models.StopReason{
 		models.StopReasonGraceful, models.StopReasonSafetyBudget, models.StopReasonSafetyDisk,
 		models.StopReasonSafetyHardwareDrift, models.StopReasonSafetyCredential,
@@ -307,8 +282,6 @@ func TestValidateStopProducerRequest_AcceptsEveryStopReasonAndScope(t *testing.T
 }
 
 func TestValidateStopProducerRequest_Rejections(t *testing.T) {
-	t.Parallel()
-
 	cases := []struct {
 		name   string
 		mutate func(*models.ObserveProducerStopRequest)
@@ -323,8 +296,6 @@ func TestValidateStopProducerRequest_Rejections(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			req := validStopReq()
 			tc.mutate(&req)
 			err := validateStopProducerRequest(req)
@@ -337,7 +308,6 @@ func TestValidateStopProducerRequest_Rejections(t *testing.T) {
 // TestDecodeProducerRequest_RejectsMalformedJSON asserts the strict decode
 // helper rejects malformed JSON.
 func TestDecodeProducerRequest_RejectsMalformedJSON(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{not json}`)
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)
@@ -348,7 +318,6 @@ func TestDecodeProducerRequest_RejectsMalformedJSON(t *testing.T) {
 // TestDecodeProducerRequest_AcceptsValidJSON asserts the strict decode
 // helper accepts valid JSON with no unknown fields or trailing content.
 func TestDecodeProducerRequest_AcceptsValidJSON(t *testing.T) {
-	t.Parallel()
 	body := []byte(`{"schema_version":"1.0.0","agent_id":"a","display_name":"A","role":"r","status":"running","observed_at":"2026-09-09T12:00:00Z","web_session_id":"w"}`)
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)

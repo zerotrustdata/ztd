@@ -23,8 +23,6 @@ import (
 // initDatabase creates the commitment_ledger table with the protocol-aligned
 // warden_intent_signature_digest column directly from the schema DDL.
 func TestSQLAuditStore_InitDatabase_CommitmentLedgerWardenIntentColumn(t *testing.T) {
-	t.Parallel()
-
 	tempDir := testutil.TempDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)

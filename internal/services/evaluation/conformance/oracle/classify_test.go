@@ -19,7 +19,6 @@ import (
 )
 
 func TestClassify(t *testing.T) {
-	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	executedLink := &Link{Prior: "prior-0", Hash: "hash-1", TransactionID: "tx-1"}
 
@@ -216,7 +215,6 @@ func TestClassify(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got, err := Classify(tt.build(t))
 			if tt.wantErr {
 				require.Error(t, err)

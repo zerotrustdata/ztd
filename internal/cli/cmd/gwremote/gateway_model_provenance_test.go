@@ -30,8 +30,7 @@ func TestRemoteModelProvenanceClient_Load_RejectsMissingInputs(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestNewModelProvenanceRemote_ReturnsClient(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewModelProvenanceRemote_ReturnsClient(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	remote, err := newModelProvenanceRemote(fileSvc, cfg)

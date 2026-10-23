@@ -108,8 +108,8 @@ func TestDetector_DetectSSHKnownHosts(t *testing.T) {
 	assert.NotNil(t, sshHosts)
 }
 
-func TestDetector_DetectAll(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDetector_DetectAll(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	detector := NewDetector(logger)
 
@@ -188,8 +188,8 @@ func TestNetworkIdentity_FormatForDisplay(t *testing.T) {
 	assert.Contains(t, display, "gateway.local")
 }
 
-func TestDetector_DetectWindowsIdentity(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDetector_DetectWindowsIdentity(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	detector := NewDetector(logger)
 
@@ -322,8 +322,8 @@ func TestNetworkIdentity_FormatForDisplay_AllFields(t *testing.T) {
 	assert.Contains(t, display, "Windows")
 }
 
-func TestDetector_DetectAll_ContextCancellation(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDetector_DetectAll_ContextCancellation(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	detector := NewDetector(logger)
 
@@ -338,8 +338,8 @@ func TestDetector_DetectAll_ContextCancellation(t *testing.T) { //nolint:paralle
 	assert.Nil(t, identity)
 }
 
-func TestDetector_DetectAll_Timeout(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDetector_DetectAll_Timeout(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	detector := NewDetector(logger)
 
@@ -354,8 +354,8 @@ func TestDetector_DetectAll_Timeout(t *testing.T) { //nolint:paralleltest // mut
 	assert.Nil(t, identity)
 }
 
-func TestDetector_DetectAll_ConcurrentExecution(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDetector_DetectAll_ConcurrentExecution(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	detector := NewDetector(logger)
 
@@ -907,8 +907,8 @@ func TestDefaultCommandExecutor(t *testing.T) {
 	}
 }
 
-func TestDetector_DetectWindowsIdentity_PublicWrapper(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDetector_DetectWindowsIdentity_PublicWrapper(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	detector := NewDetector(logger)
 

@@ -30,12 +30,8 @@ func (n *requestorNotary) VerifyL3Proof(_ context.Context, userID, _, _ string, 
 }
 
 func TestL4Warden_L3VerifiesRequestorInsteadOfExecutionTarget(t *testing.T) {
-	t.Parallel()
-
 	for _, target := range []string{string(constants.DocIDEmbeddedOperator), "outbound-operator"} {
 		t.Run(target, func(t *testing.T) {
-			t.Parallel()
-
 			notary := &requestorNotary{}
 			warden := &L4Warden{l3Notary: notary, logger: testutil.NewTestLogger()}
 			env := &govtypes.GovernanceEnvelope{
@@ -52,13 +48,9 @@ func TestL4Warden_L3VerifiesRequestorInsteadOfExecutionTarget(t *testing.T) {
 }
 
 func TestL4Warden_L3DenyRejectsInEveryPosture(t *testing.T) {
-	t.Parallel()
-
 	postures := []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary}
 	for _, posture := range postures {
 		t.Run(string(posture), func(t *testing.T) {
-			t.Parallel()
-
 			notary := &requestorNotary{}
 			warden := &L4Warden{l3Notary: notary, logger: testutil.NewTestLogger()}
 			env := &govtypes.GovernanceEnvelope{

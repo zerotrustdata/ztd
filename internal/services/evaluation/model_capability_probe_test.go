@@ -39,7 +39,6 @@ func (s *stubGovernedCapabilityProbeDispatcher) DispatchInference(_ context.Cont
 }
 
 func TestGovernedCapabilityProbeRunner_RecordsDescriptiveOutcomesWithoutExclusion(t *testing.T) {
-	t.Parallel()
 	variant := &evalv1.ModelVariant{
 		VariantId:      "probe-model",
 		ProviderClass:  "ollama",
@@ -88,7 +87,6 @@ func (d *capturingProbeDispatcher) DispatchInference(_ context.Context, req *ope
 }
 
 func TestGovernedCapabilityProbeRunner_ToolProbeUsesAutoToolChoice(t *testing.T) {
-	t.Parallel()
 	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d')}
 	dispatcher := &capturingProbeDispatcher{err: constants.ErrInferenceBackendTimeout}
 	runner := NewGovernedCapabilityProbeRunner(dispatcher, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
@@ -99,7 +97,6 @@ func TestGovernedCapabilityProbeRunner_ToolProbeUsesAutoToolChoice(t *testing.T)
 }
 
 func TestGovernedCapabilityProbeRunner_DispatchFailureIsNotUnsupported(t *testing.T) {
-	t.Parallel()
 	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d')}
 	runner := NewGovernedCapabilityProbeRunner(&capturingProbeDispatcher{err: fmt.Errorf("probe: %w", constants.ErrInferenceBackendTimeout)}, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
 	structured, err := runner.probeStructuredOutputCapability(context.Background(), variant)
@@ -113,7 +110,6 @@ func TestGovernedCapabilityProbeRunner_DispatchFailureIsNotUnsupported(t *testin
 }
 
 func TestGovernedCapabilityProbeRunner_ToolProbeDispatchFailureIsNotUnsupported(t *testing.T) {
-	t.Parallel()
 	variant := &evalv1.ModelVariant{
 		VariantId:      "probe-model",
 		ProviderClass:  "ollama",

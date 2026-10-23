@@ -19,7 +19,6 @@ import (
 )
 
 func TestBuilderReceiptsVerifyAndClassify(t *testing.T) {
-	t.Parallel()
 	signer := NewSigner(t)
 	anchors, err := oracle.NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor("op-1")})
 	require.NoError(t, err)

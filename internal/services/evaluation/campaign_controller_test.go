@@ -71,7 +71,6 @@ func testCampaignInitRequest(t *testing.T) CampaignInitRequest {
 }
 
 func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	executor := &stubCampaignExecutor{}
@@ -129,7 +128,7 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 	assert.NotEqual(t, first.GetAssignmentId(), resumed.GetAssignmentId())
 }
 
-func TestCampaignControllerExecuteBindsOnlyTheFrozenModelRegistry(t *testing.T) { //nolint:paralleltest // subtests share one campaign controller
+func TestCampaignControllerExecuteBindsOnlyTheFrozenModelRegistry(t *testing.T) {
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 	executor := &stubCampaignExecutor{}
@@ -141,7 +140,7 @@ func TestCampaignControllerExecuteBindsOnlyTheFrozenModelRegistry(t *testing.T) 
 	require.NoError(t, err)
 	frozenRegistry := InferenceVariantsFromEvalRegistry(req.Inventory.Variants)
 
-	t.Run("registry digest that differs from the frozen spec fails before execution", func(t *testing.T) { //nolint:paralleltest // subtests share one campaign controller
+	t.Run("registry digest that differs from the frozen spec fails before execution", func(t *testing.T) {
 		_, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, CampaignExecutionBinding{
 			Topology:            testOperatorTopology("inf-session", "data-session"),
 			ModelRegistryDigest: "sha256:not-the-frozen-registry",
@@ -152,7 +151,7 @@ func TestCampaignControllerExecuteBindsOnlyTheFrozenModelRegistry(t *testing.T) 
 		assert.Zero(t, executor.calls, "a mismatched registry digest must fail before the executor runs")
 	})
 
-	t.Run("caller registry entries are replaced by the frozen registry", func(t *testing.T) { //nolint:paralleltest // subtests share one campaign controller
+	t.Run("caller registry entries are replaced by the frozen registry", func(t *testing.T) {
 		rogue := append(append([]*operatorv1.InferenceModelVariant(nil), frozenRegistry...),
 			&operatorv1.InferenceModelVariant{Model: "rogue-model", Digest: "sha256:rogue"})
 		_, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, CampaignExecutionBinding{
@@ -172,7 +171,6 @@ func TestCampaignControllerExecuteBindsOnlyTheFrozenModelRegistry(t *testing.T) 
 }
 
 func TestCampaignControllerResumeNextAssignmentFailsOnUnresolvedRunningAssignment(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -195,7 +193,6 @@ func TestCampaignControllerResumeNextAssignmentFailsOnUnresolvedRunningAssignmen
 }
 
 func TestCampaignControllerRunSummaryCountsAssignments(t *testing.T) {
-	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })

@@ -28,7 +28,6 @@ func (d *capturingTribunalDispatcher) Dispatch(_ context.Context, req DispatchRe
 }
 
 func TestTribunalIntentDispatchUsesApprovedArgumentBytesOnce(t *testing.T) {
-	t.Parallel()
 	dispatcher := &capturingTribunalDispatcher{}
 	controller := &TribunalIntentController{commands: dispatcher}
 	// Noncanonical whitespace proves the controller uses the approved bytes directly.
@@ -58,8 +57,6 @@ func TestTribunalIntentDispatchUsesApprovedArgumentBytesOnce(t *testing.T) {
 }
 
 func TestTribunalIntentUnapprovedDoesNotDispatch(t *testing.T) {
-	t.Parallel()
-
 	for _, outcome := range []tribunalv1.TribunalOutcome{
 		tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_NO_CONSENSUS,
 		tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED,
@@ -67,8 +64,6 @@ func TestTribunalIntentUnapprovedDoesNotDispatch(t *testing.T) {
 		tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED,
 	} {
 		t.Run(outcome.String(), func(t *testing.T) {
-			t.Parallel()
-
 			dispatcher := &capturingTribunalDispatcher{}
 			controller := &TribunalIntentController{commands: dispatcher}
 			result := &tribunalv1.TribunalIntentResult{Outcome: outcome}

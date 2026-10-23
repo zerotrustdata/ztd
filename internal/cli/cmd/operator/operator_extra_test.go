@@ -23,9 +23,7 @@ import (
 )
 
 func TestOperatorCpCmdExecution(t *testing.T) {
-	t.Parallel()
 	t.Run("cp copies binary to directory", func(t *testing.T) {
-		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		destDir := filepath.Join(tmpDir, "dest")
 		require.NoError(t, os.MkdirAll(destDir, 0o755))
@@ -44,7 +42,6 @@ func TestOperatorCpCmdExecution(t *testing.T) {
 	})
 
 	t.Run("cp copies binary to specific file", func(t *testing.T) {
-		t.Parallel()
 		tmpDir := testutil.TempDir(t)
 		destFile := filepath.Join(tmpDir, "custom-name")
 
@@ -64,11 +61,7 @@ func TestOperatorCpCmdExecution(t *testing.T) {
 }
 
 func TestOperatorStartCmdFlags(t *testing.T) {
-	t.Parallel()
-
 	t.Run("start command has all expected flags", func(t *testing.T) {
-		t.Parallel()
-
 		root := &cobra.Command{Use: "ztd"}
 		root.PersistentFlags().StringP("endpoint", "e", "", "Gateway endpoint")
 		cmd := operatorStartCmd()
@@ -103,8 +96,6 @@ func TestOperatorStartCmdFlags(t *testing.T) {
 	})
 
 	t.Run("start command endpoint has shorthand 'e'", func(t *testing.T) {
-		t.Parallel()
-
 		root := &cobra.Command{Use: "ztd"}
 		root.PersistentFlags().StringP("endpoint", "e", "", "Gateway endpoint")
 		cmd := operatorStartCmd()
@@ -116,8 +107,6 @@ func TestOperatorStartCmdFlags(t *testing.T) {
 	})
 
 	t.Run("start command heartbeat defaults to 30", func(t *testing.T) {
-		t.Parallel()
-
 		cmd := operatorStartCmd()
 		flag := cmd.Flags().Lookup("heartbeat-interval")
 		require.NotNil(t, flag)
@@ -125,10 +114,8 @@ func TestOperatorStartCmdFlags(t *testing.T) {
 	})
 }
 
-func TestOperatorDeployCmdErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorDeployCmdErrorPaths(t *testing.T) {
 	t.Run("deploy fails when no credentials", func(t *testing.T) {
-
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := operatorDeployCmdWithConfig(func(_ string) (*config.Config, error) { return cfg, nil }, authcmd.PanickingClientFactory(), cmdtest.FileSvcFactoryFor(fileSvc), scriptedConnector(false, ""))
@@ -140,10 +127,8 @@ func TestOperatorDeployCmdErrorPaths(t *testing.T) { //nolint:paralleltest // mu
 	})
 }
 
-func TestOperatorStreamCmdExtraFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("stream command has concurrency and timeout flags", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorStreamCmdExtraFlags(t *testing.T) {
+	t.Run("stream command has concurrency and timeout flags", func(t *testing.T) {
 		cmd := operatorStreamCmd()
 		concurrencyFlag := cmd.Flags().Lookup("concurrency")
 		timeoutFlag := cmd.Flags().Lookup("timeout")
@@ -153,14 +138,12 @@ func TestOperatorStreamCmdExtraFlags(t *testing.T) { //nolint:paralleltest // mu
 		assert.Equal(t, "60", timeoutFlag.DefValue)
 	})
 
-	t.Run("start and stream commands have no no-git flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("start and stream commands have no no-git flag", func(t *testing.T) {
 		assert.Nil(t, operatorStreamCmd().Flags().Lookup("no-git"), "the file ledger is required, so there is no flag to disable it")
 		assert.Nil(t, operatorStartCmd().Flags().Lookup("no-git"), "the file ledger is required, so there is no flag to disable it")
 	})
 
-	t.Run("stream command has gateway tunnel port flags", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("stream command has gateway tunnel port flags", func(t *testing.T) {
 		cmd := operatorStreamCmd()
 		httpPortFlag := cmd.Flags().Lookup("gateway-http-port")
 		httpsPortFlag := cmd.Flags().Lookup("gateway-https-port")

@@ -19,7 +19,6 @@ import (
 )
 
 func TestSelectProviderBoundaryObserver(t *testing.T) {
-	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{Id: "obs-1", OperatorSessionId: "sess-obs-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}}},
 		{Id: "data-1", OperatorSessionId: "sess-data-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}}},
@@ -62,13 +61,11 @@ func TestSelectProviderBoundaryObserverBySessionRejectsUnknownSession(t *testing
 }
 
 func TestSelectProviderBoundaryObserver_NotFound(t *testing.T) {
-	t.Parallel()
 	_, err := SelectProviderBoundaryObserver(nil, "")
 	assert.ErrorIs(t, err, constants.ErrProviderBoundaryObserverNotFound)
 }
 
 func TestSelectProviderBoundaryObserver_Ambiguous(t *testing.T) {
-	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{Id: "obs-1", OperatorSessionId: "sess-obs-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}}},
 		{Id: "obs-2", OperatorSessionId: "sess-obs-2", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}}},

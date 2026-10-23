@@ -92,11 +92,9 @@ func TestAttemptStore_FailMarksTerminalState(t *testing.T) {
 
 func TestAttemptStore_RejectsPathHostileAttemptID(t *testing.T) {
 	t.Parallel()
-
 	for _, attemptID := range []string{"../escape", "a/b", `a\b`, "..", "a\x00b"} {
 		t.Run(attemptID, func(t *testing.T) {
 			t.Parallel()
-
 			store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 			require.NoError(t, err)
 			ctx := context.Background()

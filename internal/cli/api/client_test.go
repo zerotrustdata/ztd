@@ -152,8 +152,7 @@ func setupTLSClient(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Con
 	return client
 }
 
-func TestNewClient_Success(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_Success(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -174,8 +173,7 @@ func TestNewClient_Success(t *testing.T) { //nolint:paralleltest // mutates pack
 	assert.NotNil(t, transport.TLSClientConfig.RootCAs)
 }
 
-func TestNewClient_NoCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_NoCredentials(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 
 	credsDir := cfg.RuntimeDir
@@ -187,8 +185,7 @@ func TestNewClient_NoCredentials(t *testing.T) { //nolint:paralleltest // mutate
 	require.ErrorIs(t, err, constants.ErrNotAuthenticated)
 }
 
-func TestNewClient_LoadCredentialsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_LoadCredentialsError(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 
 	credsDir := cfg.RuntimeDir
@@ -203,8 +200,7 @@ func TestNewClient_LoadCredentialsError(t *testing.T) { //nolint:paralleltest //
 	require.ErrorIs(t, err, constants.ErrFailedToLoadCredentials)
 }
 
-func TestNewClient_MissingCertFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_MissingCertFile(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -216,8 +212,7 @@ func TestNewClient_MissingCertFile(t *testing.T) { //nolint:paralleltest // muta
 	require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate)
 }
 
-func TestNewClient_MissingKeyFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_MissingKeyFile(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -229,8 +224,7 @@ func TestNewClient_MissingKeyFile(t *testing.T) { //nolint:paralleltest // mutat
 	require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate)
 }
 
-func TestNewClient_MissingTrustBundle(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_MissingTrustBundle(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -243,8 +237,7 @@ func TestNewClient_MissingTrustBundle(t *testing.T) { //nolint:paralleltest // m
 	require.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
 }
 
-func TestNewClient_InvalidTrustBundle(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_InvalidTrustBundle(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -257,8 +250,7 @@ func TestNewClient_InvalidTrustBundle(t *testing.T) { //nolint:paralleltest // m
 	require.ErrorIs(t, err, constants.ErrFailedToParseTrustBundle)
 }
 
-func TestDoRequest_MarshalError(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestDoRequest_MarshalError(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -271,8 +263,7 @@ func TestDoRequest_MarshalError(t *testing.T) { //nolint:paralleltest // mutates
 	assert.Contains(t, err.Error(), "failed to marshal request body")
 }
 
-func TestNewClient_TLSConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewClient_TLSConfig(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -292,7 +283,6 @@ func TestNewClient_TLSConfig(t *testing.T) { //nolint:paralleltest // mutates pa
 }
 
 func TestStatusError(t *testing.T) {
-	t.Parallel()
 	err := fmt.Errorf("list approvals: %w", &StatusError{StatusCode: http.StatusUnauthorized, Body: "expired"})
 	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.True(t, IsUnauthorized(err))
@@ -305,7 +295,6 @@ func TestStatusError(t *testing.T) {
 }
 
 func TestDecodeGatewayError_PlatformEnrollmentRequiresBootstrap(t *testing.T) {
-	t.Parallel()
 	body := []byte(fmt.Sprintf(`{"error":%q}`, constants.ErrPlatformEnrollmentRequiresBootstrap.Error()))
 	err := DecodeGatewayError(http.StatusForbidden, body)
 	require.Error(t, err)

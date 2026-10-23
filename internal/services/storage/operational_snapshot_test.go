@@ -24,8 +24,6 @@ import (
 )
 
 func TestOpenReadOnlyOperationalEvidence_DoesNotCreateAbsentDatabase(t *testing.T) {
-	t.Parallel()
-
 	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
 	reader, err := OpenReadOnlyOperationalEvidence(dbPath, nil, testutil.NewTestLogger())
 	require.Error(t, err)
@@ -35,8 +33,6 @@ func TestOpenReadOnlyOperationalEvidence_DoesNotCreateAbsentDatabase(t *testing.
 }
 
 func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBodies(t *testing.T) {
-	t.Parallel()
-
 	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	_, privKey, err := ed25519.GenerateKey(nil)
@@ -82,8 +78,6 @@ func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBod
 }
 
 func TestReadOnlyOperationalEvidence_SnapshotFailsInsteadOfTruncatingPopulation(t *testing.T) {
-	t.Parallel()
-
 	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
 	writer, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
@@ -110,8 +104,6 @@ func TestReadOnlyOperationalEvidence_SnapshotFailsInsteadOfTruncatingPopulation(
 }
 
 func TestReadOnlyOperationalEvidence_LatestCommitmentAtReturnsNewestCommitTime(t *testing.T) {
-	t.Parallel()
-
 	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
 	writer, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)

@@ -25,7 +25,6 @@ import (
 // carried no public criteria, so the resolver rejected every scenario and
 // publication degraded to the no-scenario-context path.
 func TestResolvePublicScenarioContext_SucceedsForEveryBuiltInScenario(t *testing.T) {
-	t.Parallel()
 	catalog, artifacts, err := LoadScenarioCatalog()
 	require.NoError(t, err)
 	require.Len(t, catalog.GetScenarios(), DefaultSuiteScenarioCount)
@@ -54,7 +53,6 @@ func TestResolvePublicScenarioContext_SucceedsForEveryBuiltInScenario(t *testing
 }
 
 func TestBuildScenarioCatalog_EveryScenarioCarriesValidPublicCriteria(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	for _, scenario := range catalog.GetScenarios() {
@@ -80,7 +78,6 @@ func TestBuildScenarioCatalog_EveryScenarioCarriesValidPublicCriteria(t *testing
 // INV-EVAL-EVID-04: the gold descriptions state expected behavior and stay
 // private, so no public label or description may equal or quote one.
 func TestBuildScenarioCatalog_PublicCriteriaNeverReusePrivateGoldText(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	byID := make(map[string]*evalv1.EvaluationScenarioDefinition, len(catalog.GetScenarios()))
@@ -125,7 +122,6 @@ func privateGoldDescriptions(gold ScenarioGoldCriteria) []string {
 }
 
 func TestBuildScenarioCatalog_PublicToolScoreDimensionsFollowScenarioShape(t *testing.T) {
-	t.Parallel()
 	const (
 		recognition    = evalv1.PublicToolScoreDimension_PUBLIC_TOOL_SCORE_DIMENSION_TOOL_RECOGNITION
 		selection      = evalv1.PublicToolScoreDimension_PUBLIC_TOOL_SCORE_DIMENSION_TOOL_SELECTION
@@ -158,7 +154,6 @@ func TestBuildScenarioCatalog_PublicToolScoreDimensionsFollowScenarioShape(t *te
 // custom suite exported from the built-in suite publishes the same public
 // criteria, so custom suites never fall back to the no-scenario-context path.
 func TestPublicCriteria_BuiltInSuiteRoundTripsThroughSuiteAuthoring(t *testing.T) {
-	t.Parallel()
 	builtin, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	custom, _, err := MaterializeSuite(DefaultScenarioSuite())
@@ -177,7 +172,6 @@ func TestPublicCriteria_BuiltInSuiteRoundTripsThroughSuiteAuthoring(t *testing.T
 }
 
 func TestPublicCriteria_ValidationRejectsUnresolvableCriteria(t *testing.T) {
-	t.Parallel()
 	valid := func() *evalv1.EvaluationScenarioDefinition {
 		return &evalv1.EvaluationScenarioDefinition{
 			ScenarioId: "scenario-1",
@@ -212,7 +206,6 @@ func TestPublicCriteria_ValidationRejectsUnresolvableCriteria(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			scenario := valid()
 			tt.mutate(scenario)
 			assert.Error(t, validatePublicScenarioCriteria(scenario))
@@ -224,7 +217,6 @@ func TestPublicCriteria_ValidationRejectsUnresolvableCriteria(t *testing.T) {
 // to the protobuf enum: a category added to eval.proto without public text
 // would otherwise fail closed only when a scenario first uses it.
 func TestPublicContentText_NamesEveryScenarioCategory(t *testing.T) {
-	t.Parallel()
 	values := evalv1.EvaluationScenarioCategory(0).Descriptor().Values()
 	for i := 0; i < values.Len(); i++ {
 		category := evalv1.EvaluationScenarioCategory(values.Get(i).Number())

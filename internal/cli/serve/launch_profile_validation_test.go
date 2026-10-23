@@ -43,7 +43,6 @@ func validProfile() GatewayLaunchProfile {
 }
 
 func TestValidateLaunchProfile_HTTPPortExceeds65535ReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.HTTPPort = 65536
 	err := ValidateLaunchProfile(p)
@@ -52,7 +51,6 @@ func TestValidateLaunchProfile_HTTPPortExceeds65535ReturnsErrLaunchProfileInvali
 }
 
 func TestValidateLaunchProfile_HTTPSPortExceeds65535ReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.HTTPSPort = 70000
 	err := ValidateLaunchProfile(p)
@@ -61,7 +59,6 @@ func TestValidateLaunchProfile_HTTPSPortExceeds65535ReturnsErrLaunchProfileInval
 }
 
 func TestValidateLaunchProfile_PortCollisionReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.HTTPPort = 9000
 	p.Config.HTTPSPort = 9000
@@ -71,7 +68,6 @@ func TestValidateLaunchProfile_PortCollisionReturnsErrLaunchProfileInvalid(t *te
 }
 
 func TestValidateLaunchProfile_InvalidLogLevelReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.LogLevel = "bogus"
 	err := ValidateLaunchProfile(p)
@@ -80,7 +76,6 @@ func TestValidateLaunchProfile_InvalidLogLevelReturnsErrLaunchProfileInvalid(t *
 }
 
 func TestValidateLaunchProfile_InvalidCertIdentityModeReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.CertIdentityMode = "bogus-mode"
 	err := ValidateLaunchProfile(p)
@@ -89,7 +84,6 @@ func TestValidateLaunchProfile_InvalidCertIdentityModeReturnsErrLaunchProfileInv
 }
 
 func TestValidateLaunchProfile_InvalidAllowedOriginReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.AllowedOrigins = []string{"not-a-url"}
 	err := ValidateLaunchProfile(p)
@@ -98,7 +92,6 @@ func TestValidateLaunchProfile_InvalidAllowedOriginReturnsErrLaunchProfileInvali
 }
 
 func TestValidateLaunchProfile_InvalidPasskeyOriginReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PasskeyRpOrigins = []string{"ftp://bad.example"}
 	err := ValidateLaunchProfile(p)
@@ -107,7 +100,6 @@ func TestValidateLaunchProfile_InvalidPasskeyOriginReturnsErrLaunchProfileInvali
 }
 
 func TestValidateLaunchProfile_PasskeyOriginRPMismatchReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PasskeyRpID = "your-app.lovable.app"
 	p.Config.PasskeyRpOrigins = []string{"https://other-app.lovable.app"}
@@ -117,7 +109,6 @@ func TestValidateLaunchProfile_PasskeyOriginRPMismatchReturnsErrLaunchProfileInv
 }
 
 func TestValidateLaunchProfile_InvalidPublicBaseURLReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PublicBaseURL = "ftp://bad.example"
 	err := ValidateLaunchProfile(p)
@@ -126,7 +117,6 @@ func TestValidateLaunchProfile_InvalidPublicBaseURLReturnsErrLaunchProfileInvali
 }
 
 func TestValidateLaunchProfile_InvalidMCPDownstreamURLReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.MCPDownstreamURL = "ftp://bad.example/mcp"
 	err := ValidateLaunchProfile(p)
@@ -135,7 +125,6 @@ func TestValidateLaunchProfile_InvalidMCPDownstreamURLReturnsErrLaunchProfileInv
 }
 
 func TestValidateLaunchProfile_InvalidA2ADownstreamURLReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.A2ADownstreamURL = "gopher://bad.example/a2a"
 	err := ValidateLaunchProfile(p)
@@ -144,7 +133,6 @@ func TestValidateLaunchProfile_InvalidA2ADownstreamURLReturnsErrLaunchProfileInv
 }
 
 func TestValidateLaunchProfile_PublicBaseURLWithFragmentReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PublicBaseURL = "https://example.com#frag"
 	err := ValidateLaunchProfile(p)
@@ -152,7 +140,6 @@ func TestValidateLaunchProfile_PublicBaseURLWithFragmentReturnsErrLaunchProfileI
 }
 
 func TestValidateLaunchProfile_PublicBaseURLWithUserInfoReturnsErrLaunchProfileInvalid(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PublicBaseURL = "https://user:pass@example.com"
 	err := ValidateLaunchProfile(p)
@@ -160,7 +147,6 @@ func TestValidateLaunchProfile_PublicBaseURLWithUserInfoReturnsErrLaunchProfileI
 }
 
 func TestValidateLaunchProfile_AcceptsAllValidPostures(t *testing.T) {
-	t.Parallel()
 	validPostures := []constants.Posture{
 		constants.PostureDoctrine,
 		constants.PostureConsensus,
@@ -175,14 +161,12 @@ func TestValidateLaunchProfile_AcceptsAllValidPostures(t *testing.T) {
 }
 
 func TestValidateLaunchProfile_AcceptsEmptyCertIdentityMode(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.CertIdentityMode = ""
 	assert.NoError(t, ValidateLaunchProfile(p))
 }
 
 func TestValidateLaunchProfile_AcceptsEmptyServiceURLs(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PublicBaseURL = ""
 	p.Config.MCPDownstreamURL = ""
@@ -191,14 +175,12 @@ func TestValidateLaunchProfile_AcceptsEmptyServiceURLs(t *testing.T) {
 }
 
 func TestValidateLaunchProfile_AcceptsHTTPPublicBaseURL(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.PublicBaseURL = "http://localhost:3000"
 	assert.NoError(t, ValidateLaunchProfile(p))
 }
 
 func TestValidateLaunchProfile_AcceptsHTTPMCPDownstreamURL(t *testing.T) {
-	t.Parallel()
 	p := validProfile()
 	p.Config.MCPDownstreamURL = "http://downstream:3000/mcp"
 	assert.NoError(t, ValidateLaunchProfile(p))
@@ -210,7 +192,6 @@ func TestValidateLaunchProfile_AcceptsHTTPMCPDownstreamURL(t *testing.T) {
 // WriteFile on the file service. The panicOnWriteFileSvc stub fails the test
 // with a clear panic if WriteFile is reached.
 func TestWriteLaunchProfile_RejectsInvalidConfigWithoutWriting(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(cfg *GatewayConfig)
@@ -237,7 +218,6 @@ func TestWriteLaunchProfile_RejectsInvalidConfigWithoutWriting(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			cfg := validTestGatewayConfig()
 			cfg.NetworkIdentityFile = ""
 			tt.mutate(&cfg)

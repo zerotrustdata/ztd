@@ -202,7 +202,6 @@ func hasVerificationDetail(vr VerificationResult, check, detail string) bool {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_EmptyLedger_AllPass(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -218,7 +217,6 @@ func TestReportVerification_EmptyLedger_AllPass(t *testing.T) {
 }
 
 func TestReportVerification_ValidCommitmentChain_AllPass(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -236,7 +234,6 @@ func TestReportVerification_ValidCommitmentChain_AllPass(t *testing.T) {
 }
 
 func TestReportVerification_MixedAuditorKeysPass(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	_, firstKey, err := ed25519.GenerateKey(nil)
@@ -255,7 +252,6 @@ func TestReportVerification_MixedAuditorKeysPass(t *testing.T) {
 }
 
 func TestReportVerification_ModifiedSignedFieldFails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, testVault := setupTestCommitmentLedger(t)
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
@@ -276,7 +272,6 @@ func TestReportVerification_ModifiedSignedFieldFails(t *testing.T) {
 }
 
 func TestReportVerification_ModifiedHashFails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, testVault := setupTestCommitmentLedger(t)
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
@@ -296,7 +291,6 @@ func TestReportVerification_ModifiedHashFails(t *testing.T) {
 }
 
 func TestReportVerification_MalformedAuditorKeyIDFails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, testVault := setupTestCommitmentLedger(t)
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
@@ -323,7 +317,6 @@ func TestReportVerification_MalformedAuditorKeyIDFails(t *testing.T) {
 }
 
 func TestReportVerification_InvalidAuditorSignatureFails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, testVault := setupTestCommitmentLedger(t)
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
@@ -346,7 +339,6 @@ func TestReportVerification_InvalidAuditorSignatureFails(t *testing.T) {
 }
 
 func TestReportVerification_StructuredColumnDivergenceFails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, testVault := setupTestCommitmentLedger(t)
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
@@ -362,7 +354,6 @@ func TestReportVerification_StructuredColumnDivergenceFails(t *testing.T) {
 }
 
 func TestReportVerification_FirstCommitmentHasNonEmptyPriorHash_Fails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -379,7 +370,6 @@ func TestReportVerification_FirstCommitmentHasNonEmptyPriorHash_Fails(t *testing
 }
 
 func TestReportVerification_BrokenChainSecondCommit_Fails(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, testVault := setupTestCommitmentLedger(t)
 
@@ -402,7 +392,6 @@ func TestReportVerification_BrokenChainSecondCommit_Fails(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_NilLedger_MerkleRootSkipped(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -420,7 +409,6 @@ func TestReportVerification_NilLedger_MerkleRootSkipped(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_NilAuditStore_MutationLinkageSkipped(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -434,8 +422,6 @@ func TestReportVerification_NilAuditStore_MutationLinkageSkipped(t *testing.T) {
 }
 
 func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
-	t.Parallel()
-
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
@@ -469,8 +455,6 @@ func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 }
 
 func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
-	t.Parallel()
-
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
@@ -496,8 +480,6 @@ func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
 }
 
 func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
-	t.Parallel()
-
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
@@ -525,8 +507,6 @@ func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
-	t.Parallel()
-
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
@@ -560,8 +540,6 @@ func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
 }
 
 func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
-	t.Parallel()
-
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
@@ -596,8 +574,6 @@ func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 }
 
 func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
-	t.Parallel()
-
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
@@ -617,7 +593,6 @@ func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_ContextCancelled_ReturnsErr(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -633,7 +608,6 @@ func TestReportVerification_ContextCancelled_ReturnsErr(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_CSVFileWritten(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -654,7 +628,6 @@ func TestReportVerification_CSVFileWritten(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportVerification_CommitmentLedgerReadError_Skipped(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 
 	// Create a commitment ledger with a nil db to trigger read error
@@ -670,7 +643,6 @@ func TestReportVerification_CommitmentLedgerReadError_Skipped(t *testing.T) {
 }
 
 func TestReportVerification_SwappedCommitmentHashFailsOnDecrypt(t *testing.T) {
-	t.Parallel()
 	outDir := testutil.TempDir(t)
 	cl, db, _ := setupTestCommitmentLedger(t)
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")

@@ -72,7 +72,6 @@ func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *SQLAuditStore, *va
 // fetches and returns operator session history events from the SQLite audit store.
 func TestHistoryHandler_FetchHistory(t *testing.T) {
 	t.Parallel()
-
 	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -115,7 +114,6 @@ func TestHistoryHandler_FetchHistory(t *testing.T) {
 // when requesting history for a non-existent session ID.
 func TestHistoryHandler_FetchHistoryMissingSession(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -134,7 +132,6 @@ func TestHistoryHandler_FetchHistoryMissingSession(t *testing.T) {
 // when the request is missing required fields (e.g., operator_session_id).
 func TestHistoryHandler_FetchHistoryInvalidRequest(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -152,7 +149,6 @@ func TestHistoryHandler_FetchHistoryInvalidRequest(t *testing.T) {
 // metadata is correctly included in the history response.
 func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 	t.Parallel()
-
 	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -207,7 +203,6 @@ func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 // works correctly with limit and offset parameters.
 func TestHistoryHandler_FetchHistoryPagination(t *testing.T) {
 	t.Parallel()
-
 	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -256,7 +251,6 @@ func TestHistoryHandler_FetchHistoryPagination(t *testing.T) {
 // the handler applies the default limit of 50 events.
 func TestHistoryHandler_FetchHistoryDefaultLimit(t *testing.T) {
 	t.Parallel()
-
 	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -290,7 +284,6 @@ func TestHistoryHandler_FetchHistoryDefaultLimit(t *testing.T) {
 // when the request payload is not valid JSON.
 func TestHistoryHandler_FetchHistoryInvalidJSON(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -306,7 +299,6 @@ func TestHistoryHandler_FetchHistoryInvalidJSON(t *testing.T) {
 // fetches file version history from the Git ledger service.
 func TestHistoryHandler_FetchFileHistory(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, tempDir := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -345,7 +337,6 @@ func TestHistoryHandler_FetchFileHistory(t *testing.T) {
 // for various invalid request scenarios.
 func TestHistoryHandler_FetchFileHistoryValidationErrors(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		name        string
 		filePath    string
@@ -360,7 +351,6 @@ func TestHistoryHandler_FetchFileHistoryValidationErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			hh, _, testVault, _ := setupTestHistoryHandler(t)
 			defer testVault.Close()
 
@@ -384,7 +374,6 @@ func TestHistoryHandler_FetchFileHistoryValidationErrors(t *testing.T) {
 // the handler applies the default limit for file history requests.
 func TestHistoryHandler_FetchFileHistoryDefaultLimit(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, tempDir := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -409,7 +398,6 @@ func TestHistoryHandler_FetchFileHistoryDefaultLimit(t *testing.T) {
 // a file to a previous version using the Git ledger service.
 func TestHistoryHandler_RestoreFile(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, tempDir := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -456,7 +444,6 @@ func TestHistoryHandler_RestoreFile(t *testing.T) {
 // for various invalid restore request scenarios.
 func TestHistoryHandler_RestoreFileValidationErrors(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
 		name        string
 		filePath    string
@@ -473,7 +460,6 @@ func TestHistoryHandler_RestoreFileValidationErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			hh, _, testVault, _ := setupTestHistoryHandler(t)
 			defer testVault.Close()
 
@@ -497,7 +483,6 @@ func TestHistoryHandler_RestoreFileValidationErrors(t *testing.T) {
 // when attempting to restore a file with an invalid commit hash.
 func TestHistoryHandler_RestoreFileInvalidCommit(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, tempDir := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -517,7 +502,6 @@ func TestHistoryHandler_RestoreFileInvalidCommit(t *testing.T) {
 // retrieve file content at a specific commit hash from the Git ledger.
 func TestHistoryHandler_GetFileAtCommit(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, tempDir := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -551,7 +535,6 @@ func TestHistoryHandler_GetFileAtCommit(t *testing.T) {
 // returns all supported event types in the history response.
 func TestHistoryHandler_AllEventTypes(t *testing.T) {
 	t.Parallel()
-
 	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -603,7 +586,6 @@ func TestHistoryHandler_AllEventTypes(t *testing.T) {
 // correctly returns multiple file mutations associated with a single event.
 func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 	t.Parallel()
-
 	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -659,7 +641,6 @@ func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 // RESTORE_FILE cannot overwrite runtime control or evidence state under .ztd/.
 func TestHistoryHandler_RestoreFileRejectsProtectedRuntimePath(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
@@ -687,7 +668,6 @@ func TestHistoryHandler_RestoreFileRejectsProtectedRuntimePath(t *testing.T) {
 // state is rejected before the ledger writes, leaving the runtime file unchanged.
 func TestHistoryHandler_RestoreFileRejectsSymlinkIntoProtectedRuntimePath(t *testing.T) {
 	t.Parallel()
-
 	hh, _, testVault, tempDir := setupTestHistoryHandler(t)
 	defer testVault.Close()
 

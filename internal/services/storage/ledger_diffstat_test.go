@@ -56,7 +56,6 @@ func setupTestLedgerForDiffStat(t *testing.T) (*GitLedgerService, string) {
 // recorded, and that must not read as "no change".
 func TestLedgerService_GetDiffStat_EmptyHashesFailClosed(t *testing.T) {
 	t.Parallel()
-
 	lms, _ := setupTestLedgerForDiffStat(t)
 
 	_, err := lms.GetDiffStat("", "", "/some/file.txt", "")
@@ -68,7 +67,6 @@ func TestLedgerService_GetDiffStat_EmptyHashesFailClosed(t *testing.T) {
 // ensuring the Git diff-numstat command is executed properly.
 func TestLedgerService_GetDiffStat_BetweenTwoCommits(t *testing.T) {
 	t.Parallel()
-
 	lms, tempDir := setupTestLedgerForDiffStat(t)
 
 	testFile := filepath.Join(tempDir, "diffstat_test.txt")
@@ -102,7 +100,6 @@ func TestLedgerService_GetDiffStat_BetweenTwoCommits(t *testing.T) {
 // as there is no diff to calculate.
 func TestLedgerService_GetDiffStat_SameHashReturnsEmpty(t *testing.T) {
 	t.Parallel()
-
 	lms, tempDir := setupTestLedgerForDiffStat(t)
 
 	testFile := filepath.Join(tempDir, "same_hash.txt")
@@ -126,7 +123,6 @@ func TestLedgerService_GetDiffStat_SameHashReturnsEmpty(t *testing.T) {
 // function returns empty instead of panicking or returning errors.
 func TestLedgerService_GetDiffStat_InvalidHashesReturnsEmpty(t *testing.T) {
 	t.Parallel()
-
 	lms, _ := setupTestLedgerForDiffStat(t)
 
 	_, err := lms.GetDiffStat("deadbeef", "cafebabe", "/some/file.txt", "")

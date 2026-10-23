@@ -33,9 +33,7 @@ import (
 )
 
 func TestAgentCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("agent command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentCmd()
 		assert.Equal(t, "agent", cmd.Use)
 		assert.Contains(t, cmd.Short, "Agent integration")
@@ -43,7 +41,6 @@ func TestAgentCmd(t *testing.T) {
 	})
 
 	t.Run("agent list command works", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentListCmd()
 		assert.Equal(t, "list", cmd.Use)
 		assert.Contains(t, cmd.Short, "List supported")
@@ -65,14 +62,12 @@ func TestAgentCmd(t *testing.T) {
 	})
 
 	t.Run("agent show command requires exactly one argument", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentShowCmd()
 		assert.Equal(t, "show <agent>", cmd.Use)
 		assert.Contains(t, cmd.Short, "Print MCP client configuration")
 	})
 
 	t.Run("agent show prints only the stdio transport config for claude", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentShowCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -90,7 +85,6 @@ func TestAgentCmd(t *testing.T) {
 	agents := []string{"gemini", "goose"}
 	for _, agent := range agents {
 		t.Run("agent show generates gateway configs for "+agent, func(t *testing.T) {
-			t.Parallel()
 			cmd := agentShowCmd()
 			var buf bytes.Buffer
 			cmd.SetOut(&buf)
@@ -104,7 +98,6 @@ func TestAgentCmd(t *testing.T) {
 	}
 
 	t.Run("agent show returns error for unknown agent", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentShowCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -116,7 +109,6 @@ func TestAgentCmd(t *testing.T) {
 	})
 
 	t.Run("agent show is case-insensitive", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentShowCmd()
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -130,9 +122,7 @@ func TestAgentCmd(t *testing.T) {
 }
 
 func TestMcpCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("mcp command has correct use and description", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "mcp", cmd.Use)
 		assert.Contains(t, cmd.Short, "MCP protocol operations")
@@ -141,7 +131,6 @@ func TestMcpCmd(t *testing.T) {
 	})
 
 	t.Run("mcp command has no required flags", func(t *testing.T) {
-		t.Parallel()
 		cmd := Cmd()
 		require.NotNil(t, cmd)
 
@@ -155,9 +144,7 @@ func TestMcpCmd(t *testing.T) {
 }
 
 func TestJSONRPCRequest(t *testing.T) {
-	t.Parallel()
 	t.Run("valid JSON-RPC request parses correctly", func(t *testing.T) {
-		t.Parallel()
 		jsonStr := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`
 		var req JSONRPCRequest
 		err := json.Unmarshal([]byte(jsonStr), &req)
@@ -168,7 +155,6 @@ func TestJSONRPCRequest(t *testing.T) {
 	})
 
 	t.Run("JSON-RPC request without params parses correctly", func(t *testing.T) {
-		t.Parallel()
 		jsonStr := `{"jsonrpc":"2.0","id":2,"method":"initialize"}`
 		var req JSONRPCRequest
 		err := json.Unmarshal([]byte(jsonStr), &req)
@@ -183,9 +169,7 @@ type mcpProxyStatusResult struct {
 }
 
 func TestJSONRPCResponse(t *testing.T) {
-	t.Parallel()
 	t.Run("JSON-RPC response with result serializes correctly", func(t *testing.T) {
-		t.Parallel()
 		resp := JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      1,
@@ -198,7 +182,6 @@ func TestJSONRPCResponse(t *testing.T) {
 	})
 
 	t.Run("JSON-RPC response with error serializes correctly", func(t *testing.T) {
-		t.Parallel()
 		resp := JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      1,
@@ -215,9 +198,7 @@ func TestJSONRPCResponse(t *testing.T) {
 }
 
 func TestRPCError(t *testing.T) {
-	t.Parallel()
 	t.Run("RPC error structure is correct", func(t *testing.T) {
-		t.Parallel()
 		err := RPCError{
 			Code:    constants.JSONRPCErrorCodeParseError,
 			Message: constants.JSONRPCErrorMessageParseError,
@@ -230,9 +211,7 @@ func TestRPCError(t *testing.T) {
 }
 
 func TestToolsListResult(t *testing.T) {
-	t.Parallel()
 	t.Run("tools list result structure is correct", func(t *testing.T) {
-		t.Parallel()
 		result := ToolsListResult{
 			Tools: []Tool{
 				{
@@ -248,9 +227,7 @@ func TestToolsListResult(t *testing.T) {
 }
 
 func TestTool(t *testing.T) {
-	t.Parallel()
 	t.Run("tool structure is correct", func(t *testing.T) {
-		t.Parallel()
 		tool := Tool{
 			Name:        "execute_bash",
 			Description: "Execute a bash command",
@@ -271,9 +248,7 @@ func TestTool(t *testing.T) {
 }
 
 func TestL3SuspensionDecodesTypedSuspension(t *testing.T) {
-	t.Parallel()
 	t.Run("returns the typed suspension of a suspended tools/call", func(t *testing.T) {
-		t.Parallel()
 		resp := JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      float64(1),
@@ -298,7 +273,6 @@ func TestL3SuspensionDecodesTypedSuspension(t *testing.T) {
 	})
 
 	t.Run("returns nil for a completed call", func(t *testing.T) {
-		t.Parallel()
 		resp := JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      float64(1),
@@ -312,7 +286,6 @@ func TestL3SuspensionDecodesTypedSuspension(t *testing.T) {
 	})
 
 	t.Run("ignores approval URLs that appear only in text", func(t *testing.T) {
-		t.Parallel()
 		resp := JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      float64(1),
@@ -328,7 +301,6 @@ func TestL3SuspensionDecodesTypedSuspension(t *testing.T) {
 	})
 
 	t.Run("returns nil when the response has no result", func(t *testing.T) {
-		t.Parallel()
 		suspension, err := l3Suspension(JSONRPCResponse{JSONRPC: "2.0", ID: float64(1)})
 		require.NoError(t, err)
 		assert.Nil(t, suspension)
@@ -371,9 +343,7 @@ func generateTestCerts(t *testing.T) (certPath, keyPath, caPath string) {
 }
 
 func TestPrintMCPConfigStdio(t *testing.T) {
-	t.Parallel()
 	t.Run("generates stdio config with binary path", func(t *testing.T) {
-		t.Parallel()
 		cmd := &cobra.Command{}
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -393,9 +363,7 @@ func TestPrintMCPConfigStdio(t *testing.T) {
 }
 
 func TestAgentRunCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("agent run command has correct structure", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentRunCmd()
 		assert.Contains(t, cmd.Use, "run")
 		assert.Contains(t, cmd.Short, "Launch an AI agent")
@@ -403,7 +371,6 @@ func TestAgentRunCmd(t *testing.T) {
 	})
 
 	t.Run("agent run does not have url flag and has verify flag", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentRunCmd()
 		urlFlag := cmd.Flags().Lookup("url")
 		assert.Nil(t, urlFlag, "agent run should not have --url flag")
@@ -413,7 +380,6 @@ func TestAgentRunCmd(t *testing.T) {
 	})
 
 	t.Run("agent run has silence flags set", func(t *testing.T) {
-		t.Parallel()
 		cmd := agentRunCmd()
 		assert.True(t, cmd.SilenceErrors, "should silence errors")
 		assert.True(t, cmd.SilenceUsage, "should silence usage")
@@ -421,9 +387,7 @@ func TestAgentRunCmd(t *testing.T) {
 }
 
 func TestPrintAgentShow(t *testing.T) {
-	t.Parallel()
 	t.Run("printAgentShow handles all supported agents", func(t *testing.T) {
-		t.Parallel()
 		for _, integration := range agent.All() {
 			cmd := &cobra.Command{}
 			var buf bytes.Buffer
@@ -439,7 +403,6 @@ func TestPrintAgentShow(t *testing.T) {
 	})
 
 	t.Run("printAgentShow is case-insensitive for agent IDs", func(t *testing.T) {
-		t.Parallel()
 		for _, id := range []string{"CLAUDE", "ClaUdE"} {
 			cmd := &cobra.Command{}
 			var buf bytes.Buffer
@@ -453,9 +416,7 @@ func TestPrintAgentShow(t *testing.T) {
 }
 
 func TestMcpStdioCmd(t *testing.T) {
-	t.Parallel()
 	t.Run("mcp stdio command has correct structure", func(t *testing.T) {
-		t.Parallel()
 		cmd := mcpStdioCmd()
 		assert.Equal(t, "stdio", cmd.Use)
 		assert.Contains(t, cmd.Short, "Run MCP stdio server")
@@ -463,14 +424,12 @@ func TestMcpStdioCmd(t *testing.T) {
 	})
 
 	t.Run("mcp stdio command has RunE function", func(t *testing.T) {
-		t.Parallel()
 		cmd := mcpStdioCmd()
 		assert.NotNil(t, cmd.RunE, "should have RunE function")
 	})
 }
 
 func TestMcpStdioCmd_FlagsRegistered(t *testing.T) {
-	t.Parallel()
 	cmd := mcpStdioCmd()
 	expectedFlags := []string{
 		constants.Flag.ClientCert, constants.Flag.ClientKey, constants.Flag.CABundle,
@@ -484,7 +443,6 @@ func TestMcpStdioCmd_FlagsRegistered(t *testing.T) {
 }
 
 func TestAgentRunPostureHelp(t *testing.T) {
-	t.Parallel()
 	help := agentRunPostureHelp()
 	assert.Contains(t, help, "GATEWAY POSTURE:")
 	for _, p := range constants.AllPostures {
@@ -494,7 +452,6 @@ func TestAgentRunPostureHelp(t *testing.T) {
 }
 
 func TestAgentRunAuditHelpUsesAppFilter(t *testing.T) {
-	t.Parallel()
 	long := agentRunCmd().Long
 	assert.Contains(t, long, "ztd audit events --app spiffe://ztd.local/app/claude")
 	assert.Contains(t, long, "ztd audit summary --app spiffe://ztd.local/app/claude")

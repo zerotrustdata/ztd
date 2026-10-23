@@ -31,12 +31,10 @@ func mustLookup(t *testing.T, id constants.AgentBinary) Integration {
 }
 
 func TestStdioServerArgs_SelectsCredentialsByAppName(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, []string{"mcp", "stdio", "--app", "claude"}, StdioServerArgs("claude"))
 }
 
 func TestWriteConfig_Goose_MergesExtensionAndPreservesExistingConfig(t *testing.T) {
-	t.Parallel()
 	home := testutil.TempDir(t)
 	configDir := filepath.Join(home, ".config", "goose")
 	require.NoError(t, os.MkdirAll(configDir, 0o755))
@@ -72,7 +70,6 @@ func TestWriteConfig_Goose_MergesExtensionAndPreservesExistingConfig(t *testing.
 }
 
 func TestWriteConfig_Gemini_DisablesBuiltinToolsAndMergesExistingServers(t *testing.T) {
-	t.Parallel()
 	home := testutil.TempDir(t)
 	geminiDir := filepath.Join(home, ".gemini")
 	require.NoError(t, os.MkdirAll(geminiDir, 0o755))
@@ -94,7 +91,6 @@ func TestWriteConfig_Gemini_DisablesBuiltinToolsAndMergesExistingServers(t *test
 }
 
 func TestWriteConfig_Gemini_RejectsCorruptExistingSettings(t *testing.T) {
-	t.Parallel()
 	home := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".gemini"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".gemini", "settings.json"), []byte(`{not json`), 0o644))
@@ -104,7 +100,6 @@ func TestWriteConfig_Gemini_RejectsCorruptExistingSettings(t *testing.T) {
 }
 
 func TestWriteConfig_Devin_WritesOnlyTheZTDServer(t *testing.T) {
-	t.Parallel()
 	home := testutil.TempDir(t)
 
 	configPath, _, err := mustLookup(t, constants.AgentBinaryDevin).WriteConfig(context.Background(), newScratchFiles(t), home, "/fake/ztd", "devin")
@@ -120,10 +115,8 @@ func TestWriteConfig_Devin_WritesOnlyTheZTDServer(t *testing.T) {
 }
 
 func TestWriteConfig_TempJSON_ListsNativeToolsAndCleansUp(t *testing.T) {
-	t.Parallel()
 	for _, id := range []constants.AgentBinary{constants.AgentBinaryClaude, constants.AgentBinaryCodex} {
 		t.Run(string(id), func(t *testing.T) {
-			t.Parallel()
 			files := newScratchFiles(t)
 			configPath, cleanup, err := mustLookup(t, id).WriteConfig(context.Background(), files, testutil.TempDir(t), "/fake/ztd", string(id))
 			require.NoError(t, err)
@@ -149,13 +142,11 @@ func TestWriteConfig_TempJSON_ListsNativeToolsAndCleansUp(t *testing.T) {
 }
 
 func TestWriteConfig_UnknownStrategyFailsClosed(t *testing.T) {
-	t.Parallel()
 	_, _, err := Integration{ID: "bogus", ConfigStrategy: "bogus"}.WriteConfig(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", "bogus")
 	require.ErrorIs(t, err, constants.ErrAgentNotSupported)
 }
 
 func TestLaunchArgs(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		id   constants.AgentBinary
 		want []string
@@ -168,7 +159,6 @@ func TestLaunchArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.id), func(t *testing.T) {
-			t.Parallel()
 			got, err := mustLookup(t, tt.id).LaunchArgs("/tmp/cfg.json", "/fake/ztd", string(tt.id))
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -177,7 +167,6 @@ func TestLaunchArgs(t *testing.T) {
 }
 
 func TestNativeToolsToDisable_CoversEveryExecutionAndEgressTool(t *testing.T) {
-	t.Parallel()
 	required := []string{
 		"Bash", "PowerShell", "REPL", "Monitor",
 		"Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob", "Grep",
@@ -192,7 +181,6 @@ func TestNativeToolsToDisable_CoversEveryExecutionAndEgressTool(t *testing.T) {
 }
 
 func TestLaunchArgs_UnknownStrategyFailsClosed(t *testing.T) {
-	t.Parallel()
 	_, err := Integration{ID: "bogus", LaunchStrategy: "bogus"}.LaunchArgs("/tmp/cfg.json", "/fake/ztd", "bogus")
 	require.ErrorIs(t, err, constants.ErrAgentNotSupported)
 }

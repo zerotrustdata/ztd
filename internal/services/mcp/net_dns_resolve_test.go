@@ -61,19 +61,16 @@ func (m *mockDNSResolver) LookupNS(ctx context.Context, name string) ([]*net.NS,
 }
 
 func TestNetDNSResolveTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &NetDNSResolveTool{}
 	require.Equal(t, "net_dns_resolve", tool.Name())
 }
 
 func TestNetDNSResolveTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &NetDNSResolveTool{}
 	require.NotEmpty(t, tool.Description())
 }
 
 func TestNetDNSResolveTool_Execute_A(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupIPAddrFunc: func(ctx context.Context, host string) ([]net.IPAddr, error) {
 			return []net.IPAddr{
@@ -100,7 +97,6 @@ func TestNetDNSResolveTool_Execute_A(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_AAAA(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupIPAddrFunc: func(ctx context.Context, host string) ([]net.IPAddr, error) {
 			return []net.IPAddr{
@@ -126,7 +122,6 @@ func TestNetDNSResolveTool_Execute_AAAA(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_MX(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupMXFunc: func(ctx context.Context, name string) ([]*net.MX, error) {
 			return []*net.MX{
@@ -153,7 +148,6 @@ func TestNetDNSResolveTool_Execute_MX(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_TXT(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupTXTFunc: func(ctx context.Context, name string) ([]string, error) {
 			return []string{"v=spf1 include:_spf.google.com ~all"}, nil
@@ -175,7 +169,6 @@ func TestNetDNSResolveTool_Execute_TXT(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_CNAME(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupCNAMEFunc: func(ctx context.Context, name string) (string, error) {
 			return "target.example.com.", nil
@@ -197,7 +190,6 @@ func TestNetDNSResolveTool_Execute_CNAME(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_NS(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupNSFunc: func(ctx context.Context, name string) ([]*net.NS, error) {
 			return []*net.NS{
@@ -221,7 +213,6 @@ func TestNetDNSResolveTool_Execute_NS(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_InvalidArgs(t *testing.T) {
-	t.Parallel()
 	tool := &NetDNSResolveTool{}
 	_, err := tool.Execute(context.Background(), json.RawMessage(`{invalid}`))
 	require.Error(t, err)
@@ -229,7 +220,6 @@ func TestNetDNSResolveTool_Execute_InvalidArgs(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_MissingHostname(t *testing.T) {
-	t.Parallel()
 	tool := &NetDNSResolveTool{}
 	_, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
 	require.Error(t, err)
@@ -237,7 +227,6 @@ func TestNetDNSResolveTool_Execute_MissingHostname(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_UnsupportedRecordType(t *testing.T) {
-	t.Parallel()
 	tool := &NetDNSResolveTool{}
 	args := json.RawMessage(`{"hostname": "example.com", "record_type": "INVALID"}`)
 	_, err := tool.Execute(context.Background(), args)
@@ -246,7 +235,6 @@ func TestNetDNSResolveTool_Execute_UnsupportedRecordType(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_ResolverError(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupIPAddrFunc: func(ctx context.Context, host string) ([]net.IPAddr, error) {
 			return nil, fmt.Errorf("dns resolution failed")
@@ -266,7 +254,6 @@ func TestNetDNSResolveTool_Execute_ResolverError(t *testing.T) {
 }
 
 func TestNetDNSResolveTool_Execute_DefaultType(t *testing.T) {
-	t.Parallel()
 	mock := &mockDNSResolver{
 		lookupIPAddrFunc: func(ctx context.Context, host string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil

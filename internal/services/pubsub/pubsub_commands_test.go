@@ -43,10 +43,9 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) {
 	fixture := newPubsubFixture(t)
-	for _, action := range []constants.ActionType{ //nolint:paralleltest // mutates package-level state
+	for _, action := range []constants.ActionType{
 		constants.ActionTypeHeartbeat, constants.ActionTypeExecuteBash, constants.ActionTypeCancel,
 		constants.ActionTypeFsList, constants.ActionTypeFsRead, constants.ActionTypeFsGrep,
 		constants.ActionTypePortCheck, constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency,
@@ -54,7 +53,6 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 		constants.ActionTypeRestoreFile, constants.ActionTypeFetchFileDiff,
 	} {
 		t.Run(string(action), func(t *testing.T) {
-
 			handler, ok := fixture.Svc.actionHandlers[action]
 			require.True(t, ok)
 			_, err := handler(t.Context(), &PubSubCommandMessage{ID: "decode-failure", Payload: []byte{0xff}})
@@ -65,7 +63,6 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 }
 
 func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.T) {
-	t.Parallel()
 	gateway := &OperatorPubSubService{gatewayMode: true}
 	local := &OperatorPubSubService{}
 	tests := []struct {
@@ -109,7 +106,6 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			tool := tt.tool
 			if tool == "" {
 				tool = "audit_receipt_list"
@@ -142,7 +138,6 @@ func (unreachableAuditReceiptQuery) GetEventReceipt(string) (*models.EventReceip
 // when the Gateway pre-check was skipped, but still serves reads of its own
 // signed audit store.
 func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
-	t.Parallel()
 	grep, err := execution.NewFsGrepService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
 	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{}, grep)
@@ -162,7 +157,6 @@ func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			svc := &OperatorPubSubService{
 				config:           &config.Config{OperatorCapabilities: tt.capabilities},
 				logger:           testutil.NewTestLogger(),
@@ -180,10 +174,9 @@ func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
 	}
 }
 
-func TestNewOperatorPubSubService(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewOperatorPubSubService(t *testing.T) {
 	t.Run("returns non-nil service without error", func(t *testing.T) {
-
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -207,8 +200,8 @@ func TestNewOperatorPubSubService(t *testing.T) { //nolint:paralleltest // mutat
 	})
 }
 
-func TestNewOperatorPubSubService_StartsWithoutTrustedSignersButRejectsL2(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewOperatorPubSubService_StartsWithoutTrustedSignersButRejectsL2(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	tmpDir := testutil.TempDir(t)
 	cfg.PKIDir = filepath.Join(tmpDir, "pki")
@@ -282,18 +275,17 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 	return env
 }
 
-func TestOperatorPubSubService_handleCommandPayload(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects oversized payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleCommandPayload(t *testing.T) {
+	t.Run("rejects oversized payload", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		largePayload := make([]byte, MaxPayloadSize+1)
 		f.Svc.handleCommandPayload(largePayload)
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects non-JSON payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects non-JSON payload", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		binaryPayload := []byte{0x00, 0x01, 0x02}
 		f.Svc.handleCommandPayload(binaryPayload)
@@ -301,10 +293,9 @@ func TestOperatorPubSubService_handleCommandPayload(t *testing.T) { //nolint:par
 	})
 }
 
-func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects envelope with missing payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
+	t.Run("rejects envelope with missing payload", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		env := &govpkg.GovernanceEnvelope{
 			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
@@ -323,8 +314,8 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) { //nolint
 		// Should log error and return without panic
 	})
 
-	t.Run("rejects when Actuator missing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects when Actuator missing", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -369,8 +360,8 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) { //nolint
 	// An all-default ShutdownRequested marshals to zero bytes, which is what
 	// the Gateway stop routes send when no reason is given. It must execute
 	// and signal shutdown, not be dropped after L4 has already verified it.
-	t.Run("executes shutdown envelope with empty payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("executes shutdown envelope with empty payload", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.results = &mockResultsPublisher{}
 		env := &govpkg.GovernanceEnvelope{
@@ -407,7 +398,8 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) { //nolint
 	})
 }
 
-func TestGatewayDispatchedVerificationContext_AcceptsPDPBoundRootDespiteLiveDrift(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestGatewayDispatchedVerificationContext_AcceptsPDPBoundRootDespiteLiveDrift(t *testing.T) {
+	t.Parallel()
 
 	const gatewayRoot = "gateway-root-at-construction"
 	const liveRoot = "live-root-after-concurrent-tx"
@@ -443,7 +435,8 @@ func TestGatewayDispatchedVerificationContext_AcceptsPDPBoundRootDespiteLiveDrif
 	require.NoError(t, err)
 }
 
-func TestOperatorPubSubService_handleGovernanceEnvelope_AcceptsPDPBoundRootDespiteLiveDrift(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestOperatorPubSubService_handleGovernanceEnvelope_AcceptsPDPBoundRootDespiteLiveDrift(t *testing.T) {
+	t.Parallel()
 
 	const gatewayRoot = "gateway-root-at-construction"
 	const liveRoot = "live-root-after-concurrent-tx"
@@ -499,7 +492,8 @@ func TestOperatorPubSubService_handleGovernanceEnvelope_AcceptsPDPBoundRootDespi
 	assert.True(t, executed, "gateway-dispatched envelope must execute despite live state-root drift")
 }
 
-func TestOperatorPubSubService_handleGovernanceEnvelope_ActuatorFailClosedNilReceiptDoesNotPanic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestOperatorPubSubService_handleGovernanceEnvelope_ActuatorFailClosedNilReceiptDoesNotPanic(t *testing.T) {
+	t.Parallel()
 
 	const stateRoot = "state-root"
 	cfg := testutil.NewTestConfig(t)
@@ -644,7 +638,8 @@ func buildL4RejectionEnvelope(t *testing.T, stateRoot, nonce string, mutate, pos
 // envelope path is refused before the L5 execution boundary: the rejected
 // envelope never reaches ExecuteVerifiedTransaction. The valid control case
 // proves the harness does dispatch when verification passes.
-func TestOperatorPubSubService_handleGovernanceEnvelope_L4RejectionDoesNotDispatch(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestOperatorPubSubService_handleGovernanceEnvelope_L4RejectionDoesNotDispatch(t *testing.T) {
+	t.Parallel()
 
 	const stateRoot = l4RejectionStateRoot
 	cases := []struct {
@@ -696,9 +691,9 @@ func TestOperatorPubSubService_handleGovernanceEnvelope_L4RejectionDoesNotDispat
 		},
 	}
 
-	for i, tc := range cases { //nolint:paralleltest // mutates package-level state
+	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-
+			t.Parallel()
 			nonce := fmt.Sprintf("nonce-l4-rejection-%d", i)
 			env := buildL4RejectionEnvelope(t, stateRoot, nonce, tc.mutate, tc.postHash)
 
@@ -770,14 +765,12 @@ func buildGatewayDispatchedDoctrineEnvelope(t *testing.T, stateRoot, nonce strin
 	return env
 }
 
-func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) {
 	// §4.2: Receipt-coverage test - drive each action type through ProcessEnvelope
 	// and assert a receipt is written EXECUTING before and terminal status after.
 	// This locks the invariant that every execution path produces a receipt.
-
-	t.Run("all action types produce receipts through Actuator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("all action types produce receipts through Actuator", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 
 		// Test a representative subset of action types that have simple payloads
@@ -846,7 +839,8 @@ func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) { //n
 		}
 
 		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
 
 				env := &govpkg.GovernanceEnvelope{
 					Id:              "tx-" + tc.name,
@@ -901,13 +895,11 @@ func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) { //n
 	})
 }
 
-func TestOperatorPubSubService_CancellationReceipt(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_CancellationReceipt(t *testing.T) {
 	// BUG-2 §4.3: Cancellation test - assert a cancel produces a receipt for both
 	// the real-kill and already-finished cases, with distinguishable status.
-
 	t.Run("CANCEL action type produces receipt through Actuator", func(t *testing.T) {
-
+		t.Parallel()
 		f := newPubsubFixture(t)
 
 		req := &operatorv1.CommandCancelRequested{
@@ -974,11 +966,9 @@ func TestOperatorPubSubService_CancellationReceipt(t *testing.T) { //nolint:para
 }
 
 func TestOperatorPubSubService_SinglePathEnforcement(t *testing.T) {
-	t.Parallel()
 	// BUG-1 regression test: enforce that handlers map is only reachable through Actuator
 	// This ensures no receipt-less execution paths can be added in the future.
 	// The source-scan approach will actually fail CI if either function is re-added.
-
 	t.Run("bypass functions do not exist", func(t *testing.T) {
 		t.Parallel()
 		src, err := os.ReadFile("pubsub_commands.go")
@@ -992,19 +982,18 @@ func TestOperatorPubSubService_SinglePathEnforcement(t *testing.T) {
 	})
 }
 
-func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) {
 	f := newPubsubFixture(t)
 
-	t.Run("rejects nil cmdMsg", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects nil cmdMsg", func(t *testing.T) {
+		t.Parallel()
 		_, err := f.Svc.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.Command.Requested, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid cmdMsg type")
 	})
 
-	t.Run("rejects when no handler registered", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects when no handler registered", func(t *testing.T) {
+		t.Parallel()
 		msg := &PubSubCommandMessage{
 			EventType: "NONEXISTENT_EVENT",
 			ID:        "msg-1",
@@ -1014,8 +1003,7 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) { //noli
 		assert.Contains(t, err.Error(), "no handler for")
 	})
 
-	t.Run("rejects heartbeat results on the command map", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects heartbeat results on the command map", func(t *testing.T) {
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Heartbeat,
 			ID:        "msg-heartbeat-result",
@@ -1024,8 +1012,7 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) { //noli
 		require.ErrorIs(t, err, constants.ErrTxEventNotRequest)
 	})
 
-	t.Run("heartbeat requests propagate handler decode failures", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("heartbeat requests propagate handler decode failures", func(t *testing.T) {
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.HeartbeatRequested,
 			ID:        "msg-heartbeat-request",
@@ -1035,8 +1022,8 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) { //noli
 		require.ErrorIs(t, err, proto.Error)
 	})
 
-	t.Run("rejects LFAA recorded facts on the command map", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects LFAA recorded facts on the command map", func(t *testing.T) {
+		t.Parallel()
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Audit.UserMsg,
 			ID:        "msg-audit",
@@ -1047,8 +1034,7 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) { //noli
 	})
 }
 
-func TestOperatorPubSubService_handleMcpCallRequestSync(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleMcpCallRequestSync(t *testing.T) {
 	f := newPubsubFixture(t)
 
 	msg := &PubSubCommandMessage{
@@ -1057,26 +1043,22 @@ func TestOperatorPubSubService_handleMcpCallRequestSync(t *testing.T) { //nolint
 		Payload:   mustMarshalProto(t, &operatorv1.McpCallRequested{ToolName: "test"}),
 	}
 
-	t.Run("outbound Operator rejects tools outside the native registry", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("outbound Operator rejects tools outside the native registry", func(t *testing.T) {
 		_, err := f.Svc.handleMcpCallRequestSync(context.Background(), msg)
 		require.ErrorIs(t, err, constants.ErrMCPNativeToolUnknown)
 	})
 
-	t.Run("outbound Operator without a local native tool host fails closed", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("outbound Operator without a local native tool host fails closed", func(t *testing.T) {
 		svc := &OperatorPubSubService{logger: testutil.NewTestLogger()}
 		_, err := svc.handleMcpCallRequestSync(context.Background(), msg)
 		require.ErrorIs(t, err, constants.ErrMCPNativeToolHostMissing)
 	})
 }
 
-func TestOperatorPubSubService_handleMcpResourceAndPromptSync(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleMcpResourceAndPromptSync(t *testing.T) {
 	f := newPubsubFixture(t)
 
-	t.Run("resource read rejects when MCP gateway not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("resource read rejects when MCP gateway not configured", func(t *testing.T) {
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Mcp.ResourceReadRequested,
 			ID:        "msg-read",
@@ -1087,8 +1069,7 @@ func TestOperatorPubSubService_handleMcpResourceAndPromptSync(t *testing.T) { //
 		assert.Contains(t, err.Error(), "MCP gateway not configured")
 	})
 
-	t.Run("prompt get rejects when MCP gateway not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("prompt get rejects when MCP gateway not configured", func(t *testing.T) {
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Mcp.PromptGetRequested,
 			ID:        "msg-get",
@@ -1099,8 +1080,7 @@ func TestOperatorPubSubService_handleMcpResourceAndPromptSync(t *testing.T) { //
 		assert.Contains(t, err.Error(), "MCP gateway not configured")
 	})
 
-	t.Run("resource list rejects when MCP gateway not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("resource list rejects when MCP gateway not configured", func(t *testing.T) {
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Mcp.ResourceListRequested,
 			ID:        "msg-rlist",
@@ -1111,8 +1091,7 @@ func TestOperatorPubSubService_handleMcpResourceAndPromptSync(t *testing.T) { //
 		assert.Contains(t, err.Error(), "MCP gateway not configured")
 	})
 
-	t.Run("prompt list rejects when MCP gateway not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("prompt list rejects when MCP gateway not configured", func(t *testing.T) {
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Mcp.PromptListRequested,
 			ID:        "msg-plist",
@@ -1124,10 +1103,9 @@ func TestOperatorPubSubService_handleMcpResourceAndPromptSync(t *testing.T) { //
 	})
 }
 
-func TestOperatorPubSubService_handleA2aCallRequestSync(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleA2aCallRequestSync(t *testing.T) {
 	t.Run("rejects when A2A gateway not configured", func(t *testing.T) {
-
+		t.Parallel()
 		f := newPubsubFixture(t)
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.A2a.CallRequested,
@@ -1140,10 +1118,9 @@ func TestOperatorPubSubService_handleA2aCallRequestSync(t *testing.T) { //nolint
 	})
 }
 
-func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects when GovernedDocStore not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) {
+	t.Run("rejects when GovernedDocStore not configured", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = nil
 		msg := &PubSubCommandMessage{
@@ -1156,8 +1133,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.ErrorIs(t, err, constants.ErrGovernedDocStoreNotConfigured)
 	})
 
-	t.Run("rejects malformed protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects malformed protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{}
 		msg := &PubSubCommandMessage{
@@ -1170,8 +1147,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.Contains(t, err.Error(), "pubsub: document update: unmarshal")
 	})
 
-	t.Run("rejects empty collection or document_id", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects empty collection or document_id", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{}
 		msg := &PubSubCommandMessage{
@@ -1184,8 +1161,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.ErrorIs(t, err, constants.ErrTxPayloadMissing)
 	})
 
-	t.Run("rejects when DocReplace fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects when DocReplace fails", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{
 			DocReplaceFunc: func(collection, id string, data json.RawMessage) error {
@@ -1202,8 +1179,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.Contains(t, err.Error(), "pubsub: document update: doc replace")
 	})
 
-	t.Run("rejects when DocMerge fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects when DocMerge fails", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{
 			DocMergeFunc: func(collection, id string, fields json.RawMessage) error {
@@ -1221,8 +1198,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.Contains(t, err.Error(), "pubsub: document update: doc merge")
 	})
 
-	t.Run("persists document replace via DocReplace with canonical protojson when merge is false", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("persists document replace via DocReplace with canonical protojson when merge is false", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		updates := mustNewStruct(t, `{"title":"test case","status":"open"}`)
 		mock := &testutil.ConfigurableMockGovernedDocStore{}
@@ -1247,8 +1224,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.Equal(t, "open", parsed.Fields["status"].GetStringValue())
 	})
 
-	t.Run("persists document merge via DocMerge when merge is true", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("persists document merge via DocMerge when merge is true", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		updates := mustNewStruct(t, `{"title":"updated title"}`)
 		mock := &testutil.ConfigurableMockGovernedDocStore{}
@@ -1271,8 +1248,8 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 		assert.Equal(t, "updated title", parsed.Fields["title"].GetStringValue())
 	})
 
-	t.Run("persists document update with empty updates as empty object", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("persists document update with empty updates as empty object", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		mock := &testutil.ConfigurableMockGovernedDocStore{}
 		f.Svc.governedDocStore = mock
@@ -1289,10 +1266,9 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) { //nolint
 	})
 }
 
-func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("rejects when GovernedDocStore not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) {
+	t.Run("rejects when GovernedDocStore not configured", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = nil
 		msg := &PubSubCommandMessage{
@@ -1305,8 +1281,8 @@ func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) { //nolint
 		assert.ErrorIs(t, err, constants.ErrGovernedDocStoreNotConfigured)
 	})
 
-	t.Run("rejects malformed protobuf payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects malformed protobuf payload", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{}
 		msg := &PubSubCommandMessage{
@@ -1319,8 +1295,8 @@ func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) { //nolint
 		assert.Contains(t, err.Error(), "pubsub: document delete: unmarshal")
 	})
 
-	t.Run("rejects empty collection or document_id", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects empty collection or document_id", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{}
 		msg := &PubSubCommandMessage{
@@ -1333,8 +1309,8 @@ func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) { //nolint
 		assert.ErrorIs(t, err, constants.ErrTxPayloadMissing)
 	})
 
-	t.Run("rejects when DocDelete fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects when DocDelete fails", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		f.Svc.governedDocStore = &testutil.ConfigurableMockGovernedDocStore{
 			DocDeleteFunc: func(collection, id string) error {
@@ -1351,8 +1327,8 @@ func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) { //nolint
 		assert.Contains(t, err.Error(), "pubsub: document delete: doc delete")
 	})
 
-	t.Run("deletes document via DocDelete with correct collection and id", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("deletes document via DocDelete with correct collection and id", func(t *testing.T) {
+		t.Parallel()
 		f := newPubsubFixture(t)
 		mock := &testutil.ConfigurableMockGovernedDocStore{}
 		f.Svc.governedDocStore = mock
@@ -1370,12 +1346,10 @@ func TestOperatorPubSubService_handleDocumentDeleteSync(t *testing.T) { //nolint
 	})
 }
 
-func TestOperatorPubSubService_handleShutdownRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleShutdownRequest(t *testing.T) {
 	f := newPubsubFixture(t)
 
 	t.Run("rejects malformed payload", func(t *testing.T) {
-
 		_, err := f.Svc.handleShutdownRequest(&PubSubCommandMessage{
 			EventType: constants.Event.Operator.ShutdownRequested,
 			ID:        "msg-1",
@@ -1384,7 +1358,7 @@ func TestOperatorPubSubService_handleShutdownRequest(t *testing.T) { //nolint:pa
 		require.Error(t, err)
 	})
 
-	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
+	for _, tc := range []struct {
 		name   string
 		reason string
 		want   string
@@ -1393,7 +1367,6 @@ func TestOperatorPubSubService_handleShutdownRequest(t *testing.T) { //nolint:pa
 		{name: "defaults empty reason", want: "No reason provided"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			payload, err := proto.Marshal(&operatorv1.ShutdownRequested{Reason: tc.reason})
 			require.NoError(t, err)
 			summary, err := f.Svc.handleShutdownRequest(&PubSubCommandMessage{
@@ -1408,12 +1381,11 @@ func TestOperatorPubSubService_handleShutdownRequest(t *testing.T) { //nolint:pa
 	}
 }
 
-func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) {
 	f := newPubsubFixture(t)
 
-	t.Run("rejects unmarshal error", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects unmarshal error", func(t *testing.T) {
+		t.Parallel()
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Eval.AnswerRequested,
 			ID:        "msg-1",
@@ -1423,8 +1395,8 @@ func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) { //nol
 		require.Error(t, err)
 	})
 
-	t.Run("returns short answer without truncation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("returns short answer without truncation", func(t *testing.T) {
+		t.Parallel()
 		req := &operatorv1.EvalAnswerRequested{
 			PromptId:  "prompt-1",
 			Benchmark: "test-benchmark",
@@ -1442,8 +1414,8 @@ func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) { //nol
 		assert.Equal(t, "short answer", summary)
 	})
 
-	t.Run("truncates answer exceeding ReceiptSummaryMaxBytes", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("truncates answer exceeding ReceiptSummaryMaxBytes", func(t *testing.T) {
+		t.Parallel()
 		longAnswer := make([]byte, constants.ReceiptSummaryMaxBytes+1000)
 		for i := range longAnswer {
 			longAnswer[i] = 'A'
@@ -1466,22 +1438,22 @@ func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) { //nol
 	})
 }
 
-func TestOperatorPubSubService_Stop(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestOperatorPubSubService_Stop(t *testing.T) {
+	t.Parallel()
 
 	t.Run("stops gracefully when not running", func(t *testing.T) {
-
+		t.Parallel()
 		f := newPubsubFixture(t)
 		err := f.Svc.Stop()
 		require.NoError(t, err)
 	})
 }
 
-func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 	f := newPubsubFixture(t)
 
-	t.Run("successful synchronous processing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("successful synchronous processing", func(t *testing.T) {
+		t.Parallel()
 		req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-sync"}
 		payload, _ := proto.Marshal(req)
 
@@ -1531,31 +1503,31 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) { //nolint:parallel
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 	})
 
-	t.Run("rejects empty payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects empty payload", func(t *testing.T) {
+		t.Parallel()
 		_, err := f.Svc.ProcessEnvelope(context.Background(), []byte{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty payload")
 	})
 
-	t.Run("rejects oversized payload", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects oversized payload", func(t *testing.T) {
+		t.Parallel()
 		largePayload := make([]byte, MaxPayloadSize+1)
 		_, err := f.Svc.ProcessEnvelope(context.Background(), largePayload)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exceeds")
 	})
 
-	t.Run("rejects invalid JSON envelope", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects invalid JSON envelope", func(t *testing.T) {
+		t.Parallel()
 		invalidJSON := []byte("{invalid json}")
 		_, err := f.Svc.ProcessEnvelope(context.Background(), invalidJSON)
 		require.Error(t, err)
 		assert.Error(t, err)
 	})
 
-	t.Run("rejects event and action_type mismatch in L4 with a signed receipt", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects event and action_type mismatch in L4 with a signed receipt", func(t *testing.T) {
+		t.Parallel()
 		req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-mismatch"}
 		payload, _ := proto.Marshal(req)
 		env := &govpkg.GovernanceEnvelope{
@@ -1585,8 +1557,8 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) { //nolint:parallel
 		assert.NotEmpty(t, receipt.GetSignature(), "the L4 rejection receipt must be signed by the Actuator")
 	})
 
-	t.Run("refuses a registered event that is not governed before L4", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("refuses a registered event that is not governed before L4", func(t *testing.T) {
+		t.Parallel()
 		env := &govpkg.GovernanceEnvelope{
 			Id:              "tx-not-governed",
 			ProtocolVersion: govpkg.GovernanceProtocolVersionV2,
@@ -1608,8 +1580,8 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) { //nolint:parallel
 		assert.NotErrorAs(t, err, &rejection, "a pre-L4 refusal must not be an L4 rejection")
 	})
 
-	t.Run("rejects when transaction verifier not configured", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("rejects when transaction verifier not configured", func(t *testing.T) {
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -1661,7 +1633,8 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) { //nolint:parallel
 // DOCUMENT_DELETE. The constants-level test (mappings_test.go) covers the
 // MapActionTypeToEventType choke point in isolation; this test covers the
 // wire-stamped value end to end through the pubsub execution path.
-func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *testing.T) {
+	t.Parallel()
 
 	cases := []struct {
 		name       string
@@ -1687,9 +1660,9 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 		},
 	}
 
-	for _, tc := range cases { //nolint:paralleltest // mutates package-level state
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-
+			t.Parallel()
 			f := newPubsubFixture(t)
 
 			// Captured per-call: the actuator-derived eventType and the
@@ -1762,20 +1735,20 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 	}
 }
 
-func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 	// §4.5: Observed-evidence tests - test that publish helpers record
 	// events with scrubbed content to the audit store, including the error path
 	// and non-fatal store errors.
 	// Uses the real SQLAuditStore with an encrypted canonical DB (LFAA invariant).
-
-	t.Run("publish helpers record scrubbed content evidence", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("publish helpers record scrubbed content evidence", func(t *testing.T) {
+		t.Parallel()
 
 		cfg := testutil.NewTestConfig(t)
 		client := pubsubtest.NewMockOperatorPubSubClient()
 
 		// Test FS_LIST
-		t.Run("FS_LIST records content evidence", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+		t.Run("FS_LIST records content evidence", func(t *testing.T) {
+			t.Parallel()
 
 			// Set up a real SQLAuditStore with encryption at rest for this subtest
 			logger := testutil.NewTestLogger()
@@ -1812,7 +1785,8 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) { //nolint:pa
 		})
 
 		// Test PORT_CHECK
-		t.Run("PORT_CHECK records content evidence", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+		t.Run("PORT_CHECK records content evidence", func(t *testing.T) {
+			t.Parallel()
 
 			// Set up a real SQLAuditStore with encryption at rest for this subtest
 			logger := testutil.NewTestLogger()
@@ -1848,7 +1822,8 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) { //nolint:pa
 		})
 
 		// Test error path
-		t.Run("error path records evidence", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+		t.Run("error path records evidence", func(t *testing.T) {
+			t.Parallel()
 
 			// Set up a real SQLAuditStore with encryption at rest for this subtest
 			logger := testutil.NewTestLogger()
@@ -1877,7 +1852,8 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) { //nolint:pa
 		})
 	})
 
-	t.Run("store errors are non-fatal for observed evidence", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("store errors are non-fatal for observed evidence", func(t *testing.T) {
+		t.Parallel()
 
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
@@ -1907,7 +1883,8 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) { //nolint:pa
 		require.NotNil(t, published, "response should still be published despite audit store error")
 	})
 
-	t.Run("scrubbing test - seeded secret is redacted", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("scrubbing test - seeded secret is redacted", func(t *testing.T) {
+		t.Parallel()
 
 		// Set up a real SQLAuditStore with encryption at rest for this subtest
 		logger := testutil.NewTestLogger()
@@ -1949,10 +1926,9 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) { //nolint:pa
 	})
 }
 
-func TestOperatorPubSubService_SetL4Warden(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_SetL4Warden(t *testing.T) {
 	t.Run("sets L4 warden for testing", func(t *testing.T) {
-
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -1980,10 +1956,9 @@ func TestOperatorPubSubService_SetL4Warden(t *testing.T) { //nolint:paralleltest
 	})
 }
 
-func TestOperatorPubSubService_handleEvalAnswerRequest(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_handleEvalAnswerRequest(t *testing.T) {
 	t.Run("handles eval answer request asynchronously", func(t *testing.T) {
-
+		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
 		svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -2022,11 +1997,8 @@ func TestOperatorPubSubService_handleEvalAnswerRequest(t *testing.T) { //nolint:
 }
 
 func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
-	t.Parallel()
-
 	t.Run("records field read event in audit store", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		store := storagetest.NewTestAuditStore(t, "session-1")
 		auditLogger := &pubsubAuditLogger{
@@ -2049,7 +2021,6 @@ func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 
 	t.Run("returns error when store fails", func(t *testing.T) {
 		t.Parallel()
-
 		logger := testutil.NewTestLogger()
 		// The session is never created, so the real store rejects the event.
 		store := storagetest.NewTestAuditStore(t)
@@ -2068,8 +2039,8 @@ func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 // OutboundModeDeps has no ConsensusPolicyStore or FieldReader fields, and that
 // constructing OperatorPubSubService in outbound mode initializes l4warden with
 // a nil consensus policy store without runtime errors.
-func TestNewOperatorPubSubService_NilOptionalGovDeps_PreservedAsNil(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewOperatorPubSubService_NilOptionalGovDeps_PreservedAsNil(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 		Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -2099,8 +2070,8 @@ func TestNewOperatorPubSubService_NilOptionalGovDeps_PreservedAsNil(t *testing.T
 // (ztdo.go for outbound mode), not in initializeGovernance. A nil doctrine here
 // is a wiring bug; L4Warden fail-closes at verification time with
 // ErrTxDoctrineMissing rather than silently running with a default doctrine.
-func TestNewOperatorPubSubService_NilDoctrine_NotDefaultedAtCallSite(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestNewOperatorPubSubService_NilDoctrine_NotDefaultedAtCallSite(t *testing.T) {
+	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
 	svc, err := NewOperatorPubSubService(withTestDeps(t, CommandServiceConfig{
 		Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
@@ -2144,8 +2115,8 @@ func newGatewayPubsubServiceForBindingTest(t *testing.T) *OperatorPubSubService 
 	return svc
 }
 
-func TestOperatorPubSubService_BindMCPGatewayRejectsNil(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_BindMCPGatewayRejectsNil(t *testing.T) {
+	t.Parallel()
 	svc := newGatewayPubsubServiceForBindingTest(t)
 
 	err := svc.BindMCPGateway(nil)
@@ -2154,8 +2125,8 @@ func TestOperatorPubSubService_BindMCPGatewayRejectsNil(t *testing.T) { //nolint
 	assert.Nil(t, svc.GetMCPGateway())
 }
 
-func TestOperatorPubSubService_BindMCPGatewayRejectsDuplicateBinding(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_BindMCPGatewayRejectsDuplicateBinding(t *testing.T) {
+	t.Parallel()
 	svc := newGatewayPubsubServiceForBindingTest(t)
 	first := &mcp.GatewayService{}
 	require.NoError(t, svc.BindMCPGateway(first))
@@ -2166,8 +2137,8 @@ func TestOperatorPubSubService_BindMCPGatewayRejectsDuplicateBinding(t *testing.
 	assert.Same(t, first, svc.GetMCPGateway())
 }
 
-func TestOperatorPubSubService_BoundMCPGatewaySupportsConcurrentReads(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorPubSubService_BoundMCPGatewaySupportsConcurrentReads(t *testing.T) {
+	t.Parallel()
 	svc := newGatewayPubsubServiceForBindingTest(t)
 	gateway := &mcp.GatewayService{}
 	require.NoError(t, svc.BindMCPGateway(gateway))
@@ -2190,7 +2161,7 @@ func TestOperatorPubSubService_BoundMCPGatewaySupportsConcurrentReads(t *testing
 	}
 }
 
-func TestGatewayNativeHistoryHostExistsWithoutOutboundOperatorID(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestGatewayNativeHistoryHostExistsWithoutOutboundOperatorID(t *testing.T) {
 
 	cfg := testutil.NewTestConfig(t)
 	cfg.OperatorID = ""

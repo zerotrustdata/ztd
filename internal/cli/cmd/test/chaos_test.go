@@ -15,15 +15,15 @@ import (
 	"github.com/zerotrustdata/ztd/internal/tools/chaos"
 )
 
-func TestChaosCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
-	t.Run("chaos command has correct use and description", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestChaosCmd(t *testing.T) {
+	t.Run("chaos command has correct use and description", func(t *testing.T) {
 		cmd := chaosCmd()
 		assert.Equal(t, "chaos", cmd.Use)
 		assert.Contains(t, cmd.Short, "Generate realistic governance events")
 		assert.Contains(t, cmd.Long, "realistic distribution")
 	})
 
-	t.Run("chaos command has count flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command has count flag", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -32,7 +32,7 @@ func TestChaosCmd(t *testing.T) { //nolint:paralleltest // mutates package-level
 		assert.Equal(t, "100", flag.DefValue)
 	})
 
-	t.Run("chaos command has data-dir flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command has data-dir flag", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -40,7 +40,7 @@ func TestChaosCmd(t *testing.T) { //nolint:paralleltest // mutates package-level
 		assert.NotNil(t, flag, "chaos command should have --data-dir flag")
 	})
 
-	t.Run("chaos command has pki-dir flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command has pki-dir flag", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -48,7 +48,7 @@ func TestChaosCmd(t *testing.T) { //nolint:paralleltest // mutates package-level
 		assert.NotNil(t, flag, "chaos command should have --pki-dir flag")
 	})
 
-	t.Run("chaos long description mentions distribution", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos long description mentions distribution", func(t *testing.T) {
 		cmd := chaosCmd()
 		assert.Contains(t, cmd.Long, "60%")
 		assert.Contains(t, cmd.Long, "Good Actor")
@@ -59,20 +59,20 @@ func TestChaosCmd(t *testing.T) { //nolint:paralleltest // mutates package-level
 		assert.Contains(t, cmd.Long, "File Mut.")
 	})
 
-	t.Run("chaos command mentions L4Warden and L5Actuator", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command mentions L4Warden and L5Actuator", func(t *testing.T) {
 		cmd := chaosCmd()
 		assert.Contains(t, cmd.Long, "L4Warden")
 		assert.Contains(t, cmd.Long, "L5Actuator")
 	})
 
-	t.Run("chaos command mentions in-process execution", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command mentions in-process execution", func(t *testing.T) {
 		cmd := chaosCmd()
 		assert.Contains(t, cmd.Long, "in-process")
 	})
 }
 
-func TestChaosFlagParsing(t *testing.T) { //nolint:paralleltest // mutates package-level state
-	t.Run("count flag can be set to different values", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestChaosFlagParsing(t *testing.T) {
+	t.Run("count flag can be set to different values", func(t *testing.T) {
 		tests := []struct {
 			name  string
 			value string
@@ -84,8 +84,8 @@ func TestChaosFlagParsing(t *testing.T) { //nolint:paralleltest // mutates packa
 			{"custom value 1000", "1000", 1000},
 		}
 
-		for _, tt := range tests { //nolint:paralleltest // mutates package-level state
-			t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				cmd := chaosCmd()
 				require.NotNil(t, cmd)
 
@@ -99,7 +99,7 @@ func TestChaosFlagParsing(t *testing.T) { //nolint:paralleltest // mutates packa
 		}
 	})
 
-	t.Run("data-dir flag can be set to custom path", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("data-dir flag can be set to custom path", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -110,7 +110,7 @@ func TestChaosFlagParsing(t *testing.T) { //nolint:paralleltest // mutates packa
 		assert.NotNil(t, flag)
 	})
 
-	t.Run("pki-dir flag can be set to custom path", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("pki-dir flag can be set to custom path", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -122,10 +122,8 @@ func TestChaosFlagParsing(t *testing.T) { //nolint:paralleltest // mutates packa
 	})
 }
 
-func TestRunChaosConfigConstruction(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("config uses default count when flag not set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestRunChaosConfigConstruction(t *testing.T) {
+	t.Run("config uses default count when flag not set", func(t *testing.T) {
 		chaosCount = 100 // Default value
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
@@ -142,8 +140,7 @@ func TestRunChaosConfigConstruction(t *testing.T) { //nolint:paralleltest // mut
 		assert.Empty(t, cfg.PKIDir)
 	})
 
-	t.Run("config uses custom count when flag is set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("config uses custom count when flag is set", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -159,8 +156,7 @@ func TestRunChaosConfigConstruction(t *testing.T) { //nolint:paralleltest // mut
 		assert.Equal(t, 50, cfg.Count)
 	})
 
-	t.Run("config uses custom data-dir when flag is set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("config uses custom data-dir when flag is set", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -177,8 +173,7 @@ func TestRunChaosConfigConstruction(t *testing.T) { //nolint:paralleltest // mut
 		assert.Equal(t, customPath, cfg.DataDir)
 	})
 
-	t.Run("config uses custom pki-dir when flag is set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("config uses custom pki-dir when flag is set", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -196,8 +191,8 @@ func TestRunChaosConfigConstruction(t *testing.T) { //nolint:paralleltest // mut
 	})
 }
 
-func TestChaosCommandIntegration(t *testing.T) { //nolint:paralleltest // mutates package-level state
-	t.Run("chaos command executes runChaos", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestChaosCommandIntegration(t *testing.T) {
+	t.Run("chaos command executes runChaos", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -205,7 +200,7 @@ func TestChaosCommandIntegration(t *testing.T) { //nolint:paralleltest // mutate
 		assert.NotNil(t, cmd.RunE)
 	})
 
-	t.Run("chaos command accepts no positional arguments", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command accepts no positional arguments", func(t *testing.T) {
 		cmd := chaosCmd()
 		require.NotNil(t, cmd)
 
@@ -214,22 +209,22 @@ func TestChaosCommandIntegration(t *testing.T) { //nolint:paralleltest // mutate
 	})
 }
 
-func TestChaosFlagDefaults(t *testing.T) { //nolint:paralleltest // mutates package-level state
-	t.Run("count flag default is 100", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestChaosFlagDefaults(t *testing.T) {
+	t.Run("count flag default is 100", func(t *testing.T) {
 		cmd := chaosCmd()
 		flag := cmd.Flags().Lookup("count")
 		require.NotNil(t, flag)
 		assert.Equal(t, "100", flag.DefValue)
 	})
 
-	t.Run("data-dir flag default is empty string", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("data-dir flag default is empty string", func(t *testing.T) {
 		cmd := chaosCmd()
 		flag := cmd.Flags().Lookup("data-dir")
 		require.NotNil(t, flag)
 		assert.Empty(t, flag.DefValue)
 	})
 
-	t.Run("pki-dir flag default is empty string", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("pki-dir flag default is empty string", func(t *testing.T) {
 		cmd := chaosCmd()
 		flag := cmd.Flags().Lookup("pki-dir")
 		require.NotNil(t, flag)
@@ -237,14 +232,14 @@ func TestChaosFlagDefaults(t *testing.T) { //nolint:paralleltest // mutates pack
 	})
 }
 
-func TestChaosCommandHelp(t *testing.T) { //nolint:paralleltest // mutates package-level state
-	t.Run("chaos command has helpful long description", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+func TestChaosCommandHelp(t *testing.T) {
+	t.Run("chaos command has helpful long description", func(t *testing.T) {
 		cmd := chaosCmd()
 		assert.Contains(t, cmd.Long, "bypasses network/TLS")
 		assert.Contains(t, cmd.Long, "pub/sub")
 	})
 
-	t.Run("chaos command describes expected outcomes", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+	t.Run("chaos command describes expected outcomes", func(t *testing.T) {
 		cmd := chaosCmd()
 		assert.Contains(t, cmd.Long, "EXECUTED")
 		assert.Contains(t, cmd.Long, "REJECTED")
@@ -253,33 +248,26 @@ func TestChaosCommandHelp(t *testing.T) { //nolint:paralleltest // mutates packa
 	})
 }
 
-func TestChaosPackageVariables(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
-	t.Run("chaosCount is initialized to zero", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestChaosPackageVariables(t *testing.T) {
+	t.Run("chaosCount is initialized to zero", func(t *testing.T) {
 		// Reset to ensure test isolation
-
 		chaosCount = 0
 		assert.Equal(t, 0, chaosCount)
 	})
 
-	t.Run("chaosDataDir is initialized to empty string", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("chaosDataDir is initialized to empty string", func(t *testing.T) {
 		chaosDataDir = ""
 		assert.Empty(t, chaosDataDir)
 	})
 
-	t.Run("chaosPKIDir is initialized to empty string", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+	t.Run("chaosPKIDir is initialized to empty string", func(t *testing.T) {
 		chaosPKIDir = ""
 		assert.Empty(t, chaosPKIDir)
 	})
 }
 
 func TestChaosConfigType(t *testing.T) {
-	t.Parallel()
 	t.Run("chaos.Config has expected fields", func(t *testing.T) {
-		t.Parallel()
 		cfg := chaos.Config{
 			Count:   100,
 			DataDir: "/tmp/data",

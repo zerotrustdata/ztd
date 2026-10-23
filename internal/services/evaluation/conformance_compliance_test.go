@@ -75,7 +75,6 @@ func conformanceDigestPath(runID string) string {
 }
 
 func TestConformanceComplianceAdmitsPassingRun(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	const runID = "conformance-pass"
 	files := saveConformanceRunForCompliance(t, runID)
@@ -101,7 +100,6 @@ func TestConformanceComplianceAdmitsPassingRun(t *testing.T) {
 }
 
 func TestConformanceComplianceRejectsNonPassingVerdicts(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-verdict"
 	tests := []struct {
 		name  string
@@ -113,7 +111,6 @@ func TestConformanceComplianceRejectsNonPassingVerdicts(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			files := saveConformanceRunForCompliance(t, runID)
 			report, _, err := verifyConformanceSourceWith(context.Background(), files, runID, conformanceTestVerifiedAt, stubConformanceVerifier(runID, test.suite))
 			require.NoError(t, err)
@@ -127,7 +124,6 @@ func TestConformanceComplianceRejectsNonPassingVerdicts(t *testing.T) {
 }
 
 func TestConformanceComplianceRejectsRecordBelongingToAnotherRun(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-scope"
 	files := saveConformanceRunForCompliance(t, runID)
 	report, _, err := verifyConformanceSourceWith(context.Background(), files, runID, conformanceTestVerifiedAt, stubConformanceVerifier("other-run", evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS))
@@ -138,7 +134,6 @@ func TestConformanceComplianceRejectsRecordBelongingToAnotherRun(t *testing.T) {
 }
 
 func TestConformanceComplianceRealVerifierRejectsFlippedRecordByte(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	const runID = "conformance-flipped"
 	files := saveConformanceRunForCompliance(t, runID)
@@ -157,7 +152,6 @@ func TestConformanceComplianceRealVerifierRejectsFlippedRecordByte(t *testing.T)
 }
 
 func TestConformanceComplianceRejectsMissingDigestSidecar(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	const runID = "conformance-no-sidecar"
 	files := saveConformanceRunForCompliance(t, runID)
@@ -169,7 +163,6 @@ func TestConformanceComplianceRejectsMissingDigestSidecar(t *testing.T) {
 }
 
 func TestConformanceComplianceRejectsMissingVerificationTime(t *testing.T) {
-	t.Parallel()
 	const runID = "conformance-no-time"
 	files := saveConformanceRunForCompliance(t, runID)
 	_, _, err := verifyConformanceSourceWith(context.Background(), files, runID, time.Time{}, stubConformanceVerifier(runID, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS))

@@ -21,8 +21,7 @@ import (
 
 // --- --interactive flag registration ---
 
-func TestGatewayStartCmd_InteractiveFlagRegistered(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd_InteractiveFlagRegistered(t *testing.T) {
 	cmd := gatewayStartCmd()
 	flag := cmd.Flags().Lookup("interactive")
 	require.NotNil(t, flag)
@@ -30,8 +29,7 @@ func TestGatewayStartCmd_InteractiveFlagRegistered(t *testing.T) { //nolint:para
 	assert.Equal(t, "i", flag.Shorthand)
 }
 
-func TestGatewayStartCmd_NoInteractiveFlagSkipsWizard(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd_NoInteractiveFlagSkipsWizard(t *testing.T) {
 	wizardCalled := false
 	fakeRunner := func(opts wizard.Options) (wizard.Result, error) {
 		wizardCalled = true
@@ -48,8 +46,7 @@ func TestGatewayStartCmd_NoInteractiveFlagSkipsWizard(t *testing.T) { //nolint:p
 	assert.False(t, wizardCalled, "wizard should not be called without --interactive")
 }
 
-func TestGatewayStartCmd_InteractiveCancelDoesNotStart(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd_InteractiveCancelDoesNotStart(t *testing.T) {
 	fakeRunner := func(opts wizard.Options) (wizard.Result, error) {
 		return wizard.Result{Cancel: true}, nil
 	}
@@ -66,8 +63,7 @@ func TestGatewayStartCmd_InteractiveCancelDoesNotStart(t *testing.T) { //nolint:
 	assert.Contains(t, buf.String(), "Onboarding cancelled.")
 }
 
-func TestGatewayStartCmd_InteractiveErrorDoesNotStart(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd_InteractiveErrorDoesNotStart(t *testing.T) {
 	wizardErr := fmt.Errorf("wizard crashed")
 	fakeRunner := func(opts wizard.Options) (wizard.Result, error) {
 		return wizard.Result{}, wizardErr
@@ -85,8 +81,7 @@ func TestGatewayStartCmd_InteractiveErrorDoesNotStart(t *testing.T) { //nolint:p
 	assert.Contains(t, err.Error(), "wizard")
 }
 
-func TestGatewayStartCmd_InteractivePreservesExplicitFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd_InteractivePreservesExplicitFlags(t *testing.T) {
 	var capturedOpts wizard.Options
 	fakeRunner := func(opts wizard.Options) (wizard.Result, error) {
 		capturedOpts = opts
@@ -116,8 +111,7 @@ func TestGatewayStartCmd_InteractivePreservesExplicitFlags(t *testing.T) { //nol
 	// but the wizard runner receiving the correct initial config is the key test.
 }
 
-func TestGatewayStartCmd_InteractiveUsesCobraStreams(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayStartCmd_InteractiveUsesCobraStreams(t *testing.T) {
 	var capturedOpts wizard.Options
 	fakeRunner := func(opts wizard.Options) (wizard.Result, error) {
 		capturedOpts = opts
@@ -142,8 +136,7 @@ func TestGatewayStartCmd_InteractiveUsesCobraStreams(t *testing.T) { //nolint:pa
 // inside gateway reset does not launch the wizard. The reset command creates its
 // own gatewayStartCmd() internally; since --interactive defaults to false and
 // reset never sets it, the wizard cannot be triggered.
-func TestGatewayResetCmd_DoesNotLaunchWizard(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestGatewayResetCmd_DoesNotLaunchWizard(t *testing.T) {
 	resetCmd := gatewayResetCmd()
 
 	// The reset command itself should not have an --interactive flag

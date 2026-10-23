@@ -26,8 +26,6 @@ func (*enrollmentTargetProcessor) ProcessEnvelope(context.Context, []byte) (*ope
 }
 
 func TestPlatformEnrollment_EnvelopesBoundToEmbeddedOperator(t *testing.T) {
-	t.Parallel()
-
 	actions := []constants.PlatformEnrollmentGovernanceAction{
 		constants.PlatformEnrollmentActionCreate,
 		constants.PlatformEnrollmentActionDecide,
@@ -38,8 +36,6 @@ func TestPlatformEnrollment_EnvelopesBoundToEmbeddedOperator(t *testing.T) {
 	}
 	for _, action := range actions {
 		t.Run(string(action), func(t *testing.T) {
-			t.Parallel()
-
 			proc := &enrollmentTargetProcessor{}
 			svc := NewPlatformEnrollmentService(nil, nil, proc, testutil.NewMockStateRootProvider("root-1"), constants.PostureDoctrine, nil, nil, nil, testutil.NewTestLogger())
 			env, err := svc.submitEnvelope(context.Background(), action, &commonv1.PlatformEnrollmentGovernancePayload{Action: string(action), RequestId: "request-1"})

@@ -22,13 +22,11 @@ import (
 )
 
 func TestFileReadTool_Name(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	require.Equal(t, "read_file", tool.Name())
 }
 
 func TestFileReadTool_Description(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "Reads")
@@ -36,7 +34,6 @@ func TestFileReadTool_Description(t *testing.T) {
 }
 
 func TestFileReadTool_InputSchema(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	schema := tool.InputSchema()
 
@@ -58,7 +55,6 @@ func TestFileReadTool_InputSchema(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -68,7 +64,6 @@ func TestFileReadTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_EmptyPath(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -82,7 +77,6 @@ func TestFileReadTool_Execute_EmptyPath(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_SensitiveSystemFile(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -95,7 +89,6 @@ func TestFileReadTool_Execute_SensitiveSystemFile(t *testing.T) {
 
 	for _, path := range dangerousPaths {
 		t.Run(path, func(t *testing.T) {
-			t.Parallel()
 			req := FileReadRequest{Path: path}
 			args, err := json.Marshal(req)
 			require.NoError(t, err)
@@ -111,7 +104,6 @@ func TestFileReadTool_Execute_SensitiveSystemFile(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_SensitiveSSHKey(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -124,7 +116,6 @@ func TestFileReadTool_Execute_SensitiveSSHKey(t *testing.T) {
 
 	for _, keyName := range sensitiveKeys {
 		t.Run(keyName, func(t *testing.T) {
-			t.Parallel()
 			keyPath := filepath.Join(tmpDir, keyName)
 			err := os.WriteFile(keyPath, []byte("private key content"), 0600)
 			require.NoError(t, err)
@@ -140,7 +131,6 @@ func TestFileReadTool_Execute_SensitiveSSHKey(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_SafeSSHKeyWithExtension(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -165,7 +155,6 @@ func TestFileReadTool_Execute_SafeSSHKeyWithExtension(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_FileNotFound(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -179,7 +168,6 @@ func TestFileReadTool_Execute_FileNotFound(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_Success(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -206,7 +194,6 @@ func TestFileReadTool_Execute_Success(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_EmptyFile(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -230,7 +217,6 @@ func TestFileReadTool_Execute_EmptyFile(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_WithOffset(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -257,7 +243,6 @@ func TestFileReadTool_Execute_WithOffset(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_WithLimit(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -284,7 +269,6 @@ func TestFileReadTool_Execute_WithLimit(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_WithOffsetAndLimit(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -312,7 +296,6 @@ func TestFileReadTool_Execute_WithOffsetAndLimit(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_OffsetBeyondFile(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -337,7 +320,6 @@ func TestFileReadTool_Execute_OffsetBeyondFile(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_OffsetZero(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -362,7 +344,6 @@ func TestFileReadTool_Execute_OffsetZero(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_LimitZero(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -387,7 +368,6 @@ func TestFileReadTool_Execute_LimitZero(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_StartAfterEnd(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -412,7 +392,6 @@ func TestFileReadTool_Execute_StartAfterEnd(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_SingleLine(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -437,7 +416,6 @@ func TestFileReadTool_Execute_SingleLine(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_BinaryFile(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -464,7 +442,6 @@ func TestFileReadTool_Execute_BinaryFile(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_UnicodeContent(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -489,7 +466,6 @@ func TestFileReadTool_Execute_UnicodeContent(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_LargeFile(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -522,7 +498,6 @@ func TestFileReadTool_Execute_LargeFile(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_AbsolutePath(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -550,7 +525,7 @@ func TestFileReadTool_Execute_AbsolutePath(t *testing.T) {
 	require.Equal(t, absPath, fileResult.Path)
 }
 
-func TestFileReadTool_Execute_RelativePath(t *testing.T) { //nolint:paralleltest // changes the process working directory
+func TestFileReadTool_Execute_RelativePath(t *testing.T) {
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -579,7 +554,6 @@ func TestFileReadTool_Execute_RelativePath(t *testing.T) { //nolint:paralleltest
 }
 
 func TestFileReadTool_Execute_DirectoryInsteadOfFile(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -594,7 +568,6 @@ func TestFileReadTool_Execute_DirectoryInsteadOfFile(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_TrailingNewline(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 
@@ -619,7 +592,6 @@ func TestFileReadTool_Execute_TrailingNewline(t *testing.T) {
 }
 
 func TestFileReadTool_Execute_OnlyNewlines(t *testing.T) {
-	t.Parallel()
 	tool := &FileReadTool{}
 	ctx := context.Background()
 

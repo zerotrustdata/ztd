@@ -19,7 +19,6 @@ import (
 )
 
 func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	variants := []*evalv1.ModelVariant{
@@ -39,7 +38,6 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	variants := []*evalv1.ModelVariant{
@@ -97,7 +95,6 @@ func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
 }
 
 func TestBuildHomogeneousAssignmentMatrix_SchedulesEachScenarioOnlyForItsEligibleRoles(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a')}
@@ -129,7 +126,6 @@ func TestBuildHomogeneousAssignmentMatrix_SchedulesEachScenarioOnlyForItsEligibl
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RejectsScenarioWithoutEligibleRoles(t *testing.T) {
-	t.Parallel()
 	catalog := testScenarioCatalog()
 	catalog.Scenarios[0].EligibleRoles = nil
 
@@ -144,7 +140,6 @@ func TestBuildHomogeneousAssignmentMatrix_RejectsScenarioWithoutEligibleRoles(t 
 }
 
 func TestBuildHomogeneousAssignmentMatrix_PreservesFilteredCatalogOrderAfterReload(t *testing.T) {
-	t.Parallel()
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	// A custom suite's declared order is authoritative even when it differs

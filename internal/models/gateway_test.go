@@ -157,7 +157,6 @@ func TestDocumentForWire_SystemFieldsOverrideDataFieldsWithSameKey(t *testing.T)
 }
 
 func TestHealthConsensusDescribe(t *testing.T) {
-	t.Parallel()
 	bound := HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 5, Ready: true}
 	notReady := HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 2, Ready: false}
 
@@ -200,7 +199,6 @@ func TestHealthConsensusDescribe(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			assert.Equal(t, tc.want, tc.consensus.Describe(tc.posture))
 		})
 	}

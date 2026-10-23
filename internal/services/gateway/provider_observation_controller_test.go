@@ -33,7 +33,6 @@ import (
 )
 
 func TestProviderObservationControllerHandleProviderObservation_RejectsNonGet(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	controller := newProviderObservationController(ProviderObservationControllerDeps{
 		Logger:    logger,
@@ -48,7 +47,6 @@ func TestProviderObservationControllerHandleProviderObservation_RejectsNonGet(t 
 }
 
 func TestProviderObservationControllerHandleProviderObservation_NotFound(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	windows, err := provider_observer.NewWindowStore(fileSvc)
@@ -71,7 +69,6 @@ func TestProviderObservationControllerHandleProviderObservation_NotFound(t *test
 }
 
 func TestProviderObservationControllerHandleProviderObservation_SynthesizesAttemptFromWindow(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	logger := testutil.NewTestLogger()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
@@ -125,7 +122,6 @@ func TestProviderObservationControllerHandleProviderObservation_SynthesizesAttem
 }
 
 func TestProviderObservationControllerHandleProviderObservation_ReturnsBundle(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	logger := testutil.NewTestLogger()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
@@ -199,7 +195,6 @@ func (s stubProviderObservationPreflight) PreflightCommandDelivery(context.Conte
 }
 
 func TestProviderObservationControllerHandleProviderObservationPreflight_Ready(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	controller := newProviderObservationController(ProviderObservationControllerDeps{
 		Logger:                 logger,
@@ -218,7 +213,6 @@ func TestProviderObservationControllerHandleProviderObservationPreflight_Ready(t
 }
 
 func TestProviderObservationControllerHandleProviderObservationPreflight_Unavailable(t *testing.T) {
-	t.Parallel()
 	logger := testutil.NewTestLogger()
 	controller := newProviderObservationController(ProviderObservationControllerDeps{
 		Logger:    logger,

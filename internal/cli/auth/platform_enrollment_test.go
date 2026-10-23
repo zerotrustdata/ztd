@@ -17,21 +17,16 @@ import (
 )
 
 func TestPlatformEnrollmentFingerprints(t *testing.T) {
-	t.Parallel()
 	t.Run("keeps only present keys in a fixed order", func(t *testing.T) {
-		t.Parallel()
 		got := PlatformEnrollmentFingerprints(models.PlatformEnrollmentCSRFingerprints{CLI: "cli-fp", App: "app-fp", SigningKey: "signing-fp"})
 		assert.Equal(t, []EnrollmentFingerprint{{Label: "App key", Value: "app-fp"}, {Label: "L2 signing key", Value: "signing-fp"}, {Label: "CLI key", Value: "cli-fp"}}, got)
 	})
 	t.Run("none present", func(t *testing.T) {
-		t.Parallel()
 		assert.Empty(t, PlatformEnrollmentFingerprints(models.PlatformEnrollmentCSRFingerprints{}))
 	})
 }
 
 func TestPlatformEnrollmentIssuedIdentity(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name string
 		in   models.PlatformEnrollmentEnrolledRequest
@@ -43,16 +38,12 @@ func TestPlatformEnrollmentIssuedIdentity(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			assert.Equal(t, tt.want, PlatformEnrollmentIssuedIdentity(tt.in))
 		})
 	}
 }
 
 func TestDecodePlatformEnrollmentResponses(t *testing.T) {
-	t.Parallel()
-
 	decision, err := DecodePlatformEnrollmentDecision([]byte(`{"request_id":"req-1","state":"approved"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "req-1", decision.RequestID)

@@ -36,7 +36,6 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestBuildOperatorCommand_Default(t *testing.T) {
-	t.Parallel()
 	got := buildOperatorCommand("/home/user/.ztd/tmp/.ztd-stream-1234", 12345, 12346)
 	assert.Equal(t, "/home/user/.ztd/tmp/.ztd-stream-1234 operator start --endpoint 127.0.0.1 --gateway-http-port 12345 --gateway-https-port 12346", got)
 }
@@ -55,7 +54,6 @@ func newStreamFlagSet(force *bool) *flag.FlagSet {
 }
 
 func TestParseInterleavedArgs_FlagsAfterPositional(t *testing.T) {
-	t.Parallel()
 	var force bool
 	fs := newStreamFlagSet(&force)
 
@@ -66,7 +64,6 @@ func TestParseInterleavedArgs_FlagsAfterPositional(t *testing.T) {
 }
 
 func TestParseInterleavedArgs_FlagsBetweenPositionals(t *testing.T) {
-	t.Parallel()
 	var force bool
 	fs := newStreamFlagSet(&force)
 
@@ -78,7 +75,6 @@ func TestParseInterleavedArgs_FlagsBetweenPositionals(t *testing.T) {
 }
 
 func TestParseInterleavedArgs_FlagsBeforePositional(t *testing.T) {
-	t.Parallel()
 	var force bool
 	fs := newStreamFlagSet(&force)
 
@@ -89,7 +85,6 @@ func TestParseInterleavedArgs_FlagsBeforePositional(t *testing.T) {
 }
 
 func TestParseInterleavedArgs_NoArgs(t *testing.T) {
-	t.Parallel()
 	var force bool
 	fs := newStreamFlagSet(&force)
 
@@ -99,7 +94,6 @@ func TestParseInterleavedArgs_NoArgs(t *testing.T) {
 }
 
 func TestParseInterleavedArgs_UnknownFlagReturnsError(t *testing.T) {
-	t.Parallel()
 	var force bool
 	fs := newStreamFlagSet(&force)
 
@@ -112,21 +106,18 @@ func TestParseInterleavedArgs_UnknownFlagReturnsError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCollectHosts_Positional(t *testing.T) {
-	t.Parallel()
 	hosts, err := collectHosts([]string{"host1", "host2", "host3"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"host1", "host2", "host3"}, hosts)
 }
 
 func TestCollectHosts_Deduplication(t *testing.T) {
-	t.Parallel()
 	hosts, err := collectHosts([]string{"host1", "host2", "host1"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"host1", "host2"}, hosts)
 }
 
 func TestCollectHosts_FromFile(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	f := filepath.Join(dir, "hosts.txt")
 	require.NoError(t, os.WriteFile(f, []byte("host-a\nhost-b\n# comment\n\nhost-c\n"), 0600))
@@ -137,7 +128,6 @@ func TestCollectHosts_FromFile(t *testing.T) {
 }
 
 func TestCollectHosts_FileAndPositional_Merged(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	f := filepath.Join(dir, "hosts.txt")
 	require.NoError(t, os.WriteFile(f, []byte("host-b\nhost-c\n"), 0600))
@@ -149,7 +139,6 @@ func TestCollectHosts_FileAndPositional_Merged(t *testing.T) {
 }
 
 func TestCollectHosts_FileNotFound(t *testing.T) {
-	t.Parallel()
 	_, err := collectHosts(nil, "/nonexistent/hosts.txt")
 	require.Error(t, err)
 }
@@ -159,7 +148,6 @@ func TestCollectHosts_FileNotFound(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestParseSSHConfig_BasicBlock(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -182,7 +170,6 @@ Host myserver
 }
 
 func TestParseSSHConfig_MultipleBlocks(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -205,7 +192,6 @@ Host staging
 }
 
 func TestParseSSHConfig_EqualsDelimiter(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -225,14 +211,12 @@ Host equalhost
 }
 
 func TestParseSSHConfig_MissingFile(t *testing.T) {
-	t.Parallel()
 	blocks, err := ssh.ParseConfig("/nonexistent/.ssh/config")
 	require.NoError(t, err)
 	assert.Empty(t, blocks)
 }
 
 func TestParseSSHConfig_Comments(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -251,7 +235,6 @@ Host commented
 }
 
 func TestParseSSHConfig_MultipleIdentityFiles(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -272,7 +255,6 @@ Host multi
 // ---------------------------------------------------------------------------
 
 func TestMatchSSHBlock_ExactMatch(t *testing.T) {
-	t.Parallel()
 	blocks := map[string]*ssh.ConfigBlock{
 		"myhost": {Hostname: "1.2.3.4"},
 	}
@@ -282,7 +264,6 @@ func TestMatchSSHBlock_ExactMatch(t *testing.T) {
 }
 
 func TestMatchSSHBlock_WildcardMatch(t *testing.T) {
-	t.Parallel()
 	blocks := map[string]*ssh.ConfigBlock{
 		"prod-*": {User: "ubuntu"},
 	}
@@ -292,7 +273,6 @@ func TestMatchSSHBlock_WildcardMatch(t *testing.T) {
 }
 
 func TestMatchSSHBlock_NoMatch(t *testing.T) {
-	t.Parallel()
 	blocks := map[string]*ssh.ConfigBlock{
 		"staging": {Hostname: "10.0.0.1"},
 	}
@@ -305,7 +285,6 @@ func TestMatchSSHBlock_NoMatch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestMatchGlob(t *testing.T) {
-	t.Parallel()
 	cases := []struct {
 		pattern string
 		input   string
@@ -328,7 +307,6 @@ func TestMatchGlob(t *testing.T) {
 }
 
 func TestSSHPatternMatch_MultiplePatterns(t *testing.T) {
-	t.Parallel()
 	assert.True(t, ssh.PatternMatch("web-* db-*", "web-01"))
 	assert.True(t, ssh.PatternMatch("web-* db-*", "db-02"))
 	assert.False(t, ssh.PatternMatch("web-* db-*", "cache-01"))
@@ -339,7 +317,6 @@ func TestSSHPatternMatch_MultiplePatterns(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveHost_UserAtHost(t *testing.T) {
-	t.Parallel()
 	r, err := ssh.ResolveHost("deploy@10.0.0.5", "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, "deploy", r.User)
@@ -348,7 +325,6 @@ func TestResolveHost_UserAtHost(t *testing.T) {
 }
 
 func TestResolveHost_UserAtHostPort(t *testing.T) {
-	t.Parallel()
 	r, err := ssh.ResolveHost("admin@myhost:2222", "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, "admin", r.User)
@@ -357,7 +333,6 @@ func TestResolveHost_UserAtHostPort(t *testing.T) {
 }
 
 func TestResolveHost_AliasFromSSHConfig(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -376,7 +351,6 @@ Host myalias
 }
 
 func TestResolveHost_UserOverridesConfig(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -392,7 +366,6 @@ Host myhost
 }
 
 func TestResolveHost_DefaultPort(t *testing.T) {
-	t.Parallel()
 	r, err := ssh.ResolveHost("somehost", filepath.Join(testutil.TempDir(t), "nonexistent"), "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, "22", r.Port)
@@ -403,7 +376,6 @@ func TestResolveHost_DefaultPort(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExpandTilde_WithTilde(t *testing.T) {
-	t.Parallel()
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 	got, err := ssh.ExpandTilde("~/.ssh/id_ed25519")
@@ -412,7 +384,6 @@ func TestExpandTilde_WithTilde(t *testing.T) {
 }
 
 func TestExpandTilde_WithoutTilde(t *testing.T) {
-	t.Parallel()
 	got, err := ssh.ExpandTilde("/absolute/path")
 	require.NoError(t, err)
 	assert.Equal(t, "/absolute/path", got)
@@ -423,7 +394,6 @@ func TestExpandTilde_WithoutTilde(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHumanBytes(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "512B", humanBytes(512))
 	assert.Equal(t, "1.0KB", humanBytes(1024))
 	assert.Equal(t, "1.5KB", humanBytes(1536))
@@ -432,7 +402,6 @@ func TestHumanBytes(t *testing.T) {
 }
 
 func TestHumanBytes_EdgeCases(t *testing.T) {
-	t.Parallel()
 	assert.Equal(t, "0B", humanBytes(0))
 	assert.Equal(t, "1023B", humanBytes(1023))
 	assert.Equal(t, "1.0KB", humanBytes(1024))
@@ -444,8 +413,7 @@ func TestHumanBytes_EdgeCases(t *testing.T) {
 // collectHosts - stdin path
 // ---------------------------------------------------------------------------
 
-func TestCollectHosts_Stdin(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestCollectHosts_Stdin(t *testing.T) {
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
 
@@ -465,7 +433,6 @@ func TestCollectHosts_Stdin(t *testing.T) { //nolint:paralleltest // replaces pr
 }
 
 func TestCollectHosts_WhitespaceOnlyLines(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	f := filepath.Join(dir, "hosts.txt")
 	require.NoError(t, os.WriteFile(f, []byte("  \n\t\nhost-a\n   host-b   \n"), 0600))
@@ -480,7 +447,6 @@ func TestCollectHosts_WhitespaceOnlyLines(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveHost_WildcardSSHConfigMatch(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -498,7 +464,6 @@ Host prod-*
 }
 
 func TestResolveHost_SSHConfigPort22NotOverridden(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -516,14 +481,12 @@ Host myhost
 }
 
 func TestResolveHost_NoSSHConfig_DefaultsApplied(t *testing.T) {
-	t.Parallel()
 	r, err := ssh.ResolveHost("bare-host", "/nonexistent/ssh/config", "fallback-user", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, "fallback-user", r.User)
 }
 
 func TestResolveHost_HostnameOverriddenFromConfig(t *testing.T) {
-	t.Parallel()
 	dir := testutil.TempDir(t)
 	cfg := filepath.Join(dir, "config")
 	content := `
@@ -543,8 +506,7 @@ Host alias
 // emitJSON - JSON shape and typed field serialization
 // ---------------------------------------------------------------------------
 
-func TestEmitJSON_PerHostEvent(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestEmitJSON_PerHostEvent(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -580,8 +542,7 @@ func TestEmitJSON_PerHostEvent(t *testing.T) { //nolint:paralleltest // replaces
 	assert.False(t, hasSummary, "summary field must be omitempty on non-summary events")
 }
 
-func TestEmitJSON_SummaryEvent(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestEmitJSON_SummaryEvent(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -615,8 +576,7 @@ func TestEmitJSON_SummaryEvent(t *testing.T) { //nolint:paralleltest // replaces
 	assert.InEpsilon(t, float64(5000), got["total_ms"], 0.0)
 }
 
-func TestEmitJSON_StatusConstants(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestEmitJSON_StatusConstants(t *testing.T) {
 	cases := []constants.StreamStatus{
 		constants.StreamStatusCompleted,
 		constants.StreamStatusFailed,
@@ -644,8 +604,7 @@ func TestEmitJSON_StatusConstants(t *testing.T) { //nolint:paralleltest // repla
 	}
 }
 
-func TestEmitJSON_ErrorFieldOmittedWhenEmpty(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestEmitJSON_ErrorFieldOmittedWhenEmpty(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -670,8 +629,7 @@ func TestEmitJSON_ErrorFieldOmittedWhenEmpty(t *testing.T) { //nolint:parallelte
 	assert.False(t, hasError, "error field must be omitted when empty")
 }
 
-func TestEmitJSON_ErrorFieldPresentOnFailure(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestEmitJSON_ErrorFieldPresentOnFailure(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -696,8 +654,7 @@ func TestEmitJSON_ErrorFieldPresentOnFailure(t *testing.T) { //nolint:parallelte
 	assert.Equal(t, "dial tcp: connection refused", got["error"])
 }
 
-func TestEmitJSON_TsIsRFC3339(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestEmitJSON_TsIsRFC3339(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -731,8 +688,7 @@ func TestEmitJSON_TsIsRFC3339(t *testing.T) { //nolint:paralleltest // replaces 
 // printStreamUsage
 // ---------------------------------------------------------------------------
 
-func TestPrintStreamUsage_ContainsKeywords(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestPrintStreamUsage_ContainsKeywords(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -761,8 +717,7 @@ func TestPrintStreamUsage_ContainsKeywords(t *testing.T) { //nolint:paralleltest
 // (uses -test.run on the test binary itself to avoid os.Exit in the parent)
 // ---------------------------------------------------------------------------
 
-func TestRunStream_HelpFlag(t *testing.T) { //nolint:paralleltest // replaces process standard streams
-
+func TestRunStream_HelpFlag(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
@@ -784,11 +739,9 @@ func TestRunStream_HelpFlag(t *testing.T) { //nolint:paralleltest // replaces pr
 }
 
 func TestRunStream_ZtdBinaryNotFound_ResultsInFailure(t *testing.T) {
-	t.Parallel()
 	// Exercise the binary-load step in isolation: build a minimal binaryDir
 	// that does NOT contain the expected arch sub-path and verify the error
 	// message that RunStream would emit to stderr.
-
 	binaryDir := testutil.TempDir(t)
 	arch := "amd64"
 	binPath := filepath.Join(binaryDir, "linux-"+arch, "ztd.operator")
@@ -798,7 +751,6 @@ func TestRunStream_ZtdBinaryNotFound_ResultsInFailure(t *testing.T) {
 }
 
 func TestRunStream_ArchValidation(t *testing.T) {
-	t.Parallel()
 	validArchs := []string{"amd64", "arm64", "386"}
 	for _, arch := range validArchs {
 		binaryDir := testutil.TempDir(t)
@@ -836,9 +788,7 @@ func generateTestSSHKey(t *testing.T, path string) {
 // ---------------------------------------------------------------------------
 
 func TestGetDefaultZtdBinaryDir(t *testing.T) {
-	t.Parallel()
 	// Test that getDefaultZtdBinaryDir returns a valid path
-
 	dir := getDefaultZtdBinaryDir()
 	assert.NotEmpty(t, dir, "default binary dir should not be empty")
 	assert.Contains(t, dir, "bin", "default binary dir should contain 'bin'")
@@ -849,7 +799,6 @@ func TestGetDefaultZtdBinaryDir(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBoundedBuffer_WriteWithinLimit(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: 100}
 	n, err := buf.Write([]byte("hello world"))
 	require.NoError(t, err)
@@ -858,7 +807,6 @@ func TestBoundedBuffer_WriteWithinLimit(t *testing.T) {
 }
 
 func TestBoundedBuffer_WriteExactlyAtLimit(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: 10}
 	n, err := buf.Write([]byte("0123456789"))
 	require.NoError(t, err)
@@ -867,7 +815,6 @@ func TestBoundedBuffer_WriteExactlyAtLimit(t *testing.T) {
 }
 
 func TestBoundedBuffer_WriteExceedsLimit(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: 5}
 	n, err := buf.Write([]byte("0123456789"))
 	require.NoError(t, err)
@@ -876,7 +823,6 @@ func TestBoundedBuffer_WriteExceedsLimit(t *testing.T) {
 }
 
 func TestBoundedBuffer_WriteMultipleChunks(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: 10}
 
 	_, err := buf.Write([]byte("hello"))
@@ -892,7 +838,6 @@ func TestBoundedBuffer_WriteMultipleChunks(t *testing.T) {
 }
 
 func TestBoundedBuffer_ZeroLimit(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: 0}
 	n, err := buf.Write([]byte("anything"))
 	require.NoError(t, err)
@@ -901,7 +846,6 @@ func TestBoundedBuffer_ZeroLimit(t *testing.T) {
 }
 
 func TestBoundedBuffer_NegativeLimit(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: -1}
 	n, err := buf.Write([]byte("anything"))
 	require.NoError(t, err)
@@ -910,7 +854,6 @@ func TestBoundedBuffer_NegativeLimit(t *testing.T) {
 }
 
 func TestBoundedBuffer_StringOnEmpty(t *testing.T) {
-	t.Parallel()
 	buf := &boundedBuffer{limit: 100}
 	assert.Empty(t, buf.String(), "empty buffer should return empty string")
 }
@@ -920,17 +863,13 @@ func TestBoundedBuffer_StringOnEmpty(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHumanBytes_VeryLarge(t *testing.T) {
-	t.Parallel()
 	// humanBytes only supports up to MB, so 1GB is formatted as 1024.0MB
-
 	assert.Equal(t, "1024.0MB", humanBytes(1<<30))
 	assert.Equal(t, "2048.0MB", humanBytes(1<<30*2))
 }
 
 func TestHumanBytes_Negative(t *testing.T) {
-	t.Parallel()
 	// Negative values should still format (though unusual in practice)
-
 	assert.Equal(t, "-512B", humanBytes(-512))
 }
 
@@ -939,7 +878,6 @@ func TestHumanBytes_Negative(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBuildOperatorCommand_CustomPorts(t *testing.T) {
-	t.Parallel()
 	got := buildOperatorCommand("/home/user/.ztd/tmp/.ztd-stream-abcdef", 8080, 8443)
 	assert.Equal(t, "/home/user/.ztd/tmp/.ztd-stream-abcdef operator start --endpoint 127.0.0.1 --gateway-http-port 8080 --gateway-https-port 8443", got)
 }

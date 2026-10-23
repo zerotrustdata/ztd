@@ -110,7 +110,6 @@ func newRenewalRig() *renewalRig {
 }
 
 func TestOperatorCertRenewal_SignsForThePeerWorkload(t *testing.T) {
-	t.Parallel()
 	r := newRenewalRig()
 	renewed, err := r.svc.Renew(t.Context(), operatorPeer(t), pubsub.RenewalChannel(renewalOpID, renewalSessionID),
 		&models.OperatorRenewalRequest{CSR: renewalCSR(t)})
@@ -122,8 +121,6 @@ func TestOperatorCertRenewal_SignsForThePeerWorkload(t *testing.T) {
 }
 
 func TestOperatorCertRenewal_Refusals(t *testing.T) {
-	t.Parallel()
-
 	ownChannel := pubsub.RenewalChannel(renewalOpID, renewalSessionID)
 	cases := []struct {
 		name      string
@@ -190,8 +187,6 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			r := newRenewalRig()
 			if tc.mutate != nil {
 				tc.mutate(r)
@@ -220,8 +215,6 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 }
 
 func TestOperatorCertRenewal_GatewayFailuresAreRetryable(t *testing.T) {
-	t.Parallel()
-
 	failure := errors.New("store unavailable")
 	cases := map[string]func(*renewalRig){
 		"certificate check fails": func(r *renewalRig) { r.pki.verifyErr = failure },
@@ -231,8 +224,6 @@ func TestOperatorCertRenewal_GatewayFailuresAreRetryable(t *testing.T) {
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
 			r := newRenewalRig()
 			mutate(r)
 			_, err := r.svc.Renew(t.Context(), operatorPeer(t), pubsub.RenewalChannel(renewalOpID, renewalSessionID),
@@ -285,7 +276,6 @@ func decodeRenewalReply(t *testing.T, published [][]byte) models.OperatorRenewal
 }
 
 func TestRelayCertRenewal_RepliesWithRenewedIdentity(t *testing.T) {
-	t.Parallel()
 	broker := newTestBroker(t)
 	r := newRenewalRig()
 	broker.SetCertRenewalService(r.svc)
@@ -297,7 +287,6 @@ func TestRelayCertRenewal_RepliesWithRenewedIdentity(t *testing.T) {
 }
 
 func TestRelayCertRenewal_RefusalIsFinalAndNamed(t *testing.T) {
-	t.Parallel()
 	broker := newTestBroker(t)
 	r := newRenewalRig()
 	r.pki.verifyErr = constants.ErrPKICertificateRevoked
@@ -311,7 +300,6 @@ func TestRelayCertRenewal_RefusalIsFinalAndNamed(t *testing.T) {
 }
 
 func TestRelayCertRenewal_GatewayFailureIsRetryableAndOpaque(t *testing.T) {
-	t.Parallel()
 	broker := newTestBroker(t)
 	r := newRenewalRig()
 	r.pki.signErr = errors.New("ca key unreadable at /secret/path")
@@ -324,7 +312,6 @@ func TestRelayCertRenewal_GatewayFailureIsRetryableAndOpaque(t *testing.T) {
 }
 
 func TestRelayCertRenewal_UnconfiguredServiceIsRetryable(t *testing.T) {
-	t.Parallel()
 	broker := newTestBroker(t)
 
 	reply := decodeRenewalReply(t, publishRenewal(t, broker, renewalSessionHandler(t, broker), renewalRequestFrame(t)))
@@ -334,7 +321,6 @@ func TestRelayCertRenewal_UnconfiguredServiceIsRetryable(t *testing.T) {
 }
 
 func TestRelayCertRenewal_DropsFramesThatAreNotRequests(t *testing.T) {
-	t.Parallel()
 	broker := newTestBroker(t)
 	broker.SetCertRenewalService(newRenewalRig().svc)
 	handler := renewalSessionHandler(t, broker)
@@ -347,7 +333,6 @@ func TestRelayCertRenewal_DropsFramesThatAreNotRequests(t *testing.T) {
 
 	for name, data := range map[string][]byte{"not json": []byte("{"), "reply frame": reply, "request without id": noID} {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
 			assert.Empty(t, publishRenewal(t, broker, handler, data), "an Operator cannot publish replies or malformed frames")
 		})
 	}

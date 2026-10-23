@@ -16,7 +16,6 @@ import (
 )
 
 func TestSafeJoin(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		base     string
@@ -70,9 +69,7 @@ func TestSafeJoin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			// Skip OS-specific tests
-
 			if tt.osCheck == "windows" && runtime.GOOS != "windows" {
 				t.Skip("Windows-only test")
 			}
@@ -87,7 +84,6 @@ func TestSafeJoin(t *testing.T) {
 }
 
 func TestResolveDBPath(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		dataDir  string
@@ -127,7 +123,6 @@ func TestResolveDBPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			if tt.osCheck == "windows" && runtime.GOOS != "windows" {
 				t.Skip("Windows-only test")
 			}
@@ -142,10 +137,8 @@ func TestResolveDBPath(t *testing.T) {
 }
 
 func TestToSlash(t *testing.T) {
-	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Run("windows conversions", func(t *testing.T) {
-			t.Parallel()
 			path := "C:\\temp\\data"
 			slashed := ToSlash(path)
 			assert.Equal(t, "C:/temp/data", slashed)

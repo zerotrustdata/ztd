@@ -13,8 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestOperatorURLs_IPv6Overrides(t *testing.T) { //nolint:paralleltest // mutates package-level state
-
+func TestOperatorURLs_IPv6Overrides(t *testing.T) {
 	tests := []struct {
 		name      string
 		override  string
@@ -26,9 +25,8 @@ func TestOperatorURLs_IPv6Overrides(t *testing.T) { //nolint:paralleltest // mut
 		{"bracketed ipv6 keeps explicit port", "[fd00::1]:9000", "http://[fd00::1]:9000", "https://[fd00::1]:9000"},
 		{"hostname gets default port", "gateway.local", "http://gateway.local:8080", "https://gateway.local:8443"},
 	}
-	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			SetHTTPEndpointOverride(tt.override)
 			SetHTTPSEndpointOverride(tt.override)
 			t.Cleanup(func() {

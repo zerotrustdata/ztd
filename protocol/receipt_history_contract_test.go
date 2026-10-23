@@ -23,7 +23,6 @@ import (
 // identify the original signed examples; a naming cleanup must still verify
 // those examples rather than replace them with newly signed evidence.
 func TestReceiptHistoryKeepsOriginalSignedVectors(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		body      []byte
@@ -34,7 +33,6 @@ func TestReceiptHistoryKeepsOriginalSignedVectors(t *testing.T) {
 		{"persistence", receiptPersistenceCanonicalizationVectorJSON, "8fee4aa18c1beb8fc52b7ee371ff82a727f75430c672e694cf3d4cafc0f5dfb33a4a28ba79d405c7b3a4b6c61876f0a05a90f9a197b96039fd34d47c69ba9c03"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			var vector struct {
 				Receipt struct {
 					Signature string `json:"signature"`
@@ -50,7 +48,6 @@ func TestReceiptHistoryKeepsOriginalSignedVectors(t *testing.T) {
 }
 
 func TestReceiptHistoryKeepsWireFieldNumbersAndNames(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		message protoreflect.MessageDescriptor
 		name    protoreflect.Name
@@ -71,7 +68,6 @@ func TestReceiptHistoryKeepsWireFieldNumbersAndNames(t *testing.T) {
 		{(&evalv1.PublicGovernedActionActivityRecord{}).ProtoReflect().Descriptor(), "receipt_status", 3},
 	} {
 		t.Run(string(tc.message.FullName())+"/"+string(tc.name), func(t *testing.T) {
-			t.Parallel()
 			field := tc.message.Fields().ByName(tc.name)
 			require.NotNil(t, field, "sealed evidence uses this field name")
 			require.Equal(t, tc.number, field.Number())

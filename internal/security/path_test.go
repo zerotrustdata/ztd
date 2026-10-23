@@ -16,7 +16,6 @@ import (
 )
 
 func TestValidatePath(t *testing.T) {
-	t.Parallel()
 	root := "/safe/root"
 
 	tests := []struct {
@@ -157,7 +156,6 @@ func TestValidatePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got, err := ValidatePath(tt.path, tt.root)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidatePath() error = %v, wantErr %v", err, tt.wantErr)
@@ -176,16 +174,13 @@ func TestValidatePath(t *testing.T) {
 }
 
 func TestValidatePathResolution(t *testing.T) {
-	t.Parallel()
 	// Test that the returned path is absolute and cleaned
-
 	root := "/safe/root"
 	if runtime.GOOS == "windows" {
 		root = `C:\safe\root`
 	}
 
 	t.Run("relative path becomes absolute", func(t *testing.T) {
-		t.Parallel()
 		got, err := ValidatePath("file.txt", root)
 		if err != nil {
 			t.Fatalf("ValidatePath() unexpected error: %v", err)
@@ -200,7 +195,6 @@ func TestValidatePathResolution(t *testing.T) {
 	})
 
 	t.Run("absolute path remains absolute", func(t *testing.T) {
-		t.Parallel()
 		absPath := "/etc/passwd"
 		if runtime.GOOS == "windows" {
 			absPath = "C:\\etc\\passwd"
@@ -218,7 +212,6 @@ func TestValidatePathResolution(t *testing.T) {
 	})
 
 	t.Run("path is cleaned", func(t *testing.T) {
-		t.Parallel()
 		got, err := ValidatePath("subdir//./file.txt", root)
 		if err != nil {
 			t.Fatalf("ValidatePath() unexpected error: %v", err)
@@ -231,11 +224,9 @@ func TestValidatePathResolution(t *testing.T) {
 }
 
 func TestValidatePathCrossPlatform(t *testing.T) {
-	t.Parallel()
 	root := "/safe/root"
 
 	t.Run("relative path stays within root", func(t *testing.T) {
-		t.Parallel()
 		got, err := ValidatePath("subdir/file.txt", root)
 		if err != nil {
 			t.Fatalf("ValidatePath() unexpected error: %v", err)
@@ -252,9 +243,7 @@ func TestValidatePathCrossPlatform(t *testing.T) {
 	})
 
 	t.Run("absolute path not constrained to root", func(t *testing.T) {
-		t.Parallel()
 		// Absolute paths should be allowed for test fixtures and system paths
-
 		absPath := "/tmp/test.txt"
 		if runtime.GOOS == "windows" {
 			absPath = "C:\\temp\\test.txt"
@@ -273,7 +262,6 @@ func TestValidatePathCrossPlatform(t *testing.T) {
 }
 
 func TestIsShellRequired(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		command  string
@@ -458,7 +446,6 @@ func TestIsShellRequired(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got := IsShellRequired(tt.command)
 			if got != tt.expected {
 				t.Errorf("IsShellRequired(%q) = %v, want %v", tt.command, got, tt.expected)
@@ -468,16 +455,13 @@ func TestIsShellRequired(t *testing.T) {
 }
 
 func TestIsShellRequiredAllMetacharacters(t *testing.T) {
-	t.Parallel()
 	// Test each metacharacter individually to ensure detection
-
 	metacharacters := []string{
 		"|", "&", ">", "<", "$", "(", ")", ";", "`", "\\", "*", "?", "[", "]", "~",
 	}
 
 	for _, mc := range metacharacters {
 		t.Run("metacharacter_"+mc, func(t *testing.T) {
-			t.Parallel()
 			command := "echo test " + mc
 			if !IsShellRequired(command) {
 				t.Errorf("IsShellRequired(%q) = false, want true (metacharacter %s)", command, mc)
@@ -487,7 +471,6 @@ func TestIsShellRequiredAllMetacharacters(t *testing.T) {
 }
 
 func TestIsSensitiveReadPath(t *testing.T) {
-	t.Parallel()
 	sshDir := filepath.Join(string(filepath.Separator)+"home", "user", constants.SshDirname)
 	for _, tc := range []struct {
 		path string
@@ -513,7 +496,6 @@ func TestIsSensitiveReadPath(t *testing.T) {
 }
 
 func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
-	t.Parallel()
 	for _, sensitive := range []string{
 		constants.PathEtcShadow,
 		constants.PathEtcPasswd,
@@ -521,7 +503,6 @@ func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
 		constants.PathEtcSudoers,
 	} {
 		t.Run(sensitive, func(t *testing.T) {
-			t.Parallel()
 			dir, base := filepath.Split(sensitive)
 			for _, tc := range []struct {
 				name string
@@ -538,7 +519,6 @@ func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
 				{name: "different directory", path: filepath.Join(dir, "other", base)},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
 					if got := IsSensitiveReadPath(tc.path); got != tc.want {
 						t.Errorf("IsSensitiveReadPath(%q) = %v, want %v", tc.path, got, tc.want)
 					}
@@ -549,7 +529,6 @@ func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
 }
 
 func TestIsEvaluationWorkspaceSeedPath(t *testing.T) {
-	t.Parallel()
 	workDir := filepath.FromSlash("/srv/op")
 	if runtime.GOOS == "windows" {
 		workDir = `D:\srv\op`
@@ -584,7 +563,6 @@ func TestIsEvaluationWorkspaceSeedPath(t *testing.T) {
 }
 
 func TestIsProtectedRuntimePath(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		path string
 		want bool

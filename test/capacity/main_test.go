@@ -16,7 +16,6 @@ import (
 )
 
 func TestValidateOptions_RequiresExplicitSafeTargetAndValidBounds(t *testing.T) {
-	t.Parallel()
 	valid := options{
 		target:         "http://127.0.0.1:8082",
 		mode:           "cold",
@@ -52,7 +51,6 @@ func TestValidateOptions_RequiresExplicitSafeTargetAndValidBounds(t *testing.T) 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			err := validateOptions(test.mutate(valid))
 			if test.wantErr {
 				assert.Error(t, err)
@@ -64,7 +62,6 @@ func TestValidateOptions_RequiresExplicitSafeTargetAndValidBounds(t *testing.T) 
 }
 
 func TestSyntheticClientAddress_ReturnsDistinctUnicastAddresses(t *testing.T) {
-	t.Parallel()
 	first := net.ParseIP(syntheticClientAddress(0, 1, 0))
 	last := net.ParseIP(syntheticClientAddress(0, 1, 299))
 	assert.NotEqual(t, first.String(), last.String())
@@ -73,20 +70,17 @@ func TestSyntheticClientAddress_ReturnsDistinctUnicastAddresses(t *testing.T) {
 }
 
 func TestSyntheticClientAddress_SeparatesShardOffsets(t *testing.T) {
-	t.Parallel()
 	shardZero := net.ParseIP(syntheticClientAddress(0, 3, 0))
 	shardOne := net.ParseIP(syntheticClientAddress(1, 3, 0))
 	assert.NotEqual(t, shardZero.String(), shardOne.String())
 }
 
 func TestSummarizeLatency_ComputesDeterministicPercentiles(t *testing.T) {
-	t.Parallel()
 	values := []time.Duration{5 * time.Millisecond, time.Millisecond, 3 * time.Millisecond, 2 * time.Millisecond, 4 * time.Millisecond}
 	assert.Equal(t, latencySummary{P50: 3, P95: 5, P99: 5, Max: 5}, summarizeLatency(values))
 }
 
 func TestSummarizeLatency_AveragesEvenMedian(t *testing.T) {
-	t.Parallel()
 	values := []time.Duration{4 * time.Millisecond, time.Millisecond, 3 * time.Millisecond, 2 * time.Millisecond}
 	assert.Equal(t, latencySummary{P50: 2.5, P95: 4, P99: 4, Max: 4}, summarizeLatency(values))
 }
