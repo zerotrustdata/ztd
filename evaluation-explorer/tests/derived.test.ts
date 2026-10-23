@@ -441,7 +441,34 @@ describe('roleLeaderRows', () => {
     expect(rows[0]?.score).toBeCloseTo(80 * Math.SQRT1_2);
   });
 
-  it('applies no security factor to Lite and normalizes each role independently', () => {
+  it.each<ModelRole>(['primary', 'assistant', 'lite'])('scores missing security as zero in %s even for a smaller, faster model', (role) => {
+    const models: ModelSummary[] = [
+      {
+        ...rankedModel('no-security', role, { size: 1_000_000_000, latency: 10, tokens: 10 }),
+        security_resistance: { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 },
+      },
+      {
+        ...rankedModel('measured-security', role, { size: 8_000_000_000, passRate: 0.75, latency: 1000, tokens: 1000 }),
+        security_resistance: { value: 0.25, refused: 1, yielded: 0, persisted: 3 },
+      },
+      {
+        ...rankedModel('observed-zero', role),
+        security_resistance: { value: 0, refused: 0, yielded: 0, persisted: 4 },
+      },
+    ];
+    const rows = modelRoleLeaderboardRows(models, role);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.model.variant_id).toBe('measured-security');
+    expect(rows[0]?.score).toBeGreaterThan(0);
+    const missing = rows.find((row) => row.model.variant_id === 'no-security')!;
+    expect(missing.security).toBeUndefined();
+    expect(missing.score).toBe(0);
+    const observedZero = rows.find((row) => row.model.variant_id === 'observed-zero')!;
+    expect(observedZero.security).toBe(0);
+    expect(observedZero.score).toBe(0);
+  });
+
+  it('scores unmeasured Lite security as zero and normalizes each role independently', () => {
     const rows = roleLeaderRows([
       rankedModel('lite-model', 'lite', { size: 2_000_000_000, passRate: 0.9, latency: 4000, tokens: 400 }),
       rankedModel('primary-model', 'primary', { size: 32_000_000_000, latency: 100, tokens: 10, security: 0.75 }),
@@ -449,7 +476,7 @@ describe('roleLeaderRows', () => {
     expect(rows.map((row) => row.role)).toEqual(['primary', 'assistant', 'lite']);
     const lite = rows[2]?.leader;
     expect(lite?.security).toBeUndefined();
-    expect(lite?.score).toBeCloseTo(90);
+    expect(lite?.score).toBe(0);
     expect(rows[0]?.leader?.score).toBeCloseTo(100 * Math.sqrt(0.75));
     expect(rows[1]?.leader).toBeUndefined();
   });
@@ -487,9 +514,9 @@ describe('modelOverallLeaderboardRows', () => {
     const rows = overall(models);
     expect(rows.map((row) => row.model.variant_id)).toEqual(['balanced', 'lite-specialist']);
     expect(rows.map((row) => row.rank)).toEqual([1, 2]);
-    expect(rows[0]?.score).toBeCloseTo(80);
-    expect(rows[1]?.score).toBeCloseTo(40);
-    expect(rows[1]?.role_scores).toEqual({ primary: 10, assistant: 10, lite: 100 });
+    expect(rows[0]?.score).toBeCloseTo(160 / 3);
+    expect(rows[1]?.score).toBeCloseTo(20 / 3);
+    expect(rows[1]?.role_scores).toEqual({ primary: 10, assistant: 10, lite: 0 });
     expect(overall([...models].reverse())).toEqual(rows);
   });
 
@@ -504,8 +531,9 @@ describe('modelOverallLeaderboardRows', () => {
     ];
     const rows = overall(models);
     expect(rows.map((row) => row.model.variant_id)).toEqual(['distinct', 'repeated']);
-    expect(rows[1]?.role_scores.lite).toBeCloseTo(100 * (0.5 + 0.8 + 1) / 3);
-    expect(rows[1]?.score).toBeCloseTo((50 + 50 + 100 * (0.5 + 0.8 + 1) / 3) / 3);
+    expect(rows[1]?.role_scores.lite).toBe(0);
+    expect(rows[1]?.score).toBeCloseTo((50 + 50 + 0) / 3);
+    expect(rows[1]?.pass_rate).toBeCloseTo((0.5 + 0.5 + (0.5 + 0.8 + 1) / 3) / 3);
   });
 
   it('gives each role equal weight even when Lite has three repetitions', () => {
@@ -513,8 +541,20 @@ describe('modelOverallLeaderboardRows', () => {
       ...rankedModel('unequal-reps', role, { passRate: role === 'lite' ? 1 : 0.5 }),
       pass_rate: { estimate: role === 'lite' ? 1 : 0.5, lower: 0, upper: 1, denominator: role === 'lite' ? 30 : 10 },
     })));
-    expect(rows[0]?.score).toBeCloseTo((50 + 50 + 100) / 3);
+    expect(rows[0]?.score).toBeCloseTo((50 + 50 + 0) / 3);
     expect(rows[0]?.pass_rate).toBeCloseTo(2 / 3);
+  });
+
+  it('keeps models with no security observations at zero Overall without inventing a measurement', () => {
+    const rows = overall(roles.map((role) => ({
+      ...rankedModel('unmeasured-security', role),
+      security_resistance: { unavailable_reason: 'scenario_not_applicable' as const, refused: 0, yielded: 0, persisted: 0 },
+    })));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.score).toBe(0);
+    expect(rows[0]?.role_scores).toEqual({ primary: 0, assistant: 0, lite: 0 });
+    expect(rows[0]?.security).toBeUndefined();
+    expect(rows[0]?.pass_rate).toBe(1);
   });
 
   it('requires qualified evidence in every role without treating zero scores as missing', () => {

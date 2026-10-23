@@ -279,6 +279,44 @@ describe('ModelsView', () => {
     expect(panel.queryByRole('link', { name: /View all models/i })).not.toBeInTheDocument();
   });
 
+  it('scores absent security as zero in role and Overall tables while showing N/A', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    evalStore.loadFixtures(MODEL_ROLE_WIRE_ORDER.flatMap((role): ModelSummary[] => [
+      {
+        ...source, role, variant_id: 'no-security', display_name: 'No security evidence',
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
+        pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
+        security_resistance: { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 },
+      },
+      {
+        ...source, role, variant_id: 'measured-security', display_name: 'Measured security',
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
+        pass_rate: { estimate: 0.75, lower: 0.75, upper: 0.75, denominator: 10 },
+        security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
+      },
+    ]), []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    const checkRows = () => {
+      const missing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
+      expect(missing.getByText('0.0')).toBeInTheDocument();
+      expect(missing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+      expect(missing.getByText('2nd')).toBeInTheDocument();
+      const measured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
+      expect(measured.getByText('75.0')).toBeInTheDocument();
+      expect(measured.getByText('100%')).toBeInTheDocument();
+      expect(measured.getByText('1st')).toBeInTheDocument();
+      expect(panel.getByRole('columnheader', { name: 'Score' })).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+    };
+    checkRows();
+    for (const role of ['Primary', 'Assistant', 'Lite']) {
+      fireEvent.click(panel.getByRole('button', { name: new RegExp(`^${role}`) }));
+      checkRows();
+    }
+  });
+
   it('supports browsing leaderboard categories and sorting statistical columns', () => {
     const base: ModelSummary = {
       schema_version: '1.7.0',

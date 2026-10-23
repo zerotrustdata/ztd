@@ -17,6 +17,7 @@ import {
 } from './shared';
 import {
   LEADERBOARD_SCORE_FORMULA,
+  LEADERBOARD_SECURITY_SCORING_DESCRIPTION,
   roleLabel,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
@@ -68,7 +69,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   {
     field: 'score',
     label: 'Score',
-    title: `${LEADERBOARD_SCORE_FORMULA}; Total-parameter penalty: each doubling costs 10%, and speed and tokens are best-in-role ÷ model, so efficiency moves the score by at most 15%`,
+    title: `${LEADERBOARD_SCORE_FORMULA}; ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}; Total-parameter penalty: each doubling costs 10%, and speed and tokens are best-in-role ÷ model, so efficiency moves the score by at most 15%`,
     initialDirection: 'desc',
   },
   {
@@ -80,7 +81,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   {
     field: 'security',
     label: 'Security',
-    title: 'Security: pass rate on security category tasks',
+    title: `Security: pass rate on security category tasks. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`,
     initialDirection: 'desc',
   },
   {
@@ -116,7 +117,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
 ];
 
 const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
-  score: 'Overall score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring',
+  score: `Overall score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`,
   accuracy: 'Mean accuracy across Primary, Assistant, and Lite, with equal weight per role',
   security: 'Mean security score across roles with applicable security scenarios',
   speed: 'Mean of role latency aggregates (assignment-count-weighted run p50s); faster is better',
@@ -432,7 +433,7 @@ export function RoleLeadersPanel({
                           {row.security !== undefined ? (
                             formatPercent(row.security, 0)
                           ) : (
-                            <span className="unavailable-value" title="No applicable security-policy scenarios">
+                            <span className="unavailable-value" title={`No security metrics available. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`}>
                               N/A
                             </span>
                           )}

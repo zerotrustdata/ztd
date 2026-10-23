@@ -41,7 +41,7 @@ import {
   MODEL_QUALITY_FILTER_STATES,
   normalizeQualityFilter,
 } from '../utils/feed-state';
-import { datasetLabel, LEADERBOARD_SCORE_FORMULA, modelSummaryGroups, roleLabel } from './derived';
+import { datasetLabel, LEADERBOARD_SCORE_FORMULA, LEADERBOARD_SECURITY_SCORING_DESCRIPTION, modelSummaryGroups, roleLabel } from './derived';
 
 interface ModelFilters {
   search: string;
@@ -513,7 +513,7 @@ export function ModelsView() {
       <SectionHeading
         kicker="MODEL CATALOG & CAPABILITIES"
         title="Models, capabilities & role performance"
-        description={`${LEADERBOARD_SCORE_FORMULA}. Total-parameter penalty: 10% per doubling; this is not measured resource cost. Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.`}
+        description={`${LEADERBOARD_SCORE_FORMULA}. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}. Total-parameter penalty: 10% per doubling; this is not measured resource cost. Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.`}
       />
 
       <RoleLeadersPanel

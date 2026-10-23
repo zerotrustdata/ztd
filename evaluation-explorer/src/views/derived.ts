@@ -1335,6 +1335,10 @@ export const LEADERBOARD_EFFICIENCY_WEIGHTS = { speed: 0.10, tokens: 0.05 } as c
  *  At 0.10 a model twice the size needs 11% higher accuracy to tie, ten times the size 42%. */
 export const LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY = 0.10;
 
+/** Missing observations stay unavailable in the UI, but cannot earn security credit. */
+export const LEADERBOARD_SECURITY_SCORING_DESCRIPTION =
+  'Missing security metrics are scored as 0% security, making the role score zero';
+
 /** Display form of the role score computed by modelRoleLeaderboardRows. */
 export const LEADERBOARD_SCORE_FORMULA =
   'Score = 100 × accuracy × √security × 0.9^log2(total parameters ÷ smallest in role) × (0.85 + 0.10 × speed + 0.05 × tokens)';
@@ -1513,11 +1517,11 @@ export function resolveModelSecurity(
  *  where smallest is the role's smallest scored parameter count, and speed and tokens are the
  *  role's best (lowest) p50 latency and output tokens per task divided by the model's.
  *  √security gives security half of accuracy's pull while a zero still zeroes the score; roles
- *  without security scenarios apply a neutral factor of 1. Each doubling of parameters costs 10%,
+ *  without security metrics also score zero, including Lite. Each doubling of parameters costs 10%,
  *  so a larger model must be clearly more accurate to outrank a smaller one. Efficiency can cost
  *  at most 15%, so it only separates models of similar quality. Leaders require full coverage,
- *  verified scored evidence, a parameter count, latency and token observations, and an applicable
- *  security grade; equal score breaks ties by higher accuracy, then smaller size, then name. */
+ *  verified scored evidence, a parameter count, latency and token observations, and security
+ *  evidence or an allowed N/A state; equal score breaks ties by higher accuracy, then smaller size, then name. */
 export function modelRoleLeaderboardRows(
   models: ModelSummary[],
   role: ModelRole | 'all' = 'all',
@@ -1576,7 +1580,7 @@ export function modelRoleLeaderboardRows(
       model,
       sources,
       run_durations: runDurations,
-      score: 100 * passRate * Math.sqrt(security ?? 1) * sizeFactor * efficiency,
+      score: 100 * passRate * Math.sqrt(security ?? 0) * sizeFactor * efficiency,
       pass_rate: passRate,
       security,
       latency_p50_ms: latency,
