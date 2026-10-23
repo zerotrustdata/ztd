@@ -8,7 +8,6 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -139,7 +138,7 @@ func TestMutatorsFailHashCheckWhenNotRehashed(t *testing.T) {
 			case "transaction_hash":
 				assert.NotEqual(t, computed, env.TransactionHash)
 				assert.NotEqual(t, computed, env.Id)
-				assert.Error(t, governance.VerifyTransactionHash(env, env.TransactionHash))
+				require.Error(t, governance.VerifyTransactionHash(env, env.TransactionHash))
 			case "id":
 				assert.Equal(t, computed, env.TransactionHash)
 				assert.NotEqual(t, computed, env.Id)
@@ -157,7 +156,7 @@ func TestProtocolVersionMutatorIsRejectedByHasher(t *testing.T) {
 	require.NoError(t, BaseMutators()[cases.FaultProtocolVersion].Apply(context.Background(), env, a))
 
 	_, err = governance.GenerateMessageID(env)
-	assert.True(t, errors.Is(err, constants.ErrTxProtocolVersionUnsupported))
+	assert.ErrorIs(t, err, constants.ErrTxProtocolVersionUnsupported)
 }
 
 // TestPayloadTamperRefusesMissingPayload proves the tamper mutator fails closed
@@ -166,5 +165,5 @@ func TestPayloadTamperRefusesMissingPayload(t *testing.T) {
 	a := testAttempt(cases.FaultPayloadTampered, cases.ActionMutation)
 	env := &commonv1.GovernanceEnvelope{}
 	err := BaseMutators()[cases.FaultPayloadTampered].Apply(context.Background(), env, a)
-	assert.True(t, errors.Is(err, constants.ErrTxPayloadMissing))
+	assert.ErrorIs(t, err, constants.ErrTxPayloadMissing)
 }

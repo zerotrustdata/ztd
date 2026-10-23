@@ -77,6 +77,7 @@ func complianceReportSigningFixtureForTest(t *testing.T, scopeID string) (*compl
 }
 
 func complianceReportSigningIdentityForTest(t *testing.T) *compliancereport.ComplianceReportSigningIdentity {
+	t.Helper()
 	identity, _ := complianceReportSigningFixtureForTest(t, evidence.EvalScopeID("evidence-graph-suite"))
 	return identity
 }
@@ -487,7 +488,7 @@ func TestComplianceReportGenerateCmdWithConfig_RejectsMissingEvidenceRuns(t *tes
 	body, err := runComplianceReportGenerateCommand(t, nil)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Empty(t, body)
 }
 
@@ -495,7 +496,7 @@ func TestComplianceReportGenerateCmdWithConfig_FailsClosedOnImporterFailure(t *t
 	body, err := runComplianceReportGenerateCommand(t, []string{"missing-eval-run"})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+	require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	assert.Empty(t, body)
 }
 
@@ -527,7 +528,7 @@ func TestComplianceReportGenerateCmdWithConfig_RejectsIncompleteCampaignSource(t
 
 	err = cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, constants.ErrUnsupportedVerifier)
+	require.NotErrorIs(t, err, constants.ErrUnsupportedVerifier)
 	assert.Contains(t, err.Error(), "campaign")
 }
 
@@ -773,7 +774,7 @@ func TestComplianceReportVerifyCmdWithConfig_ReturnsFailureAfterPrintingInvalidR
 
 	err := cmd.RunE(cmd, []string{"bundle.json"})
 
-	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+	require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	assert.Contains(t, output.String(), constants.ErrChecksumMismatch.Error())
 }
 
@@ -793,7 +794,7 @@ func TestComplianceReportVerifyCmdWithConfig_PropagatesReaderCloseFailure(t *tes
 
 	err := cmd.RunE(cmd, []string{"bundle.json"})
 
-	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+	require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	assert.ErrorIs(t, err, closeErr)
 }
 
@@ -876,7 +877,7 @@ func TestNewAssessedEvidenceTrust_ValidatesEveryAssessedSigner(t *testing.T) {
 			}
 			trust, err := newAssessedEvidenceTrust(policy, "scope-1", timestamppb.New(signedAt))
 			if test.wantErr {
-				assert.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
+				require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
 				assert.Nil(t, trust)
 				return
 			}
@@ -914,7 +915,7 @@ func TestLoadComplianceReportBundleInput_RejectsMalformedAndOversizedInputs(t *t
 
 			require.Error(t, err)
 			for _, expectedErr := range test.expectedErrors {
-				assert.ErrorIs(t, err, expectedErr)
+				require.ErrorIs(t, err, expectedErr)
 			}
 			assert.Nil(t, input.bundle)
 			assert.Nil(t, input.reader)
@@ -932,7 +933,7 @@ func TestComplianceBundleRootReader_ReadFileRejectsOversizedArtifactAndPreserves
 	reader := &complianceBundleRootReader{root: root}
 
 	_, err = reader.ReadFile(context.Background(), constants.ComplianceBundleAnalysisPath)
-	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactTooLarge)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactTooLarge)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1003,7 +1004,7 @@ func TestLoadComplianceReportBundleInput_RejectsInBundleAndReusedTrustPaths(t *t
 		t.Run(test.name, func(t *testing.T) {
 			input, err := loadComplianceReportBundleInput(context.Background(), bundlePath, test.reportTrustPath, test.evidenceTrustPath)
 
-			assert.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
+			require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
 			assert.Nil(t, input.bundle)
 		})
 	}
@@ -1061,7 +1062,7 @@ func TestRecursiveDirectoryBudget_EnforcesDepthAndAggregateEntryLimits(t *testin
 				assert.ErrorIs(t, err, constants.ErrEvidenceDirectoryLimitExceeded)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.currentEntries+tt.newEntries, budget.entries)
 		})
 	}

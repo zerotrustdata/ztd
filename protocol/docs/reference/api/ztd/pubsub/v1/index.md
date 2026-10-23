@@ -27,10 +27,9 @@ The broker emits events for message delivery, subscription acknowledgments, and 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| type | [string](#string) |  | Event type: &#34;message&#34;, &#34;pmessage&#34;, &#34;subscribed&#34;, &#34;unsubscribed&#34;, or &#34;error&#34;. |
+| type | [string](#string) |  | Event type: &#34;message&#34;, &#34;subscribed&#34;, &#34;unsubscribed&#34;, or &#34;error&#34;. |
 | channel | [string](#string) |  | Channel the event pertains to. |
-| pattern | [string](#string) |  | Pattern matched for pmessage events. Empty for direct channel deliveries. |
-| data | [bytes](#bytes) |  | Message payload for message/pmessage events. Empty for acknowledgment events. |
+| data | [bytes](#bytes) |  | Message payload for message events. Empty for acknowledgment events. |
 
 
 
@@ -46,7 +45,7 @@ Clients send this message to subscribe, unsubscribe, or publish on a channel.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| action | [string](#string) |  | Operation to perform: &#34;subscribe&#34;, &#34;psubscribe&#34;, &#34;unsubscribe&#34;, or &#34;publish&#34;. |
+| action | [string](#string) |  | Operation to perform: &#34;subscribe&#34;, &#34;unsubscribe&#34;, or &#34;publish&#34;. |
 | channel | [string](#string) |  | Target channel name. Follows the convention &#34;{prefix}:{operator_id}:{session_id}&#34;. |
 | data | [bytes](#bytes) |  | Payload bytes for publish actions. Empty for subscribe/unsubscribe. |
 

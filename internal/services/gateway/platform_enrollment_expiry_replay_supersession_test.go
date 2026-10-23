@@ -55,7 +55,7 @@ func TestPlatformEnrollmentExpiry_PendingRequestExpires(t *testing.T) {
 
 	// Status query must detect the expiry and return the expired error.
 	_, err = env.enrollSvc.GetStatus(context.Background(), platformEnrollmentTestToken(t, createResp.RequestID))
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestExpired)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestExpired)
 
 	// The request must be in the expired state.
 	stored := loadStoredRequest(t, env, createResp.RequestID)
@@ -95,7 +95,7 @@ func TestPlatformEnrollmentExpiry_ApprovedRequestExpires(t *testing.T) {
 	_, err = env.enrollSvc.Complete(context.Background(), platformEnrollmentTestToken(t, createResp.RequestID), models.PlatformEnrollmentProofs{
 		App: signCompletionTranscript(t, loadStoredRequest(t, env, createResp.RequestID), key),
 	})
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestExpired)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestExpired)
 
 	// The request must be in the expired state.
 	stored := loadStoredRequest(t, env, createResp.RequestID)
@@ -134,7 +134,7 @@ func TestPlatformEnrollmentExpiry_ReplayedCompletionAfterExpiry(t *testing.T) {
 		App: signCompletionTranscript(t, stored, key),
 	}
 	_, err = env.enrollSvc.Complete(context.Background(), platformEnrollmentTestToken(t, createResp.RequestID), proof)
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestExpired)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestExpired)
 
 	// A second replay attempt is also rejected.
 	_, err = env.enrollSvc.Complete(context.Background(), platformEnrollmentTestToken(t, createResp.RequestID), proof)

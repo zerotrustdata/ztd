@@ -208,7 +208,7 @@ func TestStoreAccess_ReportsTypedPreconditionErrors(t *testing.T) {
 
 	_, err = nilStore.LoadRun(ctx, "run-1")
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-	assert.NotErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	require.NotErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
 
 	err = store.SaveRun(ctx, nil)
 	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)

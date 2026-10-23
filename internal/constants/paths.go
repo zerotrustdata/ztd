@@ -94,7 +94,6 @@ const (
 
 // System paths (Windows) for registry, hosts, and Git Bash locations.
 const (
-	PathWindowsSystemRoot                 = "SystemRoot"
 	PathWindowsHostsFile                  = "System32\\drivers\\etc\\hosts"
 	PathWindowsRegistryCryptography       = "SOFTWARE\\Microsoft\\Cryptography"
 	PathWindowsRegistryMachineGuid        = "MachineGuid"

@@ -465,15 +465,24 @@ func TestReportSuspendedTransactions_WithRecords(t *testing.T) {
 		UserID:            "user-2",
 		OperatorID:        "op-1",
 		ToolName:          "fs_write",
-		Approved:          true,
-		ApprovedBy:        "approver-1",
-		ApprovalSignature: "sig-1",
+	}))
+	require.NoError(t, sts.ClaimSuspendedTransaction(ctx, "suspend-hash-2"))
+
+	require.NoError(t, sts.StoreSuspendedTransaction(ctx, &models.SuspendedTransaction{
+		TransactionHash:   "suspend-hash-3",
+		OperatorSessionID: "operator-session-1",
+		Envelope:          []byte("env-3"),
+		CreatedAt:         now.Add(-2 * time.Hour),
+		ExpiresAt:         now.Add(-time.Hour),
+		UserID:            "user-3",
+		OperatorID:        "op-1",
+		ToolName:          "fs_read",
 	}))
 
 	outDir := testutil.TempDir(t)
 	res, err := reportSuspendedTransactions(ctx, outDir, sts)
 	require.NoError(t, err)
-	assert.Equal(t, 2, res.RowCount)
+	assert.Equal(t, 3, res.RowCount)
 
 	f, err := os.Open(filepath.Join(outDir, constants.ReportSuspendedTxFilename))
 	require.NoError(t, err)
@@ -482,11 +491,16 @@ func TestReportSuspendedTransactions_WithRecords(t *testing.T) {
 	r := csv.NewReader(f)
 	records, err := r.ReadAll()
 	require.NoError(t, err)
-	require.Len(t, records, 3, "header + 2 rows")
-	txHashes := []string{records[1][0], records[2][0]}
-	assert.ElementsMatch(t, []string{"suspend-hash-1", "suspend-hash-2"}, txHashes)
-	statuses := []string{records[1][3], records[2][3]}
-	assert.ElementsMatch(t, []string{"pending", "approved"}, statuses)
+	require.Len(t, records, 4, "header + 3 rows")
+	statuses := make(map[string]string, len(records)-1)
+	for _, record := range records[1:] {
+		statuses[record[0]] = record[3]
+	}
+	assert.Equal(t, map[string]string{
+		"suspend-hash-1": string(constants.SuspendedTxStatusPending),
+		"suspend-hash-2": string(constants.SuspendedTxStatusClaimed),
+		"suspend-hash-3": string(constants.SuspendedTxStatusExpired),
+	}, statuses)
 }
 
 func TestReportSuspendedTransactions_CancelledContext(t *testing.T) {

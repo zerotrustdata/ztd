@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ tea.Model = Model{}
+
 // --- NewModel: initial state ---
 
 func TestNewModel_InitialStep(t *testing.T) {
@@ -43,7 +45,7 @@ func TestNewModel_PublicBaseURLPreFilled(t *testing.T) {
 
 func TestNewModel_PublicBaseURLDefaultWhenEmpty(t *testing.T) {
 	m := NewModel(Options{})
-	assert.Equal(t, "", m.publicBaseURLInput.Value())
+	assert.Empty(t, m.publicBaseURLInput.Value())
 }
 
 func TestNewModel_PasskeyRpOriginPreFilled(t *testing.T) {
@@ -320,10 +322,4 @@ func TestNewTextInput_SetsWidth(t *testing.T) {
 func TestNewTextInput_SetsCharLimit(t *testing.T) {
 	ti := newTextInput("placeholder", "Label", 40)
 	assert.Equal(t, 200, ti.CharLimit)
-}
-
-// --- Model implements tea.Model ---
-
-func TestModel_ImplementsTeaModel(t *testing.T) {
-	var _ tea.Model = Model{}
 }

@@ -6,6 +6,8 @@
 
 **A model can ask, but it cannot directly act.**
 
+![ztd blocks an AI agent's attempt to truncate a protected audit log through L1 Doctrine policy enforcement.](docs/media/denied.png)
+
 ztd is a zero-trust execution and evidence platform for AI agents, human operators, and distributed target systems. It sits between reasoning engines (frontier LLMs, MCP tools, local models, autonomous loops) and the infrastructure they touch.
 
 An agent does not connect to your server, hold your ambient SSH keys, or run raw shell commands against production. Instead, intent is expressed as typed actions, gated through cryptographic policy checks, independently re-verified on the target machine, and executed under single-use capabilities with an immutable audit trail written to the host where the work actually happened.
@@ -66,6 +68,10 @@ The Gateway is the front door and protocol coordinator. It ingests intent via MC
 The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own local SQLite audit database and git file ledger.
 
 Even if the Gateway is compromised, an Operator refuses to execute any envelope whose canonical transaction hash, state Merkle root, or cryptographic proofs fail its independent verification. Delivery from the Gateway does not equal authorization.
+
+The Operator logs below trace a model provenance observation from envelope verification through capability minting, execution, capability dissolution, and the completed receipt.
+
+![Operator logs showing an end-to-end model provenance observation, including transaction verification, ledger commitment, JIT capability lifecycle, and execution receipts.](docs/media/end-to-end-transaction-operator-logs.png)
 
 ---
 

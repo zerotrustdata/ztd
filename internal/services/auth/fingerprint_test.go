@@ -280,7 +280,7 @@ func TestGetMachineIDWithPlatform_UnsupportedOS(t *testing.T) {
 
 	_, err := getMachineIDWithPlatform(testutil.NewTestLogger(), "solaris")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFingerprintUnsupportedOS)
+	require.ErrorIs(t, err, constants.ErrFingerprintUnsupportedOS)
 	assert.Contains(t, err.Error(), "solaris")
 }
 

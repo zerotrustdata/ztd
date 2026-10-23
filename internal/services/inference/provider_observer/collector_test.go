@@ -121,7 +121,7 @@ func TestCompositeCollector_Collect(t *testing.T) {
 			assert.Equal(t, test.wantGPU, sample.GetGpuUtilizationAvailability())
 			assert.Equal(t, test.wantRAM, sample.GetHostRamAvailability())
 			if test.wantGPU == evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED {
-				assert.Equal(t, test.wantGPUPercent, sample.GetGpuUtilizationPercent())
+				assert.InDelta(t, test.wantGPUPercent, sample.GetGpuUtilizationPercent(), 0)
 			}
 			if test.wantRAM == evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED {
 				assert.Equal(t, test.wantRAMUsed, sample.GetHostRamUsedBytes())

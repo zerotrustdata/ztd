@@ -1,6 +1,6 @@
 # ztd Protocol Specification
 
-Last Updated: 2026-10-22
+Last Updated: 2026-10-23
 Version: v1.3.0
 
 The **ztd Protocol** is a zero-trust execution and evidence platform for autonomous AI agents, human operators, and distributed target runtimes. It establishes a cryptographically enforced, typed wire contract that binds identity, intent, state, and governance proofs into an immutable transaction envelope (`GovernanceEnvelope`). Every mutation passing through the platform is subjected to an uncompromising 5-layer interlock sequence before execution.
@@ -12,7 +12,7 @@ The **ztd Protocol** is a zero-trust execution and evidence platform for autonom
 ## 1. Architectural Foundations
 
 ### 1.1 Wire Format and Serialization
-- **External Wire Ingress & Egress**: Canonical JSON (`protojson`) is mandatory for all client-facing and external interfaces, including HTTP REST endpoints, WebSocket pub/sub command/result channels, Server-Sent Events (SSE), and audit event receipt exports.
+- **External Wire Ingress & Egress**: Canonical JSON (`protojson`) is mandatory for all client-facing and external interfaces, including HTTP REST endpoints, WebSocket pub/sub command/result channels (`/ws/pubsub`), and Server-Sent Events (SSE).
 - **Internal Execution Substrate**: Binary Protocol Buffers (proto3) schemas defined in `protocol/proto/ztd/` serve as the single authoritative schema source. Runtimes decode canonical JSON into strongly typed protobuf messages immediately upon ingress.
 - **Fail-Closed Principle**: Any structural invalidity, missing required field, unsupported field type, expired timestamp, reused nonce, stale state root, or failed cryptographic verification immediately rejects the envelope prior to dispatch.
 
@@ -50,9 +50,9 @@ The `GovernanceEnvelope` is the universal container for all mutations in the ztd
 | `action_type` | `string` | `actionType` | Registry-derived governance action class (e.g., `EXECUTE_BASH`, `FILE_EDIT`, `MCP_CALL`). |
 | `target_resource` | `string` | `targetResource` | Specific target resource (e.g., file path, shell command, tool URI). |
 | `state_merkle_root` | `string` | `stateMerkleRoot` | Expected host ledger Merkle root at time of envelope creation. |
-| `nonce` | `string` | `nonce` | Unique UUIDv4 token for replay protection. |
+| `nonce` | `string` | `nonce` | Unique replay-protection token. The Gateway dispatch path generates 16 random bytes, hex-encoded. |
 | `transaction_hash` | `string` | `transactionHash` | Deterministic SHA-256 digest of canonical fields. |
-| `protocol_version` | `string` | `protocolVersion` | Must be `"2"` for all current ingress. |
+| `protocol_version` | `string` | `protocolVersion` | Must be `"2"` for all current ingress. L4 rejects any other value for current envelopes. |
 | `posture` | `string` | `posture` | Governance posture under which envelope was issued (`doctrine`, `consensus`, `ratify`, `notary`). |
 | `governance` | `GovernanceMetadata` | `governance` | Enclosed L1, L2, and L3 governance verification proofs. |
 | `case_id` | `string` | `caseId` | Optional tracking case identifier. |
@@ -87,7 +87,7 @@ message GovernanceMetadata {
 - Field numbers 3 and 4 are reserved, along with the names `deliberation` and `parent_transaction_hash`, so they are never reused.
 
 #### L3Metadata and L3Proof
-- `proof` (`L3Proof`): WebAuthn or CLI/mTLS proof. Exactly one proof type is populated per instance. Its fields are:
+- `proof` (`L3Proof`): WebAuthn or CLI/mTLS proof. Fields 1-4 carry WebAuthn data and fields 5-7 carry CLI approval data; the schema states that one proof type should be populated per instance. Its fields are:
   - `client_data_json` (`string`): WebAuthn client data JSON payload.
   - `authenticator_data` (`string`): WebAuthn authenticator data bytes.
   - `signature` (`string`): WebAuthn signature over challenge.
@@ -216,12 +216,12 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 #### L1 Doctrine: Technical Bedrock
 - Enforces static constraints prior to execution logic.
 - Evaluates string fields decorated with the custom protobuf option `(ztd.common.v1.forbidden_patterns)` (e.g., regex `(?i)^(sudo|su)$`).
-- Analyzes commands and arguments against active doctrine files from `protocol/constants/doctrine/` (MITRE ATT&CK patterns, injection vectors, reverse shells).
-- Enforces absolute path denylists on critical system resources for file-path payloads. Examples include `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`, and the directories `/bin/`, `/sbin/`, `/usr/bin/`, and `/usr/sbin/`.
+- Analyzes commands and arguments against built-in MITRE ATT&CK-style patterns. Additional doctrine JSON is loaded only from the directory passed to the Gateway with `--doctrine-dir` (default: none). The repository's doctrine set lives in `protocol/constants/doctrine/`.
+- For `FILE_EDIT` and file-restore requests, enforces an absolute path denylist of critical system resources. Examples include `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`, and the directories `/bin/`, `/sbin/`, `/usr/bin/`, and `/usr/sbin/`.
 
 #### L2 Consensus: Bound Consensus Provider Deliberation
 - Under `consensus` and `notary` postures, the L2 gate applies only to state-change actions: a non-bootstrap action that the action registry classifies as changing state for its target (`governance.L2Enforced`). Inference, observations, typed provider reads, and registered read-only MCP targets get no vote round. Bootstrap actions (platform enrollment) are exempt.
-- The bound consensus provider produces the votes. Provider `application` is an enrolled application's HTTPS protobuf endpoint, which returns the signed `L2Vote`. Provider `tribunal` is the Gateway-hosted Tribunal panel: each member casts its vote with its sealed Ed25519 member key, and the Gateway signs on that member's behalf.
+- The bound consensus provider produces the votes. Provider `application` posts the envelope to an enrolled application's HTTPS protobuf endpoint; the response must return the envelope with its L2 votes populated. Provider `tribunal` runs a governed INFERENCE call for each Tribunal member, and the Gateway signs that member's decision with the member's Ed25519 key.
 - Each `L2Vote` carries an Ed25519 signature over `<transaction_hash>|<decision>`. See [Consensus Architecture](../../docs/architecture/consensus.md).
 - Operator L4 Warden verifies that at least $K$ distinct, valid signatures from trusted keys in the `SignerStore` are present.
 
@@ -382,15 +382,17 @@ JSON-RPC error codes are returned on validation and governance failures. The `-3
 | `-32006` | `ErrCodeL2SignatureInvalid`| L2 Consensus signature missing, invalid, or quorum unmet. |
 | `-32007` | `ErrCodeL3ProofInvalid` | L3 Notary human proof missing or invalid. |
 | `-32008` | `ErrCodePayloadDecodeFailed`| Base64 payload cannot be decoded to expected protobuf message. |
-| `-32100` | `ErrCodeResourceNotFound` | Reserved. Defined but not emitted by the Gateway. |
-| `-32101` | `ErrCodeGatewayNotReady` | Reserved. Defined but not emitted. The Gateway returns `-32603` while not ready. |
-| `-32600` | literal in `internal/services/mcp/mcp_endpoint.go` | JSON-RPC batch request received (batches explicitly rejected), or request body over the read limit. |
-| `-32603` | `JSONRPCErrorCodeInternal` | Internal execution, downstream service error, or Gateway not ready. |
+| `-32100` | `ErrCodeResourceNotFound` | Reserved. Not referenced outside `internal/constants/rpc_errors.go`. |
+| `-32101` | `ErrCodeGatewayNotReady` | Reserved. Not referenced outside `internal/constants/rpc_errors.go`. |
+| `-32600` | literal in `internal/services/mcp/mcp_endpoint.go` and `internal/services/mcp/gateway.go` | Invalid JSON-RPC request: batch request received (batches explicitly rejected), missing or invalid JSON-RPC version or method (A2A), or request body over the read limit. |
+| `-32603` | `JSONRPCErrorCodeInternal` (`internal/constants/auth.go`) | Internal execution or downstream service error. |
 | `-32700` | `JSONRPCErrorCodeParseError` | Malformed JSON-RPC wire payload. |
 
 ---
 
 ## 9. Canonical Wire Examples
+
+The values below are illustrative. `id` and `transactionHash` are not recomputed for these fields.
 
 ### 9.1 Governed Shell Command Envelope
 
@@ -415,7 +417,7 @@ JSON-RPC error codes are returned on validation and governance failures. The `-3
     "rationale": "Scheduled system backup"
   },
   "stateMerkleRoot": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-  "nonce": "8f8682a8-a5be-4518-a6d1-4be39be49f48",
+  "nonce": "8f8682a8a5be4518a6d14be39be49f48",
   "transactionHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "protocolVersion": "2",
   "posture": "notary",

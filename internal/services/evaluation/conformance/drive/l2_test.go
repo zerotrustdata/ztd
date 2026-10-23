@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
-	"errors"
 	"testing"
 	"time"
 
@@ -272,7 +271,7 @@ func TestL2Mutators_PropagateDeliberationFailure(t *testing.T) {
 			env, a := l2Envelope(t, fault)
 			err := L2Mutators(failingL2{})[fault].Apply(context.Background(), env, a)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, constants.ErrIngressL2DeliberationFailed), "error must wrap the deliberation sentinel: %v", err)
+			assert.ErrorIs(t, err, constants.ErrIngressL2DeliberationFailed, "error must wrap the deliberation sentinel: %v", err)
 		})
 	}
 }

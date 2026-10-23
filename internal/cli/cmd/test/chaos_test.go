@@ -136,8 +136,8 @@ func TestRunChaosConfigConstruction(t *testing.T) {
 		}
 
 		assert.Equal(t, 100, cfg.Count)
-		assert.Equal(t, "", cfg.DataDir)
-		assert.Equal(t, "", cfg.PKIDir)
+		assert.Empty(t, cfg.DataDir)
+		assert.Empty(t, cfg.PKIDir)
 	})
 
 	t.Run("config uses custom count when flag is set", func(t *testing.T) {
@@ -221,14 +221,14 @@ func TestChaosFlagDefaults(t *testing.T) {
 		cmd := chaosCmd()
 		flag := cmd.Flags().Lookup("data-dir")
 		require.NotNil(t, flag)
-		assert.Equal(t, "", flag.DefValue)
+		assert.Empty(t, flag.DefValue)
 	})
 
 	t.Run("pki-dir flag default is empty string", func(t *testing.T) {
 		cmd := chaosCmd()
 		flag := cmd.Flags().Lookup("pki-dir")
 		require.NotNil(t, flag)
-		assert.Equal(t, "", flag.DefValue)
+		assert.Empty(t, flag.DefValue)
 	})
 }
 
@@ -257,12 +257,12 @@ func TestChaosPackageVariables(t *testing.T) {
 
 	t.Run("chaosDataDir is initialized to empty string", func(t *testing.T) {
 		chaosDataDir = ""
-		assert.Equal(t, "", chaosDataDir)
+		assert.Empty(t, chaosDataDir)
 	})
 
 	t.Run("chaosPKIDir is initialized to empty string", func(t *testing.T) {
 		chaosPKIDir = ""
-		assert.Equal(t, "", chaosPKIDir)
+		assert.Empty(t, chaosPKIDir)
 	})
 }
 

@@ -575,11 +575,12 @@ func verifyScaleGatewayOwnership(runDir string, ports scalePorts) error {
 // keeping the Go caches, so the scenario neither recompiles everything nor
 // needs the network.
 func scaleChildEnv(layout scaleLayout) ([]string, error) {
-	goEnv := map[string]string{}
-	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
-		value := os.Getenv(key)
+	goKeys := []constants.EnvVarKey{constants.EnvVar.GOCache, constants.EnvVar.GOModCache, constants.EnvVar.GOPath}
+	goEnv := map[constants.EnvVarKey]string{}
+	for _, key := range goKeys {
+		value := os.Getenv(string(key))
 		if value == "" {
-			out, err := exec.Command("go", "env", key).Output()
+			out, err := exec.Command("go", "env", string(key)).Output()
 			if err != nil {
 				return nil, fmt.Errorf("%w: go env %s: %w", constants.ErrScaleTestFailed, key, err)
 			}
@@ -591,7 +592,8 @@ func scaleChildEnv(layout scaleLayout) ([]string, error) {
 	for _, kv := range config.WithoutUserEnv(os.Environ()) {
 		key, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(key) {
-		case "HOME", "USERPROFILE", "GOCACHE", "GOMODCACHE", "GOPATH",
+		case string(constants.EnvVar.Home), string(constants.EnvVar.UserProfile),
+			string(constants.EnvVar.GOCache), string(constants.EnvVar.GOModCache), string(constants.EnvVar.GOPath),
 			string(constants.EnvVar.E2ERuntimeRoot), string(constants.EnvVar.E2EFleetSize), string(constants.EnvVar.E2EFleetBin), string(constants.EnvVar.E2EFleetDir), string(constants.EnvVar.E2EFleetSoak),
 			string(constants.EnvVar.E2EFleetConcurrency), string(constants.EnvVar.E2EFleetRounds), string(constants.EnvVar.E2EFleetReport), string(constants.EnvVar.E2EFleetRestartReport),
 			string(constants.EnvVar.E2EGatewayHTTPPort), string(constants.EnvVar.E2EGatewayHTTPSPort),
@@ -600,9 +602,9 @@ func scaleChildEnv(layout scaleLayout) ([]string, error) {
 		}
 		env = append(env, kv)
 	}
-	env = append(env, "HOME="+layout.Home, "USERPROFILE="+layout.Home)
-	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
-		env = append(env, key+"="+goEnv[key])
+	env = append(env, string(constants.EnvVar.Home)+"="+layout.Home, string(constants.EnvVar.UserProfile)+"="+layout.Home)
+	for _, key := range goKeys {
+		env = append(env, string(key)+"="+goEnv[key])
 	}
 	return env, nil
 }

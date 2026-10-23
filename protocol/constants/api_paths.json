@@ -7,7 +7,6 @@
   "approvals": "/api/v1/approvals",
   "approvals_by_id": "/api/v1/approvals/",
   "approvals_cli_list": "/api/v1/approvals/pending",
-  "approvals_cli_status": "/api/v1/approvals/status/",
   "approvals_prefix": "/api/v1/approvals/",
   "approvals_respond": "/api/v1/approvals/respond",
   "approvals_verify_action": "/verify",

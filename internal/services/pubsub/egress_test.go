@@ -9,7 +9,6 @@ package pubsub
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -108,7 +107,7 @@ func TestPublishLFAATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T
 
 	published := client.LastPublished()
 	require.NotNil(t, published)
-	assert.False(t, strings.Contains(string(published.Data), egressSecretEmail), "raw output must not be published")
+	assert.NotContains(t, string(published.Data), egressSecretEmail, "raw output must not be published")
 	assert.Contains(t, string(published.Data), string(constants.Event.Operator.FetchLogs.Failed))
 	assert.NotContains(t, string(published.Data), string(constants.Event.Operator.FetchLogs.Completed))
 }

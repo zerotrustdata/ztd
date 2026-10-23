@@ -11,7 +11,6 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -96,7 +95,7 @@ func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 
 			_, err := newTestDispatch(t, unreachableClient(t)).Drive(context.Background(), a)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "got %v", err)
+			assert.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported, "got %v", err)
 		})
 	}
 }
@@ -122,7 +121,7 @@ func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 
 	_, err = NewDispatch(nil, persona, testDispatchTargets())
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "nil client: %v", err)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField, "nil client: %v", err)
 }
 
 // TestDispatchDriveTransportFailureIsError checks that an unreachable Gateway

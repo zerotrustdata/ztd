@@ -1,11 +1,11 @@
 # Model Context Protocol (MCP) Integration
 
-Last Updated: 2026-10-22
+Last Updated: 2026-10-23
 Version: v1.3.0
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
 
-**Core Principle**: Unmonitored, direct tool execution is prohibited. All model actions must be governed, cryptographically signed, and recorded in the immutable audit vault.
+**Core Principle**: Unmonitored, direct tool execution is prohibited. All model actions must be governed, cryptographically signed, and recorded in the executing runtime's local audit store.
 
 ---
 
@@ -47,12 +47,12 @@ The Gateway exposes a unified MCP interface at `/mcp`:
 
 ### 1.2 Protocol Capabilities
 The `/mcp` endpoint implements the MCP Streamable HTTP specification:
-- **Protocol Negotiation**: Negotiates protocol versions during `initialize` (default: `2025-06-18`).
-- **Method Dispatch**: Supports `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`, and `a2a/call`.
+- **Protocol Version**: `initialize` echoes the protocol version the client requests. The default constant is `2025-06-18` (`mcpDefaultProtocolVersion` in `internal/services/mcp/mcp_endpoint.go`).
+- **Method Dispatch**: Supports `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`, and `a2a/call`. `a2a/call` is opt-in: it exists only when an A2A downstream is configured (`--a2a-downstream-url` on `ztd gw start`); otherwise the Gateway returns `-32601`.
 - **Batch Rejection**: In accordance with zero-trust envelope binding, JSON-RPC batch requests (array payloads) are rejected fail-closed with code `-32600`.
-- **Payload Size Limits**: Strict byte limits (`maxPayloadBytes`) are enforced on inbound requests before parsing.
-- **Request-Response Correlation**: Preserves and echoes client `id` values across all responses and errors.
-- **Server-Sent Events (SSE)**: Supports streaming notifications and long-lived connection keepalives with 30-second heartbeats.
+- **Payload Size Limits**: Byte limits (`maxPayloadBytes`) are enforced on inbound requests via `http.MaxBytesReader` before parsing.
+- **Request-Response Correlation**: Echoes the client `id` in responses to requests that parse. A request that fails to parse has no `id` to echo, so its error response carries `null`.
+- **Server-Sent Events (SSE)**: `GET /mcp` opens an SSE stream that sends one `connected` event and a `: keepalive` comment every 30 seconds. The stream does not push tool results or approval events; approval notifications reach the `ztd mcp stdio` bridge through the SSE routing described in Section 3.1.
 
 ---
 
@@ -64,39 +64,20 @@ When an MCP client requests a tool execution or resource access, the Gateway tra
 
 | MCP Method | Governance Action Type | Protobuf Payload Message | Canonical Request Event |
 |:---|:---|:---|:---|
-| `tools/call` | `MCP_CALL` | `operatorv1.McpCallRequested` | `ztd.v1.operator.mcp.call.requested` |
-| `resources/read` | `MCP_RESOURCE_READ` | `operatorv1.McpResourceReadRequested` | `ztd.v1.operator.mcp.resource.read.requested` |
-| `resources/list` | `MCP_RESOURCE_LIST` | `operatorv1.McpResourceListRequested` | `ztd.v1.operator.mcp.resource.list.requested` |
-| `prompts/get` | `MCP_PROMPT_GET` | `operatorv1.McpPromptGetRequested` | `ztd.v1.operator.mcp.prompt.get.requested` |
-| `prompts/list` | `MCP_PROMPT_LIST` | `operatorv1.McpPromptListRequested` | `ztd.v1.operator.mcp.prompt.list.requested` |
-| `a2a/call` | `A2A_CALL` | `operatorv1.A2aCallRequested` | `ztd.v1.operator.a2a.call.requested` |
+| `tools/call` | `MCP_CALL` | `ztd.operator.v1.McpCallRequested` | `ztd.v1.operator.mcp.call.requested` |
+| `resources/read` | `MCP_RESOURCE_READ` | `ztd.operator.v1.McpResourceReadRequested` | `ztd.v1.operator.mcp.resource.read.requested` |
+| `resources/list` | `MCP_RESOURCE_LIST` | `ztd.operator.v1.McpResourceListRequested` | `ztd.v1.operator.mcp.resource.list.requested` |
+| `prompts/get` | `MCP_PROMPT_GET` | `ztd.operator.v1.McpPromptGetRequested` | `ztd.v1.operator.mcp.prompt.get.requested` |
+| `prompts/list` | `MCP_PROMPT_LIST` | `ztd.operator.v1.McpPromptListRequested` | `ztd.v1.operator.mcp.prompt.list.requested` |
+| `a2a/call` | `A2A_CALL` | `ztd.operator.v1.A2aCallRequested` | `ztd.v1.operator.a2a.call.requested` |
 
-### 2.2 Protobuf Payload Schemas
+The payload messages, their fields, and their L1 forbidden-pattern annotations are defined in [`protocol/proto/ztd/operator/v1/operator.proto`](../proto/ztd/operator/v1/operator.proto). Event names are listed in `protocol/constants/events.json`; action types are generated into `internal/constants/action_types_gen.go`.
 
-#### McpCallRequested (`protocol/proto/ztd/operator/v1/operator.proto`)
-```protobuf
-message McpCallRequested {
-  string tool_name = 1 [(ztd.common.v1.forbidden_patterns) = "(?i)^(sudo|su)$,(?i)^rm[ _-]?rf[ _-]?root$,(?i)^drop[ _-]?database$"];
-  string arguments_json = 2;
-  string execution_id = 3;
-}
-```
-
-#### McpResourceReadRequested
-```protobuf
-message McpResourceReadRequested {
-  string uri = 1;
-  string execution_id = 2;
-}
-```
-
-#### McpPromptGetRequested
-```protobuf
-message McpPromptGetRequested {
-  string name = 1;
-  string execution_id = 2;
-}
-```
+### 2.2 Protobuf Payload Notes
+- `McpCallRequested.tool_name` carries an L1 forbidden-pattern annotation. The pattern list is in the proto; it is not repeated here.
+- `McpResourceReadRequested.uri` carries an L1 forbidden-pattern annotation for a private storage path prefix. The pattern is in the proto.
+- The other MCP payload messages (`McpResourceListRequested`, `McpPromptListRequested`, `McpPromptGetRequested`) declare no forbidden-pattern annotations.
+- `A2aCallRequested.skill_name` carries an L1 forbidden-pattern annotation. It applies only to the opt-in `a2a/call` path.
 
 ### 2.3 Envelope Construction & Hashing
 1. **Metadata Assignment**: The Gateway stamps `protocol_version = "2"`, mints a fresh UUIDv4 `nonce`, sets a 5-minute validity window (`expires_at`), and binds the active host `state_merkle_root`.
@@ -104,7 +85,7 @@ message McpPromptGetRequested {
 3. **Deterministic Hashing**: The canonical transaction hash is computed using the version 2 prefix:
    $$\text{canonical\_v2} = \texttt{"ztd-tx-v2|"} \,\|\, \text{action\_type} \,\|\, \texttt{"|"} \,\|\, \text{event\_type} \,\|\, \texttt{"|"} \,\|\, \text{canonical\_v1}$$
    The resulting SHA-256 digest is assigned to both `id` and `transaction_hash`.
-4. **Serialization**: The envelope is encoded as canonical JSON (`protojson`) for verification and logging.
+4. **Serialization**: The Gateway encodes the envelope with `protojson` (single-line, `Multiline: false`) as its canonical envelope wire form (`internal/services/mcp/gateway.go`).
 
 ---
 
@@ -126,8 +107,8 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
                          ▼
 ┌────────────────────────────────────────────────────────┐
 │ L2 Consensus Deliberation                              │
-│ • Under consensus/notary, state-changing calls only:   │
-│   calls the Consensus deliberator (Tribunal votes)     │
+│ • Under consensus/notary, state-changing calls only    │
+│   (governance.L2Enforced): calls L2ConsensusDeliberator│
 │ • Gathers K-of-N Ed25519 signatures over tx_hash       │
 └────────────────────────┬───────────────────────────────┘
                          │ PASS
@@ -138,14 +119,14 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
 │   → Transaction is SUSPENDED (TTL = 2 minutes)         │
 │   → Approval URL returned to calling agent             │
 │   → Human authorizes via WebAuthn passkey              │
-│   → Real-time approval.completed delivered via SSE     │
+│   → approval.completed sent to the submitting session  │
 └────────────────────────┬───────────────────────────────┘
                          │ PASS
                          ▼
 ┌────────────────────────────────────────────────────────┐
 │ L4 Warden Pre-Dispatch                                 │
-│ • Reserves nonce in durable replay store               │
-│ • Validates state Merkle root against host ledger      │
+│ • Reserves the nonce (replay store, in-flight tracking)│
+│ • Verifies the envelope (L4Warden.VerifyEnvelope)      │
 │ • Recomputes transaction hash (id == SHA256(canonical))│
 └────────────────────────┬───────────────────────────────┘
                          │ PASS
@@ -154,16 +135,16 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
 │ L5 Actuator Boundary Execution                         │
 │ • Mints scoped JIT execution capability                │
 │ • Invokes native handler OR forwards to downstream     │
-│ • Scrubs secrets & tokens from output at host boundary │
-│ • Signs canonical ActionReceipt & appends to ledger    │
+│ • Scrubs secrets & tokens from tool results            │
+│ • Signs ActionReceipt & appends to ledger              │
 └────────────────────────────────────────────────────────┘
 ```
 
 ### 3.1 L3 Suspension Lifecycle
 When an MCP tool call requires human authorization under `ratify` or `notary` postures and no pre-existing L3 proof is attached, the Gateway suspends the call:
-1. The transaction is saved in the `SuspendedTransactionStore` with an immutable 2-minute deadline (`ApprovalRequestTTL`).
-2. The Gateway records the caller's session ID (`submitter_cli_session_id`) to ensure isolation.
-3. The Gateway responds to the MCP client with a `CallToolResult` whose `suspension` field holds the typed `GovernedSuspension` (`internal/services/mcp/models.go`). The approval URL is the public base URL joined with `/api/v1/approve/` and the transaction hash:
+1. The transaction is saved in the `SuspendedTransactionStore` with a 2-minute deadline (`ApprovalRequestTTL`, `internal/services/mcp/gateway.go`).
+2. The Gateway records the submitting CLI session ID (`SubmitterCLISessionID`, stored as `submitter_cli_session_id`) so that approval notifications are scoped to that session.
+3. The Gateway responds to the MCP client with a `CallToolResult` whose `suspension` field holds the typed `GovernedSuspension` (`internal/services/mcp/models.go`). The approval URL is the public base URL joined with `/api/v1/approve/` and the transaction hash. In the response, `id` and `tx_hash` both carry the transaction hash, and `status` is `suspended`:
    ```json
    {
      "jsonrpc": "2.0",
@@ -186,13 +167,13 @@ When an MCP tool call requires human authorization under `ratify` or `notary` po
    }
    ```
    The example abbreviates `text` and `message`. The full message also says the approval window is intentionally short, and that a lapsed request is voided, so the caller must call the tool again to open a fresh approval request.
-4. Once the human completes the passkey assertion, the Gateway emits an `approval.completed` SSE event scoped strictly to the submitting session. The agent retries the call to execute.
+4. Once the human completes the passkey assertion, the Gateway emits an `approval.completed` SSE event to the submitting CLI session (`EmitApprovalCompletedSSE` in `internal/services/gateway/passkey_orchestrator.go`). The `ztd mcp stdio` bridge subscribes to this event. The `GET /mcp` stream does not carry it. The agent retries the call to execute.
 
 ---
 
 ## 4. Native Tools
 
-Native tools are registered explicitly in `RegisterNativeTools()` (`internal/services/mcp/native_tool_registry.go`). They execute inside the Operator's host boundary without downstream dependencies. To list the live set, call the MCP `tools/list` method on `/mcp` from any MCP client; no `ztd mcp` subcommand lists tools. Audit-read tool semantics are documented in the [AI Agents and Governance Boundary](../../docs/architecture/agents.md) architecture document.
+Native tools are registered explicitly in `RegisterNativeTools()` (`internal/services/mcp/native_tool_registry.go`). They run in-process within the Operator's host boundary. To list the live set, call the MCP `tools/list` method on `/mcp` from any MCP client; no `ztd mcp` subcommand lists tools. Audit-trail querying is described in the [AI Agents and Governance Boundary](../../docs/architecture/agents.md) architecture document.
 
 ---
 
@@ -200,15 +181,15 @@ Native tools are registered explicitly in `RegisterNativeTools()` (`internal/ser
 
 ### 5.1 Input Validation Framework (`internal/services/mcp/validation.go`)
 Before any MCP payload is converted into a `GovernanceEnvelope`, it must pass fail-closed structural validation:
-- **SQL Sanitization**: `db_isolated_read` and `db_query_validate` accept only queries that begin with `SELECT`. `validateSQLQuery` (`internal/services/mcp/validation.go`) rejects a query with a trailing semicolon.
-- **SSRF Prevention**: `validateHTTPRequestURL` (`internal/services/mcp/validation.go`) accepts only `http` and `https` URLs with a host. When the host is an IP literal or `localhost`, it rejects loopback, private, and link-local addresses unless they are on the private allowlist.
-- **Path Traversal Guards**: All filesystem tools pass paths through `security.ValidatePath` to prevent directory traversal and symlink escapes.
-- **Dangerous Command Denylist**: `run_shell_command` takes one executable name with an argv array and runs it without a shell. It rejects base commands and command-line patterns listed in `internal/constants/shell.go` (`DangerousCommands`, `DangerousPatterns`), plus shell-injection patterns from the same file.
+- **SQL Sanitization**: `db_isolated_read` and `db_query_validate` accept only queries that begin with `SELECT`. `validateSQLQuery` rejects an empty query and a query that ends with a semicolon.
+- **SSRF Prevention**: `validateHTTPRequestURL` (`internal/services/mcp/validation.go`, used by the HTTP probe tool) accepts only `http` and `https` URLs with a host. When the host is an IP literal or `localhost`, it rejects loopback, private, and link-local addresses unless they are on the private allowlist.
+- **Path Traversal Guards**: Path-taking tools apply their own checks. Some call `security.ValidatePath` (`internal/security/path.go`); file reads also check `security.IsSensitiveReadPath`. Individual tools determine which check applies.
+- **Dangerous Command Denylist**: `run_shell_command` takes one executable name with an argv array and runs it without a shell. It rejects base commands and command-line patterns listed in `internal/constants/shell.go` (`DangerousCommands`, `DangerousPatterns`), plus shell-injection patterns from the same file. A command line that contains spaces is rejected with a hint to send the argv form.
 
 ### 5.2 Sovereign Output Scrubbing
-The host-side Operator executes output scrubbing (`ScrubbingService`) immediately at the L5 Actuator boundary. Before results leave the host:
-- API keys, bearer tokens, private keys, passwords, and cloud credentials in stdout/stderr are redacted.
-- Redacted strings are replaced with tokens of the form `{{UEI_<owner>_<N>}}`, where `<owner>` is the minting runtime's hex namespace. Only the runtime that minted a token rehydrates it. The token format is defined in `internal/services/scrubbing/boundary.go`.
+The Gateway scrubs tool results before they leave the dispatch layer. `scrubToolResult` (`internal/services/mcp/gateway.go`) runs on results from native tools, `read_field`, and downstream output, and fails closed when the scrubber is nil or disabled. The scrubbing patterns in `internal/services/scrubbing/boundary.go` include API keys, bearer tokens, private key blocks, and credentials embedded in URLs.
+- Redacted strings are replaced with tokens of the form `{{UEI_<owner>_<N>}}`, where `<owner>` is the minting runtime's 12-character hex namespace.
+- Rehydration checks token ownership (`ownsToken`). Tokens minted by another runtime are foreign and are handled by a `ForeignTokenPolicy`.
 
 ---
 
@@ -217,19 +198,22 @@ The host-side Operator executes output scrubbing (`ScrubbingService`) immediatel
 The Gateway can forward tool discovery and execution to external third-party MCP servers while maintaining complete L1–L5 governance.
 
 ### 6.1 Downstream Configuration
-- **Subprocess Downstream (stdio)**: Configured via `--mcp-downstream-cmd` and `--mcp-downstream-args`.
-- **HTTP Downstream**: Configured via `--mcp-downstream-url`.
+Configure downstream servers on `ztd gw start`:
+- **Subprocess Downstream (stdio)**: `--mcp-downstream-cmd` with `--mcp-downstream-args` (comma-separated).
+- **HTTP Downstream**: `--mcp-downstream-url`.
+
+Run `ztd gw start --help` for the flag descriptions and defaults.
 
 ### 6.2 Discovery Proxying
 When a downstream server is configured:
-- `tools/list` returns the schemas defined by the downstream server.
+- `tools/list` merges the downstream server's tools with the native tools.
 - `prompts/list` and `resources/list` query the downstream server directly.
 - Invocations of downstream tools are packaged into standard `GovernanceEnvelope`s and pass through all governance gates before downstream transmission.
 
 ### 6.3 Shared Circuit Breaker
-Downstream connections are protected by a stateful circuit breaker:
-- **Trip Threshold**: 5 consecutive network or 5xx HTTP errors open the circuit.
-- **Cooldown Window**: 1 minute in the open state before transitioning to half-open.
+Downstream connections (MCP and A2A share the same breaker) are protected by a stateful circuit breaker:
+- **Trip Threshold**: 5 consecutive failures open the circuit. Failures are transport errors and HTTP 5xx responses from the downstream.
+- **Cooldown Window**: 1 minute in the open state. After the cooldown, the next request is attempted (half-open); a success closes the circuit, and a failure reopens it.
 - **Fail-Closed Behavior**: Requests received while the circuit is open are rejected immediately with code `-32603` (`ErrGatewayDownstreamUnavailable`).
 
 ---
@@ -256,10 +240,10 @@ Verification failures map to JSON-RPC 2.0 error codes. Verification codes are de
 
 | JSON-RPC Code | Constant | Cause |
 |:---|:---|:---|
-| `-32700` | `JSONRPCErrorCodeParseError` | Malformed JSON received on ingress |
-| `-32600` | literal | Batch requests, invalid `jsonrpc` version, or payload exceeding size limit |
-| `-32601` | literal | Unrecognized MCP method |
-| `-32603` | `JSONRPCErrorCodeInternal` | Missing `tool_name`, Gateway not ready, internal error, or circuit breaker open |
+| `-32700` | `JSONRPCErrorCodeParseError` | Request body is not valid JSON |
+| `-32600` | literal | Batch requests, invalid `jsonrpc` version, missing `method`, or payload exceeding size limit |
+| `-32601` | literal | Unrecognized MCP method, or `a2a/call` without a configured A2A downstream |
+| `-32603` | `JSONRPCErrorCodeInternal` | Missing `tool_name`, Gateway not ready, body read failure, internal error, or circuit breaker open |
 | `-32000` | `ErrCodeInvalidEnvelope` | Malformed envelope or unregistered action |
 | `-32001` | `ErrCodeHashMismatch` | Transaction hash recomputation failed |
 | `-32002` | `ErrCodeExpired` | Transaction expired |

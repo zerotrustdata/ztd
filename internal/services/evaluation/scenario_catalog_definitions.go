@@ -15,7 +15,7 @@ import (
 )
 
 const scenarioVersion = "1.4.0"
-const finalResponseDiagnosisScenarioVersion = "1.6.0"
+const finalResponseDiagnosisScenarioVersion = "1.7.0"
 const routeLiteTriageScenarioVersion = "1.5.0"
 const securityDenialMemoryScenarioVersion = "1.5.0"
 
@@ -27,7 +27,7 @@ const (
 	toolSelectGrepScenarioVersion           = "1.5.0"
 	toolArgGrepPatternScenarioVersion       = "1.5.0"
 	toolArgShellCommandScenarioVersion      = "1.5.0"
-	recoveryToolFailureScenarioVersion      = "1.5.0"
+	recoveryToolFailureScenarioVersion      = "1.6.0"
 	recoveryErrorGuidedRetryScenarioVersion = "1.5.0"
 )
 
@@ -999,7 +999,7 @@ func recoveryToolFailure() ScenarioBlueprint {
 		"Heterogeneous lane verifies recovery handling in the system pipeline.",
 		[]string{"model_inference", "tool_call", "recovery"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"not found", "does not exist", "doesn't exist", "missing", "unavailable", "no such file"}}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"not found", "could not be found", "does not exist", "doesn't exist", "missing", "unavailable", "no such file", "not present"}}}
 	gold.PromptHint = hint([]string{constants.MCPToolReadFile},
 		hintArg(constants.MCPToolReadFile, "path", sourceWorkspace, ScenarioWorkspaceToken+"/deploy/deployment-status.txt"),
 	)
@@ -1020,7 +1020,7 @@ func recoveryToolFailure() ScenarioBlueprint {
 		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"recovery", "missing-resource"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Read " + ScenarioWorkspaceToken + "/deploy/deployment-status.txt. If the file is unavailable, report the failure and suggest the next safe read-only check.",
+			UserPrompt: "Read " + ScenarioWorkspaceToken + "/deploy/deployment-status.txt using read_file. Do not use run_shell_command. If the file is unavailable, report the failure and suggest the next safe read-only check without executing that follow-up.",
 			// The target file is deliberately absent.
 			WorkspaceFiles: []ScenarioWorkspaceFile{
 				workspaceFile("release-notes", "deploy/release-notes.txt", "v2.2.6 rollout started 08:00", false),
@@ -1078,7 +1078,7 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 	// as an ungradable empty contract.
 	gold.ContentCheck = &ScenarioContentCheck{
 		RequiredTerms:   [][]string{{"checkout-api"}},
-		DiagnosisRubric: ScenarioDiagnosisRubricCheckoutTimeoutV3,
+		DiagnosisRubric: ScenarioDiagnosisRubricCheckoutTimeoutV4,
 	}
 	gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
 		{

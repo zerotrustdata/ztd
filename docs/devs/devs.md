@@ -3,8 +3,8 @@ doc_id: devs
 title: Developer Guidelines
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - go.mod
   - Makefile
@@ -96,7 +96,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-ENV-01 | The Go toolchain MUST satisfy the `go` line in `go.mod` (Go 1.27.3). Setup scripts read that line and check the development toolchain, including Node.js 22.22.2+, 24.15+, or 26+ and `npm`; a fresh `make build` uses committed frontend embeds and does not require Node.js. |
 | INV-ENV-02 | Commands in this guide MUST be run from the repository root unless the owning component guide specifies otherwise. |
 | INV-ENV-03 | CLI behavior MUST be taken from `./ztd <command> --help`. This file MUST NOT grow a flag inventory. |
-| INV-ENV-04 | Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, which assigns each key one of four categories: `secret` (API keys, tokens, client secrets, encryption keys), `user_endpoint` (user-specific endpoint or identity with no universal default), `host` (OS-provided host fact, e.g. `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`, `SSH_AUTH_SOCK`), and `test` (test-harness selector read only by test tooling, e.g. `ZTD_E2E_FLEET_SESSIONS`). Platform configuration (ports, paths, passkey origins, consensus, doctrine, vault paths) is never read from environment variables; it is a typed default in code or an explicit command flag. Every env key MUST be declared with a `category` in `protocol/constants/env_vars.json`; raw-string keys outside the registry are prohibited (`INV-TYPE-06`). Every `./ztd` command that passes the root `PersistentPreRunE` (`internal/cli/cmd/main.go`) loads `.env` (`constants.EnvFilename`) from the working directory, the repository root per `INV-ENV-02`, through `config.LoadEnvFile` (`internal/cli/config/env_file.go`). The load runs after the root pre-run's endpoint and launch-profile gates and before the command's run, so a command refused by those gates never sees the file. `--help`, `--version`, and flag-parse errors do not reach the pre-run and load nothing. A missing file loads nothing; on Linux and macOS the file MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`); only `KEY=VALUE` lines naming `secret` and `user_endpoint` keys are accepted (`ErrEnvFileMalformed`, `ErrEnvFileUnknownKey`); any violation exits the command; an exported variable wins. Repo-root `.env.example` is verified by `make constants-check`. |
+| INV-ENV-04 | Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, which assigns each key one of four categories: `secret` (API keys, tokens, client secrets, encryption keys), `user_endpoint` (user-specific endpoint or identity with no universal default), `host` (OS-provided host fact, e.g. `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`, `SSH_AUTH_SOCK`), and `test` (test-harness selector read only by test tooling, e.g. `ZTD_E2E_FLEET_SESSIONS`). Platform configuration (ports, paths, passkey origins, consensus, doctrine, vault paths) is never read from environment variables; it is a typed default in code or an explicit command flag. Every env key MUST be declared with a `category` in `protocol/constants/env_vars.json`; raw-string keys outside the registry are prohibited (`INV-TYPE-06`). Every `./ztd` command that passes the root `PersistentPreRunE` (`internal/cli/cmd/main.go`) loads `.env` (`constants.EnvFilename`) from the working directory, the repository root per `INV-ENV-02`, through `config.LoadEnvFile` (`internal/cli/config/env_file.go`). The load is the last step of the root pre-run, after endpoint and port flag handling and launch-profile port recording, and before the command's run; a pre-run error returned earlier means the file is not loaded. `--help`, `--version`, and flag-parse errors do not reach the pre-run and load nothing. A missing file loads nothing; on POSIX systems the file MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`); only `KEY=VALUE` lines naming `secret` and `user_endpoint` keys are accepted (`ErrEnvFileMalformed`, `ErrEnvFileUnknownKey`); any violation exits the command; an exported variable wins. Repo-root `.env.example` is verified by `make constants-check`. |
 
 ### CLI layout (`INV-CLI`)
 
@@ -161,7 +161,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-FS-08 | A command constructor under `internal/cli/cmd/<group>/` that touches runtime state MUST accept a file-service factory. Factory initialization failure MUST wrap `constants.ErrFileServiceInit` and preserve the underlying error. Every new factory injection point MUST have a matching case in `internal/cli/cmd/<group>/factory_error_<group>_test.go` proving downstream dependencies are not called. |
 | INV-FS-09 | Tests MUST use `testutil.TempDir` and `testutil.TestPaths` for isolated roots. `testutil.TempDir` returns an absolute base directory. Pass that directory to `fs.NewRuntimeFileService` and `paths.InitWithBase`. MUST NOT append `.ztd` manually. |
 | INV-FS-10 | A command that clears the runtime root MUST call `fileSvc.ArchiveRuntime`, which renames `.ztd/` to `.ztd-<MMDDHHMM>`. MUST NOT call `RemoveAll("")` on the runtime root. Destructive `clean` or `reset` commands MUST gate on `shared.ConfirmDestructive` before mutating state. |
-| INV-FS-11 | Every scratch directory or file MUST live under `.ztd/tmp/` (`constants.TmpDirname`), created with `fileSvc.MkdirTemp`. Throwaway local Operators live under `.ztd/operators/<name>` (`constants.OperatorsDirname`), the `ztd operator deploy --local` default. Remote staging over SSH uses `.ztd/tmp/` under the login directory (`ssh.MkdirRemoteScratch`). MUST NOT stage anything in the OS temp directory (`/tmp`, `%TEMP%`, `os.TempDir`, `os.MkdirTemp("")`) or the user's home directory. Tests use `testutil.TempDir(t)`; `make lint` rejects `os.TempDir`, `t.TempDir`, and empty-dir `os.MkdirTemp`/`os.CreateTemp`. |
+| INV-FS-11 | Every scratch directory or file MUST live under `.ztd/tmp/` (`constants.TmpDirname`), created with `fileSvc.MkdirTemp`. Throwaway local Operators live under `.ztd/operators/<name>` (`constants.OperatorsDirname`); `ztd operator deploy --local` defaults to `op-NNNNN` names. Remote staging over SSH uses `.ztd/tmp/` under the login directory (`ssh.MkdirRemoteScratch`). MUST NOT stage anything in the OS temp directory (`/tmp`, `%TEMP%`, `os.TempDir`, `os.MkdirTemp("")`) or the user's home directory. Tests use `testutil.TempDir(t)`; `make lint` rejects `os.TempDir`, `TempDir` on `t`, `b`, `tb`, or `f` (forbidigo in `.golangci.yml`), and empty-dir `os.MkdirTemp`/`os.CreateTemp` (`lint` target in `Makefile`). |
 
 Consumers pass relative paths from `internal/constants/paths.go` into `ReadFile`, `WriteFile`, `Stat`, `FileExists`, `ReadDir`, `Rename`, `Remove`, `RemoveAll`, and other `RuntimeFileService` methods. Startup constructs the service and calls `CreateRuntimeTree` (`internal/cli/serve/gateway.go`, `internal/cli/serve/operator_runtime.go`).
 
@@ -218,7 +218,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | Root `README.md` | Handwritten product overview | Re-read changed sections, verify links, and run every command described |
 | Go, TypeScript, and Markdown protobuf output | `protocol/proto/ztd/` | `make proto-generate` (runs `proto-go` and `proto-node`) plus affected conformance tests |
 | Gateway OpenAPI | Swagger annotations in Go owners | `make swagger-generate` plus route and contract tests |
-| Website | Root `README.md` | `make website-test` and `make website-build` |
+| Website | `website/src/index.html`, `website/content/`, root `README.md`, and `docs/release_notes/` (rendered by `website/src/release-notes.js`) | `make website-test` and `make website-build`; never hand-edit `website/dist/` |
 | Doctrine references | `protocol/constants/doctrine/` | `make doctrines-validate` |
 
 ### Doctrine (`INV-DOCTRINE`)
@@ -233,7 +233,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 
 | ID | Rule |
 | :--- | :--- |
-| INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host: the Gateway's embedded Operator, or an outbound Operator's `mcp.NewOperatorNativeToolHandler`. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
+| INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host, which `OperatorPubSubService` builds with `mcp.NewOperatorNativeToolHandler` (`internal/services/pubsub/pubsub_commands.go`) using the Gateway's embedded Operator ID in gateway mode and the Operator's own ID otherwise. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
 | INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
 | INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
@@ -251,14 +251,14 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
 | Go version and module | `go.mod` | `go` directive is `1.27.3` |
-| Setup prerequisites | `scripts/lib/dev-setup-common.sh`, `scripts/linux-setup.sh`, `scripts/macos-setup.sh`, `scripts/windows-setup.ps1`, `scripts/dev-check.sh` | Setup scripts read Go version from `go.mod` and tool pins from `Makefile`; development checks include Node.js 22.22.2+, 24.15+, or 26+ and `npm`. CI targets run `make dev-check` first. Fresh clones run `make build` using committed frontend embeds. |
+| Setup prerequisites | `scripts/lib/dev-setup-common.sh`, `scripts/linux-setup.sh`, `scripts/macos-setup.sh`, `scripts/windows-setup.ps1`, `scripts/dev-check.sh` | Setup scripts read Go version from `go.mod` and tool pins from `Makefile`; development checks include Node.js 22.22.2+, 24.15+, or 26+ and `npm`. `make ci` and `make ci-platform` depend on `make dev-check`. Fresh clones run `make build` using committed frontend embeds. |
 | Platform CLI binary | `Makefile` (`MAIN_PKG := ./cmd/ztd`), `cmd/ztd` | `make build` writes `bin/ztd-<os>-<arch>` and copies runnable binary to repo root |
 | Cobra root and groups | `internal/cli/cmd/main.go`, `internal/cli/cmd/<group>/` | `./ztd --help` |
 | Sentinel errors | `internal/constants/errors.go` | `constants.Err*` declarations, including `ErrFileServiceInit` |
 | Runtime path constants | `internal/constants/paths.go` | Path strings for `.ztd/` runtime state |
 | `.ztd/` file service | `internal/services/fs/file_service.go` | `RuntimeFileService`, `NewRuntimeFileService`, `CreateRuntimeTree` |
 | Trust bundle path | `internal/cli/config/config.go` | `.ztd/pki/trust/ztdg-ca-bundle.pem` |
-| Repo-root `.env` loader | `internal/cli/config/env_file.go`, `internal/cli/cmd/main.go` | `config.LoadEnvFile(constants.EnvFilename)` in the root `PersistentPreRunE` (`NewRootCmd`), after the launch-profile gates; accepted keys are `constants.SecretEnvVars` and `constants.UserEndpointEnvVars` |
+| Repo-root `.env` loader | `internal/cli/config/env_file.go`, `internal/cli/cmd/main.go` | `config.LoadEnvFile(constants.EnvFilename)` in the root `PersistentPreRunE` (`NewRootCmd`), as its last step after endpoint and launch-profile port handling; accepted keys are `constants.SecretEnvVars` and `constants.UserEndpointEnvVars` |
 | Mode dependency types | `internal/services/pubsub/mode_deps.go` | `GovernanceCoreDeps`, `GatewayModeDeps`, `OutboundModeDeps`, `NewOutboundModeDeps`, `NewGatewayModeDeps` |
 | Outbound construction | `internal/services/ztdo.go` | Calls `pubsub.NewOutboundModeDeps` |
 | Gateway builder | `internal/services/gateway/gateway_service.go` | Direct `GatewayModeDeps` composite, then `NewGatewayOperatorPubSubService`, `mcp.NewGatewayService`, `BindMCPGateway`, `NewPlatformEnrollmentService`, `initHTTPHandler` |
@@ -317,9 +317,9 @@ make lint
 2. After stores exist, and before `InitializePKI` or `InitializePKIWithNames`, construct in-process substrate with `embedded.New` and `RegisterPending`.
 3. Load L1 doctrine with `NewL1DoctrineFromDir`, then configure posture-required L2 consensus store.
 4. Construct gateway-mode `OperatorPubSubService` with governance and platform-enrollment dependencies. The builder assigns `GatewayModeDeps` directly (`INV-DEP-03`).
-5. Construct `mcp.GatewayService` with command service as envelope processor and session validator, supplying audit and L2 dependencies at construction.
+5. Construct `mcp.GatewayService` with the command service as `EnvProc`, `auth` as `SessionValidator`, and the audit store and L2 deliberator in its `Dependencies`.
 6. Call `OperatorPubSubService.BindMCPGateway` once before either service starts (`INV-DEP-04`).
-7. Construct `PlatformEnrollmentService` with command service as envelope processor and the MCP gateway, which it requires at construction.
+7. Construct `PlatformEnrollmentService` with the command service as envelope processor, the MCP gateway as its L3 suspender, and the embedded Operator as runtime identity.
 8. Build HTTP handler and servers after all controller dependencies exist.
 
 ### Add a native MCP tool

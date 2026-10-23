@@ -197,7 +197,7 @@ func TestCampaignsCreate_RequiresSelection(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "create", "eval-a")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
+	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 
 	_, err = env.run(t, "campaigns")
 	require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestCampaignsCreate_RejectsEmptyRegistry(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "--all")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
+	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 	assert.Contains(t, err.Error(), "registry is empty")
 }
 
@@ -273,6 +273,57 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	assert.Equal(t, campaignLaneSystem, show.Lane)
 	assert.Equal(t, 1, show.StackCount)
 	assert.Equal(t, payload.CellsPerRun, show.CellsPer)
+}
+
+func TestCampaignsCreate_UsesProjectFormationOverlay(t *testing.T) {
+	for _, change := range []string{"add", "replace", "remove"} {
+		t.Run(change, func(t *testing.T) {
+			env := newStoreRunEnv(t)
+			variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('a') })
+			writeTestFrozenInventory(t, env.root, variants...)
+			defaults, err := evaluation.NewExecutionTopologies()
+			require.NoError(t, err)
+			formation, err := defaults.Formation("gemma-cascade")
+			require.NoError(t, err)
+			formation.ID = "ultra-efficient-speedster"
+			overlay := &evaluation.FormationCatalogOverlay{}
+			switch change {
+			case "add":
+				formation.ID = "project-formation"
+				overlay.Formations = []evaluation.Formation{formation}
+			case "replace":
+				overlay.Formations = []evaluation.Formation{formation}
+			case "remove":
+				overlay.RemovedFormationIDs = []string{formation.ID}
+			}
+			require.NoError(t, newFormationCatalog(env.root).save(overlay))
+			var listed formationListJSON
+			require.NoError(t, env.runJSON(t, &listed, "formations", "list"))
+			var ids []string
+			for _, entry := range listed.Formations {
+				ids = append(ids, entry.ID)
+			}
+			_, err = env.run(t, "campaigns", "create", "eval-overlay", "--formations", formation.ID)
+			if change == "remove" {
+				assert.NotContains(t, ids, formation.ID)
+				require.ErrorIs(t, err, constants.ErrFormationInvalid)
+				return
+			}
+			assert.Contains(t, ids, formation.ID)
+			require.NoError(t, err)
+			set, err := env.store(t).LoadHeterogeneousStackSet(context.Background(), "eval-overlay")
+			require.NoError(t, err)
+			require.Len(t, set.Stacks, 1)
+			assert.Equal(t, formation.ID, set.Stacks[0].GetStackId())
+			spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-overlay")
+			require.NoError(t, err)
+			bound, err := evaluation.BindFormation(evaluation.FormationBindingRequest{Stack: set.Stacks[0], Variants: spec.GetModelRegistry()})
+			require.NoError(t, err)
+			assert.Equal(t, formation.Primary.ServedModelTag, bound.Primary.ServedModelTag)
+			assert.Equal(t, formation.Assistant.ServedModelTag, bound.Assistant.ServedModelTag)
+			assert.Equal(t, formation.Lite.ServedModelTag, bound.Lite.ServedModelTag)
+		})
+	}
 }
 
 func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t *testing.T) {
@@ -421,7 +472,7 @@ func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "create", "eval-many", "--all")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid)
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid)
 
 	_, err = env.run(t, "campaigns", "show", "eval-many")
 	require.Error(t, err, "a rejected create must not persist the campaign")

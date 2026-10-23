@@ -43,10 +43,6 @@ func (s *stubSuspendedTransactionStore) ListSuspendedTransactions(_ context.Cont
 	return s.txs, s.listErr
 }
 
-func (s *stubSuspendedTransactionStore) ApproveSuspendedTransaction(_ context.Context, _ string, _ models.ApprovalProof) error {
-	return nil
-}
-
 func (s *stubSuspendedTransactionStore) DeleteSuspendedTransaction(_ context.Context, _ string) error {
 	return nil
 }

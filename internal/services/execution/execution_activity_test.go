@@ -171,6 +171,7 @@ func TestExecutionService_ExecuteCommand_ShellSemantics(t *testing.T) {
 			id:     "shell-semantics-glob",
 			script: `echo *.conf`,
 			setup: func(t *testing.T, dir string) {
+				t.Helper()
 				for _, name := range []string{"a.conf", "b.conf", "c.txt"} {
 					require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, constants.PermFilePrivate))
 				}

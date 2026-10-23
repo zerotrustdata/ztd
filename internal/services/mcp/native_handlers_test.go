@@ -52,7 +52,7 @@ func TestNewNativeToolHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, handler)
 		require.NotNil(t, handler.registry)
-		require.Greater(t, len(handler.ListTools()), 0)
+		require.NotEmpty(t, handler.ListTools())
 	})
 
 	t.Run("with logger", func(t *testing.T) {
@@ -603,30 +603,39 @@ func TestHandleDBIndexTriage(t *testing.T) {
 }
 
 func TestHandleSysOOMDetect(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("skipping on non-Linux - dmesg/proc not available")
-	}
-
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
-	t.Run("default log path", func(t *testing.T) {
-		req := SysOOMDetectRequest{}
-		reqJSON, _ := json.Marshal(req)
+	t.Run("explicit log reports the killed process", func(t *testing.T) {
+		logPath := filepath.Join(testutil.TempDir(t), "dmesg")
+		require.NoError(t, os.WriteFile(logPath, []byte("[ 1235.123456] oom-killer: killed process 5678 (worker) pid=5678 process worker 512 MB\n"), 0o644))
+		reqJSON, err := json.Marshal(SysOOMDetectRequest{LogPath: logPath})
+		require.NoError(t, err)
 
-		result, err := handler.HandleTool(context.Background(), "sys_oom_detect", reqJSON)
-		if err != nil {
-			t.Fatalf("HandleTool failed: %v", err)
-		}
+		result, err := handler.HandleTool(testutil.Context(t), "sys_oom_detect", reqJSON)
+		require.NoError(t, err)
+		require.NotEmpty(t, result.Content)
 
 		var oomResult SysOOMDetectResult
-		if err := json.Unmarshal([]byte(result.Content[0].Text), &oomResult); err != nil {
-			t.Fatalf("failed to unmarshal result: %v", err)
-		}
+		require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &oomResult))
+		require.Len(t, oomResult.Events, 1)
+		require.Equal(t, 5678, oomResult.Events[0].PID)
+		require.Equal(t, "worker", oomResult.Events[0].Process)
+		require.Equal(t, 512, oomResult.Events[0].MemoryMB)
+	})
 
-		if oomResult.Events == nil {
-			oomResult.Events = []OOMEvent{}
+	t.Run("missing default log fails closed", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("the default log path is the Linux dmesg file")
 		}
+		if _, err := os.Stat(constants.PathVarLogDmesg); err == nil {
+			t.Skip("host dmesg is present; the explicit log_path case covers the handler")
+		}
+		reqJSON, err := json.Marshal(SysOOMDetectRequest{})
+		require.NoError(t, err)
+
+		_, err = handler.HandleTool(testutil.Context(t), "sys_oom_detect", reqJSON)
+		require.ErrorIs(t, err, constants.ErrMCPOpenLogFile)
 	})
 }
 

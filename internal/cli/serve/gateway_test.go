@@ -26,19 +26,19 @@ func TestGatewayConfig_ZeroValue(t *testing.T) {
 	assert.Equal(t, constants.Posture(""), cfg.Posture)
 	assert.Equal(t, 0, cfg.HTTPPort)
 	assert.Equal(t, 0, cfg.HTTPSPort)
-	assert.Equal(t, "", cfg.DataDir)
-	assert.Equal(t, "", cfg.PKIDir)
-	assert.Equal(t, "", cfg.SecretsDir)
-	assert.Equal(t, "", cfg.VaultDir)
-	assert.Equal(t, "", cfg.PasskeyRpID)
-	assert.Equal(t, "", cfg.PasskeyRpName)
-	assert.Equal(t, float64(0), cfg.RateLimitRPS)
+	assert.Empty(t, cfg.DataDir)
+	assert.Empty(t, cfg.PKIDir)
+	assert.Empty(t, cfg.SecretsDir)
+	assert.Empty(t, cfg.VaultDir)
+	assert.Empty(t, cfg.PasskeyRpID)
+	assert.Empty(t, cfg.PasskeyRpName)
+	assert.InDelta(t, float64(0), cfg.RateLimitRPS, 0)
 	assert.Equal(t, 0, cfg.RateLimitBurst)
-	assert.Equal(t, "", cfg.LogLevel)
-	assert.Equal(t, "", cfg.CertIdentityMode)
-	assert.Equal(t, "", cfg.NetworkIdentityFile)
-	assert.Equal(t, "", cfg.MCPDownstreamURL)
-	assert.Equal(t, "", cfg.A2ADownstreamURL)
+	assert.Empty(t, cfg.LogLevel)
+	assert.Empty(t, cfg.CertIdentityMode)
+	assert.Empty(t, cfg.NetworkIdentityFile)
+	assert.Empty(t, cfg.MCPDownstreamURL)
+	assert.Empty(t, cfg.A2ADownstreamURL)
 }
 
 func TestGatewayConfig_FullAssignment(t *testing.T) {
@@ -70,7 +70,7 @@ func TestGatewayConfig_FullAssignment(t *testing.T) {
 	assert.Equal(t, constants.TestPathVarLibVaultDir, cfg.VaultDir)
 	assert.Equal(t, "localhost", cfg.PasskeyRpID)
 	assert.Equal(t, "ztd", cfg.PasskeyRpName)
-	assert.Equal(t, 5.0, cfg.RateLimitRPS)
+	assert.InDelta(t, 5.0, cfg.RateLimitRPS, 0)
 	assert.Equal(t, 10, cfg.RateLimitBurst)
 	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Equal(t, "full", cfg.CertIdentityMode)
@@ -110,10 +110,10 @@ func TestGatewayConfig_PartialAssignment(t *testing.T) {
 	assert.Equal(t, 8080, cfg.HTTPPort)
 	assert.Equal(t, "error", cfg.LogLevel)
 	assert.Equal(t, 0, cfg.HTTPSPort, "unassigned HTTPSPort should be zero value")
-	assert.Equal(t, "", cfg.DataDir, "unassigned DataDir should be zero value")
-	assert.Equal(t, "", cfg.PKIDir, "unassigned PKIDir should be zero value")
-	assert.Equal(t, "", cfg.SecretsDir, "unassigned SecretsDir should be zero value")
-	assert.Equal(t, float64(0), cfg.RateLimitRPS, "unassigned RateLimitRPS should be zero")
+	assert.Empty(t, cfg.DataDir, "unassigned DataDir should be zero value")
+	assert.Empty(t, cfg.PKIDir, "unassigned PKIDir should be zero value")
+	assert.Empty(t, cfg.SecretsDir, "unassigned SecretsDir should be zero value")
+	assert.InDelta(t, float64(0), cfg.RateLimitRPS, 0, "unassigned RateLimitRPS should be zero")
 	assert.Equal(t, 0, cfg.RateLimitBurst, "unassigned RateLimitBurst should be zero")
 }
 
@@ -146,7 +146,7 @@ func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 	assert.Equal(t, constants.TestPathShortVault, cfg.VaultDir)
 	assert.Equal(t, "example.com", cfg.PasskeyRpID)
 	assert.Equal(t, "Example", cfg.PasskeyRpName)
-	assert.Equal(t, 10.0, cfg.RateLimitRPS)
+	assert.InDelta(t, 10.0, cfg.RateLimitRPS, 0)
 	assert.Equal(t, 20, cfg.RateLimitBurst)
 	assert.Equal(t, "debug", cfg.LogLevel)
 	assert.Equal(t, "localhost", cfg.CertIdentityMode)
@@ -263,7 +263,7 @@ func TestGatewayConfigToOptions_FullMapping(t *testing.T) {
 	assert.Equal(t, cfg.VaultDir, opts.VaultDir)
 	assert.Equal(t, cfg.PasskeyRpID, opts.PasskeyRpID)
 	assert.Equal(t, cfg.PasskeyRpName, opts.PasskeyRpName)
-	assert.Equal(t, cfg.RateLimitRPS, opts.RateLimitRPS)
+	assert.InDelta(t, cfg.RateLimitRPS, opts.RateLimitRPS, 0)
 	assert.Equal(t, cfg.RateLimitBurst, opts.RateLimitBurst)
 	assert.Equal(t, cfg.CertIdentityMode, opts.CertMode)
 	assert.Equal(t, cfg.NetworkIdentityFile, opts.NetworkIdentityFile)
@@ -280,9 +280,9 @@ func TestGatewayConfigToOptions_EmptyConfig(t *testing.T) {
 	assert.Equal(t, constants.Posture(""), opts.Posture)
 	assert.Equal(t, 0, opts.HTTPPort)
 	assert.Equal(t, 0, opts.HTTPSPort)
-	assert.Equal(t, "", opts.DataDir)
-	assert.Equal(t, "", opts.PKIDir)
-	assert.Equal(t, "", opts.SecretsDir)
+	assert.Empty(t, opts.DataDir)
+	assert.Empty(t, opts.PKIDir)
+	assert.Empty(t, opts.SecretsDir)
 	assert.False(t, opts.AllowTestPortZero)
 }
 
@@ -310,8 +310,8 @@ func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
 	t.Run("both empty (default)", func(t *testing.T) {
 		cfg := GatewayConfig{}
 		opts := gatewayConfigToOptions(cfg)
-		assert.Equal(t, "", opts.MCPDownstreamURL)
-		assert.Equal(t, "", opts.A2ADownstreamURL)
+		assert.Empty(t, opts.MCPDownstreamURL)
+		assert.Empty(t, opts.A2ADownstreamURL)
 	})
 
 	t.Run("both set", func(t *testing.T) {
@@ -328,13 +328,13 @@ func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
 		cfg := GatewayConfig{MCPDownstreamURL: "http://mcp:3000"}
 		opts := gatewayConfigToOptions(cfg)
 		assert.Equal(t, "http://mcp:3000", opts.MCPDownstreamURL)
-		assert.Equal(t, "", opts.A2ADownstreamURL)
+		assert.Empty(t, opts.A2ADownstreamURL)
 	})
 
 	t.Run("only A2A set", func(t *testing.T) {
 		cfg := GatewayConfig{A2ADownstreamURL: "http://a2a:3001"}
 		opts := gatewayConfigToOptions(cfg)
-		assert.Equal(t, "", opts.MCPDownstreamURL)
+		assert.Empty(t, opts.MCPDownstreamURL)
 		assert.Equal(t, "http://a2a:3001", opts.A2ADownstreamURL)
 	})
 }
@@ -346,7 +346,7 @@ func TestGatewayConfigToOptions_VaultFieldsNotMapped(t *testing.T) {
 
 	opts := gatewayConfigToOptions(cfg)
 
-	assert.Equal(t, "", opts.DataDir, "VaultDir is not mapped to GatewayOptions")
+	assert.Empty(t, opts.DataDir, "VaultDir is not mapped to GatewayOptions")
 	assert.False(t, opts.AllowTestPortZero)
 }
 
@@ -532,11 +532,11 @@ func TestGatewayConfig_RateLimitBoundaries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := GatewayConfig{RateLimitRPS: tt.rps, RateLimitBurst: tt.burst}
-			assert.Equal(t, tt.rps, cfg.RateLimitRPS)
+			assert.InDelta(t, tt.rps, cfg.RateLimitRPS, 0)
 			assert.Equal(t, tt.burst, cfg.RateLimitBurst)
 
 			opts := gatewayConfigToOptions(cfg)
-			assert.Equal(t, tt.rps, opts.RateLimitRPS)
+			assert.InDelta(t, tt.rps, opts.RateLimitRPS, 0)
 			assert.Equal(t, tt.burst, opts.RateLimitBurst)
 		})
 	}
@@ -546,7 +546,7 @@ func TestGatewayConfig_NegativeRateLimit(t *testing.T) {
 	cfg := GatewayConfig{RateLimitRPS: -1.0, RateLimitBurst: -1}
 	opts := gatewayConfigToOptions(cfg)
 
-	assert.Equal(t, -1.0, opts.RateLimitRPS, "mapping should preserve negative values without validation")
+	assert.InDelta(t, -1.0, opts.RateLimitRPS, 0, "mapping should preserve negative values without validation")
 	assert.Equal(t, -1, opts.RateLimitBurst)
 }
 
@@ -653,8 +653,8 @@ func TestGatewayConfig_PasskeyEmptyDefaults(t *testing.T) {
 	var cfg GatewayConfig
 	opts := gatewayConfigToOptions(cfg)
 
-	assert.Equal(t, "", opts.PasskeyRpID)
-	assert.Equal(t, "", opts.PasskeyRpName)
+	assert.Empty(t, opts.PasskeyRpID)
+	assert.Empty(t, opts.PasskeyRpName)
 	assert.Nil(t, opts.PasskeyRpOrigins)
 }
 
@@ -749,7 +749,7 @@ func TestGatewayConfigToOptions_RoundTripIntegrity(t *testing.T) {
 	assert.Equal(t, original.PasskeyRpID, opts.PasskeyRpID)
 	assert.Equal(t, original.PasskeyRpName, opts.PasskeyRpName)
 	assert.Equal(t, original.PasskeyRpOrigins, opts.PasskeyRpOrigins)
-	assert.Equal(t, original.RateLimitRPS, opts.RateLimitRPS)
+	assert.InDelta(t, original.RateLimitRPS, opts.RateLimitRPS, 0)
 	assert.Equal(t, original.RateLimitBurst, opts.RateLimitBurst)
 	assert.Equal(t, original.CertIdentityMode, opts.CertMode)
 	assert.Equal(t, original.NetworkIdentityFile, opts.NetworkIdentityFile)

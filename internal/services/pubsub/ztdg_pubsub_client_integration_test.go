@@ -414,19 +414,19 @@ func TestWaitForSubscribedACK(t *testing.T) {
 		rawTLSCfg := newTestRawTLSConfigForServer(t, server)
 		dialer := websocket.Dialer{TLSClientConfig: rawTLSCfg}
 		ws, resp, err := dialer.Dial(wsURL, nil)
-		assert.NoError(t, err) //nolint:testifylint,require-error // in http handler
+		require.NoError(t, err)
 		if resp != nil {
 			resp.Body.Close()
 		}
 
 		serverTLSCfg := newTestCertsTLSConfigForServer(t, server)
 		client, err := NewOperatorPubSubClient(wsURL, "", logger, serverTLSCfg)
-		assert.NoError(t, err) //nolint:testifylint,require-error // in http handler
+		require.NoError(t, err)
 
 		var pending [][]byte
 		err = client.waitForSubscribedACK(ctx, ws, "test-channel", &pending)
-		assert.Error(t, err)                     //nolint:testifylint,require-error // in http handler
-		assert.ErrorIs(t, err, context.Canceled) //nolint:testifylint,require-error // in http handler
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
 
 		ws.Close()
 	})
@@ -446,18 +446,18 @@ func TestWaitForSubscribedACK(t *testing.T) {
 		rawTLSCfg := newTestRawTLSConfigForServer(t, server)
 		dialer := websocket.Dialer{TLSClientConfig: rawTLSCfg}
 		ws, resp, err := dialer.Dial(wsURL, nil)
-		assert.NoError(t, err) //nolint:testifylint,require-error // in http handler
+		require.NoError(t, err)
 		if resp != nil {
 			resp.Body.Close()
 		}
 
 		serverTLSCfg := newTestCertsTLSConfigForServer(t, server)
 		client, err := NewOperatorPubSubClient(wsURL, "", logger, serverTLSCfg)
-		assert.NoError(t, err) //nolint:testifylint,require-error // in http handler
+		require.NoError(t, err)
 
 		var pending [][]byte
 		err = client.waitForSubscribedACK(ctx, ws, "test-channel", &pending)
-		assert.Error(t, err) //nolint:testifylint,require-error // in http handler
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "connection error")
 	})
 }

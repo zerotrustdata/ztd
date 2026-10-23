@@ -200,7 +200,7 @@ func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservatio
 	assert.Equal(t, "tool-selection", record.BenchmarkObservations.GradeSummaries[0].CriterionID)
 	assert.Equal(t, "grading detail", record.BenchmarkObservations.GradeSummaries[0].Detail)
 	require.NotNil(t, record.BenchmarkObservations.ToolScorecard["tool_selection"])
-	assert.Equal(t, 0.0, *record.BenchmarkObservations.ToolScorecard["tool_selection"].Value)
+	assert.InDelta(t, 0.0, *record.BenchmarkObservations.ToolScorecard["tool_selection"].Value, 0)
 }
 
 func TestCampaignExporter_ExportRunRequiresRunID(t *testing.T) {
@@ -416,7 +416,7 @@ func TestNormalizeRuntimeExportDir_RejectsAbsoluteAndEscapingPaths(t *testing.T)
 	t.Parallel()
 	for _, dir := range []string{"/etc/export", "..", "../outside", "../../outside"} {
 		_, err := normalizeRuntimeExportDir("run-1", dir)
-		assert.ErrorIs(t, err, constants.ErrEvaluationExportDirNotRelative, dir)
+		require.ErrorIs(t, err, constants.ErrEvaluationExportDirNotRelative, dir)
 	}
 	got, err := normalizeRuntimeExportDir("run-1", "nested/export")
 	require.NoError(t, err)
@@ -427,7 +427,7 @@ func TestNormalizeRuntimeExportDir_RejectsSealedRootsAndDefaultsOutsideThem(t *t
 	t.Parallel()
 	for _, dir := range []string{"data/eval", "data/eval/runs/run-1/export", constants.ComplianceBundlesDirname + "/x"} {
 		_, err := normalizeRuntimeExportDir("run-1", dir)
-		assert.ErrorIs(t, err, constants.ErrEvaluationExportDirSealed, dir)
+		require.ErrorIs(t, err, constants.ErrEvaluationExportDirSealed, dir)
 	}
 	got, err := normalizeRuntimeExportDir("run-1", "")
 	require.NoError(t, err)

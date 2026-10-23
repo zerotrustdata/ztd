@@ -189,12 +189,12 @@ func TestPhase0ClaimInventory_CustomerAndPlannedClaimsAreExplicit(t *testing.T) 
 	// The inventory must contain at least one customer, one planned, and one
 	// assessor entry. If these are absent, the inventory is not honestly
 	// separating responsibilities.
-	assert.Greater(t, counts[ClaimClassCustomer], 0,
+	assert.Positive(t, counts[ClaimClassCustomer],
 		"inventory must contain at least one customer-responsibility claim")
-	assert.Greater(t, counts[ClaimClassPlanned], 0,
+	assert.Positive(t, counts[ClaimClassPlanned],
 		"inventory must contain at least one planned claim")
-	assert.Greater(t, counts[ClaimClassAssessor], 0,
+	assert.Positive(t, counts[ClaimClassAssessor],
 		"inventory must contain at least one assessor-dependent claim")
-	assert.Greater(t, counts[ClaimClassPlatformTechnical], 0,
+	assert.Positive(t, counts[ClaimClassPlatformTechnical],
 		"inventory must contain platform-technical claims")
 }

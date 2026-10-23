@@ -179,7 +179,7 @@ func TestVaultKey_RekeyVault_StagedFileFailurePath(t *testing.T) {
 	wrappedFileSvc.failPath = filepath.Join(constants.SecretsDirname, constants.SecretsFileVaultKey)
 	err = ks.RekeyVault()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrVaultKeyWriteFailed)
+	require.ErrorIs(t, err, constants.ErrVaultKeyWriteFailed)
 
 	// Error message should name the staged file
 	assert.Contains(t, err.Error(), constants.SecretsFileVaultKeyStaged)

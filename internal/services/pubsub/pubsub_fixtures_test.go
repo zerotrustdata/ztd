@@ -126,11 +126,15 @@ func (b testAuditBackend) Attach(a *governance.L5Actuator) {
 }
 
 func newPubsubFixture(t *testing.T) *pubsubFixture {
+	t.Helper()
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	db := pubsubtest.NewMockOperatorPubSubClient()
 
-	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("pubsub fixture: generate signing key: %v", err)
+	}
 	signerStore := &governance.FailClosedSignerStore{
 		Signers: map[string]ed25519.PublicKey{
 			"test-key": pub,

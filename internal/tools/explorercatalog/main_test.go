@@ -302,7 +302,7 @@ func TestRun_CheckReportsMissingModule(t *testing.T) {
 	err := run([]string{"-check"}, root, &bytes.Buffer{}, &bytes.Buffer{})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, os.ErrNotExist)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	assert.Contains(t, err.Error(), "make explorer-catalog-generate")
 }
 
@@ -310,7 +310,7 @@ func TestRun_WriteFailsWhenOutputDirectoryIsMissing(t *testing.T) {
 	err := run([]string{"-write"}, testutil.TempDir(t), &bytes.Buffer{}, &bytes.Buffer{})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, os.ErrNotExist)
+	require.ErrorIs(t, err, os.ErrNotExist)
 	assert.Contains(t, err.Error(), "write "+outputRelPath)
 }
 

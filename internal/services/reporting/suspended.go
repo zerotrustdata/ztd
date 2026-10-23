@@ -33,24 +33,23 @@ func reportSuspendedTransactions(ctx context.Context, outDir string, sts storage
 		return FileResult{}, fmt.Errorf("%w: suspended_transactions (expired): %w", constants.ErrReportStoreUnavailable, err)
 	}
 
-	all := append(active, expired...)
-
-	var rows []Row
-	for _, tx := range all {
+	rows := make([]Row, 0, len(active)+len(expired))
+	for i, tx := range append(active, expired...) {
 		status := constants.SuspendedTxStatusPending
-		if tx.Approved {
-			status = constants.SuspendedTxStatusApproved
+		switch {
+		case tx.ClaimedAt != nil:
+			status = constants.SuspendedTxStatusClaimed
+		case i >= len(active):
+			status = constants.SuspendedTxStatusExpired
 		}
 
 		rows = append(rows, SuspendedTxRow{
-			TxHash:            tx.TransactionHash,
-			UserID:            tx.UserID,
-			ActionType:        tx.ToolName,
-			Status:            string(status),
-			CreatedAtUTC:      utcRFC3339(tx.CreatedAt),
-			ExpiresAtUTC:      utcRFC3339(tx.ExpiresAt),
-			ApprovedBy:        tx.ApprovedBy,
-			ApprovalSignature: tx.ApprovalSignature,
+			TxHash:       tx.TransactionHash,
+			UserID:       tx.UserID,
+			ActionType:   tx.ToolName,
+			Status:       string(status),
+			CreatedAtUTC: utcRFC3339(tx.CreatedAt),
+			ExpiresAtUTC: utcRFC3339(tx.ExpiresAt),
 		})
 	}
 

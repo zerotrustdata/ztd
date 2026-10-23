@@ -544,12 +544,6 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
 			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
-				Status: string(constants.SuspendedTxStatusApproved),
-				TxHash: txHash,
-			})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -787,5 +781,5 @@ func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
 	_, err = c.SubscribeApprovals(ctx, persona)
 	require.ErrorIs(t, err, constants.ErrMissingCertificate)
 
-	assert.Zero(t, len(seen), "a CLI-only call must not reach the Gateway on the Operator identity")
+	assert.Empty(t, seen, "a CLI-only call must not reach the Gateway on the Operator identity")
 }

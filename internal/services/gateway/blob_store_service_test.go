@@ -102,7 +102,7 @@ func TestBlobStoreService_BlobPut(t *testing.T) {
 		assert.True(t, found)
 		// SQLite may return nil for empty byte slices, both are equivalent
 		if len(retrievedData) == 0 {
-			assert.Equal(t, 0, len(data))
+			assert.Empty(t, data)
 		} else {
 			assert.Equal(t, data, retrievedData)
 		}
@@ -247,7 +247,7 @@ func TestBlobStoreService_BlobDelete(t *testing.T) {
 
 	t.Run("BlobDelete returns false for non-existent blob", func(t *testing.T) {
 		deleted, err := blobStore.BlobDelete("nonexistent-ns", "nonexistent-id")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, deleted)
 	})
 
@@ -262,7 +262,7 @@ func TestBlobStoreService_BlobDelete(t *testing.T) {
 
 		// Delete blob
 		deleted, err := blobStore.BlobDelete("delete-ns", "delete-blob")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, deleted)
 
 		// Verify blob is gone
@@ -277,12 +277,12 @@ func TestBlobStoreService_BlobDelete(t *testing.T) {
 
 		// First delete
 		deleted, err := blobStore.BlobDelete("delete-ns", "multi-delete")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, deleted)
 
 		// Second delete (should return false)
 		deleted, err = blobStore.BlobDelete("delete-ns", "multi-delete")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, deleted)
 	})
 }
@@ -309,7 +309,7 @@ func TestBlobStoreService_BlobDeleteNamespace(t *testing.T) {
 
 		// Delete namespace
 		count, err := blobStore.BlobDeleteNamespace(namespace)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(5), count)
 
 		// Verify all blobs are gone
@@ -321,7 +321,7 @@ func TestBlobStoreService_BlobDeleteNamespace(t *testing.T) {
 
 	t.Run("BlobDeleteNamespace returns 0 for empty namespace", func(t *testing.T) {
 		count, err := blobStore.BlobDeleteNamespace("empty-ns")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(0), count)
 	})
 
@@ -337,7 +337,7 @@ func TestBlobStoreService_BlobDeleteNamespace(t *testing.T) {
 
 		// Delete ns1
 		count, err := blobStore.BlobDeleteNamespace(ns1)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int64(1), count)
 
 		// Verify ns1 is empty
@@ -366,7 +366,7 @@ func TestBlobStoreService_RunMaintenance_Comprehensive(t *testing.T) {
 
 		// Run maintenance
 		err = blobStore.RunMaintenance()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify expired blob is gone
 		_, _, found := blobStore.BlobGet("maint-ns", "expire-blob")
@@ -386,7 +386,7 @@ func TestBlobStoreService_RunMaintenance_Comprehensive(t *testing.T) {
 
 		// Run maintenance (should be no-op)
 		err := blobStore.RunMaintenance()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify all blobs still exist
 		for i := 0; i < 3; i++ {
@@ -408,7 +408,7 @@ func TestBlobStoreService_RunMaintenance_Comprehensive(t *testing.T) {
 
 		// Run maintenance
 		err = blobStore.RunMaintenance()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify blob is gone
 		_, _, found := blobStore.BlobGet("maint-ns-3", "immediate-expire")

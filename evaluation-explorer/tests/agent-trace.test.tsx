@@ -10,7 +10,6 @@ import type { ProofCatalogEntry, PublicEvidenceBinding } from '../src/contract/t
 import { evalStore } from '../src/state/store';
 
 vi.mock('../src/state/feed', () => ({
-  loadRuntimeConfig: vi.fn().mockResolvedValue({ schema_version: '1.0.0', mirror_origin: 'http://127.0.0.1:8082' }),
   fetchProofCatalogEntry: vi.fn().mockResolvedValue(null),
 }));
 
@@ -297,6 +296,7 @@ describe('AgentTraceSection', () => {
 
   beforeEach(() => {
     evalStore.loadFixtures([], []);
+    evalStore.setMirrorOrigin('http://127.0.0.1:8082');
     evalStore.loadProofCatalog([entry(sha256(body))]);
   });
 

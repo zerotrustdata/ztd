@@ -10,7 +10,6 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -251,7 +250,6 @@ func TestObserveProducerController_HandleAgentState_MalformedJSONRejected(t *tes
 	controller.handleAgentState(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.True(t, errors.Is(constants.ErrInvalidJSONBody, constants.ErrInvalidJSONBody))
 }
 
 func TestObserveProducerController_HandleRunState_MalformedJSONRejected(t *testing.T) {

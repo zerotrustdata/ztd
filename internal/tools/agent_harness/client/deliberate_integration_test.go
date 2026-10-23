@@ -297,10 +297,13 @@ func TestDeliberate_ApplicationIdentityIsPinned(t *testing.T) {
 		roots   *x509.CertPool
 		wantErr error
 	}{
-		{"another application's identity", func(t *testing.T) tls.Certificate { return ca.appCertificate(t, "other-consensus-app") }, deliberateAppID, ca.pool, constants.ErrConsensusAppNotEnrolled},
-		{"untrusted issuer", func(t *testing.T) tls.Certificate { return newDeliberateCA(t).appCertificate(t, deliberateAppID) }, deliberateAppID, ca.pool, nil},
-		{"no trust anchors", func(t *testing.T) tls.Certificate { return ca.appCertificate(t, deliberateAppID) }, deliberateAppID, nil, constants.ErrEmptyTrustBundle},
-		{"binding names no application", func(t *testing.T) tls.Certificate { return ca.appCertificate(t, deliberateAppID) }, "", ca.pool, constants.ErrConsensusAppNotEnrolled},
+		{"another application's identity", func(t *testing.T) tls.Certificate { t.Helper(); return ca.appCertificate(t, "other-consensus-app") }, deliberateAppID, ca.pool, constants.ErrConsensusAppNotEnrolled},
+		{"untrusted issuer", func(t *testing.T) tls.Certificate {
+			t.Helper()
+			return newDeliberateCA(t).appCertificate(t, deliberateAppID)
+		}, deliberateAppID, ca.pool, nil},
+		{"no trust anchors", func(t *testing.T) tls.Certificate { t.Helper(); return ca.appCertificate(t, deliberateAppID) }, deliberateAppID, nil, constants.ErrEmptyTrustBundle},
+		{"binding names no application", func(t *testing.T) tls.Certificate { t.Helper(); return ca.appCertificate(t, deliberateAppID) }, "", ca.pool, constants.ErrConsensusAppNotEnrolled},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var reached atomic.Bool

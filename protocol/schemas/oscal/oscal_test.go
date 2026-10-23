@@ -121,7 +121,7 @@ func TestProvenanceBytes_DecodesAndMatchesSchema(t *testing.T) {
 	assert.Equal(t, "oscal-assessment-results", p.SchemaType)
 	assert.Equal(t, SchemaVersion, p.SchemaVersion)
 	assert.Equal(t, SchemaID, p.SchemaID)
-	assert.Equal(t, SchemaJSONDraft, p.JSONSchemaDraft)
+	assert.Equal(t, SchemaJSONDraft, p.JSONSchemaDraft) //nolint:testifylint // exact bytes, not JSON equivalence
 	assert.Equal(t, PinnedByteLength, p.ByteLength)
 	assert.Equal(t, PinnedSHA256, p.SHA256)
 	assert.NotEmpty(t, p.SourceURL)

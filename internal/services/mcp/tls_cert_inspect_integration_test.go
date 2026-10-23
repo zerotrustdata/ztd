@@ -18,7 +18,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -31,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestTLSCertInspectTool_Execute_Validation(t *testing.T) {
@@ -39,13 +39,13 @@ func TestTLSCertInspectTool_Execute_Validation(t *testing.T) {
 
 	// Empty arguments
 	_, err := tool.Execute(ctx, json.RawMessage(`{}`))
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPTLSCertInspectRequired))
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrMCPTLSCertInspectRequired)
 
 	// Invalid JSON
 	_, err = tool.Execute(ctx, json.RawMessage(`{invalid`))
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPUnmarshalArguments))
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
 
 	// Invalid path
 	_, err = tool.Execute(ctx, json.RawMessage(`{"cert_path": "/etc/shadow"}`))
@@ -54,14 +54,12 @@ func TestTLSCertInspectTool_Execute_Validation(t *testing.T) {
 }
 
 func TestTLSCertInspectTool_Execute_File(t *testing.T) {
-	require.NoError(t, os.MkdirAll(constants.TestTempDirname, constants.PermDirStandard))
-	tmpDir, err := os.MkdirTemp(constants.TestTempDirname, "tls-test-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	tmpDir := testutil.TempDir(t)
 
 	certPath := filepath.Join(tmpDir, "test.crt")
-	certPEM, _ := generateTestCert(t)
-	err = os.WriteFile(certPath, certPEM, 0644)
+	certPEM, keyPEM := generateTestCert(t)
+	require.NotEmpty(t, keyPEM)
+	err := os.WriteFile(certPath, certPEM, 0o644)
 	require.NoError(t, err)
 
 	tool := &TLSCertInspectTool{}
@@ -85,7 +83,7 @@ func TestTLSCertInspectTool_Execute_Host(t *testing.T) {
 		Certificates: []tls.Certificate{cert},
 	})
 	require.NoError(t, err)
-	defer listener.Close()
+	t.Cleanup(func() { _ = listener.Close() })
 
 	go func() {
 		for {
@@ -101,8 +99,10 @@ func TestTLSCertInspectTool_Execute_Host(t *testing.T) {
 		}
 	}()
 
-	host, portStr, _ := net.SplitHostPort(listener.Addr().String())
-	port, _ := strconv.Atoi(portStr)
+	host, portStr, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
 
 	tool := &TLSCertInspectTool{}
 	args := json.RawMessage(fmt.Sprintf(`{"host": %q, "port": %d}`, host, port))
@@ -116,6 +116,7 @@ func TestTLSCertInspectTool_Execute_Host(t *testing.T) {
 }
 
 func generateTestCert(t *testing.T) ([]byte, []byte) {
+	t.Helper()
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 

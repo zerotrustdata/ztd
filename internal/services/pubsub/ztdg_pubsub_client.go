@@ -234,7 +234,7 @@ func (c *OperatorPubSubClient) Subscribe(ctx context.Context, channel string) (<
 				continue
 			}
 
-			if event.Type != constants.PubSubEventMessage && event.Type != constants.PubSubEventPMessage {
+			if event.Type != constants.PubSubEventMessage {
 				continue
 			}
 
@@ -295,7 +295,7 @@ func (c *OperatorPubSubClient) waitForSubscribedACK(ctx context.Context, ws *web
 			return nil
 		}
 
-		if event.Type == constants.PubSubEventMessage || event.Type == constants.PubSubEventPMessage {
+		if event.Type == constants.PubSubEventMessage {
 			*pending = append(*pending, event.Data)
 		}
 	}

@@ -330,7 +330,7 @@ func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 	// A republish appends the live summary revision it reports and no lifecycle.
-	assert.Equal(t, len(before)+publishedCount(t, out), len(mirrorProjections(t)), "the count printed matches the projections the mirror served")
+	assert.Len(t, mirrorProjections(t), len(before)+publishedCount(t, out), "the count printed matches the projections the mirror served")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 }
@@ -672,6 +672,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 			name:   "agent trace unpublished",
 			forget: func(artifacts *evaluation.CampaignPublishedProofArtifacts) { artifacts.AgentTraceSHA256 = "" },
 			check: func(t *testing.T, artifacts evaluation.CampaignPublishedProofArtifacts) {
+				t.Helper()
 				assert.NotEmpty(t, artifacts.AgentTraceSHA256, "the rebuild binds the trace again")
 			},
 		},
@@ -682,6 +683,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 				artifacts.ScenarioGoldSHA256 = ""
 			},
 			check: func(t *testing.T, artifacts evaluation.CampaignPublishedProofArtifacts) {
+				t.Helper()
 				assert.NotEmpty(t, artifacts.ScenarioInputSHA256, "the rebuild binds the scenario input again")
 				assert.NotEmpty(t, artifacts.ScenarioGoldSHA256, "the rebuild binds the scenario gold again")
 			},

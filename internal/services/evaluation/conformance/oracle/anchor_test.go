@@ -186,9 +186,9 @@ func TestCheckedBoundAnchor(t *testing.T) {
 			anchor, err := CheckedBoundAnchor(context.Background(), files, tt.runtimeID, tt.bound)
 			if tt.want != nil {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, tt.want)
+				require.ErrorIs(t, err, tt.want)
 				for _, name := range tt.names {
-					assert.ErrorContains(t, err, name)
+					require.ErrorContains(t, err, name)
 				}
 				assert.Nil(t, anchor)
 				return
@@ -246,10 +246,10 @@ func TestAnchorSetKey(t *testing.T) {
 	assert.Equal(t, signer.Pub, key)
 
 	_, err = set.Key(signer.KeyID, "op-2")
-	assert.ErrorIs(t, err, constants.ErrConformanceAnchorUnknown)
+	require.ErrorIs(t, err, constants.ErrConformanceAnchorUnknown)
 
 	_, err = set.Key(unpinned.KeyID, "op-1")
-	assert.ErrorIs(t, err, constants.ErrConformanceAnchorUnknown)
+	require.ErrorIs(t, err, constants.ErrConformanceAnchorUnknown)
 
 	var nilSet *AnchorSet
 	_, err = nilSet.Key(signer.KeyID, "op-1")

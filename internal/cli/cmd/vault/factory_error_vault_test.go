@@ -43,7 +43,7 @@ func TestVaultInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -54,7 +54,7 @@ func TestVaultUnlockCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -65,7 +65,7 @@ func TestVaultRekeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -76,7 +76,7 @@ func TestVaultStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -88,7 +88,7 @@ func TestVaultResetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 

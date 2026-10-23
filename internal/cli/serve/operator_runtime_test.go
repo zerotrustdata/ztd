@@ -103,7 +103,7 @@ func TestRefuseModelStoreRuntime(t *testing.T) {
 			err := refuseModelStoreRuntime(tt.runtimeDir, tt.modelStorageRoot)
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, constants.ErrOperatorModelStoreRuntime)
+				require.ErrorIs(t, err, constants.ErrOperatorModelStoreRuntime)
 				assert.Contains(t, err.Error(), "--working-dir")
 			} else {
 				assert.NoError(t, err)
@@ -118,7 +118,7 @@ func TestRefuseModelStoreRuntime(t *testing.T) {
 			inside := `c:\AI\ollama\Models\.ztd`
 			err := refuseModelStoreRuntime(inside, root)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrOperatorModelStoreRuntime)
+			require.ErrorIs(t, err, constants.ErrOperatorModelStoreRuntime)
 
 			diffDrive := `D:\ai\ollama\models\.ztd`
 			err = refuseModelStoreRuntime(diffDrive, root)

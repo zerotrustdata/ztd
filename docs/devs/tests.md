@@ -4,7 +4,7 @@ title: Testing Guide
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - internal/cli/cmd/test/
   - internal/testutil/
@@ -59,6 +59,7 @@ The platform enforces a four-tier test architecture:
   - [Run the Release Smoke](#run-the-release-smoke)
   - [Profile Integration Tests](#profile-integration-tests)
   - [Scale-Test Cohorts](#scale-test-cohorts)
+  - [Write a behavior test](#write-a-behavior-test)
 - [Anti-patterns](#anti-patterns)
 - [Links out](#links-out)
 
@@ -86,6 +87,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TEST-ISO-04 | Tests MUST use typed constants from `internal/constants/` for statuses, paths, reason strings, and permissions instead of ad hoc string literals. |
 | INV-TEST-ISO-05 | Tests discovering user configuration MUST isolate both `HOME` and `USERPROFILE` with `t.Setenv`; Go's `os.UserHomeDir` reads `USERPROFILE` on Windows. Browser approval tests MUST inject browser openers so automated suites do not launch real browsers. |
 | INV-TEST-ISO-06 | `ztd test` runners MUST start test, smoke, and scale child processes without the registry `secret` and `user_endpoint` keys (`config.WithoutUserEnv`), so the developer's `.env` and shell credentials never reach a test process. Tests needing one of these keys MUST set it with `t.Setenv`. |
+| INV-TEST-ISO-07 | A test MUST assert an observable result of the production function under test: a returned value, a typed error (`require.ErrorIs` / `assert.ErrorIs`), a persisted row, or a published message. MUST NOT pass by ignoring that function's error, by asserting only that the call did not panic, or by comparing a value to itself. A compile-time interface check MUST be a package-level `var _ Interface = Impl{}` assignment, not a `Test` function. |
 
 ### Fixture lifecycle (`INV-TEST-FIX`)
 
@@ -112,7 +114,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Production eval stack | `test/fixtures/eval_stack.go`, `test/fixtures/eval_stack_gate*.go`, `test/fixtures/scripted_ollama.go` | `NewEvalStack`, `TestEvalStackUsesDistinctOutboundOperatorRoots`, `TestRunsExecute_RealStack` |
 | File service test isolation | `internal/testutil/paths.go`, `internal/services/fs/file_service.go` | `testutil.TempDir` |
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
-| Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
+| Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsIPv4AndIPv6LoopbackConflicts`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
 | Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop --help` |
 | Cross-process conformance loop qualification | `internal/cli/cmd/test/conformance_loop.go`, `internal/cli/cmd/test/conformance_loop_e2e_test.go` | `./ztd test conformance-loop --help` |
 | Isolated governed release smoke | `internal/cli/cmd/test/release_smoke.go`, `internal/cli/cmd/test/release_smoke_test.go` | `./ztd test release-smoke --help` |
@@ -178,13 +180,13 @@ Unfiltered unit and integration commands delegate to `make test-unit` and `make 
 
 ### Run Specialized Test Harnesses
 
-For the Tier 4 live-provider gate, set `LIVE_OLLAMA_ENDPOINT` to the Ollama endpoint URL and `LIVE_MODEL` to the model name before running the commands below.
+For the Tier 4 live-provider gate, the endpoint URL and model name are passed only through `--live-ollama-endpoint` and `--live-model`; the commands below read them from shell variables named `LIVE_OLLAMA_ENDPOINT` and `LIVE_MODEL` that you set yourself. `ztd` does not read those variables.
 
 ```bash
 # Run chaos testing: fire synthetic governance events directly in-process
 ./ztd test chaos --count 100
 
-# View aggregated chaos test results from test vault database
+# View results of the most recent chaos run in the test vault database
 ./ztd test summary
 
 # Run provider-free public feed qualification loop
@@ -218,10 +220,10 @@ make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64
 
 `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` is the dedicated Tier 4 gate under `INV-TEST-RUN-05`. It builds with the `e2e,live` tags, runs `TestEvalLoopLive` under a default timeout of 40m per selected posture (each posture's run takes what remains of that deadline, less the cleanup margin), and replaces only the provider: the Inference Operator reaches that endpoint through the governed Inference Operator, and no provider is scripted. Each posture freezes the provider's real model digest with `ztd eval models freeze` and runs one Tribunal campaign. The gate proves the loop and its evidence, not model quality, so a FAIL verdict passes. A subtest that fails has its run root under `.ztd/operators/` deleted; a passing run root is kept.
 
-`./ztd test chaos` generates synthetic governance events (60% `GOOD_ACTOR` safe `FS_LIST`, 20% `PROMPT_INJECTION` forbidden `EXECUTE_BASH` rejected at L1, 10% `MITM` corrupted transaction hash, 10% `FILE_MUTATION` `FILE_EDIT` carrying an L3 proof) directly in-process through `L4Warden` and `L5Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
+`./ztd test chaos` generates synthetic governance events (60% `GOOD_ACTOR` safe `FS_LIST`, 20% `PROMPT_INJECTION` forbidden `EXECUTE_BASH` rejected at L1, 10% `MITM` corrupted transaction hash, 10% `FILE_MUTATION` `FILE_EDIT` carrying an L3 proof) directly in-process through `L4Warden` and `L5Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` reads only the most recent `*-chaos-test` run in the test vault directory, not every run.
 
 `./ztd test scale` runs fleet scale tests in an isolated Gateway listening on reserved ephemeral ports, avoiding conflicts with running production Gateways. The runner:
-1. Starts a doctrine Gateway in `<root>/run` with public spectator and evaluation explorer disabled.
+1. Starts a doctrine Gateway in `<root>/run` with the public spectator disabled (`--public-spectator=false`).
 2. Deploys `--count` Operators via `operator deploy`.
 3. Runs `TestOperatorFleet_HoldsUnderFanOut`: enrollment, heartbeats, idle soak, and governed fan-out.
 4. Runs `TestOperatorFleet_RecoversAfterGatewayRestart`: restart recovery, heartbeat resume, and fan-out verification.
@@ -250,7 +252,7 @@ make ci-protocol
 make ci
 ```
 
-`make ci` refreshes generated artifacts as it runs. GitHub Actions separately checks generated-file freshness. Checks that GitHub Actions runs on Linux are Makefile targets shared with `make ci`, so the local gate cannot drift from CI: `verify-static` (standard and FIPS binaries), `fips-verify`, `build-windows`, `test-go-import`, `test-onboarding`, and `website-bundle-check`. `make ci` does not run the jobs that need a host it does not own: the Docker distro matrix (`make test-onboarding-docker`), the fresh-host contributor setup (`scripts/ci/onboarding-smoke.sh`), the Operator deployment lifecycle (`scripts/ci/operator-deploy-lifecycle.sh`, which needs ports 8080 and 8443 free), the FIPS-mode reruns of the unit and integration suites, and the native macOS and Windows jobs. `make test-onboarding` covers the host assumptions those jobs exercise offline: runtime and website goals parse with no Go on `PATH`, and developer tools install with the `go.mod` toolchain under an older system Go. The main CI workflow runs the full unit and integration suites on Linux and macOS; Windows runs the full unit suite and targeted integration tests for `internal/services/keystore/...`, `internal/cli/cmd/operator`, and `internal/cli/cmd/test`. The FIPS workflow runs the unit and integration Makefile targets with the FIPS Go module enabled. These workflows do not run the live E2E suite or fleet scale qualification as part of the standard test suite.
+`make ci` refreshes generated artifacts as it runs. GitHub Actions separately checks generated-file freshness. Linux GitHub Actions jobs include Makefile targets that `make ci` also runs, so the local gate cannot drift from CI for these checks: `verify-static` (standard and FIPS binaries), `fips-verify`, `build-windows`, `test-go-import`, `test-onboarding`, and `website-bundle-check`. `make ci` does not run the jobs that need a host it does not own: the Docker distro matrix (`make test-onboarding-docker`), the fresh-host contributor setup (`scripts/ci/onboarding-smoke.sh`), the Operator deployment lifecycle (`scripts/ci/operator-deploy-lifecycle.sh`, which needs ports 8080 and 8443 free), the FIPS-mode reruns of the unit and integration suites, and the native macOS and Windows jobs. `make test-onboarding` covers the host assumptions those jobs exercise offline: runtime and website goals parse with no Go on `PATH`, and developer tools install with the `go.mod` toolchain under an older system Go. The main CI workflow runs the full unit and integration suites on Linux and macOS; Windows runs the full unit suite and targeted integration tests for `internal/services/keystore/...`, `internal/cli/cmd/operator`, and `internal/cli/cmd/test`. The FIPS workflow runs the unit and integration Makefile targets with the FIPS Go module enabled. These workflows do not run the live E2E suite or fleet scale qualification as part of the standard test suite.
 
 ### Onboarding Script Tests
 
@@ -291,20 +293,23 @@ Build `ztd` with `make build`, then run `./ztd test release-smoke`; the runner's
 
 ### Profile Integration Tests
 
-```bash
-# Capture JSON test events for duration analysis
-GOFLAGS=-json ./ztd test integration --pkg ./internal/services/gateway > .ztd/tmp/ztd-tests.jsonl
-
-# Profile CPU usage for specific package tests
-GOFLAGS=-cpuprofile=$PWD/.ztd/tmp/ztd-gateway.cpu ./ztd test integration --pkg ./internal/services/gateway --run '^TestHandleBootstrap'
-go tool pprof -top -cum .ztd/tmp/ztd-gateway.cpu
-```
-
-Use `testing/synctest` for self-contained timer, timeout, and channel synchronization tests. Do not wrap `testing/synctest` around real network listeners or subprocesses.
+Use `./ztd test integration -v --pkg <pkg> --run <regexp>` to stream individual test names and durations (see Diagnose Slow Tests). Use `testing/synctest` for self-contained timer, timeout, and channel synchronization tests. Do not wrap `testing/synctest` around real network listeners or subprocesses.
 
 ### Scale-Test Cohorts
 
 `./ztd test scale` configures fleet scenario inputs (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, `ZTD_E2E_FLEET_*`). `TestOperatorFleet_HoldsUnderFanOut` accepts `ZTD_E2E_FLEET_SESSIONS` (comma-separated session UUIDs matching `ZTD_E2E_FLEET_SIZE`). When specified, registry health checks and CLI fan-out target exactly those remote sessions.
+
+### Write a behavior test
+
+Tier 1 tests are table-driven when one function has several inputs. Each case uses `t.Run` with a name that states the behavior. `require` stops the test when the next line would be meaningless (construction, I/O, a sentinel that must hold). `assert` checks the remaining observations so one failure does not hide the next. The repository standard is `github.com/stretchr/testify`; do not add a second assertion library. Reach for the standard `testing` helpers when the assertion is a single `t.Fatal`.
+
+Helpers that take `*testing.T` or `testing.TB` call `t.Helper()` before any other test API. Shared constructors for real stores, vaults, and ledgers live in `internal/services/storage/storagetest` and `internal/testutil`. A new fixture extends those packages. It does not copy a constructor into the test file, and it does not replace the production type with a fake of that same type.
+
+Tests that perform I/O take `testutil.Context(t)` (or `testutil.ContextWithTimeout` when the budget is not 30 seconds). The context is cancelled when the test returns. `t.Cleanup` owns teardown. `testutil.TempDir` and `testutil.OperatorDir` own scratch directories. `t.Parallel` is for Tier 1 only.
+
+Log output is asserted through `testutil.NewBufferLogger`. A call that only logs is not proven by `assert.NotPanics`.
+
+Golden files belong in a package `testdata/` directory when the assertion is a stable byte-for-byte contract. Do not add a golden file for a value the test can check with a typed field.
 
 ## Anti-patterns
 
@@ -316,6 +321,9 @@ Use `testing/synctest` for self-contained timer, timeout, and channel synchroniz
 - Double-closing resources managed by `NewGatewayFixture` (`INV-TEST-FIX-01`).
 - Leaving temporary directories or background goroutines unjoined when writing integration tests (`INV-TEST-FIX-02`, `INV-TEST-FIX-03`).
 - Asserting a panic on production code paths instead of verifying typed returned errors with `assert.ErrorIs` against `internal/constants/errors.go` (`INV-CODE-06`, `INV-ERR-01`).
+- Ignoring the error returned by the function under test, or treating "it did not panic" as the assertion (`INV-TEST-ISO-07`).
+- Round-tripping a plain struct through `encoding/json` and calling that a test of a store or service (`INV-TEST-ISO-07`).
+- Dressing a compile-time interface check up as a `Test` function (`INV-TEST-ISO-07`).
 
 ## Links out
 

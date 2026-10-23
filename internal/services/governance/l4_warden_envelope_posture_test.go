@@ -9,7 +9,6 @@ package governance
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,7 +46,7 @@ func TestVerifyEnvelope_ReadsPostureFromEnvelope(t *testing.T) {
 		env.Governance.L3 = nil
 
 		verified, err := verifier.VerifyEnvelope(context.Background(), env)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, verified)
 		assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, verified.L3Status)
 		assert.Equal(t, constants.PostureDoctrine, verified.Posture)
@@ -114,9 +113,8 @@ func TestVerifyEnvelope_RatifyRequiresL3WithoutL2(t *testing.T) {
 				assert.ErrorIs(t, err, tc.wantErr)
 				return
 			}
-			if !assert.NoError(t, err) || !assert.NotNil(t, verified) {
-				return
-			}
+			require.NoError(t, err)
+			require.NotNil(t, verified)
 			assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, verified.L2Status)
 			assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, verified.L3Status)
 			assert.Equal(t, constants.PostureRatify, verified.Posture)
@@ -150,7 +148,7 @@ func TestVerifyEnvelope_EnvelopePostureIsTheOnlyPosture(t *testing.T) {
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, posture)
 
 			verified, err := verifier.VerifyEnvelope(context.Background(), env)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotNil(t, verified)
 			assert.Equal(t, posture, verified.Posture)
 		})
@@ -168,8 +166,7 @@ func TestVerifyEnvelope_InvalidEnvelopePostureFailsClosed(t *testing.T) {
 	env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "bogus-posture")
 
 	_, err := verifier.VerifyEnvelope(context.Background(), env)
-	assert.Error(t, err)
-	assert.False(t, errors.Is(err, nil))
+	require.Error(t, err)
 }
 
 // TestPostureGates_L2EnforcedAndL3RequiredByActionClass pins the two posture

@@ -71,19 +71,38 @@ func TestPruner_InvokesFnOnTick(t *testing.T) {
 func TestPruner_Stop_IsIdempotent(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()
-	p := NewPruner(nil, logger, time.Hour, func(_ context.Context, _ *DB, _ *slog.Logger) error { return nil })
+	var calls atomic.Int32
+	p := NewPruner(nil, logger, time.Millisecond, func(_ context.Context, _ *DB, _ *slog.Logger) error {
+		calls.Add(1)
+		return nil
+	})
 	p.Start()
+	p.Stop()
+	assert.False(t, p.started)
+	stopped := calls.Load()
 
 	p.Stop()
-	p.Stop()
+	assert.False(t, p.started)
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, stopped, calls.Load(), "a second Stop must not resume pruning")
 }
 
-func TestPruner_Stop_BeforeStart_DoesNotPanic(t *testing.T) {
+func TestPruner_Stop_BeforeStart_LeavesPrunerStartable(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()
-	p := NewPruner(nil, logger, time.Hour, func(_ context.Context, _ *DB, _ *slog.Logger) error { return nil })
+	var calls atomic.Int32
+	p := NewPruner(nil, logger, 10*time.Millisecond, func(_ context.Context, _ *DB, _ *slog.Logger) error {
+		calls.Add(1)
+		return nil
+	})
 
-	assert.NotPanics(t, func() { p.Stop() })
+	p.Stop()
+	assert.False(t, p.started)
+
+	p.Start()
+	assert.Eventually(t, func() bool { return calls.Load() >= 1 }, time.Second, 5*time.Millisecond)
+	p.Stop()
+	assert.False(t, p.started)
 }
 
 func TestPruner_Stop_HaltsInvocations(t *testing.T) {
@@ -340,7 +359,7 @@ func TestPruner_Tier1_ContextCancelledOnStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	p := NewPruner(nil, logger, time.Hour, nil)
 
-	assert.Nil(t, p.ctx.Err(), "context should not be cancelled initially")
+	require.NoError(t, p.ctx.Err(), "context should not be cancelled initially")
 
 	p.Start()
 	p.Stop()
@@ -444,15 +463,4 @@ func TestPruner_Tier1_MutexProtectsStartedFlag(t *testing.T) {
 	<-done
 	<-done
 	assert.True(t, p.started)
-}
-
-func TestPruner_Tier1_WaitGroupInitialized(t *testing.T) {
-	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
-	p := NewPruner(nil, logger, time.Hour, nil)
-
-	// wg should be initialized (no panic when used)
-	assert.NotPanics(t, func() {
-		p.wg.Add(0)
-	})
 }

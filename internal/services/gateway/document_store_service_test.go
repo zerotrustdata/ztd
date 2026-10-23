@@ -469,7 +469,7 @@ func TestGetField_Success(t *testing.T) {
 	if field.Bool != nil {
 		assert.True(t, *field.Bool)
 	} else if field.Float64 != nil {
-		assert.Equal(t, float64(1), *field.Float64)
+		assert.InDelta(t, float64(1), *field.Float64, 0)
 	} else {
 		assert.Fail(t, "unexpected type for boolean field")
 	}
@@ -570,9 +570,9 @@ func TestDocQuery_WithOrderBy(t *testing.T) {
 	results, err := svc.DocQuery(t.Context(), "items", nil, "priority ASC", 0)
 	require.NoError(t, err)
 	assert.Len(t, results, 3)
-	assert.Equal(t, float64(1), docField(t, results[0], "priority"))
-	assert.Equal(t, float64(2), docField(t, results[1], "priority"))
-	assert.Equal(t, float64(3), docField(t, results[2], "priority"))
+	assert.InDelta(t, float64(1), docField(t, results[0], "priority"), 0)
+	assert.InDelta(t, float64(2), docField(t, results[1], "priority"), 0)
+	assert.InDelta(t, float64(3), docField(t, results[2], "priority"), 0)
 }
 
 func TestDocQuery_WithOrderByDesc(t *testing.T) {
@@ -589,9 +589,9 @@ func TestDocQuery_WithOrderByDesc(t *testing.T) {
 	results, err := svc.DocQuery(t.Context(), "items", nil, "priority DESC", 0)
 	require.NoError(t, err)
 	assert.Len(t, results, 3)
-	assert.Equal(t, float64(3), docField(t, results[0], "priority"))
-	assert.Equal(t, float64(2), docField(t, results[1], "priority"))
-	assert.Equal(t, float64(1), docField(t, results[2], "priority"))
+	assert.InDelta(t, float64(3), docField(t, results[0], "priority"), 0)
+	assert.InDelta(t, float64(2), docField(t, results[1], "priority"), 0)
+	assert.InDelta(t, float64(1), docField(t, results[2], "priority"), 0)
 }
 
 func TestDocQuery_MultipleFilters(t *testing.T) {

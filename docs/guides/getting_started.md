@@ -4,7 +4,7 @@ title: Getting Started
 audience: new users and platform evaluators
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -45,7 +45,7 @@ On Windows, in PowerShell:
 irm https://zerotrustdata.io/start.ps1 | iex
 ```
 
-`start.sh` installs the signed release binary into `~/ztd` with the checksum-verified installer, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. `start.ps1` does the same with `ztd.ps1`, installing `ztd.exe` into `~\ztd`; run the follow-up commands as `.\ztd.exe`. Neither uses sudo or Administrator, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. Both read these environment variables:
+`start.sh` installs the release binary into `~/ztd` after verifying its SHA-256 checksum, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. `start.ps1` does the same with `ztd.ps1`, installing `ztd.exe` into `~\ztd`; run the follow-up commands as `.\ztd.exe`. Neither uses sudo or Administrator, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. Both read these environment variables:
 
 | Variable | Effect |
 | :--- | :--- |
@@ -71,7 +71,7 @@ pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.3. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at a different Go install than the active toolchain, because builds would then use the wrong standard library. Paths such as `--working-dir ~/.ztd-op1` and `MODEL_STORAGE_ROOT=$env:USERPROFILE\.ollama\models` work as written. WSL 2 with the Linux commands above also works.
+Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.3. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at a different Go install than the active toolchain, because builds would then use the wrong standard library.
 
 ### What setup does
 
@@ -106,7 +106,7 @@ Every `./ztd` command, including the `make` targets, loads `.env` from the worki
 
 | Key | Set it when |
 | :--- | :--- |
-| `ZTD_OLLAMA_ENDPOINT` | The approved Ollama provider is not on this host (default `http://127.0.0.1:11434`). Supplies `--inference-ollama-endpoint` for `make gw`, `make operator`, and `./ztd operator model` commands. |
+| `ZTD_OLLAMA_ENDPOINT` | The Ollama provider is not on this host (default `http://127.0.0.1:11434`). It is the default for `--inference-ollama-endpoint` on `./ztd operator start` and `./ztd operator model` commands. |
 | `CLOUDFLARE_API_TOKEN` | You route a tunnel hostname with `./ztd gw tunnel route-dns` ([Cloudflare Tunnel](cloudflare_tunnel.md)). |
 
 ```bash
@@ -215,7 +215,7 @@ This builds the `ztd` binary for the current platform and places it at:
 - Repository root: `./ztd`
 - Platform-specific: `bin/ztd-<os>-<arch>`
 
-The binary is statically linked with zero runtime dependencies.
+The binary is built with `CGO_ENABLED=0` and `-trimpath`.
 
 Additional build targets:
 
@@ -244,7 +244,7 @@ curl -fSLO http://localhost:8080/.well-known/ztd/bin/ztd-linux-amd64
 chmod +x ztd-linux-amd64
 ```
 
-The bootstrap endpoint serves the binary without a signature bundle on trusted networks. Verify a release binary from the release set for production use.
+The bootstrap endpoint does not verify signatures. For production use, verify a release binary from the release set as described below.
 
 ### Verify a release binary
 
@@ -270,7 +270,7 @@ $actual = (Get-FileHash -Algorithm SHA256 .\ztd-windows-amd64.exe).Hash
 if ($expected -ne $actual) { throw 'checksum mismatch: do not run this binary' }
 ```
 
-Then verify the signer identity with `cosign` 3.0 or later:
+Then verify the signer identity with `cosign`:
 
 ```bash
 cosign verify-blob \
@@ -333,7 +333,7 @@ Console  https://localhost:8443/console/
 
 ### Local or LAN-reachable Gateway
 
-The Gateway HTTP (8080) and HTTPS (8443) listeners bind `127.0.0.1` by default, so only processes on the Gateway host can reach it. Operators on other hosts get `connection refused` on the bootstrap websocket until the Gateway listens on a reachable interface.
+The Gateway HTTP (8080) and HTTPS (8443) listeners bind `127.0.0.1` by default, so only processes on the Gateway host can reach it. Operators on other hosts cannot reach the Gateway until it listens on a reachable interface.
 
 | Target | Listens on | Use when |
 | :--- | :--- | :--- |
@@ -346,7 +346,7 @@ The `-public` targets pass `--listen-host 0.0.0.0` to `./ztd gw start` and other
 
 ### Gateway configuration
 
-The Gateway starts in Doctrine posture by default (L1 enforced, L2/L3 audited). Posture is fixed at startup; pass exactly one `--posture` value to `./ztd gw start`:
+The Gateway starts in Doctrine posture by default (L1 enforced, L2/L3 audited). Posture is fixed at startup; pass `--posture` with one of the values below to `./ztd gw start`:
 
 | Posture | Enforced | Audited only |
 | --- | --- | --- |
@@ -363,7 +363,7 @@ For example, to require human authorization:
 
 Under `consensus` and `notary`, L2 also needs a bound consensus before the Gateway is ready. See [Governance Postures](#governance-postures) for the binding and vote rules.
 
-The default plain-HTTP port is `8080` (bootstrap and PKI discovery). The default HTTPS port is `8443` (authenticated APIs, MCP, and Web Console).
+The default plain-HTTP port is `8080` and the default HTTPS port is `8443`; both defaults are defined in [`internal/constants/ports.go`](../../internal/constants/ports.go).
 
 ### Monitor the Gateway
 
@@ -424,16 +424,16 @@ After the Gateway is running, sign in to bootstrap the PKI hierarchy and issue m
 
 ```bash
 ./ztd login        # headless CLI identity (no browser, no OS trust changes)
-./ztd login web    # browser passkey; also installs Gateway root CA and enables Console
+./ztd login web    # browser passkey; also installs the Gateway root CA in the OS trust store
 ```
 
-The first sign-in on a fresh Gateway claims ownership and claims the embedded Operator. `./ztd logout` ends active sessions.
+The headless identity cannot authenticate to the Console; `./ztd login web` registers a passkey for it. `./ztd logout` ends the user's sessions on every machine; see `./ztd logout --help`.
 
 ## Connect an Operator
 
 ### Start a remote operator
 
-To connect an Operator on a remote host to the Gateway, start the Gateway with `make up-public` or `make gw-public` (a Gateway started with `make up` or `make gw` refuses remote connections), then run `./ztd operator start -e <gateway-hostname>` on the remote host, replacing `<gateway-hostname>` with the Gateway's hostname.
+To connect an Operator on a remote host to the Gateway, start the Gateway with `make up-public` or `make gw-public` (a Gateway started with `make up` or `make gw` listens only on `127.0.0.1`), then run `./ztd operator start -e <gateway-hostname>` on the remote host, replacing `<gateway-hostname>` with the Gateway's hostname.
 
 The Operator initiates platform enrollment automatically. The Gateway holds the request in `pending_approval` until an enrolled owner approves it with `./ztd auth enroll approve <request-id> --yes`.
 

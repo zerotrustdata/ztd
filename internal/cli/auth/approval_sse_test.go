@@ -304,7 +304,7 @@ func TestSubscribeApprovals_WaitFailsClosedWhenStreamEndsBeforeApproval(t *testi
 
 	receipt, err := sub.Wait(context.Background(), txHash, userID)
 	require.ErrorIs(t, err, constants.ErrSSEStreamClosed)
-	assert.NotErrorIs(t, err, constants.ErrApprovalSSETimeout)
+	require.NotErrorIs(t, err, constants.ErrApprovalSSETimeout)
 	assert.Nil(t, receipt)
 	assert.Equal(t, int32(1), connections.Load(), "a stream that ended after connecting must not be re-opened")
 }
@@ -406,7 +406,7 @@ func TestSubscribeApprovals_ReturnsFirstConnectFailureWithoutRetry(t *testing.T)
 			require.Error(t, err)
 			assert.Nil(t, sub)
 			if tt.wantErr != nil {
-				assert.ErrorIs(t, err, tt.wantErr)
+				require.ErrorIs(t, err, tt.wantErr)
 			}
 			assert.Equal(t, int32(1), requests.Load(), "a failed first connection must not be retried")
 		})

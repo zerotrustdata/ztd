@@ -180,7 +180,7 @@ func TestStreamSegmenter_ToolCallIsScrubbedWholeAfterTheTextBeforeIt(t *testing.
 	assert.Regexp(t, `^\{"to":"\{\{UEI_[0-9a-f]{12}_\d+\}\}"\}$`, call.GetArgumentsJson())
 	arguments, err := s.RehydrateText(context.Background(), call.GetArgumentsJson(), scrubbing.ForeignTokenReject)
 	require.NoError(t, err)
-	assert.Equal(t, `{"to":"`+segmenterSecretEmail+`"}`, arguments)
+	assert.Equal(t, `{"to":"`+segmenterSecretEmail+`"}`, arguments) //nolint:testifylint // exact bytes, not JSON equivalence
 	for _, event := range published {
 		for _, part := range event.GetParts() {
 			assert.NotContains(t, part.GetToolCall().GetArgumentsJson(), segmenterSecretEmail)

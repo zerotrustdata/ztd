@@ -18,8 +18,8 @@ import (
 func TestNewTokenBucket_InitialCapacity(t *testing.T) {
 	tb := newTokenBucket(10, 5)
 	assert.Equal(t, 5, tb.burst)
-	assert.Equal(t, 5.0, tb.tokens)
-	assert.Equal(t, 10.0, tb.rate)
+	assert.InDelta(t, 5.0, tb.tokens, 0)
+	assert.InDelta(t, 10.0, tb.rate, 0)
 }
 
 func TestTokenBucket_AllowWithinBurst(t *testing.T) {
@@ -71,7 +71,7 @@ func TestTokenBucket_ConcurrentAllow(t *testing.T) {
 	}
 
 	assert.LessOrEqual(t, allowed, 100, "should not allow more than burst")
-	assert.Greater(t, allowed, 0, "should allow some calls")
+	assert.Positive(t, allowed, "should allow some calls")
 }
 
 func TestTokenBucket_ZeroRate(t *testing.T) {

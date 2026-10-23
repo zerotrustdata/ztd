@@ -74,7 +74,7 @@ func TestConvertToFieldValue_Float64(t *testing.T) {
 
 	v := ConvertToFieldValue(3.14)
 	require.NotNil(t, v.Float64)
-	assert.Equal(t, 3.14, *v.Float64)
+	assert.InDelta(t, 3.14, *v.Float64, 0)
 }
 
 func TestConvertToFieldValue_Bool(t *testing.T) {
@@ -111,7 +111,7 @@ func TestConvertToFieldValue_Object(t *testing.T) {
 	require.Contains(t, v.Object, "name")
 	assert.Equal(t, "test", *v.Object["name"].Str)
 	require.Contains(t, v.Object, "count")
-	assert.Equal(t, float64(42), *v.Object["count"].Float64)
+	assert.InDelta(t, float64(42), *v.Object["count"].Float64, 0)
 }
 
 func TestConvertToFieldValue_NestedArrayInObject(t *testing.T) {
@@ -140,7 +140,7 @@ func TestConvertToFieldValue_EmptyArray(t *testing.T) {
 	t.Parallel()
 
 	v := ConvertToFieldValue([]interface{}{})
-	assert.Len(t, v.Array, 0)
+	assert.Empty(t, v.Array)
 }
 
 func TestConvertToFieldValue_EmptyObject(t *testing.T) {

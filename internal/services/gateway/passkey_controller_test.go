@@ -106,13 +106,6 @@ func TestPasskeyController_DirectHandlerMethods_Delegate(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, rr.Code)
 	})
 
-	t.Run("handleCLIApprovalStatus/POST->405", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/approvals/cli/abc/status", nil)
-		rr := httptest.NewRecorder()
-		c.handleCLIApprovalStatus(rr, req)
-		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
-	})
-
 	t.Run("handleCLIListSuspended/POST->405", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/approvals/cli", nil)
 		rr := httptest.NewRecorder()

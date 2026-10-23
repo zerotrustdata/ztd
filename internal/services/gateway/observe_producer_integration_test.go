@@ -12,7 +12,6 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -255,7 +254,7 @@ func TestObserveProducer_ReopenRunState_ReplacesOnlyTheNamedTerminalStatus(t *te
 	assert.Equal(t, models.RunLifecycleStatusCompleted, projected("run-completed"))
 
 	invalid := producer.ReopenRunState(ctx, "user-reopen", route, runPayload("run-cancelled", models.RunLifecycleStatusCompleted, now.Add(2*time.Second)), models.RunLifecycleStatusWaiting)
-	assert.ErrorIs(t, invalid, constants.ErrObserveStatusInvalid)
+	require.ErrorIs(t, invalid, constants.ErrObserveStatusInvalid)
 
 	rows, err := sseStore.SSEEventsListSince(route, 0, 100)
 	require.NoError(t, err)
@@ -291,7 +290,7 @@ func TestObserveProducer_InvalidTransitionRejected_NoProjectionNoEvent(t *testin
 	}
 	err := producer.UpdateRunState(ctx, "user-5", producerRoute("user-5"), regressPayload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveInvalidTransition))
+	require.ErrorIs(t, err, constants.ErrObserveInvalidTransition)
 
 	// Projection remains in completed state.
 	collection := marshaler.CollectionName(constants.CollectionObserveRuns)
@@ -336,7 +335,7 @@ func TestObserveProducer_StaleUpdateRejected(t *testing.T) {
 	}
 	err := producer.UpdateAgentState(ctx, "user-6", producerRoute("user-6"), stalePayload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveStaleUpdate))
+	require.ErrorIs(t, err, constants.ErrObserveStaleUpdate)
 
 	// Only one SSE event (the initial seed), no event for the stale update.
 	route := producerRoute("user-6")
@@ -409,7 +408,7 @@ func TestObserveProducer_CrossUserIsolation_AgentOwnedByDifferentUserRejected(t 
 	}
 	err := producer.UpdateAgentState(ctx, "user-b", producerRoute("user-b"), updatePayload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveAgentNotFound))
+	assert.ErrorIs(t, err, constants.ErrObserveAgentNotFound)
 }
 
 func TestObserveProducer_CrossUserIsolation_RunOwnedByDifferentUserRejected(t *testing.T) {
@@ -441,7 +440,7 @@ func TestObserveProducer_CrossUserIsolation_RunOwnedByDifferentUserRejected(t *t
 	}
 	err := producer.UpdateRunState(ctx, "user-b", producerRoute("user-b"), updatePayload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveRunNotFound))
+	assert.ErrorIs(t, err, constants.ErrObserveRunNotFound)
 }
 
 func TestObserveProducer_UpdateAgentState_MissingAgentIDRejected(t *testing.T) {
@@ -458,7 +457,7 @@ func TestObserveProducer_UpdateAgentState_MissingAgentIDRejected(t *testing.T) {
 	}
 	err := producer.UpdateAgentState(ctx, "user-x", producerRoute("user-x"), payload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveAgentIDRequired))
+	assert.ErrorIs(t, err, constants.ErrObserveAgentIDRequired)
 }
 
 func TestObserveProducer_UpdateRunState_MissingRunIDRejected(t *testing.T) {
@@ -476,7 +475,7 @@ func TestObserveProducer_UpdateRunState_MissingRunIDRejected(t *testing.T) {
 	}
 	err := producer.UpdateRunState(ctx, "user-x", producerRoute("user-x"), payload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveRunIDRequired))
+	assert.ErrorIs(t, err, constants.ErrObserveRunIDRequired)
 }
 
 func TestObserveProducer_UpdateAgentState_InvalidRouteRejected(t *testing.T) {
@@ -495,7 +494,7 @@ func TestObserveProducer_UpdateAgentState_InvalidRouteRejected(t *testing.T) {
 	invalidRoute := SSERoute{UserID: "user-x"}
 	err := producer.UpdateAgentState(ctx, "user-x", invalidRoute, payload)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrGatewaySSERouteSessionRequired))
+	assert.ErrorIs(t, err, constants.ErrGatewaySSERouteSessionRequired)
 }
 
 func TestObserveProducer_UpdateRunState_PreservesTasksAndEvidenceFromExisting(t *testing.T) {

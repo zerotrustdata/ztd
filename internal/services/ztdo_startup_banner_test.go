@@ -8,25 +8,28 @@
 package services
 
 import (
-	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestPrintOperatorStartupBanner(t *testing.T) {
+func TestPrintOperatorStartupBanner_LogsIdentityAndCapabilityBoundary(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
-	logger := testutil.NewTestLogger()
+	cfg.Endpoint = "gateway.example"
+	cfg.HTTPSPort = 8443
+	logger, sink := testutil.NewBufferLogger(t)
 
-	assert.NotPanics(t, func() {
-		printOperatorStartupBanner(cfg, logger)
-	})
+	printOperatorStartupBanner(cfg, logger)
+
+	text := sink.String()
+	assert.Contains(t, text, "Initializing Edge Execution Operator")
+	assert.Contains(t, text, "gateway.example:8443")
+	assert.Contains(t, text, cfg.WorkDir)
+	assert.Contains(t, text, "Air-gap mode active")
+	assert.Contains(t, text, "Awaiting cryptographically signed agentic intents")
 }
 
 func TestNewZtdoService_NilTLSConfig(t *testing.T) {
@@ -44,41 +47,4 @@ func TestNewZtdoService_NilL2Trust(t *testing.T) {
 
 	_, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), nil, newTestFileSvc(t), nil, newTestPubSubClientFactory())
 	assert.ErrorIs(t, err, constants.ErrInternal)
-}
-
-func TestAuditStoreTransactionStore_DocSet_RoundTrip(t *testing.T) {
-	t.Parallel()
-
-	receipt := models.EventReceiptRecord{
-		TransactionID:     "tx-roundtrip",
-		TransactionHash:   "hash-roundtrip",
-		OperatorID:        "op-1",
-		OperatorSessionID: "session-1",
-		ActionType:        constants.ActionTypeExecuteBash,
-		TargetResource:    "/bin/ls",
-		Status:            2,
-		ResultSummary:     "completed",
-		SignerKeyID:       "key-1",
-		Signature:         "sig-1",
-		L2Valid:           true,
-		L3Valid:           false,
-	}
-
-	data, err := json.Marshal(&receipt)
-	require.NoError(t, err)
-
-	var unmarshaled models.EventReceiptRecord
-	err = json.Unmarshal(data, &unmarshaled)
-	require.NoError(t, err)
-
-	assert.Equal(t, receipt.TransactionID, unmarshaled.TransactionID)
-	assert.Equal(t, receipt.ActionType, unmarshaled.ActionType)
-	assert.Equal(t, receipt.L2Valid, unmarshaled.L2Valid)
-}
-
-func TestErrorsIs_Used(t *testing.T) {
-	t.Parallel()
-
-	err := errors.New("test error")
-	assert.Error(t, err)
 }

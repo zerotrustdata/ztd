@@ -31,7 +31,7 @@ func TestAuditReceiptsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -43,7 +43,7 @@ func TestAuditExportCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -55,7 +55,7 @@ func TestAuditReportCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -67,7 +67,7 @@ func TestAuditEventsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -79,6 +79,6 @@ func TestAuditSummaryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

@@ -36,6 +36,6 @@ func TestTUI_FileSvcFactoryError(t *testing.T) {
 	cmd.SetArgs([]string{})
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

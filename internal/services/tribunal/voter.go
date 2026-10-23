@@ -22,14 +22,28 @@ func clusterID(i int) string {
 }
 
 // clusterCandidates groups one round's candidates by canonical typed arguments in
-// first-proposal order. A member that proposed no command joins no cluster.
+// first-proposal order, excluding Nemesis's proposed command and every matching
+// member proposal. A member that proposed no command joins no cluster.
 func clusterCandidates(candidates []Candidate) []Cluster {
+	var nemesisKey string
+	var hasNemesis bool
+	for _, candidate := range candidates {
+		if candidate.Member == MemberNemesis && candidate.Arguments.Command != "" {
+			nemesisKey = candidate.Arguments.CanonicalJSON()
+			hasNemesis = true
+			break
+		}
+	}
+
 	var clusters []Cluster
 	for _, candidate := range candidates {
 		if candidate.Arguments.Command == "" {
 			continue
 		}
 		key := candidate.Arguments.CanonicalJSON()
+		if hasNemesis && key == nemesisKey {
+			continue
+		}
 		i := slices.IndexFunc(clusters, func(c Cluster) bool { return c.Arguments.CanonicalJSON() == key })
 		if i < 0 {
 			clusters = append(clusters, Cluster{ID: clusterID(len(clusters)), Arguments: candidate.Arguments})
@@ -43,8 +57,7 @@ func clusterCandidates(candidates []Candidate) []Cluster {
 // vote runs the uniform-weight vote over one round. Every member is one vote
 // for its own proposal; the largest cluster wins when it holds at least
 // MinConsensus members. A tie at the top is broken by the shortest command
-// when the tied commands differ in length, then by a cluster without Nemesis
-// over clusters with it; any tie left has no winner.
+// when the tied commands differ in length; any tie left has no winner.
 func vote(round uint32, candidates []Candidate) Vote {
 	result := Vote{Round: round, Clusters: clusterCandidates(candidates)}
 	top := 0
@@ -68,10 +81,6 @@ func vote(round uint32, candidates []Candidate) Vote {
 	if slices.ContainsFunc(tied, func(c Cluster) bool { return len(c.Arguments.CommandLine()) != len(shortest.Arguments.CommandLine()) }) {
 		result.Winner = shortest.Arguments
 		return result
-	}
-	withNemesis := func(c Cluster) bool { return slices.Contains(c.Members, MemberNemesis) }
-	if i := slices.IndexFunc(tied, func(c Cluster) bool { return !withNemesis(c) }); i >= 0 && slices.ContainsFunc(tied, withNemesis) {
-		result.Winner = tied[i].Arguments
 	}
 	return result
 }

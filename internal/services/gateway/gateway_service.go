@@ -638,6 +638,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 			return nil, fmt.Errorf("gateway: initialize public spectator: %w", err)
 		}
 		ls.publicSpectator = spectator
+		bindTribunalVoteFeed(ls.tribunalConsensus, spectator)
 	}
 
 	return ls, nil
@@ -815,7 +816,6 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Cfg:                cfg,
 			Logger:             logger,
 			DocStore:           ls.docStore,
-			SSEStore:           ls.sseStore,
 			BlobStore:          ls.blobStore,
 			Pubsub:             pubsub,
 			Responder:          ls.responder,

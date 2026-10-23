@@ -65,7 +65,13 @@ func NewCompiler() *Compiler {
 // Compile compiles a Draft-07 JSON Schema from raw bytes. It returns the
 // compiled root Schema or a typed error wrapping CompileError.
 func (c *Compiler) Compile(data []byte) (*Schema, error) {
+	// Compile caches schemas by JSON pointer, including the root pointer "".
+	// A second call on the same Compiler must not return the previous schema.
 	c.failures = nil
+	c.root = nil
+	c.idIndex = make(map[string]any)
+	c.idPaths = make(map[string]string)
+	c.compiled = make(map[string]*Schema)
 	v, err := decodeJSONStrict(data)
 	if err != nil {
 		return nil, &CompileError{Failures: Failures{{

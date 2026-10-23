@@ -422,7 +422,7 @@ func TestExecuteDeployHostStop(t *testing.T) {
 
 		// PID file in workingDir should have been cleaned up
 		_, err = os.Stat(pid1File)
-		require.True(t, errors.Is(err, os.ErrNotExist))
+		require.ErrorIs(t, err, os.ErrNotExist)
 	})
 
 	t.Run("PID metadata cannot authorize termination", func(t *testing.T) {

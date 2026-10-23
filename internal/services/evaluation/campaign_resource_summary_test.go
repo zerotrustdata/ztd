@@ -8,7 +8,6 @@
 package evaluation
 
 import (
-	"errors"
 	"math"
 	"testing"
 
@@ -37,6 +36,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 			name:   "no scored calls is explicitly unavailable",
 			result: &evalv1.EvaluationAssignmentResult{},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				assert.Nil(t, summary.InputTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS, summary.InputTokens.UnavailableReason)
 			},
@@ -48,6 +48,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				ScoredInferenceSpanNanos: proto.Uint64(2_000_000),
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				require.NotNil(t, summary.InputTokens.Value)
 				assert.Zero(t, *summary.InputTokens.Value)
 				require.NotNil(t, summary.OutputTokens.Value)
@@ -59,7 +60,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				require.NotNil(t, summary.Retries.Value)
 				assert.Zero(t, *summary.Retries.Value)
 				require.NotNil(t, summary.LatencyMS.Value)
-				assert.Equal(t, float64(2), *summary.LatencyMS.Value)
+				assert.InDelta(t, float64(2), *summary.LatencyMS.Value, 0)
 			},
 		},
 		{
@@ -73,6 +74,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				}},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				require.NotNil(t, summary.ThinkingTokens.Value)
 				assert.Zero(t, *summary.ThinkingTokens.Value)
 				require.NotNil(t, summary.CacheTokens.Value)
@@ -88,10 +90,11 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				require.NotNil(t, summary.InputTokens.Value)
-				assert.Equal(t, float64(4), *summary.InputTokens.Value)
+				assert.InDelta(t, float64(4), *summary.InputTokens.Value, 0)
 				require.NotNil(t, summary.OutputTokens.Value)
-				assert.Equal(t, float64(6), *summary.OutputTokens.Value)
+				assert.InDelta(t, float64(6), *summary.OutputTokens.Value, 0)
 				assert.Nil(t, summary.CacheTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.CacheTokens.UnavailableReason)
 			},
@@ -105,6 +108,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				assert.Nil(t, summary.ThinkingTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.ThinkingTokens.UnavailableReason)
 				require.NotNil(t, summary.CacheTokens.Value)
@@ -117,6 +121,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				ModelInferences: []*evalv1.ModelInferenceRecord{{Classification: callScoredChain, UsageAvailability: reported}, {Classification: callScoredChain, UsageAvailability: evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE}},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				assert.Nil(t, summary.InputTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.InputTokens.UnavailableReason)
 			},
@@ -156,9 +161,9 @@ func TestBuildPublicResourceSummary_ExcludesMemoryCodexCalls(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, without, with)
 	require.NotNil(t, with.InputTokens.Value)
-	assert.Equal(t, float64(10), *with.InputTokens.Value)
+	assert.InDelta(t, float64(10), *with.InputTokens.Value, 0)
 	require.NotNil(t, with.Retries.Value)
-	assert.Equal(t, float64(1), *with.Retries.Value)
+	assert.InDelta(t, float64(1), *with.Retries.Value, 0)
 
 	t.Run("codex-only result reports no scored calls", func(t *testing.T) {
 		summary, err := BuildPublicResourceSummary(&evalv1.EvaluationAssignmentResult{
@@ -199,21 +204,21 @@ func TestBuildPublicResourceSummary_ExcludesGraderCalls(t *testing.T) {
 
 	assert.Equal(t, without, with, "grader calls must not change any scored aggregate")
 	require.NotNil(t, with.InputTokens.Value)
-	assert.Equal(t, float64(14), *with.InputTokens.Value)
+	assert.InDelta(t, float64(14), *with.InputTokens.Value, 0)
 	require.NotNil(t, with.OutputTokens.Value)
-	assert.Equal(t, float64(6), *with.OutputTokens.Value)
+	assert.InDelta(t, float64(6), *with.OutputTokens.Value, 0)
 	require.NotNil(t, with.ThinkingTokens.Value)
-	assert.Equal(t, float64(2), *with.ThinkingTokens.Value)
+	assert.InDelta(t, float64(2), *with.ThinkingTokens.Value, 0)
 	require.NotNil(t, with.CacheTokens.Value)
-	assert.Equal(t, float64(3), *with.CacheTokens.Value)
+	assert.InDelta(t, float64(3), *with.CacheTokens.Value, 0)
 	require.NotNil(t, with.Retries.Value)
-	assert.Equal(t, float64(1), *with.Retries.Value)
+	assert.InDelta(t, float64(1), *with.Retries.Value, 0)
 	require.NotNil(t, with.LatencyMS.Value)
-	assert.Equal(t, float64(3), *with.LatencyMS.Value)
+	assert.InDelta(t, float64(3), *with.LatencyMS.Value, 0)
 }
 
 func TestBuildPublicResourceSummary_NilResult(t *testing.T) {
 	_, err := BuildPublicResourceSummary(nil)
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
-	assert.False(t, errors.Is(err, constants.ErrEvidenceArtifactMalformed))
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }

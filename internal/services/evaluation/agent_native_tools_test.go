@@ -66,14 +66,14 @@ func TestDecodeAgentToolRequest_SchemaInvalidShellRecordsGenericForm(t *testing.
 	request := decodeAgentToolRequest(spec, true, `{"args": ["hello"]}`)
 	require.NotNil(t, request.Failure)
 	assert.Nil(t, request.Shell)
-	assert.Equal(t, `{"args":["hello"]}`, request.ArgumentsJSON)
+	assert.Equal(t, `{"args":["hello"]}`, request.ArgumentsJSON) //nolint:testifylint // exact bytes, not JSON equivalence
 }
 
 func TestDecodeAgentToolRequest_UndeclaredToolRecordsGenericForm(t *testing.T) {
 	request := decodeAgentToolRequest(agentToolSpec{}, false, `{"command": "echo"}`)
 	assert.Nil(t, request.Failure)
 	assert.Nil(t, request.Shell)
-	assert.Equal(t, `{"command":"echo"}`, request.ArgumentsJSON)
+	assert.Equal(t, `{"command":"echo"}`, request.ArgumentsJSON) //nolint:testifylint // exact bytes, not JSON equivalence
 }
 
 func TestAgentToolSpecFromDeclaration_RoundTripsCatalogSchema(t *testing.T) {
@@ -111,10 +111,10 @@ func TestAgentToolScopeRequiresRunShellCommandForTribunalAuthoring(t *testing.T)
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	_, err = catalog.Scope(ScenarioToolExpectations{TribunalCommands: true, AllowedTools: []string{"read_file"}})
-	assert.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
 
 	_, err = catalog.Scope(ScenarioToolExpectations{TribunalCommands: true, AllowedTools: []string{constants.MCPToolRunShellCommand}})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}})
 	assert.NoError(t, err)
 }

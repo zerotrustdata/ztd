@@ -145,9 +145,11 @@ func auditVerdict(text string, v Vote, clusters []Cluster, req Request) (*Audit,
 		if hasRevision {
 			return nil, "SWAP carries revised_arguments"
 		}
-		for _, cluster := range clusters[1:] {
-			if cluster.ID == swap {
-				return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP, Arguments: cluster.Arguments, Rationale: rationale}, ""
+		if len(clusters) > 1 {
+			for _, cluster := range clusters[1:] {
+				if cluster.ID == swap {
+					return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP, Arguments: cluster.Arguments, Rationale: rationale}, ""
+				}
 			}
 		}
 		return nil, fmt.Sprintf("SWAP names no alternative cluster %q", answer.SwapToCluster)

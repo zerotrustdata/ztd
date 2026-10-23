@@ -203,41 +203,41 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 
 	t.Run("Invalid format - missing parts", func(t *testing.T) {
 		_, err := ParseAndVerifyJWT(context.Background(), "invalid.token", mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTInvalidFormat)
 	})
 
 	t.Run("Invalid format - too many parts", func(t *testing.T) {
 		_, err := ParseAndVerifyJWT(context.Background(), "a.b.c.d", mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTInvalidFormat)
 	})
 
 	t.Run("Invalid base64 header", func(t *testing.T) {
 		token := "!!!." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "decode header")
 	})
 
 	t.Run("Invalid base64 payload", func(t *testing.T) {
 		token := base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".!!!.sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "decode payload")
 	})
 
 	t.Run("Invalid base64 signature", func(t *testing.T) {
 		token := base64.RawURLEncoding.EncodeToString([]byte("{}")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".!!!"
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "decode signature")
 	})
 
 	t.Run("Invalid JSON header", func(t *testing.T) {
 		token := base64.RawURLEncoding.EncodeToString([]byte("{invalid")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unmarshal header")
 	})
 
@@ -245,7 +245,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		header := map[string]interface{}{"alg": "HS256", "kid": kid}
 		token := generateTestJWT(t, privKey, kid, header, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTUnsupportedAlg)
 	})
 
@@ -253,7 +253,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		header := map[string]interface{}{"alg": "RS256"}
 		token := generateTestJWT(t, privKey, "", header, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTMissingKid)
 	})
 
@@ -265,7 +265,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		payloadB64 := base64.RawURLEncoding.EncodeToString([]byte("{invalid"))
 		token := headerB64 + "." + payloadB64 + ".sig"
 		_, err = ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unmarshal payload")
 	})
 
@@ -275,7 +275,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		}
 		token := generateTestJWT(t, privKey, kid, nil, claims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrExpired)
 	})
 
@@ -285,7 +285,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		}
 		token := generateTestJWT(t, privKey, kid, nil, claims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTNotYetValid)
 	})
 
@@ -310,14 +310,14 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 	t.Run("Issuer mismatch", func(t *testing.T) {
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "wrong-issuer", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTIssuerMismatch)
 	})
 
 	t.Run("Audience mismatch", func(t *testing.T) {
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, mockJWKS, "roles", "", "wrong-audience")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTAudienceMismatch)
 	})
 
@@ -329,7 +329,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		tamperedToken := parts[0] + "." + parts[1] + "." + tamperedSig
 
 		_, err := ParseAndVerifyJWT(context.Background(), tamperedToken, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "verify signature")
 	})
 
@@ -369,13 +369,13 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 
 	t.Run("Empty token string", func(t *testing.T) {
 		_, err := ParseAndVerifyJWT(context.Background(), "", mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWTInvalidFormat)
 	})
 
 	t.Run("Token with empty segments", func(t *testing.T) {
 		_, err := ParseAndVerifyJWT(context.Background(), "..", mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		// Empty segments decode to empty bytes, which fail JSON unmarshaling
 		assert.Contains(t, err.Error(), "unmarshal")
 	})
@@ -405,7 +405,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		emptyJWKS := stubJWKSProvider(map[string]*rsa.PublicKey{})
 		_, err := ParseAndVerifyJWT(context.Background(), token, emptyJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		// The error comes from JWKSProvider trying to fetch keys when key is not in cache
 		assert.Contains(t, err.Error(), "get public key")
 	})
@@ -455,7 +455,7 @@ func TestParseAndVerifyJWT_Unit(t *testing.T) {
 		tamperedToken := parts[0] + "." + tamperedPayload + "." + parts[2]
 
 		_, err := ParseAndVerifyJWT(context.Background(), tamperedToken, mockJWKS, "roles", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "verify signature")
 	})
 }

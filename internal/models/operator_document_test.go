@@ -204,7 +204,7 @@ func TestOperatorDocumentInvalidOperatorCapabilities(t *testing.T) {
 	}`)
 
 	_, err := UnmarshalOperatorDocument(invalidData)
-	assert.Error(t, err, "should reject invalid capability in operator_capabilities")
+	require.Error(t, err, "should reject invalid capability in operator_capabilities")
 	assert.Contains(t, err.Error(), "invalid_capability")
 }
 
@@ -218,7 +218,7 @@ func TestOperatorDocumentInvalidCapabilityRuntimeConfig(t *testing.T) {
 	}`)
 
 	_, err := UnmarshalOperatorRuntimeConfig(invalidData)
-	assert.Error(t, err, "should reject invalid capability in runtime_config.capabilities")
+	require.Error(t, err, "should reject invalid capability in runtime_config.capabilities")
 	assert.Contains(t, err.Error(), "unknown_capability")
 }
 

@@ -10,7 +10,6 @@ package services
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
@@ -24,7 +23,6 @@ import (
 func TestSQLAuditStore_SatisfiesTransactionAuditStoreNatively(t *testing.T) {
 	t.Parallel()
 	var _ governance.TransactionAuditStore = (*storage.SQLAuditStore)(nil)
-	assert.True(t, true)
 }
 
 // TestDocumentStoreService_SatisfiesTransactionAuditStoreNatively asserts
@@ -35,5 +33,4 @@ func TestSQLAuditStore_SatisfiesTransactionAuditStoreNatively(t *testing.T) {
 func TestDocumentStoreService_SatisfiesTransactionAuditStoreNatively(t *testing.T) {
 	t.Parallel()
 	var _ governance.TransactionAuditStore = (*gateway.DocumentStoreService)(nil)
-	assert.True(t, true)
 }

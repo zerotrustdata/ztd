@@ -92,20 +92,6 @@ func (f *fakeSuspendedStore) ListSuspendedTransactions(_ context.Context, userID
 	return result, nil
 }
 
-func (f *fakeSuspendedStore) ApproveSuspendedTransaction(_ context.Context, txHash string, proof models.ApprovalProof) error {
-	if tx, ok := f.txs[txHash]; ok {
-		tx.ApprovedBy = proof.ApprovedBy
-		tx.ApprovalSignature = proof.CliSignature
-		tx.ExpectedCertFingerprint = proof.CertFingerprint
-		tx.ApprovalPublicKey = proof.ApprovalPublicKey
-		tx.PasskeyCredentialID = proof.CredentialID
-		tx.PasskeyClientDataJSON = proof.ClientDataJSON
-		tx.PasskeyAuthenticatorData = proof.AuthenticatorData
-		tx.PasskeySignature = proof.Signature
-	}
-	return nil
-}
-
 func (f *fakeSuspendedStore) DeleteSuspendedTransaction(_ context.Context, txHash string) error {
 	if f.deleteErr != nil {
 		return f.deleteErr
@@ -2115,8 +2101,9 @@ func newTestScrubbingService(t *testing.T) *scrubbing.ScrubbingService {
 }
 
 func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayService {
-	// Generate default signing key
-	_, privKey, _ := ed25519.GenerateKey(rand.Reader)
+	t.Helper()
+	_, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	g := &GatewayService{
 		posture:           constants.PostureDoctrine,

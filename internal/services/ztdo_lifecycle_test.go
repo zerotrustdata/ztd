@@ -11,7 +11,7 @@ package services
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
@@ -97,30 +98,53 @@ func TestZtdoService_Start_SuccessFlow(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Timed out waiting for the Operator service to observe shutdown")
 	}
-	assert.ErrorIs(t, service.ctx.Err(), context.Canceled)
+	require.ErrorIs(t, service.ctx.Err(), context.Canceled)
 
 	// Clean up to avoid background goroutines logging after test completion
 	require.NoError(t, service.Stop(context.Background()))
 }
 
-func TestZtdoService_Start_FactoryFailureStopsBeforeDependents(t *testing.T) {
-	cfg := enrolledTestConfig(t)
+func TestZtdoService_Start_RejectsInvalidInferenceEndpointBeforeConnecting(t *testing.T) {
+	cfg := testutil.NewTestConfig(t)
+	cfg.Inference.Enabled = true
+	cfg.Inference.OllamaEndpoint = "not-a-url"
+	calls := 0
+	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
+		calls++
+		return pubsubtest.NewMockOperatorPubSubClient(), nil
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if service.cancel != nil {
+			service.cancel()
+		}
+	})
 
-	factoryErr := fmt.Errorf("pub/sub client factory unavailable")
-	factoryCalls := 0
-	service, err := NewZtdoService(cfg, testutil.NewVerboseTestLogger(t), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
-		factoryCalls++
+	err = service.Start(testutil.Context(t))
+	require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
+	assert.Zero(t, calls)
+	assert.False(t, service.running)
+}
+
+func TestZtdoService_Start_FactoryFailureStopsBeforeDependents(t *testing.T) {
+	factoryErr := errors.New("pub/sub client factory unavailable")
+	calls := 0
+	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
+		calls++
 		return nil, factoryErr
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		if service.cancel != nil {
+			service.cancel()
+		}
+	})
 
-	err = service.Start(context.Background())
-	require.Error(t, err)
-	assert.ErrorIs(t, err, factoryErr)
-	assert.Equal(t, 1, factoryCalls)
+	err = service.Start(testutil.Context(t))
+	require.ErrorIs(t, err, factoryErr)
+	require.ErrorIs(t, err, constants.ErrInternal)
+	assert.Equal(t, 1, calls)
 	assert.Nil(t, service.pubSubClient)
-	assert.Nil(t, service.pubSubResults)
-	assert.Nil(t, service.pubSubCommands)
 	assert.Nil(t, service.execution)
-	service.cancel()
+	assert.False(t, service.running)
 }

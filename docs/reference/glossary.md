@@ -4,7 +4,7 @@ title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - protocol/
   - internal/services/
@@ -62,15 +62,21 @@ The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLA
 
 ---
 
+## Autochthon
+
+The `ztd autochthon` runtime (`internal/services/autochthon/`). It is a standalone observer, not an Operator mode. It runs in the foreground with no Gateway, enrollment, or listener. It samples the host once per second, breeds a fixed-topology predictor by selection and mutation (no gradient training), and records each sample in a hash-chained tally under `.ztd/autochthon/`. It accepts no **Governance Envelope** and produces no **Action Receipt**. `ztd autochthon status` verifies the tally chain. See [Operator Architecture](../architecture/operator.md#autochthon-subsystem).
+
+---
+
 ## Bound State Root
 
-The admission-gating **State Root** read from `StateRootService`. It is the root of a persisted incremental SHA-256 Merkle commitment (algorithm 2) over: all authoritative `documents` rows, bound-tier `kv_store` entries (`state_tier = 'bound'`), bound-tier `blobs` entries (`state_tier = 'bound'`), and the token keymap hash provided by `KeymapHashProvider` when the scrubbing service is attached. A write marks only its own leaf dirty; a read rehashes the dirty leaves and their ancestor paths. It explicitly excludes nonces, SSE events, and observed-tier rows (`state_tier = 'observed'`) so telemetry does not continuously invalidate in-flight envelopes; observed-tier rows are committed in a separate observed tree.
+The admission-gating **State Root** read from `StateRootService`. It is the root of a persisted incremental SHA-256 Merkle commitment (algorithm 2) over: all authoritative `documents` rows, bound-tier `kv_store` entries (`state_tier = 'bound'`), bound-tier `blobs` entries (`state_tier = 'bound'`), and the token keymap hash provided by `KeymapHashProvider` when the scrubbing service is attached. A write marks only its own leaf dirty; a read rehashes the dirty leaves and their ancestor paths. Nonces and SSE events are not state sources, and observed-tier rows (`state_tier = 'observed'`) are committed to the separate **Observed-State Root**, so telemetry does not continuously invalidate in-flight envelopes.
 
 ---
 
 ## Canonical Gateway Database
 
-The Gateway's primary SQLite database, `ztd.db`, opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService`. It embeds the canonical schema from `internal/services/gateway/db/schema.sql` and stores platform state across `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), `nonces`, and `sse_events`; the same file also holds the audit tables, the **Execution Record**, and the **Suspended Transaction** table. Each runtime root holds exactly one such database plus one git-backed file **Ledger**. It is distinct from remote Operator databases, each of which maintains an independent lifecycle and sovereignty boundary.
+The Gateway's primary SQLite database, `ztd.db` (`constants.DbFilename`), opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService` (`internal/services/gateway/gateway_db.go`). Its canonical schema, `internal/services/gateway/db/schema.sql`, creates `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), and `sse_events`. The stores opened over the same database create their own tables: `storage.ReplayStore` creates `nonces`, the SQLite audit store creates `sessions`, `events` (which holds the **Execution Record**), `file_mutation_log`, and `commitment_ledger`, and `suspended_transaction_store.go` creates `suspended_transactions`. The public mirror is a separate file, `public-mirror/mirror.db` (`constants.PublicMirrorDBPath`). Remote Operator databases are distinct; each maintains an independent lifecycle and sovereignty boundary.
 
 ---
 
@@ -112,7 +118,7 @@ The append-only SQLite hash chain of signed **Commitment Attestations** (`intern
 
 ## Compliance Bundle
 
-A portable, content-addressed release package (`internal/services/compliance/report/bundle.go`) containing a manifest (`manifest.json`), canonical compliance report formats (JSON, OSCAL, Markdown, HTML, CSV, CLI), assertion assessments, framework control assessments, evidence index, source artifacts, catalogs, crosswalks, checksum roots, and cryptographic signatures. Verification (`VerifyComplianceReportBundle`) independently checks allowed paths, digests, signatures, references, scope, versions, and assessment consistency without trusting rendered text or terminal output.
+A portable, content-addressed release package (`internal/services/compliance/report/bundle.go`) containing a manifest (`manifest.json`), canonical compliance report formats (JSON, OSCAL, Markdown, HTML, CSV, CLI), assertion assessments, framework control assessments, evidence index, source artifacts, catalogs, crosswalks, checksum roots, and cryptographic signatures. Verification (`VerifyComplianceReportBundle`, `internal/services/compliance/report/bundle_verifier.go`) independently checks allowed paths, digests, signatures, references, scope, versions, and assessment consistency without trusting rendered text or terminal output.
 
 ---
 
@@ -184,9 +190,15 @@ The `events` table in `ztd.db` (`internal/services/storage/audit_store.go`). It 
 
 ---
 
+## FIPS Approved Mode
+
+The Go Cryptographic Module state of a `ztd` linux/amd64 binary built with `GOFIPS140=v1.0.0` (`make fips-build`). The build links Go Cryptographic Module v1.0.0, which initializes into approved mode by default. The `Makefile` cites it as CMVP Certificate #5247. `ztd version --fips` reports whether approved mode is active and exits non-zero if it is not (`internal/cli/cmd/version/version.go`). `GODEBUG=fips140=only` turns on enforcement; `make fips-verify` runs under it. The compliance claim covers only that build target. See [FIPS 140-3 Reference](fips140-3.md) for scope and limits.
+
+---
+
 ## Gateway Peer
 
-A workload identity reserved for Gateway-to-Gateway trust, with SPIFFE URI `spiffe://ztd.local/gateway/<gateway_id>`. The PKI issues certificates from a dedicated `gateway-peer` intermediate CA and includes the CA in the canonical trust bundle. These identity and certificate primitives provide the trust foundation for federated deployments.
+A workload identity reserved for Gateway-to-Gateway trust, with SPIFFE URI `spiffe://ztd.local/gateway/<gateway_id>`. The PKI issues certificates from a dedicated `gateway-peer` intermediate CA and includes the CA in the canonical trust bundle.
 
 ---
 
@@ -225,6 +237,12 @@ L2 Consensus gates only state-changing, non-bootstrap actions (`L2Enforced`, `in
 
 ---
 
+## Governed Document
+
+A collection marked `_governed` in `protocol/constants/collections.json`, which lets `DOCUMENT_UPDATE` and `DOCUMENT_DELETE` envelopes target it (`CollectionName.IsGovernedDocument` in `internal/constants/collections.go`). Application records such as cases and tasks are governed documents. Platform-authority collections, such as `users`, `trusted_signers`, `app_policies`, and `revoked_certificates`, are not, and are written only by their owning Gateway service. A document action against any other collection fails closed with `ErrTxDocumentCollectionNotGoverned` (INV-GOV-WARD-06 in [Governance Architecture](../architecture/governance.md)).
+
+---
+
 ## Governed Operator
 
 The Policy Execution Point (PEP) deployed on a target host (`ztd operator`). It opens no inbound listening ports, establishes an outbound-only mTLS connection to the Gateway, pulls work from its session-specific channel (`cmd:<operator_id>:<operator_session_id>`), and re-runs L1 Doctrine and verifies L2 Consensus and L3 Notary locally before executing through L4 Warden and L5 Actuator. It is the sole component authorized to mutate its host and retains host-authoritative audit and file-history evidence.
@@ -251,7 +269,7 @@ A typed, machine-evaluable security requirement defined in the FedRAMP 20x catal
 
 ## L1 Doctrine (L1Doctrine)
 
-The technical hard-gate governance layer (`internal/services/governance/l1_doctrine.go`). It validates decoded typed payloads against protobuf field-option regex rules (`forbidden_patterns`), bundled JSON doctrine sets, and deterministic threat analysis covering shell commands and MCP arguments, including MITRE ATT&CK patterns. L1 is enforced across all governance postures at Gateway admission and is re-run independently on the Operator prior to dispatch.
+The technical hard-gate governance layer (`internal/services/governance/l1_doctrine.go`). It validates decoded typed payloads against protobuf field-option regex rules (`forbidden_patterns`), bundled JSON doctrine sets, and deterministic threat analysis covering shell commands and MCP arguments, including MITRE ATT&CK patterns. L1 is enforced across all governance postures. The executing Operator's **L4 Warden** runs it on every envelope before dispatch. The Gateway also runs it on governed HTTP dispatch (`DispatchService.Dispatch`); MCP, A2A, and direct envelope submission have no Gateway-side L1 call.
 
 ---
 
@@ -360,13 +378,19 @@ The owner-approved protocol for enrolling Operator and application component ins
 
 ## Principal
 
-The human user, AI agent, application, CI/CD pipeline, or automated process that originates an intent. ztd governs the requested action rather than granting a trusted principal an unmonitored bypass; identity claims (`requestor_user_id`, `acting_app_id`) remain explicitly bound in the envelope.
+The identity the transport establishes for a request: the SPIFFE URI SAN of the mTLS client certificate (CLI, Operator, and app workloads), or a validated WebSession cookie (`ValidateWebSessionCookie`, `internal/services/gateway/gateway_auth.go`). For a human user the principal takes the User Principal form `spiffe://ztd.local/user/<user_id>` (`UserSPIFFEID`, `protocol/workload_identity.go`). Principal identity is not the envelope's authority to act: the envelope carries the delegator as `requestor_user_id` and the acting application as `acting_app_id`, and the governance pipeline still evaluates the action.
 
 ---
 
 ## Producer
 
-A client or service that translates a principal's intent into a conformant **Governance Envelope**. Producers include the Gateway's MCP and A2A translators, the CLI dispatch service, and native third-party clients. Producing an envelope initiates governance evaluation; it does not authorize execution.
+An app workload that reports agent and run state changes to the Gateway through the mTLS observe producer endpoints (`ObserveProducerController`, `internal/services/gateway/observe_producer_controller.go`). The Gateway derives `user_id` from the delegated user SAN on the peer certificate, never from the request body, and rejects Operator and CLI certificates. Producer reports feed the SSE event streams; see [SSE](../architecture/sse.md#observe-producers).
+
+---
+
+## Provenance Operator
+
+A Governed Operator started with the `provenance` capability (`OperatorCapabilityProvenance` in `internal/constants/status.go`). It acts as an independent witness: it reads the model weight store set by `--model-storage-root` and attests that the served model tag maps to the weights named by the expected digest. See [Model Provenance](../architecture/model-provenance.md).
 
 ---
 
@@ -430,7 +454,7 @@ Documents are authoritative by definition and always participate in the bound ro
 
 ## Suspended Transaction
 
-A Governance Envelope paused while awaiting required L3 Notary human approval (`internal/services/storage/suspended_transaction_store.go`, the `suspended_transactions` table in the runtime's `ztd.db`). The store retains the envelope and tool arguments (vault-encrypted; a locked vault fails the write and the read), approval status, proof metadata, expiry, caller bindings, and the targeted Operator session, whose audit chain records the approval request and expiry. Upon human approval via passkey or signature, the Gateway resumes governance evaluation. The Gateway maintenance sweep records each expiry on that session's chain before deleting the record, and a successful resumed execution removes its record.
+A Governance Envelope paused while awaiting required L3 Notary human approval (`internal/services/storage/suspended_transaction_store.go`, the `suspended_transactions` table in the runtime's `ztd.db`). The store retains the envelope and tool arguments (vault-encrypted; a locked vault fails the write and the read), expiry, execution claim, caller bindings, and the targeted Operator session, whose audit chain records the approval request and expiry. It stores no approval decision or proof. Upon human approval via passkey or signature, the Gateway resumes governance evaluation with the proof in the envelope, and the executing Operator's signed receipt is the evidence of the outcome. The Gateway maintenance sweep records each expiry on that session's chain before deleting the record, and a successful resumed execution removes its record.
 
 ---
 
@@ -446,18 +470,6 @@ The terminal user interface launched via `ztd tui` (`internal/cli/cmd/tui/`, imp
 
 ---
 
-## Time-Travel
-
-Point-in-time file retrieval and restoration powered by the git-backed **Ledger** (`internal/services/storage/ledger.go`). Callers can inspect historical file versions, retrieve diff statistics, or restore a file to a specific ledger commit. This is distinct from the append-only SQLite **Commitment Ledger**, which cannot be rewound.
-
----
-
-## Tool Calling Loop
-
-The operational pattern in which an AI agent selects an MCP tool or A2A skill, submits arguments, receives a governed result or approval suspension, and decides its next action. Every state-modifying iteration executes as an independent, fully evaluated **Governance Envelope** rather than inheriting standing authorization from earlier conversational turns.
-
----
-
 ## Transaction Hash
 
 The deterministic SHA-256 digest computed from normalized **Governance Envelope** fields via `GenerateMessageID(env)`. The envelope `id` and `transaction_hash` must both match this value. The calculation dispatches on protocol version: V1 hashes the canonical field string; V2 hashes `ztd-tx-v2|<action_type>|<event_type>|<V1 canonical string>` and requires a nonempty event type. L2 consensus votes, L3 human approvals, replay checks, capabilities, receipts, and commitment attestations bind cryptographically to this hash. Dynamic policy metadata, including the active governance posture, is excluded from hash canonicalization.
@@ -466,7 +478,7 @@ The deterministic SHA-256 digest computed from normalized **Governance Envelope*
 
 ## Tribunal
 
-The Gateway-hosted L2 consensus panel, selected as the `tribunal` consensus provider (`ConsensusProviderTribunal`, `internal/constants/consensus.go`). The panel binds the canonical Tribunal member applications, each member votes through one governed inference, and the panel is pinned to one frozen model tag and digest at enrollment (`ztd consensus enroll tribunal`). The default quorum is 3-of-5 (`TribunalConsensusDefaultQuorum`); the lowest accepted quorum is also 3 (`TribunalConsensusMinQuorum`). Tribunal votes apply only to state-changing actions under **L2 Consensus**.
+The Gateway-hosted L2 consensus panel, selected as the `tribunal` consensus provider (`ConsensusProviderTribunal`, `internal/constants/consensus.go`). The panel binds the canonical Tribunal member applications, each member votes through one governed inference, and the panel is pinned to one frozen model tag and digest at enrollment (`ztd consensus enroll tribunal`). The default quorum is 3-of-5 (`TribunalConsensusDefaultQuorum`); the lowest accepted quorum is also 3 (`TribunalConsensusMinQuorum`). Tribunal votes apply only to state-changing actions under **L2 Consensus**. In the Evaluation Explorer's Live activity table, each assignment row that received votes shows the five Tribunal seats, with outcome and the recorded vote, between its Model and Latency columns.
 
 ---
 
@@ -505,3 +517,9 @@ The statically linked Go executable (`cmd/ztd/main.go`) that operates as a **Gov
 ## ztd Protocol
 
 The canonical wire contract and invariant set for ztd (`protocol/`). It defines protobuf schemas (`ztd.common.v1`, `ztd.operator.v1`, `ztd.compliance.v1`, `ztd.eval.v1`, `ztd.pubsub.v1`, `ztd.tribunal.v1`), Go protocol libraries and TypeScript bindings, JSON constant registries (`protocol/constants/`, such as `events.json`, `status.json`, and `intents.json`), JSON model schemas, doctrine definitions, SPIFFE workload-identity helpers, receipt verification routines, and compliance crosswalks. Client-facing protobuf messages use protojson on wire boundaries.
+
+---
+
+## ztdg / ztdo
+
+Shorthand labels for the two runtime roles, not separate binaries. `ztdg` is the Governance Gateway (`ztd gw`), and `ztdo` is the Governed Operator (`ztd operator`). Both run from the single `ztd` executable. The labels appear in the CLI root help (`internal/cli/cmd/main.go`), the Gateway command help (`internal/cli/cmd/gw/gateway.go`), the `ztdo` component name constant (`internal/constants/status.go`), and the Gateway CA bundle filename `ztdg-ca-bundle.pem` (`internal/constants/paths.go`).

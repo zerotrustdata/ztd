@@ -81,9 +81,9 @@ func resolveRuntimeRoot() (string, error) {
 // runtime scratch root (.ztd/tmp, INV-FS-11), never the OS temp dir. The name
 // is short so Unix socket paths beneath it stay under the OS length limit.
 // The directory is removed when the test ends, independent of CWD.
-func TempDir(t testing.TB) string {
-	t.Helper()
-	return runtimeTestDir(t, constants.TmpDirname, "t")
+func TempDir(tb testing.TB) string {
+	tb.Helper()
+	return runtimeTestDir(tb, constants.TmpDirname, "t")
 }
 
 // OperatorDir returns a test-owned throwaway Operator working directory under
@@ -93,27 +93,27 @@ func TempDir(t testing.TB) string {
 // The prefix ends in a letter so the random digits stay inside one word: a
 // standalone 10-digit run is phone-shaped, and the egress scrubber would
 // tokenize the Operator's path in provider-bound prompts.
-func OperatorDir(t testing.TB) string {
-	t.Helper()
-	return runtimeTestDir(t, constants.OperatorsDirname, "test-op")
+func OperatorDir(tb testing.TB) string {
+	tb.Helper()
+	return runtimeTestDir(tb, constants.OperatorsDirname, "test-op")
 }
 
-func runtimeTestDir(t testing.TB, subdir, prefix string) string {
-	t.Helper()
+func runtimeTestDir(tb testing.TB, subdir, prefix string) string {
+	tb.Helper()
 	if runtimeRootErr != nil {
-		t.Fatal(runtimeRootErr)
+		tb.Fatal(runtimeRootErr)
 	}
 	parent := filepath.Join(runtimeRoot, subdir)
 	if err := os.MkdirAll(parent, constants.PermDirPrivate); err != nil {
-		t.Fatalf("testutil: create %s: %v", parent, err)
+		tb.Fatalf("testutil: create %s: %v", parent, err)
 	}
 	dir, err := os.MkdirTemp(parent, prefix)
 	if err != nil {
-		t.Fatalf("testutil: create test dir: %v", err)
+		tb.Fatalf("testutil: create test dir: %v", err)
 	}
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		if err := os.RemoveAll(dir); err != nil {
-			t.Errorf("testutil: remove test dir %s: %v", dir, err)
+			tb.Errorf("testutil: remove test dir %s: %v", dir, err)
 		}
 	})
 	return dir

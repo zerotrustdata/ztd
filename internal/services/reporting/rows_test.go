@@ -95,7 +95,7 @@ func TestEventRow(t *testing.T) {
 			ExitCode: constants.ExitCodeNone,
 		}
 		rec := r.Record()
-		assert.Equal(t, "", rec[4])
+		assert.Empty(t, rec[4])
 	})
 }
 
@@ -194,19 +194,17 @@ func TestReplayNonceRow(t *testing.T) {
 func TestSuspendedTxRow(t *testing.T) {
 	t.Run("Columns and Record match", func(t *testing.T) {
 		r := SuspendedTxRow{
-			TxHash:            "tx-hash",
-			UserID:            "user-1",
-			ActionType:        "FS_WRITE",
-			Status:            "pending",
-			CreatedAtUTC:      "2026-01-01T00:00:00Z",
-			ExpiresAtUTC:      "2026-01-01T01:00:00Z",
-			ApprovedBy:        "admin",
-			ApprovalSignature: "sig",
+			TxHash:       "tx-hash",
+			UserID:       "user-1",
+			ActionType:   "FS_WRITE",
+			Status:       "pending",
+			CreatedAtUTC: "2026-01-01T00:00:00Z",
+			ExpiresAtUTC: "2026-01-01T01:00:00Z",
 		}
 		cols := SuspendedTxRow{}.Columns()
 		rec := r.Record()
-		require.Len(t, cols, 8)
-		require.Len(t, rec, 8)
+		require.Len(t, cols, 6)
+		require.Len(t, rec, 6)
 		assert.Equal(t, "tx-hash", rec[0])
 		assert.Equal(t, "pending", rec[3])
 	})

@@ -120,7 +120,7 @@ func TestResolveInferenceProbeAppCredentials_NoCandidateReturnsMissingError(t *t
 	_, err := resolveInferenceProbeAppCredentials(fileSvc, cfg)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrAppIdentityNotFound)
+	require.ErrorIs(t, err, constants.ErrAppIdentityNotFound)
 	assert.Contains(t, err.Error(), "ztd auth enroll app ztd-eval")
 
 	// Verify it never touches or expects ztde paths.
@@ -168,7 +168,7 @@ func TestResolveInferenceProbeAppCredentials_StaleAppCertRejected(t *testing.T) 
 	_, err = resolveInferenceProbeAppCredentials(fileSvc, cfg)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrAppIdentityUntrusted)
+	require.ErrorIs(t, err, constants.ErrAppIdentityUntrusted)
 	assert.Contains(t, err.Error(), "ztd auth enroll app ztd-eval")
 }
 
@@ -189,7 +189,7 @@ func TestResolveInferenceProbeAppCredentials_ExpiredAppCertRejected(t *testing.T
 	_, err = resolveInferenceProbeAppCredentials(fileSvc, cfg)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrAppIdentityExpired)
+	require.ErrorIs(t, err, constants.ErrAppIdentityExpired)
 	assert.Contains(t, err.Error(), "ztd auth enroll app ztd-eval")
 }
 
@@ -208,7 +208,7 @@ func TestGatesProbe_TakesModelOnlyAsPositionalArgument(t *testing.T) {
 
 	assert.Nil(t, cmd.Flags().Lookup("model"), "the deprecated --model flag must not exist")
 	assert.NotNil(t, cmd.Flags().Lookup("operator-session-id"), "the --operator-session-id flag must exist")
-	assert.Error(t, cmd.Args(cmd, nil), "probe requires the positional <model>")
+	require.Error(t, cmd.Args(cmd, nil), "probe requires the positional <model>")
 	assert.NoError(t, cmd.Args(cmd, []string{"qwen3:4b"}))
 }
 

@@ -181,7 +181,7 @@ func TestOSCALProfile_DefinitionCountMatchesEmbeddedSchema(t *testing.T) {
 	require.NoError(t, json.Unmarshal(schemaBytes, &raw))
 	defs, ok := raw["definitions"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, OSCALProfile.DefinitionCount, len(defs))
+	assert.Len(t, defs, OSCALProfile.DefinitionCount)
 }
 
 func TestOSCALProfile_BooleanSchemaCountMatchesEmbeddedSchema(t *testing.T) {

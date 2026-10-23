@@ -151,11 +151,11 @@ func TestApproveCmd_CLI_RejectsReceiptThatDoesNotConfirmRequestedApproval(t *tes
 			require.Error(t, err)
 			switch tc.name {
 			case "wrong transaction hash":
-				assert.ErrorIs(t, err, constants.ErrTxTransactionHashMismatch)
+				require.ErrorIs(t, err, constants.ErrTxTransactionHashMismatch)
 			case "transaction did not complete":
-				assert.ErrorIs(t, err, constants.ErrActionExecutionFailed)
+				require.ErrorIs(t, err, constants.ErrActionExecutionFailed)
 			case "L3 proof was not accepted":
-				assert.ErrorIs(t, err, constants.ErrTxL3ProofInvalid)
+				require.ErrorIs(t, err, constants.ErrTxL3ProofInvalid)
 			}
 			assert.Empty(t, mockClient.GetCalls)
 			assert.NotContains(t, err.Error(), "approved successfully")
@@ -217,9 +217,11 @@ func TestApproveCmd_Deny_RejectsReceiptThatIsNotTheRequestedDeny(t *testing.T) {
 		want error
 	}{
 		{"wrong transaction hash", func(t *testing.T) []byte {
+			t.Helper()
 			return cliDenyReceipt(t, hex.EncodeToString(bytes.Repeat([]byte("b"), sha256.Size)), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
 		}, constants.ErrTxTransactionHashMismatch},
 		{"not an L3 deny", func(t *testing.T) []byte {
+			t.Helper()
 			return cliApprovalReceipt(t, txHash, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
 		}, constants.ErrValidationFailed},
 	} {

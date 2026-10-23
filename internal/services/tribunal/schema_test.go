@@ -136,7 +136,7 @@ func TestDecodersRejectTheLiveUnconstrainedShapes(t *testing.T) {
 
 func TestEveryRoleCallCarriesItsSchema(t *testing.T) {
 	inferer := &fakeInferer{
-		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ss -l"}),
+		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ps"}),
 		marshal:  lowRisk,
 		audit:    []string{approve},
 	}
@@ -146,9 +146,9 @@ func TestEveryRoleCallCarriesItsSchema(t *testing.T) {
 	for _, call := range inferer.calls {
 		switch call.Stage {
 		case StageGenerate:
-			assert.Equal(t, generationJSONSchema, call.JSONSchema)
+			assert.Equal(t, generationJSONSchema, call.JSONSchema) //nolint:testifylint // exact bytes, not JSON equivalence
 		case StageMarshal:
-			assert.Equal(t, marshalJSONSchema, call.JSONSchema)
+			assert.Equal(t, marshalJSONSchema, call.JSONSchema) //nolint:testifylint // exact bytes, not JSON equivalence
 		case StageAudit:
 			// A unanimous panel leaves the Auditor no SWAP shape.
 			assert.Equal(t, auditorJSONSchema(nil), call.JSONSchema)
