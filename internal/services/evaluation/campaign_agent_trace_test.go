@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -17,7 +18,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing.T) {
@@ -201,4 +204,42 @@ func TestAgentTrace_DigestPreimageIsBodyWithDigestEmptied(t *testing.T) {
 	require.True(t, strings.HasPrefix(string(body), prefix))
 	preimage := `{"schema_version":"` + agentTraceSchemaVersion + `","evidence_digest":"",` + strings.TrimPrefix(string(body), prefix)
 	assert.Equal(t, trace.EvidenceDigest, hashBytes([]byte(preimage)))
+}
+
+// The browser consumes these exact sealed bytes too, so adding evidence to the
+// Go producer cannot silently leave its strict decoder behind.
+func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1",
+		CampaignID: "campaign-1", ScenarioID: "scenario-1", DesignatedRole: "primary",
+		ServedModelTag: "model:latest", ModelDigest: strings.Repeat("a", 64), ModelRegistryDigest: strings.Repeat("b", 64),
+		Inference: AgentTraceRuntime{OperatorID: "inference-1", SessionID: "session-inference"},
+		Data:      AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-data"},
+		Workspace: AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/work/run-1"},
+		Input:     &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Read the log."}}},
+		ToolCalls: []AgentToolCall{{
+			CallID: "call-1", ModelCallID: "attempt-model", ToolName: "fs_read", ArgumentsJSON: `{"path":"app.log"}`,
+			Success: true, IsOperatorTool: true, LoopTurn: 1,
+			ConsensusInferences: governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
+				{
+					SubjectTransactionId: "call-1", SubjectTransactionHash: strings.Repeat("c", 64),
+					MemberAppId: "member-1", ProviderAttemptId: "attempt-vote-1", TransactionId: "tx-vote-1",
+					Result:              &operatorv1.InferenceResult{ResultDigest: strings.Repeat("d", 64)},
+					Receipt:             &operatorv1.ActionReceipt{TransactionId: "tx-vote-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
+					ObservationReceipts: []*operatorv1.ActionReceipt{{TransactionId: "tx-observe", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
+				},
+				{
+					SubjectTransactionId: "call-1", SubjectTransactionHash: strings.Repeat("c", 64),
+					MemberAppId: "member-2", ProviderAttemptId: "attempt-vote-2",
+					Failure: &operatorv1.InferenceDispatchFailure{Error: "Provider unavailable"},
+				},
+			}),
+		}},
+		FinalOutput: "Read complete.",
+	}
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+	fixture, err := os.ReadFile("testdata/agent-trace-consensus.json")
+	require.NoError(t, err)
+	assert.Equal(t, string(fixture), string(body))
 }

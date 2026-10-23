@@ -14,7 +14,7 @@ import { ValidationError, assert, assertBoolean, assertInteger, assertObject, as
 export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
-/** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
+/** One canonical protojson message retained for offline signature verification. */
 export type AgentTraceProto = Readonly<Record<string, unknown>>;
 
 export interface AgentTraceMessage {
@@ -89,7 +89,21 @@ export interface AgentTraceModelCall {
   observation_receipts?: AgentTraceProto[];
 }
 
+/** Canonical ConsensusVoteInference protojson; proto3 default fields may be omitted. */
+export interface AgentTraceConsensusInference {
+  subject_transaction_id?: string;
+  subject_transaction_hash?: string;
+  member_app_id?: string;
+  provider_attempt_id?: string;
+  transaction_id?: string;
+  result?: AgentTraceProto;
+  receipt?: AgentTraceProto;
+  failure?: AgentTraceProto;
+  observation_receipts?: AgentTraceProto[];
+}
+
 export interface AgentTraceToolCall {
+  consensus_inferences?: AgentTraceConsensusInference[];
   call_id: string;
   model_call_id: string;
   provider_call_id?: string;
@@ -348,10 +362,27 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
   return { query: value.query as unknown as AgentTraceRetrievalQuery, receipts };
 }
 
+const CONSENSUS_INFERENCE_STRING_FIELDS = [
+  'subject_transaction_id', 'subject_transaction_hash', 'member_app_id', 'provider_attempt_id', 'transaction_id',
+] as const;
+
+function parseConsensusInference(value: unknown, path: string): AgentTraceConsensusInference {
+  assertObject(value, path);
+  rejectUnknown(value, [...CONSENSUS_INFERENCE_STRING_FIELDS, 'result', 'receipt', 'failure', 'observation_receipts'], path);
+  for (const key of CONSENSUS_INFERENCE_STRING_FIELDS) optionalString(value, key, path);
+  for (const key of ['result', 'receipt', 'failure']) optionalProto(value, key, path);
+  let observationReceipts: AgentTraceProto[] | undefined;
+  if (value.observation_receipts !== undefined) {
+    observationReceipts = list(value.observation_receipts, `${path}.observation_receipts`)
+      .map((receipt, index) => proto(receipt, `${path}.observation_receipts[${index}]`));
+  }
+  return { ...(value as unknown as AgentTraceConsensusInference), observation_receipts: observationReceipts };
+}
+
 function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion, investigationId?: string): AgentTraceToolCall {
   assertObject(value, path);
   const liveFields = isLiveContext(schemaVersion) ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
-  const fields = schemaVersion === 'agent-trace.v8' ? [...liveFields, 'approved_arguments_json'] : liveFields;
+  const fields = schemaVersion === 'agent-trace.v8' ? [...liveFields, 'approved_arguments_json', 'consensus_inferences'] : liveFields;
   rejectUnknown(value, fields, path);
   requiredStrings(value, ['call_id', 'model_call_id', 'tool_name', 'arguments_json'], path);
   for (const key of ['provider_call_id', 'command', 'result_json', 'error_type', 'error', 'action_type', 'transaction_id', 'policy_decision']) {
@@ -367,7 +398,12 @@ function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSc
   optionalProto(value, 'receipt', path);
   let retrieval: AgentTraceRetrieval | undefined;
   if (value.retrieval !== undefined) retrieval = parseRetrieval(value.retrieval, `${path}.retrieval`, investigationId);
-  return { ...(value as unknown as AgentTraceToolCall), retrieval };
+  let consensusInferences: AgentTraceConsensusInference[] | undefined;
+  if (value.consensus_inferences !== undefined) {
+    consensusInferences = list(value.consensus_inferences, `${path}.consensus_inferences`)
+      .map((inference, index) => parseConsensusInference(inference, `${path}.consensus_inferences[${index}]`));
+  }
+  return { ...(value as unknown as AgentTraceToolCall), retrieval, consensus_inferences: consensusInferences };
 }
 
 const TRACE_FIELDS = [

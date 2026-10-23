@@ -120,6 +120,12 @@ function ToolCall({ call }: { call: AgentTraceToolCall }) {
       {call.result_json ? <TextBlock title="Tool result" text={call.result_json} copyLabel={`${call.tool_name} result`} json /> : null}
       {call.error ? <TextBlock title="Error" text={call.error} copyLabel={`${call.tool_name} error`} /> : null}
       {call.receipt ? <Receipt receipt={call.receipt} /> : null}
+      {call.consensus_inferences && call.consensus_inferences.length > 0 ? (
+        <details className="agent-trace-raw">
+          <summary>L2 consensus inferences</summary>
+          <TextBlock title="Vote inference evidence" text={JSON.stringify(call.consensus_inferences, null, 2)} copyLabel={`${call.tool_name} consensus inferences`} json />
+        </details>
+      ) : null}
     </li>
   );
 }
