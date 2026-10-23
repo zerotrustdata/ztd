@@ -453,9 +453,9 @@ func TestExecutionService_Stop(t *testing.T) {
 		// Verify execution returns an error about stopping
 		select {
 		case err := <-execDone:
-			assert.Error(t, err)
+			require.Error(t, err)
 			if err != nil {
-				assert.ErrorIs(t, err, constants.ErrExecutionServiceStopping)
+				require.ErrorIs(t, err, constants.ErrExecutionServiceStopping)
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("Execution did not return after semaphore release")
@@ -638,7 +638,7 @@ func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) {
 				return execCtx.Process != nil
 			}, 5*time.Second, 10*time.Millisecond)
 			err := svc.CancelExecution(id)
-			require.NoError(t, err, "CancelExecution should not fail")
+			assert.NoError(t, err, "CancelExecution should not fail")
 			select {
 			case <-execDone:
 			case <-time.After(10 * time.Second):

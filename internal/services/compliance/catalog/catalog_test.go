@@ -168,8 +168,8 @@ func TestValidateAssertionCatalogRejectsUnknownComponentScope(t *testing.T) {
 			candidate.Assertions[0].ComponentScope = []string{"gateway", tt.component}
 			err := catalog.ValidateAssertionCatalog(candidate)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
-			assert.ErrorContains(t, err, "ZTD-GOV-BLOCK-001")
+			require.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+			require.ErrorContains(t, err, "ZTD-GOV-BLOCK-001")
 			assert.ErrorContains(t, err, tt.component)
 		})
 	}

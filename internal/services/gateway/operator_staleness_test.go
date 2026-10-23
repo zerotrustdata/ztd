@@ -261,7 +261,7 @@ func TestOperatorStaleness_UndecodableOperatorFailsTheRead(t *testing.T) {
 		`{"status":"active","operator_type":"remote","runtime_config":"invalid"}`)))
 
 	_, err := svc.DocGet(t.Context(), operatorsCollection, "op-1")
-	assert.ErrorIs(t, err, constants.ErrOperatorStalenessDerive)
+	require.ErrorIs(t, err, constants.ErrOperatorStalenessDerive)
 
 	_, err = svc.DocQuery(t.Context(), operatorsCollection, nil, "", 0)
 	assert.ErrorIs(t, err, constants.ErrOperatorStalenessDerive)

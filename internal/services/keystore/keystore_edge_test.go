@@ -201,7 +201,7 @@ func TestKeystore_Purge_WithSecrets(t *testing.T) {
 	entries, err := os.ReadDir(secretsDir)
 	require.NoError(t, err)
 	for _, e := range entries {
-		assert.False(t, !e.IsDir(), "unexpected file entry: %s", e.Name())
+		assert.True(t, e.IsDir(), "unexpected file entry: %s", e.Name())
 	}
 }
 

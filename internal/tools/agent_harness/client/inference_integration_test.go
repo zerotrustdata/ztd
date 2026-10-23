@@ -56,7 +56,7 @@ func TestClient_DispatchInference_FailedReceiptPreserved(t *testing.T) {
 	}
 	_, _, dispatchErr := client.DispatchInference(context.Background(), req)
 	require.Error(t, dispatchErr)
-	assert.ErrorIs(t, dispatchErr, constants.ErrInferenceBackendTimeout)
+	require.ErrorIs(t, dispatchErr, constants.ErrInferenceBackendTimeout)
 
 	failedReceipt := governance.FailedReceipt(dispatchErr)
 	require.NotNil(t, failedReceipt)
@@ -85,7 +85,7 @@ func TestClient_DispatchInference_NoReceiptYieldsNilFailedReceipt(t *testing.T) 
 	}
 	_, _, dispatchErr := client.DispatchInference(context.Background(), req)
 	require.Error(t, dispatchErr)
-	assert.ErrorIs(t, dispatchErr, constants.ErrInferenceGovernanceRejected)
+	require.ErrorIs(t, dispatchErr, constants.ErrInferenceGovernanceRejected)
 
 	assert.Nil(t, governance.FailedReceipt(dispatchErr))
 }

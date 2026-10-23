@@ -10,7 +10,6 @@ package auth
 import (
 	"crypto/x509"
 	"encoding/pem"
-	"strings"
 	"testing"
 	"time"
 
@@ -142,10 +141,10 @@ func TestValidateTrustBundle_ChainFailurePreservesUnderlyingError(t *testing.T) 
 	// The wrapped error must be ErrSystemTrustInvalidAnchor (the
 	// outer wrap) and the underlying must be
 	// ErrSystemTrustNoChainToAnchor (from VerifyRootUsable).
-	assert.ErrorIs(t, err, constants.ErrSystemTrustInvalidAnchor)
-	assert.ErrorIs(t, err, constants.ErrSystemTrustNoChainToAnchor)
+	require.ErrorIs(t, err, constants.ErrSystemTrustInvalidAnchor)
+	require.ErrorIs(t, err, constants.ErrSystemTrustNoChainToAnchor)
 	// The error message must mention the chain failure for diagnostics.
-	assert.True(t, strings.Contains(err.Error(), "no certificate in the bundle chains"),
+	assert.Contains(t, err.Error(), "no certificate in the bundle chains",
 		"error message must mention chain failure, got: %s", err.Error())
 }
 
@@ -158,6 +157,6 @@ func TestValidateTrustBundle_EmptyBundleErrorIsWrappedAsInvalidAnchor(t *testing
 	// ValidateTrustBundle wraps all ExtractRootAnchors errors with
 	// ErrSystemTrustInvalidAnchor, so errors.Is succeeds for both the
 	// outer wrap and the underlying ErrEmptyTrustBundle.
-	assert.ErrorIs(t, err, constants.ErrSystemTrustInvalidAnchor)
+	require.ErrorIs(t, err, constants.ErrSystemTrustInvalidAnchor)
 	assert.ErrorIs(t, err, constants.ErrEmptyTrustBundle)
 }

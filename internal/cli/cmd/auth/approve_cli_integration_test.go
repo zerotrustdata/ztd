@@ -151,11 +151,11 @@ func TestApproveCmd_CLI_RejectsReceiptThatDoesNotConfirmRequestedApproval(t *tes
 			require.Error(t, err)
 			switch tc.name {
 			case "wrong transaction hash":
-				assert.ErrorIs(t, err, constants.ErrTxTransactionHashMismatch)
+				require.ErrorIs(t, err, constants.ErrTxTransactionHashMismatch)
 			case "transaction did not complete":
-				assert.ErrorIs(t, err, constants.ErrActionExecutionFailed)
+				require.ErrorIs(t, err, constants.ErrActionExecutionFailed)
 			case "L3 proof was not accepted":
-				assert.ErrorIs(t, err, constants.ErrTxL3ProofInvalid)
+				require.ErrorIs(t, err, constants.ErrTxL3ProofInvalid)
 			}
 			assert.Empty(t, mockClient.GetCalls)
 			assert.NotContains(t, err.Error(), "approved successfully")

@@ -125,9 +125,9 @@ func TestCampaignLongitudinal_ImprovementCurveAcrossSequentialRuns(t *testing.T)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res1.GetLifecycleStatus(), "invalid evidence: %s", res1.GetInvalidEvidenceDetail())
 	scores1 := investigationScores(res1)
 	steps1 := scores1[evaluation.MetricStepsToDiagnosis]
-	require.Equal(t, 7.0, steps1, "run 1 should take 7 steps (4 model turns + 3 tool calls)")
-	require.Equal(t, 1.0, scores1[evaluation.MetricDiagnosisCorrectness])
-	require.Equal(t, 1.0, scores1[evaluation.MetricEvidenceBackedConclusion])
+	require.InDelta(t, 7.0, steps1, 0, "run 1 should take 7 steps (4 model turns + 3 tool calls)")
+	require.InDelta(t, 1.0, scores1[evaluation.MetricDiagnosisCorrectness], 0)
+	require.InDelta(t, 1.0, scores1[evaluation.MetricEvidenceBackedConclusion], 0)
 
 	// Run 2 is a new run on the same persistent investigation and Data Operator.
 	env.startRun(t, realStackRunPlan{
@@ -137,11 +137,11 @@ func TestCampaignLongitudinal_ImprovementCurveAcrossSequentialRuns(t *testing.T)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res2.GetLifecycleStatus(), "invalid evidence: %s", res2.GetInvalidEvidenceDetail())
 	scores2 := investigationScores(res2)
 	steps2 := scores2[evaluation.MetricStepsToDiagnosis]
-	require.Equal(t, 3.0, steps2, "run 2 should take 3 steps (2 model turns + 1 context query call)")
-	require.Equal(t, 1.0, scores2[evaluation.MetricDiagnosisCorrectness])
-	require.Equal(t, 1.0, scores2[evaluation.MetricEvidenceBackedConclusion])
-	require.Equal(t, 1.0, scores2[evaluation.MetricRetrievalHitRate], "retrieval hit rate should be 100% from prior history")
-	require.Equal(t, 0.0, scores2[evaluation.MetricRedundantCommandRate], "no redundant commands executed")
+	require.InDelta(t, 3.0, steps2, 0, "run 2 should take 3 steps (2 model turns + 1 context query call)")
+	require.InDelta(t, 1.0, scores2[evaluation.MetricDiagnosisCorrectness], 0)
+	require.InDelta(t, 1.0, scores2[evaluation.MetricEvidenceBackedConclusion], 0)
+	require.InDelta(t, 1.0, scores2[evaluation.MetricRetrievalHitRate], 0, "retrieval hit rate should be 100% from prior history")
+	require.InDelta(t, 0.0, scores2[evaluation.MetricRedundantCommandRate], 0, "no redundant commands executed")
 	assert.Less(t, steps2, steps1, "sequential run on persistent investigation should achieve diagnosis in fewer steps than initial run")
 
 	// The control is its own campaign on a fresh investigation.
@@ -151,7 +151,7 @@ func TestCampaignLongitudinal_ImprovementCurveAcrossSequentialRuns(t *testing.T)
 	resCtrl := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, resCtrl.GetLifecycleStatus(), "invalid evidence: %s", resCtrl.GetInvalidEvidenceDetail())
 	stepsCtrl := investigationScores(resCtrl)[evaluation.MetricStepsToDiagnosis]
-	require.Equal(t, 9.0, stepsCtrl, "control run without persistent context must take extra steps")
+	require.InDelta(t, 9.0, stepsCtrl, 0, "control run without persistent context must take extra steps")
 	assert.Less(t, steps2, stepsCtrl, "persistent investigation with context retrieval must require fewer steps than fresh-investigation control")
 }
 
@@ -195,10 +195,10 @@ func TestCampaignLongitudinal_PlantedFaultFixturesEvaluateAcrossAllThreeScenario
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 
 			scores := investigationScores(res)
-			assert.Equal(t, 1.0, scores[evaluation.MetricDiagnosisCorrectness], "diagnosis correctness should pass")
-			assert.Equal(t, 1.0, scores[evaluation.MetricEvidenceBackedConclusion], "conclusion must be evidence backed")
+			assert.InDelta(t, 1.0, scores[evaluation.MetricDiagnosisCorrectness], 0, "diagnosis correctness should pass")
+			assert.InDelta(t, 1.0, scores[evaluation.MetricEvidenceBackedConclusion], 0, "conclusion must be evidence backed")
 			assert.GreaterOrEqual(t, scores[evaluation.MetricRetrievalHitRate], 0.0)
-			assert.Equal(t, 3.0, scores[evaluation.MetricStepsToDiagnosis])
+			assert.InDelta(t, 3.0, scores[evaluation.MetricStepsToDiagnosis], 0)
 		})
 	}
 }

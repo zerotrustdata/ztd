@@ -9,7 +9,6 @@ package evidence
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -185,7 +184,7 @@ func TestAuditRecordImporter_Import_WrapsReadFailure(t *testing.T) {
 	readErr := fmt.Errorf("audit source unavailable")
 	_, err := NewAuditRecordImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 	assert.ErrorIs(t, err, readErr)
 }
 
@@ -215,6 +214,6 @@ func TestAuditRecordImporter_Import_PreservesMissingArtifactError(t *testing.T) 
 	fixture.reader.files = map[string][]byte{}
 	_, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrEvidenceImporterFailed))
-	assert.True(t, errors.Is(err, constants.ErrNotFound))
+	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 }

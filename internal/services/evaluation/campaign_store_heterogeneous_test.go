@@ -30,7 +30,7 @@ func TestStoreHeterogeneousStackSet_RoundTrip(t *testing.T) {
 	loaded, err := store.LoadHeterogeneousStackSet(ctx, stackSet.CampaignID)
 	require.NoError(t, err)
 	assert.Equal(t, stackSet.SetDigest, loaded.SetDigest)
-	assert.Equal(t, len(stackSet.Stacks), len(loaded.Stacks))
+	assert.Len(t, loaded.Stacks, len(stackSet.Stacks))
 }
 
 func TestStoreHeterogeneousStackSet_RejectsMissingCampaignOnLoad(t *testing.T) {

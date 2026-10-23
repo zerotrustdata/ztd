@@ -18,7 +18,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -40,13 +39,13 @@ func TestTLSCertInspectTool_Execute_Validation(t *testing.T) {
 
 	// Empty arguments
 	_, err := tool.Execute(ctx, json.RawMessage(`{}`))
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPTLSCertInspectRequired))
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrMCPTLSCertInspectRequired)
 
 	// Invalid JSON
 	_, err = tool.Execute(ctx, json.RawMessage(`{invalid`))
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPUnmarshalArguments))
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
 
 	// Invalid path
 	_, err = tool.Execute(ctx, json.RawMessage(`{"cert_path": "/etc/shadow"}`))

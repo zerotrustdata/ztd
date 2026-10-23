@@ -34,6 +34,6 @@ func TestComplianceEvidenceExportCmdWithConfig_FileSvcFactoryError(t *testing.T)
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

@@ -700,7 +700,7 @@ func TestPipelineMsgSchedulesTickForBlinkingState(t *testing.T) {
 func TestViewQuitting(t *testing.T) {
 	m := NewModel(Options{})
 	m.quitting = true
-	assert.Equal(t, "", m.View())
+	assert.Empty(t, m.View())
 }
 
 func TestViewRenders(t *testing.T) {

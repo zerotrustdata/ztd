@@ -55,7 +55,7 @@ func TestReceiptSignerKey_OutboundOperatorWithoutBoundKeyIsNotBound(t *testing.T
 	seedOperatorDocument(t, svc, "operator-unbound", "")
 
 	_, err := svc.ReceiptSignerKey(t.Context(), "operator-unbound", &operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(pubKey)})
-	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
+	require.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
 
 	_, err = svc.ReceiptSignerKey(t.Context(), "operator-missing", &operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(pubKey)})
 	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)

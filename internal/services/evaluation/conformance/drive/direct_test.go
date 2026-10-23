@@ -8,7 +8,6 @@
 package drive
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,10 +62,10 @@ func TestNewDirectRejectsFaultInTwoSets(t *testing.T) {
 	_, err = NewDirect(c, testIdentity().Persona, testIdentity().Target, nil, BaseMutators(), MutatorSet{
 		cases.FaultExpired: {},
 	})
-	assert.True(t, errors.Is(err, constants.ErrAlreadyExists))
+	assert.ErrorIs(t, err, constants.ErrAlreadyExists)
 }
 
 func TestNewDirectRejectsNilClient(t *testing.T) {
 	_, err := NewDirect(nil, testIdentity().Persona, testIdentity().Target, nil)
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField))
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }

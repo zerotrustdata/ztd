@@ -537,7 +537,7 @@ func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing
 			actionType, err := DeterministicStageActionType(test.receipt)
 			if test.expectsErr {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+				require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 				assert.Empty(t, actionType)
 				return
 			}

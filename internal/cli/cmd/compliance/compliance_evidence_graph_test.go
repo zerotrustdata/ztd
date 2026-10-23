@@ -41,7 +41,7 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_RecordsImporterFailureAndFai
 
 	report, err := runEvidenceGraphVerifyCommand(t, fileSvc, []string{"missing-eval-run"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+	require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	assert.False(t, report.Valid)
 	require.Len(t, report.ImporterErrors, 1)
 	assert.Equal(t, "governance-conformance", report.ImporterErrors[0].SourceID)

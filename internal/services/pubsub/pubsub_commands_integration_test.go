@@ -99,7 +99,7 @@ func TestOperatorPubSubService_SendAutomaticHeartbeat(t *testing.T) {
 		require.NoError(t, err)
 
 		err = svc.SendAutomaticHeartbeat()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, mockPublisher.publishHeartbeatCalled, "automatic heartbeat must be published through the results publisher")
 	})
 }
@@ -113,7 +113,7 @@ func TestOperatorPubSubService_BindMCPGatewayRejectsBindingAfterStart(t *testing
 
 	err := svc.BindMCPGateway(&mcp.GatewayService{})
 
-	assert.ErrorIs(t, err, constants.ErrPubSubMCPGatewayBindAfterStart)
+	require.ErrorIs(t, err, constants.ErrPubSubMCPGatewayBindAfterStart)
 	assert.Nil(t, svc.GetMCPGateway())
 }
 
@@ -122,7 +122,7 @@ func TestOperatorPubSubService_StartGatewayModeRequiresMCPGatewayBinding(t *test
 
 	err := svc.Start(context.Background())
 
-	assert.ErrorIs(t, err, constants.ErrPubSubMCPGateway)
+	require.ErrorIs(t, err, constants.ErrPubSubMCPGateway)
 	assert.False(t, svc.running)
 }
 

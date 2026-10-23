@@ -285,7 +285,7 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedRelease(t *
 			var body struct {
 				Model string `json:"model"`
 			}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			released <- body.Model
 			_, _ = w.Write([]byte(`{"model":"` + body.Model + `","done":true,"done_reason":"unload"}`))
 		},

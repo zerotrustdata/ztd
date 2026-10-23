@@ -60,7 +60,7 @@ func TestOverlayCatalog_Validate_EmptyVersion(t *testing.T) {
 	cat.Version = ""
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "version is empty")
 }
 
@@ -70,7 +70,7 @@ func TestOverlayCatalog_Validate_EmptySource(t *testing.T) {
 	cat.Source = ""
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "source is empty")
 }
 
@@ -79,7 +79,7 @@ func TestOverlayCatalog_Validate_NoOverlays(t *testing.T) {
 	cat := &OverlayCatalog{Version: "v1", Source: "src", Overlays: nil}
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "no overlays")
 }
 
@@ -89,7 +89,7 @@ func TestOverlayCatalog_Validate_DuplicateID(t *testing.T) {
 	cat.Overlays[1].ID = cat.Overlays[0].ID
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "duplicate overlay ID")
 }
 
@@ -99,7 +99,7 @@ func TestOverlayCatalog_Validate_EmptyID(t *testing.T) {
 	cat.Overlays[0].ID = ""
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "empty ID")
 }
 
@@ -109,7 +109,7 @@ func TestOverlayCatalog_Validate_EmptyTitle(t *testing.T) {
 	cat.Overlays[0].Title = ""
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "empty title")
 }
 
@@ -119,7 +119,7 @@ func TestOverlayCatalog_Validate_EmptyUseCase(t *testing.T) {
 	cat.Overlays[0].UseCase = ""
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "empty use_case")
 }
 
@@ -129,7 +129,7 @@ func TestOverlayCatalog_Validate_EmptyStatus(t *testing.T) {
 	cat.Overlays[0].Status = ""
 	err := cat.Validate()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
+	require.ErrorIs(t, err, constants.ErrOverlayCatalogInvalid)
 	assert.Contains(t, err.Error(), "empty status")
 }
 

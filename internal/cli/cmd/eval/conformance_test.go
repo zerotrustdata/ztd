@@ -247,7 +247,7 @@ func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *te
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, tt.doc)
-			assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
+			require.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
 			assert.Nil(t, roots)
 		})
 	}
@@ -367,7 +367,7 @@ func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *tes
 			rig := storedRunRig(t, tt.open, tt.mutate)
 			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 			require.ErrorIs(t, err, tt.wantErr)
-			assert.NotErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "no verdict set is computed, so the exit rule never runs")
+			require.NotErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "no verdict set is computed, so the exit rule never runs")
 			assert.NotContains(t, out, "Suite: ", "no verdicts are printed")
 			assert.NotContains(t, out, "RECORD_DIGEST_MISMATCH")
 		})

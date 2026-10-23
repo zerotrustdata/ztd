@@ -249,7 +249,7 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 			tt.mutate(&blueprint)
 			err := validateScenarioContract(blueprint, catalog)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, tt.sentinel)
+			require.ErrorIs(t, err, tt.sentinel)
 			assert.Contains(t, err.Error(), blueprint.ScenarioID)
 		})
 	}

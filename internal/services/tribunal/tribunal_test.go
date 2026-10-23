@@ -564,7 +564,7 @@ func TestRunRequiresInferer(t *testing.T) {
 
 func TestContextBlock(t *testing.T) {
 	block := contextBlock(Request{Request: testRequest, Guidelines: "no sudo", WorkingDirectory: "/srv"})
-	assert.True(t, strings.Contains(block, "OS: linux\nExecution: direct executable argv (no shell)\nWorking directory: /srv"))
+	assert.Contains(t, block, "OS: linux\nExecution: direct executable argv (no shell)\nWorking directory: /srv")
 	assert.Contains(t, block, "<guidelines>\nno sudo\n</guidelines>")
 	assert.Contains(t, block, "<request>\n"+testRequest+"\n</request>")
 }

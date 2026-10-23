@@ -21,7 +21,7 @@ func TestParse_HTTPS_HostedOrigin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app", o.URL)
 	assert.Equal(t, "your-app.lovable.app", o.Hostname)
-	assert.Equal(t, "", o.Port)
+	assert.Empty(t, o.Port)
 	assert.Equal(t, "your-app.lovable.app", o.RPID)
 	assert.False(t, o.Loopback)
 }
@@ -39,7 +39,7 @@ func TestParse_HTTPS_DefaultPortOmitted(t *testing.T) {
 	o, err := Parse("https://your-app.lovable.app:443")
 	require.NoError(t, err)
 	assert.Equal(t, "https://your-app.lovable.app", o.URL, "default port 443 must be omitted")
-	assert.Equal(t, "", o.Port)
+	assert.Empty(t, o.Port)
 }
 
 func TestParse_HTTP_Loopback(t *testing.T) {
@@ -122,14 +122,14 @@ func TestParse_RejectsUserInfo(t *testing.T) {
 func TestParse_RejectsNonLoopbackHTTP(t *testing.T) {
 	_, err := Parse("http://your-app.lovable.app")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Contains(t, err.Error(), "loopback")
 }
 
 func TestParse_RejectsNonLoopbackIP(t *testing.T) {
 	_, err := Parse("https://192.168.1.1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Contains(t, err.Error(), "IP-address")
 }
 
@@ -168,7 +168,7 @@ func TestValidateRPID_ExactMatch(t *testing.T) {
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "your-app.lovable.app")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "your-app.lovable.app", rpID)
 }
 
@@ -176,7 +176,7 @@ func TestValidateRPID_ParentSuffix(t *testing.T) {
 	o, err := Parse("https://api.example.com")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "example.com")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "example.com", rpID)
 }
 
@@ -201,7 +201,7 @@ func TestValidateRPID_PublicSuffixICANN(t *testing.T) {
 	require.NoError(t, err)
 	_, err = ValidateRPID(o, "com")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Contains(t, err.Error(), "public suffix")
 }
 
@@ -210,7 +210,7 @@ func TestValidateRPID_PublicSuffixMultiPart(t *testing.T) {
 	require.NoError(t, err)
 	_, err = ValidateRPID(o, "co.uk")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Contains(t, err.Error(), "public suffix")
 }
 
@@ -218,7 +218,7 @@ func TestValidateRPID_LoopbackExactMatch(t *testing.T) {
 	o, err := Parse("http://localhost:3003")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "localhost")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "localhost", rpID)
 }
 
@@ -226,6 +226,6 @@ func TestValidateRPID_CaseInsensitive(t *testing.T) {
 	o, err := Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 	rpID, err := ValidateRPID(o, "YOUR-APP.LOVABLE.APP")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "your-app.lovable.app", rpID)
 }

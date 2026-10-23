@@ -207,7 +207,7 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 			_, err := r.svc.Renew(t.Context(), peer, channel, req)
 			require.ErrorIs(t, err, constants.ErrOperatorRenewalRefused)
 			if tc.wantErrIs != nil {
-				assert.ErrorIs(t, err, tc.wantErrIs)
+				require.ErrorIs(t, err, tc.wantErrIs)
 			}
 			assert.Empty(t, r.pki.signed, "a refused renewal signs nothing")
 		})

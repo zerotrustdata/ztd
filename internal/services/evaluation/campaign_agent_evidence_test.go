@@ -212,7 +212,7 @@ func flipFirstHexDigit(s string) string {
 func requireEvidenceError(t *testing.T, trace *AgentTrace, cause error) {
 	t.Helper()
 	err := VerifyAgentTraceEvidence(trace)
-	assert.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
+	require.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
 	assert.ErrorIs(t, err, cause)
 }
 

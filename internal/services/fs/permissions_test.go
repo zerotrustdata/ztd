@@ -9,7 +9,6 @@ package fs
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,7 +22,7 @@ func TestEnforceFilePermissions_NonexistentFileReturnsErrFileWriteFailed(t *test
 
 	err := svc.EnforceFilePermissions(ctx, "does-not-exist.txt", constants.PermFilePrivate)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrFileWriteFailed))
+	assert.ErrorIs(t, err, constants.ErrFileWriteFailed)
 }
 
 func TestEnforceDirPermissions_NonexistentDirReturnsErrEnforcePermissions(t *testing.T) {
@@ -32,7 +31,7 @@ func TestEnforceDirPermissions_NonexistentDirReturnsErrEnforcePermissions(t *tes
 
 	err := svc.EnforceDirPermissions(ctx, "no-such-dir", constants.PermDirPrivate)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrEnforcePermissions))
+	assert.ErrorIs(t, err, constants.ErrEnforcePermissions)
 }
 
 func TestEnforceDirPermissions_EmptyDirSucceeds(t *testing.T) {
@@ -50,7 +49,7 @@ func TestEnforceDirPermissions_CancelledContextReturnsError(t *testing.T) {
 
 	err := svc.EnforceDirPermissions(ctx, "any-dir", constants.PermDirPrivate)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled))
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestEnforceFilePermissions_CancelledContextReturnsError(t *testing.T) {
@@ -60,5 +59,5 @@ func TestEnforceFilePermissions_CancelledContextReturnsError(t *testing.T) {
 
 	err := svc.EnforceFilePermissions(ctx, "any-file.txt", constants.PermFilePrivate)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled))
+	assert.ErrorIs(t, err, context.Canceled)
 }

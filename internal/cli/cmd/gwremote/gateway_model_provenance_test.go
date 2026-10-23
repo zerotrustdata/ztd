@@ -22,7 +22,7 @@ func TestRemoteModelProvenanceClient_Load_RejectsMissingInputs(t *testing.T) {
 	t.Parallel()
 	_, err := (&remoteModelProvenanceClient{}).Load(context.Background(), "attempt-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	require.ErrorIs(t, err, constants.ErrNotFound)
 
 	client := &remoteModelProvenanceClient{client: &cmdtest.MockAPIClient{}}
 	_, err = client.Load(context.Background(), "")

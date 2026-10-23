@@ -67,7 +67,7 @@ func TestObserveAPIPathsJSONSync(t *testing.T) {
 		require.True(t, ok, "api_paths.json missing key %s", tc.jsonKey)
 		jsonVal, ok := rawVal.(string)
 		require.True(t, ok, "api_paths.json key %s is not a string", tc.jsonKey)
-		assert.Equal(t, tc.goValue, jsonVal, "Go constant for %s does not match JSON", tc.jsonKey)
+		assert.Equal(t, tc.goValue, jsonVal, "Go constant for %s does not match JSON", tc.jsonKey) //nolint:testifylint // exact bytes, not JSON equivalence
 	}
 }
 
@@ -112,7 +112,7 @@ func TestAPIPathsJSONBidirectionalSync(t *testing.T) {
 		jsonValue, ok := jsonPaths[key]
 		assert.True(t, ok, "APIPaths json key %s has no entry in api_paths.json", key)
 		if ok {
-			assert.Equal(t, goValue, jsonValue, "api_paths.json value for %s does not match APIPaths", key)
+			assert.Equal(t, goValue, jsonValue, "api_paths.json value for %s does not match APIPaths", key) //nolint:testifylint // exact bytes, not JSON equivalence
 		}
 	}
 	for key := range jsonPaths {

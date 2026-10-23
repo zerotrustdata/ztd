@@ -9,7 +9,6 @@ package fs
 
 import (
 	"context"
-	"errors"
 	"io"
 	"testing"
 
@@ -85,7 +84,7 @@ func TestOpenForRead_ReturnsErrNotFoundForMissingFile(t *testing.T) {
 
 	_, err := svc.OpenForRead(ctx, "missing.log")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrNotFound))
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestOpenForRead_ReturnsReadableHandleForExistingFile(t *testing.T) {

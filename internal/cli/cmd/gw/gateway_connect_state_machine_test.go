@@ -242,7 +242,7 @@ func TestGatewayConnectCmd_RunningGatewayWithoutLaunchProfileFailsClosed(t *test
 
 	err := cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
+	require.ErrorIs(t, err, constants.ErrLaunchProfileMissing)
 	assert.Contains(t, buf.String(), "no complete launch profile")
 }
 
@@ -343,8 +343,8 @@ func TestGatewayConnectCmd_RunningGatewayWithDifferingConfigDeclinedRestartRetur
 
 	err := cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrManagedRestartDeclined)
-	assert.ErrorIs(t, err, constants.ErrConfirmationAborted)
+	require.ErrorIs(t, err, constants.ErrManagedRestartDeclined)
+	require.ErrorIs(t, err, constants.ErrConfirmationAborted)
 	assert.Contains(t, buf.String(), "Restart declined")
 }
 
@@ -376,7 +376,7 @@ func TestGatewayConnectCmd_StoppedGatewayAttemptsStart(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrProcessStartFailed)
+	require.ErrorIs(t, err, constants.ErrProcessStartFailed)
 	assert.Contains(t, buf.String(), "Starting ztd Gateway service")
 }
 
@@ -419,8 +419,8 @@ func TestGatewayConnectCmd_TrustDeclinedReturnsErrManualBrowserTrustRequired(t *
 
 	err = cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrConfirmationAborted)
-	assert.ErrorIs(t, err, constants.ErrManualBrowserTrustRequired)
+	require.ErrorIs(t, err, constants.ErrConfirmationAborted)
+	require.ErrorIs(t, err, constants.ErrManualBrowserTrustRequired)
 	assert.Contains(t, buf.String(), "Manual browser trust is required")
 }
 
@@ -624,7 +624,7 @@ func TestGatewayConnectCmd_UnsupportedSystemTrustRequiresExplicitManualMode(t *t
 
 	err = cmd.RunE(cmd, []string{origin.URL})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrManualBrowserTrustRequired)
+	require.ErrorIs(t, err, constants.ErrManualBrowserTrustRequired)
 	assert.NotContains(t, buf.String(), "Paste this into your frontend builder")
 }
 
@@ -663,7 +663,7 @@ func TestGatewayConnectCmd_DeclinedBrowserRestartGateStopsHandoff(t *testing.T) 
 
 	err = cmd.RunE(cmd, []string{origin.URL})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrBrowserRestartDeclined)
+	require.ErrorIs(t, err, constants.ErrBrowserRestartDeclined)
 	assert.NotContains(t, buf.String(), "Paste this into your frontend builder")
 }
 
@@ -718,7 +718,7 @@ func TestGatewayConnectCmd_VerificationFailureReturnsErrCORSPreflightRejected(t 
 
 	err = cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrCORSPreflightRejected)
+	require.ErrorIs(t, err, constants.ErrCORSPreflightRejected)
 	assert.NotContains(t, buf.String(), "Paste this into your frontend builder")
 }
 

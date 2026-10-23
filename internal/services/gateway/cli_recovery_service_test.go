@@ -18,7 +18,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -150,7 +149,7 @@ func TestCLIRecovery_GetStatus_UnknownToken(t *testing.T) {
 	svc := newTestCLIRecoveryService(t)
 
 	_, err := svc.GetStatus(t.Context(), "nonexistent-token-abcdef1234567890")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestNotFound))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestNotFound)
 }
 
 func TestCLIRecovery_GetByToken_ExpiredAutoTransitions(t *testing.T) {
@@ -175,7 +174,7 @@ func TestCLIRecovery_GetByToken_ExpiredAutoTransitions(t *testing.T) {
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash, updatedData))
 
 	_, err = svc.GetByToken(t.Context(), token)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestExpired))
+	require.ErrorIs(t, err, constants.ErrCLIRecoveryRequestExpired)
 
 	// Verify the state was atomically transitioned to expired.
 	doc2, err := svc.db.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash)
@@ -239,7 +238,7 @@ func TestCLIRecovery_Approve_UnknownToken(t *testing.T) {
 	svc := newTestCLIRecoveryService(t)
 
 	err := svc.Approve(t.Context(), "nonexistent-token-abcdef1234567890", "user-1")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestNotFound))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestNotFound)
 }
 
 func TestCLIRecovery_Approve_AlreadyApproved(t *testing.T) {
@@ -251,7 +250,7 @@ func TestCLIRecovery_Approve_AlreadyApproved(t *testing.T) {
 
 	require.NoError(t, svc.Approve(t.Context(), token, "user-1"))
 	err = svc.Approve(t.Context(), token, "user-2")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestConsumed))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestConsumed)
 }
 
 func TestCLIRecovery_Approve_AlreadyDenied(t *testing.T) {
@@ -263,7 +262,7 @@ func TestCLIRecovery_Approve_AlreadyDenied(t *testing.T) {
 
 	require.NoError(t, svc.Deny(t.Context(), token, "user-1"))
 	err = svc.Approve(t.Context(), token, "user-2")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestDenied))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestDenied)
 }
 
 func TestCLIRecovery_Deny_AlreadyApproved(t *testing.T) {
@@ -275,7 +274,7 @@ func TestCLIRecovery_Deny_AlreadyApproved(t *testing.T) {
 
 	require.NoError(t, svc.Approve(t.Context(), token, "user-1"))
 	err = svc.Deny(t.Context(), token, "user-2")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestConsumed))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestConsumed)
 }
 
 func TestCLIRecovery_Approve_ExpiredRequest(t *testing.T) {
@@ -297,7 +296,7 @@ func TestCLIRecovery_Approve_ExpiredRequest(t *testing.T) {
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash, updatedData))
 
 	err = svc.Approve(t.Context(), token, "user-1")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestExpired))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestExpired)
 }
 
 // ---------------------------------------------------------------------------
@@ -336,7 +335,7 @@ func TestCLIRecovery_Complete_NotApproved(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.Complete(t.Context(), token)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryNotApproved))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryNotApproved)
 }
 
 func TestCLIRecovery_Complete_AlreadyCompleted(t *testing.T) {
@@ -351,7 +350,7 @@ func TestCLIRecovery_Complete_AlreadyCompleted(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.Complete(t.Context(), token)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestConsumed))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestConsumed)
 }
 
 func TestCLIRecovery_Complete_DeniedRequest(t *testing.T) {
@@ -363,14 +362,14 @@ func TestCLIRecovery_Complete_DeniedRequest(t *testing.T) {
 	require.NoError(t, svc.Deny(t.Context(), token, "user-1"))
 
 	_, err = svc.Complete(t.Context(), token)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestDenied))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestDenied)
 }
 
 func TestCLIRecovery_Complete_UnknownToken(t *testing.T) {
 	svc := newTestCLIRecoveryService(t)
 
 	_, err := svc.Complete(t.Context(), "nonexistent-token-abcdef1234567890")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestNotFound))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestNotFound)
 }
 
 func TestCLIRecovery_Complete_ExpiredRequest(t *testing.T) {
@@ -393,7 +392,7 @@ func TestCLIRecovery_Complete_ExpiredRequest(t *testing.T) {
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash, updatedData))
 
 	_, err = svc.Complete(t.Context(), token)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryRequestExpired))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestExpired)
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +431,7 @@ func TestCLIRecovery_VerifyProofOfPossession_WrongKey(t *testing.T) {
 	sig := signProofOfPossession(t, otherPriv, requestID)
 
 	err = svc.VerifyProofOfPossession(req, sig)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryProofInvalid))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryProofInvalid)
 }
 
 func TestCLIRecovery_VerifyProofOfPossession_WrongMessage(t *testing.T) {
@@ -449,7 +448,7 @@ func TestCLIRecovery_VerifyProofOfPossession_WrongMessage(t *testing.T) {
 	// Sign a different message (not the request ID).
 	sig := signProofOfPossession(t, priv, "wrong-message")
 	err = svc.VerifyProofOfPossession(req, sig)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryProofInvalid))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryProofInvalid)
 }
 
 func TestCLIRecovery_VerifyProofOfPossession_InvalidCSR(t *testing.T) {
@@ -459,7 +458,7 @@ func TestCLIRecovery_VerifyProofOfPossession_InvalidCSR(t *testing.T) {
 		CLICSRPEM: "not-a-csr",
 	}
 	err := svc.VerifyProofOfPossession(req, []byte("invalid-sig"))
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryProofInvalid))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryProofInvalid)
 }
 
 // ---------------------------------------------------------------------------
@@ -491,7 +490,7 @@ func TestCLIRecovery_VerifyTokenCSRMatch_DifferentCSR(t *testing.T) {
 	require.NoError(t, err)
 
 	err = svc.VerifyTokenCSRMatch(req, csrPEM2)
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryCSRMismatch))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryCSRMismatch)
 }
 
 func TestCLIRecovery_VerifyTokenCSRMatch_InvalidCSR(t *testing.T) {
@@ -505,7 +504,7 @@ func TestCLIRecovery_VerifyTokenCSRMatch_InvalidCSR(t *testing.T) {
 	require.NoError(t, err)
 
 	err = svc.VerifyTokenCSRMatch(req, "not-a-csr")
-	assert.True(t, errors.Is(err, constants.ErrCLIRecoveryCSRMismatch))
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryCSRMismatch)
 }
 
 // ---------------------------------------------------------------------------

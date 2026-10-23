@@ -8,7 +8,6 @@
 package eval
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,7 +131,7 @@ func TestEvalGatewayGovernanceReady(t *testing.T) {
 				return
 			}
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, tt.wantErr), "want sentinel %v, got %v", tt.wantErr, err)
+			require.ErrorIs(t, err, tt.wantErr, "want sentinel %v, got %v", tt.wantErr, err)
 			assert.Contains(t, err.Error(), tt.wantMatch)
 		})
 	}

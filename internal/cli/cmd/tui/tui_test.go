@@ -145,7 +145,7 @@ func TestTUI_GatewayNotReachable(t *testing.T) {
 		cmd.SetArgs([]string{})
 		err := cmd.Execute()
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrGatewayNotReachable)
+		require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
 		assert.ErrorIs(t, err, gwErr)
 	})
 }
@@ -161,8 +161,8 @@ func TestTUI_GatewayNotReachableReportsStartHint(t *testing.T) {
 	err := cmd.Execute()
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrGatewayNotReachable)
-	assert.ErrorIs(t, err, gwErr)
+	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
+	require.ErrorIs(t, err, gwErr)
 	assert.Contains(t, err.Error(), "no running gateway was detected", cmdtest.RegressionMarkerAfterFix)
 }
 
@@ -189,7 +189,7 @@ func TestTUI_AuthContextLoadFailure(t *testing.T) {
 		cmd.SetArgs([]string{})
 		err := cmd.Execute()
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrFailedToLoadCredentials)
+		require.ErrorIs(t, err, constants.ErrFailedToLoadCredentials)
 		assert.ErrorIs(t, err, credErr)
 	})
 }
@@ -354,7 +354,7 @@ func TestTUI_RealCredentialsNotEnrolled(t *testing.T) {
 		cmd.SetArgs([]string{})
 		err = cmd.Execute()
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
+		require.ErrorIs(t, err, constants.ErrNotAuthenticated)
 		assert.Contains(t, err.Error(), "ztd auth enroll user")
 	})
 }

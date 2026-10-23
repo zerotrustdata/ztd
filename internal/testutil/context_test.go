@@ -25,7 +25,7 @@ func TestContext_ExpiresAndCancelsWithTheTest(t *testing.T) {
 		deadline, ok := ctx.Deadline()
 		require.True(t, ok)
 		assert.WithinDuration(t, time.Now().Add(DefaultTestTimeout), deadline, time.Second)
-		assert.NoError(t, ctx.Err())
+		require.NoError(t, ctx.Err())
 		go func() {
 			<-ctx.Done()
 			canceled <- ctx.Err()
@@ -34,7 +34,7 @@ func TestContext_ExpiresAndCancelsWithTheTest(t *testing.T) {
 
 	select {
 	case err := <-canceled:
-		assert.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, context.Canceled)
 	case <-time.After(time.Second):
 		t.Fatal("context was not canceled when the subtest returned")
 	}

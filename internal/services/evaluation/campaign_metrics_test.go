@@ -72,27 +72,27 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 
 	// 1. Retrieval hit rate: both references matched -> 1.0
 	require.Contains(t, scoreMap, MetricRetrievalHitRate)
-	assert.Equal(t, 1.0, scoreMap[MetricRetrievalHitRate].Value)
+	assert.InDelta(t, 1.0, scoreMap[MetricRetrievalHitRate].Value, 0)
 	assert.Equal(t, evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER, scoreMap[MetricRetrievalHitRate].Direction)
 
 	// 2. Redundant command rate: file_read was not in history_trail -> 0.0
 	require.Contains(t, scoreMap, MetricRedundantCommandRate)
-	assert.Equal(t, 0.0, scoreMap[MetricRedundantCommandRate].Value)
+	assert.InDelta(t, 0.0, scoreMap[MetricRedundantCommandRate].Value, 0)
 	assert.Equal(t, evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_LOWER_IS_BETTER, scoreMap[MetricRedundantCommandRate].Direction)
 
 	// 3. Steps to diagnosis: 2 turn calls + 2 tool calls = 4 steps; the
 	// tribunal call belongs to its tool call.
 	require.Contains(t, scoreMap, MetricStepsToDiagnosis)
-	assert.Equal(t, 4.0, scoreMap[MetricStepsToDiagnosis].Value)
+	assert.InDelta(t, 4.0, scoreMap[MetricStepsToDiagnosis].Value, 0)
 	assert.Equal(t, evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_LOWER_IS_BETTER, scoreMap[MetricStepsToDiagnosis].Direction)
 
 	// 4. Diagnosis correctness: contentPassed == true -> 1.0
 	require.Contains(t, scoreMap, MetricDiagnosisCorrectness)
-	assert.Equal(t, 1.0, scoreMap[MetricDiagnosisCorrectness].Value)
+	assert.InDelta(t, 1.0, scoreMap[MetricDiagnosisCorrectness].Value, 0)
 
 	// 5. Evidence backed conclusion: checkout-api is in inline context -> 1.0
 	require.Contains(t, scoreMap, MetricEvidenceBackedConclusion)
-	assert.Equal(t, 1.0, scoreMap[MetricEvidenceBackedConclusion].Value)
+	assert.InDelta(t, 1.0, scoreMap[MetricEvidenceBackedConclusion].Value, 0)
 }
 
 func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
@@ -134,7 +134,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 
 	// 1 command executed, and it was redundant -> redundant rate 1.0 (100%)
 	require.Contains(t, scoreMap, MetricRedundantCommandRate)
-	assert.Equal(t, 1.0, scoreMap[MetricRedundantCommandRate].Value)
+	assert.InDelta(t, 1.0, scoreMap[MetricRedundantCommandRate].Value, 0)
 }
 
 func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testing.T) {
@@ -162,7 +162,7 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 	}
 
 	require.Contains(t, scoreMap, MetricRedundantCommandRate)
-	assert.Equal(t, 0.5, scoreMap[MetricRedundantCommandRate].Value)
+	assert.InDelta(t, 0.5, scoreMap[MetricRedundantCommandRate].Value, 0)
 }
 
 func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *testing.T) {
@@ -191,7 +191,7 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 
 	// Because "unsupported-cause-dns-failure" was never in evidence, evidence backed conclusion is 0.0
 	require.Contains(t, scoreMap, MetricEvidenceBackedConclusion)
-	assert.Equal(t, 0.0, scoreMap[MetricEvidenceBackedConclusion].Value)
+	assert.InDelta(t, 0.0, scoreMap[MetricEvidenceBackedConclusion].Value, 0)
 }
 
 func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
@@ -209,11 +209,11 @@ func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
 	}
 
 	trace := &AgentTrace{ToolCalls: []AgentToolCall{call}}
-	assert.Equal(t, 1.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}))
+	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}), 0)
 
 	call.Success = false
 	trace = &AgentTrace{ToolCalls: []AgentToolCall{call}}
-	assert.Equal(t, 0.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}))
+	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}), 0)
 }
 
 func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
@@ -227,7 +227,7 @@ func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
 		},
 	}
 	trace := &AgentTrace{}
-	assert.Equal(t, 1.0, computeRetrievalHitRate(trace, refs, input))
+	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, input), 0)
 
 	// A content-only reference the input never carried is still a miss.
 	refs = append(refs, ScenarioGoldEvidenceReference{ReferenceID: "ref-unseen", ExpectedContent: "disk quota exceeded"})
@@ -236,5 +236,5 @@ func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
 	// A reference naming a resource needs an observation even when the input
 	// quotes its content.
 	resourceRef := []ScenarioGoldEvidenceReference{{ReferenceID: "ref-log", TargetResource: "logs/deploy.log", ExpectedContent: "exit_code=127"}}
-	assert.Equal(t, 0.0, computeRetrievalHitRate(trace, resourceRef, input))
+	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, resourceRef, input), 0)
 }

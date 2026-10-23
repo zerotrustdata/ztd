@@ -787,5 +787,5 @@ func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
 	_, err = c.SubscribeApprovals(ctx, persona)
 	require.ErrorIs(t, err, constants.ErrMissingCertificate)
 
-	assert.Zero(t, len(seen), "a CLI-only call must not reach the Gateway on the Operator identity")
+	assert.Empty(t, seen, "a CLI-only call must not reach the Gateway on the Operator identity")
 }

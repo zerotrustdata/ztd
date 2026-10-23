@@ -35,6 +35,6 @@ func TestGatewayModeService_PasskeyHandlerMaxPayloadWiring(t *testing.T) {
 	passkey := handler.GetPasskeyHandler()
 	require.NotNil(t, passkey, "GetPasskeyHandler must return the wired passkey handler")
 
-	assert.Greater(t, passkey.MaxPayloadBytes(), int64(0),
+	assert.Positive(t, passkey.MaxPayloadBytes(),
 		"production passkey handler must have a non-zero MaxPayload so http.MaxBytesReader does not reject every body (regression: passkey-maxpayload-wiring)")
 }

@@ -148,7 +148,7 @@ func TestVerifyReceipt(t *testing.T) {
 			}
 			require.Error(t, err)
 			assert.Nil(t, chain)
-			assert.ErrorIs(t, err, tt.want)
+			require.ErrorIs(t, err, tt.want)
 			if tt.want != constants.ErrConformanceReceiptUnclassifiable {
 				assert.NotErrorIs(t, err, constants.ErrConformanceReceiptUnclassifiable)
 			}

@@ -50,20 +50,20 @@ func sseDecisionServer(t *testing.T, txHash string, rejection operatorv1.Governa
 			Signature:       "signature-approve-test",
 			RejectionCode:   rejection,
 		})
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
 			Type:    constants.SSEEventTypeApprovalCompleted,
 			UserID:  "user-test",
 			TxHash:  txHash,
 			Receipt: receipt,
 		})
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		envelope := models.SSEPushPayload{
 			UserID: "user-test",
 			Event:  eventPayload,
 		}
 		envelopeJSON, err := json.Marshal(envelope)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
 	}))
 }

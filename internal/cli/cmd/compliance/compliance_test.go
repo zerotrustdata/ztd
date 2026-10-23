@@ -192,7 +192,7 @@ func TestComplianceKSICmd_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -206,7 +206,7 @@ func TestComplianceKSIHistoryCmd_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -220,7 +220,7 @@ func TestComplianceOverlayCmd_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -303,7 +303,7 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 			err := cmd.RunE(cmd, nil)
 			require.Error(t, err)
 			if tt.expectedErr != nil {
-				assert.ErrorIs(t, err, tt.expectedErr)
+				require.ErrorIs(t, err, tt.expectedErr)
 			}
 			if tt.errContains != "" {
 				assert.Contains(t, err.Error(), tt.errContains)

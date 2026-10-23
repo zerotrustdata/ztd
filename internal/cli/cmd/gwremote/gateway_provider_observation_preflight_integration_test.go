@@ -50,8 +50,8 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 
 		err := PreflightProviderObservationDelivery(fileSvc, cfg)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "provider observation preflight")
-		assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+		require.ErrorContains(t, err, "provider observation preflight")
+		require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 		var statusErr *api.StatusError
 		require.ErrorAs(t, err, &statusErr)
 		assert.Equal(t, http.StatusServiceUnavailable, statusErr.StatusCode)

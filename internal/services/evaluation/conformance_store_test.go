@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,7 +64,7 @@ func TestConformanceStoreRefusesToOverwriteRecord(t *testing.T) {
 	err = store.SaveConformanceRecord(ctx, record)
 
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrEvaluationReportPersistFailed))
+	assert.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
 }
 
 func TestConformanceStoreRejectsInvalidRunID(t *testing.T) {
@@ -76,6 +75,6 @@ func TestConformanceStoreRejectsInvalidRunID(t *testing.T) {
 
 	for _, runID := range []string{"", "../escape", "nested/run"} {
 		err := store.SaveConformanceRecord(ctx, newConformanceRecord(runID))
-		assert.Truef(t, errors.Is(err, constants.ErrEvaluationReportPersistFailed), "save run id %q", runID)
+		assert.ErrorIsf(t, err, constants.ErrEvaluationReportPersistFailed, "save run id %q", runID)
 	}
 }

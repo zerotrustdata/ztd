@@ -514,7 +514,7 @@ func TestPasskeyReadBodyRejectsOversized(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	_, err := svc.readBody(rr, req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "http: request body too large")
 }
 

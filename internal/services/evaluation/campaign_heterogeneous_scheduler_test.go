@@ -60,7 +60,7 @@ func TestBuildHeterogeneousAssignmentMatrix_PreservesCatalogOrderAfterReload(t *
 	}
 	loaded, err := store.ListAssignments(t.Context(), "workflow-run")
 	require.NoError(t, err)
-	require.Equal(t, len(assignments), len(loaded))
+	require.Len(t, loaded, len(assignments))
 	for i := range assignments {
 		assert.Equal(t, assignments[i].GetAssignmentId(), loaded[i].GetAssignmentId())
 	}

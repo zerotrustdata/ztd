@@ -103,7 +103,7 @@ func TestAttemptStore_RejectsPathHostileAttemptID(t *testing.T) {
 				ProviderAttemptId: attemptID,
 				TransactionId:     "tx-hostile",
 			})
-			assert.ErrorIs(t, err, constants.ErrInferenceProviderAttemptIDInvalid)
+			require.ErrorIs(t, err, constants.ErrInferenceProviderAttemptIDInvalid)
 			_, err = store.Get(ctx, attemptID)
 			assert.ErrorIs(t, err, constants.ErrInferenceProviderAttemptIDInvalid)
 		})

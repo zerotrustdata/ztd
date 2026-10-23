@@ -261,7 +261,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	require.Len(t, trace.ToolCalls, 1)
 	tool := trace.ToolCalls[0]
 	assert.True(t, tool.Success, "tool error: %s", tool.Error)
-	assert.Equal(t, `{"args":["HEALTHY"],"command":"echo"}`, tool.ArgumentsJSON, "the proposal is recorded in canonical sorted-key form")
+	assert.Equal(t, `{"args":["HEALTHY"],"command":"echo"}`, tool.ArgumentsJSON, "the proposal is recorded in canonical sorted-key form") //nolint:testifylint // exact bytes, not JSON equivalence
 	approved := tribunalExpectedApprovedArguments(trace)
 	assert.Equal(t, approved, tool.ApprovedArgumentsJSON, "Gateway-owned timeout and working directory are composed before review")
 	require.NotNil(t, tool.Receipt, "the dispatched command keeps its signed receipt")

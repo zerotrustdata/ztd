@@ -20,7 +20,7 @@ func TestValidateHeartbeatInterval(t *testing.T) {
 	maxSeconds := int(constants.OperatorHeartbeatMaxInterval.Seconds())
 
 	for _, seconds := range []int{0, 1, 15, 30, 60, 120, maxSeconds} {
-		assert.NoError(t, validateHeartbeatInterval(seconds), "%d seconds must be accepted", seconds)
+		require.NoError(t, validateHeartbeatInterval(seconds), "%d seconds must be accepted", seconds)
 	}
 
 	for _, seconds := range []int{-1, maxSeconds + 1, 3600} {

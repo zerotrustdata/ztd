@@ -62,7 +62,7 @@ func TestProviderResponseCapture_IngestsRawTailWhileProgressDeliveryIsBlocked(t 
 		select {
 		case <-capture.finished:
 			raw, err := capture.result()
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, first+tail, string(raw))
 		default:
 			t.Error("progress delivery blocked provider ingestion")

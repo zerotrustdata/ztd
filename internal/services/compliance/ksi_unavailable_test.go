@@ -9,7 +9,6 @@ package compliance
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -150,5 +149,5 @@ func TestUnavailableIntervalStoreAppendFromResultSetRejectsNil(t *testing.T) {
 
 	err := store.AppendFromResultSet(context.Background(), nil)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrKSIUnavailableWriteFailed))
+	assert.ErrorIs(t, err, constants.ErrKSIUnavailableWriteFailed)
 }

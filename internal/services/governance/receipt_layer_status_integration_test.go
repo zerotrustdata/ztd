@@ -191,7 +191,7 @@ func TestReceiptPostureDeniedL3IsSignedRejectionAndSpendsTheNonce(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
 	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED, receipt.GetL3Status())
-	assert.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+	require.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
 
 	env.Governance.L3 = approved
 	_, err = verifier.VerifyEnvelope(context.Background(), env)

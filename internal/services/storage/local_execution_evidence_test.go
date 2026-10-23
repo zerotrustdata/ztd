@@ -9,7 +9,6 @@ package storage
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -82,7 +81,7 @@ func TestOpenLocalExecutionEvidence_RequiresDependencies(t *testing.T) {
 			tc.mutate(&cfg)
 			evidence, err := OpenLocalExecutionEvidence(cfg)
 			require.Nil(t, evidence)
-			require.True(t, errors.Is(err, tc.wantErr), "err = %v, want %v", err, tc.wantErr)
+			require.ErrorIs(t, err, tc.wantErr, "err = %v, want %v", err, tc.wantErr)
 		})
 	}
 }

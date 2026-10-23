@@ -157,7 +157,7 @@ func TestConformanceRun_WithoutFlagsOnRealStackRequiresAChoice(t *testing.T) {
 	}
 
 	out, err := rig.execute(t, "conformance", "run")
-	assert.ErrorIs(t, err, constants.ErrEvaluationTargetAmbiguous)
+	require.ErrorIs(t, err, constants.ErrEvaluationTargetAmbiguous)
 	assert.Contains(t, out, "Choose a Data Operator")
 }
 

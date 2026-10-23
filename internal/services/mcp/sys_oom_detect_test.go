@@ -128,7 +128,7 @@ func TestSysOOMDetectTool_Execute(t *testing.T) {
 
 				// Verify timestamp is recent
 				ts, err := time.Parse(time.RFC3339, oomResult.Events[0].Timestamp)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.WithinDuration(t, time.Now(), ts, 10*time.Second)
 			}
 		})

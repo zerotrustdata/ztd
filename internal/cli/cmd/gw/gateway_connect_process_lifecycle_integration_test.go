@@ -108,7 +108,7 @@ func TestConnectStoppedGateway_ProfileWriteFailureStopsGateway(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInternal, "error should wrap ErrInternal, got: %v", err)
+	require.ErrorIs(t, err, constants.ErrInternal, "error should wrap ErrInternal, got: %v", err)
 	assert.Contains(t, err.Error(), "persist launch profile",
 		"error should mention the profile write failure, got: %v", err)
 
@@ -177,7 +177,7 @@ func TestConnectRestartGateway_ProfileWriteFailureRollsBackToPreviousConfig(t *t
 
 	err = cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInternal, "error should wrap ErrInternal, got: %v", err)
+	require.ErrorIs(t, err, constants.ErrInternal, "error should wrap ErrInternal, got: %v", err)
 	assert.Contains(t, err.Error(), "persist launch profile",
 		"error should mention the profile write failure, got: %v", err)
 

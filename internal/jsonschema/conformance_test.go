@@ -186,7 +186,7 @@ func TestDraft07ConformanceVectors(t *testing.T) {
 func TestDraft07ConformanceVectors_ProvenanceHashesPresent(t *testing.T) {
 	for _, ct := range draft07ConformanceVectors {
 		assert.NotEmpty(t, ct.SourceHash, "vector %s/%s missing source hash", ct.Suite, ct.Group)
-		assert.Equal(t, JSONSchemaTestSuiteDraft07SHA256, ct.SourceHash)
+		assert.Equal(t, JSONSchemaTestSuiteDraft07SHA256, ct.SourceHash) //nolint:testifylint // exact bytes, not JSON equivalence
 	}
 }
 
@@ -329,7 +329,7 @@ func TestFocused_DeterministicFailureOrdering(t *testing.T) {
 		if i == 0 {
 			prev = fs
 		} else {
-			assert.Equal(t, len(prev), len(fs))
+			assert.Len(t, fs, len(prev))
 			for j := range prev {
 				assert.Equal(t, prev[j].Reason, fs[j].Reason)
 				assert.Equal(t, prev[j].InstancePtr, fs[j].InstancePtr)

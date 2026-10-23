@@ -1432,8 +1432,8 @@ func TestInferenceDispatch_CallerCancellationRemovesHandlerWhileRemoteExecutionC
 	select {
 	case err := <-dispatchErr:
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceCanceled)
-		assert.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, constants.ErrInferenceCanceled)
+		require.ErrorIs(t, err, context.Canceled)
 	case <-time.After(time.Second):
 		t.Fatal("dispatch did not return after caller cancellation")
 	}
@@ -1534,7 +1534,7 @@ func TestInferenceDispatch_ResultMutatedAfterDigestComputationFailsClosed(t *tes
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceResultDigestMismatch)
+	require.ErrorIs(t, err, constants.ErrInferenceResultDigestMismatch)
 	calls, _ := backend.snapshot()
 	assert.Equal(t, 1, calls)
 }
@@ -1634,7 +1634,7 @@ func TestInferenceDispatch_NotaryPostureRejectsMutationBeforeBackendInvocation(t
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
+	require.ErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
 	calls, _ := backend.snapshot()
 	assert.Zero(t, calls)
 }

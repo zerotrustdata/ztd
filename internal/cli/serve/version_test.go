@@ -67,8 +67,8 @@ func TestVersionInfo_Equality(t *testing.T) {
 	b := VersionInfo{Version: "1.0.0", BuildID: "b1", BuildTime: "t1", Platform: "linux/amd64"}
 	c := VersionInfo{Version: "1.0.0", BuildID: "b1", BuildTime: "t1", Platform: "darwin/arm64"}
 
-	require.True(t, a == b, "structs with identical fields should be equal")
-	require.False(t, a == c, "structs differing in any field should not be equal")
+	require.Equal(t, a, b, "structs with identical fields should be equal")
+	require.NotEqual(t, a, c, "structs differing in any field should not be equal")
 }
 
 func TestVersionInfo_Mutation(t *testing.T) {

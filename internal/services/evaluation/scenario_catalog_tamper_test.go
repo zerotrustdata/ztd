@@ -116,7 +116,7 @@ func TestValidateScenarioCatalog_RejectsTamperedCatalogs(t *testing.T) {
 
 			require.Error(t, err)
 			if tt.wantIs != nil {
-				assert.ErrorIs(t, err, tt.wantIs)
+				require.ErrorIs(t, err, tt.wantIs)
 			}
 			if tt.wantErr != "" {
 				assert.Contains(t, err.Error(), tt.wantErr)

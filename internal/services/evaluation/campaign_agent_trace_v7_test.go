@@ -218,7 +218,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 			resealV7Trace(t, trace)
 
 			err := VerifyAgentTraceEvidence(trace)
-			assert.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
+			require.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
 			assert.Error(t, err)
 		})
 	}
@@ -313,7 +313,7 @@ func TestValidateAgentTraceDigest_RejectsShellTextStepsInV8(t *testing.T) {
 	require.NoError(t, err)
 	trace.EvidenceDigest = digest
 
-	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed)
+	require.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed)
 	_, err = SealAgentTrace(trace)
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }

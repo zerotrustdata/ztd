@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 )
@@ -83,7 +84,7 @@ func TestContextWithVersionInfo_KeepsParentValuesAndCancellation(t *testing.T) {
 	ctx := ContextWithVersionInfo(parent, sampleVersionInfo())
 
 	assert.Equal(t, "parent-value", ctx.Value(commandContextKey{}))
-	assert.NoError(t, ctx.Err())
+	require.NoError(t, ctx.Err())
 	cancel()
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
 }

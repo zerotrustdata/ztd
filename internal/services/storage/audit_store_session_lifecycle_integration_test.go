@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -137,7 +136,7 @@ func TestStartSession_ConcurrentIdenticalStartsAllSucceed(t *testing.T) {
 	wg.Wait()
 
 	for i, err := range errs {
-		assert.NoError(t, err, "starter %d", i)
+		require.NoError(t, err, "starter %d", i)
 	}
 	requireSessionRow(t, ass, "concurrent", true)
 }

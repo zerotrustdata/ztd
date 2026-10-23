@@ -28,9 +28,9 @@ func TestDecodeDocumentUpdateFields_UsesTypedJSONObject(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, fields, 2)
 	assert.Equal(t, "active", fields[0].Name)
-	assert.Equal(t, json.RawMessage(`false`), fields[0].Value)
+	assert.Equal(t, json.RawMessage(`false`), fields[0].Value) //nolint:testifylint // exact bytes, not JSON equivalence
 	assert.Equal(t, "name", fields[1].Name)
-	assert.Equal(t, json.RawMessage(`"worker-a"`), fields[1].Value)
+	assert.Equal(t, json.RawMessage(`"worker-a"`), fields[1].Value) //nolint:testifylint // exact bytes, not JSON equivalence
 }
 
 func TestDecodeDocumentUpdateFields_RejectsNonObjectAndEmptyObject(t *testing.T) {

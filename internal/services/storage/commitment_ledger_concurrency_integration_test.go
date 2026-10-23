@@ -69,7 +69,7 @@ func TestCommitmentLedger_ConcurrentLedgerInstancesBuildAgainstUniqueHeads(t *te
 	wg.Wait()
 	close(errs)
 	for err := range errs {
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	rows, err := ledgers[0].ListCommitments()

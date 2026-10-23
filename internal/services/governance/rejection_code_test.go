@@ -158,7 +158,7 @@ func TestClassifyGovernanceRejection(t *testing.T) {
 // TestClassifyGovernanceRejectionTableCoversEveryEntry fails when a classifier
 // entry has no row in the explicit case table, so the table cannot drift.
 func TestClassifyGovernanceRejectionTableCoversEveryEntry(t *testing.T) {
-	require.Equal(t, len(governanceRejectionCodes), len(rejectionCodeCases), "table rows must match classifier entries one-to-one")
+	require.Len(t, rejectionCodeCases, len(governanceRejectionCodes), "table rows must match classifier entries one-to-one")
 	for _, entry := range governanceRejectionCodes {
 		found := false
 		for _, tc := range rejectionCodeCases {
@@ -208,7 +208,7 @@ func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
 	}
 	assert.Same(t, verifyErr, WithRejectionReceipt(executionFailure, verifyErr))
 	assert.Same(t, verifyErr, WithRejectionReceipt(nil, verifyErr))
-	assert.NoError(t, WithRejectionReceipt(rejected, nil))
+	require.NoError(t, WithRejectionReceipt(rejected, nil))
 	assert.Nil(t, RejectionResponse(verifyErr))
 }
 
@@ -236,7 +236,7 @@ func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
 	completed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	assert.Same(t, providerErr, WithFailedReceipt(completed, providerErr))
 	assert.Same(t, providerErr, WithFailedReceipt(nil, providerErr))
-	assert.NoError(t, WithFailedReceipt(failed, nil))
+	require.NoError(t, WithFailedReceipt(failed, nil))
 	assert.Nil(t, FailedReceipt(providerErr))
 }
 

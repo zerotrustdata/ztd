@@ -84,7 +84,7 @@ func TestEnrollmentToken_PersistenceFailureDuringGenerate(t *testing.T) {
 	db.Close()
 
 	_, err := svc.GenerateToken(t.Context(), "user-persist-fail", "cli-persist-fail")
-	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenPersistenceFailed),
+	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenPersistenceFailed,
 		"expected ErrEnrollmentTokenPersistenceFailed, got %v", err)
 }
 
@@ -103,6 +103,6 @@ func TestEnrollmentToken_MalformedTokenInStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAndConsumeToken(t.Context(), "malformedtoken1234567890abcdef1234567890ab")
-	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenInvalid),
+	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenInvalid,
 		"expected ErrEnrollmentTokenInvalid for malformed token in storage, got %v", err)
 }

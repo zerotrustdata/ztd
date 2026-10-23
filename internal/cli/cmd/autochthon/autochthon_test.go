@@ -60,7 +60,7 @@ func TestAutochthonRefusesGatewayFlags(t *testing.T) {
 	for _, sub := range [][]string{{"autochthon"}, {"autochthon", "status"}} {
 		for _, flag := range [][]string{{"--endpoint", "gateway.example"}, {"--port", "8443"}} {
 			args := append(append(append([]string{}, sub...), "--working-dir", testutil.TempDir(t)), flag...)
-			assert.ErrorIs(t, newRoot(&bytes.Buffer{}, args...).Execute(), constants.ErrAutochthonGatewayFlag, "args %v", args)
+			require.ErrorIs(t, newRoot(&bytes.Buffer{}, args...).Execute(), constants.ErrAutochthonGatewayFlag, "args %v", args)
 		}
 	}
 	err := newRoot(&bytes.Buffer{}, "autochthon", "--working-dir", testutil.TempDir(t), "--json").Execute()
@@ -88,9 +88,9 @@ func TestAutochthonStatus(t *testing.T) {
 	require.NoError(t, newRoot(&out, "autochthon", "status", "--working-dir", dir, "--anchor", anchor).Execute())
 	assert.Contains(t, out.String(), anchor+" holds")
 	err = newRoot(&bytes.Buffer{}, "autochthon", "status", "--working-dir", dir, "--anchor", "41:"+strings.TrimPrefix(anchor, "40:")).Execute()
-	assert.ErrorIs(t, err, constants.ErrAutochthonAnchorMissing)
+	require.ErrorIs(t, err, constants.ErrAutochthonAnchorMissing)
 	err = newRoot(&bytes.Buffer{}, "autochthon", "status", "--working-dir", dir, "--anchor", "40").Execute()
-	assert.ErrorIs(t, err, constants.ErrAutochthonAnchorFormat)
+	require.ErrorIs(t, err, constants.ErrAutochthonAnchorFormat)
 
 	out.Reset()
 	require.NoError(t, newRoot(&out, "autochthon", "status", "--working-dir", dir, "--generations", "1", "--json").Execute())

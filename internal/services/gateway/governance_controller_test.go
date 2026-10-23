@@ -13,7 +13,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -99,7 +98,7 @@ func TestVerifyEnvelopeIdentityBinding_DocumentUpdateEmptyIdentity_FailsClosed(t
 	env := mutationEnvelopeBytes(t, constants.ActionTypeDocumentUpdate, "", "", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, constants.ErrIdentityBindingFailed), "expected ErrIdentityBindingFailed, got %v", err)
+	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed, "expected ErrIdentityBindingFailed, got %v", err)
 }
 
 // TestVerifyEnvelopeIdentityBinding_DocumentDeleteEmptyIdentity_FailsClosed
@@ -109,7 +108,7 @@ func TestVerifyEnvelopeIdentityBinding_DocumentDeleteEmptyIdentity_FailsClosed(t
 	env := mutationEnvelopeBytes(t, constants.ActionTypeDocumentDelete, "", "", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, constants.ErrIdentityBindingFailed), "expected ErrIdentityBindingFailed, got %v", err)
+	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed, "expected ErrIdentityBindingFailed, got %v", err)
 }
 
 // TestVerifyEnvelopeIdentityBinding_FileEditEmptyIdentity_FailsClosed asserts
@@ -119,7 +118,7 @@ func TestVerifyEnvelopeIdentityBinding_FileEditEmptyIdentity_FailsClosed(t *test
 	env := mutationEnvelopeBytes(t, constants.ActionTypeFileEdit, "", "", commonv1.Component_COMPONENT_ZTDO)
 	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, env)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, constants.ErrIdentityBindingFailed), "expected ErrIdentityBindingFailed, got %v", err)
+	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed, "expected ErrIdentityBindingFailed, got %v", err)
 }
 
 // appMutationEnvelopeBytes builds a DOCUMENT_UPDATE envelope with no operator

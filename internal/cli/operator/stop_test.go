@@ -20,8 +20,8 @@ import (
 )
 
 func TestCheckStoppable(t *testing.T) {
-	assert.NoError(t, CheckStoppable(&operatorv1.OperatorDocument{OperatorType: string(constants.OperatorTypeRemote)}))
-	assert.ErrorIs(t, CheckStoppable(&operatorv1.OperatorDocument{OperatorType: string(constants.OperatorTypeEmbedded)}), constants.ErrOperatorStopEmbedded)
+	require.NoError(t, CheckStoppable(&operatorv1.OperatorDocument{OperatorType: string(constants.OperatorTypeRemote)}))
+	require.ErrorIs(t, CheckStoppable(&operatorv1.OperatorDocument{OperatorType: string(constants.OperatorTypeEmbedded)}), constants.ErrOperatorStopEmbedded)
 	assert.ErrorIs(t, CheckStoppable(&operatorv1.OperatorDocument{}), constants.ErrOperatorStopNotRemote)
 }
 
@@ -35,7 +35,7 @@ func TestDecodeStopResponse(t *testing.T) {
 	assert.Equal(t, "op", got.OperatorID)
 
 	_, err = DecodeStopResponse([]byte(`{"success":false}`))
-	assert.ErrorContains(t, err, "unsuccessful")
+	require.ErrorContains(t, err, "unsuccessful")
 
 	_, err = DecodeStopResponse([]byte(`not json`))
 	assert.ErrorContains(t, err, "parse response")
