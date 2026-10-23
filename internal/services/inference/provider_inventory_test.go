@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestNormalizeProviderModelVariantID(t *testing.T) {
@@ -23,13 +24,32 @@ func TestNormalizeProviderModelVariantID(t *testing.T) {
 
 func TestParseProviderParameterCount(t *testing.T) {
 	t.Parallel()
-	count, err := parseProviderParameterCount("4.0B")
+	count, err := parseProviderParameterCount("4.0B", nil)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(4_000_000_000), count)
 
-	count, err = parseProviderParameterCount("270M")
+	count, err = parseProviderParameterCount("270M", nil)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(270_000_000), count)
+}
+
+func TestParseProviderParameterCountPrefersMetadataAndRejectsInvalidCounts(t *testing.T) {
+	t.Parallel()
+	count, err := parseProviderParameterCount("8.0B", map[string]json.RawMessage{"general.parameter_count": json.RawMessage("8030261248")})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(8_030_261_248), count)
+	for _, encoded := range []string{"null", "0", "-1", "1.5", `"8030261248"`, "18446744073709551616"} {
+		t.Run(encoded, func(t *testing.T) {
+			_, err := parseProviderParameterCount("8.0B", map[string]json.RawMessage{"general.parameter_count": json.RawMessage(encoded)})
+			require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+		})
+	}
+	for _, label := range []string{"NaNB", "+InfB", "-1B", "18446744074B"} {
+		t.Run(label, func(t *testing.T) {
+			_, err := parseProviderParameterCount(label, nil)
+			require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+		})
+	}
 }
 
 func TestParseProviderContextLimit(t *testing.T) {

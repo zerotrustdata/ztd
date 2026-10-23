@@ -22,8 +22,10 @@ func ProviderModelInventoryEntryFromProto(entry *operatorv1.ProviderModelInvento
 		ModelFamily:            entry.GetModelFamily(),
 		ParameterSize:          entry.GetParameterSize(),
 		ParameterCount:         entry.GetParameterCount(),
+		ParameterCountSource:   entry.GetParameterCountSource(),
 		Quantization:           entry.GetQuantization(),
 		Format:                 entry.GetFormat(),
+		ArtifactSizeBytes:      entry.GetArtifactSizeBytes(),
 		ContextLimit:           entry.GetContextLimit(),
 		AdvertisedCapabilities: append([]string(nil), entry.GetAdvertisedCapabilities()...),
 	}
@@ -57,8 +59,10 @@ func ProviderModelInventoryEntriesToProto(entries []ProviderModelInventoryEntry)
 			ModelFamily:            entry.ModelFamily,
 			ParameterSize:          entry.ParameterSize,
 			ParameterCount:         entry.ParameterCount,
+			ParameterCountSource:   entry.ParameterCountSource,
 			Quantization:           entry.Quantization,
 			Format:                 entry.Format,
+			ArtifactSizeBytes:      entry.ArtifactSizeBytes,
 			ContextLimit:           entry.ContextLimit,
 			AdvertisedCapabilities: append([]string(nil), entry.AdvertisedCapabilities...),
 		})

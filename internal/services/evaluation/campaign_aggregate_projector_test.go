@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestCollectRunAggregateState(t *testing.T) {
@@ -90,6 +91,45 @@ func TestPassRateDividesByAssignmentsJudgedOnTheModel(t *testing.T) {
 	assert.Equal(t, uint32(1), model.TerminalOutcomes[TerminalOutcomeProviderFailed])
 }
 
+// The leaderboard scores size, so the model summary publishes the frozen
+// provider identity rather than a tag guessed from the variant ID, which
+// cannot recover decimal sizes such as qwen3:0.6b.
+func TestModelSummaryPublishesFrozenVariantIdentity(t *testing.T) {
+	assignment := homogeneousAssignment("assign-1", "qwen3-0-6b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	assignment.GetHomogeneous().CandidateVariant.ServedModelTag = "qwen3:0.6b"
+	assignment.GetHomogeneous().CandidateVariant.ParameterCount = 751_632_384
+	assignment.GetHomogeneous().CandidateVariant.ParameterCountSource = operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_MODEL_METADATA
+	assignment.GetHomogeneous().CandidateVariant.Quantization = "Q8_0"
+	assignment.GetHomogeneous().CandidateVariant.ModelFormat = "gguf"
+	assignment.GetHomogeneous().CandidateVariant.ArtifactSizeBytes = 812_000_000
+	assignment.GetHomogeneous().CandidateVariant.ContextLimit = 32768
+	assignment.GetHomogeneous().CandidateVariant.ProviderClass = "test-provider"
+	state, err := CollectRunAggregateState([]*evalv1.EvaluationAssignment{assignment}, nil)
+	require.NoError(t, err)
+
+	model := buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", state.VariantRoles["qwen3-0-6b:lite"], CampaignRelease{})
+	assert.Equal(t, "qwen3:0.6b", model.ServedModelTag)
+	assert.Equal(t, uint64(751_632_384), model.ParameterCount)
+	body, err := marshalCanonicalViewRecord(model)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"parameter_count":751632384`)
+	assert.Contains(t, string(body), `"parameter_count_source":"model_metadata"`)
+	assert.Contains(t, string(body), `"quantization_weight_class":"Q8_0"`)
+	assert.Contains(t, string(body), `"model_format":"gguf"`)
+	assert.Contains(t, string(body), `"artifact_size_bytes":812000000`)
+	assert.Contains(t, string(body), `"context_limit":32768`)
+	assert.Contains(t, string(body), `"backend_provider_class":"test-provider"`)
+	assert.Equal(t, assignment.GetHomogeneous().CandidateVariant.GetModelDigest(), model.ModelDigest)
+
+	unsized := buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", &variantRoleAggregate{VariantID: "qwen3-4b", Role: "primary"}, CampaignRelease{})
+	assert.Empty(t, unsized.ServedModelTag)
+	body, err = marshalCanonicalViewRecord(unsized)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "parameter_count")
+	assert.NotContains(t, string(body), "quantization_weight_class")
+	assert.NotContains(t, string(body), "artifact_size_bytes")
+}
+
 // With no assignment judged on the model the rate is unavailable, never zero.
 func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
@@ -143,6 +183,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
 	assignments[0].StartedAt = timestamppb.New(time.Unix(1_700_000_005, 0).UTC())
+	assignments[0].GetHomogeneous().CandidateVariant.ServedModelTag = "qwen3:4b"
 	results := map[string]*evalv1.EvaluationAssignmentResult{
 		"assign-1": {
 			AssignmentId:    "assign-1",

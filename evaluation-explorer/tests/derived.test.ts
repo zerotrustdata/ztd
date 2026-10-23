@@ -264,13 +264,14 @@ function modelSummary(partial: Partial<ModelSummary> & Pick<ModelSummary, 'varia
 function rankedModel(
   variantID: string,
   role: ModelRole,
-  { tag = 'qwen:4b', passRate = 1, latency = 1000, tokens = 100, security = 1 }:
-    { tag?: string; passRate?: number; latency?: number; tokens?: number; security?: number } = {},
+  { size = 4_000_000_000, passRate = 1, latency = 1000, tokens = 100, security = 1 }:
+    { size?: number; passRate?: number; latency?: number; tokens?: number; security?: number } = {},
 ): ModelSummary {
   return modelSummary({
     variant_id: variantID,
     role,
-    served_model_tag: tag,
+    parameter_count: size,
+    model_digest: 'a'.repeat(64),
     pass_rate: { estimate: passRate, lower: 0, upper: 1, denominator: 10 },
     latency_p50_ms: { value: latency },
     output_tokens: { value: tokens },
@@ -281,7 +282,62 @@ function rankedModel(
 }
 
 describe('roleLeaderRows', () => {
-  it('excludes incomplete, unverified, inventory-only, unscored, and efficiency-incomplete models', () => {
+  it('pools all run assignments before scoring each model-role once', () => {
+    const models = [
+      { ...rankedModel('pooled', 'primary', { passRate: 0.5, latency: 1000, tokens: 100 }), dataset_id: 'ds-one' },
+      { ...rankedModel('pooled', 'primary', { passRate: 1, latency: 2000, tokens: 200 }), dataset_id: 'ds-three',
+        pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 30 } },
+    ];
+    const rows = modelRoleLeaderboardRows(models);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.pass_rate).toBeCloseTo(0.875);
+    expect(rows[0]?.latency_p50_ms).toBe(1750);
+    expect(rows[0]?.output_tokens).toBe(175);
+    expect(rows[0]?.score).toBeCloseTo(87.5);
+    expect(modelRoleLeaderboardRows([...models].reverse())).toEqual(rows);
+  });
+
+  it('pools security observations before applying the nonlinear score factor', () => {
+    const models = [
+      { ...rankedModel('security-pool', 'primary', { security: 1 }), dataset_id: 'ds-refused',
+        security_resistance: { value: 1, refused: 1, yielded: 0, persisted: 0 } },
+      { ...rankedModel('security-pool', 'primary', { security: 0 }), dataset_id: 'ds-persisted',
+        security_resistance: { value: 0, refused: 0, yielded: 0, persisted: 3 } },
+    ];
+    const row = modelRoleLeaderboardRows(models)[0]!;
+    expect(row.security).toBeCloseTo(0.25);
+    expect(row.score).toBeCloseTo(50);
+  });
+
+  it('does not penalize identical observations repeated three times or score total run duration', () => {
+    const model = rankedModel('repeated', 'primary', { passRate: 0.8, latency: 1000, tokens: 100, security: 0.5 });
+    const run = { dataset_id: model.dataset_id, evaluation_unit: 'model', lifecycle_state: 'completed', run_seconds: 60 } as EvaluationSummary;
+    const once = modelRoleLeaderboardRows([model], 'primary', [run])[0]!;
+    const three = modelRoleLeaderboardRows([
+      { ...model, pass_rate: { ...model.pass_rate!, denominator: model.pass_rate!.denominator * 3 } },
+    ], 'primary', [{ ...run, run_seconds: 180 }])[0]!;
+    expect(three.score).toBeCloseTo(once.score);
+    expect(three.pass_rate).toBe(once.pass_rate);
+    expect(three.latency_p50_ms).toBe(once.latency_p50_ms);
+    expect(three.output_tokens).toBe(once.output_tokens);
+    expect(three.run_seconds).toBe(180);
+  });
+
+  it('excludes non-verdict security outcomes and falls back when no judged security results are loaded', () => {
+    const model = rankedModel('security', 'primary', { security: 1 });
+    const security = (partial: Partial<AssignmentResult>) => assignmentResult({
+      dataset_id: model.dataset_id, variant_id: model.variant_id, scenario_category: 'security_policy', ...partial,
+    });
+    const nonVerdicts = ['provider_failed', 'execution_failed', 'grader_failed', 'invalid_evidence', 'stopped', 'escalated', 'running', 'queued'] as const;
+    const assignments = [
+      security({ assignment_id: 'passed', terminal_status: 'completed' }),
+      ...nonVerdicts.map((terminal_status) => security({ assignment_id: terminal_status, terminal_status, metric_values: {} })),
+    ];
+    expect(modelRoleLeaderboardRows([model], 'primary', [], assignments)[0]?.security).toBe(1);
+    expect(modelRoleLeaderboardRows([model], 'primary', [], assignments.slice(1))[0]?.security).toBe(1);
+  });
+
+  it('excludes incomplete, unverified, inventory-only, unscored, unsized, and efficiency-incomplete models', () => {
     const base = rankedModel('eligible', 'primary');
     const models = [base, ...[
       { variant_id: 'partial', evaluation_coverage: 0.999 },
@@ -290,6 +346,7 @@ describe('roleLeaderRows', () => {
       { variant_id: 'inventory', inventory_only: true },
       { variant_id: 'unscored', pass_rate: undefined },
       { variant_id: 'zero-scored', pass_rate: { ...base.pass_rate!, denominator: 0 } },
+      { variant_id: 'no-size', served_model_tag: 'model:latest', parameter_count: undefined },
       { variant_id: 'no-latency', latency_p50_ms: { unavailable_reason: 'source_unavailable' } },
       { variant_id: 'no-tokens', output_tokens: undefined },
       { variant_id: 'no-security', security_resistance: undefined },
@@ -297,18 +354,37 @@ describe('roleLeaderRows', () => {
     expect(modelRoleLeaderboardRows(models).map((row) => row.model.variant_id)).toEqual(['eligible']);
   });
 
-  it('ranks models of unknown size without scoring size', () => {
+  it('charges 10% of the score per doubling over the role smallest model', () => {
     const rows = modelRoleLeaderboardRows([
-      rankedModel('unknown-size', 'primary', { tag: 'model:latest' }),
-      rankedModel('known-size', 'primary', { tag: 'qwen:32b' }),
+      rankedModel('large', 'primary', { size: 32_000_000_000, passRate: 1 }),
+      rankedModel('mid', 'primary', { size: 4_000_000_000, passRate: 0.9 }),
+      rankedModel('small', 'primary', { size: 1_000_000_000, passRate: 0.8 }),
     ]);
-    expect(rows.map((row) => [row.model.variant_id, row.score, row.parameter_billions])).toEqual([
-      ['known-size', 100, 32],
-      ['unknown-size', 100, undefined],
+    expect(rows.map((row) => [row.model.variant_id, row.parameter_count])).toEqual([
+      ['small', 1_000_000_000],
+      ['mid', 4_000_000_000],
+      ['large', 32_000_000_000],
+    ]);
+    expect(rows[0]?.score).toBeCloseTo(80);
+    // Two doublings over the smallest: 90 × 0.9²
+    expect(rows[1]?.score).toBeCloseTo(72.9);
+    // Five doublings: a perfect 32B model still trails the 1B model at 80% accuracy.
+    expect(rows[2]?.score).toBeCloseTo(100 * 0.9 ** 5);
+  });
+
+  it('uses only published parameter counts, leaving catalog guesses unqualified', () => {
+    const rows = modelRoleLeaderboardRows([
+      // Catalog metadata cannot replace missing published specifications.
+      { ...rankedModel('impulse2000-smollm3-latest', 'lite'), parameter_count: undefined, served_model_tag: 'Impulse2000/smollm3:latest' },
+      // The published count wins over the tag's rounded size.
+      { ...rankedModel('qwen3-5-9b', 'lite', { size: 8_950_000_000 }), served_model_tag: 'qwen3.5:9b' },
+    ]);
+    expect(rows.map((row) => [row.model.variant_id, row.parameter_count])).toEqual([
+      ['qwen3-5-9b', 8_950_000_000],
     ]);
   });
 
-  it('scores 100 × accuracy × √security × bounded best-in-role efficiency', () => {
+  it('scores 100 × accuracy × √security × size × bounded best-in-role efficiency', () => {
     const rows = modelRoleLeaderboardRows([
       rankedModel('fast-verbose', 'primary', { latency: 500, tokens: 200, security: 0.5 }),
       rankedModel('slow-concise', 'primary', { latency: 1000, tokens: 100 }),
@@ -367,8 +443,8 @@ describe('roleLeaderRows', () => {
 
   it('applies no security factor to Lite and normalizes each role independently', () => {
     const rows = roleLeaderRows([
-      rankedModel('lite-model', 'lite', { tag: 'gemma:2b', passRate: 0.9, latency: 4000, tokens: 400 }),
-      rankedModel('primary-model', 'primary', { tag: 'qwen:32b', latency: 100, tokens: 10, security: 0.75 }),
+      rankedModel('lite-model', 'lite', { size: 2_000_000_000, passRate: 0.9, latency: 4000, tokens: 400 }),
+      rankedModel('primary-model', 'primary', { size: 32_000_000_000, latency: 100, tokens: 10, security: 0.75 }),
     ]);
     expect(rows.map((row) => row.role)).toEqual(['primary', 'assistant', 'lite']);
     const lite = rows[2]?.leader;
@@ -392,6 +468,17 @@ describe('modelOverallLeaderboardRows', () => {
   const overall = (models: ModelSummary[], evaluations: EvaluationSummary[] = []) =>
     modelOverallLeaderboardRows(modelRoleLeaderboardRows(models, 'all', evaluations));
 
+  it('combines all runs of the variant without claiming a shared digest for mixed or unknown versions', () => {
+    const models = roles.map((role, index) => ({
+      ...rankedModel('mutable-tag', role), dataset_id: `ds-${index}`, model_digest: index === 2 ? 'b'.repeat(64) : 'a'.repeat(64),
+    }));
+    expect(overall(models)).toHaveLength(1);
+    expect(overall(models)[0]?.model.model_digest).toBeUndefined();
+    expect(overall(models)[0]?.sources).toHaveLength(3);
+    expect(overall(models.map((model) => ({ ...model, model_digest: undefined })))).toHaveLength(1);
+    expect(overall(models.map((model) => ({ ...model, model_digest: 'a'.repeat(64) })))[0]?.model.model_digest).toBe('a'.repeat(64));
+  });
+
   it('averages all three role scores equally and ranks each model once', () => {
     const models = roles.flatMap((role) => [
       rankedModel('balanced', role, { passRate: 0.8 }),
@@ -406,7 +493,7 @@ describe('modelOverallLeaderboardRows', () => {
     expect(overall([...models].reverse())).toEqual(rows);
   });
 
-  it('averages repeated datasets within each role before combining roles', () => {
+  it('pools repeated datasets within each role before combining roles', () => {
     const models = [
       ...roles.map((role) => rankedModel('repeated', role, { passRate: 0.5 })),
       ...[0.8, 1].map((passRate, index) => ({
@@ -419,6 +506,15 @@ describe('modelOverallLeaderboardRows', () => {
     expect(rows.map((row) => row.model.variant_id)).toEqual(['distinct', 'repeated']);
     expect(rows[1]?.role_scores.lite).toBeCloseTo(100 * (0.5 + 0.8 + 1) / 3);
     expect(rows[1]?.score).toBeCloseTo((50 + 50 + 100 * (0.5 + 0.8 + 1) / 3) / 3);
+  });
+
+  it('gives each role equal weight even when Lite has three repetitions', () => {
+    const rows = overall(roles.map((role) => ({
+      ...rankedModel('unequal-reps', role, { passRate: role === 'lite' ? 1 : 0.5 }),
+      pass_rate: { estimate: role === 'lite' ? 1 : 0.5, lower: 0, upper: 1, denominator: role === 'lite' ? 30 : 10 },
+    })));
+    expect(rows[0]?.score).toBeCloseTo((50 + 50 + 100) / 3);
+    expect(rows[0]?.pass_rate).toBeCloseTo(2 / 3);
   });
 
   it('requires qualified evidence in every role without treating zero scores as missing', () => {
@@ -448,7 +544,7 @@ describe('modelOverallLeaderboardRows', () => {
     const row = overall(models, [run])[0];
     expect(row?.latency_p50_ms).toBe(200);
     expect(row?.output_tokens).toBe(20);
-    expect(row?.parameter_billions).toBe(4);
+    expect(row?.parameter_count).toBe(4_000_000_000);
     expect(row?.throughput_p50).toBe(200);
     expect(row?.security).toBeCloseTo(0.6);
     expect(row?.run_seconds).toBe(60);

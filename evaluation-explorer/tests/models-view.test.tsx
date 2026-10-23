@@ -2,18 +2,57 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { allFixtureSnapshotRecords, fixtureLiveEvents, FIXTURE_DATASET_IDS } from '../src/fixtures/fixtures';
 import type { ModelSummary } from '../src/contract/types';
 import { VIEW_SCHEMA_VERSION } from '../src/contract/types';
 import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
+import { PREF } from '../src/state/dataset';
 import { ModelsView } from '../src/views/ModelsView';
 
 describe('ModelsView', () => {
   beforeEach(() => {
     evalStore.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
+  });
+
+  it('retains the selected evidence quality while the feed reloads', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    localStorage.setItem(PREF.filters, JSON.stringify({ search: '', role: 'all', evaluated: 'evaluated', quality: 'exploratory_verified' }));
+    evalStore.loadFixtures([], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+    act(() => evalStore.loadFixtures([
+      { ...source, dataset_id: 'ds-verified', quality_state: 'exploratory_verified' },
+      { ...source, dataset_id: 'ds-partial', quality_state: 'exploratory_partial' },
+    ], []));
+    expect(screen.getByRole('combobox', { name: 'Filter by quality state' })).toHaveValue('exploratory_verified');
+    const catalog = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalog.getByRole('link', { name: source.display_name })).toHaveAttribute('href', `/models/ds-verified/${source.variant_id}?role=${source.role}`);
+  });
+
+  it('aggregates repeated runs and roles into one leaderboard row and counts the model once', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    evalStore.loadFixtures(['ds-reps-one', 'ds-reps-three'].flatMap((dataset_id, index) => MODEL_ROLE_WIRE_ORDER.map((role) => ({
+      ...source, variant_id: 'aggregate', display_name: 'Aggregate model', dataset_id, role,
+      model_digest: index === 0 ? undefined : 'a'.repeat(64),
+      quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+      parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
+      pass_rate: { estimate: index === 0 ? 0.5 : 1, lower: index === 0 ? 0.5 : 1, upper: index === 0 ? 0.5 : 1, denominator: index === 0 ? 10 : 30 },
+      security_resistance: { value: 1, refused: index === 0 ? 1 : 3, yielded: 0, persisted: 0 },
+    }))), []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getAllByRole('link', { name: 'Aggregate model' })).toHaveLength(1);
+    expect(panel.getByText('2 runs · 120 judged assignments')).toBeInTheDocument();
+    expect(panel.getByText('87.5%')).toBeInTheDocument();
+    expect(screen.getByTestId('stat-measured-models')).toHaveTextContent('1');
+    fireEvent.click(panel.getByRole('button', { name: /^Primary/ }));
+    expect(panel.getAllByRole('link', { name: 'Aggregate model' })).toHaveLength(1);
+    expect(panel.getByText('2 runs · 40 judged assignments')).toBeInTheDocument();
+    const catalog = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalog.getAllByRole('link', { name: 'Aggregate model' })).toHaveLength(3);
+    expect(catalog.getAllByText('87.5% · n=40')).toHaveLength(3);
   });
 
   it('shows denominators, neutral inventory pills, and unevaluated results', () => {
@@ -75,7 +114,7 @@ describe('ModelsView', () => {
     expect(gemma12b.closest('tr')).toHaveTextContent('Legacy · unverified');
   });
 
-  it('lists models from every dataset without a dataset selector', () => {
+  it('combines datasets into one catalog entry per model-role without a dataset selector', () => {
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
         <ModelsView />
@@ -87,12 +126,9 @@ describe('ModelsView', () => {
     expect(screen.getAllByTitle(FIXTURE_DATASET_IDS.exploratory).length).toBeGreaterThan(0);
     expect(screen.getAllByTitle(FIXTURE_DATASET_IDS.verified).length).toBeGreaterThan(0);
     const gemmaLinks = screen.getAllByRole('link', { name: 'Gemma 4 E4B' });
-    expect(gemmaLinks.map((link) => link.getAttribute('href'))).toEqual(
-      expect.arrayContaining([
-        `/models/${FIXTURE_DATASET_IDS.exploratory}/gemma4-e4b?role=primary`,
-        `/models/${FIXTURE_DATASET_IDS.verified}/gemma4-e4b?role=primary`,
-      ]),
-    );
+    expect(gemmaLinks).toHaveLength(1);
+    expect(gemmaLinks[0]).toHaveAttribute('href', `/models/${FIXTURE_DATASET_IDS.exploratory}/gemma4-e4b?role=primary`);
+    expect(gemmaLinks[0]!.closest('tr')).toHaveTextContent('2 datasets');
   });
 
   it('excludes measured models with incomplete evaluation coverage', () => {
@@ -171,6 +207,7 @@ describe('ModelsView', () => {
       quality_state: 'exploratory_verified',
       variant_id: 'leader',
       served_model_tag: 'qwen:4b',
+      parameter_count: 4_000_000_000,
       display_name: 'Qualified model',
       role: 'assistant',
       inventory_only: false,
@@ -228,7 +265,7 @@ describe('ModelsView', () => {
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
     expect(panel.getByText('1.20 s')).toBeInTheDocument();
-    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Size', 'Run time']) {
+    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Total parameters', 'Run time']) {
       expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
@@ -251,6 +288,7 @@ describe('ModelsView', () => {
       quality_state: 'exploratory_verified',
       variant_id: 'model-a',
       served_model_tag: 'qwen:4b',
+      parameter_count: 4_000_000_000,
       display_name: 'Model Alpha',
       role: 'primary',
       inventory_only: false,
@@ -266,6 +304,7 @@ describe('ModelsView', () => {
       display_name: 'Model Beta',
       role: 'primary',
       served_model_tag: 'qwen:2b',
+      parameter_count: 2_000_000_000,
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
       latency_p50_ms: { value: 1000 },
       output_tokens: { value: 50 },
@@ -277,6 +316,7 @@ describe('ModelsView', () => {
       display_name: 'Model Gamma',
       role: 'assistant',
       served_model_tag: 'qwen:1b',
+      parameter_count: 1_000_000_000,
       pass_rate: { estimate: 0.95, lower: 0.95, upper: 0.95, denominator: 10 },
       latency_p50_ms: { value: 200 },
       output_tokens: { value: 80 },
@@ -337,8 +377,8 @@ describe('ModelsView', () => {
     expect(within(rowsSpeed[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
     expect(within(rowsSpeed[1]!).getByText('1st')).toBeInTheDocument();
 
-    // 6. Sort by Size (smaller is better -> smallest model first, ranked 1st)
-    const sizeBtn = panel.getByRole('button', { name: 'Sort by Size' });
+    // 6. Sort by Total parameters (smaller is better -> smallest model first, ranked 1st)
+    const sizeBtn = panel.getByRole('button', { name: 'Sort by Total parameters' });
     fireEvent.click(sizeBtn);
     const rowsSize = panel.getAllByRole('row');
     // Smallest is Model Gamma (1B) and gets 1st rank, then Beta (2B), then Alpha (4B)
@@ -421,12 +461,32 @@ describe('ModelsView', () => {
     );
 
     const catalogTable = within(screen.getByRole('table', { name: 'Model catalog' }));
-    expect(catalogTable.getByRole('columnheader', { name: /Architecture & specs/i })).toBeInTheDocument();
+    expect(catalogTable.getByRole('columnheader', { name: /Model specifications/i })).toBeInTheDocument();
     expect(catalogTable.getByRole('columnheader', { name: /Capabilities/i })).toBeInTheDocument();
     expect(catalogTable.getByRole('columnheader', { name: /Evaluations/i })).toBeInTheDocument();
 
     const capabilityBar = within(screen.getByRole('group', { name: 'Filter by probed capability' }));
     expect(capabilityBar.getByRole('button', { name: /Tool Calling/i })).toBeInTheDocument();
     expect(capabilityBar.getByRole('button', { name: /Structured JSON/i })).toBeInTheDocument();
+  });
+
+  it('filters deployment storage budgets using reported artifact bytes, including the leaderboard', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    const common = { ...source, quality_state: 'exploratory_verified' as const, evaluation_coverage: 1 };
+    evalStore.loadFixtures([
+      { ...common, variant_id: 'fits', display_name: 'Fits storage budget', artifact_size_bytes: 4 * 1024 ** 3, quantization_weight_class: 'Q8_0' },
+      { ...common, variant_id: 'too-large', display_name: 'Exceeds storage budget', artifact_size_bytes: 8 * 1024 ** 3 },
+      { ...common, variant_id: 'unknown', display_name: 'Unknown artifact size' },
+    ], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+    const catalog = within(screen.getByRole('table', { name: 'Model catalog' }));
+    expect(catalog.getByRole('link', { name: 'Unknown artifact size' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Maximum artifact size in GiB' }), { target: { value: '4' } });
+    expect(catalog.getByRole('link', { name: 'Fits storage budget' }).closest('tr')).toHaveTextContent('4.00 GiB');
+    expect(catalog.getByRole('link', { name: 'Fits storage budget' }).closest('tr')).toHaveTextContent('Q8_0');
+    expect(screen.queryByRole('link', { name: 'Exceeds storage budget' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Unknown artifact size' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Maximum artifact size in GiB' }), { target: { value: '' } });
+    expect(catalog.getByRole('link', { name: 'Unknown artifact size' })).toBeInTheDocument();
   });
 });

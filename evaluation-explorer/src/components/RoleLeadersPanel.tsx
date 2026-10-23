@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { formatParameterCount } from '../content/framework-catalog';
 import { MODEL_ROLE_WIRE_ORDER, roleScopeFor } from '../content/roles';
 import {
   formatLatency,
@@ -15,6 +16,7 @@ import {
   UnavailableValue,
 } from './shared';
 import {
+  LEADERBOARD_SCORE_FORMULA,
   roleLabel,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
@@ -66,7 +68,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   {
     field: 'score',
     label: 'Score',
-    title: 'Score = 100 × accuracy × √security × (0.85 + 0.10 × speed + 0.05 × tokens); speed and tokens are best-in-role ÷ model, so efficiency moves the score by at most 15%',
+    title: `${LEADERBOARD_SCORE_FORMULA}; Total-parameter penalty: each doubling costs 10%, and speed and tokens are best-in-role ÷ model, so efficiency moves the score by at most 15%`,
     initialDirection: 'desc',
   },
   {
@@ -84,19 +86,19 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   {
     field: 'speed',
     label: 'Speed',
-    title: "Speed: faster is better (lowest p50 latency in role)",
+    title: 'Assignment-count-weighted mean of run p50 latencies; faster is better',
     initialDirection: 'desc',
   },
   {
     field: 'tokens',
     label: 'Tokens',
-    title: "Tokens: smaller is better (fewest output tokens per task)",
+    title: 'Assignment-count-weighted mean of run median output tokens per assignment; fewer is better',
     initialDirection: 'desc',
   },
   {
     field: 'size',
-    label: 'Size',
-    title: 'Size: advertised parameter count; not scored, breaks score ties toward smaller models',
+    label: 'Total parameters',
+    title: 'Total-parameter penalty: each doubling of the frozen provider parameter count over the smallest qualifying count in the role costs 10% of the score. This is not measured memory or compute cost.',
     initialDirection: 'desc',
   },
   {
@@ -114,12 +116,12 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
 ];
 
 const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
-  score: 'Overall score = (Primary score + Assistant score + Lite score) / 3; repeated datasets are averaged within each role first',
+  score: 'Overall score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring',
   accuracy: 'Mean accuracy across Primary, Assistant, and Lite, with equal weight per role',
   security: 'Mean security score across roles with applicable security scenarios',
-  speed: 'Mean of role p50 latencies; faster is better',
+  speed: 'Mean of role latency aggregates (assignment-count-weighted run p50s); faster is better',
   tokens: 'Mean output tokens per task across roles; fewer is better',
-  throughput: 'Mean of role p50 token throughputs; unavailable if any contributor lacks throughput',
+  throughput: 'Mean of role throughput aggregates (assignment-count-weighted run p50s); unavailable if any contributor lacks throughput',
   run_time: 'Total run time of distinct contributing datasets; shared runs count once',
 };
 
@@ -173,7 +175,7 @@ function compareLeaderboardRows(
       break;
     case 'size':
       // Smaller parameter count is better: smaller the better
-      diff = compareNullableNumber(a.parameter_billions, b.parameter_billions, true);
+      diff = a.parameter_count - b.parameter_count;
       break;
     case 'throughput':
       // Higher throughput is better
@@ -347,7 +349,7 @@ export function RoleLeadersPanel({
             <table className="lab-table">
               {category === 'all' ? (
                 <caption className="leaderboard-caption">
-                  Overall score averages Primary, Assistant, and Lite equally. Models must qualify in all three roles.
+                  Overall score averages Primary, Assistant, and Lite equally. All qualified runs contribute to one row per model. Models must qualify in all three roles.
                 </caption>
               ) : null}
               <thead>
@@ -406,7 +408,7 @@ export function RoleLeadersPanel({
                           ? index + 1
                           : sortedRows.length - index;
                     return (
-                      <tr key={category === 'all' ? row.model.variant_id : `${row.model.dataset_id}:${row.model.variant_id}:${row.model.role}`}>
+                      <tr key={`${row.model.dataset_id}:${row.model.variant_id}:${row.model.model_digest ?? ''}:${row.model.role}`}>
                         <td className="leaderboard-rank-cell">
                           <RankBadge rank={displayRank} />
                         </td>
@@ -414,6 +416,10 @@ export function RoleLeadersPanel({
                           <Link to={category === 'all' ? modelHref : `${modelHref}?role=${row.model.role}`}>
                             {row.model.display_name}
                           </Link>
+                          <div className="model-identity-sub" title="All qualified run assignments contribute; repetitions add observations, not total-time penalties. Frozen versions remain available in run details.">
+                            {new Set(row.sources.map((source) => source.dataset_id)).size} runs · {formatNumber(row.sources.reduce((sum, source) => sum + (source.pass_rate?.denominator ?? 0), 0))} judged assignments
+                          </div>
+                          {row.model.model_digest ? <div className="model-identity-sub"><code title={`Frozen model digest: ${row.model.model_digest}`}>{row.model.model_digest.slice(0, 12)}</code></div> : null}
                         </td>
                         {category !== 'all' ? (
                           <td><RoleBadge role={row.model.role} /></td>
@@ -438,11 +444,7 @@ export function RoleLeadersPanel({
                           {formatTokens(row.output_tokens)}
                         </td>
                         <td className="role-leader-size">
-                          {row.parameter_billions !== undefined ? (
-                            `${row.parameter_billions}B`
-                          ) : (
-                            <UnavailableValue />
-                          )}
+                          {formatParameterCount(row.parameter_count)}
                         </td>
                         <td>
                           {row.throughput_p50 !== undefined ? (

@@ -1002,6 +1002,13 @@ message OllamaModelInventoryRequested {
   string execution_id = 1;
 }
 
+// ParameterCountSource distinguishes exact provider metadata from rounded labels.
+enum ParameterCountSource {
+  PARAMETER_COUNT_SOURCE_UNSPECIFIED = 0;
+  PARAMETER_COUNT_SOURCE_MODEL_METADATA = 1;
+  PARAMETER_COUNT_SOURCE_ROUNDED_LABEL = 2;
+}
+
 message ProviderModelInventoryEntry {
   string provider_class = 1;
   string served_model_tag = 2;
@@ -1013,6 +1020,9 @@ message ProviderModelInventoryEntry {
   string format = 8;
   uint32 context_limit = 9;
   repeated string advertised_capabilities = 10;
+  // Provider-reported installed model artifact bytes, not runtime memory.
+  uint64 artifact_size_bytes = 11;
+  ParameterCountSource parameter_count_source = 12;
 }
 
 message OllamaModelInventoryResult {

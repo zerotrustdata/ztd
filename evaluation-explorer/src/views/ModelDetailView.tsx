@@ -118,6 +118,17 @@ export function ModelDetailView() {
   const allVariantAssignments = useStoreState((state) =>
     variantId ? Array.from(state.assignments.values()).filter((a) => a.variant_id === variantId) : [],
   );
+  const versionSources = useStoreState((state) => Array.from(state.models.values()).filter((candidate) => candidate.variant_id === variantId));
+  const recordedVersions = useMemo(() => {
+    const versions = new Map<string, { digest?: string; dataset: string; role: ModelRole; datasets: Set<string> }>();
+    for (const source of [...versionSources].sort((a, b) => b.observed_at.localeCompare(a.observed_at) || a.dataset_id.localeCompare(b.dataset_id))) {
+      const key = source.model_digest ?? 'unknown';
+      const version = versions.get(key) ?? { digest: source.model_digest, dataset: source.dataset_id, role: source.role, datasets: new Set<string>() };
+      version.datasets.add(source.dataset_id);
+      versions.set(key, version);
+    }
+    return Array.from(versions.values());
+  }, [versionSources]);
   const connection = useStoreState((state) => state.connection);
 
   if (!variantId) {
@@ -164,7 +175,7 @@ export function ModelDetailView() {
           <>
             {profile.served_model_tag ? <code>{profile.served_model_tag}</code> : null}
             <span>{profile.provider}</span>
-            {profile.parameter_label ? <span>{profile.parameter_label} params</span> : null}
+            {profile.parameter_label ? <span>{profile.parameter_label} total parameters</span> : null}
             {profile.quantization ? <span>{profile.quantization}</span> : null}
             {profile.context_label ? <span>{profile.context_label} context</span> : null}
             <span>Role: {roleLabel(model.role)}</span>
@@ -216,20 +227,27 @@ export function ModelDetailView() {
                 <DetailRow label="Display name">{model.display_name}</DetailRow>
                 <DetailRow label="Served tag">{profile.served_model_tag ?? <UnavailableValue />}</DetailRow>
                 <DetailRow label="Model family">{profile.family}</DetailRow>
-                <DetailRow label="Parameters">{profile.parameter_label ?? <UnavailableValue />}</DetailRow>
-                <DetailRow label="Quantization / weight">
-                  {model.quantization_weight_class ?? profile.quantization ?? <UnavailableValue />}
+                <DetailRow label="Model digest">{profile.model_digest ? <code>{profile.model_digest}</code> : <UnavailableValue />}</DetailRow>
+                <DetailRow label="Total parameters">{profile.parameter_count ? profile.parameter_count.toLocaleString('en-US') : <UnavailableValue />}</DetailRow>
+                <DetailRow label="Parameter count source">{model.parameter_count_source === 'model_metadata' ? 'Integer model metadata' : model.parameter_count_source === 'rounded_label' ? 'Rounded provider label' : <UnavailableValue />}</DetailRow>
+                <DetailRow label="Weight precision / quantization">
+                  {profile.quantization ?? <UnavailableValue />}
                 </DetailRow>
-                <DetailRow label="Context window">
+                <DetailRow label="Model format">{profile.model_format ?? <UnavailableValue />}</DetailRow>
+                <DetailRow label="Artifact size">
+                  {profile.artifact_label ? `${profile.artifact_label} (${model.artifact_size_bytes?.toLocaleString('en-US')} bytes)` : <UnavailableValue />}
+                </DetailRow>
+                <DetailRow label="Provider context limit">
                   {profile.context_limit ? `${profile.context_limit.toLocaleString('en-US')} tokens (${profile.context_label})` : <UnavailableValue />}
                 </DetailRow>
                 <DetailRow label="Role">{roleLabel(model.role)}</DetailRow>
                 <DetailRow label="Backend / provider">
-                  {model.backend_provider_class ?? profile.provider ?? <UnavailableValue />}
+                  {model.backend_provider_class ?? <UnavailableValue />}
                 </DetailRow>
                 <DetailRow label="Inventory only">{model.inventory_only ? 'Yes' : 'No'}</DetailRow>
                 <DetailRow label="Evaluation coverage">{formatPercent(model.evaluation_coverage)}</DetailRow>
               </dl>
+              <p>Specifications come from the frozen provider variant. Artifact bytes measure installed storage, not RAM or VRAM. Missing specifications are unavailable; total parameters may come from a rounded provider label. Active and effective parameter counts are not inferred from model names. Weight representations retain the reported scheme, including mixed precision.</p>
             </PanelSection>
             {model.repeatability ? (
               <PanelSection title="Repeatability">
@@ -294,6 +312,20 @@ export function ModelDetailView() {
               </div>
             ))}
           </div>
+        </PanelSection>
+
+        <PanelSection title="Recorded model versions">
+          <p className="panel-note">The leaderboard combines all qualified runs for this variant. Each run retains its frozen version; older records may not publish a digest.</p>
+          <ul>
+            {recordedVersions.map((version) => (
+              <li key={version.digest ?? 'unknown'}>
+                <Link to={`/models/${version.dataset}/${variantId}?role=${version.role}`}>
+                  {version.digest ? <code>{version.digest}</code> : 'Digest unavailable'}
+                </Link>
+                {' · '}{formatNumber(version.datasets.size)} {version.datasets.size === 1 ? 'dataset' : 'datasets'}
+              </li>
+            ))}
+          </ul>
         </PanelSection>
 
         <div id="model-evaluations">

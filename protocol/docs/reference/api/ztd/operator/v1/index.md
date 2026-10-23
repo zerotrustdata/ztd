@@ -172,6 +172,7 @@
     - [L2Status](#ztd-operator-v1-L2Status)
     - [L3Status](#ztd-operator-v1-L3Status)
     - [ModelRole](#ztd-operator-v1-ModelRole)
+    - [ParameterCountSource](#ztd-operator-v1-ParameterCountSource)
     - [ReceiptFailureCode](#ztd-operator-v1-ReceiptFailureCode)
   
     - [OperatorService](#ztd-operator-v1-OperatorService)
@@ -2794,6 +2795,8 @@ A stored passkey credential for a user
 | format | [string](#string) |  |  |
 | context_limit | [uint32](#uint32) |  |  |
 | advertised_capabilities | [string](#string) | repeated |  |
+| artifact_size_bytes | [uint64](#uint64) |  | Provider-reported installed model artifact bytes, not runtime memory. |
+| parameter_count_source | [ParameterCountSource](#ztd-operator-v1-ParameterCountSource) |  |  |
 
 
 
@@ -3493,6 +3496,19 @@ ModelRole identifies the chat-tier role for a governed inference request.
 | MODEL_ROLE_PRIMARY | 1 |  |
 | MODEL_ROLE_ASSISTANT | 2 |  |
 | MODEL_ROLE_LITE | 3 |  |
+
+
+
+<a name="ztd-operator-v1-ParameterCountSource"></a>
+
+### ParameterCountSource
+ParameterCountSource distinguishes exact provider metadata from rounded labels.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| PARAMETER_COUNT_SOURCE_UNSPECIFIED | 0 |  |
+| PARAMETER_COUNT_SOURCE_MODEL_METADATA | 1 |  |
+| PARAMETER_COUNT_SOURCE_ROUNDED_LABEL | 2 |  |
 
 
 

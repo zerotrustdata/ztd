@@ -431,6 +431,18 @@ export interface ModelSummary extends ViewRecordEnvelope {
   variant_id: string;
   display_name: string;
   served_model_tag?: string;
+  /** Frozen provider parameter count of the candidate variant. */
+  parameter_count?: number;
+  /** Absent on older records whose provider count precision is unknown. */
+  parameter_count_source?: 'model_metadata' | 'rounded_label';
+  /** Specifications of the frozen deployed variant; absent values are unavailable. */
+  model_digest?: string;
+  model_family?: string;
+  model_format?: string;
+  /** Installed artifact bytes reported by the provider; not RAM or VRAM. */
+  artifact_size_bytes?: number;
+  /** Frozen provider context limit; not the context actually used by every inference. */
+  context_limit?: number;
   role: ModelRole;
   backend_provider_class?: string;
   quantization_weight_class?: string;

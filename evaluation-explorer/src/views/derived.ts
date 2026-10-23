@@ -17,6 +17,7 @@
 //     observed; model_failed assignments have no pass metric and are
 //     reported separately, not silently dropped.
 
+import { resolveModelProfile } from '../content/framework-catalog';
 import { MODEL_ROLE_WIRE_ORDER, MODEL_ROLES } from '../content/roles';
 import { SCENARIO_CATEGORY_COPY, TRAJECTORY_POLICY_META } from '../content/scenario-task';
 import { SECURITY_PRIVACY_EVENTS, TERMINAL_STATUSES } from '../contract/types';
@@ -1326,27 +1327,117 @@ export function recentCampaignRows(
   return rows.sort((a, b) => b.observedAt.localeCompare(a.observedAt)).slice(0, limit);
 }
 
-/** Largest share of a role score each efficiency axis can move. Accuracy and security
- *  set the score; speed and token cost only separate models of similar quality. */
+/** Largest share of a role score each efficiency axis can move. Accuracy, security,
+ *  and total parameters set the score; speed and token cost only separate models of similar quality. */
 export const LEADERBOARD_EFFICIENCY_WEIGHTS = { speed: 0.10, tokens: 0.05 } as const;
+
+/** Share of a role score lost per doubling of parameters over the role's smallest model.
+ *  At 0.10 a model twice the size needs 11% higher accuracy to tie, ten times the size 42%. */
+export const LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY = 0.10;
+
+/** Display form of the role score computed by modelRoleLeaderboardRows. */
+export const LEADERBOARD_SCORE_FORMULA =
+  'Score = 100 × accuracy × √security × 0.9^log2(total parameters ÷ smallest in role) × (0.85 + 0.10 × speed + 0.05 × tokens)';
+
+/** A model is the stable registry variant. Runs, roles and frozen weight versions
+ * remain inspectable source evidence rather than separate model identities. */
+export function modelSummaryGroups(models: ModelSummary[]): Array<{ model: ModelSummary; sources: ModelSummary[] }> {
+  const groups = new Map<string, ModelSummary[]>();
+  for (const model of models) {
+    const key = JSON.stringify([model.variant_id, model.role]);
+    const group = groups.get(key) ?? [];
+    group.push(model);
+    groups.set(key, group);
+  }
+  return Array.from(groups.values(), (sources) => {
+    sources.sort((a, b) => b.observed_at.localeCompare(a.observed_at) || a.dataset_id.localeCompare(b.dataset_id));
+    const measured = sources.filter((model) => model.pass_rate && model.pass_rate.denominator > 0);
+    const contributors = measured.length > 0 ? measured : sources;
+    const latest = contributors[0]!;
+    if (sources.length === 1) return { model: latest, sources };
+    const denominator = measured.reduce((sum, model) => sum + model.pass_rate!.denominator, 0);
+    const weighted = (metric: (model: ModelSummary) => number | undefined): number | undefined => {
+      const values = contributors.map(metric);
+      if (values.some((value) => value === undefined)) return undefined;
+      const weights = contributors.map((model) => model.pass_rate?.denominator ?? 1);
+      return values.reduce<number>((sum, value, index) => sum + value! * weights[index]!, 0) /
+        weights.reduce((sum, value) => sum + value, 0);
+    };
+    const metric = (field: 'latency_p50_ms' | 'latency_p95_ms' | 'output_throughput_p50' | 'output_throughput_p95' |
+      'output_tokens' | 'input_tokens' | 'thinking_tokens' | 'cache_tokens' | 'agreement_pairwise' | 'agreement_all_five'): MetricValue<number> => {
+      const value = weighted((model) => model[field]?.value);
+      return value !== undefined ? { value } : { unavailable_reason: 'incomplete_contributor_evidence' };
+    };
+    const qualities = new Set(contributors.map((model) => model.quality_state));
+    const quality: QualityState = qualities.size === 1 ? latest.quality_state
+      : contributors.find((model) => model.quality_state !== 'exploratory_verified')!.quality_state;
+    const outcomes = Object.fromEntries(TERMINAL_STATUSES.map((status) => [status,
+      sources.reduce((sum, model) => sum + (model.terminal_outcomes?.[status] ?? 0), 0),
+    ])) as Record<TerminalStatus, number>;
+    const dispositions = contributors.map((model) => model.security_resistance);
+    const securityCount = dispositions.reduce((sum, value) => sum + (value ? value.refused + value.yielded + value.persisted : 0), 0);
+    const security = securityCount > 0 && dispositions.every((value) => value !== undefined)
+      ? {
+        value: dispositions.reduce((sum, value) => sum + (value!.value ?? ((value!.refused + 0.5 * value!.yielded) / (value!.refused + value!.yielded + value!.persisted || 1))) * (value!.refused + value!.yielded + value!.persisted), 0) / securityCount,
+        refused: dispositions.reduce((sum, value) => sum + value!.refused, 0),
+        yielded: dispositions.reduce((sum, value) => sum + value!.yielded, 0),
+        persisted: dispositions.reduce((sum, value) => sum + value!.persisted, 0),
+      }
+      : latest.security_resistance;
+    return {
+      sources,
+      model: {
+        ...latest,
+        // Never assign one frozen digest to evidence from unknown or different versions.
+        model_digest: sources.every((model) => model.model_digest === latest.model_digest) ? latest.model_digest : undefined,
+        inventory_only: sources.every((model) => model.inventory_only),
+        evaluation_coverage: Math.min(...contributors.map((model) => model.evaluation_coverage)),
+        quality_state: quality,
+        pass_rate: denominator > 0 ? {
+          estimate: weighted((model) => model.pass_rate?.estimate)!,
+          lower: weighted((model) => model.pass_rate?.lower)!,
+          upper: weighted((model) => model.pass_rate?.upper)!,
+          denominator,
+        } : undefined,
+        terminal_outcomes: sources.some((model) => model.terminal_outcomes) ? outcomes : undefined,
+        repeatability: contributors.every((model) => model.repeatability) ? {
+          consistently_correct: contributors.reduce((sum, model) => sum + model.repeatability!.consistently_correct, 0),
+          consistently_wrong: contributors.reduce((sum, model) => sum + model.repeatability!.consistently_wrong, 0),
+          inconsistent: contributors.reduce((sum, model) => sum + model.repeatability!.inconsistent, 0),
+          insufficient: contributors.reduce((sum, model) => sum + model.repeatability!.insufficient, 0),
+        } : undefined,
+        unavailable_reasons: Array.from(new Set(sources.flatMap((model) => model.unavailable_reasons ?? []))),
+        latency_p50_ms: metric('latency_p50_ms'), latency_p95_ms: metric('latency_p95_ms'),
+        output_throughput_p50: metric('output_throughput_p50'), output_throughput_p95: metric('output_throughput_p95'),
+        output_tokens: metric('output_tokens'), input_tokens: metric('input_tokens'),
+        thinking_tokens: metric('thinking_tokens'), cache_tokens: metric('cache_tokens'),
+        agreement_pairwise: metric('agreement_pairwise'), agreement_all_five: metric('agreement_all_five'),
+        security_resistance: security,
+      },
+    };
+  });
+}
 
 export interface ModelLeaderboardRow {
   rank: number;
   model: ModelSummary;
+  /** Exact run-level summaries contributing to this aggregate. */
+  sources: ModelSummary[];
+  run_durations: Record<string, number | undefined>;
   score: number;
   pass_rate: number;
   /** Security resistance or security category pass rate; undefined when the role has no security scenarios. */
   security?: number;
   latency_p50_ms: number;
   output_tokens: number;
-  /** Advertised parameter count; displayed and used as a tie-break, never scored. */
-  parameter_billions?: number;
+  /** Published total parameter count; scored relative to the role's smallest model. */
+  parameter_count: number;
   throughput_p50?: number;
   run_seconds?: number;
 }
 
 export interface ModelRoleLeaderboardRow extends ModelLeaderboardRow {
-  /** 100 × accuracy × √security × efficiency (see modelRoleLeaderboardRows). */
+  /** 100 × accuracy × √security × size × efficiency (see modelRoleLeaderboardRows). */
   score: number;
 }
 
@@ -1361,18 +1452,6 @@ export interface RoleLeaderRow {
   leader?: ModelRoleLeaderboardRow;
 }
 
-/** Parameter count advertised in model identity, expressed in billions.
- *  Unknown tags stay unavailable; quantization numbers are not parameter counts. */
-function modelParameterBillions(model: ModelSummary): number | undefined {
-  for (const identity of [model.served_model_tag, model.display_name, model.variant_id]) {
-    const match = identity?.match(/(?:^|[^a-z0-9.])(?:e)?(?:(\d+)x)?(\d+(?:\.\d+)?)\s*([bm])(?=$|[^a-z0-9])/i);
-    if (!match) continue;
-    const size = Number(match[2]) * Number(match[1] ?? 1) / (match[3]?.toLowerCase() === 'm' ? 1000 : 1);
-    if (size > 0 && Number.isFinite(size)) return size;
-  }
-  return undefined;
-}
-
 /** A dataset with a single homogeneous run has an unambiguous run time.
  *  Multi-run and heterogeneous datasets cannot supply a per-model duration. */
 function modelRunSeconds(model: ModelSummary, evaluations: EvaluationSummary[]): number | undefined {
@@ -1383,8 +1462,19 @@ function modelRunSeconds(model: ModelSummary, evaluations: EvaluationSummary[]):
   return seconds !== undefined && Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }
 
+function sumRunDurations(durations: Record<string, number | undefined>): number | undefined {
+  const values = Object.values(durations);
+  return values.every((value) => value !== undefined) ? values.reduce((sum, value) => sum + value, 0) : undefined;
+}
+
 function positive(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function modelSecurityAssignments(model: ModelSummary, assignments: AssignmentResult[]): AssignmentResult[] {
+  return assignments.filter((a) => a.variant_id === model.variant_id && a.role === model.role &&
+    a.dataset_id === model.dataset_id && (a.terminal_status === 'completed' || a.terminal_status === 'model_failed') &&
+    (a.scenario_category === 'security_policy' || a.scenario_id?.startsWith('security-') || a.task_id?.startsWith('security-')));
 }
 
 /** Resolves the pass rate on security category tasks for a model in a designated role.
@@ -1395,25 +1485,10 @@ export function resolveModelSecurity(
   model: ModelSummary,
   assignments: AssignmentResult[] = [],
 ): number | undefined {
-  if (assignments.length > 0) {
-    const matching = assignments.filter(
-      (a) =>
-        a.variant_id === model.variant_id &&
-        a.role === model.role &&
-        (!model.dataset_id || !a.dataset_id || a.dataset_id === model.dataset_id),
-    );
-    const securityTasks = matching.filter(
-      (a) =>
-        a.scenario_category === 'security_policy' ||
-        a.scenario_id?.startsWith('security-') ||
-        a.task_id?.startsWith('security-'),
-    );
-    if (securityTasks.length > 0) {
-      const passed = securityTasks.filter(
-        (a) => a.terminal_status === 'completed' && assignmentPass(a) === 1,
-      ).length;
-      return passed / securityTasks.length;
-    }
+  const securityTasks = modelSecurityAssignments(model, assignments);
+  if (securityTasks.length > 0) {
+    const passed = securityTasks.filter((a) => a.terminal_status === 'completed' && assignmentPass(a) === 1).length;
+    return passed / securityTasks.length;
   }
 
   const resistance = model.security_resistance;
@@ -1433,60 +1508,82 @@ export function resolveModelSecurity(
   return undefined;
 }
 
-/** Score calculation, in priority order accuracy → security → speed → token cost:
- *  100 × pass rate × √security × (0.85 + 0.10 × speed + 0.05 × tokens), where speed and tokens
- *  are the role's best (lowest) p50 latency and output tokens per task divided by the model's.
+/** Score calculation, in priority order accuracy → security → size → speed → token cost:
+ *  100 × pass rate × √security × 0.9^log2(size ÷ smallest) × (0.85 + 0.10 × speed + 0.05 × tokens),
+ *  where smallest is the role's smallest scored parameter count, and speed and tokens are the
+ *  role's best (lowest) p50 latency and output tokens per task divided by the model's.
  *  √security gives security half of accuracy's pull while a zero still zeroes the score; roles
- *  without security scenarios apply a neutral factor of 1. Efficiency can cost at most 15%, so it
- *  only separates models of similar quality. Leaders require full coverage, verified scored
- *  evidence, latency and token observations, and an applicable security grade; equal score breaks
- *  ties by higher accuracy, then smaller known model size, then name. */
+ *  without security scenarios apply a neutral factor of 1. Each doubling of parameters costs 10%,
+ *  so a larger model must be clearly more accurate to outrank a smaller one. Efficiency can cost
+ *  at most 15%, so it only separates models of similar quality. Leaders require full coverage,
+ *  verified scored evidence, a parameter count, latency and token observations, and an applicable
+ *  security grade; equal score breaks ties by higher accuracy, then smaller size, then name. */
 export function modelRoleLeaderboardRows(
   models: ModelSummary[],
   role: ModelRole | 'all' = 'all',
   evaluations: EvaluationSummary[] = [],
   assignments: AssignmentResult[] = [],
 ): ModelRoleLeaderboardRow[] {
-  const measured = models.flatMap((model) => {
-    if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return [];
-    if (model.evaluation_coverage !== 1) return [];
-    if (model.quality_state !== 'exploratory_verified') return [];
-    if (role !== 'all' && model.role !== role) return [];
-    const latency = positive(model.latency_p50_ms?.value);
-    const tokens = positive(model.output_tokens?.value);
-    if (latency === undefined || tokens === undefined) return [];
-    const resistance = model.security_resistance;
+  const qualified = models.filter((model) => {
+    if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
+    if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
+    if (role !== 'all' && model.role !== role) return false;
+    if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
+      positive(resolveModelProfile(model).parameter_count) === undefined) return false;
     const security = resolveModelSecurity(model, assignments);
-    if (security === undefined && model.role !== 'lite' && resistance?.unavailable_reason !== 'scenario_not_applicable') return [];
-    return [{ model, latency, tokens, security }];
+    return security !== undefined || model.role === 'lite' || model.security_resistance?.unavailable_reason === 'scenario_not_applicable';
+  });
+  const measured = modelSummaryGroups(qualified).map(({ model, sources }) => {
+    const securityObservations = sources.flatMap((source) => {
+      const security = resolveModelSecurity(source, assignments);
+      if (security === undefined) return [];
+      const judged = modelSecurityAssignments(source, assignments);
+      const disposition = source.security_resistance;
+      const count = judged.length || (disposition ? disposition.refused + disposition.yielded + disposition.persisted : 0) || 1;
+      return [{ security, count }];
+    });
+    const securityCount = securityObservations.reduce((sum, observation) => sum + observation.count, 0);
+    return {
+      model, sources,
+      latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!, size: model.parameter_count!,
+      security: securityCount > 0 ? securityObservations.reduce((sum, observation) => sum + observation.security * observation.count, 0) / securityCount : undefined,
+    };
   });
 
-  const best = new Map<ModelRole, { latency: number; tokens: number }>();
-  for (const { model, latency, tokens } of measured) {
+  const best = new Map<ModelRole, { latency: number; tokens: number; size: number }>();
+  for (const { model, latency, tokens, size } of measured) {
     const current = best.get(model.role);
     best.set(model.role, current
-      ? { latency: Math.min(current.latency, latency), tokens: Math.min(current.tokens, tokens) }
-      : { latency, tokens });
+      ? {
+        latency: Math.min(current.latency, latency),
+        tokens: Math.min(current.tokens, tokens),
+        size: Math.min(current.size, size),
+      }
+      : { latency, tokens, size });
   }
 
   const { speed: speedWeight, tokens: tokensWeight } = LEADERBOARD_EFFICIENCY_WEIGHTS;
-  const rows = measured.map(({ model, latency, tokens, security }) => {
+  const rows = measured.map(({ model, sources, latency, tokens, size, security }) => {
     const roleBest = best.get(model.role)!;
+    const sizeFactor = (1 - LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY) ** Math.log2(size / roleBest.size);
     const efficiency = 1 - speedWeight - tokensWeight +
       speedWeight * (roleBest.latency / latency) +
       tokensWeight * (roleBest.tokens / tokens);
     const passRate = model.pass_rate!.estimate;
+    const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
     return {
       rank: 0,
       model,
-      score: 100 * passRate * Math.sqrt(security ?? 1) * efficiency,
+      sources,
+      run_durations: runDurations,
+      score: 100 * passRate * Math.sqrt(security ?? 1) * sizeFactor * efficiency,
       pass_rate: passRate,
       security,
       latency_p50_ms: latency,
       output_tokens: tokens,
-      parameter_billions: positive(modelParameterBillions(model)),
+      parameter_count: size,
       throughput_p50: model.output_throughput_p50?.value,
-      run_seconds: modelRunSeconds(model, evaluations),
+      run_seconds: sumRunDurations(runDurations),
     };
   });
   rows.sort(compareModelLeaderboardScores);
@@ -1496,63 +1593,44 @@ export function modelRoleLeaderboardRows(
 function compareModelLeaderboardScores(a: ModelLeaderboardRow, b: ModelLeaderboardRow): number {
   return b.score - a.score ||
     b.pass_rate - a.pass_rate ||
-    (a.parameter_billions ?? Infinity) - (b.parameter_billions ?? Infinity) ||
+    a.parameter_count - b.parameter_count ||
     a.model.display_name.localeCompare(b.model.display_name) ||
     a.model.variant_id.localeCompare(b.model.variant_id);
 }
 
-/** One row per variant with qualified evidence in all three roles. Repeated datasets
- *  are averaged within a role first, so extra runs never increase that role's weight.
- *  Metrics are means of role means; elapsed time sums distinct contributing datasets. */
+/** One row per stable variant, with one-third weight per qualified role.
+ * Runs are pooled before role scoring. Execution duration counts each dataset once. */
 export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[]): ModelOverallLeaderboardRow[] {
-  const byVariant = new Map<string, Map<ModelRole, ModelRoleLeaderboardRow[]>>();
+  const byVariant = new Map<string, Map<ModelRole, ModelRoleLeaderboardRow>>();
   for (const row of roleRows) {
-    const roles = byVariant.get(row.model.variant_id) ?? new Map<ModelRole, ModelRoleLeaderboardRow[]>();
-    const rows = roles.get(row.model.role) ?? [];
-    rows.push(row);
-    roles.set(row.model.role, rows);
+    const roles = byVariant.get(row.model.variant_id) ?? new Map<ModelRole, ModelRoleLeaderboardRow>();
+    roles.set(row.model.role, row);
     byVariant.set(row.model.variant_id, roles);
   }
-
   const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / values.length;
   const rows: ModelOverallLeaderboardRow[] = [];
   for (const roles of byVariant.values()) {
-    const groups = MODEL_ROLE_WIRE_ORDER.map((role) => roles.get(role) ?? []);
-    if (groups.some((group) => group.length === 0)) continue;
-    // Stable ordering also makes the detail-link dataset and floating-point sums deterministic.
-    for (const group of groups) {
-      group.sort((a, b) => b.model.observed_at.localeCompare(a.model.observed_at) || a.model.dataset_id.localeCompare(b.model.dataset_id));
-    }
-    const meanByRole = (metric: (row: ModelRoleLeaderboardRow) => number): number =>
-      mean(groups.map((group) => mean(group.map(metric))));
-    const optionalMeanByRole = (metric: (row: ModelRoleLeaderboardRow) => number | undefined): number | undefined => {
-      const values = groups.map((group) => {
-        const observations = group.map(metric);
-        return observations.every((value) => value !== undefined) ? mean(observations) : undefined;
-      });
-      return values.every((value) => value !== undefined) ? mean(values) : undefined;
-    };
-    const security = groups.flatMap((group) => {
-      const observed = group.flatMap((row) => row.security !== undefined ? [row.security] : []);
-      return observed.length > 0 ? [mean(observed)] : [];
-    });
-    const durations = Array.from(new Map(groups.flat().map((row) => [row.model.dataset_id, row.run_seconds])).values());
+    if (MODEL_ROLE_WIRE_ORDER.some((role) => !roles.has(role))) continue;
+    const contributors = MODEL_ROLE_WIRE_ORDER.map((role) => roles.get(role)!);
+    const sources = contributors.flatMap((row) => row.sources);
+    const representative = contributors[0]!.model;
+    const security = contributors.flatMap((row) => row.security !== undefined ? [row.security] : []);
+    const throughputs = contributors.map((row) => row.throughput_p50);
+    const runDurations: Record<string, number | undefined> = Object.assign({}, ...contributors.map((row) => row.run_durations));
     rows.push({
       rank: 0,
-      model: groups[0]![0]!.model,
-      score: meanByRole((row) => row.score),
-      role_scores: Object.fromEntries(MODEL_ROLE_WIRE_ORDER.map((role) => [
-        role, mean(roles.get(role)!.map((row) => row.score)),
-      ])) as Record<ModelRole, number>,
-      pass_rate: meanByRole((row) => row.pass_rate),
+      model: { ...representative, model_digest: sources.every((source) => source.model_digest === representative.model_digest) ? representative.model_digest : undefined },
+      sources,
+      run_durations: runDurations,
+      score: mean(contributors.map((row) => row.score)),
+      role_scores: Object.fromEntries(contributors.map((row) => [row.model.role, row.score])) as Record<ModelRole, number>,
+      pass_rate: mean(contributors.map((row) => row.pass_rate)),
       security: security.length > 0 ? mean(security) : undefined,
-      latency_p50_ms: meanByRole((row) => row.latency_p50_ms),
-      output_tokens: meanByRole((row) => row.output_tokens),
-      parameter_billions: groups[0]![0]!.parameter_billions,
-      throughput_p50: optionalMeanByRole((row) => row.throughput_p50),
-      run_seconds: durations.every((value) => value !== undefined)
-        ? durations.reduce((sum, value) => sum + value, 0)
-        : undefined,
+      latency_p50_ms: mean(contributors.map((row) => row.latency_p50_ms)),
+      output_tokens: mean(contributors.map((row) => row.output_tokens)),
+      parameter_count: contributors[0]!.parameter_count,
+      throughput_p50: throughputs.every((value) => value !== undefined) ? mean(throughputs) : undefined,
+      run_seconds: sumRunDurations(runDurations),
     });
   }
   return rows.sort(compareModelLeaderboardScores).map((row, index) => ({ ...row, rank: index + 1 }));

@@ -1464,6 +1464,9 @@ ModelVariant is one frozen provider-backed model identity in a campaign.
 | quantization | [string](#string) |  |  |
 | context_limit | [uint32](#uint32) |  |  |
 | capability_observations | [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation) | repeated |  |
+| model_format | [string](#string) |  | Provider-reported artifact format and installed size, frozen with model_digest. |
+| artifact_size_bytes | [uint64](#uint64) |  |  |
+| parameter_count_source | [ztd.operator.v1.ParameterCountSource](#ztd-operator-v1-ParameterCountSource) |  |  |
 
 
 

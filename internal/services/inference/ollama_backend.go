@@ -186,6 +186,7 @@ type ollamaTagsResponse struct {
 type ollamaTagModel struct {
 	Name   string `json:"name"`
 	Digest string `json:"digest"`
+	Size   uint64 `json:"size"`
 }
 
 type ollamaModelReleaseRequest struct {

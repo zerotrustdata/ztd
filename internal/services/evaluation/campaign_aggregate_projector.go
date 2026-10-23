@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type catalogSnapshotRecord struct {
@@ -65,27 +66,35 @@ type modelMetricValueRecord struct {
 
 type modelSummaryRecord struct {
 	CampaignRelease
-	SchemaVersion        string                         `json:"schema_version"`
-	Kind                 string                         `json:"kind"`
-	DatasetID            string                         `json:"dataset_id"`
-	QualityState         string                         `json:"quality_state"`
-	ObservedAt           string                         `json:"observed_at"`
-	SourceRevisionLabel  string                         `json:"source_revision_label"`
-	VariantID            string                         `json:"variant_id"`
-	DisplayName          string                         `json:"display_name"`
-	ServedModelTag       string                         `json:"served_model_tag"`
-	Role                 string                         `json:"role"`
-	BackendProviderClass string                         `json:"backend_provider_class"`
-	InventoryOnly        bool                           `json:"inventory_only"`
-	EvaluationCoverage   float64                        `json:"evaluation_coverage"`
-	PassRate             *modelPassRateRecord           `json:"pass_rate,omitempty"`
-	AgreementPairwise    *modelMetricValueRecord        `json:"agreement_pairwise,omitempty"`
-	LatencyP50MS         *modelMetricValueRecord        `json:"latency_p50_ms,omitempty"`
-	OutputThroughputP50  *modelMetricValueRecord        `json:"output_throughput_p50,omitempty"`
-	OutputTokens         *modelMetricValueRecord        `json:"output_tokens,omitempty"`
-	SecurityResistance   *modelSecurityResistanceRecord `json:"security_resistance,omitempty"`
-	TerminalOutcomes     map[string]uint32              `json:"terminal_outcomes,omitempty"`
-	UnavailableReasons   []string                       `json:"unavailable_reasons,omitempty"`
+	SchemaVersion           string                         `json:"schema_version"`
+	Kind                    string                         `json:"kind"`
+	DatasetID               string                         `json:"dataset_id"`
+	QualityState            string                         `json:"quality_state"`
+	ObservedAt              string                         `json:"observed_at"`
+	SourceRevisionLabel     string                         `json:"source_revision_label"`
+	VariantID               string                         `json:"variant_id"`
+	DisplayName             string                         `json:"display_name"`
+	ServedModelTag          string                         `json:"served_model_tag,omitempty"`
+	ParameterCount          uint64                         `json:"parameter_count,omitempty"`
+	ParameterCountSource    string                         `json:"parameter_count_source,omitempty"`
+	ModelDigest             string                         `json:"model_digest,omitempty"`
+	ModelFamily             string                         `json:"model_family,omitempty"`
+	ModelFormat             string                         `json:"model_format,omitempty"`
+	ArtifactSizeBytes       uint64                         `json:"artifact_size_bytes,omitempty"`
+	QuantizationWeightClass string                         `json:"quantization_weight_class,omitempty"`
+	ContextLimit            uint32                         `json:"context_limit,omitempty"`
+	Role                    string                         `json:"role"`
+	BackendProviderClass    string                         `json:"backend_provider_class,omitempty"`
+	InventoryOnly           bool                           `json:"inventory_only"`
+	EvaluationCoverage      float64                        `json:"evaluation_coverage"`
+	PassRate                *modelPassRateRecord           `json:"pass_rate,omitempty"`
+	AgreementPairwise       *modelMetricValueRecord        `json:"agreement_pairwise,omitempty"`
+	LatencyP50MS            *modelMetricValueRecord        `json:"latency_p50_ms,omitempty"`
+	OutputThroughputP50     *modelMetricValueRecord        `json:"output_throughput_p50,omitempty"`
+	OutputTokens            *modelMetricValueRecord        `json:"output_tokens,omitempty"`
+	SecurityResistance      *modelSecurityResistanceRecord `json:"security_resistance,omitempty"`
+	TerminalOutcomes        map[string]uint32              `json:"terminal_outcomes,omitempty"`
+	UnavailableReasons      []string                       `json:"unavailable_reasons,omitempty"`
 }
 
 type methodologySuiteRecord struct {
@@ -218,18 +227,30 @@ type runMetricValue struct {
 }
 
 type variantRoleAggregate struct {
-	VariantID           string
-	Role                string
-	Scheduled           uint32
-	Terminal            uint32
-	Judged              uint32
-	Passed              uint32
-	Failed              uint32
-	Outcomes            map[string]uint32
-	AgreementPairwise   modelMetricValueRecord
-	LatencyP50MS        modelMetricValueRecord
-	OutputThroughputP50 modelMetricValueRecord
-	OutputTokensP50     modelMetricValueRecord
+	VariantID string
+	Role      string
+	// Specifications come from the frozen candidate variant;
+	// empty and zero when only a heterogeneous slot ID is bound.
+	ServedModelTag       string
+	ParameterCount       uint64
+	ParameterCountSource operatorv1.ParameterCountSource
+	ModelDigest          string
+	ModelFamily          string
+	ModelFormat          string
+	ArtifactSizeBytes    uint64
+	Quantization         string
+	ContextLimit         uint32
+	ProviderClass        string
+	Scheduled            uint32
+	Terminal             uint32
+	Judged               uint32
+	Passed               uint32
+	Failed               uint32
+	Outcomes             map[string]uint32
+	AgreementPairwise    modelMetricValueRecord
+	LatencyP50MS         modelMetricValueRecord
+	OutputThroughputP50  modelMetricValueRecord
+	OutputTokensP50      modelMetricValueRecord
 	// SecurityResistance is graded only once the frozen catalog is attached;
 	// nil means the catalog was never bound, not that no scenario applied.
 	SecurityResistance *modelSecurityResistanceRecord
@@ -346,6 +367,18 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 		for _, pair := range variantRoles {
 			scheduledVariants[pair.variantID] = struct{}{}
 			bucket := variantRoleAggregateFor(state, pair.variantID, pair.role)
+			if pair.variant != nil {
+				bucket.ServedModelTag = pair.variant.GetServedModelTag()
+				bucket.ParameterCount = pair.variant.GetParameterCount()
+				bucket.ParameterCountSource = pair.variant.GetParameterCountSource()
+				bucket.ModelDigest = pair.variant.GetModelDigest()
+				bucket.ModelFamily = pair.variant.GetModelFamily()
+				bucket.ModelFormat = pair.variant.GetModelFormat()
+				bucket.ArtifactSizeBytes = pair.variant.GetArtifactSizeBytes()
+				bucket.Quantization = pair.variant.GetQuantization()
+				bucket.ContextLimit = pair.variant.GetContextLimit()
+				bucket.ProviderClass = pair.variant.GetProviderClass()
+			}
 			bucket.Scheduled++
 			buckets = append(buckets, bucket)
 		}
@@ -887,8 +920,17 @@ func buildModelSummaryRecord(datasetID, observedAt string, bucket *variantRoleAg
 		CampaignRelease: release.publicIdentity(),
 		SchemaVersion:   explorerViewSchemaVersion, Kind: "model_summary", DatasetID: datasetID,
 		QualityState: qualityStateForModelSummary(terminal), ObservedAt: observedAt, SourceRevisionLabel: campaignSourceRevision,
-		VariantID: bucket.VariantID, DisplayName: displayNameForVariant(bucket.VariantID), ServedModelTag: servedTagForVariant(bucket.VariantID),
-		Role: bucket.Role, BackendProviderClass: "ollama", InventoryOnly: terminal == 0, EvaluationCoverage: coverage,
+		VariantID: bucket.VariantID, DisplayName: displayNameForVariant(bucket.VariantID), ServedModelTag: bucket.ServedModelTag,
+		ParameterCount: bucket.ParameterCount,
+		ModelDigest:    bucket.ModelDigest, ModelFamily: bucket.ModelFamily, ModelFormat: bucket.ModelFormat,
+		ArtifactSizeBytes: bucket.ArtifactSizeBytes, QuantizationWeightClass: bucket.Quantization, ContextLimit: bucket.ContextLimit,
+		Role: bucket.Role, BackendProviderClass: bucket.ProviderClass, InventoryOnly: terminal == 0, EvaluationCoverage: coverage,
+	}
+	switch bucket.ParameterCountSource {
+	case operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_MODEL_METADATA:
+		record.ParameterCountSource = "model_metadata"
+	case operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_ROUNDED_LABEL:
+		record.ParameterCountSource = "rounded_label"
 	}
 	if terminal > 0 {
 		if bucket.Judged > 0 {
@@ -1665,16 +1707,6 @@ func displayNameForVariant(variantID string) string {
 	return strings.Join(words, " ")
 }
 
-func servedTagForVariant(variantID string) string {
-	parts := strings.Split(variantID, "-")
-	if len(parts) >= 2 {
-		family := strings.Join(parts[:len(parts)-1], "")
-		size := parts[len(parts)-1]
-		return family + ":" + size
-	}
-	return variantID
-}
-
 func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, string, error) {
 	homogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous)
 	if !ok || homogeneous.Homogeneous == nil || homogeneous.Homogeneous.GetCandidateVariant() == nil {
@@ -1690,6 +1722,8 @@ func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, st
 type assignmentVariantRolePair struct {
 	variantID string
 	role      string
+	// variant is the frozen candidate identity; heterogeneous slots bind only an ID.
+	variant *evalv1.ModelVariant
 }
 
 func assignmentVariantRolePairs(assignment *evalv1.EvaluationAssignment) ([]assignmentVariantRolePair, error) {
@@ -1725,7 +1759,7 @@ func assignmentVariantRolePairs(assignment *evalv1.EvaluationAssignment) ([]assi
 	if err != nil {
 		return nil, err
 	}
-	return []assignmentVariantRolePair{{variantID: variantID, role: role}}, nil
+	return []assignmentVariantRolePair{{variantID: variantID, role: role, variant: assignment.GetHomogeneous().GetCandidateVariant()}}, nil
 }
 
 func variantIDForAssignmentModelRole(assignment *evalv1.EvaluationAssignment, role evalv1.ModelCampaignRole) (string, error) {

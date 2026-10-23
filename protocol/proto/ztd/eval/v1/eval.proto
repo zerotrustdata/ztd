@@ -610,6 +610,10 @@ message ModelVariant {
   string quantization = 7;
   uint32 context_limit = 8;
   repeated ModelCapabilityObservation capability_observations = 9;
+  // Provider-reported artifact format and installed size, frozen with model_digest.
+  string model_format = 10;
+  uint64 artifact_size_bytes = 11;
+  ztd.operator.v1.ParameterCountSource parameter_count_source = 12;
 }
 
 // ModelCapabilityObservation records a descriptive probe result. It never

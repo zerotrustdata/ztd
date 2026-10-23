@@ -370,14 +370,32 @@ export function isCatalogSnapshot(value: unknown): asserts value is CatalogSnaps
 
 export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertObject(value, 'model_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
   assertEnvelope(value, 'model_summary', ['model_summary']);
   assertString(value.variant_id, 'model_summary.variant_id');
   assertString(value.display_name, 'model_summary.display_name');
   assertOptional(value.served_model_tag, 'model_summary.served_model_tag', assertString);
+  if (value.parameter_count !== undefined) {
+    assertInteger(value.parameter_count, 'model_summary.parameter_count');
+    assert(Number.isSafeInteger(value.parameter_count) && value.parameter_count > 0, 'model_summary.parameter_count', 'must be a positive safe integer');
+  }
+  if (value.parameter_count_source !== undefined) {
+    assertEnum(value.parameter_count_source, ['model_metadata', 'rounded_label'] as const, 'model_summary.parameter_count_source');
+    assert(value.parameter_count !== undefined, 'model_summary.parameter_count_source', 'requires a parameter count');
+  }
   assertEnum(value.role, MODEL_ROLES, 'model_summary.role');
   assertOptional(value.backend_provider_class, 'model_summary.backend_provider_class', assertString);
   assertOptional(value.quantization_weight_class, 'model_summary.quantization_weight_class', assertString);
+  assertOptionalHash(value.model_digest, 'model_summary.model_digest');
+  for (const key of ['model_family', 'model_format'] as const) {
+    assertOptional(value[key], `model_summary.${key}`, assertString);
+  }
+  for (const key of ['artifact_size_bytes', 'context_limit'] as const) {
+    if (value[key] !== undefined) {
+      assertInteger(value[key], `model_summary.${key}`);
+      assert(Number.isSafeInteger(value[key]) && value[key] > 0, `model_summary.${key}`, 'must be a positive safe integer');
+    }
+  }
   assertBoolean(value.inventory_only, 'model_summary.inventory_only');
   assertNumber(value.evaluation_coverage, 'model_summary.evaluation_coverage');
   assert(value.evaluation_coverage >= 0 && value.evaluation_coverage <= 1, 'model_summary.evaluation_coverage', 'must be between zero and one');
