@@ -207,6 +207,8 @@ The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for appr
 
 `ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead, and `--deny` denies it from the enrolled CLI session (`./ztd auth approve --help`). The `--cli` and `--deny` paths read the final receipt from the HTTP response; the browser path reads it from the `approval.completed` event on the stream. The browser path and the TUI approvals view report approval only when `auth.ValidateApprovalReceipt` accepts that receipt: it names the transaction, completed with no rejection code, and records `L3_STATUS_REQUIRED_VALID`; an `L3_DENIED` receipt is a denial. The event alone is never proof, and no status read follows it, because successful execution has already removed the pending row. A stream line may hold up to `SSEClientMaxLineSize` bytes (`internal/constants/paths.go`), enough for an `approval.completed` event whose receipt carries both escaped execution output streams.
 
+`auth.ApprovalSubscription.Wait` returns `ErrApprovalSSETimeout` when its caller is cancelled or its deadline expires before a matching approval arrives. If cancellation also stops the SSE stream, the wait checks the caller's context directly: cancellation may reach the stream before it reaches the wait's child context. A stream that ends while the caller and wait contexts remain active fails closed with `ErrSSEStreamClosed` or the underlying stream error; it does not reconnect or poll.
+
 ### Consuming Polled Events
 
 Query stored events after a known cursor:
