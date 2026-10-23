@@ -128,6 +128,7 @@ export interface StoreState {
   connection: FeedConnectionState;
   streamConnection: StreamConnectionState;
   feedStatus: FeedStatus | null;
+  mirrorOrigin: string | null;
   sourceId: string | null;
   observedSequence: number;
   currentSnapshot: FeedSnapshot | null;
@@ -180,6 +181,7 @@ function emptyState(): StoreState {
     connection: 'connecting',
     streamConnection: 'disconnected',
     feedStatus: null,
+    mirrorOrigin: null,
     sourceId: null,
     observedSequence: 0,
     currentSnapshot: null,
@@ -246,6 +248,10 @@ export class EvalStore {
     this.emitIfNotBatching();
   }
 
+  setMirrorOrigin(mirrorOrigin: string): void {
+    this.setState((state) => ({ ...state, mirrorOrigin }));
+  }
+
   setConnection(connection: FeedConnectionState, message?: string): void {
     this.setState((state) => ({
       ...state,
@@ -272,6 +278,7 @@ export class EvalStore {
     this.campaignContext = createCampaignAdaptContext();
     const state = emptyState();
     state.connection = 'live';
+    state.mirrorOrigin = this.state.mirrorOrigin;
     state.sourceId = snapshot.source_id;
     state.observedSequence = 0;
     if (snapshot.high_water_sequence === 0) {
