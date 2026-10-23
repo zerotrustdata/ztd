@@ -10,6 +10,8 @@ package tribunal
 import (
 	"fmt"
 	"slices"
+
+	"github.com/zerotrustdata/ztd/internal/models"
 )
 
 // MinConsensus is the fewest members that must propose one command for it to
@@ -21,29 +23,28 @@ func clusterID(i int) string {
 	return fmt.Sprintf("cluster_%c", 'a'+i)
 }
 
-// clusterCandidates groups one round's candidates by canonical typed arguments in
-// first-proposal order, excluding Nemesis's proposed command and every matching
-// member proposal. A member that proposed no command joins no cluster.
-func clusterCandidates(candidates []Candidate) []Cluster {
-	var nemesisKey string
-	var hasNemesis bool
+// nemesisProposal returns Nemesis's proposed arguments in one round; empty when
+// Nemesis abstained.
+func nemesisProposal(candidates []Candidate) models.RunShellCommandRequest {
 	for _, candidate := range candidates {
-		if candidate.Member == MemberNemesis && candidate.Arguments.Command != "" {
-			nemesisKey = candidate.Arguments.CanonicalJSON()
-			hasNemesis = true
-			break
+		if candidate.Member == MemberNemesis {
+			return candidate.Arguments
 		}
 	}
+	return models.RunShellCommandRequest{}
+}
 
+// clusterCandidates groups one round's eligible candidates by canonical typed
+// arguments in first-proposal order. A candidate matching excluded, Nemesis's
+// proposal, is not tallied, and a member that proposed no command joins no
+// cluster.
+func clusterCandidates(candidates []Candidate, excluded models.RunShellCommandRequest) []Cluster {
 	var clusters []Cluster
 	for _, candidate := range candidates {
-		if candidate.Arguments.Command == "" {
+		if candidate.Arguments.Command == "" || candidate.excludedBy(excluded) {
 			continue
 		}
 		key := candidate.Arguments.CanonicalJSON()
-		if hasNemesis && key == nemesisKey {
-			continue
-		}
 		i := slices.IndexFunc(clusters, func(c Cluster) bool { return c.Arguments.CanonicalJSON() == key })
 		if i < 0 {
 			clusters = append(clusters, Cluster{ID: clusterID(len(clusters)), Arguments: candidate.Arguments})
@@ -54,12 +55,20 @@ func clusterCandidates(candidates []Candidate) []Cluster {
 	return clusters
 }
 
-// vote runs the uniform-weight vote over one round. Every member is one vote
-// for its own proposal; the largest cluster wins when it holds at least
-// MinConsensus members. A tie at the top is broken by the shortest command
-// when the tied commands differ in length; any tie left has no winner.
+// excludedBy reports whether c proposed excluded, Nemesis's proposal.
+func (c Candidate) excludedBy(excluded models.RunShellCommandRequest) bool {
+	return excluded.Command != "" && c.Arguments.CanonicalJSON() == excluded.CanonicalJSON()
+}
+
+// vote runs the uniform-weight vote over one round. Every eligible member is
+// one vote for its own proposal; the largest cluster wins when it holds at
+// least MinConsensus members. A tie at the top is broken by the shortest
+// command when the tied commands differ in length; any tie left has no winner.
+// Nemesis's proposal and every matching proposal are recorded in Excluded and
+// never tallied.
 func vote(round uint32, candidates []Candidate) Vote {
-	result := Vote{Round: round, Clusters: clusterCandidates(candidates)}
+	excluded := nemesisProposal(candidates)
+	result := Vote{Round: round, Clusters: clusterCandidates(candidates, excluded), Excluded: excluded}
 	top := 0
 	for _, cluster := range result.Clusters {
 		top = max(top, len(cluster.Members))

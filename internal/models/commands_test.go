@@ -55,6 +55,16 @@ func TestRunShellCommandRequestCanonicalJSONAndProto(t *testing.T) {
 	assert.Empty(t, fromProto.Hostnames)
 }
 
+func TestRunShellCommandRequestDoctrineCheckPayloadCarriesCanonicalArguments(t *testing.T) {
+	t.Parallel()
+
+	request := RunShellCommandRequest{Command: "printf", Args: []string{"%s", "hello"}}
+	payload := request.DoctrineCheckPayload()
+	assert.Equal(t, constants.MCPToolRunShellCommand, payload.GetToolName())
+	assert.Equal(t, request.CanonicalJSON(), payload.GetArgumentsJson())
+	assert.Empty(t, payload.GetExecutionId())
+}
+
 func TestRunShellCommandRequestFromProtoNil(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, RunShellCommandRequest{}, RunShellCommandRequestFromProto(nil))

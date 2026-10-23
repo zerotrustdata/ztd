@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -156,6 +157,7 @@ func TestVoteExcludesNemesisAndMatchingProposals(t *testing.T) {
 	require.Len(t, v.Clusters, 1)
 	assert.Equal(t, "netstat -tlpn", v.Clusters[0].Arguments.CommandLine())
 	assert.Equal(t, []Member{MemberPragma}, v.Clusters[0].Members)
+	assert.Equal(t, "ss -tlpn", v.Excluded.CommandLine(), "the excluded proposal is recorded, never tallied")
 }
 
 func TestRunRestartsOnNemesisExclusion(t *testing.T) {
@@ -194,6 +196,15 @@ func TestRunRestartsOnNemesisExclusion(t *testing.T) {
 	// The anonymized prompt should present the remaining cluster from round 1 (netstat)
 	assert.Contains(t, round2.User, "netstat")
 	assert.NotContains(t, round2.User, "ss -tlpn")
+	// Every candidate matching Nemesis's proposal in its round, Nemesis's own
+	// included, is recorded as excluded; the rest are not.
+	var excluded []string
+	for _, step := range result.Steps {
+		if candidate := step.GetCandidate(); candidate.GetExcluded() {
+			excluded = append(excluded, fmt.Sprintf("%d:%s", step.GetIndex(), step.GetPersonaLabel()))
+		}
+	}
+	assert.Equal(t, []string{"1:axiom", "2:concord", "3:variance", "5:nemesis", "10:nemesis"}, excluded)
 }
 
 func TestVote(t *testing.T) {

@@ -222,11 +222,14 @@ export interface ApprovalOutcome {
 /**
  * L3 Notary approval of a suspended transaction. The verify body is the flat
  * assertion itself, not nested (INV-FE-APPROVAL-01). A 403 may carry a receipt
- * describing the rejected result; its message is surfaced as-is.
+ * describing the rejected result; its message is surfaced as-is. onSigned runs
+ * once the passkey ceremony ends: the verify request then waits for execution,
+ * which may suspend another transaction the user must be free to approve.
  */
-export async function approveTransaction(txHash: string): Promise<ApprovalOutcome> {
+export async function approveTransaction(txHash: string, onSigned?: () => void): Promise<ApprovalOutcome> {
   const ch = await api.get<{ publicKey: WireRequestOptions }>(Paths.approvalChallenge(txHash));
   const cred = await get(decodeRequestOptions(ch.publicKey));
+  onSigned?.();
   try {
     await api.post(Paths.approvalVerify(txHash), encodeAssertion(cred));
     return { ok: true, status: 200, message: 'Transaction approved. Execution resumed.' };

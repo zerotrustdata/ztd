@@ -383,7 +383,7 @@ func TestCampaignTribunalIntegration_L1RepairsCandidatesBeforeVote(t *testing.T)
 		tribunalPanel(
 			dangerous, tribunalRealCommand, // Axiom repairs on its second attempt.
 			dangerous, tribunalRealCommand, // Concord repairs on its second attempt.
-			tribunalRealCommand,              // Variance
+			tribunalRealCommand,             // Variance
 			dangerous, dangerous, dangerous, // Pragma exhausts its attempts and abstains.
 			tribunalRealDissent, // Nemesis
 		),
@@ -474,7 +474,8 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 }
 
 func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConflict(t *testing.T) {
-	const destructive = `{"command":"rm","args":["-rf","."]}`
+	// A scoped delete passes L1 doctrine, so only Marshal's risk assessment blocks it.
+	const destructive = `{"command":"rm","args":["-rf","./build"]}`
 	env := tribunalRun(t, "marshal-block",
 		tribunalIntent("call-1"),
 		tribunalUnanimous(destructive),

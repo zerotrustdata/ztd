@@ -301,6 +301,7 @@ directory is listed with an empty sha256 and size -1.
 | ----- | ---- | ----- | ----------- |
 | command | [string](#string) |  | command is the shell text an agent-trace.v7 or earlier candidate step recorded. It is decoded only so historical traces stay verifiable; new steps never set it and agent-trace.v8 rejects it. |
 | arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  |  |
+| excluded | [bool](#bool) |  | excluded marks a candidate that matched Nemesis&#39;s adversarial proposal in its round, Nemesis&#39;s own included. It is recorded but never tallied, so it can never be the selected command. |
 
 
 

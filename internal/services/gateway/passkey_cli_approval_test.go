@@ -16,6 +16,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -237,6 +238,38 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 		assert.Zero(t, mcp.resumeCalls)
 	})
+
+	resumeFailures := []struct {
+		name   string
+		cause  error
+		status int
+		body   error
+	}{
+		{"withdrawn dispatch reports its sentinel", constants.ErrTribunalCommandRevised, http.StatusForbidden, constants.ErrTribunalCommandRevised},
+		{"failed review inference reports its sentinel", constants.ErrTribunalInferenceFailed, http.StatusForbidden, constants.ErrTribunalInferenceFailed},
+		{"invalid review answer reports its sentinel", constants.ErrTribunalAnswerInvalid, http.StatusForbidden, constants.ErrTribunalAnswerInvalid},
+		{"lost pending dispatch reports expiry", constants.ErrTransactionExpired, http.StatusNotFound, constants.ErrTransactionExpired},
+		{"locked vault reports unavailability", constants.ErrAuditStoreVaultLocked, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked},
+		{"unclassified fault is an internal error", constants.ErrGatewayNotReady, http.StatusInternalServerError, constants.ErrInternal},
+	}
+	for _, tc := range resumeFailures {
+		t.Run(tc.name, func(t *testing.T) {
+			cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
+			mcp := newCLIApprovalMCP(cliApprovalTestUser)
+			mcp.resumeErr = fmt.Errorf("dispatch: admitted: operator op-7 detail: %w", tc.cause)
+			rr := httptest.NewRecorder()
+
+			newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
+
+			assert.Equal(t, tc.status, rr.Code)
+			var body struct {
+				Error string `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+			assert.Equal(t, tc.body.Error(), body.Error)
+			assert.Equal(t, 1, mcp.resumeCalls)
+		})
+	}
 
 	t.Run("receipt hash mismatch is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)

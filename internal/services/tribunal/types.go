@@ -206,6 +206,9 @@ type Vote struct {
 	// Winner is the selected command; empty when no cluster reached the
 	// minimum consensus or the tie-break ladder left a tie.
 	Winner models.RunShellCommandRequest
+	// Excluded is Nemesis's proposal in this round; empty when Nemesis
+	// abstained. It and every matching proposal are never tallied.
+	Excluded models.RunShellCommandRequest
 }
 
 // Unanimous reports whether every eligible panel member (all non-Nemesis members) proposed the winner.

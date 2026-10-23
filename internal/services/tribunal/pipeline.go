@@ -40,16 +40,16 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 		return nil, err
 	}
 	result.Candidates = candidates
-	steps.candidates(candidates)
 	result.Vote = vote(1, candidates)
+	steps.candidates(candidates, result.Vote)
 	if result.Vote.Winner.Command == "" {
 		candidates, err = generate(ctx, cfg, req, 2, result.Vote.Clusters)
 		if err != nil {
 			return nil, err
 		}
 		result.Candidates = append(result.Candidates, candidates...)
-		steps.candidates(candidates)
 		result.Vote = vote(2, candidates)
+		steps.candidates(candidates, result.Vote)
 	}
 	steps.vote(result.Vote, candidates)
 	if result.Vote.Winner.Command == "" {
@@ -121,10 +121,12 @@ func (s *stepRecorder) add(role evalv1.AgentRole, persona string, output func(*e
 	s.steps = append(s.steps, step)
 }
 
-func (s *stepRecorder) candidates(candidates []Candidate) {
+// candidates records one round's candidates, marking each that v excluded
+// because it matched Nemesis's proposal.
+func (s *stepRecorder) candidates(candidates []Candidate, v Vote) {
 	for _, candidate := range candidates {
 		s.add(evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, string(candidate.Member), func(step *evalv1.AgentStep) {
-			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Arguments: candidate.Arguments.Proto()}}
+			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Arguments: candidate.Arguments.Proto(), Excluded: candidate.excludedBy(v.Excluded)}}
 		})
 	}
 }

@@ -20,7 +20,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -34,6 +33,7 @@ import (
 	approvals "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/consensustest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -48,8 +48,7 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	seedActiveUser(t, infra, userID)
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
 	workDir := testutil.OperatorDir(t)
-	targetPath := filepath.Join(workDir, constants.TestEvaluationTargetFilename)
-	require.NoError(t, os.WriteFile(targetPath, []byte("original"), constants.PermFilePrivate))
+	target := seedOperatorTarget(t, infra, workDir)
 	publicKey := startFileEditOperator(t, infra, operatorID, sessionID, workDir)
 	dispatcher := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureRatify, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 	gateway, err := mcp.NewGatewayService(mcp.Dependencies{
@@ -60,7 +59,7 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	})
 	require.NoError(t, err)
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{
-		FilePath: targetPath, Operation: string(constants.FileOperationReplace),
+		FilePath: target.path, Operation: string(constants.FileOperationReplace),
 		ExecutionId: "resume-execution", OldContent: "original", NewContent: "must-never-execute",
 	})
 	require.NoError(t, err)
@@ -69,7 +68,7 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	env, err := BuildGovernanceEnvelope(BuildEnvelopeParams{
 		OperatorID: operatorID, OperatorSessionID: sessionID, RequestorUserID: userID,
 		EventType: string(constants.Event.Operator.FileEdit.Requested), Payload: payload,
-		TargetResource: targetPath, StateMerkleRoot: root,
+		TargetResource: target.path, StateMerkleRoot: root,
 		Posture: constants.PostureDoctrine, Doctrine: govsvc.NewL1Doctrine(),
 	})
 	require.NoError(t, err)
@@ -95,9 +94,7 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	_, pending, err := gateway.GetSuspendedTransaction(t.Context(), env.Id)
 	require.NoError(t, err)
 	require.False(t, pending)
-	body, err := os.ReadFile(targetPath)
-	require.NoError(t, err)
-	require.Equal(t, "original", string(body))
+	require.Equal(t, "original", target.content(t))
 	_, err = gateway.DenySuspendedTransaction(ctx, env.Id, userID)
 	require.ErrorIs(t, err, constants.ErrTransactionExpired, "a settled suspension cannot be submitted twice")
 }
@@ -168,8 +165,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 				operatorPolicies = infra.ConsensusStore
 			}
 			workDir := testutil.OperatorDir(t)
-			target := filepath.Join(workDir, constants.TestEvaluationTargetFilename)
-			require.NoError(t, os.WriteFile(target, []byte("original"), constants.PermFilePrivate))
+			target := seedOperatorTarget(t, infra, workDir)
 			var publicKey ed25519.PublicKey
 			var backend *boundaryInferenceBackend
 			if isInference {
@@ -201,7 +197,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 				OutboundEnvProc: dispatcher, OutboundProofPreparer: preparer, PendingDispatchResumer: resumer,
 			})
 			require.NoError(t, err)
-			payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: target, Operation: string(constants.FileOperationReplace), ExecutionId: "human-approved-mutation", OldContent: "original", NewContent: "approved"})
+			payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: target.path, Operation: string(constants.FileOperationReplace), ExecutionId: "human-approved-mutation", OldContent: "original", NewContent: "approved"})
 			require.NoError(t, err)
 			eventType := constants.Event.Operator.FileEdit.Requested
 			if isInference {
@@ -226,7 +222,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			}
 			go func() {
 				defer close(finished)
-				result, err := dispatcher.Dispatch(ctx, DispatchRequest{TargetOperatorSessionID: sessionID, RequestorUserID: userID, EventType: string(eventType), Payload: payload, TargetResource: target, Timeout: 5 * time.Second, OnAdmitted: onAdmitted})
+				result, err := dispatcher.Dispatch(ctx, DispatchRequest{TargetOperatorSessionID: sessionID, RequestorUserID: userID, EventType: string(eventType), Payload: payload, TargetResource: target.path, Timeout: 5 * time.Second, OnAdmitted: onAdmitted})
 				resultCh <- outcome{result, err}
 			}()
 			defer func() { cancel(); <-finished }()
@@ -251,9 +247,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 				t.Fatal("dispatch returned before a human decision")
 			default:
 			}
-			body, err := os.ReadFile(target)
-			require.NoError(t, err)
-			require.Equal(t, "original", string(body))
+			require.Equal(t, "original", target.content(t))
 			suspendedEnvelope := &commonv1.GovernanceEnvelope{}
 			require.NoError(t, protojson.Unmarshal(suspended.Envelope, suspendedEnvelope))
 			require.Equal(t, string(posture), suspendedEnvelope.GetPosture())
@@ -399,12 +393,10 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			_, pending, err := gateway.GetSuspendedTransaction(ctx, suspended.TransactionHash)
 			require.NoError(t, err)
 			require.False(t, pending)
-			body, err = os.ReadFile(target)
-			require.NoError(t, err)
 			if mechanism == "deny" || isInference {
-				require.Equal(t, "original", string(body))
+				require.Equal(t, "original", target.content(t))
 			} else {
-				require.Equal(t, "approved", string(body))
+				require.Equal(t, "approved", target.content(t))
 			}
 			_, err = gateway.ResumeWithL3Proof(ctx, suspended.TransactionHash, userID, &commonv1.L3Proof{})
 			require.ErrorIs(t, err, constants.ErrTransactionExpired)
@@ -422,7 +414,34 @@ type revisedAdmission struct {
 	proof      *commonv1.L3Proof
 	userID     string
 	sessionID  string
-	target     string
+	target     operatorTarget
+}
+
+// operatorTarget is a FILE_EDIT target inside a throwaway Operator's
+// controlled evaluation target directory, read through that Operator's own
+// runtime file service (INV-FS-01).
+type operatorTarget struct {
+	files fs.RuntimeFileService
+	rel   string
+	path  string
+}
+
+// seedOperatorTarget writes "original" to the Operator rooted at workDir.
+func seedOperatorTarget(t *testing.T, infra *TestInfrastructure, workDir string) operatorTarget {
+	t.Helper()
+	files, err := fs.NewRuntimeFileService(workDir, infra.Logger)
+	require.NoError(t, err)
+	require.NoError(t, files.MkdirAll(t.Context(), constants.EvaluationControlledTargetDirname, constants.PermDirPrivate))
+	rel := filepath.Join(constants.EvaluationControlledTargetDirname, constants.TestEvaluationTargetFilename)
+	require.NoError(t, files.WriteFile(t.Context(), rel, []byte("original"), constants.PermFilePrivate))
+	return operatorTarget{files: files, rel: rel, path: files.Resolve(rel)}
+}
+
+func (o operatorTarget) content(t *testing.T) string {
+	t.Helper()
+	body, err := o.files.ReadFile(t.Context(), o.rel)
+	require.NoError(t, err)
+	return string(body)
 }
 
 // assertRevisedAdmissionNeedsFreshApproval proves a refused admission publishes
@@ -436,12 +455,12 @@ func assertRevisedAdmissionNeedsFreshApproval(t *testing.T, ctx context.Context,
 	_, err = r.gateway.ResumeWithL3Proof(ctx, r.suspended.TransactionHash, r.userID, r.proof)
 	require.ErrorIs(t, err, constants.ErrTransactionExpired, "the approval died with its envelope")
 
-	payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: r.target, Operation: string(constants.FileOperationReplace), ExecutionId: "revised-mutation", OldContent: "original", NewContent: "revised"})
+	payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: r.target.path, Operation: string(constants.FileOperationReplace), ExecutionId: "revised-mutation", OldContent: "original", NewContent: "revised"})
 	require.NoError(t, err)
 	revisedCtx, cancel := context.WithCancel(ctx)
 	finished := make(chan error, 1)
 	go func() {
-		_, err := r.dispatcher.Dispatch(revisedCtx, DispatchRequest{TargetOperatorSessionID: r.sessionID, RequestorUserID: r.userID, EventType: string(constants.Event.Operator.FileEdit.Requested), Payload: payload, TargetResource: r.target, Timeout: 5 * time.Second})
+		_, err := r.dispatcher.Dispatch(revisedCtx, DispatchRequest{TargetOperatorSessionID: r.sessionID, RequestorUserID: r.userID, EventType: string(constants.Event.Operator.FileEdit.Requested), Payload: payload, TargetResource: r.target.path, Timeout: 5 * time.Second})
 		finished <- err
 	}()
 	defer func() { cancel(); <-finished }()
@@ -460,7 +479,5 @@ func assertRevisedAdmissionNeedsFreshApproval(t *testing.T, ctx context.Context,
 	_, pending, err := r.gateway.GetSuspendedTransaction(ctx, revised.TransactionHash)
 	require.NoError(t, err)
 	require.True(t, pending, "the revised envelope still waits for its own human decision")
-	body, err := os.ReadFile(r.target)
-	require.NoError(t, err)
-	require.Equal(t, "original", string(body))
+	require.Equal(t, "original", r.target.content(t))
 }

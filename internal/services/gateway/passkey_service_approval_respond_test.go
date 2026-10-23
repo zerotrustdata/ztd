@@ -38,6 +38,7 @@ type approvalRespondMCP struct {
 	resumedUser  string
 	resumedProof *commonv1.L3Proof
 	resumeCalls  int
+	resumeErr    error
 	denyReceipt  *operatorv1.ActionReceipt
 	denyErr      error
 	deniedHash   string
@@ -52,6 +53,9 @@ func (m *approvalRespondMCP) GetSuspendedTransaction(_ context.Context, _ string
 func (m *approvalRespondMCP) ResumeWithL3Proof(_ context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
 	m.resumeCalls++
 	m.resumedHash, m.resumedUser, m.resumedProof = txHash, userID, proof
+	if m.resumeErr != nil {
+		return nil, m.resumeErr
+	}
 	return m.receipt, nil
 }
 

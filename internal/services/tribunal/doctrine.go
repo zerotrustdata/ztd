@@ -11,19 +11,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // doctrineFeedback screens exactly the typed payload used by dispatch,
 // including argv joined for command detection and individual JSON values.
 // It reveals only violations of this candidate, never the doctrine inventory.
 func doctrineFeedback(doctrine *governance.L1Doctrine, arguments models.RunShellCommandRequest) string {
-	violations := doctrine.ValidatePayload(&operatorv1.McpCallRequested{
-		ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: arguments.CanonicalJSON(),
-	})
+	violations := doctrine.ValidatePayload(arguments.DoctrineCheckPayload())
 	if len(violations) == 0 {
 		return ""
 	}

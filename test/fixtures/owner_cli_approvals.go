@@ -78,12 +78,19 @@ func (c *OwnerConsole) ApproveTransactionsWithCLI(t *testing.T, identity *Client
 			case <-ctx.Done():
 				return
 			case <-wakeups:
-				approvalCtx, approvalCancel := context.WithTimeout(ctx, 5*time.Minute)
-				err := respondSuspendedTransactions(approvalCtx, client, baseURL, identity, c)
-				approvalCancel()
-				if err != nil && ctx.Err() == nil {
-					c.faults.append(fmt.Errorf("CLI transaction approver: %w", err))
-				}
+				// An approval's response waits for its execution, which may
+				// suspend another transaction for approval (the governed
+				// inference of a Tribunal admission review), so each wakeup
+				// answers in its own goroutine.
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					approvalCtx, approvalCancel := context.WithTimeout(ctx, 5*time.Minute)
+					defer approvalCancel()
+					if err := respondSuspendedTransactions(approvalCtx, client, baseURL, identity, c); err != nil && ctx.Err() == nil {
+						c.faults.append(fmt.Errorf("CLI transaction approver: %w", err))
+					}
+				}()
 			}
 		}
 	}()
@@ -201,12 +208,45 @@ func respondSuspendedTransactions(ctx context.Context, client *http.Client, base
 		if ctx.Err() != nil {
 			return errors.Join(append(faults, ctx.Err())...)
 		}
+		if !owner.claimApproval(transaction.TransactionHash) {
+			continue
+		}
 		// A failed transaction is recorded and the rest of the batch is still answered.
-		if err := respondSuspendedTransaction(ctx, client, baseURL, &cliCert, owner, transaction); err != nil {
+		err := respondSuspendedTransaction(ctx, client, baseURL, &cliCert, owner, transaction)
+		owner.releaseApproval(transaction.TransactionHash, err == nil)
+		if err != nil {
 			faults = append(faults, err)
 		}
 	}
 	return errors.Join(faults...)
+}
+
+// claimApproval reserves txHash for one responder. A transaction another
+// responder is answering, or has answered, is skipped: a stale pending list
+// must not answer it twice.
+func (c *OwnerConsole) claimApproval(txHash string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, claimed := c.approvals[txHash]; claimed {
+		return false
+	}
+	if c.approvals == nil {
+		c.approvals = make(map[string]bool)
+	}
+	c.approvals[txHash] = false
+	return true
+}
+
+// releaseApproval ends a responder's claim on txHash. A failed answer is
+// released so a later pending list can retry it.
+func (c *OwnerConsole) releaseApproval(txHash string, answered bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if answered {
+		c.approvals[txHash] = true
+		return
+	}
+	delete(c.approvals, txHash)
 }
 
 // respondSuspendedTransaction answers one pending transaction with the owner's

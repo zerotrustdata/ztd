@@ -20,6 +20,7 @@ import (
 	gov "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -351,13 +352,15 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 	h.clearApprovalWriteDeadline(w)
 	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), req.ApprovalID, userID, proof)
 	if err != nil {
-		if errors.Is(err, constants.ErrAuditStoreVaultLocked) {
-			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
-		} else if receipt != nil {
+		if receipt != nil && !errors.Is(err, constants.ErrAuditStoreVaultLocked) {
 			h.responder.ProtoJSONCanonical(w, http.StatusForbidden, receipt)
-		} else {
-			h.responder.Error(w, http.StatusForbidden, constants.ErrTxL3ProofInvalid.Error())
+			return
 		}
+		status, cause := cliApprovalResumeFailure(err)
+		if status == http.StatusInternalServerError {
+			h.logger.Error("CLI approval: resume failed", "txHash", req.ApprovalID, logging.ErrorKind(err))
+		}
+		h.responder.Error(w, status, cause.Error())
 		return
 	}
 	if receipt == nil || receipt.GetTransactionHash() != tx.TransactionHash || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
@@ -371,6 +374,29 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 	}
 	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, tx.TransactionHash, body)
 	h.responder.ProtoJSONCanonical(w, http.StatusOK, receipt)
+}
+
+// cliApprovalResumeFailure classifies a resume that failed without a signed
+// rejection after the CLI proof verified. A known outcome reports its own
+// sentinel, never ErrTxL3ProofInvalid and never the wrapped error chain; any
+// other failure is a Gateway fault.
+func cliApprovalResumeFailure(err error) (int, error) {
+	switch {
+	case errors.Is(err, constants.ErrAuditStoreVaultLocked):
+		return http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked
+	case errors.Is(err, constants.ErrTransactionExpired):
+		return http.StatusNotFound, constants.ErrTransactionExpired
+	}
+	for _, refused := range []error{
+		constants.ErrTribunalCommandRevised,
+		constants.ErrTribunalInferenceFailed,
+		constants.ErrTribunalAnswerInvalid,
+	} {
+		if errors.Is(err, refused) {
+			return http.StatusForbidden, refused
+		}
+	}
+	return http.StatusInternalServerError, constants.ErrInternal
 }
 
 func (h *PasskeyHandler) clearApprovalWriteDeadline(w http.ResponseWriter) {

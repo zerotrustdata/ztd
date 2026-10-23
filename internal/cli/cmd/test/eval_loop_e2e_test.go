@@ -48,6 +48,11 @@ func TestEvalLoopCrossProcess(t *testing.T) {
 			defer cancel()
 			replies := evalLoopReplies()
 			provider := fixtures.NewScriptedOllama(t, replies)
+			t.Cleanup(func() {
+				if t.Failed() {
+					logEvalLoopChatRequests(t, provider.ChatRequests())
+				}
+			})
 			servedDigest, ok := provider.ServedDigest(evalLoopScriptedModel)
 			require.True(t, ok, "scripted provider must serve %s", evalLoopScriptedModel)
 			st := &evalLoopState{}
@@ -299,24 +304,47 @@ const (
 	evalLoopPurposeAudit     = "tribunal_audit"
 	evalLoopTribunalProposal = `{"args":["app/service.conf"],"command":"cat"}`
 	evalLoopTribunalCommand  = `{"command":"cat","args":["app/service.conf"]}`
+	// evalLoopTribunalDissent is Nemesis's adversarial proposal: the vote
+	// always excludes Nemesis's command, so it must differ from the agreed one.
+	evalLoopTribunalDissent = `{"command":"head","args":["app/service.conf"]}`
 	evalLoopTribunalAnswer   = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
 )
 
+// logEvalLoopChatRequests logs every chat request's messages, so a failed loop
+// shows which call consumed which scripted reply.
+func logEvalLoopChatRequests(t *testing.T, requests []json.RawMessage) {
+	t.Helper()
+	for i, raw := range requests {
+		var req fixtures.OllamaChatRequest
+		if err := json.Unmarshal(raw, &req); err != nil {
+			t.Logf("chat request %d: undecodable: %v", i, err)
+			continue
+		}
+		for _, message := range req.Messages {
+			t.Logf("chat request %d %s: %q", i, message.Role, message.Content)
+		}
+	}
+}
+
 // evalLoopReplies is the scripted provider's answer sequence for the whole loop,
 // in chat order: the direct campaign's READY; then the Tribunal campaign's first
-// agent turn calling the intent tool, its seven member replies (five unanimous
-// generations, one LOW marshal, one APPROVE audit), and the final answer.
+// agent turn calling the intent tool, its eight member replies (five generations
+// where four agree and Nemesis dissents, one LOW marshal, one APPROVE audit, and the APPROVE of the
+// contextual review that ratify and notary run once the command holds its L3
+// approval), and the final answer.
 func evalLoopReplies() []fixtures.OllamaReply {
 	replies := []fixtures.OllamaReply{
 		{Content: evalLoopDirectAnswer},
 		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(evalLoopTribunalProposal)}}},
 	}
-	for range 5 {
+	for range 4 {
 		replies = append(replies, fixtures.OllamaReply{Content: evalLoopTribunalCommand})
 	}
 	return append(replies,
+		fixtures.OllamaReply{Content: evalLoopTribunalDissent},
 		fixtures.OllamaReply{Content: `{"risk": "LOW", "rationale": "read-only", "feedback": ""}`},
 		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "rationale": "correct"}`},
+		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "rationale": "governance decisions consistent"}`},
 		fixtures.OllamaReply{Content: evalLoopTribunalAnswer},
 	)
 }
@@ -559,7 +587,8 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 
 // verifyTribunalTrace checks the Tribunal campaign's trace: two agent turns, and
 // one intent tool call whose deliberation made five generations, one marshal
-// call and one audit call. The approved arguments ran as one governed MCP_CALL.
+// call, one audit call, and one contextual review audit of the admitted
+// command. The approved arguments ran as one governed MCP_CALL.
 func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
 	counts := make(map[string]int, len(trace.ModelCalls))
 	for _, call := range trace.ModelCalls {
@@ -568,13 +597,13 @@ func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
 	for _, want := range []struct {
 		purpose string
 		calls   int
-	}{{evalLoopPurposeTurn, 2}, {evalLoopPurposeGenerate, 5}, {evalLoopPurposeMarshal, 1}, {evalLoopPurposeAudit, 1}} {
+	}{{evalLoopPurposeTurn, 2}, {evalLoopPurposeGenerate, 5}, {evalLoopPurposeMarshal, 1}, {evalLoopPurposeAudit, 2}} {
 		if counts[want.purpose] != want.calls {
 			return fmt.Errorf("tribunal trace has %d %s calls, want %d: %w", counts[want.purpose], want.purpose, want.calls, constants.ErrValidationFailed)
 		}
 	}
-	if len(trace.ModelCalls) != 9 {
-		return fmt.Errorf("tribunal trace has %d model calls, want 9: %w", len(trace.ModelCalls), constants.ErrValidationFailed)
+	if len(trace.ModelCalls) != 10 {
+		return fmt.Errorf("tribunal trace has %d model calls, want 10: %w", len(trace.ModelCalls), constants.ErrValidationFailed)
 	}
 	if len(trace.ToolCalls) != 1 {
 		return fmt.Errorf("tribunal trace has %d tool calls, want 1: %w", len(trace.ToolCalls), constants.ErrValidationFailed)

@@ -29,18 +29,32 @@ interface Props {
 export function ApprovalsView({ autoApproveTxHash, focusEnrollmentId, recoveryToken }: Props) {
   const { transactions, enrollments, canReviewEnrollments, reload } = useApprovals();
   const toast = useToast();
+  // pending is the one decision whose passkey ceremony or request is in
+  // progress; a browser runs one WebAuthn ceremony at a time. executing holds
+  // signed approvals still waiting for their execution, which may suspend
+  // another transaction (such as a Tribunal command's review inference) that
+  // must stay approvable meanwhile.
   const [pending, setPending] = useState<string | null>(null);
+  const [executing, setExecuting] = useState<ReadonlySet<string>>(new Set());
   const [denying, setDenying] = useState(false);
 
   const approve = async (txHash: string) => {
     setPending(txHash);
     try {
-      const out = await approveTransaction(txHash);
+      const out = await approveTransaction(txHash, () => {
+        setExecuting((current) => new Set(current).add(txHash));
+        setPending(null);
+      });
       toast(out.ok ? 'success' : 'error', out.message);
     } catch (err) {
       toast('error', errorText(err));
     } finally {
-      setPending(null);
+      setPending((current) => (current === txHash ? null : current));
+      setExecuting((current) => {
+        const next = new Set(current);
+        next.delete(txHash);
+        return next;
+      });
       await reload();
     }
   };
@@ -141,15 +155,19 @@ export function ApprovalsView({ autoApproveTxHash, focusEnrollmentId, recoveryTo
                     <button
                       type="button"
                       className="btn btn-sm btn-primary"
-                      disabled={pending !== null}
+                      disabled={pending !== null || executing.has(tx.transaction_hash)}
                       onClick={() => void approve(tx.transaction_hash)}
                     >
-                      {pending === tx.transaction_hash && !denying ? 'Waiting for passkey…' : 'Approve'}
+                      {executing.has(tx.transaction_hash)
+                        ? 'Executing…'
+                        : pending === tx.transaction_hash && !denying
+                          ? 'Waiting for passkey…'
+                          : 'Approve'}
                     </button>
                     <button
                       type="button"
                       className="btn btn-sm btn-danger"
-                      disabled={pending !== null}
+                      disabled={pending !== null || executing.has(tx.transaction_hash)}
                       onClick={() => void deny(tx.transaction_hash)}
                     >
                       {pending === tx.transaction_hash && denying ? 'Denying…' : 'Deny'}

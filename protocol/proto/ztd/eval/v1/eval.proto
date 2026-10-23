@@ -1592,6 +1592,10 @@ message CandidateOutput {
   // steps never set it and agent-trace.v8 rejects it.
   string command = 1;
   ztd.operator.v1.RunShellCommandArguments arguments = 2;
+  // excluded marks a candidate that matched Nemesis's adversarial proposal in
+  // its round, Nemesis's own included. It is recorded but never tallied, so it
+  // can never be the selected command.
+  bool excluded = 3;
 }
 
 message CandidateVote {

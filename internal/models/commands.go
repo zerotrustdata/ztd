@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -70,6 +71,12 @@ func (r RunShellCommandRequest) CanonicalJSON() string {
 	_ = json.Unmarshal(b, &fields)
 	canonical, _ := json.Marshal(fields)
 	return string(canonical)
+}
+
+// DoctrineCheckPayload returns the run_shell_command MCP_CALL payload that L1
+// doctrine screens for this request, the same shape live dispatch carries.
+func (r RunShellCommandRequest) DoctrineCheckPayload() *operatorv1.McpCallRequested {
+	return &operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: r.CanonicalJSON()}
 }
 
 // Proto converts the native request to the shared execution argument type.

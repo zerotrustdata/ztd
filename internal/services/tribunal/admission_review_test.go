@@ -171,7 +171,7 @@ func TestReviewAdmittedRevisionRequiresFreshDecisions(t *testing.T) {
 
 func TestReviewAdmittedSkipsDeniedAndUnevidencedEnvelopes(t *testing.T) {
 	for name, env := range map[string]*commonv1.GovernanceEnvelope{
-		"human denial":        admittedEnvelope(&commonv1.L3Metadata{Denied: true}, admittedVote()),
+		"human denial":         admittedEnvelope(&commonv1.L3Metadata{Denied: true}, admittedVote()),
 		"no L2 or L3 evidence": admittedEnvelope(nil),
 	} {
 		t.Run(name, func(t *testing.T) {
