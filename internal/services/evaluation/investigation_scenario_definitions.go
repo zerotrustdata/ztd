@@ -174,12 +174,14 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 		"Lite is not eligible for full investigation scenarios.",
 		"Homogeneous lane verifies investigation diagnosis and evidence.",
 		"Heterogeneous lane verifies investigation pipeline execution.",
-		[]string{"model_inference"},
+		[]string{"model_inference", "tool_call"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
 		RequiredTerms:  requiredTerms,
 		ForbiddenTerms: s.Objective.AnswerConcepts.Forbidden,
 	}
+	gold.FileState = s.Objective.FileState
+	gold.GovernedProbe = s.Objective.GovernedProbe
 	gold.GoldEvidenceReferences = goldRefs
 
 	return ScenarioBlueprint{

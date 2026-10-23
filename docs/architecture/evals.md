@@ -386,7 +386,7 @@ The checkout diagnosis rubric accepts “checkout API” and ordinary upstream w
 
 #### Seeded Investigations
 
-Three seeded-investigation fixtures live under `eval/investigations/` and run through the built-in `CampaignAgentExecutor` like every other assignment. ztd defines no external system-under-test contract: an external agent will be specified against the current Gateway contract when one exists.
+Three seeded-investigation fixtures live under `eval/investigations/` and run through the built-in `CampaignAgentExecutor` like every other assignment. Fixture seeding dispatches `EVAL_WORKSPACE_SEED`, confined to attempt-scoped workspaces (`<workDir>/workspaces/ws-<16hex>/...` or sentinels) without an L2 consensus round. Seeded investigations enforce strict grading: attempts must make at least one successful tool observation (`tool_call` evidence), satisfy `objective.file_state` checks (`file-state` observation grade), and pass any post-attempt `objective.governed_probe` command (`governed-probe` observation grade). An answer with zero tool calls fails trajectory with `NO_TOOL_CALL`. ztd defines no external system-under-test contract: an external agent will be specified against the current Gateway contract when one exists.
 
 #### Campaign Run Stop Requests
 

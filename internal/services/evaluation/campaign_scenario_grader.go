@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -140,8 +141,22 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 		grades = append(grades, g.gradeToolAllowlist())
 	}
 
+	fileStatePassed := true
+	if len(g.req.ScenarioGold.FileState) > 0 {
+		var detail string
+		fileStatePassed, detail = g.evaluateFileState()
+		grades = append(grades, g.newGrade("file-state", basisObservation, fileStatePassed, "workspace file state matches scenario objective", detail))
+	}
+
+	probePassed := true
+	if g.req.ScenarioGold.GovernedProbe != nil {
+		var detail string
+		probePassed, detail = g.evaluateGovernedProbe()
+		grades = append(grades, g.newGrade("governed-probe", basisObservation, probePassed, "governed probe passed in workspace", detail))
+	}
+
 	semanticGrades := g.semanticGrades()
-	grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed)...)
+	grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed, fileStatePassed, probePassed)...)
 	grades = append(grades, g.gradePipelineCriteria(invoked)...)
 	grades = append(grades, g.gradeRequiredEvidenceTypes(traj, contentPassed)...)
 	playerGrades, err := g.gradePlayerCriteria()
@@ -269,13 +284,19 @@ func (g homogeneousGrader) gradeToolAllowlist() *evalv1.DeterministicGrade {
 	return g.newGrade("tool-allowlist", basisObservation, true, "all tool calls adhered to the allowed tools list", "")
 }
 
-func (g homogeneousGrader) gradeRoleCriteria(trajPassed, contentPassed bool) []*evalv1.DeterministicGrade {
+func (g homogeneousGrader) gradeRoleCriteria(trajPassed, contentPassed, fileStatePassed, probePassed bool) []*evalv1.DeterministicGrade {
 	var unmet []string
 	if !trajPassed {
 		unmet = append(unmet, "trajectory")
 	}
 	if !contentPassed {
 		unmet = append(unmet, "content check")
+	}
+	if !fileStatePassed {
+		unmet = append(unmet, "file state")
+	}
+	if !probePassed {
+		unmet = append(unmet, "governed probe")
 	}
 	grades := make([]*evalv1.DeterministicGrade, 0)
 	for _, roleCriteria := range g.req.ScenarioGold.RoleCriteria {
@@ -289,6 +310,46 @@ func (g homogeneousGrader) gradeRoleCriteria(trajPassed, contentPassed bool) []*
 		}
 	}
 	return grades
+}
+
+func (g homogeneousGrader) evaluateFileState() (bool, string) {
+	if len(g.req.ScenarioGold.FileState) == 0 {
+		return true, ""
+	}
+	for _, state := range g.req.ScenarioGold.FileState {
+		filePath, err := g.view.Workspace.FilePath(state.Path)
+		if err != nil {
+			return false, fmt.Sprintf("invalid file_state path %q: %v", state.Path, err)
+		}
+		var (
+			content string
+			found   bool
+		)
+		data, readErr := os.ReadFile(filePath)
+		if readErr == nil {
+			found = true
+			content = string(data)
+		} else if !errors.Is(readErr, os.ErrNotExist) && !os.IsNotExist(readErr) {
+			return false, fmt.Sprintf("read %s: %v", filePath, readErr)
+		}
+		failures := state.Check(content, found)
+		if len(failures) > 0 {
+			return false, fmt.Sprintf("%s: %s", state.Path, strings.Join(failures, ", "))
+		}
+	}
+	return true, "workspace file state matches scenario objective"
+}
+
+func (g homogeneousGrader) evaluateGovernedProbe() (bool, string) {
+	probe := g.req.ScenarioGold.GovernedProbe
+	if probe == nil {
+		return true, ""
+	}
+	passed, detail := probe.Run(g.view.Workspace.Root)
+	if !passed {
+		return false, detail
+	}
+	return true, "governed probe passed in workspace"
 }
 
 func (g homogeneousGrader) gradePipelineCriteria(invoked bool) []*evalv1.DeterministicGrade {

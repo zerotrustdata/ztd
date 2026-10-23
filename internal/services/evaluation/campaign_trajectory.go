@@ -211,6 +211,21 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 				}
 			}
 		}
+		if len(tools.AllowedTools) > 0 {
+			observed := false
+			for _, call := range calls {
+				if call.Success && !call.IsDenied() {
+					observed = true
+					break
+				}
+			}
+			if !observed {
+				return trajectoryResult{
+					Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
+					Passed:  false,
+				}
+			}
+		}
 		return trajectoryResult{
 			Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT,
 			Passed:  true,

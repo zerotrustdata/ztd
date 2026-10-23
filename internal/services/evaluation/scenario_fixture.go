@@ -16,6 +16,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -276,6 +277,8 @@ type ScenarioGoldCriteria struct {
 	PipelineCriteria       []ScenarioPipelineCriteria      `json:"pipeline_criteria"`
 	ContentCheck           *ScenarioContentCheck           `json:"content_check,omitempty"`
 	ArgumentValidators     []ToolArgumentValidator         `json:"argument_validators,omitempty"`
+	FileState              []investigation.FileState       `json:"file_state,omitempty"`
+	GovernedProbe          *investigation.GovernedProbe    `json:"governed_probe,omitempty"`
 	Players                *ScenarioPlayerExpectations     `json:"players,omitempty"`
 	PromptHint             *ScenarioPromptHint             `json:"prompt_hint,omitempty"`
 	PolicyExpectation      ScenarioPolicyExpectation       `json:"policy_expectation"`

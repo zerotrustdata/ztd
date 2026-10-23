@@ -98,6 +98,7 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 		ActionTypeDocumentDelete,
 		ActionTypeDocumentUpdate,
 		ActionTypeEvalAnswer,
+		ActionTypeEvalWorkspaceSeed,
 		ActionTypeExecuteBash,
 		ActionTypeFetchFileDiff,
 		ActionTypeFetchFileHistory,
