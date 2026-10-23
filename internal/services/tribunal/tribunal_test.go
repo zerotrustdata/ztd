@@ -139,6 +139,61 @@ func argsFor(command string) models.RunShellCommandRequest {
 	return models.RunShellCommandRequest{Command: fields[0], Args: fields[1:]}
 }
 
+func TestVoteExcludesNemesisAndMatchingProposals(t *testing.T) {
+	candidates := []Candidate{
+		{Member: MemberAxiom, Arguments: argsFor("ss -tlpn")},
+		{Member: MemberConcord, Arguments: argsFor("ss -tlpn")},
+		{Member: MemberVariance, Arguments: argsFor("ss -tlpn")},
+		{Member: MemberPragma, Arguments: argsFor("netstat -tlpn")},
+		{Member: MemberNemesis, Arguments: argsFor("ss -tlpn")},
+	}
+	v := vote(1, candidates)
+	// ss -tlpn matches Nemesis, so it and all matching proposals are excluded.
+	// Only netstat -tlpn remains, but it has support 1 < MinConsensus (2), so no winner (triggers round 2).
+	assert.Empty(t, v.Winner.CommandLine())
+	require.Len(t, v.Clusters, 1)
+	assert.Equal(t, "netstat -tlpn", v.Clusters[0].Arguments.CommandLine())
+	assert.Equal(t, []Member{MemberPragma}, v.Clusters[0].Members)
+}
+
+func TestRunRestartsOnNemesisExclusion(t *testing.T) {
+	// In round 1, Axiom/Concord/Variance propose "ss -tlpn", Nemesis also proposes "ss -tlpn", Pragma proposes "netstat -tlpn".
+	// "ss -tlpn" is excluded because Nemesis proposed it. "netstat -tlpn" has only 1 vote (< MinConsensus 2).
+	// This MUST trigger round 2.
+	// In round 2, members converge on "pwd" (with Nemesis proposing "ls"), and "pwd" is approved.
+	inferer := &fakeInferer{
+		generate: func(round uint32, member Member) string {
+			if round == 1 {
+				if member == MemberPragma {
+					return proposalAnswer("netstat -tlpn")
+				}
+				if member == MemberNemesis {
+					return proposalAnswer("ss -tlpn")
+				}
+				return proposalAnswer("ss -tlpn")
+			}
+			// round 2
+			if member == MemberNemesis {
+				return proposalAnswer("ls")
+			}
+			return proposalAnswer("pwd")
+		},
+		marshal: lowRisk,
+		audit:   []string{approve},
+	}
+	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
+	require.NoError(t, err)
+	assert.Equal(t, OutcomeApproved, result.Outcome)
+	assert.Equal(t, "pwd", result.Arguments.Command)
+	// 2 generation rounds of 5 members each: 10 candidate inferences
+	assert.Len(t, result.Candidates, 2*len(AllMembers))
+	round2 := inferer.calls[len(AllMembers)]
+	assert.Equal(t, uint32(2), round2.Round)
+	// The anonymized prompt should present the remaining cluster from round 1 (netstat)
+	assert.Contains(t, round2.User, "netstat")
+	assert.NotContains(t, round2.User, "ss -tlpn")
+}
+
 func TestVote(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -160,17 +215,13 @@ func TestVote(t *testing.T) {
 			winner:   "ss -tlpn",
 		},
 		{
-			name:     "equal-length tie broken against Nemesis",
-			commands: map[Member]string{MemberAxiom: "ls -a", MemberConcord: "ls -a", MemberVariance: "ls -l", MemberPragma: "pwd", MemberNemesis: "ls -l"},
-			winner:   "ls -a",
-		},
-		{
-			name:     "equal-length tie without Nemesis has no winner",
+			name:     "equal-length tie broken by first cluster",
 			commands: map[Member]string{MemberAxiom: "ls -a", MemberConcord: "ls -a", MemberVariance: "ls -l", MemberPragma: "ls -l", MemberNemesis: "pwd"},
+			winner:   "",
 		},
 		{
 			name:     "empty proposals join no cluster",
-			commands: map[Member]string{MemberAxiom: "", MemberConcord: "", MemberVariance: "", MemberPragma: "pwd", MemberNemesis: "pwd"},
+			commands: map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "", MemberPragma: "", MemberNemesis: "ls"},
 			winner:   "pwd",
 		},
 	}
@@ -187,9 +238,9 @@ func TestVote(t *testing.T) {
 }
 
 func TestVoteUnanimous(t *testing.T) {
-	all := map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "pwd"}
+	all := map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "ls"}
 	assert.True(t, vote(1, candidatesFor(all)).Unanimous())
-	all[MemberNemesis] = "ls"
+	all[MemberPragma] = "whoami"
 	assert.False(t, vote(1, candidatesFor(all)).Unanimous())
 }
 
@@ -228,10 +279,10 @@ func TestDecodeAnswerSentinel(t *testing.T) {
 
 func TestAudit(t *testing.T) {
 	split := vote(1, candidatesFor(map[Member]string{
-		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
+		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "netstat -tlpn", MemberPragma: "lsof -i", MemberNemesis: "ps",
 	}))
 	unanimous := vote(1, candidatesFor(map[Member]string{
-		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "ss -tlpn",
+		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "ps",
 	}))
 	tests := []struct {
 		name     string
@@ -291,11 +342,11 @@ func TestAudit(t *testing.T) {
 
 func TestAuditClustersLabelWinnerFirst(t *testing.T) {
 	v := vote(1, candidatesFor(map[Member]string{
-		MemberAxiom: "lsof -i", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "netstat",
+		MemberAxiom: "lsof -i", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat", MemberNemesis: "ps",
 	}))
 	clusters := auditClusters(v)
 	require.Len(t, clusters, 3)
-	assert.Equal(t, Cluster{ID: "cluster_a", Arguments: argsFor("ss -tlpn"), Members: []Member{MemberConcord, MemberVariance, MemberPragma}}, clusters[0])
+	assert.Equal(t, Cluster{ID: "cluster_a", Arguments: argsFor("ss -tlpn"), Members: []Member{MemberConcord, MemberVariance}}, clusters[0])
 	assert.Equal(t, "cluster_b", clusters[1].ID)
 	assert.Equal(t, "lsof -i", clusters[1].Arguments.CommandLine())
 	assert.Equal(t, "cluster_c", clusters[2].ID)
@@ -342,6 +393,9 @@ func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
 	inferer := &fakeInferer{
 		generate: func(round uint32, member Member) string {
 			if round == 2 {
+				if member == MemberNemesis {
+					return proposalAnswer("other")
+				}
 				return proposalAnswer("pwd")
 			}
 			return proposalAnswer(distinct[member])
@@ -424,14 +478,14 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 		},
 		{
 			name:         "swap to another cluster Marshal rates HIGH is blocked",
-			audit:        `{"verdict": "SWAP", "swap_to_cluster": "cluster_c"}`,
+			audit:        `{"verdict": "SWAP", "swap_to_cluster": "cluster_b"}`,
 			marshalFinal: highRisk,
-			outcome:      OutcomeBlocked, subject: "lsof -i", riskLevel: RiskHigh, marshalCalls: 2,
+			outcome:      OutcomeBlocked, subject: "netstat -tlpn", riskLevel: RiskHigh, marshalCalls: 2,
 		},
 		{
 			name:    "swap to another cluster Marshal rates LOW is approved",
-			audit:   `{"verdict": "SWAP", "swap_to_cluster": "cluster_c"}`,
-			outcome: OutcomeApproved, command: "lsof -i", subject: "lsof -i", riskLevel: RiskLow, marshalCalls: 2,
+			audit:   `{"verdict": "SWAP", "swap_to_cluster": "cluster_b"}`,
+			outcome: OutcomeApproved, command: "netstat -tlpn", subject: "netstat -tlpn", riskLevel: RiskLow, marshalCalls: 2,
 		},
 	}
 	for _, tt := range tests {

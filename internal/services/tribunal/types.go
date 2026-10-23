@@ -181,11 +181,11 @@ type Vote struct {
 	Winner models.RunShellCommandRequest
 }
 
-// Unanimous reports whether every panel member proposed the winner.
+// Unanimous reports whether every eligible panel member (all non-Nemesis members) proposed the winner.
 func (v Vote) Unanimous() bool {
 	for _, cluster := range v.Clusters {
 		if cluster.Arguments.CanonicalJSON() == v.Winner.CanonicalJSON() {
-			return len(cluster.Members) == len(AllMembers)
+			return len(cluster.Members) == len(AllMembers)-1
 		}
 	}
 	return false

@@ -420,6 +420,66 @@ func voteSignerIDs(votes []*commonv1.L2Vote) []string {
 	return ids
 }
 
+func TestTribunalConsensusAllApproveCountsEveryMember(t *testing.T) {
+	env, hash := tribunalTestEnvelope(t)
+	binding := tribunalTestBinding()
+	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
+
+	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
+	if err != nil {
+		t.Fatalf("Deliberate: %v", err)
+	}
+
+	if len(inferer.calls) != 5 {
+		t.Fatalf("inference calls = %d, want 5 (all members queried)", len(inferer.calls))
+	}
+	called := make([]string, 0, len(inferer.calls))
+	for _, call := range inferer.calls {
+		called = append(called, call.actingAppID)
+	}
+	slices.Sort(called)
+	want := slices.Sorted(slices.Values(binding.MemberAppIDs))
+	if !slices.Equal(called, want) {
+		t.Fatalf("called members = %v, want all members %v", called, want)
+	}
+	if len(signer.calls) != 5 {
+		t.Fatalf("sign calls = %d, want 5", len(signer.calls))
+	}
+	for i, sign := range signer.calls {
+		if sign.memberAppID != binding.MemberAppIDs[i] {
+			t.Fatalf("sign %d member = %s, want %s (binding order)", i, sign.memberAppID, binding.MemberAppIDs[i])
+		}
+	}
+
+	deliberated := unmarshalDeliberatedEnvelope(t, out)
+	l2 := deliberated.GetGovernance().GetL2()
+	if got := l2.GetConsensusSetId(); got != tribunalTestBindingID {
+		t.Fatalf("consensus_set_id = %q, want %q", got, tribunalTestBindingID)
+	}
+	if len(l2.GetVotes()) != 5 {
+		t.Fatalf("votes = %d, want 5", len(l2.GetVotes()))
+	}
+	for _, vote := range l2.GetVotes() {
+		if !vote.GetDecision() {
+			t.Fatalf("vote from %s is not approve", vote.GetSignerKeyId())
+		}
+		assertVoteSignature(t, signer, hash, vote)
+	}
+
+	rehash, err := govpkg.GenerateMessageID(deliberated)
+	if err != nil {
+		t.Fatalf("re-hash deliberated envelope: %v", err)
+	}
+	if rehash != hash {
+		t.Fatalf("re-hash = %s, want original hash %s; envelope changed outside Governance.L2", rehash, hash)
+	}
+	if deliberated.GetTransactionHash() != hash || deliberated.GetId() != hash {
+		t.Fatalf("transaction_hash/id changed: id=%s tx=%s", deliberated.GetId(), deliberated.GetTransactionHash())
+	}
+}
+
 func TestTribunalConsensusAllApproveStopsAtQuorum(t *testing.T) {
 	env, hash := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()

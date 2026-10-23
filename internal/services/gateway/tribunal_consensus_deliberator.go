@@ -106,9 +106,9 @@ func NewTribunalConsensusDeliberator(store consensusBindingReader, policies cons
 	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, logger: logger}, nil
 }
 
-// Deliberate collects member votes on the envelope until quorum is met or can
-// no longer be met. Members are asked in binding order, in concurrent batches
-// of the approvals still needed, and stop once the context ends. A member that
+// Deliberate collects the outcome of all bound Tribunal members before returning,
+// subject to context cancellation and existing inference, signing, and audit failures.
+// Members are asked in binding order and stop once the context ends. A member that
 // cannot run its inference or sign casts no vote; an answer that is not a
 // strict approve is a signed deny. Every
 // member's outcome, with its stated reason, is recorded as a
@@ -150,21 +150,11 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	if err != nil {
 		return nil, err
 	}
-	votes := make([]*commonv1.L2Vote, 0, bound.Quorum)
-	approvals := 0
-	for next := 0; ctx.Err() == nil; {
-		needed := bound.Quorum - approvals
-		if needed <= 0 || len(bound.MemberAppIDs)-next < needed {
-			break
-		}
-		batch := bound.MemberAppIDs[next : next+needed]
-		next += needed
-		for i, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
-			if approved, signed := d.countVote(ctx, &env, bound, batch[i], computed, vote); signed != nil {
+	votes := make([]*commonv1.L2Vote, 0, len(bound.MemberAppIDs))
+	if ctx.Err() == nil && len(bound.MemberAppIDs) > 0 {
+		for i, vote := range d.castVotes(ctx, bound, bound.MemberAppIDs, computed, subject) {
+			if _, signed := d.countVote(ctx, &env, bound, bound.MemberAppIDs[i], computed, vote); signed != nil {
 				votes = append(votes, signed)
-				if approved {
-					approvals++
-				}
 			}
 		}
 	}
