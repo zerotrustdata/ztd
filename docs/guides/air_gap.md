@@ -49,7 +49,7 @@ Documents how to stage ztd for deployment in network-isolated environments using
 | ID | Rule |
 | :--- | :--- |
 | INV-AIR-ISO-01 | Air-gap isolation is an infrastructure property enforced by host, firewall, and network controls. The CLI has no `--air-gap` switch. |
-| INV-AIR-ISO-02 | Every optional integration (JWKS, MCP/A2A proxies, consensus, LLM providers) MUST use an approved internal endpoint or remain unset. Public endpoints MUST NOT be configured inside the air gap. |
+| INV-AIR-ISO-02 | The JWT/JWKS verifier is enabled only when `Gateway.JWKSURL` (`internal/config/config.go`) is non-empty. The shipped `ztd gw start` does not set it: the production serve path (`internal/cli/serve/gateway.go`) does not pass it, and no CLI flag or environment variable exposes it. Every other optional integration (MCP/A2A proxies, consensus, LLM providers) MUST use an approved internal endpoint or remain unset. Public endpoints MUST NOT be configured inside the air gap. |
 | INV-AIR-ISO-03 | Governance admits tools only when invoked through a governed ingress and executed by the L5 Actuator (`INV-ARCH-INGR-01` in `docs/architecture/overview.md`). Client-native tools, direct shell execution, and external MCP servers run outside the governance boundary, so network policy alone MUST control their reachability to DNS, HTTP, SSH, and cloud metadata endpoints. |
 
 ### Build and Transfer (`INV-AIR-BUILD`)

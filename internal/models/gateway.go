@@ -273,16 +273,6 @@ type SSEEventsResponse struct {
 	Count  int           `json:"count"`
 }
 
-// SSEEventsCountResponse is the typed response for GET /api/v1/sse/events/count.
-type SSEEventsCountResponse struct {
-	Count int64 `json:"count"`
-}
-
-// SSEEventsWipeResponse is the typed response for DELETE /api/v1/sse/events.
-type SSEEventsWipeResponse struct {
-	Deleted int64 `json:"deleted"`
-}
-
 // TrustedSignersResponse is the typed response for GET /api/governance/signers.
 type TrustedSignersResponse struct {
 	Success bool            `json:"success"`

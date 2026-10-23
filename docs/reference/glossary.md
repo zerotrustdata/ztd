@@ -62,6 +62,12 @@ The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLA
 
 ---
 
+## Autochthon
+
+The `ztd autochthon` runtime (`internal/services/autochthon/`). It is a standalone observer, not an Operator mode. It runs in the foreground with no Gateway, enrollment, or listener. It samples the host once per second, breeds a fixed-topology predictor by selection and mutation (no gradient training), and records each sample in a hash-chained tally under `.ztd/autochthon/`. It accepts no **Governance Envelope** and produces no **Action Receipt**. `ztd autochthon status` verifies the tally chain. See [Operator Architecture](../architecture/operator.md#autochthon-subsystem).
+
+---
+
 ## Bound State Root
 
 The admission-gating **State Root** read from `StateRootService`. It is the root of a persisted incremental SHA-256 Merkle commitment (algorithm 2) over: all authoritative `documents` rows, bound-tier `kv_store` entries (`state_tier = 'bound'`), bound-tier `blobs` entries (`state_tier = 'bound'`), and the token keymap hash provided by `KeymapHashProvider` when the scrubbing service is attached. A write marks only its own leaf dirty; a read rehashes the dirty leaves and their ancestor paths. Nonces and SSE events are not state sources, and observed-tier rows (`state_tier = 'observed'`) are committed to the separate **Observed-State Root**, so telemetry does not continuously invalidate in-flight envelopes.
@@ -184,6 +190,12 @@ The `events` table in `ztd.db` (`internal/services/storage/audit_store.go`). It 
 
 ---
 
+## FIPS Approved Mode
+
+The Go Cryptographic Module state of a `ztd` linux/amd64 binary built with `GOFIPS140=v1.0.0` (`make fips-build`). The build links Go Cryptographic Module v1.0.0, which initializes into approved mode by default. The `Makefile` cites it as CMVP Certificate #5247. `ztd version --fips` reports whether approved mode is active and exits non-zero if it is not (`internal/cli/cmd/version/version.go`). `GODEBUG=fips140=only` turns on enforcement; `make fips-verify` runs under it. The compliance claim covers only that build target. See [FIPS 140-3 Reference](fips140-3.md) for scope and limits.
+
+---
+
 ## Gateway Peer
 
 A workload identity reserved for Gateway-to-Gateway trust, with SPIFFE URI `spiffe://ztd.local/gateway/<gateway_id>`. The PKI issues certificates from a dedicated `gateway-peer` intermediate CA and includes the CA in the canonical trust bundle.
@@ -225,6 +237,12 @@ L2 Consensus gates only state-changing, non-bootstrap actions (`L2Enforced`, `in
 
 ---
 
+## Governed Document
+
+A collection marked `_governed` in `protocol/constants/collections.json`, which lets `DOCUMENT_UPDATE` and `DOCUMENT_DELETE` envelopes target it (`CollectionName.IsGovernedDocument` in `internal/constants/collections.go`). Application records such as cases and tasks are governed documents. Platform-authority collections, such as `users`, `trusted_signers`, `app_policies`, and `revoked_certificates`, are not, and are written only by their owning Gateway service. A document action against any other collection fails closed with `ErrTxDocumentCollectionNotGoverned` (INV-GOV-WARD-06 in [Governance Architecture](../architecture/governance.md)).
+
+---
+
 ## Governed Operator
 
 The Policy Execution Point (PEP) deployed on a target host (`ztd operator`). It opens no inbound listening ports, establishes an outbound-only mTLS connection to the Gateway, pulls work from its session-specific channel (`cmd:<operator_id>:<operator_session_id>`), and re-runs L1 Doctrine and verifies L2 Consensus and L3 Notary locally before executing through L4 Warden and L5 Actuator. It is the sole component authorized to mutate its host and retains host-authoritative audit and file-history evidence.
@@ -251,7 +269,7 @@ A typed, machine-evaluable security requirement defined in the FedRAMP 20x catal
 
 ## L1 Doctrine (L1Doctrine)
 
-The technical hard-gate governance layer (`internal/services/governance/l1_doctrine.go`). It validates decoded typed payloads against protobuf field-option regex rules (`forbidden_patterns`), bundled JSON doctrine sets, and deterministic threat analysis covering shell commands and MCP arguments, including MITRE ATT&CK patterns. L1 is enforced across all governance postures at Gateway admission and is re-run independently on the Operator prior to dispatch.
+The technical hard-gate governance layer (`internal/services/governance/l1_doctrine.go`). It validates decoded typed payloads against protobuf field-option regex rules (`forbidden_patterns`), bundled JSON doctrine sets, and deterministic threat analysis covering shell commands and MCP arguments, including MITRE ATT&CK patterns. L1 is enforced across all governance postures. The executing Operator's **L4 Warden** runs it on every envelope before dispatch. The Gateway also runs it on governed HTTP dispatch (`DispatchService.Dispatch`); MCP, A2A, and direct envelope submission have no Gateway-side L1 call.
 
 ---
 
@@ -367,6 +385,12 @@ The identity the transport establishes for a request: the SPIFFE URI SAN of the 
 ## Producer
 
 An app workload that reports agent and run state changes to the Gateway through the mTLS observe producer endpoints (`ObserveProducerController`, `internal/services/gateway/observe_producer_controller.go`). The Gateway derives `user_id` from the delegated user SAN on the peer certificate, never from the request body, and rejects Operator and CLI certificates. Producer reports feed the SSE event streams; see [SSE](../architecture/sse.md#observe-producers).
+
+---
+
+## Provenance Operator
+
+A Governed Operator started with the `provenance` capability (`OperatorCapabilityProvenance` in `internal/constants/status.go`). It acts as an independent witness: it reads the model weight store set by `--model-storage-root` and attests that the served model tag maps to the weights named by the expected digest. See [Model Provenance](../architecture/model-provenance.md).
 
 ---
 
@@ -493,3 +517,9 @@ The statically linked Go executable (`cmd/ztd/main.go`) that operates as a **Gov
 ## ztd Protocol
 
 The canonical wire contract and invariant set for ztd (`protocol/`). It defines protobuf schemas (`ztd.common.v1`, `ztd.operator.v1`, `ztd.compliance.v1`, `ztd.eval.v1`, `ztd.pubsub.v1`, `ztd.tribunal.v1`), Go protocol libraries and TypeScript bindings, JSON constant registries (`protocol/constants/`, such as `events.json`, `status.json`, and `intents.json`), JSON model schemas, doctrine definitions, SPIFFE workload-identity helpers, receipt verification routines, and compliance crosswalks. Client-facing protobuf messages use protojson on wire boundaries.
+
+---
+
+## ztdg / ztdo
+
+Shorthand labels for the two runtime roles, not separate binaries. `ztdg` is the Governance Gateway (`ztd gw`), and `ztdo` is the Governed Operator (`ztd operator`). Both run from the single `ztd` executable. The labels appear in the CLI root help (`internal/cli/cmd/main.go`), the Gateway command help (`internal/cli/cmd/gw/gateway.go`), the `ztdo` component name constant (`internal/constants/status.go`), and the Gateway CA bundle filename `ztdg-ca-bundle.pem` (`internal/constants/paths.go`).

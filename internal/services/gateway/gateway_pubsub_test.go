@@ -449,114 +449,10 @@ func TestExtractMTLSIdentity_MalformedOperatorSPIFFEID(t *testing.T) {
 	assert.Empty(t, operatorID, "operator ID should be empty for malformed operator SPIFFE ID")
 }
 
-// TestPubSubPatternSubscribeAndPublishFanOut verifies the PSUBSCRIBE /
-// PMESSAGE path end-to-end: a subscriber registered via psubscribe for a
-// glob pattern receives a pmessage event (with Type=pmessage, Pattern set,
-// and the original channel preserved) when a matching channel is
-// published. Non-matching channels deliver nothing.
-func TestPubSubPatternSubscribeAndPublishFanOut(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	sub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
-	broker.psubscribe("heartbeat:*", sub)
-
-	// Matching channel delivers a pmessage.
-	require.Equal(t, 1, broker.Publish("heartbeat:op-1:sess-1", []byte(`"thump"`)))
-
-	got := <-sub.buf.recv()
-	var event pubsubv1.PubSubEvent
-	require.NoError(t, proto.Unmarshal(got, &event))
-	assert.Equal(t, constants.PubSubEventPMessage, event.Type, "event type must be pmessage for pattern delivery")
-	assert.Equal(t, "heartbeat:op-1:sess-1", event.Channel, "pmessage must carry the published channel")
-	assert.Equal(t, "heartbeat:*", event.Pattern, "pmessage must carry the matched pattern")
-	assert.Equal(t, []byte(`"thump"`), event.Data)
-
-	// Non-matching channel delivers nothing to the pattern subscriber.
-	assert.Equal(t, 0, broker.Publish("results:op-1:sess-1", []byte(`"nope"`)))
-	select {
-	case extra := <-sub.buf.recv():
-		t.Fatalf("pattern subscriber must not receive non-matching publish; got %v", extra)
-	default:
-	}
-}
-
-// TestPubSubPatternPublish_MalformedPatternSkipped injects a malformed
-// glob pattern directly into patternSubscribers and asserts that Publish
-// does not panic, logs a WARN, and skips the entry without delivering.
-func TestPubSubPatternPublish_MalformedPatternSkipped(t *testing.T) {
-	var logBuf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	sub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
-	// "[" is an invalid glob pattern: path.Match returns ErrBadPattern.
-	broker.mu.Lock()
-	broker.patternSubscribers["heartbeat:["] = map[*wsSubscriber]struct{}{sub: {}}
-	broker.mu.Unlock()
-
-	assert.NotPanics(t, func() {
-		broker.Publish("heartbeat:op-1:sess-1", []byte(`"x"`))
-	})
-
-	assert.Contains(t, logBuf.String(), "malformed pattern", "malformed pattern must be logged at WARN")
-	select {
-	case extra := <-sub.buf.recv():
-		t.Fatalf("subscriber must not receive delivery for a malformed pattern; got %v", extra)
-	default:
-	}
-}
-
-// TestPubSubPatternRemoveSubEvictsFromPatternMaps verifies that removeSub
-// evicts the subscriber from every pattern it was registered under, not
-// just the exact-channel maps.
-func TestPubSubPatternRemoveSubEvictsFromPatternMaps(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	sub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
-	broker.psubscribe("heartbeat:*", sub)
-	broker.psubscribe("results:*", sub)
-
-	broker.removeSub(sub)
-
-	broker.mu.RLock()
-	_, hbPresent := broker.patternSubscribers["heartbeat:*"]
-	_, resPresent := broker.patternSubscribers["results:*"]
-	broker.mu.RUnlock()
-
-	assert.False(t, hbPresent, "removeSub must evict the subscriber from the heartbeat:* pattern map")
-	assert.False(t, resPresent, "removeSub must evict the subscriber from the results:* pattern map")
-}
-
-// TestPubSubClose_ShutsDownPatternSubscribers verifies that Close collects
-// pattern subscribers (alongside exact-channel subscribers) into the
-// shutdown set and clears the patternSubscribers map.
-func TestPubSubClose_ShutsDownPatternSubscribers(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	patSub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
-	exactSub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
-	broker.psubscribe("heartbeat:*", patSub)
-	broker.subscribe("results:op-1:sess-1", exactSub)
-
-	broker.Close()
-
-	assert.True(t, patSub.isDone(), "Close must shut down pattern subscribers")
-	assert.True(t, exactSub.isDone(), "Close must shut down exact-channel subscribers")
-
-	broker.mu.RLock()
-	assert.Empty(t, broker.patternSubscribers, "Close must clear the patternSubscribers map")
-	assert.Empty(t, broker.subscribers, "Close must clear the subscribers map")
-	broker.mu.RUnlock()
-}
-
-// TestPubSubUnsubscribeActionTearsDownBothMaps verifies that the
-// PubSubActionUnsubscribe case evicts the subscriber from both the
-// exact-channel and pattern maps, matching the single
-// UNSUBSCRIBE action for both subscription kinds.
-func TestPubSubUnsubscribeActionTearsDownBothMaps(t *testing.T) {
+// TestPubSubPSubscribeActionIgnored verifies that pattern subscriptions are
+// not part of the wire protocol: a "psubscribe" frame registers nothing, so
+// a glob such as heartbeat:* can never fan out another Operator's traffic.
+func TestPubSubPSubscribeActionIgnored(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
 
@@ -568,145 +464,78 @@ func TestPubSubUnsubscribeActionTearsDownBothMaps(t *testing.T) {
 	}
 	handler := &pubSubSessionHandler{broker: broker, sub: sub}
 
-	// Register the same channel string as both an exact subscription and a
-	// pattern subscription.
-	broker.subscribe("heartbeat:op-1", sub)
-	broker.psubscribe("heartbeat:op-1", sub)
+	handler.handleAction(&pubsubv1.PubSubMessage{Action: "psubscribe", Channel: "heartbeat:*"})
+
+	assert.Equal(t, 0, broker.Publish("heartbeat:op-other:sess-1", []byte(`"thump"`)))
+	broker.mu.RLock()
+	assert.Empty(t, broker.subscribers, "psubscribe must not register a subscription")
+	broker.mu.RUnlock()
+}
+
+// TestPubSubUnsubscribeActionEvictsSubscriber verifies that the
+// PubSubActionUnsubscribe case evicts the subscriber from the channel map.
+func TestPubSubUnsubscribeActionEvictsSubscriber(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	broker := NewGatewayWebSocketHandler(logger)
+
+	sub := &wsSubscriber{
+		buf:              newDropOldestBuf(4),
+		done:             make(chan struct{}),
+		identitySPIFFEID: "spiffe://ztd.local/app/op-1",
+		operatorID:       "op-1",
+	}
+	handler := &pubSubSessionHandler{broker: broker, sub: sub}
+
+	broker.subscribe("heartbeat:op-1:sess-1", sub)
 
 	handler.handleAction(&pubsubv1.PubSubMessage{
 		Action:  constants.PubSubActionUnsubscribe,
-		Channel: "heartbeat:op-1",
+		Channel: "heartbeat:op-1:sess-1",
 	})
 
 	broker.mu.RLock()
-	_, exactPresent := broker.subscribers["heartbeat:op-1"]
-	_, patPresent := broker.patternSubscribers["heartbeat:op-1"]
+	_, present := broker.subscribers["heartbeat:op-1:sess-1"]
 	broker.mu.RUnlock()
 
-	assert.False(t, exactPresent, "UNSUBSCRIBE must evict from the exact-channel map")
-	assert.False(t, patPresent, "UNSUBSCRIBE must evict from the pattern map")
+	assert.False(t, present, "UNSUBSCRIBE must evict from the channel map")
 }
 
-// TestPubSubPSubscribeAction_ACLRejectsCrossOperator verifies that the
-// PubSubActionPSubscribe case enforces verifyPatternACL before registering
-// the subscriber: a cross-operator pattern is rejected and the subscriber
-// is never added to patternSubscribers.
-func TestPubSubPSubscribeAction_ACLRejectsCrossOperator(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	sub := &wsSubscriber{
-		buf:              newDropOldestBuf(4),
-		done:             make(chan struct{}),
-		identitySPIFFEID: "spiffe://ztd.local/app/op-1",
-		operatorID:       "op-1",
-	}
-	handler := &pubSubSessionHandler{broker: broker, sub: sub}
-
-	handler.handleAction(&pubsubv1.PubSubMessage{
-		Action:  constants.PubSubActionPSubscribe,
-		Channel: "heartbeat:op-other:*",
-	})
-
-	broker.mu.RLock()
-	_, present := broker.patternSubscribers["heartbeat:op-other:*"]
-	broker.mu.RUnlock()
-	assert.False(t, present, "cross-operator pattern subscription must be rejected by the ACL")
-}
-
-// TestPubSubPSubscribeAction_ACLAcceptsWildcardAndOwnOperatorID verifies
-// that the PSUBSCRIBE action accepts the wildcard operator_id segment and
-// the subscriber's own operator_id, registering the subscriber in both
-// cases.
-func TestPubSubPSubscribeAction_ACLAcceptsWildcardAndOwnOperatorID(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	broker := NewGatewayWebSocketHandler(logger)
-
-	sub := &wsSubscriber{
-		buf:              newDropOldestBuf(4),
-		done:             make(chan struct{}),
-		identitySPIFFEID: "spiffe://ztd.local/app/op-1",
-		operatorID:       "op-1",
-	}
-	handler := &pubSubSessionHandler{broker: broker, sub: sub}
-
-	for _, pattern := range []string{"heartbeat:*", "heartbeat:op-1:*", "results:op-1"} {
-		handler.handleAction(&pubsubv1.PubSubMessage{
-			Action:  constants.PubSubActionPSubscribe,
-			Channel: pattern,
-		})
-	}
-
-	broker.mu.RLock()
-	_, hbWild := broker.patternSubscribers["heartbeat:*"]
-	_, hbOwn := broker.patternSubscribers["heartbeat:op-1:*"]
-	_, resOwn := broker.patternSubscribers["results:op-1"]
-	broker.mu.RUnlock()
-
-	assert.True(t, hbWild, "wildcard operator_id pattern must be accepted")
-	assert.True(t, hbOwn, "own operator_id pattern must be accepted")
-	assert.True(t, resOwn, "own operator_id exact-segment pattern must be accepted")
-}
-
-// TestVerifyPatternACL is the table-driven security contract for
-// verifyPatternACL: wildcard accepted, own operator_id accepted, other
-// operator_id rejected, missing operator_id rejected, malformed pattern
-// rejected, results:* wildcard accepted.
-func TestVerifyPatternACL(t *testing.T) {
+// TestVerifyChannelACL is the security contract for subscriptions: no
+// workload may subscribe to another Operator's channels, and an Operator
+// certificate may subscribe only to the session it was issued for.
+func TestVerifyChannelACL(t *testing.T) {
 	tests := []struct {
 		name      string
-		pattern   string
+		channel   string
 		operator  string
-		wantErr   bool
+		session   string
 		wantErrIs error
 	}{
-		{
-			name:     "wildcard operator_id accepted",
-			pattern:  "heartbeat:*",
-			operator: "op-1",
-		},
-		{
-			name:     "own operator_id accepted",
-			pattern:  "heartbeat:op-1:*",
-			operator: "op-1",
-		},
-		{
-			name:      "other operator_id rejected",
-			pattern:   "heartbeat:op-other:*",
-			operator:  "op-1",
-			wantErr:   true,
-			wantErrIs: nil, // dynamic fmt.Errorf, no sentinel
-		},
-		{
-			name:      "missing operator_id rejected",
-			pattern:   "heartbeat:*",
-			operator:  "",
-			wantErr:   true,
-			wantErrIs: constants.ErrPubSubCertificateMissingOperatorID,
-		},
-		{
-			name:      "malformed pattern rejected",
-			pattern:   "heartbeat",
-			operator:  "op-1",
-			wantErr:   true,
-			wantErrIs: constants.ErrPubSubInvalidChannelFormat,
-		},
-		{
-			name:     "results wildcard accepted",
-			pattern:  "results:*",
-			operator: "op-1",
-		},
+		{name: "app own channel accepted", channel: "results:op-1:sess-1", operator: "op-1"},
+		{name: "operator own session accepted", channel: "cmd:op-1:sess-1", operator: "op-1", session: "sess-1"},
+		{name: "cross operator rejected", channel: "results:op-other:sess-1", operator: "op-1",
+			wantErrIs: constants.ErrPubSubSubscribeUnauthorized},
+		{name: "cross operator two segments rejected", channel: "heartbeat:op-other", operator: "op-1",
+			wantErrIs: constants.ErrPubSubSubscribeUnauthorized},
+		{name: "operator other session rejected", channel: "cmd:op-1:sess-old", operator: "op-1", session: "sess-1",
+			wantErrIs: constants.ErrPubSubSubscribeUnauthorized},
+		{name: "operator missing session segment rejected", channel: "cmd:op-1", operator: "op-1", session: "sess-1",
+			wantErrIs: constants.ErrPubSubSubscribeUnauthorized},
+		{name: "operator extra segment rejected", channel: "cmd:op-1:sess-1:x", operator: "op-1", session: "sess-1",
+			wantErrIs: constants.ErrPubSubSubscribeUnauthorized},
+		{name: "glob operator segment rejected", channel: "heartbeat:*", operator: "op-1",
+			wantErrIs: constants.ErrPubSubSubscribeUnauthorized},
+		{name: "missing operator identity rejected", channel: "results:op-1:sess-1",
+			wantErrIs: constants.ErrPubSubCertificateMissingOperatorID},
+		{name: "malformed channel rejected", channel: "heartbeat", operator: "op-1",
+			wantErrIs: constants.ErrPubSubInvalidChannelFormat},
 	}
 
 	for _, tt := range tests {
-
 		t.Run(tt.name, func(t *testing.T) {
-			err := verifyPatternACL(tt.pattern, tt.operator)
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.wantErrIs != nil {
-					require.ErrorIs(t, err, tt.wantErrIs)
-				}
+			err := verifyChannelACL(tt.channel, tt.operator, tt.session)
+			if tt.wantErrIs != nil {
+				require.ErrorIs(t, err, tt.wantErrIs)
 				return
 			}
 			assert.NoError(t, err)
@@ -714,17 +543,27 @@ func TestVerifyPatternACL(t *testing.T) {
 	}
 }
 
-// TestVerifyChannelACLRejectsCrossOperator verifies that no workload identity
-// may subscribe to another operator's result or heartbeat channels.
-func TestVerifyChannelACLRejectsCrossOperator(t *testing.T) {
-	otherOperatorID := "a7a272ba-5022-4a89-81f4-28bf30dc1692"
+// TestPubSubSubscribeActionRejectsOtherSession verifies that an Operator
+// connection cannot subscribe to another session's command channel.
+func TestPubSubSubscribeActionRejectsOtherSession(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	broker := NewGatewayWebSocketHandler(logger)
 
-	require.Error(t, verifyChannelACL("results:"+otherOperatorID+":session-123", "op-1"),
-		"cross-operator result channel must be rejected")
-	require.Error(t, verifyChannelACL("heartbeat:"+otherOperatorID, "op-1"),
-		"cross-operator heartbeat channel must be rejected")
-	require.NoError(t, verifyChannelACL("results:op-1:session-123", "op-1"),
-		"own result channel must be accepted")
-	assert.Error(t, verifyPatternACL("results:"+otherOperatorID+":*", "op-1"),
-		"cross-operator result pattern must be rejected")
+	sub := &wsSubscriber{
+		buf:               newDropOldestBuf(4),
+		done:              make(chan struct{}),
+		operatorID:        "op-1",
+		operatorSessionID: "sess-1",
+	}
+	handler := &pubSubSessionHandler{broker: broker, sub: sub}
+
+	handler.handleAction(&pubsubv1.PubSubMessage{
+		Action:  constants.PubSubActionSubscribe,
+		Channel: "cmd:op-1:sess-old",
+	})
+
+	broker.mu.RLock()
+	_, present := broker.subscribers["cmd:op-1:sess-old"]
+	broker.mu.RUnlock()
+	assert.False(t, present, "subscription to another session's channel must be rejected")
 }

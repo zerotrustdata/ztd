@@ -103,9 +103,9 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify event was inserted
-		count, err := sseSvc.SSEEventsCount()
+		rows, err := sseSvc.SSEEventsListSince(route, 0, 100)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), count)
+		assert.Len(t, rows, 1)
 	})
 
 	t.Run("SSEEventsAppend with CLISessionID", func(t *testing.T) {
@@ -114,9 +114,9 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 		_, err := sseSvc.SSEEventsAppend(route, "cli-event", `{"cli":"data"}`, "producer-2")
 		require.NoError(t, err)
 
-		count, err := sseSvc.SSEEventsCount()
+		rows, err := sseSvc.SSEEventsListSince(route, 0, 100)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), count)
+		assert.Len(t, rows, 1)
 	})
 
 	t.Run("SSEEventsAppend with empty producerID", func(t *testing.T) {
@@ -125,9 +125,9 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 		_, err := sseSvc.SSEEventsAppend(route, "test-event", `{"data":"value"}`, "")
 		require.NoError(t, err)
 
-		count, err := sseSvc.SSEEventsCount()
+		rows, err := sseSvc.SSEEventsListSince(route, 0, 100)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), count)
+		assert.Len(t, rows, 1)
 	})
 
 	t.Run("SSEEventsAppend rejects invalid route", func(t *testing.T) {
@@ -148,9 +148,9 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 		_, err := sseSvc.SSEEventsAppend(route, "large-event", string(largePayload), "producer-4")
 		require.NoError(t, err)
 
-		count, err := sseSvc.SSEEventsCount()
+		rows, err := sseSvc.SSEEventsListSince(route, 0, 100)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), count)
+		assert.Len(t, rows, 1)
 	})
 
 	t.Run("SSEEventsAppend with special characters in payload", func(t *testing.T) {
@@ -164,64 +164,6 @@ func TestSSEEventService_SSEEventsAppend(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, specialPayload, events[0].Payload)
-	})
-}
-
-func TestSSEEventService_SSEEventsCount(t *testing.T) {
-
-	t.Run("SSEEventsCount returns 0 for empty table", func(t *testing.T) {
-		sseSvc := setupSSEEventServiceTest(t)
-		count, err := sseSvc.SSEEventsCount()
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), count)
-	})
-
-	t.Run("SSEEventsCount returns correct count after inserts", func(t *testing.T) {
-		sseSvc := setupSSEEventServiceTest(t)
-		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-count"}
-		for i := 0; i < 5; i++ {
-			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
-			require.NoError(t, err)
-		}
-
-		count, err := sseSvc.SSEEventsCount()
-		require.NoError(t, err)
-		assert.Equal(t, int64(5), count)
-	})
-}
-
-func TestSSEEventService_SSEEventsWipe(t *testing.T) {
-
-	t.Run("SSEEventsWipe deletes all rows", func(t *testing.T) {
-		sseSvc := setupSSEEventServiceTest(t)
-		// Insert some events
-		route := SSERoute{UserID: "test-user", WebSessionID: "web-session-wipe"}
-		for i := 0; i < 10; i++ {
-			_, err := sseSvc.SSEEventsAppend(route, "event", `{"data":"value"}`, "producer")
-			require.NoError(t, err)
-		}
-
-		// Verify count
-		count, err := sseSvc.SSEEventsCount()
-		require.NoError(t, err)
-		assert.Equal(t, int64(10), count)
-
-		// Wipe
-		deleted, err := sseSvc.SSEEventsWipe()
-		require.NoError(t, err)
-		assert.Equal(t, int64(10), deleted)
-
-		// Verify empty
-		count, err = sseSvc.SSEEventsCount()
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), count)
-	})
-
-	t.Run("SSEEventsWipe returns 0 for empty table", func(t *testing.T) {
-		sseSvc := setupSSEEventServiceTest(t)
-		deleted, err := sseSvc.SSEEventsWipe()
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), deleted)
 	})
 }
 

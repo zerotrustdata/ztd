@@ -32,7 +32,7 @@ const (
 // Clients send this message to subscribe, unsubscribe, or publish on a channel.
 type PubSubMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Action        string                 `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`   // Operation to perform: "subscribe", "psubscribe", "unsubscribe", or "publish".
+	Action        string                 `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`   // Operation to perform: "subscribe", "unsubscribe", or "publish".
 	Channel       string                 `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"` // Target channel name. Follows the convention "{prefix}:{operator_id}:{session_id}".
 	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`       // Payload bytes for publish actions. Empty for subscribe/unsubscribe.
 	unknownFields protoimpl.UnknownFields
@@ -94,10 +94,9 @@ func (x *PubSubMessage) GetData() []byte {
 // The broker emits events for message delivery, subscription acknowledgments, and errors.
 type PubSubEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`       // Event type: "message", "pmessage", "subscribed", "unsubscribed", or "error".
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`       // Event type: "message", "subscribed", "unsubscribed", or "error".
 	Channel       string                 `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"` // Channel the event pertains to.
-	Pattern       string                 `protobuf:"bytes,3,opt,name=pattern,proto3" json:"pattern,omitempty"` // Pattern matched for pmessage events. Empty for direct channel deliveries.
-	Data          []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`       // Message payload for message/pmessage events. Empty for acknowledgment events.
+	Data          []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`       // Message payload for message events. Empty for acknowledgment events.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -146,13 +145,6 @@ func (x *PubSubEvent) GetChannel() string {
 	return ""
 }
 
-func (x *PubSubEvent) GetPattern() string {
-	if x != nil {
-		return x.Pattern
-	}
-	return ""
-}
-
 func (x *PubSubEvent) GetData() []byte {
 	if x != nil {
 		return x.Data
@@ -168,12 +160,11 @@ const file_ztd_pubsub_v1_pubsub_proto_rawDesc = "" +
 	"\rPubSubMessage\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x12\n" +
-	"\x04data\x18\x03 \x01(\fR\x04data\"i\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"^\n" +
 	"\vPubSubEvent\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x18\n" +
-	"\achannel\x18\x02 \x01(\tR\achannel\x12\x18\n" +
-	"\apattern\x18\x03 \x01(\tR\apattern\x12\x12\n" +
-	"\x04data\x18\x04 \x01(\fR\x04dataBDZBgithub.com/zerotrustdata/ztd/protocol/proto/ztd/pubsub/v1;pubsubv1b\x06proto3"
+	"\achannel\x18\x02 \x01(\tR\achannel\x12\x12\n" +
+	"\x04data\x18\x04 \x01(\fR\x04dataJ\x04\b\x03\x10\x04R\apatternBDZBgithub.com/zerotrustdata/ztd/protocol/proto/ztd/pubsub/v1;pubsubv1b\x06proto3"
 
 var (
 	file_ztd_pubsub_v1_pubsub_proto_rawDescOnce sync.Once

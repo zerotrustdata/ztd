@@ -93,7 +93,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-NET-COMM-01 | Governed remote Operators MUST establish outbound-only mTLS WebSocket connections to the Gateway pub/sub endpoint (`/api/v1/pubsub/stream`). Operators MUST NOT open inbound listening ports for command, MCP, or A2A traffic. |
-| INV-NET-COMM-02 | On the pub/sub stream, a subscription to an Operator channel (`cmd:`, `results:`, `heartbeat:`, `receipts:`, `renewal:`, `audit:`) MUST name the Operator ID of the caller's verified SPIFFE URI SAN in its second segment (`verifyChannelACL` in `internal/services/gateway/gateway_pubsub.go`). The session segment is not checked by this ACL. |
+| INV-NET-COMM-02 | On the pub/sub stream, a subscription to an Operator channel (`cmd:`, `results:`, `heartbeat:`, `receipts:`, `renewal:`, `audit:`) MUST name the Operator ID of the caller's verified SPIFFE URI SAN in its second segment (`verifyChannelACL` in `internal/services/gateway/gateway_pubsub.go`). When the caller holds an Operator certificate, the channel MUST have exactly three segments and its third segment MUST equal the Operator session ID that certificate was issued for; otherwise the subscription is rejected with `ErrPubSubSubscribeUnauthorized`. The broker accepts only exact-channel `subscribe`, `unsubscribe`, and `publish` actions; it has no pattern subscriptions. |
 
 ## Owned surfaces
 
@@ -221,6 +221,7 @@ Governed Operators enforce strict listener isolation:
   - `renewal:<operator_id>:<operator_session_id>`: Certificate leaf renewal.
   - `audit:<operator_id>:<operator_session_id>`: Gateway-to-Operator audit ingest.
 - **Embedded Substrate**: Gateway-local operations run on the in-process embedded Operator substrate (`internal/services/gateway/embedded/`), as distinct from the outbound remote Operator.
+- **Inference Provider Endpoint**: The Ollama endpoint an inference-capable Operator dials (default `http://127.0.0.1:11434`, `constants.InferenceOllamaDefaultPort`; set by `--inference-ollama-endpoint` or `ZTD_OLLAMA_ENDPOINT`) is an outbound HTTP client target, not a ztd listener. The endpoint is validated only as an absolute `http` or `https` URL with a host (`internal/services/inference/ollama_backend.go`); ztd does not restrict which hosts or ports may serve it.
 
 SSH deployment and streaming use `internal/pkg/ssh.DialSSH`. Its dial timeout covers connection setup and the SSH handshake. A configured `ProxyCommand` remains alive for the established SSH connection, until the caller cancels or closes it. A failed or timed-out handshake cancels and reaps the proxy process.
 

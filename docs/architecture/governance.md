@@ -164,24 +164,25 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 ### The Five-Layer Interlock Sequence
 
-Every governed mutation passes the five-layer interlock before execution. The path depends on ingress and runtime: the Gateway evaluates L1 and coordinates posture-required proofs, then either its embedded Operator or an outbound Operator performs L4 and L5. Under non-enforcing postures, L2/L3 are audited rather than required; a human deny is always sent through L4 as an explicit L3 denial.
+Every governed mutation passes the five-layer interlock before execution. The L4 Warden is the always-on enforcement point: every envelope an Operator executes runs L1 Doctrine there, whatever the ingress path or posture. The Gateway also runs L1 before dispatch on governed HTTP dispatch only (`DispatchService.Dispatch`, which screens the payload in `buildGovernanceEnvelope`). MCP, A2A, and direct envelope submission have no Gateway-side L1 call and rely on the executing Operator's L4. The path then depends on runtime: the Gateway coordinates posture-required proofs, and either its embedded Operator or an outbound Operator performs L4 and L5. Under non-enforcing postures, L2/L3 are audited rather than required; a human deny is always sent through L4 as an explicit L3 denial.
 
 ```mermaid
 flowchart TD
-    Ingress([Client Ingress: MCP / A2A / HTTP / Envelope]) --> L1[L1 Doctrine: Static regex & MITRE threat scans]
-    L1 --> Proofs[Posture-required L2/L3 proofs; otherwise audited]
+    Ingress([Client Ingress: MCP / A2A / HTTP / Envelope]) --> Proofs[Gateway coordinates posture-required L2/L3 proofs; otherwise audited]
+    Ingress -->|Governed HTTP dispatch only| L1G[Gateway L1 Doctrine: DispatchService]
+    L1G --> Proofs
     Proofs --> Runtime{Execution runtime}
-    Runtime -->|Embedded| L4[L4 Warden: Nonce replay, hash binding, state root, proof checks]
+    Runtime -->|Embedded| L4[L4 Warden: L1 Doctrine on every envelope, nonce replay, hash binding, state root, proof checks]
     Runtime -->|Outbound| Dispatch[Gateway dispatch over WebSocket cmd channel]
     Dispatch --> L4
     L4 --> L5[L5 Actuator: EXECUTING receipt, commitment append, JIT capability, dispatch]
     L5 --> Finish([Local SQLite Persistence & Signed COMPLETED Receipt])
 ```
 
-1. **L1 Doctrine**: Technical bedrock. Hard static regex analysis over string fields (`forbidden_patterns`) and MITRE ATT&CK threat heuristics across commands, MCP arguments, A2A payloads, and file edits. Enforced fail-closed across all postures.
+1. **L1 Doctrine**: Technical bedrock. Hard static regex analysis over string fields (`forbidden_patterns`) and MITRE ATT&CK threat heuristics across commands, MCP arguments, A2A payloads, and file edits. Enforced fail-closed across all postures. The executing Operator's L4 Warden runs it on every envelope; the Gateway also runs it on governed HTTP dispatch.
 2. **L2 Consensus**: Machine deliberation via the bound consensus member set (K-of-N enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` members). Evaluates Ed25519 signatures over `<transaction_hash>|<decision>`. Enforced under `consensus` and `notary` (`posture.RequiresL2()`) for state-change envelopes that `governance.L2Enforced` selects; other envelopes are not voted (INV-CON-WARD-11). Audited under `doctrine` and `ratify`.
 3. **L3 Notary**: Human authorization. Verifies cryptographic proof of human intent for mutating actions where `governance.L3Required(actionType, posture)` is true. Enforced under `ratify` and `notary` (`posture.RequiresL3()`); audited under `doctrine` and `consensus`. Read-only actions and follow-on enrollment actions marked `_authorized_by_decision` bypass L3.
-4. **L4 Warden**: Pre-dispatch verification gate. Reserves transaction nonces in durable SQLite storage, checks expiration, decodes typed payload, validates target ownership, recomputes the canonical transaction hash, verifies state Merkle root, and evaluates posture-required L2/L3 proofs.
+4. **L4 Warden**: Pre-dispatch verification gate, and the always-on L1 Doctrine check for every envelope. Reserves transaction nonces in durable SQLite storage, checks expiration, decodes typed payload, validates target ownership, recomputes the canonical transaction hash, verifies state Merkle root, and evaluates posture-required L2/L3 proofs.
 5. **L5 Actuator**: Execution boundary. Establishes zero standing privileges. Logs an `EXECUTING` receipt to local SQLite audit storage, appends a signed `CommitmentAttestation` to the commitment ledger, rehydrates scrubbed tokens through the scrubbing service, mints a single-action JIT capability, invokes the handler, dissolves the capability immediately, captures final state root, signs a `COMPLETED` or `FAILED` receipt, and attaches a signed `ReceiptPersistenceAttestation`.
 
 ### Governance Postures and Enforcement Matrix
@@ -240,10 +241,12 @@ L1 Doctrine performs static verification on raw intent without network dependenc
 3. **Directory Doctrine Files**: `NewL1DoctrineFromDir` loads external JSON catalogs (e.g. `blacklist_doctrine.json`, `gitleaks_doctrine.json`, `owasp_crs_doctrine.json`).
 4. **Doctrine Bundle Identity**: Records a deterministic `doctrine_bundle_hash` and `doctrine_bundle_version` (`ztd-l1-doctrine-v1+<source@version>`) in stage evidence.
 
+L1 runs in two places. The executing Operator's L4 Warden evaluates it on every envelope, regardless of ingress or posture (`internal/services/governance/l4_warden.go`). The Gateway evaluates it before dispatch only on governed HTTP dispatch (`internal/services/gateway/dispatch_service.go`). Separately, MCP `read_field` values are screened by the Gateway's threat scanner (`scanForForbiddenPatterns` in `internal/services/mcp/gateway.go`). That screen covers the returned field value, not MCP call arguments and not envelopes.
+
 ### FILE_EDIT Runtime State Protection
 
 Governed `FILE_EDIT` and `RESTORE_FILE` actions cannot write runtime control or evidence state under `.ztd/`. The writable runtime subtrees are the controlled evaluation target directory `.ztd/eval/targets/` and the working trees of throwaway Operators hosted at `.ztd/operators/<name>/`. `.ztd/operators/` and each `<name>` directory stay protected, and so does the hosted Operator's own nested `.ztd/`.
-1. **L1 Lexical Screen**: Gateway and Operator L1 reject file paths for which `security.IsProtectedRuntimePath` is true. The check is lexical, case-insensitive, and treats `/` and `\` as path separators.
+1. **L1 Lexical Screen**: The L1 check run by the Gateway on governed HTTP dispatch and by the executing Operator's L4 Warden rejects file paths for which `security.IsProtectedRuntimePath` is true. The check is lexical, case-insensitive, and treats `/` and `\` as path separators.
 2. **Execution Confinement**: The executing runtime opens the target via `RuntimeFileService.OpenFileEditTarget`. It resolves symlinks, confirms the path lies outside protected state, and roots all I/O inside an `os.Root` boundary.
 
 ### Layer 2 (L2) Consensus: Bound Member Deliberation
@@ -315,14 +318,14 @@ Every completed or failed transaction that reaches the Actuator generates a dete
 
 #### Synchronous Gateway Execution (Embedded Operator)
 1. Client submits intent via HTTP or MCP.
-2. Gateway constructs `GovernanceEnvelope`, evaluates L1 Doctrine, binds state root, injects posture, and hashes transaction.
+2. Gateway constructs `GovernanceEnvelope`, binds state root, injects posture, and hashes transaction. L1 Doctrine runs in L4 here; governed HTTP dispatch also screens it at the Gateway first.
 3. L4 Warden reserves nonce in SQLite, verifies stateless properties, state root, and posture proofs.
 4. L5 Actuator logs `EXECUTING` receipt, appends commitment, rehydrates secrets, mints capability, executes handler, dissolves capability, signs persistence attestation, and persists `COMPLETED` receipt.
 5. Signed `ActionReceipt` returns directly in the client response.
 
 #### Outbound Operator WebSocket Dispatch
 1. Client submits intent to the Gateway.
-2. Gateway constructs envelope, validates L1 Doctrine, and publishes to `cmd:<operator_id>:<operator_session_id>`. Governed HTTP dispatch screens L1 first in every posture. Under `ratify` and `notary`, a mutation is suspended and the request blocks for human approval before anything is published (Blocking Dispatch in [Layer 3 (L3) Notary: Human Authorization](#layer-3-l3-notary-human-authorization)); the approved envelope carries the original human proof, and the executing Operator's L4 re-verifies it independently.
+2. Gateway constructs envelope and publishes to `cmd:<operator_id>:<operator_session_id>`. Governed HTTP dispatch screens L1 first in every posture; other ingress paths do not, and the Operator's L4 is the L1 check. Under `ratify` and `notary`, a mutation is suspended and the request blocks for human approval before anything is published (Blocking Dispatch in [Layer 3 (L3) Notary: Human Authorization](#layer-3-l3-notary-human-authorization)); the approved envelope carries the original human proof, and the executing Operator's L4 re-verifies it independently.
 3. Operator receives envelope, runs L4 Warden, and reserves nonce in its local SQLite replay store.
 4. Operator L5 Actuator executes the command, logs receipts to local SQLite audit store, and appends commitment to local ledger.
 5. Operator relays signed receipt to `receipts:<operator_id>:<operator_session_id>`.

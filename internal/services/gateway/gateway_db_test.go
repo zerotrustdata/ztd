@@ -369,15 +369,7 @@ func TestDocQuery_UnknownOpIsSkipped(t *testing.T) {
 // BlobStore overwrite
 // ---------------------------------------------------------------------------
 
-func TestSSEEventsCount_EmptyTable(t *testing.T) {
-	db := newTestDB(t)
-
-	count, err := db.GetSSEStore().SSEEventsCount()
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), count)
-}
-
-func TestSSEEventsAppendAndCount(t *testing.T) {
+func TestSSEEventsAppendAndListSince(t *testing.T) {
 	db := newTestDB(t)
 
 	_, err := db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", WebSessionID: "sess-1"}, "TEXT", `{"chunk":"hello"}`, "")
@@ -387,34 +379,13 @@ func TestSSEEventsAppendAndCount(t *testing.T) {
 	_, err = db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", CLISessionID: "sess-2"}, "DONE", `{}`, "")
 	require.NoError(t, err)
 
-	count, err := db.GetSSEStore().SSEEventsCount()
+	webRows, err := db.GetSSEStore().SSEEventsListSince(SSERoute{UserID: "test-user", WebSessionID: "sess-1"}, 0, 100)
 	require.NoError(t, err)
-	assert.Equal(t, int64(3), count)
-}
+	assert.Len(t, webRows, 2)
 
-func TestSSEEventsWipe_DeletesAllRows(t *testing.T) {
-	db := newTestDB(t)
-
-	_, err := db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", WebSessionID: "sess-1"}, "TEXT", `{"chunk":"a"}`, "")
+	cliRows, err := db.GetSSEStore().SSEEventsListSince(SSERoute{UserID: "test-user", CLISessionID: "sess-2"}, 0, 100)
 	require.NoError(t, err)
-	_, err = db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", CLISessionID: "sess-2"}, "DONE", `{}`, "")
-	require.NoError(t, err)
-
-	deleted, err := db.GetSSEStore().SSEEventsWipe()
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), deleted)
-
-	count, err := db.GetSSEStore().SSEEventsCount()
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), count)
-}
-
-func TestSSEEventsWipe_EmptyTableReturnsZero(t *testing.T) {
-	db := newTestDB(t)
-
-	deleted, err := db.GetSSEStore().SSEEventsWipe()
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), deleted)
+	assert.Len(t, cliRows, 1)
 }
 
 // ---------------------------------------------------------------------------

@@ -36,7 +36,6 @@ func setupTestDataController(t *testing.T) (*DataController, *TestInfrastructure
 		Cfg:       infra.Cfg,
 		Logger:    infra.Logger,
 		DocStore:  infra.DocStore,
-		SSEStore:  infra.SSEStore,
 		BlobStore: infra.BlobStore,
 		Pubsub:    infra.Pubsub,
 		Responder: infra.Responder,
@@ -52,7 +51,6 @@ func TestNewDataController_AllDepsProvidedNoNilFields(t *testing.T) {
 		Cfg:       infra.Cfg,
 		Logger:    infra.Logger,
 		DocStore:  infra.DocStore,
-		SSEStore:  infra.SSEStore,
 		BlobStore: infra.BlobStore,
 		Pubsub:    infra.Pubsub,
 		Responder: infra.Responder,
@@ -61,7 +59,6 @@ func TestNewDataController_AllDepsProvidedNoNilFields(t *testing.T) {
 	assert.NotNil(t, controller.cfg)
 	assert.NotNil(t, controller.logger)
 	assert.NotNil(t, controller.docStore)
-	assert.NotNil(t, controller.sseStore)
 	assert.NotNil(t, controller.blobStore)
 	assert.NotNil(t, controller.pubsub)
 	assert.NotNil(t, controller.responder)
@@ -69,7 +66,6 @@ func TestNewDataController_AllDepsProvidedNoNilFields(t *testing.T) {
 	assert.Equal(t, infra.Cfg, controller.cfg)
 	assert.Equal(t, infra.Logger, controller.logger)
 	assert.Equal(t, infra.DocStore, controller.docStore)
-	assert.Equal(t, infra.SSEStore, controller.sseStore)
 	assert.Equal(t, infra.BlobStore, controller.blobStore)
 	assert.Equal(t, infra.Pubsub, controller.pubsub)
 	assert.Equal(t, infra.Responder, controller.responder)
@@ -223,28 +219,6 @@ func TestDataControllerHandleDB(t *testing.T) {
 		rr := httptest.NewRecorder()
 		dataController.handleDBQuery(rr, req, "items")
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
-	})
-
-	t.Run("SSE Events count", func(t *testing.T) {
-		infra.SSEStore.SSEEventsAppend(SSERoute{WebSessionID: "s1"}, "T", "{}", "")
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/data/_sse_events/count", nil)
-		rr := httptest.NewRecorder()
-		dataController.handleSSEEvents(rr, req, "count")
-		assert.Equal(t, http.StatusOK, rr.Code)
-	})
-
-	t.Run("SSE Events wipe", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/data/_sse_events", nil)
-		rr := httptest.NewRecorder()
-		dataController.handleSSEEvents(rr, req, "")
-		assert.Equal(t, http.StatusOK, rr.Code)
-	})
-
-	t.Run("SSE Events invalid", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/data/_sse_events/invalid", nil)
-		rr := httptest.NewRecorder()
-		dataController.handleSSEEvents(rr, req, "invalid")
-		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	})
 }
 
