@@ -6,6 +6,7 @@ definitions:
     - DOCUMENT_DELETE
     - DOCUMENT_UPDATE
     - EVAL_ANSWER
+    - EVAL_WORKSPACE_SEED
     - EXECUTE_BASH
     - FETCH_FILE_DIFF
     - FETCH_FILE_HISTORY
@@ -44,6 +45,7 @@ definitions:
     - ActionTypeDocumentDelete
     - ActionTypeDocumentUpdate
     - ActionTypeEvalAnswer
+    - ActionTypeEvalWorkspaceSeed
     - ActionTypeExecuteBash
     - ActionTypeFetchFileDiff
     - ActionTypeFetchFileHistory
@@ -143,6 +145,9 @@ definitions:
     - ztd.v1.operator.context.changed
     - ztd.v1.operator.device.registered
     - ztd.v1.operator.eval.answer.requested
+    - ztd.v1.operator.eval.workspace.seed.completed
+    - ztd.v1.operator.eval.workspace.seed.failed
+    - ztd.v1.operator.eval.workspace.seed.requested
     - ztd.v1.operator.field.read.access.denied
     - ztd.v1.operator.field.read.access.granted
     - ztd.v1.operator.field.read.requested
@@ -369,6 +374,9 @@ definitions:
     - EventOperatorContextChanged
     - EventOperatorDeviceRegistered
     - EventOperatorEvalAnswerRequested
+    - EventOperatorEvalWorkspaceSeedCompleted
+    - EventOperatorEvalWorkspaceSeedFailed
+    - EventOperatorEvalWorkspaceSeedRequested
     - EventOperatorFieldReadAccessDenied
     - EventOperatorFieldReadAccessGranted
     - EventOperatorFieldReadRequested
