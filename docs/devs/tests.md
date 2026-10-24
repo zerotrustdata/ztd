@@ -48,6 +48,7 @@ The platform enforces a four-tier test architecture:
   - [Fixture lifecycle (`INV-TEST-FIX`)](#fixture-lifecycle-inv-test-fix)
 - [Owned surfaces](#owned-surfaces)
 - [Procedures](#procedures)
+  - [Run the Full Suite](#run-the-full-suite)
   - [Run Test Tiers](#run-test-tiers)
   - [Run Specialized Test Harnesses](#run-specialized-test-harnesses)
   - [Cross-Component Test Execution](#cross-component-test-execution)
@@ -129,6 +130,32 @@ Evaluation integration tests that execute assignments MUST use `fixtures.NewEval
 For ratify and notary, the stack's owner answers the existing transaction-approval notifications through the mTLS pending-list and signed CLI approval HTTP routes. The app enroller still submits its own enrollment decision and waits for L3; the fixture does not replace the proof or resume handler. Notary uses the fixture's real Ed25519 consensus application. `ApprovalReceipts` exposes the returned receipts for assertions. `OwnerConsole.DenyToolTransactions(tool)` makes the owner sign a denial for one tool's transactions through the same route; enrollment and agent-turn inference are L3 transactions under ratify and stay approved. `EvalStackOptions.Provenance` adds a Provenance Operator over a real Ollama model store whose digest the scripted provider serves, so attestation windows come from the production path. These are in-process Tier 2 runtimes using the real network transport, not separate OS processes or live model evidence. An Operator runs governed `ztd operator model <verb>` commands by executing its own binary, never a `ztd` found on `PATH`. In-process, that binary is the Go test binary, so a package whose stack runs model commands MUST answer them from `TestMain` (see `internal/cli/cmd/eval/main_integration_test.go`). Component fixtures own teardown through `t.Cleanup`; callers MUST NOT stop them again.
 
 ## Procedures
+
+### Run the Full Suite
+
+`make test` runs the full suite that does not require reconfiguring your current Gateway. It formats Go sources first, then sequences the groups below, 1000-Operator scale qualification, and the Docker onboarding matrix, including under `make -j`. Failures stop the aggregate and return nonzero. Tests that use the current Gateway or a selected live provider are explicit targets.
+
+The full suite requires a Linux host capable of running the pinned FIPS binary, a running Docker daemon, the development tools checked by `make dev-check`, Python 3, and Playwright Chromium with its system dependencies. The existing isolated deployment lifecycle needs ports 8080 and 8443 free and refuses to stop an existing Gateway. Install workspace dependencies with `make dev-node`, and install Chromium with `cd evaluation-explorer && npx playwright install --with-deps chromium`. Missing prerequisites fail their owning gate.
+
+| Target | Scope |
+| :--- | :--- |
+| `test-quality` | `fmt`, Go lint, vulnerability checks, doctrine validation, license headers, version sync, constants/catalog/notices drift, frontend/protocol typechecks and lint, adapter contract pack, frontend embeds, and website bundle validation |
+| `test-platform` | All Go packages under unit and integration settings, pinned FIPS unit/integration reruns and binary self-check, real eval stacks, coverage threshold, all enrollment burst variants, uninstrumented Operator transport burst, vendored build, and external Go import |
+| `test-components` | Console, explorer, adapter, Node protocol, website, demo, and Claude plugin tests; explorer browser tests against development and production bundles; Go hash parity |
+| `test-scripts` | Release scripts, commit hygiene, and hermetic onboarding tests |
+| `test-process` | Cross-process eval under ratify/notary, conformance under all four postures, governed release smoke, and Linux Operator deployment lifecycle |
+| `test-scale` | Fleet fan-out/soak and Gateway restart recovery with 1000 real Operators in the full suite |
+| `test-onboarding-docker` | Fresh-host build/rerun/quickstart/contributor/release-smoke scenarios across the Docker distro matrix in the full suite |
+
+The full gate fixes the scale cohort at 1000 even when `SCALE_COUNT` is set by the caller. `make test-scale SCALE_COUNT=100` selects a smaller focused run. The separate in-process Operator transport burst retains its 2000-Operator regression fixture. `make test-enrollment-burst` selects the timing, session-validation, and deployment-event variants, including their 1000-request cohorts.
+
+`make test-e2e` warns that it uses and mutates your current Gateway, then delegates to `./ztd test e2e`. Select a topology with `E2E_RUN` and additional test flags with `E2E_ARGS`. Prepare the required Operator/enrollment state before running the selection. `make test-cross-enrollment` selects the cross-enrollment tests against a prepared topology.
+
+`make test-e2e-reset E2E_POSTURE=doctrine` warns, invokes `./ztd gw clean` with its existing destructive confirmation and evidence-backup offer, starts the Gateway with the selected posture, logs in headlessly, and runs Gateway health and owner-authentication E2E tests. Override `E2E_RUN` to choose another selection. Declining the confirmation stops the target before cleanup or startup. The reset creates a new trust domain. Tests requiring additional Operators or enrollment state use `test-e2e` after that topology is prepared. The target does not pass a force flag or add another confirmation mechanism.
+
+`make test-eval-live` requires `LIVE_OLLAMA_ENDPOINT` and `LIVE_MODEL` and runs the Tier 4 provider qualification under ratify and notary. The existing eval-loop, conformance-loop, release-smoke, and scale runners own isolated Gateways, so their posture changes and cleanup stay within their own runtimes and remain in `make test`.
+
+`make test-onboarding-smoke` names the CI-only fresh-checkout contributor setup and release smoke. It refuses an existing runtime or `.env`; the Docker onboarding matrix covers the contributor and release-smoke scenarios in the full suite.
 
 ### Run Test Tiers
 
@@ -231,7 +258,7 @@ make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64
 
 ### Cross-Component Test Execution
 
-The frontend targets need their npm dependencies. On a fresh clone, run `make dev-node` (protocol/node, console, ztd-adapter, website) and `npm ci --prefix evaluation-explorer` first; the full setup script installs both.
+The frontend targets need their npm dependencies. On a fresh clone, run `make dev-node` to install dependencies for protocol/node, console, evaluation-explorer, ztd-adapter, and website.
 
 ```bash
 # Console (TypeScript): Vitest unit and component tests

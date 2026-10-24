@@ -238,6 +238,8 @@ docs/                 Complete platform architecture, developer invariants, and 
 Always run test suites through `./ztd test <suite>` or the root `Makefile` (they configure mandatory FIPS tags, race detectors, and environment isolation):
 
 ```bash
+make test                # Full suite and quality gates, including 1000-Operator scale
+
 ./ztd test unit          # Fast, in-memory, parallel-safe unit tests
 ./ztd test integration   # Real SQLite/PKI/mTLS integration tests (-race enabled)
 ./ztd test lint          # Go lint; make lint adds vulnerability and doctrine checks
@@ -248,6 +250,8 @@ make demos-test          # Python/SQLite fictional business simulation checks
 make proto-generate      # Regenerate Go and TypeScript protobuf bindings
 make doctrines-validate  # Verify JSON doctrine rule definitions
 ```
+
+The full suite requires the development toolchain, workspace dependencies, Playwright Chromium, and Docker. Tests against your current Gateway are explicit targets; `make test-e2e-reset` warns and uses the existing CLI confirmation before resetting it. See the [Testing Guide](docs/devs/tests.md#run-the-full-suite) for categories and setup.
 
 ---
 
