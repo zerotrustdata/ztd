@@ -11,7 +11,6 @@ package gateway
 
 import (
 	"context"
-	"net"
 	"testing"
 	"time"
 
@@ -22,8 +21,6 @@ import (
 )
 
 func TestPublicSpectatorRuntime_StartsMirrorListeners(t *testing.T) {
-	privatePort := mustFreePort(t)
-	publicPort := mustFreePort(t)
 	fileSvc := newProducerFileSvc(t)
 	logger := testutil.NewTestLogger()
 	ks := newTestKeystore(t, fileSvc, logger)
@@ -32,15 +29,15 @@ func TestPublicSpectatorRuntime_StartsMirrorListeners(t *testing.T) {
 
 	runtime, err := NewPublicSpectatorRuntime(PublicSpectatorConfig{
 		Enabled:               true,
-		PrivateListenAddress:  "127.0.0.1:" + privatePort,
-		PublicListenAddress:   "127.0.0.1:" + publicPort,
+		PrivateListenAddress:  "127.0.0.1:0",
+		PublicListenAddress:   "127.0.0.1:0",
 		ExplorerListenAddress: "",
 		TrustedProxyCIDRs:     []string{"172.28.0.1/32"},
 	}, fileSvc, ks, logger)
 	require.NoError(t, err)
 	require.NoError(t, runtime.Start(ctx))
 
-	requireBootstrapHealthy(t, "http://127.0.0.1:"+publicPort+"/bootstrap")
+	requireBootstrapHealthy(t, "http://"+runtime.PublicListenAddress()+"/bootstrap")
 	require.Len(t, runtime.mirror.trustedProxyNetworks, 1)
 
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -49,9 +46,6 @@ func TestPublicSpectatorRuntime_StartsMirrorListeners(t *testing.T) {
 }
 
 func TestPublicSpectatorRuntime_StartsDedicatedExplorerListener(t *testing.T) {
-	privatePort := mustFreePort(t)
-	publicPort := mustFreePort(t)
-	explorerPort := mustFreePort(t)
 	fileSvc := newProducerFileSvc(t)
 	logger := testutil.NewTestLogger()
 	ks := newTestKeystore(t, fileSvc, logger)
@@ -60,15 +54,15 @@ func TestPublicSpectatorRuntime_StartsDedicatedExplorerListener(t *testing.T) {
 
 	runtime, err := NewPublicSpectatorRuntime(PublicSpectatorConfig{
 		Enabled:               true,
-		PrivateListenAddress:  "127.0.0.1:" + privatePort,
-		PublicListenAddress:   "127.0.0.1:" + publicPort,
-		ExplorerListenAddress: "127.0.0.1:" + explorerPort,
+		PrivateListenAddress:  "127.0.0.1:0",
+		PublicListenAddress:   "127.0.0.1:0",
+		ExplorerListenAddress: "localhost:0",
 	}, fileSvc, ks, logger)
 	require.NoError(t, err)
 	require.NoError(t, runtime.Start(ctx))
 
-	requireBootstrapHealthy(t, "http://127.0.0.1:"+publicPort+"/bootstrap")
-	requireExplorerRuntime(t, "http://127.0.0.1:"+explorerPort+"/runtime.json", "http://127.0.0.1:"+publicPort)
+	requireBootstrapHealthy(t, "http://"+runtime.PublicListenAddress()+"/bootstrap")
+	requireExplorerRuntime(t, "http://"+runtime.cfg.ExplorerListenAddress+"/runtime.json", "http://"+runtime.PublicListenAddress())
 
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopCancel()
@@ -78,8 +72,8 @@ func TestPublicSpectatorRuntime_StartsDedicatedExplorerListener(t *testing.T) {
 func TestNewPublicSpectatorRuntime_ContainerBindRequiresExplicitConfig(t *testing.T) {
 	cfg := PublicSpectatorConfig{
 		Enabled:               true,
-		PrivateListenAddress:  "0.0.0.0:" + mustFreePort(t),
-		PublicListenAddress:   "0.0.0.0:" + mustFreePort(t),
+		PrivateListenAddress:  "0.0.0.0:0",
+		PublicListenAddress:   "0.0.0.0:0",
 		ExplorerListenAddress: "",
 	}
 
@@ -93,14 +87,4 @@ func TestNewPublicSpectatorRuntime_ContainerBindRequiresExplicitConfig(t *testin
 	cfg.AllowContainerBind = true
 	_, err = NewPublicSpectatorRuntime(cfg, fileSvc, ks, logger)
 	require.NoError(t, err)
-}
-
-func mustFreePort(t *testing.T) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer listener.Close()
-	_, port, err := net.SplitHostPort(listener.Addr().String())
-	require.NoError(t, err)
-	return port
 }

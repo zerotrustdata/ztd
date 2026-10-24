@@ -24,7 +24,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -32,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,7 +40,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance/consensustest"
@@ -244,29 +243,15 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	cfg.Gateway.MCPDownstreamURL = downstreamURL
 	cfg.Gateway.MCPDownstreamCmd = opts.DownstreamCmd
 	cfg.Gateway.MCPDownstreamArgs = opts.DownstreamArgs
-	var mirrorReservations []io.Closer
-	releaseMirrorReservations := func() {
-		for _, reservation := range mirrorReservations {
-			_ = reservation.Close()
-		}
-		mirrorReservations = nil
-	}
 	if opts.EnablePublicSpectator {
-		privatePort, reservation, reserveErr := netutil.ReserveTCPPort()
-		require.NoError(t, reserveErr)
-		mirrorReservations = append(mirrorReservations, reservation)
-		publicPort, reservation, reserveErr := netutil.ReserveTCPPort()
-		require.NoError(t, reserveErr)
-		mirrorReservations = append(mirrorReservations, reservation)
-		t.Cleanup(releaseMirrorReservations)
-		privateAddr := fmt.Sprintf("127.0.0.1:%d", privatePort)
-		publicAddr := fmt.Sprintf("127.0.0.1:%d", publicPort)
+		// Bind port 0 on both mirror listeners so the kernel assigns each port
+		// atomically at listen time, matching the Gateway HTTP/HTTPS listeners.
 		cfg.Gateway.PublicSpectatorEnabled = true
-		cfg.Gateway.PublicSpectatorPrivateAddr = privateAddr
-		cfg.Gateway.PublicSpectatorPublicAddr = publicAddr
+		cfg.Gateway.PublicSpectatorPrivateAddr = "127.0.0.1:0"
+		cfg.Gateway.PublicSpectatorPublicAddr = "127.0.0.1:0"
 		// The public handler serves both the mirror API and explorer assets;
 		// pointing the explorer at that address suppresses a second listener.
-		cfg.Gateway.EvalExplorerAddr = publicAddr
+		cfg.Gateway.EvalExplorerAddr = "127.0.0.1:0"
 	}
 
 	if opts.PublicBaseURL != "" {
@@ -359,13 +344,18 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	require.NoError(t, err)
 
 	// Start the gateway service. The Start error is delivered on a buffered
-	// channel and drained by Cleanup, so the goroutine never logs after the
-	// test has completed (which would panic the test runtime under -race).
+	// channel and drained once so the goroutine never logs after the test has
+	// completed (which would panic the test runtime under -race).
 	ctx, cancel := context.WithCancel(context.Background())
 	serverErr := make(chan error, 1)
-	// Keep reservations held through all fixture construction and release them
-	// only when the Gateway is ready to bind every listener.
-	releaseMirrorReservations()
+	var startOnce sync.Once
+	var startErr error
+	waitStart := func() error {
+		startOnce.Do(func() {
+			startErr = <-serverErr
+		})
+		return startErr
+	}
 	go func() {
 		serverErr <- ls.Start(ctx)
 	}()
@@ -375,7 +365,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		cancel()
 		// Join the Start goroutine before the test ends. A graceful shutdown
 		// surfaces http.ErrServerClosed, which is expected and not an error.
-		if err := <-serverErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := waitStart(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Logf("gateway start error: %v", err)
 		}
 		if downstreamServer != nil {
@@ -391,6 +381,9 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 
 	select {
 	case <-ls.Ready():
+	case err := <-serverErr:
+		startOnce.Do(func() { startErr = err })
+		t.Fatalf("gateway service failed to start: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("gateway service did not become ready")
 	}

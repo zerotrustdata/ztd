@@ -122,6 +122,35 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	}
 	runtime.mu.Unlock()
 
+	// Bind the mirror listeners first so port 0 is assigned atomically by the
+	// kernel and held before feed and explorer origins are materialized.
+	dedicatedExplorer := shouldServeDedicatedExplorer(runtime.cfg)
+	privateListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", runtime.cfg.PrivateListenAddress)
+	if err != nil {
+		return fmt.Errorf("public spectator mirror-private: listen %s: %w", runtime.cfg.PrivateListenAddress, err)
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = privateListener.Close()
+		}
+	}()
+	runtime.cfg.PrivateListenAddress = privateListener.Addr().String()
+
+	publicListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", runtime.cfg.PublicListenAddress)
+	if err != nil {
+		return fmt.Errorf("public spectator mirror-public: listen %s: %w", runtime.cfg.PublicListenAddress, err)
+	}
+	defer func() {
+		if !started {
+			_ = publicListener.Close()
+		}
+	}()
+	runtime.cfg.PublicListenAddress = publicListener.Addr().String()
+	if !dedicatedExplorer && strings.TrimSpace(runtime.cfg.ExplorerListenAddress) != "" {
+		runtime.cfg.ExplorerListenAddress = runtime.cfg.PublicListenAddress
+	}
+
 	privateMirrorOrigin := "http://" + runtime.cfg.PrivateListenAddress
 	exportConfig, err := EnsureLocalPublicFeed(ctx, runtime.fileSvc, runtime.keystore, runtime.cfg.SourceID, privateMirrorOrigin)
 	if err != nil {
@@ -152,7 +181,6 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("public spectator: %w", err)
 	}
-	started := false
 	defer func() {
 		if !started {
 			_ = store.Close()
@@ -187,7 +215,18 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 		runtime.logger.Warn("Evaluation explorer static assets unavailable", "error", explorerErr)
 	}
 	runtime.publicServer = newPublicMirrorHTTPServer(runtime.cfg.PublicListenAddress, publicHandler, runtime.logger.With("server", "mirror-public"))
-	if explorerErr == nil && shouldServeDedicatedExplorer(runtime.cfg) {
+	var explorerListener net.Listener
+	if explorerErr == nil && dedicatedExplorer {
+		explorerListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", runtime.cfg.ExplorerListenAddress)
+		if err != nil {
+			return fmt.Errorf("public spectator explorer: listen %s: %w", runtime.cfg.ExplorerListenAddress, err)
+		}
+		defer func() {
+			if !started {
+				_ = explorerListener.Close()
+			}
+		}()
+		runtime.cfg.ExplorerListenAddress = explorerListener.Addr().String()
 		// Dedicated explorer listeners (for example :5173) must target the local
 		// public mirror API (:8082), not the gateway HTTPS base URL used for
 		// approval links and tunnel fronting.
@@ -201,31 +240,19 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	runtime.mirror = mirror
 	runtime.publisher = publisher
 
-	// Bind every listener before returning: a bind failure fails Start, and once
-	// Start returns, connections queue on the socket until the server accepts.
+	// Every listener is bound before Start returns: a bind failure fails Start,
+	// and once Start returns, connections queue on the socket until served.
 	type spectatorListener struct {
 		server   *http.Server
 		label    string
 		listener net.Listener
 	}
-	var bound []spectatorListener
-	for _, surface := range []spectatorListener{
-		{server: runtime.privateServer, label: "mirror-private"},
-		{server: runtime.publicServer, label: "mirror-public"},
-		{server: runtime.explorerServer, label: "explorer"},
-	} {
-		if surface.server == nil {
-			continue
-		}
-		listener, listenErr := (&net.ListenConfig{}).Listen(ctx, "tcp", surface.server.Addr)
-		if listenErr != nil {
-			for _, open := range bound {
-				_ = open.listener.Close()
-			}
-			return fmt.Errorf("public spectator %s: listen %s: %w", surface.label, surface.server.Addr, listenErr)
-		}
-		surface.listener = listener
-		bound = append(bound, surface)
+	bound := []spectatorListener{
+		{server: runtime.privateServer, label: "mirror-private", listener: privateListener},
+		{server: runtime.publicServer, label: "mirror-public", listener: publicListener},
+	}
+	if runtime.explorerServer != nil {
+		bound = append(bound, spectatorListener{server: runtime.explorerServer, label: "explorer", listener: explorerListener})
 	}
 
 	errCh := make(chan error, len(bound))
@@ -276,14 +303,13 @@ func (runtime *PublicSpectatorRuntime) Stop(ctx context.Context) error {
 		return nil
 	}
 	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
 	if !runtime.running {
-		runtime.mu.Unlock()
 		return nil
 	}
 	runtime.running = false
 	store := runtime.store
 	runtime.store = nil
-	runtime.mu.Unlock()
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

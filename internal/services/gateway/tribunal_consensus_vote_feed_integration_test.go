@@ -33,8 +33,6 @@ import (
 // requires a consensus vote to land on the mirror. Publisher() is nil until
 // Start, so a build-time snapshot never publishes.
 func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
-	privatePort := mustFreePort(t)
-	publicPort := mustFreePort(t)
 	fileSvc := newProducerFileSvc(t)
 	logger := testutil.NewTestLogger()
 	ks := newTestKeystore(t, fileSvc, logger)
@@ -43,8 +41,8 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 
 	runtime, err := NewPublicSpectatorRuntime(PublicSpectatorConfig{
 		Enabled:               true,
-		PrivateListenAddress:  "127.0.0.1:" + privatePort,
-		PublicListenAddress:   "127.0.0.1:" + publicPort,
+		PrivateListenAddress:  "127.0.0.1:0",
+		PublicListenAddress:   "127.0.0.1:0",
 		ExplorerListenAddress: "",
 	}, fileSvc, ks, logger)
 	require.NoError(t, err)
@@ -70,11 +68,12 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 		require.NoError(t, runtime.Stop(stopCtx))
 	})
 	require.NotNil(t, runtime.Publisher())
+	publicAddr := runtime.PublicListenAddress()
 	// Subscribe before recording the vote to check live delivery, not replay.
 	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer streamCancel()
 	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet,
-		"http://127.0.0.1:"+publicPort+"/stream?source="+runtime.Publisher().cfg.SourceID+"&since_id=0", nil)
+		"http://"+publicAddr+"/stream?source="+runtime.Publisher().cfg.SourceID+"&since_id=0", nil)
 	require.NoError(t, err)
 	response, err := http.DefaultClient.Do(request)
 	require.NoError(t, err)
@@ -106,7 +105,7 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 	require.Len(t, recorder.events, 2)
 	require.Equal(t, tribunalVoteStagePrefix+recorder.events[1].ContentText, streamLabel)
 
-	page := spectatorHistory(t, "http://127.0.0.1:"+publicPort+"/history?kind=stage_updated&limit=20")
+	page := spectatorHistory(t, "http://"+publicAddr+"/history?kind=stage_updated&limit=20")
 	var labels []string
 	for _, item := range page.Items {
 		label, ok := item.StringField("stage_label")

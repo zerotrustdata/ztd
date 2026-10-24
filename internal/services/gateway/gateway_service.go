@@ -1325,6 +1325,9 @@ func (ls *GatewayModeService) Start(ctx context.Context) error {
 		if err := ls.publicSpectator.Start(ctx); err != nil {
 			return fmt.Errorf("gateway: start public spectator: %w", err)
 		}
+		ls.cfg.Gateway.PublicSpectatorPrivateAddr = ls.publicSpectator.cfg.PrivateListenAddress
+		ls.cfg.Gateway.PublicSpectatorPublicAddr = ls.publicSpectator.cfg.PublicListenAddress
+		ls.cfg.Gateway.EvalExplorerAddr = ls.publicSpectator.cfg.ExplorerListenAddress
 		ls.logger.Info("Public spectator stack started",
 			"mirror_private", ls.publicSpectator.cfg.PrivateListenAddress,
 			"mirror_public", ls.publicSpectator.cfg.PublicListenAddress,
