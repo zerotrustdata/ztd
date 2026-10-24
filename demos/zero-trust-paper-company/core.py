@@ -32,6 +32,7 @@ IDENTITIES = {
     "finance": Principal("finance", "EMP-004"),
     "support": Principal("support", "EMP-005"),
     "driver": Principal("driver", "EMP-006"),
+    "driver-drew": Principal("driver", "EMP-009"),
     "hr": Principal("hr", "EMP-007"),
     "procurement": Principal("procurement", "EMP-008"),
     "customer-acorn": Principal("customer", customer_id="CUS-001"),

@@ -12,6 +12,7 @@ interface NavItemConfig {
 
 const NAV_ITEMS: NavItemConfig[] = [
   { to: '/', label: 'Live', description: 'Real-time campaign feed & telemetry' },
+  { to: '/leaderboard', label: 'Leaderboard', description: 'Role leaders & composite rankings' },
   { to: '/evaluations', label: 'Evals', description: 'Campaign runs & assignment outcomes' },
   { to: '/tasks', label: 'Tasks', description: 'Benchmark scenarios & task suite' },
   { to: '/models', label: 'Models', description: 'Evaluated models & scorecards' },

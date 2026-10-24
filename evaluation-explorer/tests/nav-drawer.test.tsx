@@ -28,8 +28,9 @@ describe('NavDrawer', () => {
     const drawer = screen.getByRole('menu', { name: /Primary navigation drawer/i });
     expect(drawer).toBeInTheDocument();
 
-    // Verify all 6 navigation links are present
+    // Verify all 7 navigation links are present
     expect(screen.getByRole('menuitem', { name: /Live/i })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('menuitem', { name: /Leaderboard/i })).toHaveAttribute('href', '/leaderboard');
     expect(screen.getByRole('menuitem', { name: /Evals/i })).toHaveAttribute('href', '/evaluations');
     expect(screen.getByRole('menuitem', { name: /Tasks/i })).toHaveAttribute('href', '/tasks');
     expect(screen.getByRole('menuitem', { name: /Models/i })).toHaveAttribute('href', '/models');

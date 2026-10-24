@@ -592,8 +592,8 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Main */
 .app-main { flex: 1; padding: 24px 24px 72px; max-width: 1400px; width: 100%; margin: 0 auto; }
-/* Data-dense views (Live, Models, Evaluations) span the full viewport width. */
-.app-main:has(> .overview, > .models-view, > .evaluations-view, > .evaluation-detail) { max-width: none; }
+/* Data-dense views (Live, Leaderboard, Models, Evaluations) span the full viewport width. */
+.app-main:has(> .overview, > .leaderboard-view, > .models-view, > .evaluations-view, > .evaluation-detail) { max-width: none; }
 .app-footer {
   position: fixed;
   bottom: 0;
@@ -2003,6 +2003,8 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 
 /* Responsive */
 @media (max-width: 1200px) {
+  .nav-inline { gap: 2px; }
+  .nav-inline-item { padding: 6px 9px; font-size: 13px; }
   .header-campaign-tail { flex: 0 0 160px; }
   .header-campaign-task-label { display: none; }
 }
@@ -2105,7 +2107,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 }
 
 /* ===== Evidence primitives ===== */
-.evaluations-view, .models-view, .evaluation-detail, .model-detail, .assignment-detail, .docs-layout, .about { padding-bottom: 40px; }
+.evaluations-view, .leaderboard-view, .models-view, .evaluation-detail, .model-detail, .assignment-detail, .docs-layout, .about { padding-bottom: 40px; }
 .program-groups { display: grid; gap: 16px; }
 .data-card-list, .run-card-list { display: grid; gap: 12px; list-style: none; margin: 12px 0; padding: 0; }
 .data-card-list > li, .run-card { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev2); }

@@ -1,6 +1,6 @@
 # Zero Trust Paper Company
 
-A fictional regional paper distributor with ten employees, six business customers, two suppliers, two trucks, six sellable products, and two warehouse supplies. You are Alex Chen, the operations and systems lead. Acorn Design Studio wants its paper, Beacon Community School needs an early delivery, recycled paper is below its reorder point, and finance has an overdue invoice to investigate.
+A fictional regional paper distributor with ten employees, six business customers, two suppliers, two trucks, six sellable products, and two warehouse supplies. You are Alex Chen, the operations and systems lead. Acorn Design Studio wants its paper, Beacon Community School needs delivery before reception closes, recycled paper is below its reorder point, and finance has an overdue invoice to investigate.
 
 This is the first organization in the [demos collection](../README.md). The infrastructure uses Python 3.10+ and the standard library, including SQLite with FTS5. No pip packages, network downloads, cloud accounts, real credentials or containers are required. Services expose JSON APIs for CLI and agent use; there are no browser application frontends in this foundation.
 
@@ -31,7 +31,7 @@ Use `paper.py --help` and each subcommand's `--help` for options. `call GET /` d
 | System | Base path | What you can do |
 | --- | --- | --- |
 | Storefront / order portal | `/storefront` | Browse products; place, inspect and cancel orders; track shipments |
-| CRM | `/crm` | Read contacts and account history; add confidential notes; advance deals |
+| CRM | `/crm` | Onboard finance-approved customers; read account history; add confidential notes; create and advance deals |
 | Accounting | `/accounting` | Inspect invoices, received payments and past-due balances; record payments and expenses |
 | Inventory / warehouse | `/inventory` | Inspect availability, reservations, orders, shipments and movements; record stock counts |
 | Support desk | `/support` | Open tickets; reply; assign staff; resolve and reopen cases |
@@ -63,6 +63,7 @@ The client defaults to `public`. Use `--role` to choose a demo identity. For ano
 | `finance` | Priya Shah, `EMP-004` | Invoices, payments, expenses and financial documents |
 | `support` | Sam Rivera, `EMP-005` | Tickets, customer order investigations and fulfillment documents |
 | `driver` | Casey Brooks, `EMP-006` | Own routes and delivery confirmation |
+| `driver-drew` | Drew Lane, `EMP-009` | Drew's own routes and delivery confirmation |
 | `hr` | Taylor Quinn, `EMP-007` | Leave decisions, payroll and restricted HR documents |
 | `procurement` | Jamie Park, `EMP-008` | Suppliers, purchase orders and supplier contracts |
 | `admin` | Morgan Reed, `EMP-001` | All application endpoints and business events |

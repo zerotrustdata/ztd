@@ -4,7 +4,7 @@
 // Models view — the dedicated Model Catalog & Capabilities directory.
 // Focuses strictly on model identity, architecture/hardware specs, 5 governed
 // capability probes (Completion, Tool Calling, Structured JSON, Thinking,
-// Context Window), role leaders, and benchmark performance per role.
+// Context Window), and benchmark performance per role.
 // Clicking any model opens its full Model Profile & Evaluations hub.
 
 import { useEffect, useMemo } from 'react';
@@ -12,7 +12,6 @@ import { Link } from 'react-router-dom';
 import { useSelectedRelease, useUserPref, PREF } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
-import { RoleLeadersPanel } from '../components/RoleLeadersPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
 import { matchesRelease } from '../content/release';
 import {
@@ -41,7 +40,7 @@ import {
   MODEL_QUALITY_FILTER_STATES,
   normalizeQualityFilter,
 } from '../utils/feed-state';
-import { datasetLabel, LEADERBOARD_SCORE_FORMULA, LEADERBOARD_SECURITY_SCORING_DESCRIPTION, modelSummaryGroups, roleLabel } from './derived';
+import { datasetLabel, modelSummaryGroups, roleLabel } from './derived';
 
 interface ModelFilters {
   search: string;
@@ -511,53 +510,30 @@ export function ModelsView() {
   return (
     <div className="models-view">
       <header className="models-header">
-        <SectionHeading
-          kicker="MODEL CATALOG & CAPABILITIES"
-          title="Models, capabilities & role performance"
-        />
-        <div className="models-score" role="math" aria-label={LEADERBOARD_SCORE_FORMULA}>
-          <div className="models-score-equation" aria-hidden="true">
-            <span className="models-score-label">Role score = 100</span>
-            <span>× accuracy</span>
-            <span>× √security</span>
-            <span>× size factor</span>
-            <span>× efficiency</span>
-          </div>
-          <div className="models-score-factors" aria-hidden="true">
-            <span>
-              <strong>Size factor</strong> = 0.9<sup>doublings</sup>
-            </span>
-            <span>
-              <strong>Efficiency</strong> = 0.85 + 0.10 × speed + 0.05 × tokens
-            </span>
-          </div>
+        <div className="panel-head">
+          <SectionHeading
+            kicker="MODEL CATALOG & CAPABILITIES"
+            title="Models & capabilities"
+          />
+          <dl className="panel-head-stats" aria-label="Model summary">
+            {[
+              { label: 'Measured models', value: measuredVariants.size },
+              { label: 'Inventory-only models', value: inventoryVariants.size },
+              { label: 'Model families', value: availableFamilies.length },
+              { label: 'Tool-capable variants', value: capabilityCounts.counts.tool_calling },
+              {
+                label: 'Runs covered',
+                value: evaluations.filter((run) => coveredRuns.has(`${run.dataset_id}:${run.run_id}`)).length,
+              },
+            ].map((stat) => (
+              <div key={stat.label} data-testid={`stat-${stat.label.replace(/\s+/g, '-').toLowerCase()}`}>
+                <dt>{stat.label}</dt>
+                <dd>{formatNumber(stat.value)}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
-        <details className="models-score-notes">
-          <summary>Scoring & model notes</summary>
-          <ul>
-            <li>{LEADERBOARD_SECURITY_SCORING_DESCRIPTION}.</li>
-            <li>Doublings = log<sub>2</sub>(total parameters ÷ smallest in role). Each doubling costs 10%. This is not measured resource cost.</li>
-            <li>Speed and tokens are best-in-role ÷ model; lower latency and fewer tokens score higher.</li>
-            <li>Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.</li>
-          </ul>
-        </details>
       </header>
-
-      <RoleLeadersPanel
-        models={modelsWithinBudget}
-        evaluations={evaluations}
-        assignments={assignments}
-        stats={[
-          { label: 'Measured models', value: measuredVariants.size },
-          { label: 'Inventory-only models', value: inventoryVariants.size },
-          { label: 'Model families', value: availableFamilies.length },
-          { label: 'Tool-capable variants', value: capabilityCounts.counts.tool_calling },
-          {
-            label: 'Runs covered',
-            value: evaluations.filter((run) => coveredRuns.has(`${run.dataset_id}:${run.run_id}`)).length,
-          },
-        ]}
-      />
 
       <div className="capability-filter-bar" role="group" aria-label="Filter by probed capability">
         <button

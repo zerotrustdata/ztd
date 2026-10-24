@@ -9,6 +9,7 @@ import { ActiveCampaignBar } from './components/ActiveCampaignBar';
 import { ErrorBanner, FreshnessBadge } from './components/shared';
 import { AboutView } from './views/AboutView';
 import { OverviewView } from './views/OverviewView';
+import { LeaderboardView } from './views/LeaderboardView';
 import { ModelsView } from './views/ModelsView';
 import { ModelDetailView } from './views/ModelDetailView';
 import { EvaluationsView } from './views/EvaluationsView';
@@ -84,6 +85,7 @@ function Shell() {
       <main id="main" className="app-main">
         <Routes>
           <Route path="/" element={<OverviewView />} />
+          <Route path="/leaderboard" element={<LeaderboardView />} />
           <Route path="/models" element={<ModelsView />} />
           <Route path="/models/:datasetId?/:variantId" element={<ModelDetailView />} />
           <Route path="/evaluations" element={<EvaluationsView />} />

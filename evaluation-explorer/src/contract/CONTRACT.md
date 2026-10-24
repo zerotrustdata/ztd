@@ -67,7 +67,8 @@ Dataset kind and dataset identity are separate fields. `src/fixtures/fixtures.ts
 
 The application uses `BrowserRouter` for client-side routing, which relies on server-side route rewriting to serve the SPA for all non-asset paths. The gateway's public read listener is configured to serve the evaluation explorer at its root path with appropriate rewrite rules.
 
-- `/` overview: feed state, live panel, dataset selector, aggregate counts, role leaders, recent runs.
+- `/` overview: feed state, live panel, dataset selector, aggregate counts, recent runs.
+- `/leaderboard` leaderboard: role leaders and composite model rankings across Overall, Primary, Assistant, and Lite.
 - `/models` models: model catalog with search, filters, sorting, and comparison.
 - `/models/:datasetId?/:variantId` model detail: per-model identity and measurements.
 - `/evaluations` evaluations: campaign list and filters.

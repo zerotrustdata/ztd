@@ -1,0 +1,9 @@
+{
+  "id": "CUS-007",
+  "name": "Maple Street Books",
+  "contact": "Quinn Birch",
+  "email": "quinn@maplebooks.example",
+  "address": "70 Sample Lane, Example City",
+  "credit_limit_cents": 400000,
+  "tax_reference": "SYNTHETIC-TAX-007"
+}

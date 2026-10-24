@@ -1,0 +1,9 @@
+{
+  "customer_id": "CUS-007",
+  "items": [
+    {
+      "sku": "REC-A4",
+      "quantity": 4
+    }
+  ]
+}

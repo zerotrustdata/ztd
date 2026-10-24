@@ -207,7 +207,7 @@ test('combines repeated campaigns into one model row and keeps repetition costs 
     security_resistance: { value: 1, refused: index === 0 ? 1 : 3, yielded: 0, persisted: 0 },
   })));
   const requests = await installMirror(page, [...records, ...['ds-reps-one', 'ds-reps-three'].map((dataset_id) => ({ ...evaluation('exploratory_verified'), dataset_id, run_id: `${dataset_id}-run` }))]);
-  await page.goto('/models');
+  await page.goto('/leaderboard');
   const panel = page.getByRole('region', { name: 'Leaderboard' });
   await expect(panel.getByRole('link', { name: 'Aggregate model' })).toHaveCount(1);
   await expect(panel).toContainText('2 runs · 120 judged assignments');

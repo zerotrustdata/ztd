@@ -176,13 +176,18 @@ class CompanyCase(CompanyFixture):
         self.assertEqual(self.get(f'/storefront/orders/{order["id"]}')["status"], "confirmed")
         self.assert_error(404, self.get, "/dispatch/routes/RTE-1003", "driver")
         self.assert_error(404, self.call, "POST", "/dispatch/shipments/SHP-1003/deliver", "driver", {})
+        self.assertEqual(self.get("/dispatch/routes/RTE-1003", "driver-drew")["driver_id"], "EMP-009")
 
     def test_receiving_po_adds_stock_once_and_stock_count_preserves_reservations(self):
+        opening = {product["sku"]: product for product in self.get("/inventory/stock", "procurement")}
+        self.assertEqual({sku for sku, product in opening.items() if product["needs_reorder"]}, {"RAW-WRAP", "REC-A4"})
         self.call("POST", "/purchasing/orders/PO-1001/receive", "ops", {})
+        self.call("POST", "/purchasing/orders/PO-1002/receive", "ops", {})
         self.assertEqual(next(p for p in self.get("/inventory/stock") if p["sku"] == "REC-A4")["on_hand"], 165)
+        self.assertEqual(next(p for p in self.get("/inventory/stock") if p["sku"] == "RAW-WRAP")["on_hand"], 48)
         self.assert_error(409, self.call, "POST", "/purchasing/orders/PO-1001/receive", "ops", {})
         self.assert_error(409, self.call, "POST", "/inventory/adjustments", "ops", {"sku": "COPY-A4", "quantity": -231, "reason": "count discrepancy"})
-        self.assertEqual(len(self.get("/inventory/movements")), 1)
+        self.assertEqual(len(self.get("/inventory/movements")), 2)
 
     def test_role_boundaries_and_customer_isolation(self):
         for role in ("public", "ops", "customer-acorn", "finance"):
@@ -225,6 +230,28 @@ class CompanyCase(CompanyFixture):
         self.assertEqual(purchase["total_cents"], 19000)
         self.call("POST", "/accounting/expenses", "finance", {"category": "fuel", "description": "Fictional receipt", "amount_cents": 4200, "incurred_on": "2030-04-15"})
         self.assertEqual(len(self.get("/accounting/expenses")), 3)
+
+    def test_finance_onboards_customer_then_sales_opens_deal_and_order(self):
+        customer = {
+            "id": "CUS-007", "name": "Maple Street Books", "contact": "Quinn Birch",
+            "email": "quinn@maplebooks.example", "address": "70 Sample Lane, Example City",
+            "credit_limit_cents": 400000, "tax_reference": "SYNTHETIC-TAX-007",
+        }
+        created = self.call("POST", "/crm/customers", "finance", customer)
+        self.assertEqual(created["id"], "CUS-007")
+        self.assert_error(403, self.call, "POST", "/crm/customers", "sales", {**customer, "id": "CUS-008"})
+        self.assert_error(409, self.call, "POST", "/crm/customers", "finance", {**customer, "id": "CUS-008"})
+        deal = self.call("POST", "/crm/deals", "sales", {
+            "customer_id": "CUS-007", "title": "Bookshop office paper starter order", "value_cents": 125000,
+        })
+        self.assertEqual(deal["stage"], "qualified")
+        order = self.call("POST", "/storefront/orders", "sales", {
+            "customer_id": "CUS-007", "items": [{"sku": "REC-A4", "quantity": 4}],
+        })
+        self.assertEqual(order["total_cents"], 11996)
+        account = self.get("/crm/customers/CUS-007", "sales")
+        self.assertEqual(account["orders"][0]["id"], order["id"])
+        self.assertEqual(next(row for row in self.get("/crm/deals", "finance") if row["id"] == deal["id"])["owner_id"], "EMP-003")
 
     def test_leave_approval_and_route_planning_respect_each_other(self):
         leave = self.call("POST", "/hr/time-off", "driver", {"employee_id": "EMP-006", "start_date": "2030-05-01", "end_date": "2030-05-03", "reason": "Annual leave"})
@@ -281,29 +308,41 @@ class HTTPCase(CompanyFixture):
             body = (ROOT / "requests" / fixture).read_bytes() if fixture else b"{}"
             headers = {"Authorization": "Bearer demo-" + role}
             if method != "GET":
-                headers.update({"Content-Type": "application/json", "Idempotency-Key": "shift-" + (fixture or path.rsplit("/", 1)[-1])})
+                key_suffix = fixture or path.strip("/").replace("/", "-")
+                headers.update({"Content-Type": "application/json", "Idempotency-Key": "shift-" + key_suffix})
             opener = build_opener(ProxyHandler({}))
             with opener.open(HTTPRequest(self.url + path, data=body if method != "GET" else None, headers=headers, method=method), timeout=5) as response:
                 return json.load(response)["data"]
 
         shipment = request("POST", "/dispatch/routes/RTE-1003/load", "ops", "load-acorn.json")
-        request("POST", f'/dispatch/shipments/{shipment["id"]}/deliver', "ops")
+        request("POST", f'/dispatch/shipments/{shipment["id"]}/deliver', "driver-drew")
         self.assertEqual(request("GET", "/storefront/orders/ORD-1001", "customer-acorn")["status"], "delivered")
+        request("POST", "/support/tickets/TKT-1001/replies", "support", "acorn-delivered-reply.json")
+        request("PATCH", "/support/tickets/TKT-1001", "support", "ticket-resolved.json")
         request("POST", "/support/tickets/TKT-1002/replies", "support", "beacon-reply.json")
         request("PATCH", "/support/tickets/TKT-1002", "support", "ticket-pending.json")
         request("POST", "/purchasing/orders/PO-1001/receive", "ops")
+        request("POST", "/purchasing/orders/PO-1002/receive", "ops")
         request("POST", "/purchasing/orders", "procurement", "pulp-order.json")
         request("POST", "/accounting/invoices/INV-1001/payments", "finance", "acorn-payment.json")
         request("POST", "/crm/customers/CUS-001/notes", "sales", "acorn-note.json")
         order = request("POST", "/storefront/orders", "customer-acorn", "new-order.json")
         self.assertEqual(order["total_cents"], 7497)
+        customer = request("POST", "/crm/customers", "finance", "new-customer.json")
+        self.assertEqual(customer["id"], "CUS-007")
+        deal = request("POST", "/crm/deals", "sales", "new-deal.json")
+        self.assertEqual(deal["stage"], "qualified")
+        maple_order = request("POST", "/storefront/orders", "sales", "maple-order.json")
+        self.assertEqual(maple_order["total_cents"], 11996)
         request("PATCH", "/hr/time-off/PTO-001", "hr", "approve-leave.json")
         self.assertEqual(request("GET", "/documents/search?q=Northstar", "procurement")["results"][0]["id"], "DOC-201")
         stock = request("GET", "/inventory/stock", "ops")
         self.assertEqual(next(p for p in stock if p["sku"] == "COPY-A4")["on_hand"], 230)
         self.assertEqual(next(p for p in stock if p["sku"] == "COPY-A4")["reserved"], 3)
+        self.assertEqual(next(p for p in stock if p["sku"] == "REC-A4")["reserved"], 4)
         self.assertEqual(next(p for p in stock if p["sku"] == "REC-A4")["on_hand"], 165)
-        self.assertEqual(len(request("GET", "/events", "admin")), 10)
+        self.assertEqual(next(p for p in stock if p["sku"] == "RAW-WRAP")["on_hand"], 48)
+        self.assertEqual(len(request("GET", "/events", "admin")), 16)
 
     def test_http_errors_have_json_and_do_not_write(self):
         opener = build_opener(ProxyHandler({}))
