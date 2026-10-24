@@ -54,7 +54,7 @@ type stores struct {
 	KVStore        *KVStoreService
 	SSEStore       *SSEEventService
 	BlobStore      *BlobStoreService
-	AuditStore     *storage.SQLAuditStore
+	EventsStore    *storage.LocalFirstEventsStore
 	SuspendedStore *storage.SuspendedTransactionService
 }
 
@@ -154,21 +154,21 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	}
 	logger.Info("Vault unlocked successfully", "vault_dir", vaultDirAbs)
 
-	// Initialize SQLAuditStore for transaction-native audit recording. It
+	// Initialize LocalFirstEventsStore for transaction-native audit recording. It
 	// shares this pool, so every ztd.db writer queues on one writer gate.
-	auditStoreConfig := storage.DefaultAuditStoreConfig()
-	auditStoreConfig.EncryptionVault = encryptionVault
-	auditStore, err := storage.NewSQLAuditStore(auditStoreConfig, db, logger, fileSvc)
+	eventsStoreConfig := storage.DefaultLocalFirstEventsStoreConfig()
+	eventsStoreConfig.EncryptionVault = encryptionVault
+	eventsStore, err := storage.NewLocalFirstEventsStore(eventsStoreConfig, db, logger, fileSvc)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBAuditStoreInit, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBEventsStoreInit, err)
 	}
 
-	// From here the audit store owns a pruner goroutine, so every error path
+	// From here the local-first events store owns a pruner goroutine, so every error path
 	// stops it before the pool it prunes is closed.
-	closeAfterAuditStore := func() {
-		if closeErr := auditStore.Close(); closeErr != nil {
-			logger.Error("AuditStore close error during failed initialization", "error", closeErr)
+	closeAfterEventsStore := func() {
+		if closeErr := eventsStore.Close(); closeErr != nil {
+			logger.Error("EventsStore close error during failed initialization", "error", closeErr)
 		}
 		db.Close()
 	}
@@ -176,7 +176,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	// Replay protection shares this pool and owns the nonces table.
 	replayStore, err := storage.NewReplayStore(db, logger)
 	if err != nil {
-		closeAfterAuditStore()
+		closeAfterEventsStore()
 		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBReplayStoreInit, err)
 	}
 
@@ -184,7 +184,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	// columns with the unlocked runtime vault.
 	suspendedStore, err := storage.NewSuspendedTransactionService(db, encryptionVault, logger)
 	if err != nil {
-		closeAfterAuditStore()
+		closeAfterEventsStore()
 		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBSuspendedStoreInit, err)
 	}
 
@@ -203,13 +203,13 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	// that key is created by the secret manager's app settings initialization.
 	if err := svc.initSchema(fileSvc, ks); err != nil {
 		cancel()
-		closeAfterAuditStore()
+		closeAfterEventsStore()
 		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBSchemaInit, err)
 	}
 	actuatorPriv, actuatorKeyID, err := svc.sm.GetActuatorKey()
 	if err != nil {
 		cancel()
-		closeAfterAuditStore()
+		closeAfterEventsStore()
 		return nil, fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
 	}
 	actuatorPub := actuatorPriv.Public().(ed25519.PublicKey)
@@ -222,7 +222,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 		KVStore:      NewKVStoreService(db, logger),
 		SSEStore:     NewSSEEventService(db, logger),
 		BlobStore:    NewBlobStoreService(db, logger),
-		AuditStore:   auditStore,
+		EventsStore:  eventsStore,
 	}
 	s.SuspendedStore = suspendedStore
 	s.AppPolicyStore = NewAppPolicyStoreService(db, logger, s.DocStore)
@@ -233,7 +233,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	// Initialize state root if missing
 	if err := svc.initStateRoot(); err != nil {
 		cancel()
-		closeAfterAuditStore()
+		closeAfterEventsStore()
 		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayDBStateRootInit, err)
 	}
 
@@ -370,9 +370,9 @@ func (s *CanonicalDBService) GetBlobStore() *BlobStoreService {
 	return s.stores.BlobStore
 }
 
-// GetAuditStore returns the audit store service.
-func (s *CanonicalDBService) GetAuditStore() *storage.SQLAuditStore {
-	return s.stores.AuditStore
+// GetLocalFirstEventsStore returns the local-first events store service.
+func (s *CanonicalDBService) GetLocalFirstEventsStore() *storage.LocalFirstEventsStore {
+	return s.stores.EventsStore
 }
 
 // GetSuspendedStore returns the suspended transaction store service.
@@ -405,9 +405,9 @@ func (s *CanonicalDBService) Close() error {
 		s.logger.Warn("CanonicalDBService shutdown timeout, forcing close")
 	}
 
-	if s.stores != nil && s.stores.AuditStore != nil {
-		if err := s.stores.AuditStore.Close(); err != nil {
-			s.logger.Error("AuditStore close error", "error", err)
+	if s.stores != nil && s.stores.EventsStore != nil {
+		if err := s.stores.EventsStore.Close(); err != nil {
+			s.logger.Error("EventsStore close error", "error", err)
 		}
 	}
 

@@ -28,8 +28,8 @@ func TestReceiptHistoryKeepsOriginalSignedVectors(t *testing.T) {
 		body      []byte
 		signature string
 	}{
-		{"receipt", actionReceiptCanonicalizationVectorJSON, "01d60a4fc5d5b2f33ab0208b14efde29fb37f8e8dc5db0a99b4962c3b28676c432b887b9ce3d1d94a31a345c3d5773dd37dd1e2da5a6cb9e89e2d00a029ef603"},
-		{"staged receipt", actionReceiptStageEvidenceCanonicalizationVectorJSON, "5e940060f02f72fee66b1ac0714ad44b8c97fa8775dedcf979794870b955b1d70b063974570767f01e9fb178ed81b47b44757e070628dd3af16477dd4be72309"},
+		{"receipt", eventReceiptCanonicalizationVectorJSON, "01d60a4fc5d5b2f33ab0208b14efde29fb37f8e8dc5db0a99b4962c3b28676c432b887b9ce3d1d94a31a345c3d5773dd37dd1e2da5a6cb9e89e2d00a029ef603"},
+		{"staged receipt", eventReceiptStageEvidenceCanonicalizationVectorJSON, "5e940060f02f72fee66b1ac0714ad44b8c97fa8775dedcf979794870b955b1d70b063974570767f01e9fb178ed81b47b44757e070628dd3af16477dd4be72309"},
 		{"persistence", receiptPersistenceCanonicalizationVectorJSON, "8fee4aa18c1beb8fc52b7ee371ff82a727f75430c672e694cf3d4cafc0f5dfb33a4a28ba79d405c7b3a4b6c61876f0a05a90f9a197b96039fd34d47c69ba9c03"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -53,14 +53,14 @@ func TestReceiptHistoryKeepsWireFieldNumbersAndNames(t *testing.T) {
 		name    protoreflect.Name
 		number  protoreflect.FieldNumber
 	}{
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "l2_status", 11},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "l3_status", 12},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "deterministic_stage_evidence", 13},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "final_persistence_attestation", 14},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "failure_code", 15},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "event_type", 16},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "action_type", 17},
-		{(&operatorv1.ActionReceipt{}).ProtoReflect().Descriptor(), "rejection_code", 18},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "l2_status", 11},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "l3_status", 12},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "deterministic_stage_evidence", 13},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "final_persistence_attestation", 14},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "failure_code", 15},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "event_type", 16},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "action_type", 17},
+		{(&operatorv1.EventReceipt{}).ProtoReflect().Descriptor(), "rejection_code", 18},
 		{(&operatorv1.DeterministicStageEvidence{}).ProtoReflect().Descriptor(), "receipt_signature_digest", 21},
 		{(&operatorv1.ReceiptPersistenceAttestation{}).ProtoReflect().Descriptor(), "receipt_signature_digest", 2},
 		{(&evalv1.GovernedActionBinding{}).ProtoReflect().Descriptor(), "receipt_ref", 6},

@@ -29,7 +29,7 @@ func TestTrajectoryPolicyDenialRequiresGovernanceRejectionReceipt(t *testing.T) 
 
 	signer := oracletest.NewSigner(t)
 	receipt := signer.Rejected(t, oracletest.ReceiptOpts{TransactionID: "tx-denied", OperatorID: "operator-1", SessionID: "session-1", ActionType: string(constants.ActionTypeMcpCall)}, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
-	grader.view.Calls[0].Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+	grader.view.Calls[0].Receipt = &AgentTraceReceipt{EventReceipt: receipt}
 	assert.Equal(t, policyOutcomeDenied, grader.derivePolicyOutcome(false), "a typed signed rejection receipt is governance evidence")
 }
 

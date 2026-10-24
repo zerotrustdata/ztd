@@ -31,7 +31,7 @@ func TestCommitmentLedger_ConcurrentLedgerInstancesBuildAgainstUniqueHeads(t *te
 	firstDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, firstDB.Close()) })
-	_, err = firstDB.Exec(auditStoreSchema)
+	_, err = firstDB.Exec(eventsStoreSchema)
 	require.NoError(t, err)
 	secondDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)

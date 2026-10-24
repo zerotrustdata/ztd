@@ -175,7 +175,7 @@ func successDispatchResultForRequest(t *testing.T, req *operatorv1.InferenceDisp
 	return &dispatch.CommandDispatchResult{
 		TransactionID: "tx-inference-001",
 		ResultPayload: payload,
-		Receipt: &operatorv1.ActionReceipt{
+		Receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-inference-001",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: digest,
@@ -676,7 +676,7 @@ func TestInferenceDispatchController_ContextCanceledWritesNothing(t *testing.T) 
 }
 
 func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-inference-failed-001",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		Signature:     "sig-failed-001",
@@ -710,7 +710,7 @@ func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t 
 func TestInferenceDispatchController_ProviderFailureLogCarriesEvidenceIDsWithoutContent(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
-			receipt := &operatorv1.ActionReceipt{TransactionId: "tx-backend-failure", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+			receipt := &operatorv1.EventReceipt{TransactionId: "tx-backend-failure", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 			dispatcher := &stubInferenceCommandDispatcher{err: governance.WithFailedReceipt(receipt, fmt.Errorf("private provider detail: %w", constants.ErrInferenceBackendUnavailable))}
 			ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 4096)
 			var output bytes.Buffer

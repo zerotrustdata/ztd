@@ -89,7 +89,7 @@ func TestEgressScrubbed_PassesContentFreePayloadsThrough(t *testing.T) {
 	assert.True(t, proto.Equal(payload, out))
 }
 
-func TestPublishLFAATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T) {
+func TestPublishLFEATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -102,7 +102,7 @@ func TestPublishLFAATypedResponseTo_WithholdsRawLogsWithoutScrubber(t *testing.T
 	}
 	payload := &operatorv1.FetchLogsResult{ExecutionId: "exec-9", Stdout: egressSecretEmail}
 
-	publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg,
+	publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg,
 		constants.Event.Operator.FetchLogs.Completed, payload, nil, nil)
 
 	published := client.LastPublished()
@@ -272,7 +272,7 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 	}
 }
 
-func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) {
+func TestPublishLFEAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) {
 	rawError := "failed to retrieve execution: /home/alice/" + egressSecretEmail + "/out.log"
 	msg := &PubSubCommandMessage{
 		ID:                "msg-error-text",
@@ -283,7 +283,7 @@ func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) {
 
 	t.Run("enabled scrubber redacts the error text", func(t *testing.T) {
 		client := pubsubtest.NewMockOperatorPubSubClient()
-		publishLFAAErrorTo(context.Background(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg,
+		publishLFEAErrorTo(context.Background(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg,
 			constants.Event.Operator.FetchLogs.Failed, rawError, nil, newEgressScrubber(t, true))
 		published := client.LastPublished()
 		require.NotNil(t, published)
@@ -300,7 +300,7 @@ func TestPublishLFAAError_ScrubsErrorTextOrPublishesGenericText(t *testing.T) {
 	} {
 		t.Run(tt.name+" publishes generic text", func(t *testing.T) {
 			client := pubsubtest.NewMockOperatorPubSubClient()
-			publishLFAAErrorTo(context.Background(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg,
+			publishLFEAErrorTo(context.Background(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg,
 				constants.Event.Operator.FetchLogs.Failed, rawError, nil, tt.s)
 			published := client.LastPublished()
 			require.NotNil(t, published)

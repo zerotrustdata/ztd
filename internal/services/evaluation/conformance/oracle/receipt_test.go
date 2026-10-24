@@ -31,7 +31,7 @@ func verifyOpts(operatorID string) oracletest.ReceiptOpts {
 	}
 }
 
-func findStage(receipt *operatorv1.ActionReceipt, kind operatorv1.DeterministicStageKind) *operatorv1.DeterministicStageEvidence {
+func findStage(receipt *operatorv1.EventReceipt, kind operatorv1.DeterministicStageKind) *operatorv1.DeterministicStageEvidence {
 	for _, stage := range receipt.GetDeterministicStageEvidence() {
 		if stage.GetKind() == kind {
 			return stage
@@ -45,7 +45,7 @@ func TestVerifyReceipt(t *testing.T) {
 		name      string
 		anchors   []*evalv1.ConformanceAnchor
 		runtimeID string
-		mutate    func(t *testing.T, signer oracletest.Signer, receipt *operatorv1.ActionReceipt)
+		mutate    func(t *testing.T, signer oracletest.Signer, receipt *operatorv1.EventReceipt)
 		want      error
 	}
 	signer := oracletest.NewSigner(t)
@@ -56,23 +56,23 @@ func TestVerifyReceipt(t *testing.T) {
 		{name: "valid receipt", anchors: pinned, runtimeID: "op-1"},
 		{
 			name: "flipped signature byte", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				sig, err := hex.DecodeString(receipt.Signature)
 				require.NoError(t, err)
 				sig[0] ^= 0x01
 				receipt.Signature = hex.EncodeToString(sig)
 			},
-			want: constants.ErrActionReceiptSignatureInvalid,
+			want: constants.ErrEventReceiptSignatureInvalid,
 		},
 		{
 			name: "receipt signed by a foreign key under the pinned key id", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				receipt.SignerKeyId = signer.KeyID
 				foreign.Resign(t, receipt)
 			},
-			want: constants.ErrActionReceiptSignatureInvalid,
+			want: constants.ErrEventReceiptSignatureInvalid,
 		},
 		{name: "signer key not pinned", anchors: nil, runtimeID: "op-1", want: constants.ErrConformanceAnchorUnknown},
 		{
@@ -81,7 +81,7 @@ func TestVerifyReceipt(t *testing.T) {
 		},
 		{
 			name: "attestation removed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				receipt.FinalPersistenceAttestation = nil
 			},
@@ -89,7 +89,7 @@ func TestVerifyReceipt(t *testing.T) {
 		},
 		{
 			name: "stages reordered and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				stages := receipt.DeterministicStageEvidence
 				stages[0], stages[1] = stages[1], stages[0]
@@ -99,7 +99,7 @@ func TestVerifyReceipt(t *testing.T) {
 		},
 		{
 			name: "wrong parent stage id and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE).ParentStageId = "tx-1:bogus"
 				s.Resign(t, receipt)
@@ -108,7 +108,7 @@ func TestVerifyReceipt(t *testing.T) {
 		},
 		{
 			name: "one stage operator id cleared and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).OperatorId = ""
 				s.Resign(t, receipt)
@@ -119,7 +119,7 @@ func TestVerifyReceipt(t *testing.T) {
 			// The chain validator rejects a stage that names a different operator
 			// before the identity check runs, so the failure is an evidence-graph error.
 			name: "one stage operator id changed to another operator and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.EventReceipt) {
 				t.Helper()
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).OperatorId = "op-2"
 				s.Resign(t, receipt)

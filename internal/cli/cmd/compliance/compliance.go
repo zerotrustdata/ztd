@@ -212,12 +212,12 @@ func evaluateKSIs(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keysto
 	return resultSet, nil
 }
 
-// openEvaluatorDeps opens the runtime vault, audit store, git ledger, and
+// openEvaluatorDeps opens the runtime vault, local-first events store, git ledger, and
 // commitment ledger from the runtime file service. Each evidence source is
-// opened by a dedicated opener (openVault, openAuditStore, openLedger); this
+// opened by a dedicated opener (openVault, openEventsStore, openLedger); this
 // function composes them and aggregates their cleanups so a failure in a later
 // opener releases resources acquired by earlier ones. A vault failure is
-// returned as-is, so callers see ErrAuditStoreVaultLocked-class errors rather
+// returned as-is, so callers see ErrLocalFirstEventsStoreVaultLocked-class errors rather
 // than an evaluation over locked content.
 func openEvaluatorDeps(fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (compliance.EvaluatorDeps, func(), error) {
 	var cleanups []func()
@@ -228,13 +228,13 @@ func openEvaluatorDeps(fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (co
 	}
 	cleanups = append(cleanups, vaultCleanup)
 
-	auditStore, auditCleanup, ok := openAuditStore(fileSvc, v)
+	eventsStore, auditCleanup, ok := openEventsStore(fileSvc, v)
 	if !ok {
 		runCleanups(cleanups)
-		return compliance.EvaluatorDeps{}, nil, fmt.Errorf("compliance: open audit store: %w", constants.ErrReportStoreUnavailable)
+		return compliance.EvaluatorDeps{}, nil, fmt.Errorf("compliance: open local-first events store: %w", constants.ErrReportStoreUnavailable)
 	}
 	cleanups = append(cleanups, auditCleanup)
-	cl := auditStore.CommitmentLedger()
+	cl := eventsStore.CommitmentLedger()
 
 	ledger, ledgerCleanup, ok := openLedger(fileSvc, v)
 	if !ok {
@@ -244,7 +244,7 @@ func openEvaluatorDeps(fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (co
 	cleanups = append(cleanups, ledgerCleanup)
 
 	return compliance.EvaluatorDeps{
-		Audit:       auditStore,
+		Audit:       eventsStore,
 		Ledger:      ledger,
 		Commitments: cl,
 		History:     newKSIHistoryStore(fileSvc),
@@ -288,9 +288,9 @@ func openRuntimeVault(fileSvc fs.RuntimeFileService, opts keystore.Options) (*va
 	return openVault(ks)
 }
 
-// openAuditStore opens ztd.db once and builds the SQL audit store over it; the
+// openEventsStore opens ztd.db once and builds the local-first events store over it; the
 // store's commitment ledger shares the same pool. Returns ok=false on failure.
-func openAuditStore(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.SQLAuditStore, func(), bool) {
+func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.LocalFirstEventsStore, func(), bool) {
 	if err := fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return nil, nil, false
 	}
@@ -298,15 +298,15 @@ func openAuditStore(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.SQL
 	if err != nil {
 		return nil, nil, false
 	}
-	auditCfg := storage.DefaultAuditStoreConfig()
+	auditCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	auditCfg.EncryptionVault = v
-	auditStore, err := storage.NewSQLAuditStore(auditCfg, mainDB, slog.Default(), fileSvc)
+	eventsStore, err := storage.NewLocalFirstEventsStore(auditCfg, mainDB, slog.Default(), fileSvc)
 	if err != nil {
 		mainDB.Close()
 		return nil, nil, false
 	}
-	return auditStore, func() {
-		auditStore.Close()
+	return eventsStore, func() {
+		eventsStore.Close()
 		mainDB.Close()
 	}, true
 }

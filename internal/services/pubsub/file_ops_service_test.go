@@ -61,11 +61,11 @@ func newFileEditTestService(t *testing.T, cfg *config.Config, logger *slog.Logge
 
 // fileOpsTestDeps overrides the default collaborators newFileOpsServiceWithDepsForTest builds.
 // A nil field takes the default: a real file ledger over an unlocked test vault, a
-// mockResultsPublisher, and a real audit store. The scrubber is always an active one.
+// mockResultsPublisher, and a real local-first events store. The scrubber is always an active one.
 type fileOpsTestDeps struct {
-	Ledger     *storage.GitLedgerService
-	Results    ResultsPublisher
-	AuditStore *storage.SQLAuditStore
+	Ledger      *storage.GitLedgerService
+	Results     ResultsPublisher
+	EventsStore *storage.LocalFirstEventsStore
 }
 
 // newFileOpsServiceWithDepsForTest builds a FileOpsService with every required dependency real
@@ -78,10 +78,10 @@ func newFileOpsServiceWithDepsForTest(t *testing.T, cfg *config.Config, logger *
 	if deps.Results == nil {
 		deps.Results = &mockResultsPublisher{}
 	}
-	if deps.AuditStore == nil {
-		deps.AuditStore = storagetest.NewTestAuditStore(t, testOperatorSessionID)
+	if deps.EventsStore == nil {
+		deps.EventsStore = storagetest.NewTestEventsStore(t, testOperatorSessionID)
 	}
-	svc, err := NewFileOpsService(cfg, logger, fileEditSvc, client, deps.Ledger, deps.Results, mustNewScrubbingSvc(t, logger), deps.AuditStore)
+	svc, err := NewFileOpsService(cfg, logger, fileEditSvc, client, deps.Ledger, deps.Results, mustNewScrubbingSvc(t, logger), deps.EventsStore)
 	require.NoError(t, err)
 	return svc
 }
@@ -104,37 +104,37 @@ func TestNewFileOpsService_RequiresEveryDependency(t *testing.T) {
 	ledger := storagetest.NewTestLedger(t)
 	results := &mockResultsPublisher{}
 	scrubber := mustNewScrubbingSvc(t, logger)
-	auditStore := storagetest.NewTestAuditStore(t)
+	eventsStore := storagetest.NewTestEventsStore(t)
 
-	svc, err := NewFileOpsService(cfg, logger, fileEditSvc, client, ledger, results, scrubber, auditStore)
+	svc, err := NewFileOpsService(cfg, logger, fileEditSvc, client, ledger, results, scrubber, eventsStore)
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 	assert.Same(t, ledger, svc.ledger)
 	assert.Same(t, scrubber, svc.scrubbing)
-	assert.Same(t, auditStore, svc.auditStore)
+	assert.Same(t, eventsStore, svc.eventsStore)
 
 	tests := []struct {
-		name       string
-		cfg        *config.Config
-		fileEdit   *execution.FileEditService
-		ledger     *storage.GitLedgerService
-		results    ResultsPublisher
-		scrubber   *scrubbing.ScrubbingService
-		auditStore *storage.SQLAuditStore
-		wantErr    error
+		name        string
+		cfg         *config.Config
+		fileEdit    *execution.FileEditService
+		ledger      *storage.GitLedgerService
+		results     ResultsPublisher
+		scrubber    *scrubbing.ScrubbingService
+		eventsStore *storage.LocalFirstEventsStore
+		wantErr     error
 	}{
-		{name: "nil config", fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil file edit service", cfg: cfg, ledger: ledger, results: results, scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil ledger", cfg: cfg, fileEdit: fileEditSvc, results: results, scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrLedgerRequired},
-		{name: "nil results publisher", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrPubSubResultsPublisher},
-		{name: "nil scrubber", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "disabled scrubber", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "nil audit store", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
+		{name: "nil config", fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil file edit service", cfg: cfg, ledger: ledger, results: results, scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil ledger", cfg: cfg, fileEdit: fileEditSvc, results: results, scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrLedgerRequired},
+		{name: "nil results publisher", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrPubSubResultsPublisher},
+		{name: "nil scrubber", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "disabled scrubber", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: newEgressScrubber(t, false), eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "nil local-first events store", cfg: cfg, fileEdit: fileEditSvc, ledger: ledger, results: results, scrubber: scrubber, wantErr: constants.ErrLocalFirstEventsStoreRequired},
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc, err := NewFileOpsService(tt.cfg, logger, tt.fileEdit, client, tt.ledger, tt.results, tt.scrubber, tt.auditStore)
+			svc, err := NewFileOpsService(tt.cfg, logger, tt.fileEdit, client, tt.ledger, tt.results, tt.scrubber, tt.eventsStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})
@@ -558,12 +558,12 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) {
 // FILE_EDIT; every other destination is rejected before anything is written.
 func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) {
 	workspace := constants.EvaluationWorkspacePrefix + "0123456789abcdef"
-	seedIn := func(t *testing.T, cfg *config.Config, filePath string) (*fileEditResultsPublisher, *storage.SQLAuditStore, error) {
+	seedIn := func(t *testing.T, cfg *config.Config, filePath string) (*fileEditResultsPublisher, *storage.LocalFirstEventsStore, error) {
 		t.Helper()
 		logger := testutil.NewTestLogger()
 		results := &fileEditResultsPublisher{}
-		auditStore := storagetest.NewTestAuditStore(t, testOperatorSessionID)
-		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, newFileEditTestService(t, cfg, logger), pubsubtest.NewMockOperatorPubSubClient(), fileOpsTestDeps{Results: results, AuditStore: auditStore})
+		eventsStore := storagetest.NewTestEventsStore(t, testOperatorSessionID)
+		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, newFileEditTestService(t, cfg, logger), pubsubtest.NewMockOperatorPubSubClient(), fileOpsTestDeps{Results: results, EventsStore: eventsStore})
 		payload, err := proto.Marshal(&operatorv1.EvaluationWorkspaceSeedRequested{ExecutionId: "attempt-1", FilePath: filePath, Content: "fixture"})
 		require.NoError(t, err)
 		_, err = svc.HandleEvaluationWorkspaceSeedRequest(context.Background(), &PubSubCommandMessage{
@@ -572,13 +572,13 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) {
 			OperatorSessionID: testOperatorSessionID,
 			Payload:           payload,
 		})
-		return results, auditStore, err
+		return results, eventsStore, err
 	}
 
 	t.Run("writes a workspace fixture and records it", func(t *testing.T) {
 		cfg := testutil.NewTestConfig(t)
 		filePath := filepath.Join(cfg.WorkDir, constants.EvaluationWorkspaceDirname, workspace, "logs", "auth.log")
-		results, auditStore, err := seedIn(t, cfg, filePath)
+		results, eventsStore, err := seedIn(t, cfg, filePath)
 		require.NoError(t, err)
 		require.Len(t, results.results, 1)
 		result, ok := results.results[0].(*operatorv1.EvaluationWorkspaceSeedResult)
@@ -589,7 +589,7 @@ func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) {
 		content, err := os.ReadFile(filePath)
 		require.NoError(t, err)
 		assert.Equal(t, "fixture", string(content))
-		events, err := auditStore.ListEvents(testOperatorSessionID, 10, 0)
+		events, err := eventsStore.ListEvents(testOperatorSessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.Eval.WorkspaceSeed.Completed, events[0].Type)
@@ -1027,7 +1027,7 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 		client := pubsubtest.NewMockOperatorPubSubClient()
 		fileEditSvc := newFileEditTestService(t, cfg, logger)
 		results := &fileEditResultsPublisher{}
-		// Audit store has no session row for "unregistered-session", so RecordEvent fails FK check.
+		// local-first events store has no session row for "unregistered-session", so RecordEvent fails FK check.
 		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{Results: results})
 
 		testFile := filepath.Join(tmpDir, "unrecorded.txt")

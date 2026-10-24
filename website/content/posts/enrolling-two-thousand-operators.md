@@ -366,7 +366,7 @@ with `EXECUTING` and `COMPLETED` SHUTDOWN receipts in the Operator's log.
 
 The second cause was that a stop *without* a reason never reached execution at all. A `ShutdownRequested` message
 with every field at its default marshals to zero bytes. Two checks treated zero bytes as a missing payload. L4 only
-exempted heartbeats, so it rejected the envelope and recorded a rejected-transaction receipt. Behind that sat a
+exempted heartbeats, so it rejected the envelope and recorded a rejected event receipt. Behind that sat a
 duplicate check in the pub/sub handler that dropped the envelope with no receipt, after nonce reservation. The CLI
 waited out its 5 s API timeout and fell back to TERM. The browser's stop route sends exactly that empty message, so
 this was the common case, not an edge. One function now owns the zero-byte exemption (heartbeat and shutdown), the

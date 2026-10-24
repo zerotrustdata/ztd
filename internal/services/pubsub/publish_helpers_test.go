@@ -88,7 +88,7 @@ func TestSetExecutionIDOnPayload(t *testing.T) {
 	})
 }
 
-func TestPublishLFAATypedResponseTo(t *testing.T) {
+func TestPublishLFEATypedResponseTo(t *testing.T) {
 	t.Run("publishes typed response successfully", func(t *testing.T) {
 		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
@@ -114,7 +114,7 @@ func TestPublishLFAATypedResponseTo(t *testing.T) {
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		}
 
-		publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, logger))
 
 		published := client.LastPublished()
 		require.NotNil(t, published)
@@ -143,7 +143,7 @@ func TestPublishLFAATypedResponseTo(t *testing.T) {
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		}
 
-		publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, logger))
 		// Should log error and not panic
 	})
 
@@ -173,12 +173,12 @@ func TestPublishLFAATypedResponseTo(t *testing.T) {
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		}
 
-		err := publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		err := publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Completed, payload, storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, logger))
 		require.ErrorIs(t, err, constants.ErrClientClosed)
 	})
 }
 
-func TestLFAAResponsesUseExecutingOperatorIdentity(t *testing.T) {
+func TestLFEAResponsesUseExecutingOperatorIdentity(t *testing.T) {
 	for _, failure := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completion", true: "failure"}[failure], func(t *testing.T) {
 			cfg := testutil.NewTestConfig(t)
@@ -192,9 +192,9 @@ func TestLFAAResponsesUseExecutingOperatorIdentity(t *testing.T) {
 			}
 			client := pubsubtest.NewMockOperatorPubSubClient()
 			if failure {
-				publishLFAAErrorTo(t.Context(), client, cfg, testutil.NewTestLogger(), msg, constants.Event.Operator.OllamaModelInventory.Failed, "inventory failed", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, testutil.NewTestLogger()))
+				publishLFEAErrorTo(t.Context(), client, cfg, testutil.NewTestLogger(), msg, constants.Event.Operator.OllamaModelInventory.Failed, "inventory failed", storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, testutil.NewTestLogger()))
 			} else {
-				publishLFAATypedResponseTo(t.Context(), client, cfg, testutil.NewTestLogger(), msg, constants.Event.Operator.OllamaModelInventory.Completed, &operatorv1.OllamaModelInventoryResult{}, storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, testutil.NewTestLogger()))
+				publishLFEATypedResponseTo(t.Context(), client, cfg, testutil.NewTestLogger(), msg, constants.Event.Operator.OllamaModelInventory.Completed, &operatorv1.OllamaModelInventoryResult{}, storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, testutil.NewTestLogger()))
 			}
 			published := client.LastPublished()
 			require.NotNil(t, published)
@@ -208,7 +208,7 @@ func TestLFAAResponsesUseExecutingOperatorIdentity(t *testing.T) {
 	}
 }
 
-func TestPublishLFAAErrorTo(t *testing.T) {
+func TestPublishLFEAErrorTo(t *testing.T) {
 	t.Run("publishes error response successfully", func(t *testing.T) {
 		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
@@ -226,7 +226,7 @@ func TestPublishLFAAErrorTo(t *testing.T) {
 			Payload:           []byte("invalid protobuf"),
 		}
 
-		publishLFAAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		publishLFEAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, logger))
 
 		published := client.LastPublished()
 		require.NotNil(t, published)
@@ -251,7 +251,7 @@ func TestPublishLFAAErrorTo(t *testing.T) {
 			Payload:           []byte("invalid protobuf"),
 		}
 
-		err := publishLFAAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestAuditStore(t), mustNewScrubbingSvc(t, logger))
+		err := publishLFEAErrorTo(context.Background(), client, cfg, logger, msg, constants.Event.Operator.Command.Failed, "test error", storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, logger))
 		require.ErrorIs(t, err, constants.ErrClientClosed)
 	})
 }
@@ -265,7 +265,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 	t.Run("persists observed-state content for FsListResult", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t, sessionID)
+		eventsStore := storagetest.NewTestEventsStore(t, sessionID)
 
 		payload := &operatorv1.FsListResult{
 			Entries: []*operatorv1.FsEntry{
@@ -274,9 +274,9 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 			},
 		}
 
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, eventsStore, mustNewScrubbingSvc(t, logger))
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.FsList.Completed, events[0].Type)
@@ -287,13 +287,13 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 	t.Run("does not persist for handlers that record their own raw event", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t, sessionID)
+		eventsStore := storagetest.NewTestEventsStore(t, sessionID)
 
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsRead.Completed, &operatorv1.FsReadResult{Content: "file content here"}, auditStore, mustNewScrubbingSvc(t, logger))
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsRead.Failed, &operatorv1.FsReadResult{ErrorMessage: "read failed"}, auditStore, mustNewScrubbingSvc(t, logger))
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.RestoreFile.Failed, &operatorv1.RestoreFileResult{Error: "restore failed"}, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsRead.Completed, &operatorv1.FsReadResult{Content: "file content here"}, eventsStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsRead.Failed, &operatorv1.FsReadResult{ErrorMessage: "read failed"}, eventsStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.RestoreFile.Failed, &operatorv1.RestoreFileResult{Error: "restore failed"}, eventsStore, mustNewScrubbingSvc(t, logger))
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		assert.Empty(t, events, "FS_READ and RESTORE_FILE record their raw event in the handler")
 	})
@@ -301,7 +301,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 	t.Run("persists observed-state content for PortCheckResult", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t, sessionID)
+		eventsStore := storagetest.NewTestEventsStore(t, sessionID)
 
 		payload := &operatorv1.PortCheckResult{
 			Results: []*operatorv1.PortCheckEntry{
@@ -309,9 +309,9 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 			},
 		}
 
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.PortCheck.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.PortCheck.Completed, payload, eventsStore, mustNewScrubbingSvc(t, logger))
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.PortCheck.Completed, events[0].Type)
@@ -321,15 +321,15 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 	t.Run("scrubs sensitive content before persisting", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t, sessionID)
+		eventsStore := storagetest.NewTestEventsStore(t, sessionID)
 
 		payload := &operatorv1.FsListResult{
 			Entries: []*operatorv1.FsEntry{{Name: "password=secret123 api_key=ghp_test_token"}},
 		}
 
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, eventsStore, mustNewScrubbingSvc(t, logger))
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.FsList.Completed, events[0].Type)
@@ -341,7 +341,7 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 	t.Run("does not persist for command events (double-recording guard)", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t, sessionID)
+		eventsStore := storagetest.NewTestEventsStore(t, sessionID)
 
 		payload := &operatorv1.CommandResult{
 			ExecutionId: "exec-1",
@@ -349,9 +349,9 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 		}
 
 		// Command events should not be recorded via publishObservedStateEvidence
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.Command.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.Command.Completed, payload, eventsStore, mustNewScrubbingSvc(t, logger))
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		assert.Empty(t, events, "command events should not be recorded via observed-state path")
 	})
@@ -360,16 +360,16 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
 		// The session is never created, so the real store rejects the event.
-		auditStore := storagetest.NewTestAuditStore(t)
+		eventsStore := storagetest.NewTestEventsStore(t)
 
 		payload := &operatorv1.FsListResult{
 			Entries: []*operatorv1.FsEntry{{Name: "file1.txt"}},
 		}
 
 		assert.NotPanics(t, func() {
-			publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+			publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, eventsStore, mustNewScrubbingSvc(t, logger))
 		})
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		assert.Empty(t, events)
 	})
@@ -377,15 +377,15 @@ func TestPublishObservedStateEvidence(t *testing.T) {
 	t.Run("handles empty content gracefully", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t, sessionID)
+		eventsStore := storagetest.NewTestEventsStore(t, sessionID)
 
 		payload := &operatorv1.FsListResult{
 			Entries: []*operatorv1.FsEntry{}, // Empty list
 		}
 
-		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, auditStore, mustNewScrubbingSvc(t, logger))
+		publishObservedStateEvidence(context.Background(), logger, newMsg(), constants.Event.Operator.FsList.Completed, payload, eventsStore, mustNewScrubbingSvc(t, logger))
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		assert.Empty(t, events, "empty content should not be recorded")
 	})

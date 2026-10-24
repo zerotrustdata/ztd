@@ -462,7 +462,7 @@ func (s *DocumentStoreService) docList(ctx context.Context, collection string) (
 }
 
 // DocDelete removes a document, returning only an error. It satisfies the
-// governance.TransactionAuditStore and governance.GovernedDocumentStore
+// governance.TransactionEventsStore and governance.GovernedDocumentStore
 // interfaces. A not-found result is not an error — the document is simply
 // already absent. Callers that need the deleted/not-found distinction should
 // use DocDeleteWithResult.

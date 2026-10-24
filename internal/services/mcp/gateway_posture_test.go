@@ -42,7 +42,7 @@ func postureDependencies(t *testing.T, posture constants.Posture) Dependencies {
 	return Dependencies{
 		Logger:           slog.Default(),
 		Responder:        response.NewWriter(slog.Default()),
-		AuditStore:       noopAuditEventRecorder{},
+		EventsStore:      noopAuditEventRecorder{},
 		EmbeddedSession:  fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
 		ScrubbingService: newTestScrubbingService(t),
 		Posture:          posture,

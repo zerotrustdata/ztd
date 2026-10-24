@@ -268,8 +268,8 @@ or provide --document-id to fetch a specific document.`,
 func dataAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit",
-		Short: "Query the Gateway audit store",
-		Long: `Query the Gateway audit store over mTLS for events and summaries. Subcommands
+		Short: "Query the Gateway local-first events store",
+		Long: `Query the Gateway local-first events store over mTLS for events and summaries. Subcommands
 provide listing and aggregation of audit events by operator session.`,
 	}
 
@@ -293,7 +293,7 @@ func dataAuditListCmdWithConfig(configLoader func(string) (*config.Config, error
 		Use:   "list",
 		Short: "List audit events for a session",
 		Long: `List audit events for a specific operator session by querying the Gateway
-audit store over mTLS. Use --operator-session-id to filter events and --limit
+local-first events store over mTLS. Use --operator-session-id to filter events and --limit
 to control the number of results.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")
@@ -357,7 +357,7 @@ func dataAuditSummaryCmdWithConfig(configLoader func(string) (*config.Config, er
 		Use:   string(constants.StreamStatusSummary),
 		Short: "Show audit event summary by type",
 		Long: `Show an aggregated summary of audit events grouped by type, queried from the
-Gateway audit store over mTLS. Use --operator-session-id to filter by a specific
+Gateway local-first events store over mTLS. Use --operator-session-id to filter by a specific
 session.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")

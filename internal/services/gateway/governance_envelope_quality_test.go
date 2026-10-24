@@ -220,7 +220,7 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 // store failure such as a rejection receipt that could not be persisted.
 func TestEnvelopeErrorCode_RendersTypedCodeOnly(t *testing.T) {
 	rejection := fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, "remote-operator")
-	persistFailure := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRejectionReceiptPersist, constants.ErrAuditSessionUnknown)
+	persistFailure := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRejectionReceiptPersist, constants.ErrEventsStoreSessionUnknown)
 	chain := fmt.Errorf("%w: rejection receipt: %w", rejection, persistFailure)
 
 	status, code := envelopeErrorCode(chain)
@@ -229,7 +229,7 @@ func TestEnvelopeErrorCode_RendersTypedCodeOnly(t *testing.T) {
 	require.NotContains(t, code.Error(), "AUDIT_SESSION_UNKNOWN")
 	require.NotContains(t, code.Error(), "remote-operator")
 
-	status, code = envelopeErrorCode(fmt.Errorf("store: %w", constants.ErrAuditSessionUnknown))
+	status, code = envelopeErrorCode(fmt.Errorf("store: %w", constants.ErrEventsStoreSessionUnknown))
 	require.Equal(t, http.StatusInternalServerError, status)
 	require.Equal(t, constants.ErrInternal, code, "an unclassified error renders as the generic internal error")
 }

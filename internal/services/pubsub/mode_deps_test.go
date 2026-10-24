@@ -88,11 +88,11 @@ func TestNewOutboundModeDeps_ValidationErrors(t *testing.T) {
 			expectedErr: constants.ErrStateRootProviderRequired,
 		},
 		{
-			name: "nil TransactionAudit returns ErrTransactionAuditRequired",
+			name: "nil TransactionAudit returns ErrTransactionEventsStoreRequired",
 			modify: func(d *GovernanceCoreDeps) {
 				d.TransactionAudit = nil
 			},
-			expectedErr: constants.ErrTransactionAuditRequired,
+			expectedErr: constants.ErrTransactionEventsStoreRequired,
 		},
 		{
 			name: "nil L3Notary returns ErrL3NotaryRequired",
@@ -183,11 +183,11 @@ func TestNewGatewayModeDeps_ValidationErrors(t *testing.T) {
 			expectedErr: constants.ErrStateRootProviderRequired,
 		},
 		{
-			name: "nil TransactionAudit returns ErrTransactionAuditRequired",
+			name: "nil TransactionAudit returns ErrTransactionEventsStoreRequired",
 			modify: func(d *GatewayModeDeps) {
 				d.TransactionAudit = nil
 			},
-			expectedErr: constants.ErrTransactionAuditRequired,
+			expectedErr: constants.ErrTransactionEventsStoreRequired,
 		},
 		{
 			name: "nil L3Notary returns ErrL3NotaryRequired",

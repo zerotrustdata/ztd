@@ -22,8 +22,8 @@ import (
 )
 
 func TestComputeAuditEventHash_IsDeterministic(t *testing.T) {
-	hash1 := computeAuditEventHash(1, auditChainGenesisPrevHash, "ztd.v1.operator.audit.command", "session-1", "2026-01-01T00:00:00.000000Z", "digest", "tx-1")
-	hash2 := computeAuditEventHash(1, auditChainGenesisPrevHash, "ztd.v1.operator.audit.command", "session-1", "2026-01-01T00:00:00.000000Z", "digest", "tx-1")
+	hash1 := computeEventHash(1, eventsChainGenesisPrevHash, "ztd.v1.operator.audit.command", "session-1", "2026-01-01T00:00:00.000000Z", "digest", "tx-1")
+	hash2 := computeEventHash(1, eventsChainGenesisPrevHash, "ztd.v1.operator.audit.command", "session-1", "2026-01-01T00:00:00.000000Z", "digest", "tx-1")
 	assert.Equal(t, hash1, hash2)
 	assert.Len(t, hash1, 64)
 }
@@ -73,7 +73,7 @@ func TestComputeEventContentDigest_LockedVaultFailsClosed(t *testing.T) {
 	v := newDigestTestVault(t)
 	v.Lock()
 	_, err := computeEventContentDigest(v, &Event{ContentText: "x"})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked)
 	_, err = computeEventContentDigest(nil, &Event{ContentText: "x"})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked)
 }

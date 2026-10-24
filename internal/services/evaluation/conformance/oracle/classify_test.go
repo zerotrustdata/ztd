@@ -24,13 +24,13 @@ func TestClassify(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		build   func(t *testing.T) *operatorv1.ActionReceipt
+		build   func(t *testing.T) *operatorv1.EventReceipt
 		want    Outcome
 		wantErr bool
 	}{
 		{
 			name: "executed",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 			},
@@ -43,7 +43,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "execution failed",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
@@ -61,7 +61,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "rejected with code",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 			},
@@ -74,7 +74,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "rejected with unclassified code is still a rejection",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED)
 			},
@@ -87,7 +87,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "rejected with an L5 execution stage",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 				receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, &operatorv1.DeterministicStageEvidence{
@@ -101,7 +101,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "rejected with a commitment-append stage",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 				receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, &operatorv1.DeterministicStageEvidence{
@@ -116,7 +116,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "executed with no commitment stage",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				stages := receipt.DeterministicStageEvidence[:0]
@@ -133,7 +133,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "executed with an empty commitment hash",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).CommitmentHash = ""
@@ -144,7 +144,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "executed genesis commitment (empty prior hash)",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return signer.Executed(t, verifyOpts("op-1"), "", "hash-1")
 			},
@@ -157,7 +157,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "executed with an empty commitment hash",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).CommitmentHash = ""
@@ -168,7 +168,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "rejection code on a completed receipt",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
@@ -179,7 +179,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "failure code on a completed receipt",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
@@ -190,7 +190,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "executing status is not terminal",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
@@ -201,7 +201,7 @@ func TestClassify(t *testing.T) {
 		},
 		{
 			name: "failed receipt with no L5 stage and no governance failure",
-			build: func(t *testing.T) *operatorv1.ActionReceipt {
+			build: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
@@ -211,7 +211,7 @@ func TestClassify(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{name: "nil receipt", build: func(t *testing.T) *operatorv1.ActionReceipt { t.Helper(); return nil }, wantErr: true},
+		{name: "nil receipt", build: func(t *testing.T) *operatorv1.EventReceipt { t.Helper(); return nil }, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

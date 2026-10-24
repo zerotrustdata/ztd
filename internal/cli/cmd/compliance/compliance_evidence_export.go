@@ -96,7 +96,7 @@ command.`,
 // exportOperationalEvidence reads the scope's single operational source
 // admission from a read-only database snapshot and writes its bounded source
 // package. encryptionVault must be unlocked: the receipt and commitment content
-// columns are encrypted, and the snapshot fails with ErrAuditStoreVaultLocked
+// columns are encrypted, and the snapshot fails with ErrLocalFirstEventsStoreVaultLocked
 // otherwise. It returns the snapshot so callers can derive signer trust from
 // the exact rows that were exported.
 func exportOperationalEvidence(ctx context.Context, dbPath string, encryptionVault *vault.Vault, scope *compliancev1.AssessmentScope, outputDir string, maxRows int) (*evidence.OperationalSourceInventory, *storage.OperationalEvidenceSnapshot, error) {

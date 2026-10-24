@@ -117,7 +117,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 		} else {
 			contentPassed, contentDetail = false, "scenario content check is missing"
 		}
-		if isToolInList(constants.MCPToolAuditReceiptList, g.req.ScenarioTools.ExpectedTools) {
+		if isToolInList(constants.MCPToolEventReceiptList, g.req.ScenarioTools.ExpectedTools) {
 			status, detail := g.historyContentGrade()
 			contentPassed = contentPassed && status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 			contentUnavailable = status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
@@ -986,7 +986,7 @@ func (g homogeneousGrader) historyContentGrade() (evalv1.EvaluationVerdictStatus
 	output := strings.ToLower(g.view.Trace.FinalOutput)
 	for i := len(g.view.Calls) - 1; i >= 0; i-- {
 		call := g.view.Calls[i]
-		if call.ToolName != constants.MCPToolAuditReceiptList {
+		if call.ToolName != constants.MCPToolEventReceiptList {
 			continue
 		}
 		if !call.Success {
@@ -1004,7 +1004,7 @@ func (g homogeneousGrader) historyContentGrade() (evalv1.EvaluationVerdictStatus
 			}
 			return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "retrieved history is empty; answer must report no recorded actions"
 		}
-		var result models.OperatorAuditReceiptListResult
+		var result models.OperatorEventReceiptListResult
 		if err := json.Unmarshal([]byte(call.ResultJSON), &result); err != nil {
 			return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "retrieved history has no decodable receipt result"
 		}

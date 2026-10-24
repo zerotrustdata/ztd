@@ -23,7 +23,7 @@ import (
 func Observe(o *client.GovernedOutcome) *evalv1.ConformanceObservation {
 	obs := proto.Clone(o.Observation).(*evalv1.ConformanceObservation)
 	if obs.GetReceipt() == nil && o.Dispatch.GetReceipt() != nil {
-		obs.Receipt = proto.Clone(o.Dispatch.GetReceipt()).(*operatorv1.ActionReceipt)
+		obs.Receipt = proto.Clone(o.Dispatch.GetReceipt()).(*operatorv1.EventReceipt)
 	}
 	return obs
 }

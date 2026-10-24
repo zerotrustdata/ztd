@@ -367,7 +367,7 @@ func (DeterministicStageOutcome) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{5}
 }
 
-// ReceiptFailureCode is the typed classification of a FAILED ActionReceipt.
+// ReceiptFailureCode is the typed classification of a FAILED EventReceipt.
 // The L5 actuator stamps it at finalization so verifiers can distinguish
 // governance rejections, client faults, and provider failures without
 // string-matching the result_summary. It is bound into the receipt signature.
@@ -5579,14 +5579,14 @@ func (x *ReceiptPersistenceAttestation) GetSignature() string {
 	return ""
 }
 
-// ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
-type ActionReceipt struct {
+// EventReceipt is the signed evidence for a governed request event, including reads, mutations, and governance rejections. L5 signs and persists an EXECUTING receipt before dispatch and a final receipt afterward; a rejection produces a FAILED receipt without dispatch.
+type EventReceipt struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Original GovernanceEnvelope ID
 	TransactionId string `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	// Original GovernanceEnvelope hash
 	TransactionHash string `protobuf:"bytes,2,opt,name=transaction_hash,json=transactionHash,proto3" json:"transaction_hash,omitempty"`
-	// Final execution status
+	// Execution status for this receipt stage
 	Status ExecutionStatus `protobuf:"varint,3,opt,name=status,proto3,enum=ztd.operator.v1.ExecutionStatus" json:"status,omitempty"`
 	// Concise summary of the result (e.g. "exit code 0", "file written")
 	ResultSummary string `protobuf:"bytes,4,opt,name=result_summary,json=resultSummary,proto3" json:"result_summary,omitempty"`
@@ -5596,7 +5596,7 @@ type ActionReceipt struct {
 	StateRootAfter string `protobuf:"bytes,6,opt,name=state_root_after,json=stateRootAfter,proto3" json:"state_root_after,omitempty"`
 	// Timestamp when execution finished
 	ExecutedAtUnixMs int64 `protobuf:"varint,7,opt,name=executed_at_unix_ms,json=executedAtUnixMs,proto3" json:"executed_at_unix_ms,omitempty"`
-	// ID of the Warden's signing key
+	// ID of the L5 Actuator's signing key
 	SignerKeyId string `protobuf:"bytes,8,opt,name=signer_key_id,json=signerKeyId,proto3" json:"signer_key_id,omitempty"`
 	// ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.
 	Signature string `protobuf:"bytes,9,opt,name=signature,proto3" json:"signature,omitempty"`
@@ -5623,20 +5623,20 @@ type ActionReceipt struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ActionReceipt) Reset() {
-	*x = ActionReceipt{}
+func (x *EventReceipt) Reset() {
+	*x = EventReceipt{}
 	mi := &file_ztd_operator_v1_operator_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ActionReceipt) String() string {
+func (x *EventReceipt) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ActionReceipt) ProtoMessage() {}
+func (*EventReceipt) ProtoMessage() {}
 
-func (x *ActionReceipt) ProtoReflect() protoreflect.Message {
+func (x *EventReceipt) ProtoReflect() protoreflect.Message {
 	mi := &file_ztd_operator_v1_operator_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -5648,124 +5648,124 @@ func (x *ActionReceipt) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ActionReceipt.ProtoReflect.Descriptor instead.
-func (*ActionReceipt) Descriptor() ([]byte, []int) {
+// Deprecated: Use EventReceipt.ProtoReflect.Descriptor instead.
+func (*EventReceipt) Descriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{55}
 }
 
-func (x *ActionReceipt) GetTransactionId() string {
+func (x *EventReceipt) GetTransactionId() string {
 	if x != nil {
 		return x.TransactionId
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetTransactionHash() string {
+func (x *EventReceipt) GetTransactionHash() string {
 	if x != nil {
 		return x.TransactionHash
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetStatus() ExecutionStatus {
+func (x *EventReceipt) GetStatus() ExecutionStatus {
 	if x != nil {
 		return x.Status
 	}
 	return ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED
 }
 
-func (x *ActionReceipt) GetResultSummary() string {
+func (x *EventReceipt) GetResultSummary() string {
 	if x != nil {
 		return x.ResultSummary
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetStateRootBefore() string {
+func (x *EventReceipt) GetStateRootBefore() string {
 	if x != nil {
 		return x.StateRootBefore
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetStateRootAfter() string {
+func (x *EventReceipt) GetStateRootAfter() string {
 	if x != nil {
 		return x.StateRootAfter
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetExecutedAtUnixMs() int64 {
+func (x *EventReceipt) GetExecutedAtUnixMs() int64 {
 	if x != nil {
 		return x.ExecutedAtUnixMs
 	}
 	return 0
 }
 
-func (x *ActionReceipt) GetSignerKeyId() string {
+func (x *EventReceipt) GetSignerKeyId() string {
 	if x != nil {
 		return x.SignerKeyId
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetSignature() string {
+func (x *EventReceipt) GetSignature() string {
 	if x != nil {
 		return x.Signature
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetL2Status() L2Status {
+func (x *EventReceipt) GetL2Status() L2Status {
 	if x != nil {
 		return x.L2Status
 	}
 	return L2Status_L2_STATUS_UNSPECIFIED
 }
 
-func (x *ActionReceipt) GetL3Status() L3Status {
+func (x *EventReceipt) GetL3Status() L3Status {
 	if x != nil {
 		return x.L3Status
 	}
 	return L3Status_L3_STATUS_UNSPECIFIED
 }
 
-func (x *ActionReceipt) GetDeterministicStageEvidence() []*DeterministicStageEvidence {
+func (x *EventReceipt) GetDeterministicStageEvidence() []*DeterministicStageEvidence {
 	if x != nil {
 		return x.DeterministicStageEvidence
 	}
 	return nil
 }
 
-func (x *ActionReceipt) GetFinalPersistenceAttestation() *ReceiptPersistenceAttestation {
+func (x *EventReceipt) GetFinalPersistenceAttestation() *ReceiptPersistenceAttestation {
 	if x != nil {
 		return x.FinalPersistenceAttestation
 	}
 	return nil
 }
 
-func (x *ActionReceipt) GetFailureCode() ReceiptFailureCode {
+func (x *EventReceipt) GetFailureCode() ReceiptFailureCode {
 	if x != nil {
 		return x.FailureCode
 	}
 	return ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
 }
 
-func (x *ActionReceipt) GetEventType() string {
+func (x *EventReceipt) GetEventType() string {
 	if x != nil {
 		return x.EventType
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetActionType() string {
+func (x *EventReceipt) GetActionType() string {
 	if x != nil {
 		return x.ActionType
 	}
 	return ""
 }
 
-func (x *ActionReceipt) GetRejectionCode() GovernanceRejectionCode {
+func (x *EventReceipt) GetRejectionCode() GovernanceRejectionCode {
 	if x != nil {
 		return x.RejectionCode
 	}
@@ -5783,9 +5783,9 @@ type ConsensusVoteInference struct {
 	ProviderAttemptId      string                    `protobuf:"bytes,4,opt,name=provider_attempt_id,json=providerAttemptId,proto3" json:"provider_attempt_id,omitempty"`
 	TransactionId          string                    `protobuf:"bytes,5,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	Result                 *InferenceResult          `protobuf:"bytes,6,opt,name=result,proto3" json:"result,omitempty"`
-	Receipt                *ActionReceipt            `protobuf:"bytes,7,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Receipt                *EventReceipt             `protobuf:"bytes,7,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	Failure                *InferenceDispatchFailure `protobuf:"bytes,8,opt,name=failure,proto3" json:"failure,omitempty"`
-	ObservationReceipts    []*ActionReceipt          `protobuf:"bytes,9,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	ObservationReceipts    []*EventReceipt           `protobuf:"bytes,9,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -5862,7 +5862,7 @@ func (x *ConsensusVoteInference) GetResult() *InferenceResult {
 	return nil
 }
 
-func (x *ConsensusVoteInference) GetReceipt() *ActionReceipt {
+func (x *ConsensusVoteInference) GetReceipt() *EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
@@ -5876,7 +5876,7 @@ func (x *ConsensusVoteInference) GetFailure() *InferenceDispatchFailure {
 	return nil
 }
 
-func (x *ConsensusVoteInference) GetObservationReceipts() []*ActionReceipt {
+func (x *ConsensusVoteInference) GetObservationReceipts() []*EventReceipt {
 	if x != nil {
 		return x.ObservationReceipts
 	}
@@ -5893,7 +5893,7 @@ func (x *ConsensusVoteInference) GetObservationReceipts() []*ActionReceipt {
 type GovernanceRejection struct {
 	state               protoimpl.MessageState    `protogen:"open.v1"`
 	Error               string                    `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
-	Receipt             *ActionReceipt            `protobuf:"bytes,2,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Receipt             *EventReceipt             `protobuf:"bytes,2,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	ConsensusInferences []*ConsensusVoteInference `protobuf:"bytes,3,rep,name=consensus_inferences,json=consensusInferences,proto3" json:"consensus_inferences,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -5936,7 +5936,7 @@ func (x *GovernanceRejection) GetError() string {
 	return ""
 }
 
-func (x *GovernanceRejection) GetReceipt() *ActionReceipt {
+func (x *GovernanceRejection) GetReceipt() *EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
@@ -6013,7 +6013,7 @@ func (x *IngressRefusal) GetConsensusInferences() []*ConsensusVoteInference {
 }
 
 // GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
-// receipt is the executing Operator's signed final ActionReceipt. Failures are
+// receipt is the executing Operator's signed final EventReceipt. Failures are
 // GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 type GovernedDispatchResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -6024,7 +6024,7 @@ type GovernedDispatchResult struct {
 	// (for example FsReadResult), the same bytes the dispatch response carries today.
 	ResultPayload       []byte                    `protobuf:"bytes,4,opt,name=result_payload,json=resultPayload,proto3" json:"result_payload,omitempty"`
 	InferenceResult     *InferenceResult          `protobuf:"bytes,5,opt,name=inference_result,json=inferenceResult,proto3" json:"inference_result,omitempty"`
-	Receipt             *ActionReceipt            `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Receipt             *EventReceipt             `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	ConsensusInferences []*ConsensusVoteInference `protobuf:"bytes,7,rep,name=consensus_inferences,json=consensusInferences,proto3" json:"consensus_inferences,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -6095,7 +6095,7 @@ func (x *GovernedDispatchResult) GetInferenceResult() *InferenceResult {
 	return nil
 }
 
-func (x *GovernedDispatchResult) GetReceipt() *ActionReceipt {
+func (x *GovernedDispatchResult) GetReceipt() *EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
@@ -12615,7 +12615,7 @@ type InferenceResult struct {
 	// Canonical digest of the complete result: lowercase hex SHA-256 over the
 	// deterministic protobuf serialization of this message with result_digest
 	// cleared. The Inference Node computes it at execution time; the signed
-	// ActionReceipt's result_summary binds it, and the User Gateway verifies
+	// EventReceipt's result_summary binds it, and the User Gateway verifies
 	// digest equality before returning success to the caller.
 	ResultDigest string `protobuf:"bytes,7,opt,name=result_digest,json=resultDigest,proto3" json:"result_digest,omitempty"`
 	// Ordered model response parts covered by result_digest.
@@ -13001,14 +13001,14 @@ func (x *InferenceProgressEvent) GetServedModel() string {
 // InferenceCompletion is the protocol-owned completion publication for a
 // governed inference request. The Inference Node publishes it to the
 // results channel only after the L5 Actuator has finalized and signed the
-// ActionReceipt, so the complete result and its verified receipt are a
+// EventReceipt, so the complete result and its verified receipt are a
 // single correlated outcome. A failed execution carries the FAILED receipt
 // and no result, which terminates the Gateway's dispatch wait immediately
 // instead of at the dispatch deadline.
 type InferenceCompletion struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The signed final ActionReceipt for the inference transaction.
-	Receipt *ActionReceipt `protobuf:"bytes,1,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	// The signed final EventReceipt for the inference transaction.
+	Receipt *EventReceipt `protobuf:"bytes,1,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	// The complete inference result. Absent when the receipt status is not
 	// EXECUTION_STATUS_COMPLETED.
 	Result        *InferenceResult `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
@@ -13046,7 +13046,7 @@ func (*InferenceCompletion) Descriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{142}
 }
 
-func (x *InferenceCompletion) GetReceipt() *ActionReceipt {
+func (x *InferenceCompletion) GetReceipt() *EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
@@ -13423,8 +13423,8 @@ type InferenceDispatchFailure struct {
 	state               protoimpl.MessageState       `protogen:"open.v1"`
 	Error               string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
 	Code                InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
-	Receipt             *ActionReceipt               `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	ObservationReceipts []*ActionReceipt             `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	Receipt             *EventReceipt                `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	ObservationReceipts []*EventReceipt              `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -13473,14 +13473,14 @@ func (x *InferenceDispatchFailure) GetCode() InferenceDispatchFailureCode {
 	return InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
 }
 
-func (x *InferenceDispatchFailure) GetReceipt() *ActionReceipt {
+func (x *InferenceDispatchFailure) GetReceipt() *EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
 	return nil
 }
 
-func (x *InferenceDispatchFailure) GetObservationReceipts() []*ActionReceipt {
+func (x *InferenceDispatchFailure) GetObservationReceipts() []*EventReceipt {
 	if x != nil {
 		return x.ObservationReceipts
 	}
@@ -13659,13 +13659,13 @@ type InferenceDispatchResponse struct {
 	// The complete inference result whose result_digest is bound into the
 	// signed receipt.
 	Result *InferenceResult `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
-	// The verified final signed ActionReceipt for the transaction.
-	Receipt *ActionReceipt `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	// The verified final signed EventReceipt for the transaction.
+	Receipt *EventReceipt `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	// The observers' verified final signed receipts for this attempt's
 	// provider-boundary and model provenance BEGIN and FINALIZE commands, in
 	// dispatch order. Each was signed before the response was returned, so a
 	// trace bracket closing after the dispatch can claim its commitment.
-	ObservationReceipts []*ActionReceipt `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	ObservationReceipts []*EventReceipt `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -13714,14 +13714,14 @@ func (x *InferenceDispatchResponse) GetResult() *InferenceResult {
 	return nil
 }
 
-func (x *InferenceDispatchResponse) GetReceipt() *ActionReceipt {
+func (x *InferenceDispatchResponse) GetReceipt() *EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
 	return nil
 }
 
-func (x *InferenceDispatchResponse) GetObservationReceipts() []*ActionReceipt {
+func (x *InferenceDispatchResponse) GetObservationReceipts() []*EventReceipt {
 	if x != nil {
 		return x.ObservationReceipts
 	}
@@ -14399,8 +14399,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x14persisted_at_unix_ms\x18\x03 \x01(\x03R\x11persistedAtUnixMs\x12&\n" +
 	"\x0faudit_record_id\x18\x04 \x01(\tR\rauditRecordId\x12\"\n" +
 	"\rsigner_key_id\x18\x05 \x01(\tR\vsignerKeyId\x12\x1c\n" +
-	"\tsignature\x18\x06 \x01(\tR\tsignature\"\xb5\a\n" +
-	"\rActionReceipt\x12%\n" +
+	"\tsignature\x18\x06 \x01(\tR\tsignature\"\xb4\a\n" +
+	"\fEventReceipt\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12)\n" +
 	"\x10transaction_hash\x18\x02 \x01(\tR\x0ftransactionHash\x128\n" +
 	"\x06status\x18\x03 \x01(\x0e2 .ztd.operator.v1.ExecutionStatusR\x06status\x12%\n" +
@@ -14419,25 +14419,25 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"event_type\x18\x10 \x01(\tR\teventType\x12\x1f\n" +
 	"\vaction_type\x18\x11 \x01(\tR\n" +
 	"actionType\x12O\n" +
-	"\x0erejection_code\x18\x12 \x01(\x0e2(.ztd.operator.v1.GovernanceRejectionCodeR\rrejectionCode\"\x8f\x04\n" +
+	"\x0erejection_code\x18\x12 \x01(\x0e2(.ztd.operator.v1.GovernanceRejectionCodeR\rrejectionCode\"\x8d\x04\n" +
 	"\x16ConsensusVoteInference\x124\n" +
 	"\x16subject_transaction_id\x18\x01 \x01(\tR\x14subjectTransactionId\x128\n" +
 	"\x18subject_transaction_hash\x18\x02 \x01(\tR\x16subjectTransactionHash\x12\"\n" +
 	"\rmember_app_id\x18\x03 \x01(\tR\vmemberAppId\x12.\n" +
 	"\x13provider_attempt_id\x18\x04 \x01(\tR\x11providerAttemptId\x12%\n" +
 	"\x0etransaction_id\x18\x05 \x01(\tR\rtransactionId\x128\n" +
-	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
-	"\areceipt\x18\a \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12C\n" +
-	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12Q\n" +
-	"\x14observation_receipts\x18\t \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\xc1\x01\n" +
+	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x127\n" +
+	"\areceipt\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12C\n" +
+	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12P\n" +
+	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xc0\x01\n" +
 	"\x13GovernanceRejection\x12\x14\n" +
-	"\x05error\x18\x01 \x01(\tR\x05error\x128\n" +
-	"\areceipt\x18\x02 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Z\n" +
+	"\x05error\x18\x01 \x01(\tR\x05error\x127\n" +
+	"\areceipt\x18\x02 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12Z\n" +
 	"\x14consensus_inferences\x18\x03 \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\"\xbb\x01\n" +
 	"\x0eIngressRefusal\x127\n" +
 	"\x04code\x18\x01 \x01(\x0e2#.ztd.operator.v1.IngressRefusalCodeR\x04code\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12Z\n" +
-	"\x14consensus_inferences\x18\x03 \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\"\x89\x03\n" +
+	"\x14consensus_inferences\x18\x03 \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\"\x88\x03\n" +
 	"\x16GovernedDispatchResult\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12\x1d\n" +
 	"\n" +
@@ -14445,8 +14445,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\vaction_type\x18\x03 \x01(\tR\n" +
 	"actionType\x12%\n" +
 	"\x0eresult_payload\x18\x04 \x01(\fR\rresultPayload\x12K\n" +
-	"\x10inference_result\x18\x05 \x01(\v2 .ztd.operator.v1.InferenceResultR\x0finferenceResult\x128\n" +
-	"\areceipt\x18\x06 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Z\n" +
+	"\x10inference_result\x18\x05 \x01(\v2 .ztd.operator.v1.InferenceResultR\x0finferenceResult\x127\n" +
+	"\areceipt\x18\x06 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12Z\n" +
 	"\x14consensus_inferences\x18\a \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\"\xcc\x04\n" +
 	"\x15CommitmentAttestation\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12)\n" +
@@ -15105,9 +15105,9 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x05parts\x18\x03 \x03(\v2&.ztd.operator.v1.InferenceResponsePartR\x05parts\x127\n" +
 	"\x16time_to_first_token_ns\x18\x04 \x01(\x03H\x00R\x12timeToFirstTokenNs\x88\x01\x01\x12!\n" +
 	"\fserved_model\x18\x05 \x01(\tR\vservedModelB\x19\n" +
-	"\x17_time_to_first_token_ns\"\x89\x01\n" +
-	"\x13InferenceCompletion\x128\n" +
-	"\areceipt\x18\x01 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x128\n" +
+	"\x17_time_to_first_token_ns\"\x88\x01\n" +
+	"\x13InferenceCompletion\x127\n" +
+	"\areceipt\x18\x01 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x128\n" +
 	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\"\x91\r\n" +
 	"\x18InferenceDispatchRequest\x12.\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x1a.ztd.operator.v1.ModelRoleR\x04role\x12\x14\n" +
@@ -15157,12 +15157,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
 	"\x0e_context_limitB\a\n" +
-	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\x80\x02\n" +
+	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\xfe\x01\n" +
 	"\x18InferenceDispatchFailure\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12A\n" +
-	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\x128\n" +
-	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Q\n" +
-	"\x14observation_receipts\x18\x04 \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"{\n" +
+	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\x127\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12P\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"{\n" +
 	"\x1eInferenceDispatchStreamFailure\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12A\n" +
 	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"\x89\x02\n" +
@@ -15172,12 +15172,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"completion\x18\x02 \x01(\v2*.ztd.operator.v1.InferenceDispatchResponseH\x00R\n" +
 	"completion\x12K\n" +
 	"\afailure\x18\x03 \x01(\v2/.ztd.operator.v1.InferenceDispatchStreamFailureH\x00R\afailureB\a\n" +
-	"\x05frame\"\x89\x02\n" +
+	"\x05frame\"\x87\x02\n" +
 	"\x19InferenceDispatchResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x128\n" +
-	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
-	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Q\n" +
-	"\x14observation_receipts\x18\x04 \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\xf3\x01\n" +
+	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x127\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12P\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xf3\x01\n" +
 	" InferenceHostedEgressAttestation\x12'\n" +
 	"\x0fprovider_origin\x18\x01 \x01(\tR\x0eproviderOrigin\x12#\n" +
 	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion\x12\x1e\n" +
@@ -15484,7 +15484,7 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(*McpPromptGetRequested)(nil),                                        // 70: ztd.operator.v1.McpPromptGetRequested
 	(*DeterministicStageEvidence)(nil),                                   // 71: ztd.operator.v1.DeterministicStageEvidence
 	(*ReceiptPersistenceAttestation)(nil),                                // 72: ztd.operator.v1.ReceiptPersistenceAttestation
-	(*ActionReceipt)(nil),                                                // 73: ztd.operator.v1.ActionReceipt
+	(*EventReceipt)(nil),                                                 // 73: ztd.operator.v1.EventReceipt
 	(*ConsensusVoteInference)(nil),                                       // 74: ztd.operator.v1.ConsensusVoteInference
 	(*GovernanceRejection)(nil),                                          // 75: ztd.operator.v1.GovernanceRejection
 	(*IngressRefusal)(nil),                                               // 76: ztd.operator.v1.IngressRefusal
@@ -15603,23 +15603,23 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	173, // 13: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
 	4,   // 14: ztd.operator.v1.DeterministicStageEvidence.kind:type_name -> ztd.operator.v1.DeterministicStageKind
 	5,   // 15: ztd.operator.v1.DeterministicStageEvidence.outcome:type_name -> ztd.operator.v1.DeterministicStageOutcome
-	0,   // 16: ztd.operator.v1.ActionReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
-	2,   // 17: ztd.operator.v1.ActionReceipt.l2_status:type_name -> ztd.operator.v1.L2Status
-	1,   // 18: ztd.operator.v1.ActionReceipt.l3_status:type_name -> ztd.operator.v1.L3Status
-	71,  // 19: ztd.operator.v1.ActionReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
-	72,  // 20: ztd.operator.v1.ActionReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
-	6,   // 21: ztd.operator.v1.ActionReceipt.failure_code:type_name -> ztd.operator.v1.ReceiptFailureCode
-	7,   // 22: ztd.operator.v1.ActionReceipt.rejection_code:type_name -> ztd.operator.v1.GovernanceRejectionCode
+	0,   // 16: ztd.operator.v1.EventReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
+	2,   // 17: ztd.operator.v1.EventReceipt.l2_status:type_name -> ztd.operator.v1.L2Status
+	1,   // 18: ztd.operator.v1.EventReceipt.l3_status:type_name -> ztd.operator.v1.L3Status
+	71,  // 19: ztd.operator.v1.EventReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
+	72,  // 20: ztd.operator.v1.EventReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
+	6,   // 21: ztd.operator.v1.EventReceipt.failure_code:type_name -> ztd.operator.v1.ReceiptFailureCode
+	7,   // 22: ztd.operator.v1.EventReceipt.rejection_code:type_name -> ztd.operator.v1.GovernanceRejectionCode
 	158, // 23: ztd.operator.v1.ConsensusVoteInference.result:type_name -> ztd.operator.v1.InferenceResult
-	73,  // 24: ztd.operator.v1.ConsensusVoteInference.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	73,  // 24: ztd.operator.v1.ConsensusVoteInference.receipt:type_name -> ztd.operator.v1.EventReceipt
 	162, // 25: ztd.operator.v1.ConsensusVoteInference.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
-	73,  // 26: ztd.operator.v1.ConsensusVoteInference.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
-	73,  // 27: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	73,  // 26: ztd.operator.v1.ConsensusVoteInference.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 27: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.EventReceipt
 	74,  // 28: ztd.operator.v1.GovernanceRejection.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
 	8,   // 29: ztd.operator.v1.IngressRefusal.code:type_name -> ztd.operator.v1.IngressRefusalCode
 	74,  // 30: ztd.operator.v1.IngressRefusal.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
 	158, // 31: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
-	73,  // 32: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	73,  // 32: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.EventReceipt
 	74,  // 33: ztd.operator.v1.GovernedDispatchResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
 	0,   // 34: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 35: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
@@ -15696,7 +15696,7 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	151, // 106: ztd.operator.v1.InferenceResult.decision:type_name -> ztd.operator.v1.InferenceDecisionResult
 	166, // 107: ztd.operator.v1.InferenceResult.hosted_egress:type_name -> ztd.operator.v1.InferenceHostedEgressAttestation
 	143, // 108: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	73,  // 109: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	73,  // 109: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.EventReceipt
 	158, // 110: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
 	10,  // 111: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
 	138, // 112: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
@@ -15707,15 +15707,15 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	144, // 117: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	145, // 118: ztd.operator.v1.InferenceDispatchRequest.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
 	17,  // 119: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	73,  // 120: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	73,  // 121: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	73,  // 120: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 121: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
 	17,  // 122: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
 	159, // 123: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
 	165, // 124: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
 	163, // 125: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
 	158, // 126: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	73,  // 127: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	73,  // 128: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	73,  // 127: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 128: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
 	19,  // 129: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
 	20,  // 130: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
 	21,  // 131: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested

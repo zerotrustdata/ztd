@@ -28,7 +28,7 @@ import (
 )
 
 // agentReceiptSchemaRef names the message a receipt evidence reference points at.
-const agentReceiptSchemaRef = "ztd.operator.v1.ActionReceipt"
+const agentReceiptSchemaRef = "ztd.operator.v1.EventReceipt"
 
 // VerifyAgentTraceEvidence proves, from the sealed trace alone, that every
 // governed inference is backed by a receipt the Inference runtime signed,
@@ -49,11 +49,11 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if trace.Bracket == nil {
 		return agentEvidenceError("ledger bracket", constants.ErrMissingRequiredField)
 	}
-	before, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.Before.ActionReceipt)
+	before, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.Before.EventReceipt)
 	if err != nil {
 		return agentEvidenceError("ledger bracket before", err)
 	}
-	after, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.After.ActionReceipt)
+	after, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.After.EventReceipt)
 	if err != nil {
 		return agentEvidenceError("ledger bracket after", err)
 	}
@@ -196,7 +196,7 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentModelCall) ([]oracle.Outcome, error) {
 	var claims []oracle.Outcome
 	for _, receipt := range call.ObservationReceipts {
-		if receipt.ActionReceipt == nil {
+		if receipt.EventReceipt == nil {
 			return nil, constants.ErrMissingRequiredField
 		}
 		if receipt.GetSignerKeyId() != data.Anchor.GetKeyId() {
@@ -207,11 +207,11 @@ func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime
 		default:
 			return nil, fmt.Errorf("receipt action %q is not an observation: %w", action, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
-		outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt.ActionReceipt)
+		outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt.EventReceipt)
 		if err != nil {
 			return nil, err
 		}
-		if err := verifyReceiptSession(receipt.ActionReceipt, data.SessionID); err != nil {
+		if err := verifyReceiptSession(receipt.EventReceipt, data.SessionID); err != nil {
 			return nil, err
 		}
 		if outcome.Kind != oracle.OutcomeExecuted || outcome.Commitment == nil {
@@ -272,10 +272,10 @@ func agentTraceAnchorSet(trace *AgentTrace) (*oracle.AnchorSet, error) {
 // a failed execution, which still holds a ledger commitment, or a governance
 // rejection, which holds none.
 func verifyModelCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call AgentModelCall) (oracle.Outcome, error) {
-	if call.Receipt == nil || call.Receipt.ActionReceipt == nil {
-		return oracle.Outcome{}, fmt.Errorf("governed inference has no signed receipt: %w", constants.ErrActionReceiptMissing)
+	if call.Receipt == nil || call.Receipt.EventReceipt == nil {
+		return oracle.Outcome{}, fmt.Errorf("governed inference has no signed receipt: %w", constants.ErrEventReceiptMissing)
 	}
-	receipt := call.Receipt.ActionReceipt
+	receipt := call.Receipt.EventReceipt
 	outcome, err := verifiedOutcome(anchors, trace.Inference.OperatorID, receipt)
 	if err != nil {
 		return oracle.Outcome{}, err
@@ -435,13 +435,13 @@ func verifyV7ModelCallTranscript(call AgentModelCall, result *operatorv1.Inferen
 // the Data session the trace records. A refusal carries none. It returns the
 // verified outcome, or nil when the call has no receipt.
 func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentToolCall) (*oracle.Outcome, error) {
-	if call.Receipt == nil || call.Receipt.ActionReceipt == nil {
+	if call.Receipt == nil || call.Receipt.EventReceipt == nil {
 		if call.TransactionID != "" || call.PolicyDecision == agentPolicyDecisionAllow {
-			return nil, fmt.Errorf("admitted call has no signed receipt: %w", constants.ErrActionReceiptMissing)
+			return nil, fmt.Errorf("admitted call has no signed receipt: %w", constants.ErrEventReceiptMissing)
 		}
 		return nil, nil
 	}
-	receipt := call.Receipt.ActionReceipt
+	receipt := call.Receipt.EventReceipt
 	if call.ApprovedArgumentsJSON != "" && (call.ActionType != string(constants.ActionTypeMcpCall) || receipt.GetActionType() != string(constants.ActionTypeMcpCall)) {
 		return nil, fmt.Errorf("approved Tribunal arguments are not bound to an MCP_CALL receipt: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
@@ -476,7 +476,7 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, c
 // commits to the same ledger and still connects. The Warden stamps every stage
 // from the envelope and rejects an envelope with no session, so a receipt with
 // no stages, or a stage that names no session, is never a governed execution.
-func verifyReceiptSession(receipt *operatorv1.ActionReceipt, sessionID string) error {
+func verifyReceiptSession(receipt *operatorv1.EventReceipt, sessionID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("trace records no operator session: %w", constants.ErrMissingRequiredField)
 	}
@@ -495,9 +495,9 @@ func verifyReceiptSession(receipt *operatorv1.ActionReceipt, sessionID string) e
 // verifiedSentinelOutcome verifies one harness sentinel receipt. A sentinel
 // must be an executed read in the Data session: anything else leaves the
 // bracket unconnected.
-func verifiedSentinelOutcome(anchors *oracle.AnchorSet, data AgentTraceRuntime, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+func verifiedSentinelOutcome(anchors *oracle.AnchorSet, data AgentTraceRuntime, receipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
 	if receipt == nil {
-		return oracle.Outcome{}, fmt.Errorf("sentinel receipt is missing: %w", constants.ErrActionReceiptMissing)
+		return oracle.Outcome{}, fmt.Errorf("sentinel receipt is missing: %w", constants.ErrEventReceiptMissing)
 	}
 	outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt)
 	if err != nil {
@@ -514,7 +514,7 @@ func verifiedSentinelOutcome(anchors *oracle.AnchorSet, data AgentTraceRuntime, 
 
 // verifiedOutcome verifies a receipt against the runtime's pinned key and
 // classifies what it says happened.
-func verifiedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+func verifiedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
 	if _, err := oracle.VerifyReceipt(anchors, runtimeID, receipt); err != nil {
 		return oracle.Outcome{}, err
 	}
@@ -559,10 +559,10 @@ func verifyJudgeReceipt(anchors *oracle.AnchorSet, inference AgentTraceRuntime, 
 // inside the sealed trace, so the reference carries the trace artifact's ID and
 // the digest of the receipt's canonical protojson.
 func agentReceiptEvidenceReference(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, transactionID string, receipt *AgentTraceReceipt) (*compliancev1.ComplianceEvidenceReference, error) {
-	if traceEvidence == nil || receipt == nil || receipt.ActionReceipt == nil {
+	if traceEvidence == nil || receipt == nil || receipt.EventReceipt == nil {
 		return nil, fmt.Errorf("evaluation: agent receipt reference: %w", constants.ErrMissingRequiredField)
 	}
-	encoded, err := evalv1.MarshalCanonical(receipt.ActionReceipt)
+	encoded, err := evalv1.MarshalCanonical(receipt.EventReceipt)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: agent receipt reference: %w", err)
 	}

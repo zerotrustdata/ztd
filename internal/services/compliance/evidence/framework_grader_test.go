@@ -39,7 +39,7 @@ func frameworkTestAssertion(id string) *compliancev1.ControlAssertionDefinition 
 		Responsibility:          "platform",
 		ApplicableActionClasses: []string{"governed_mutation"},
 		ApplicableArms:          []string{"governed"},
-		RequiredEvidenceTypes:   []string{"action_receipt"},
+		RequiredEvidenceTypes:   []string{"event_receipt"},
 		RequiredGraderRefs:      []*compliancev1.VersionedReference{{Id: "policy_outcome", Version: "1.0.0"}},
 		RequiredVerifierRefs:    []*compliancev1.VersionedReference{{Id: "receipt_integrity", Version: "1.0.0"}},
 		MinimumEvidenceLevel:    "L3",

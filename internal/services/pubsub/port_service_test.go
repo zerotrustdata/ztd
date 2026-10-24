@@ -26,37 +26,37 @@ func TestNewPortService(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
-	auditStore := storagetest.NewTestAuditStore(t)
+	eventsStore := storagetest.NewTestEventsStore(t)
 	scrubber := mustNewScrubbingSvc(t, logger)
 
 	t.Run("binds every dependency", func(t *testing.T) {
 		t.Parallel()
-		svc, err := NewPortService(cfg, logger, client, scrubber, auditStore)
+		svc, err := NewPortService(cfg, logger, client, scrubber, eventsStore)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
 		assert.Equal(t, cfg, svc.config)
 		assert.Equal(t, logger, svc.logger)
 		assert.Equal(t, client, svc.client)
 		assert.Same(t, scrubber, svc.scrubbing)
-		assert.Same(t, auditStore, svc.auditStore)
+		assert.Same(t, eventsStore, svc.eventsStore)
 	})
 
 	tests := []struct {
-		name       string
-		cfg        *config.Config
-		scrubber   *scrubbing.ScrubbingService
-		auditStore *storage.SQLAuditStore
-		wantErr    error
+		name        string
+		cfg         *config.Config
+		scrubber    *scrubbing.ScrubbingService
+		eventsStore *storage.LocalFirstEventsStore
+		wantErr     error
 	}{
-		{name: "nil config", scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil scrubber", cfg: cfg, auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "disabled scrubber", cfg: cfg, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "nil audit store", cfg: cfg, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
+		{name: "nil config", scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil scrubber", cfg: cfg, eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "disabled scrubber", cfg: cfg, scrubber: newEgressScrubber(t, false), eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "nil local-first events store", cfg: cfg, scrubber: scrubber, wantErr: constants.ErrLocalFirstEventsStoreRequired},
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc, err := NewPortService(tt.cfg, logger, client, tt.scrubber, tt.auditStore)
+			svc, err := NewPortService(tt.cfg, logger, client, tt.scrubber, tt.eventsStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})

@@ -29,11 +29,11 @@ import (
 )
 
 const (
-	auditChainGenesisPrevHash = "0000000000000000000000000000000000000000000000000000000000000000"
-	auditChainHashVersion     = "ztd-audit-v1"
+	eventsChainGenesisPrevHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	eventsChainHashVersion     = "ztd-audit-v1"
 
-	// auditContentDigestLabel selects the vault subkey that keys content_digest.
-	auditContentDigestLabel = "ztd-audit-content-digest-v1"
+	// eventsContentDigestLabel selects the vault subkey that keys content_digest.
+	eventsContentDigestLabel = "ztd-audit-content-digest-v1"
 )
 
 // AuditChainCheckpoint is a durable pruning anchor for chain verification.
@@ -45,12 +45,12 @@ type AuditChainCheckpoint struct {
 	CreatedAt         time.Time
 }
 
-type auditChainHead struct {
+type eventsChainHead struct {
 	Seq      int64
 	PrevHash string
 }
 
-type auditChainCheckpointPayload struct {
+type eventsChainCheckpointPayload struct {
 	PrunedThroughSeq  int64  `json:"pruned_through_seq"`
 	PrunedThroughHash string `json:"pruned_through_hash"`
 	PrunedCount       int64  `json:"pruned_count"`
@@ -71,13 +71,13 @@ type eventContentDigestInput struct {
 // from its DEK. The digest is stored in the clear and is hashed into the chain, so it must
 // not be an unkeyed hash of the plaintext: short or low-entropy content (approval texts,
 // paths, events without an execution id) would be brute-forceable offline. A nil or locked
-// vault fails closed with ErrAuditStoreVaultLocked.
+// vault fails closed with ErrLocalFirstEventsStoreVaultLocked.
 func computeEventContentDigest(v *vault.Vault, event *Event) (string, error) {
 	if event == nil {
-		return "", constants.ErrAuditEventNil
+		return "", constants.ErrEventsStoreEventNil
 	}
 	if v == nil || !v.IsUnlocked() {
-		return "", constants.ErrAuditStoreVaultLocked
+		return "", constants.ErrLocalFirstEventsStoreVaultLocked
 	}
 	payload := eventContentDigestInput{
 		ContentText:         event.ContentText,
@@ -92,16 +92,16 @@ func computeEventContentDigest(v *vault.Vault, event *Event) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("audit chain: content digest marshal: %w", err)
 	}
-	mac, err := v.HMACSHA256(auditContentDigestLabel, raw)
+	mac, err := v.HMACSHA256(eventsContentDigestLabel, raw)
 	if err != nil {
 		return "", fmt.Errorf("audit chain: content digest: %w", err)
 	}
 	return hex.EncodeToString(mac), nil
 }
 
-func computeAuditEventHash(seq int64, prevHash, eventType, sessionID, timestamp, contentDigest, transactionID string) string {
+func computeEventHash(seq int64, prevHash, eventType, sessionID, timestamp, contentDigest, transactionID string) string {
 	canonical := strings.Join([]string{
-		auditChainHashVersion,
+		eventsChainHashVersion,
 		strconv.FormatInt(seq, 10),
 		prevHash,
 		eventType,
@@ -114,8 +114,8 @@ func computeAuditEventHash(seq int64, prevHash, eventType, sessionID, timestamp,
 	return hex.EncodeToString(sum[:])
 }
 
-func loadAuditChainHeadConn(ctx context.Context, conn *sql.Conn) (auditChainHead, error) {
-	var head auditChainHead
+func loadEventsChainHeadConn(ctx context.Context, conn *sql.Conn) (eventsChainHead, error) {
+	var head eventsChainHead
 	err := conn.QueryRowContext(ctx, `
 		SELECT seq, hash FROM events WHERE seq IS NOT NULL ORDER BY seq DESC LIMIT 1
 	`).Scan(&head.Seq, &head.PrevHash)
@@ -123,7 +123,7 @@ func loadAuditChainHeadConn(ctx context.Context, conn *sql.Conn) (auditChainHead
 		return head, nil
 	}
 	if err != sql.ErrNoRows {
-		return auditChainHead{}, fmt.Errorf("audit chain: select head: %w", err)
+		return eventsChainHead{}, fmt.Errorf("audit chain: select head: %w", err)
 	}
 
 	var checkpointHash string
@@ -131,16 +131,16 @@ func loadAuditChainHeadConn(ctx context.Context, conn *sql.Conn) (auditChainHead
 		SELECT pruned_through_hash FROM audit_chain_checkpoints ORDER BY pruned_through_seq DESC LIMIT 1
 	`).Scan(&checkpointHash)
 	if err == sql.ErrNoRows {
-		return auditChainHead{Seq: 0, PrevHash: auditChainGenesisPrevHash}, nil
+		return eventsChainHead{Seq: 0, PrevHash: eventsChainGenesisPrevHash}, nil
 	}
 	if err != nil {
-		return auditChainHead{}, fmt.Errorf("audit chain: select checkpoint: %w", err)
+		return eventsChainHead{}, fmt.Errorf("audit chain: select checkpoint: %w", err)
 	}
-	return auditChainHead{Seq: 0, PrevHash: checkpointHash}, nil
+	return eventsChainHead{Seq: 0, PrevHash: checkpointHash}, nil
 }
 
 // EventReceiptColumns is the current event receipt stored on one chain event.
-// Nil on PreparedAuditEventInsert leaves those columns null. Status zero is a
+// Nil on PreparedEventInsert leaves those columns null. Status zero is a
 // real value; absence is a nil pointer, not ExecutionStatus_UNSPECIFIED.
 type EventReceiptColumns struct {
 	TransactionHash   string
@@ -161,10 +161,10 @@ type EventReceiptColumns struct {
 	Signature         string
 }
 
-// PreparedAuditEventInsert holds an event ready for chained append. Stdout and Stderr are
-// the gzip-compressed command output; AppendPreparedAuditEvent encrypts every content
+// PreparedEventInsert holds an event ready for chained append. Stdout and Stderr are
+// the gzip-compressed command output; AppendPreparedEvent encrypts every content
 // column under the vault once the chain sequence that identifies the row is assigned.
-type PreparedAuditEventInsert struct {
+type PreparedEventInsert struct {
 	Event        *Event
 	TimestampStr string
 	Vault        *vault.Vault
@@ -173,9 +173,9 @@ type PreparedAuditEventInsert struct {
 	EventReceipt *EventReceiptColumns
 }
 
-// AppendPreparedAuditEvent appends one event to the audit chain under SQLite's write lock.
-func AppendPreparedAuditEvent(ctx context.Context, conn *sql.Conn, prepared PreparedAuditEventInsert) (int64, int64, string, error) {
-	head, err := loadAuditChainHeadConn(ctx, conn)
+// AppendPreparedEvent appends one event to the audit chain under SQLite's write lock.
+func AppendPreparedEvent(ctx context.Context, conn *sql.Conn, prepared PreparedEventInsert) (int64, int64, string, error) {
+	head, err := loadEventsChainHeadConn(ctx, conn)
 	if err != nil {
 		return 0, 0, "", err
 	}
@@ -188,24 +188,24 @@ func AppendPreparedAuditEvent(ctx context.Context, conn *sql.Conn, prepared Prep
 	}
 	// Each content ciphertext is bound to this row by its chain sequence, which the
 	// chain hash covers, so a blob moved to another row or column fails to decrypt.
-	rowID := auditEventRowID(nextSeq)
-	contentTextBytes, err := encryptAuditContent(prepared.Vault, auditColumnEventContentText, rowID, prepared.Event.ContentText)
+	rowID := eventRowID(nextSeq)
+	contentTextBytes, err := encryptEventsContent(prepared.Vault, eventColumnContentText, rowID, prepared.Event.ContentText)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreEncryptContentFailed, err)
+		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreEncryptContentFailed, err)
 	}
-	commandRawBytes, err := encryptAuditContent(prepared.Vault, auditColumnEventCommandRaw, rowID, prepared.Event.CommandRaw)
+	commandRawBytes, err := encryptEventsContent(prepared.Vault, eventColumnCommandRaw, rowID, prepared.Event.CommandRaw)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreEncryptContentFailed, err)
+		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreEncryptContentFailed, err)
 	}
-	stdoutBytes, err := encryptAuditOutput(prepared.Vault, auditColumnEventStdout, rowID, prepared.Stdout)
+	stdoutBytes, err := encryptEventOutput(prepared.Vault, eventColumnStdout, rowID, prepared.Stdout)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreEncryptStdoutFailed, err)
+		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreEncryptStdoutFailed, err)
 	}
-	stderrBytes, err := encryptAuditOutput(prepared.Vault, auditColumnEventStderr, rowID, prepared.Stderr)
+	stderrBytes, err := encryptEventOutput(prepared.Vault, eventColumnStderr, rowID, prepared.Stderr)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreEncryptStderrFailed, err)
+		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreEncryptStderrFailed, err)
 	}
-	hash := computeAuditEventHash(
+	hash := computeEventHash(
 		nextSeq,
 		head.PrevHash,
 		string(prepared.Event.Type),
@@ -261,13 +261,13 @@ func AppendPreparedAuditEvent(ctx context.Context, conn *sql.Conn, prepared Prep
 		}, receiptArgs...)...,
 	)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordEventFailed, err)
+		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreRecordEventFailed, err)
 	}
 	eventID, _ := result.LastInsertId()
 	return eventID, nextSeq, hash, nil
 }
 
-func appendAuditChainCheckpoint(
+func appendEventsChainCheckpoint(
 	ctx context.Context,
 	conn *sql.Conn,
 	encryptionVault *vault.Vault,
@@ -275,7 +275,7 @@ func appendAuditChainCheckpoint(
 	prunedThroughHash string,
 	prunedCount int64,
 ) (string, error) {
-	payload, err := json.Marshal(auditChainCheckpointPayload{
+	payload, err := json.Marshal(eventsChainCheckpointPayload{
 		PrunedThroughSeq:  prunedThroughSeq,
 		PrunedThroughHash: prunedThroughHash,
 		PrunedCount:       prunedCount,
@@ -292,16 +292,16 @@ func appendAuditChainCheckpoint(
 	}
 	// The checkpoint payload is metadata (sequence, hash, count), but it is written
 	// to events.content_text, so the append encrypts it like every other content column.
-	prepared := PreparedAuditEventInsert{
+	prepared := PreparedEventInsert{
 		Event:        checkpointEvent,
 		TimestampStr: timesvc.FormatTimestamp(now),
 		Vault:        encryptionVault,
 	}
-	if _, _, _, err := AppendPreparedAuditEvent(ctx, conn, prepared); err != nil {
+	if _, _, _, err := AppendPreparedEvent(ctx, conn, prepared); err != nil {
 		return "", err
 	}
 
-	head, err := loadAuditChainHeadConn(ctx, conn)
+	head, err := loadEventsChainHeadConn(ctx, conn)
 	if err != nil {
 		return "", err
 	}
@@ -318,10 +318,10 @@ func appendAuditChainCheckpoint(
 
 // chainVerifyStart resolves the first sequence to verify and the hash that must precede it.
 // When fromSeq is zero, verification starts after the latest durable checkpoint.
-func (ass *SQLAuditStore) chainVerifyStart(ctx context.Context, fromSeq int64) (startSeq int64, expectedPrevHash string, err error) {
+func (ass *LocalFirstEventsStore) chainVerifyStart(ctx context.Context, fromSeq int64) (startSeq int64, expectedPrevHash string, err error) {
 	if fromSeq > 0 {
 		startSeq = fromSeq
-		expectedPrevHash = auditChainGenesisPrevHash
+		expectedPrevHash = eventsChainGenesisPrevHash
 		if startSeq > 1 {
 			err := ass.db.QueryRowWithRetry(ctx, `SELECT hash FROM events WHERE seq = ?`, startSeq-1).Scan(&expectedPrevHash)
 			if err == sql.ErrNoRows {
@@ -356,7 +356,7 @@ func (ass *SQLAuditStore) chainVerifyStart(ctx context.Context, fromSeq int64) (
 		`).Scan(&checkpointSeq, &checkpointHash)
 		if err == sql.ErrNoRows {
 			startSeq = 1
-			expectedPrevHash = auditChainGenesisPrevHash
+			expectedPrevHash = eventsChainGenesisPrevHash
 		} else if err != nil {
 			return 0, "", fmt.Errorf("audit chain verify: latest checkpoint: %w", err)
 		} else {
@@ -371,9 +371,9 @@ func (ass *SQLAuditStore) chainVerifyStart(ctx context.Context, fromSeq int64) (
 // When fromSeq is zero, verification starts after the latest durable checkpoint.
 // It checks linkage and the hashes over the stored content_digest only; it does not
 // decrypt content, so it cannot detect an altered ciphertext. VerifyChainContent does.
-func (ass *SQLAuditStore) VerifyChain(ctx context.Context, fromSeq int64) error {
+func (ass *LocalFirstEventsStore) VerifyChain(ctx context.Context, fromSeq int64) error {
 	if ass == nil || ass.db == nil {
-		return constants.ErrAuditStoreDisabled
+		return constants.ErrLocalFirstEventsStoreDisabled
 	}
 
 	startSeq, expectedPrevHash, err := ass.chainVerifyStart(ctx, fromSeq)
@@ -409,7 +409,7 @@ func (ass *SQLAuditStore) VerifyChain(ctx context.Context, fromSeq int64) error 
 		if prevHash != expectedPrevHash {
 			return fmt.Errorf("audit chain verify: prev_hash mismatch at seq %d", seq)
 		}
-		recomputed := computeAuditEventHash(
+		recomputed := computeEventHash(
 			seq,
 			prevHash,
 			eventType,
@@ -435,13 +435,13 @@ func (ass *SQLAuditStore) VerifyChain(ctx context.Context, fromSeq int64) error 
 // stored content_digest. A ciphertext that was altered, or moved from another row or
 // column, fails authentication; altered plaintext fails the digest comparison. Both
 // return ErrAuditChainContentMismatch with the sequence. A nil or locked vault fails
-// closed with ErrAuditStoreVaultLocked before any row is read.
-func (ass *SQLAuditStore) VerifyChainContent(ctx context.Context, fromSeq int64) error {
+// closed with ErrLocalFirstEventsStoreVaultLocked before any row is read.
+func (ass *LocalFirstEventsStore) VerifyChainContent(ctx context.Context, fromSeq int64) error {
 	if ass == nil || ass.db == nil {
-		return constants.ErrAuditStoreDisabled
+		return constants.ErrLocalFirstEventsStoreDisabled
 	}
 	if ass.encryptionVault == nil || !ass.encryptionVault.IsUnlocked() {
-		return constants.ErrAuditStoreVaultLocked
+		return constants.ErrLocalFirstEventsStoreVaultLocked
 	}
 	if err := ass.VerifyChain(ctx, fromSeq); err != nil {
 		return err
@@ -452,7 +452,7 @@ func (ass *SQLAuditStore) VerifyChainContent(ctx context.Context, fromSeq int64)
 	}
 
 	rows, err := ass.db.QueryWithRetry(ctx, `
-		SELECT `+auditEventContentColumns+`
+		SELECT `+eventContentColumns+`
 		FROM events
 		WHERE seq IS NOT NULL AND seq >= ?
 		ORDER BY seq ASC
@@ -463,11 +463,11 @@ func (ass *SQLAuditStore) VerifyChainContent(ctx context.Context, fromSeq int64)
 	defer rows.Close()
 
 	for rows.Next() {
-		var row auditEventContentRow
+		var row eventContentRow
 		if err := rows.Scan(row.scanTargets()...); err != nil {
 			return fmt.Errorf("audit chain content verify: scan: %w", err)
 		}
-		if _, err := verifyAuditEventContent(ass.encryptionVault, row); err != nil {
+		if _, err := verifyEventContent(ass.encryptionVault, row); err != nil {
 			return err
 		}
 	}
@@ -477,12 +477,12 @@ func (ass *SQLAuditStore) VerifyChainContent(ctx context.Context, fromSeq int64)
 	return nil
 }
 
-// auditEventContentColumns lists the events columns that scanTargets fills, in order.
-const auditEventContentColumns = `seq, content_digest, content_text, command_raw, command_exit_code,
+// eventContentColumns lists the events columns that scanTargets fills, in order.
+const eventContentColumns = `seq, content_digest, content_text, command_raw, command_exit_code,
 		command_stdout, command_stderr, execution_duration_ms, execution_id`
 
-// auditEventContentRow is one events row's stored digest and encrypted content columns.
-type auditEventContentRow struct {
+// eventContentRow is one events row's stored digest and encrypted content columns.
+type eventContentRow struct {
 	seq         int64
 	digest      string
 	contentText []byte
@@ -494,18 +494,18 @@ type auditEventContentRow struct {
 	executionID sql.NullString
 }
 
-func (r *auditEventContentRow) scanTargets() []any {
+func (r *eventContentRow) scanTargets() []any {
 	return []any{&r.seq, &r.digest, &r.contentText, &r.commandRaw, &r.exitCode, &r.stdout, &r.stderr, &r.durationMs, &r.executionID}
 }
 
-// verifyAuditEventContent decrypts one row's content columns under their row binding,
+// verifyEventContent decrypts one row's content columns under their row binding,
 // recomputes the keyed content digest, and returns the decrypted event when it matches
 // the stored digest. A ciphertext that fails authentication (altered, or moved from
 // another row or column) or a digest that differs returns ErrAuditChainContentMismatch
-// with the sequence; a nil or locked vault returns ErrAuditStoreVaultLocked.
-func verifyAuditEventContent(v *vault.Vault, row auditEventContentRow) (*Event, error) {
+// with the sequence; a nil or locked vault returns ErrLocalFirstEventsStoreVaultLocked.
+func verifyEventContent(v *vault.Vault, row eventContentRow) (*Event, error) {
 	if v == nil || !v.IsUnlocked() {
-		return nil, constants.ErrAuditStoreVaultLocked
+		return nil, constants.ErrLocalFirstEventsStoreVaultLocked
 	}
 	event := &Event{
 		Seq:                 row.seq,
@@ -513,8 +513,8 @@ func verifyAuditEventContent(v *vault.Vault, row auditEventContentRow) (*Event, 
 		ExecutionDurationMs: row.durationMs.Int64,
 		ExecutionID:         row.executionID.String,
 	}
-	if err := decryptEventContentWith(v, event, row.contentText, row.commandRaw, row.stdout, row.stderr); err != nil {
-		if errors.Is(err, constants.ErrAuditStoreVaultLocked) {
+	if err := decryptEventsContentWith(v, event, row.contentText, row.commandRaw, row.stdout, row.stderr); err != nil {
+		if errors.Is(err, constants.ErrLocalFirstEventsStoreVaultLocked) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w at seq %d: %w", constants.ErrAuditChainContentMismatch, row.seq, err)
@@ -529,8 +529,8 @@ func verifyAuditEventContent(v *vault.Vault, row auditEventContentRow) (*Event, 
 	return event, nil
 }
 
-// PruneChainedAuditEvents checkpoints and deletes chained audit events older than cutoff.
-func PruneChainedAuditEvents(ctx context.Context, db *sqliteutil.DB, logger *slog.Logger, encryptionVault *vault.Vault, cutoff string) error {
+// PruneChainedEvents checkpoints and deletes chained audit events older than cutoff.
+func PruneChainedEvents(ctx context.Context, db *sqliteutil.DB, logger *slog.Logger, encryptionVault *vault.Vault, cutoff string) error {
 	if db == nil {
 		return nil
 	}
@@ -566,7 +566,7 @@ func PruneChainedAuditEvents(ctx context.Context, db *sqliteutil.DB, logger *slo
 			return fmt.Errorf("audit chain prune: select tail: %w", err)
 		}
 
-		if _, err := appendAuditChainCheckpoint(ctx, conn, encryptionVault, prunedThroughSeq, prunedThroughHash, pruneCount); err != nil {
+		if _, err := appendEventsChainCheckpoint(ctx, conn, encryptionVault, prunedThroughSeq, prunedThroughHash, pruneCount); err != nil {
 			return err
 		}
 

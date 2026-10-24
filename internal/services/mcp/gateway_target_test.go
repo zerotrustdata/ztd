@@ -45,7 +45,7 @@ func TestGatewayService_LocalEnvelopeExecutionTarget(t *testing.T) {
 }
 
 func TestGatewayService_ResumePreservesEnvelopeTargetAndHash(t *testing.T) {
-	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{}}
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{}}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
 	ctx := context.WithValue(context.Background(), constants.ContextKeyOperatorSessionID, "operator-session-1")

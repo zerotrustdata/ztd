@@ -118,7 +118,7 @@ An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSIN
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 ActionReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11), and when no valid proof is present. L5 never recomputes it from posture. |
+| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 EventReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11), and when no valid proof is present. L5 never recomputes it from posture. |
 | INV-CON-RCPT-02 | L4 verification MUST produce `DeterministicStageEvidence` for protocol L2 recording stage outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`) and the SHA-256 `L2SignatureDigest` over the sorted, canonically encoded set of `L2Vote.consensus_signature` values. |
 
 ## Owned surfaces
@@ -286,7 +286,7 @@ flowchart TD
 
 ### Receipt Evidence and Deterministic Stages
 
-When L4 verification concludes, the Warden emits deterministic stage evidence, and the L5 Actuator embeds the final L2 outcome into the signed `ActionReceipt`:
+When L4 verification concludes, the Warden emits deterministic stage evidence, and the L5 Actuator embeds the final L2 outcome into the signed `EventReceipt`:
 - **Deterministic Stage Evidence**: A stage record with `DETERMINISTIC_STAGE_KIND_PROTOCOL_L2` records the outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`).
 - **Rejection Attribution**: A rejected L2 proof produces a signed `FAILED` receipt whose signed `rejection_code` names the L2 check. The enum is defined in `protocol/proto/ztd/operator/v1/operator.proto`.
 - **Signature Digest**: `L2SignatureDigest` computes a SHA-256 digest over the sorted set of `L2Vote.consensus_signature` values, binding the cryptographic proof into the audit trail.

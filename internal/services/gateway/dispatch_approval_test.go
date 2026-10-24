@@ -98,7 +98,7 @@ func TestDispatchApprovalCoordinator_DeliveredFailureReportsHandOff(t *testing.T
 		store := &captureEnvelopeSuspender{}
 		coordinator, err := NewDispatchApprovalCoordinator(store)
 		require.NoError(t, err)
-		failed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+		failed := &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 		go func() {
 			_, pending, err := coordinator.await(t.Context(), resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t))) //nolint:testifylint // shared helper keeps require for the test goroutine
 			if err == nil {

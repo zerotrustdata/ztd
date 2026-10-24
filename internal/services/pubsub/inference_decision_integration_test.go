@@ -40,7 +40,7 @@ func (b *governedDecisionBackend) Decide(_ context.Context, req models.DecisionR
 }
 
 func TestDecisionInferenceGovernedReceiptBindsTypedResult(t *testing.T) {
-	svc, _, auditStore, results := newInferenceIntegrationFixture(t)
+	svc, _, eventsStore, results := newInferenceIntegrationFixture(t)
 	cfg := testutil.NewTestConfig(t)
 	cfg.Inference.Enabled = true
 	cfg.Inference.DecisionModels = []string{"tev1:0.8b"}
@@ -79,7 +79,7 @@ func TestDecisionInferenceGovernedReceiptBindsTypedResult(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, digest, result.ResultDigest)
 	require.Equal(t, digest, receipt.ResultSummary)
-	receipts, err := auditStore.ListEventReceipts(models.AuditScope{}, 10, 0)
+	receipts, err := eventsStore.ListEventReceipts(models.EventsScope{}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, receipts, 1)
 	require.Equal(t, digest, receipts[0].ResultSummary)

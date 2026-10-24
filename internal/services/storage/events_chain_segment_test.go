@@ -25,7 +25,7 @@ func sampleAuditChainSegmentEntries(t *testing.T) []AuditChainSegmentEntry {
 	digest := strings.Repeat("a1", 32)
 	first := AuditChainSegmentEntry{
 		Seq:           1,
-		PrevHash:      auditChainGenesisPrevHash,
+		PrevHash:      eventsChainGenesisPrevHash,
 		EventType:     string(constants.EventOperatorReceiptRecorded),
 		Timestamp:     timestamp,
 		ContentDigest: digest,
@@ -48,13 +48,13 @@ func sampleAuditChainSegmentEntries(t *testing.T) []AuditChainSegmentEntry {
 
 func TestVerifyAuditChainSegment_AcceptsLinkedSegment(t *testing.T) {
 	entries := sampleAuditChainSegmentEntries(t)
-	require.NoError(t, VerifyAuditChainSegment(entries, auditChainGenesisPrevHash, entries[1].Hash))
+	require.NoError(t, VerifyAuditChainSegment(entries, eventsChainGenesisPrevHash, entries[1].Hash))
 }
 
 func TestVerifyAuditChainSegment_RejectsTamperedHash(t *testing.T) {
 	entries := sampleAuditChainSegmentEntries(t)
 	entries[0].Hash = "tampered"
-	err := VerifyAuditChainSegment(entries, auditChainGenesisPrevHash, entries[1].Hash)
+	err := VerifyAuditChainSegment(entries, eventsChainGenesisPrevHash, entries[1].Hash)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "hash mismatch")
 }

@@ -27,7 +27,7 @@ import (
 )
 
 func TestClient_DispatchInference_FailedReceiptPreserved(t *testing.T) {
-	expectedReceipt := &operatorv1.ActionReceipt{
+	expectedReceipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-inference-failed-002",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		Signature:     "sig-failed-002",

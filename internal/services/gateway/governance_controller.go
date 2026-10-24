@@ -286,7 +286,7 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 // for BYO Gateway clients. It accepts a GovernanceEnvelope, verifies it
 // through the Gateway's fail-closed gate (id, hash, expiry, nonce, state
 // root, L2/L3 governance), executes it through the Actuator, and returns the
-// signed ActionReceipt.
+// signed EventReceipt.
 //
 // Status semantics:
 //   - 200 OK: envelope verified and executed (receipt body); receipt.status
@@ -307,13 +307,13 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 //
 // @Summary		Submit governance envelope
 // @Description	Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,
-// @Description	L4 warden, L5 actuator), and returns the signed ActionReceipt. Transport-to-envelope
+// @Description	L4 warden, L5 actuator), and returns the signed EventReceipt. Transport-to-envelope
 // @Description	identity binding is enforced via mTLS certificate URI SAN matching.
 // @Tags			governance
 // @Accept			json
 // @Produce		json
 // @Param			envelope	body		[]byte		true	"GovernanceEnvelope (protojson)"
-// @Success		200			{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt"
+// @Success		200			{object}	operatorv1.EventReceipt	"Canonical protojson EventReceipt"
 // @Failure		400			{object}	operatorv1.IngressRefusal	"Bad Request — malformed envelope"
 // @Failure		403			{object}	operatorv1.IngressRefusal	"Forbidden — IngressRefusal when refused before L4 (identity binding, outcome, L3 proof unmintable); GovernanceRejection carrying the signed receipt when L4 rejects"
 // @Failure		405			{object}	operatorv1.IngressRefusal	"Method Not Allowed"

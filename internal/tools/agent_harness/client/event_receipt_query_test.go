@@ -27,8 +27,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestGetActionReceiptQueriesCanonicalReceiptByTransactionID(t *testing.T) {
-	expected := &operatorv1.ActionReceipt{
+func TestGetEventReceiptQueriesCanonicalReceiptByTransactionID(t *testing.T) {
+	expected := &operatorv1.EventReceipt{
 		TransactionId: "transaction/1", TransactionHash: "hash-1", SignerKeyId: "signer-1", Signature: "signature-1",
 		FinalPersistenceAttestation: &operatorv1.ReceiptPersistenceAttestation{TransactionId: "transaction/1", AuditRecordId: "transaction/1", SignerKeyId: "signer-1", Signature: "persistence-signature-1"},
 	}
@@ -53,7 +53,7 @@ func TestGetActionReceiptQueriesCanonicalReceiptByTransactionID(t *testing.T) {
 	assert.Equal(t, expected.GetFinalPersistenceAttestation().GetSignature(), receipt.GetFinalPersistenceAttestation().GetSignature())
 }
 
-func TestGetActionReceiptFailsClosedOnMalformedCanonicalReceipt(t *testing.T) {
+func TestGetEventReceiptFailsClosedOnMalformedCanonicalReceipt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, writeErr := w.Write([]byte(`{"unknown_field":true}`))
 		assert.NoError(t, writeErr)
@@ -68,7 +68,7 @@ func TestGetActionReceiptFailsClosedOnMalformedCanonicalReceipt(t *testing.T) {
 	assert.Nil(t, receipt)
 }
 
-func TestGetActionReceiptReturnsNilForMissingTransaction(t *testing.T) {
+func TestGetEventReceiptReturnsNilForMissingTransaction(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))

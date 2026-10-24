@@ -147,7 +147,7 @@ The `internal/tools/` package implements Go-based generators and verification to
 
 - `agent_harness`: Typed governed Gateway client shared by `ztd eval` and `ztd test` release smoke; not an agent (`INV-AGT-08` in [AI Agents](agents.md)).
 - `bslheaders`: Verifies BSL 1.1 license headers on all first-party source files (`make bsl-headers-check`).
-- `chaos`: Test-only governance event generator behind `./ztd test chaos`; drives the L4/L5 stack in process and writes through the production SQL audit store.
+- `chaos`: Test-only governance event generator behind `./ztd test chaos`; drives the L4/L5 stack in process and writes through the production Local-First Events Store.
 - `constgen`: Generates Go and TypeScript constant files from `protocol/constants/` and checks the environment registry (`make constants-generate`, `make constants-check`).
 - `explorercatalog`: Generates scenario catalogs for the Evaluation Explorer (`make explorer-catalog-generate`, `make explorer-catalog-check`).
 - `jsoncheck`: Verifies that each named doctrine file is well-formed JSON (`make doctrines-validate`).

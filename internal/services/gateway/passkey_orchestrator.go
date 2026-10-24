@@ -57,13 +57,13 @@ func (o *PasskeyOrchestrator) GetSuspendedTransaction(ctx context.Context, txHas
 }
 
 // ResumeWithL3Proof re-submits a suspended transaction with an attached L3 proof.
-func (o *PasskeyOrchestrator) ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
+func (o *PasskeyOrchestrator) ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.EventReceipt, error) {
 	return o.mcpSvc.ResumeWithL3Proof(ctx, txHash, userID, proof)
 }
 
 // DenySuspendedTransaction ends a suspended transaction the user declined and
 // returns the executing Operator's signed L3_DENIED rejection receipt.
-func (o *PasskeyOrchestrator) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+func (o *PasskeyOrchestrator) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.EventReceipt, error) {
 	return o.mcpSvc.DenySuspendedTransaction(ctx, txHash, userID)
 }
 
@@ -75,7 +75,7 @@ func (o *PasskeyOrchestrator) ListSuspendedTransactions(ctx context.Context, use
 // EmitApprovalCompletedSSE publishes an approval.completed SSE event scoped to
 // the specific CLI session that submitted the transaction, so the waiting CLI
 // client receives real-time notification without polling. The receipt is the
-// canonical signed ActionReceipt of the decision: the resumed transaction's
+// canonical signed EventReceipt of the decision: the resumed transaction's
 // receipt on approval, its L3_DENIED rejection receipt on deny.
 func (o *PasskeyOrchestrator) EmitApprovalCompletedSSE(userID, cliSessionID, txHash string, receipt json.RawMessage) {
 	if userID == "" || cliSessionID == "" {

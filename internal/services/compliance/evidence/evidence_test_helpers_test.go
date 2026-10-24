@@ -9,8 +9,8 @@ package evidence
 
 import operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
-func newEvalVerifiedChainReceipt(signerKeyID string) *operatorv1.ActionReceipt {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "tx-hash", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, StateRootBefore: "root-before", StateRootAfter: "root-after", SignerKeyId: signerKeyID, ExecutedAtUnixMs: 1_700_000_001_000, L2Status: operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, L3Status: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED}
+func newEvalVerifiedChainReceipt(signerKeyID string) *operatorv1.EventReceipt {
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "tx-hash", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, StateRootBefore: "root-before", StateRootAfter: "root-after", SignerKeyId: signerKeyID, ExecutedAtUnixMs: 1_700_000_001_000, L2Status: operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, L3Status: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED}
 	l4ID := receipt.TransactionId + ":L4"
 	l5ID := receipt.TransactionId + ":L5"
 	receipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{

@@ -95,8 +95,8 @@
         "_go_const": "ActionTypeMcpCall",
         "_mutation": true,
         "_read_only_targets": [
-          "MCPToolAuditReceiptGet",
-          "MCPToolAuditReceiptList",
+          "MCPToolEventReceiptGet",
+          "MCPToolEventReceiptList",
           "MCPToolCloudMetadata",
           "MCPToolConfigDiffMask",
           "MCPToolDBDiscoverTopology",

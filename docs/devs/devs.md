@@ -173,7 +173,7 @@ Store invariants are owned by [Storage Architecture](../architecture/storage.md#
 - `INV-STOR-ONE-01`: One database and one file ledger per runtime root, one record per fact, one implementation per store.
 - `INV-STOR-EGRESS-01`: Raw content stays local; everything leaving the runtime is scrubbed at the single egress choke point.
 - `INV-STOR-LOG-01`: Logs carry no execution content (commands, output, paths, arguments, prompts); log IDs, sizes, counts, or `logging.ErrorKind(err)`.
-- `INV-STOR-SESSION-01`: Record paths never create a session row; the session owner creates it at session start, and an unknown session fails with `ErrAuditSessionUnknown`.
+- `INV-STOR-SESSION-01`: Record paths never create a session row; the session owner creates it at session start, and an unknown session fails with `ErrEventsStoreSessionUnknown`.
 - `INV-STOR-SCHEMA-01`: The `CREATE TABLE` is the whole schema; no migrations or back-fills.
 
 ### Dependency construction (`INV-DEP`)
@@ -186,7 +186,7 @@ Store invariants are owned by [Storage Architecture](../architecture/storage.md#
 | INV-DEP-04 | `OperatorPubSubService.BindMCPGateway` MUST run once, before either service starts. It MUST reject nil (`constants.ErrPubSubMCPGatewayNil`), duplicate (`constants.ErrPubSubMCPGatewayAlreadyBound`), and post-start (`constants.ErrPubSubMCPGatewayBindAfterStart`) binding. MUST NOT reintroduce a construction-time setter for audit, consensus, or session validation. |
 | INV-DEP-05 | Posture-dependent L2 MUST stay optional only where posture does not require it. A required posture dependency MUST fail closed. |
 | INV-DEP-06 | Gateway governance wiring MUST follow the order in the Procedures section `Gateway governance construction`. |
-| INV-DEP-07 | `CommandService`, `FileOpsService`, `PortService`, `HistoryService`, and `OllamaMaintenanceService` MUST take their collaborators (results publisher, audit store, active scrubber, ledger, history handler) as required constructor arguments and fail closed on nil or disabled input (`ErrPubSubResultsPublisher`, `ErrAuditStoreRequired`, `ErrEgressScrubberUnavailable`, `ErrLedgerRequired`, `ErrHistoryHandlerRequired`). MUST NOT add a setter or assign their fields after construction. |
+| INV-DEP-07 | `CommandService`, `FileOpsService`, `PortService`, `HistoryService`, and `OllamaMaintenanceService` MUST take their collaborators (results publisher, Local-First Events Store, active scrubber, ledger, history handler) as required constructor arguments and fail closed on nil or disabled input (`ErrPubSubResultsPublisher`, `ErrLocalFirstEventsStoreRequired`, `ErrEgressScrubberUnavailable`, `ErrLedgerRequired`, `ErrHistoryHandlerRequired`). MUST NOT add a setter or assign their fields after construction. |
 
 ### Testing (`INV-TEST`)
 
@@ -234,7 +234,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | ID | Rule |
 | :--- | :--- |
 | INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host, which `OperatorPubSubService` builds with `mcp.NewOperatorNativeToolHandler` (`internal/services/pubsub/pubsub_commands.go`) using the Gateway's embedded Operator ID in gateway mode and the Operator's own ID otherwise. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
-| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
+| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the event-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
 | INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 
@@ -317,7 +317,7 @@ make lint
 2. After stores exist, and before `InitializePKI` or `InitializePKIWithNames`, construct in-process substrate with `embedded.New` and `RegisterPending`.
 3. Load L1 doctrine with `NewL1DoctrineFromDir`, then configure posture-required L2 consensus store.
 4. Construct gateway-mode `OperatorPubSubService` with governance and platform-enrollment dependencies. The builder assigns `GatewayModeDeps` directly (`INV-DEP-03`).
-5. Construct `mcp.GatewayService` with the command service as `EnvProc`, `auth` as `SessionValidator`, and the audit store and L2 deliberator in its `Dependencies`.
+5. Construct `mcp.GatewayService` with the command service as `EnvProc`, `auth` as `SessionValidator`, and the Local-First Events Store and L2 deliberator in its `Dependencies`.
 6. Call `OperatorPubSubService.BindMCPGateway` once before either service starts (`INV-DEP-04`).
 7. Construct `PlatformEnrollmentService` with the command service as envelope processor, the MCP gateway as its L3 suspender, and the embedded Operator as runtime identity.
 8. Build HTTP handler and servers after all controller dependencies exist.

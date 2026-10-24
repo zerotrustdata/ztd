@@ -91,7 +91,7 @@ func newCLIApprovalMCP(owner string) *approvalRespondMCP {
 			ExpiresAt:         time.Now().Add(5 * time.Minute),
 		},
 		found: true,
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId:   "transaction-cli-approval-1",
 			TransactionHash: cliApprovalTestHash,
 			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
@@ -249,7 +249,7 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 		{"failed review inference reports its sentinel", constants.ErrTribunalInferenceFailed, http.StatusForbidden, constants.ErrTribunalInferenceFailed},
 		{"invalid review answer reports its sentinel", constants.ErrTribunalAnswerInvalid, http.StatusForbidden, constants.ErrTribunalAnswerInvalid},
 		{"lost pending dispatch reports expiry", constants.ErrTransactionExpired, http.StatusNotFound, constants.ErrTransactionExpired},
-		{"locked vault reports unavailability", constants.ErrAuditStoreVaultLocked, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked},
+		{"locked vault reports unavailability", constants.ErrLocalFirstEventsStoreVaultLocked, http.StatusServiceUnavailable, constants.ErrLocalFirstEventsStoreVaultLocked},
 		{"unclassified fault is an internal error", constants.ErrGatewayNotReady, http.StatusInternalServerError, constants.ErrInternal},
 	}
 	for _, tc := range resumeFailures {

@@ -100,7 +100,7 @@ func releaseKeyID(t *testing.T) string {
 
 func TestCollectOperationalSignerKeys_ReturnsDistinctSortedKeysFromEverySignedSurface(t *testing.T) {
 	receiptSigner, persistenceSigner, stageSigner, auditor := "cc", "aa", "dd", "bb"
-	receipt, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{
+	receipt, err := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		SignerKeyId:   receiptSigner,
 		FinalPersistenceAttestation: &operatorv1.ReceiptPersistenceAttestation{
@@ -109,7 +109,7 @@ func TestCollectOperationalSignerKeys_ReturnsDistinctSortedKeysFromEverySignedSu
 		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{SignerKeyId: stageSigner}},
 	})
 	require.NoError(t, err)
-	duplicateReceipt, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: "tx-2", SignerKeyId: receiptSigner})
+	duplicateReceipt, err := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{TransactionId: "tx-2", SignerKeyId: receiptSigner})
 	require.NoError(t, err)
 	commitment, err := compliancev1.MarshalCanonical(&operatorv1.CommitmentAttestation{AuditorKeyId: auditor})
 	require.NoError(t, err)

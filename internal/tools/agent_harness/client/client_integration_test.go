@@ -505,7 +505,7 @@ func TestClient_do_Verbose(t *testing.T) {
 // transaction, as the Gateway embeds it in approval.completed.
 func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 	t.Helper()
-	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "transaction-" + txHash,
 		TransactionHash: txHash,
 		SignerKeyId:     "warden-key-resumed",

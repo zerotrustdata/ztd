@@ -65,7 +65,7 @@ type OwnerConsole struct {
 
 	mu               sync.Mutex
 	requested        map[string]struct{}
-	approvalReceipts *eventLog[*operatorv1.ActionReceipt]
+	approvalReceipts *eventLog[*operatorv1.EventReceipt]
 	decisions        sync.WaitGroup
 	l3Responder      bool
 	// approvals marks each transaction a CLI responder is answering (false)
@@ -122,7 +122,7 @@ func AttachOwnerConsole(t *testing.T, f *GatewayFixture, ownerID, cliSessionID s
 		events:           newEventLog[OwnerEvent](),
 		faults:           newEventLog[error](),
 		requested:        make(map[string]struct{}),
-		approvalReceipts: newEventLog[*operatorv1.ActionReceipt](),
+		approvalReceipts: newEventLog[*operatorv1.EventReceipt](),
 	}
 	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(cliSessionID), c.receive)
 

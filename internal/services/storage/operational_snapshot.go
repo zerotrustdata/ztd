@@ -31,7 +31,7 @@ type OperationalEvidenceQuery struct {
 }
 
 // OperationalReceiptSource preserves the stored canonical receipt body and its
-// searchable selection fields without opening a writable audit store.
+// searchable selection fields without opening a writable events store.
 type OperationalReceiptSource struct {
 	TransactionID string
 	ExecutedAt    time.Time
@@ -188,7 +188,7 @@ func readOperationalReceipts(ctx context.Context, tx *sql.Tx, encryptionVault *v
 			if !seq.Valid {
 				return fmt.Errorf("operational evidence: event receipt %s has no chain sequence", receipt.TransactionID)
 			}
-			decrypted, err := decryptAuditContent(encryptionVault, auditColumnEventContentText, auditEventRowID(seq.Int64), body)
+			decrypted, err := decryptEventsContent(encryptionVault, eventColumnContentText, eventRowID(seq.Int64), body)
 			if err != nil {
 				return fmt.Errorf("operational evidence: decrypt event receipt: %w", err)
 			}
@@ -224,7 +224,7 @@ func readOperationalCommitments(ctx context.Context, tx *sql.Tx, encryptionVault
 		if err := rows.Scan(&commitment.Sequence, &commitment.TransactionID, &committedAtMs, &attestation, &commitmentHash); err != nil {
 			return fmt.Errorf("operational evidence: scan commitment: %w", err)
 		}
-		decrypted, err := decryptAuditContent(encryptionVault, CommitmentColumnAttestationJSON, commitmentHash, attestation)
+		decrypted, err := decryptEventsContent(encryptionVault, CommitmentColumnAttestationJSON, commitmentHash, attestation)
 		if err != nil {
 			return fmt.Errorf("operational evidence: decrypt attestation_json: %w", err)
 		}
@@ -261,7 +261,7 @@ func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault 
 			  AND type = ?
 			  AND timestamp >= ? AND timestamp <= ?
 		)
-		SELECT prev_hash, hash, type, operator_session_id, timestamp, transaction_id, `+auditEventContentColumns+`
+		SELECT prev_hash, hash, type, operator_session_id, timestamp, transaction_id, `+eventContentColumns+`
 		FROM events, bounds
 		WHERE seq IS NOT NULL
 		  AND seq >= bounds.first_seq AND seq <= bounds.last_seq
@@ -276,7 +276,7 @@ func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault 
 		var sessionID sql.NullString
 		var timestampStr string
 		var transactionID sql.NullString
-		var content auditEventContentRow
+		var content eventContentRow
 		targets := append([]any{&entry.PrevHash, &entry.Hash, &entry.EventType, &sessionID, &timestampStr, &transactionID}, content.scanTargets()...)
 		if err := rows.Scan(targets...); err != nil {
 			return fmt.Errorf("operational evidence: scan audit chain entry: %w", err)
@@ -285,7 +285,7 @@ func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault 
 		entry.ContentDigest = content.digest
 		// The export is read from the encrypted store: verify the entry's content under the
 		// vault before vouching for it, and fail closed on a locked vault or a mismatch.
-		event, err := verifyAuditEventContent(encryptionVault, content)
+		event, err := verifyEventContent(encryptionVault, content)
 		if err != nil {
 			return fmt.Errorf("operational evidence: verify audit chain content: %w", err)
 		}

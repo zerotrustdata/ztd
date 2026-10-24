@@ -124,7 +124,7 @@ func (f loggingFiles) Lstat(ctx context.Context, relPath string) (os.FileInfo, e
 
 // commit appends one executed commitment link to ex's ledger and returns its
 // signed receipt.
-func (h *harness) commit(ex cases.Executor, actionType string) *operatorv1.ActionReceipt {
+func (h *harness) commit(ex cases.Executor, actionType string) *operatorv1.EventReceipt {
 	h.seq++
 	prior := h.heads[ex]
 	hash := fmt.Sprintf("hash-%s-%d", ex, h.seq)
@@ -143,7 +143,7 @@ func (h *harness) commit(ex cases.Executor, actionType string) *operatorv1.Actio
 
 // Read is the cases.Sentinel fake: every read commits one link, and an extra
 // unclaimed link follows the first read when extraLink is set for ex.
-func (h *harness) Read(_ context.Context, ex cases.Executor, _ string) (*operatorv1.ActionReceipt, error) {
+func (h *harness) Read(_ context.Context, ex cases.Executor, _ string) (*operatorv1.EventReceipt, error) {
 	h.log = append(h.log, "sentinel:"+string(ex))
 	h.reads[ex]++
 	receipt := h.commit(ex, "FS_READ")

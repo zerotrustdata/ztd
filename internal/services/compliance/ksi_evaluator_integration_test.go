@@ -42,7 +42,7 @@ const (
 )
 
 // integrationEvaluatorFixture holds real storage backends wired exactly like
-// the production openEvaluatorDeps path: SQLAuditStore for audit evidence,
+// the production openEvaluatorDeps path: LocalFirstEventsStore for audit evidence,
 // GitLedgerService for ledger evidence, and CommitmentLedger sharing ztd.db.
 type integrationEvalGraderReader struct {
 	results []GraderResult
@@ -54,7 +54,7 @@ func (r *integrationEvalGraderReader) ListGraderResults(context.Context) ([]Grad
 
 type integrationEvaluatorFixture struct {
 	deps        EvaluatorDeps
-	auditStore  *storage.SQLAuditStore
+	eventsStore *storage.LocalFirstEventsStore
 	ledger      *storage.GitLedgerService
 	commitments *storage.CommitmentLedger
 	history     *KSIHistoryStore
@@ -84,13 +84,13 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 	require.NoError(t, err)
 	t.Cleanup(func() { mainDB.Close() })
 
-	auditCfg := storage.DefaultAuditStoreConfig()
+	auditCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	auditCfg.EncryptionVault = testVault
-	auditStore, err := storage.NewSQLAuditStore(auditCfg, mainDB, logger, fileSvc)
+	eventsStore, err := storage.NewLocalFirstEventsStore(auditCfg, mainDB, logger, fileSvc)
 	require.NoError(t, err)
-	t.Cleanup(func() { auditStore.Close() })
+	t.Cleanup(func() { eventsStore.Close() })
 
-	commitments := auditStore.CommitmentLedger()
+	commitments := eventsStore.CommitmentLedger()
 
 	ledger, err := storage.NewGitLedgerService(&storage.LedgerConfig{
 		EncryptionVault: testVault,
@@ -107,13 +107,13 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 
 	return &integrationEvaluatorFixture{
 		deps: EvaluatorDeps{
-			Audit:       auditStore,
+			Audit:       eventsStore,
 			Ledger:      ledger,
 			Commitments: commitments,
 			History:     history,
 			Graders:     graders,
 		},
-		auditStore:  auditStore,
+		eventsStore: eventsStore,
 		ledger:      ledger,
 		commitments: commitments,
 		history:     history,
@@ -128,10 +128,10 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	t.Helper()
 
-	require.NoError(t, f.auditStore.CreateSession(integrationSessionID, constants.SessionTypeOperator, "KSI integration", "test-user"))
+	require.NoError(t, f.eventsStore.CreateSession(integrationSessionID, constants.SessionTypeOperator, "KSI integration", "test-user"))
 
 	now := time.Now().UTC()
-	eventID, err := f.auditStore.RecordEvent(&storage.Event{
+	eventID, err := f.eventsStore.RecordEvent(&storage.Event{
 		OperatorSessionID: integrationSessionID,
 		Timestamp:         now,
 		Type:              constants.EventAppCaseCreated,
@@ -141,8 +141,8 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	require.Positive(t, eventID)
 
 	signerKeyID := hex.EncodeToString(f.receiptKey.Public().(ed25519.PublicKey))
-	receipt := &operatorv1.ActionReceipt{TransactionId: integrationTxID, TransactionHash: "tx-hash-1", StateRootBefore: "state-before", StateRootAfter: "state-after", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ExecutedAtUnixMs: now.UnixMilli(), SignerKeyId: signerKeyID}
-	payload, err := governance.CanonicalizeActionReceipt(receipt)
+	receipt := &operatorv1.EventReceipt{TransactionId: integrationTxID, TransactionHash: "tx-hash-1", StateRootBefore: "state-before", StateRootAfter: "state-after", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ExecutedAtUnixMs: now.UnixMilli(), SignerKeyId: signerKeyID}
+	payload, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(f.receiptKey, payload))
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: integrationTxID, ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}), PersistedAtUnixMs: now.Add(time.Millisecond).UnixMilli(), AuditRecordId: integrationTxID, SignerKeyId: signerKeyID}
@@ -150,7 +150,7 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	require.NoError(t, err)
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(f.receiptKey, payload))
 	receipt.FinalPersistenceAttestation = attestation
-	require.NoError(t, f.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+	require.NoError(t, f.eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     integrationTxID,
 		TransactionHash:   receipt.TransactionHash,
 		OperatorID:        "operator-1",
@@ -164,10 +164,10 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 		SignerKeyID:       signerKeyID,
 		Signature:         receipt.Signature,
 		Timestamp:         now,
-		ActionReceipt:     receipt,
+		EventReceipt:      receipt,
 	}))
 
-	require.NoError(t, f.auditStore.RecordFileMutation(&storage.FileMutationLog{
+	require.NoError(t, f.eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:   eventID,
 		Filepath:  "integration-target.txt",
 		Operation: storage.FileMutationCreate,
@@ -278,7 +278,7 @@ func TestKSIEvaluator_Integration_SeededEvidenceSatisfiesAutomatableKSIs(t *test
 		assert.NotEmpty(t, res.Evidence, "%s should carry evidence anchors", ksiID)
 	}
 
-	// Evidence anchors resolve to real receipt IDs from the audit store.
+	// Evidence anchors resolve to real receipt IDs from the local-first events store.
 	assert.Equal(t, integrationTxID, firstEvidenceRef(t, resultsByID["KSI-MLA-08"], EvidenceTypeReceiptID))
 
 	// Evidence anchors resolve to real commitment hashes and cryptographic verification.

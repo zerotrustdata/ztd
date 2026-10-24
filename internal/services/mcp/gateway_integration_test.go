@@ -40,7 +40,7 @@ func TestMCPGatewayEndToEndIntegration(t *testing.T) {
 	var receivedEnvelope *commonv1.GovernanceEnvelope
 
 	processor := &fakeEnvelopeProcessor{
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "test result",
@@ -98,7 +98,7 @@ type envelopeCaptureProcessor struct {
 	capture  func(*commonv1.GovernanceEnvelope)
 }
 
-func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	// Parse the envelope to capture it
 	var envelope commonv1.GovernanceEnvelope
 	err := protojson.Unmarshal(payload, &envelope)
@@ -112,7 +112,7 @@ func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload 
 // envelope processor after MCP gateway processing.
 func TestReceiptIntegration(t *testing.T) {
 	processor := &fakeEnvelopeProcessor{
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId:    "tx-1",
 			TransactionHash:  "hash-1",
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -162,7 +162,7 @@ func TestReceiptIntegration(t *testing.T) {
 // TestCanonicalizationIntegration tests that the canonical form used for receipt
 // signing is deterministic and does not include gateway_signed (deleted concept).
 func TestCanonicalizationIntegration(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    "tx-1",
 		TransactionHash:  "hash-1",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -176,7 +176,7 @@ func TestCanonicalizationIntegration(t *testing.T) {
 	}
 
 	// Canonicalize the receipt
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 
 	// Parse the canonical form to verify gateway_signed is NOT present
@@ -188,7 +188,7 @@ func TestCanonicalizationIntegration(t *testing.T) {
 	require.False(t, ok, "gateway_signed should not be in canonical form")
 
 	// Verify it's deterministic
-	canonical2, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical2, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	require.Equal(t, canonical, canonical2, "Canonicalization should be deterministic")
 }
@@ -334,7 +334,7 @@ func TestNativeToolExecutionIntegration(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	processor := &fakeEnvelopeProcessor{
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-native-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "native tool executed",
@@ -377,7 +377,7 @@ type errorReturningProcessor struct {
 	err error
 }
 
-func (e *errorReturningProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (e *errorReturningProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	return nil, e.err
 }
 
@@ -418,7 +418,7 @@ func TestReadFieldIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to initialize field path registry")
 
 	envProc := &fakeEnvelopeProcessor{
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId: "readfield-tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "read_field result",
@@ -616,7 +616,7 @@ func (f *integrationTestAuditLogger) LogFieldRead(operatorSessionID, collection,
 func TestNativeToolSingleAudit(t *testing.T) {
 
 	processor := &fakeEnvelopeProcessor{
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "native tool executed",
@@ -631,7 +631,7 @@ func TestNativeToolSingleAudit(t *testing.T) {
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
-		auditStore:        noopAuditEventRecorder{},
+		eventsStore:       noopAuditEventRecorder{},
 		maxPayloadBytes:   10 * 1024 * 1024,
 		envProc:           processor,
 	}
@@ -654,15 +654,15 @@ func TestNativeToolSingleAudit(t *testing.T) {
 	// this would produce a duplicate audit event via the no-op recorder
 }
 
-// TestAuditReceiptListTool_DispatchToDownstream verifies the governed native
-// tool dispatch path for audit_receipt_list: when the GatewayService has an
-// AuditReceiptQuery wired into its NativeToolHandler, DispatchToDownstream
+// TestEventReceiptListTool_DispatchToDownstream verifies the governed native
+// tool dispatch path for event_receipt_list: when the GatewayService has an
+// EventReceiptQuery wired into its NativeToolHandler, DispatchToDownstream
 // executes the tool locally and returns the receipts as a textual summary
 // without forwarding to a downstream MCP server.
-func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
+func TestEventReceiptListTool_DispatchToDownstream(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	stub := &stubAuditReceiptQuery{
+	stub := &stubEventReceiptQuery{
 		listBySession: []*models.EventReceiptRecord{
 			sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
@@ -670,7 +670,7 @@ func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)
-	nativeHandler.SetAuditReceiptQuery(stub)
+	nativeHandler.SetEventReceiptQuery(stub)
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
@@ -678,33 +678,33 @@ func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
-		auditStore:        noopAuditEventRecorder{},
+		eventsStore:       noopAuditEventRecorder{},
 		scrubbingService:  newTestScrubbingService(t),
 		maxPayloadBytes:   10 * 1024 * 1024,
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
-	args, err := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
+	args, err := json.Marshal(EventReceiptListRequest{OperatorSessionID: "sess-1"})
 	require.NoError(t, err)
 
-	summary, err := g.DispatchToDownstream(context.Background(), "audit_receipt_list", args, "sess-1")
+	summary, err := g.DispatchToDownstream(context.Background(), "event_receipt_list", args, "sess-1")
 	require.NoError(t, err)
 	require.Contains(t, summary, "tx-1")
 	require.Contains(t, summary, "FILE_EDIT")
 	require.Equal(t, "sess-1", stub.lastListSession)
 }
 
-// TestAuditReceiptGetTool_DispatchToDownstream verifies the governed native
-// tool dispatch path for audit_receipt_get.
-func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
+// TestEventReceiptGetTool_DispatchToDownstream verifies the governed native
+// tool dispatch path for event_receipt_get.
+func TestEventReceiptGetTool_DispatchToDownstream(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	rec := sampleReceiptRecord("tx-get-1", "sess-1", "DOCUMENT_UPDATE", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
-	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-get-1": rec}}
+	stub := &stubEventReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-get-1": rec}}
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)
-	nativeHandler.SetAuditReceiptQuery(stub)
+	nativeHandler.SetEventReceiptQuery(stub)
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
@@ -712,26 +712,26 @@ func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
-		auditStore:        noopAuditEventRecorder{},
+		eventsStore:       noopAuditEventRecorder{},
 		scrubbingService:  newTestScrubbingService(t),
 		maxPayloadBytes:   10 * 1024 * 1024,
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
-	args, err := json.Marshal(AuditReceiptGetRequest{TransactionID: "tx-get-1"})
+	args, err := json.Marshal(EventReceiptGetRequest{TransactionID: "tx-get-1"})
 	require.NoError(t, err)
 
-	summary, err := g.DispatchToDownstream(context.Background(), "audit_receipt_get", args, "sess-1")
+	summary, err := g.DispatchToDownstream(context.Background(), "event_receipt_get", args, "sess-1")
 	require.NoError(t, err)
 	require.Contains(t, summary, "tx-get-1")
 	require.Contains(t, summary, "DOCUMENT_UPDATE")
 	require.Equal(t, "tx-get-1", stub.lastGetID)
 }
 
-// TestAuditReceiptListTool_DispatchNotConfigured verifies the gateway fails
-// closed when no AuditReceiptQuery is wired, proving the audit receipt tools
+// TestEventReceiptListTool_DispatchNotConfigured verifies the gateway fails
+// closed when no EventReceiptQuery is wired, proving the event receipt tools
 // cannot bypass governance to return ungoverned data.
-func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
+func TestEventReceiptListTool_DispatchNotConfigured(t *testing.T) {
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)
@@ -742,15 +742,15 @@ func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
 		logger:            slog.Default(),
 		fieldPathRegistry: registry,
 		nativeToolHandler: nativeHandler,
-		auditStore:        noopAuditEventRecorder{},
+		eventsStore:       noopAuditEventRecorder{},
 		maxPayloadBytes:   10 * 1024 * 1024,
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
-	args, err := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
+	args, err := json.Marshal(EventReceiptListRequest{OperatorSessionID: "sess-1"})
 	require.NoError(t, err)
 
-	_, err = g.DispatchToDownstream(context.Background(), "audit_receipt_list", args, "sess-1")
+	_, err = g.DispatchToDownstream(context.Background(), "event_receipt_list", args, "sess-1")
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
+	require.ErrorIs(t, err, constants.ErrMCPEventReceiptQueryNotConfigured)
 }

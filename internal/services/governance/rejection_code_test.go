@@ -188,7 +188,7 @@ func TestClassifyGovernanceRejectionCoversDirectWardenSentinels(t *testing.T) {
 
 func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
 	verifyErr := fmt.Errorf("verify: %w: 3s ago", constants.ErrTxTransactionExpired)
-	rejected := &operatorv1.ActionReceipt{
+	rejected := &operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -202,7 +202,7 @@ func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
 	assert.Equal(t, constants.ErrTxTransactionExpired.Error(), resp.GetError(), "only the sentinel renders, never the chain")
 	assert.Same(t, rejected, resp.GetReceipt())
 
-	executionFailure := &operatorv1.ActionReceipt{
+	executionFailure := &operatorv1.EventReceipt{
 		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED,
 	}
@@ -214,7 +214,7 @@ func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
 
 func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
 	providerErr := fmt.Errorf("dispatch: %w", constants.ErrInferenceBackendUnavailable)
-	failed := &operatorv1.ActionReceipt{
+	failed := &operatorv1.EventReceipt{
 		TransactionId: "tx-failed",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE,
@@ -225,7 +225,7 @@ func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
 	assert.Same(t, failed, FailedReceipt(fmt.Errorf("gateway: %w", err)))
 	assert.Nil(t, RejectionResponse(err), "an execution failure is not a governance rejection")
 
-	rejected := &operatorv1.ActionReceipt{
+	rejected := &operatorv1.EventReceipt{
 		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 	}
@@ -233,7 +233,7 @@ func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
 	assert.Same(t, rejected, FailedReceipt(rejectedErr))
 	assert.NotNil(t, RejectionResponse(rejectedErr))
 
-	completed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	completed := &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	assert.Same(t, providerErr, WithFailedReceipt(completed, providerErr))
 	assert.Same(t, providerErr, WithFailedReceipt(nil, providerErr))
 	require.NoError(t, WithFailedReceipt(failed, nil))
@@ -241,7 +241,7 @@ func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
 }
 
 func TestRejectionResponseUnmappedErrorRendersReceiptCode(t *testing.T) {
-	rejected := &operatorv1.ActionReceipt{
+	rejected := &operatorv1.EventReceipt{
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,

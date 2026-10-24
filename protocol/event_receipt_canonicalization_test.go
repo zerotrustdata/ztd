@@ -23,7 +23,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-type actionReceiptCanonicalizationVector struct {
+type eventReceiptCanonicalizationVector struct {
 	Receipt       json.RawMessage `json:"receipt"`
 	CanonicalUTF8 string          `json:"canonical_utf8"`
 	PublicKeyHex  string          `json:"public_key_hex"`
@@ -35,31 +35,31 @@ type receiptPersistenceCanonicalizationVector struct {
 	PublicKeyHex string          `json:"public_key_hex"`
 }
 
-//go:embed vectors/action_receipt_canonicalization.json
-var actionReceiptCanonicalizationVectorJSON []byte
+//go:embed vectors/event_receipt_canonicalization.json
+var eventReceiptCanonicalizationVectorJSON []byte
 
 //go:embed vectors/receipt_persistence_attestation_canonicalization.json
 var receiptPersistenceCanonicalizationVectorJSON []byte
 
-//go:embed vectors/action_receipt_stage_evidence_canonicalization.json
-var actionReceiptStageEvidenceCanonicalizationVectorJSON []byte
+//go:embed vectors/event_receipt_stage_evidence_canonicalization.json
+var eventReceiptStageEvidenceCanonicalizationVectorJSON []byte
 
-//go:embed vectors/action_receipt_failure_code_canonicalization.json
-var actionReceiptFailureCodeCanonicalizationVectorJSON []byte
+//go:embed vectors/event_receipt_failure_code_canonicalization.json
+var eventReceiptFailureCodeCanonicalizationVectorJSON []byte
 
-//go:embed vectors/action_receipt_rejection_code_canonicalization.json
-var actionReceiptRejectionCodeCanonicalizationVectorJSON []byte
+//go:embed vectors/event_receipt_rejection_code_canonicalization.json
+var eventReceiptRejectionCodeCanonicalizationVectorJSON []byte
 
-func TestActionReceiptCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	var vector actionReceiptCanonicalizationVector
-	require.NoError(t, json.Unmarshal(actionReceiptCanonicalizationVectorJSON, &vector))
+func TestEventReceiptCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector eventReceiptCanonicalizationVector
+	require.NoError(t, json.Unmarshal(eventReceiptCanonicalizationVectorJSON, &vector))
 
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(vector.Receipt, receipt))
 	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.L2Status)
 	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED, receipt.L3Status)
 
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	assert.Equal(t, vector.CanonicalUTF8, string(canonical))
 
@@ -70,14 +70,14 @@ func TestActionReceiptCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 }
 
-func TestActionReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	var vector actionReceiptCanonicalizationVector
-	require.NoError(t, json.Unmarshal(actionReceiptStageEvidenceCanonicalizationVectorJSON, &vector))
-	receipt := &operatorv1.ActionReceipt{}
+func TestEventReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector eventReceiptCanonicalizationVector
+	require.NoError(t, json.Unmarshal(eventReceiptStageEvidenceCanonicalizationVectorJSON, &vector))
+	receipt := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(vector.Receipt, receipt))
 	require.Len(t, receipt.DeterministicStageEvidence, 2)
 
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	assert.Equal(t, vector.CanonicalUTF8, string(canonical))
 	publicKey, err := hex.DecodeString(vector.PublicKeyHex)
@@ -87,31 +87,31 @@ func TestActionReceiptStageEvidenceCanonicalizationMatchesCrossLanguageVector(t 
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 
 	t.Run("stage order", func(t *testing.T) {
-		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		tampered.DeterministicStageEvidence[0], tampered.DeterministicStageEvidence[1] = tampered.DeterministicStageEvidence[1], tampered.DeterministicStageEvidence[0]
-		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		payload, canonicalErr := governance.CanonicalizeEventReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
 	})
 
 	t.Run("stage field", func(t *testing.T) {
-		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		tampered.DeterministicStageEvidence[0].DoctrineBundleHash = "sha256:tampered"
-		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		payload, canonicalErr := governance.CanonicalizeEventReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
 	})
 }
 
-func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	var vector actionReceiptCanonicalizationVector
-	require.NoError(t, json.Unmarshal(actionReceiptFailureCodeCanonicalizationVectorJSON, &vector))
-	receipt := &operatorv1.ActionReceipt{}
+func TestEventReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector eventReceiptCanonicalizationVector
+	require.NoError(t, json.Unmarshal(eventReceiptFailureCodeCanonicalizationVectorJSON, &vector))
+	receipt := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(vector.Receipt, receipt))
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, receipt.FailureCode)
 
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	assert.Equal(t, vector.CanonicalUTF8, string(canonical))
 	assert.Contains(t, string(canonical), `"failure_code":1`)
@@ -123,33 +123,33 @@ func TestActionReceiptFailureCodeCanonicalizationMatchesCrossLanguageVector(t *t
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 
 	t.Run("failure code tampering", func(t *testing.T) {
-		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		tampered.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
-		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		payload, canonicalErr := governance.CanonicalizeEventReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
 	})
 
 	t.Run("failure code removal", func(t *testing.T) {
-		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		tampered.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
-		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		payload, canonicalErr := governance.CanonicalizeEventReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.NotContains(t, string(payload), "failure_code")
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
 	})
 }
 
-func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	var vector actionReceiptCanonicalizationVector
-	require.NoError(t, json.Unmarshal(actionReceiptRejectionCodeCanonicalizationVectorJSON, &vector))
-	receipt := &operatorv1.ActionReceipt{}
+func TestEventReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector eventReceiptCanonicalizationVector
+	require.NoError(t, json.Unmarshal(eventReceiptRejectionCodeCanonicalizationVectorJSON, &vector))
+	receipt := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(vector.Receipt, receipt))
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, receipt.FailureCode)
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET, receipt.RejectionCode)
 
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	assert.Equal(t, vector.CanonicalUTF8, string(canonical))
 	assert.Contains(t, string(canonical), `"rejection_code":19`)
@@ -161,17 +161,17 @@ func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t 
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
 
 	t.Run("rejection code tampering", func(t *testing.T) {
-		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
-		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		payload, canonicalErr := governance.CanonicalizeEventReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
 	})
 
 	t.Run("rejection code removal", func(t *testing.T) {
-		tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		tampered := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
-		payload, canonicalErr := governance.CanonicalizeActionReceipt(tampered)
+		payload, canonicalErr := governance.CanonicalizeEventReceipt(tampered)
 		require.NoError(t, canonicalErr)
 		assert.NotContains(t, string(payload), "rejection_code")
 		assert.False(t, ed25519.Verify(publicKey, payload, signature))
@@ -179,12 +179,12 @@ func TestActionReceiptRejectionCodeCanonicalizationMatchesCrossLanguageVector(t 
 }
 
 func TestReceiptPersistenceAttestationCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	var receiptVector actionReceiptCanonicalizationVector
-	require.NoError(t, json.Unmarshal(actionReceiptCanonicalizationVectorJSON, &receiptVector))
+	var receiptVector eventReceiptCanonicalizationVector
+	require.NoError(t, json.Unmarshal(eventReceiptCanonicalizationVectorJSON, &receiptVector))
 	var persistenceVector receiptPersistenceCanonicalizationVector
 	require.NoError(t, json.Unmarshal(receiptPersistenceCanonicalizationVectorJSON, &persistenceVector))
 
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(receiptVector.Receipt, receipt))
 	attestation := &operatorv1.ReceiptPersistenceAttestation{}
 	require.NoError(t, protojson.Unmarshal(persistenceVector.Attestation, attestation))

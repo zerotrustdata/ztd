@@ -67,7 +67,7 @@ CLI certificate signature with --cli.
 By default, the CLI opens the Gateway approval page and waits for its completion event. With
 --cli, it signs the transaction hash using the enrolled CLI certificate and submits the signature
 over mTLS. Both flows require enrolled CLI credentials. The --cli flow waits for the final
-execution receipt and allows the governed inference request deadline for that response.
+event receipt and allows the governed inference request deadline for that response.
 
 With --deny, the enrolled CLI session denies the transaction over mTLS instead, and the command
 prints the Operator-signed L3_DENIED rejection receipt that ends it.`,
@@ -149,7 +149,7 @@ func denyWithCLI(cmd *cobra.Command, client APIClient, txHash string) error {
 	if err != nil {
 		return fmt.Errorf("approve: submit CLI deny: %w", err)
 	}
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	if err := protojson.Unmarshal(resp, &receipt); err != nil {
 		return fmt.Errorf("approve: parse CLI deny receipt: %w", err)
 	}
@@ -180,7 +180,7 @@ func approveWithCLI(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *conf
 	if err != nil {
 		return fmt.Errorf("approve: submit CLI approval: %w", err)
 	}
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	if err := protojson.Unmarshal(resp, &receipt); err != nil {
 		return fmt.Errorf("approve: parse CLI approval receipt: %w", err)
 	}
@@ -219,7 +219,7 @@ func subscribeApproval(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *
 	return approvals, nil
 }
 
-// waitForApprovalAndVerify checks the execution receipt on the authenticated
+// waitForApprovalAndVerify checks the event receipt on the authenticated
 // approval stream. Completed transactions have already left the pending store.
 func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, approvals *auth.ApprovalSubscription, txHash string) error {
 	cmd.Printf("\nWaiting for browser approval (SSE)...\n")

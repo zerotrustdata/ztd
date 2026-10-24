@@ -42,12 +42,12 @@ import (
 )
 
 type fakeEnvelopeProcessor struct {
-	receipt    *operatorv1.ActionReceipt
+	receipt    *operatorv1.EventReceipt
 	err        error
 	gotPayload []byte
 }
 
-func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	f.gotPayload = append([]byte(nil), payload...)
 	return f.receipt, f.err
 }
@@ -154,7 +154,7 @@ func suspendableEnvelope(t *testing.T, operatorSessionID string) []byte {
 }
 
 func TestGatewayService_HandleToolsCall_ReturnsSignedReceiptProtojson(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-1",
 		TransactionHash: "hash-1",
 		SignerKeyId:     "warden-key-1",
@@ -177,13 +177,13 @@ func TestGatewayService_HandleToolsCall_ReturnsSignedReceiptProtojson(t *testing
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "tool result", resp.Result.Content[0].Text)
-	var decoded operatorv1.ActionReceipt
+	var decoded operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(resp.Result.Receipt, &decoded), "receipt must be strict protojson")
 	assert.True(t, proto.Equal(receipt, &decoded), "the wire receipt must be the executing Operator's signed receipt")
 }
 
 func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-2",
 		TransactionHash: "hash-2",
 		SignerKeyId:     "warden-key-2",
@@ -206,7 +206,7 @@ func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *t
 }
 
 func TestGatewayService_HandleToolsCall_BindsInvestigationIDIntoGovernanceEnvelope(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-3",
 		TransactionHash: "hash-3",
 		SignerKeyId:     "warden-key-3",
@@ -342,7 +342,7 @@ func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			receipt := &operatorv1.ActionReceipt{
+			receipt := &operatorv1.EventReceipt{
 				TransactionId:   "tx-blocked-1",
 				TransactionHash: "tx-blocked-1",
 				SignerKeyId:     "warden-key-blocked",
@@ -443,7 +443,7 @@ func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
 }
 
 func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-call-1",
 		TransactionHash: "hash-call-1",
 		SignerKeyId:     "warden-key-call-1",
@@ -461,7 +461,7 @@ func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
 	assert.False(t, result.IsError)
 	assert.Nil(t, result.Suspension)
 
-	var decoded operatorv1.ActionReceipt
+	var decoded operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(result.Receipt, &decoded), "receipt must be strict protojson")
 	assert.True(t, proto.Equal(receipt, &decoded))
 	canonical, err := response.MarshalProtoJSONCanonical(receipt)
@@ -470,7 +470,7 @@ func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
 }
 
 func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-a2a-1",
 		TransactionHash: "hash-a2a-1",
 		SignerKeyId:     "warden-key-a2a-1",
@@ -486,7 +486,7 @@ func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
 	success, ok := res.(A2ASuccessResponse)
 	require.True(t, ok)
 
-	var decoded operatorv1.ActionReceipt
+	var decoded operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(success.Result, &decoded), "result must be strict protojson")
 	assert.True(t, proto.Equal(receipt, &decoded))
 	canonical, err := response.MarshalProtoJSONCanonical(receipt)
@@ -494,8 +494,8 @@ func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
 	assert.Equal(t, canonical, []byte(success.Result), "the result must be the canonical receipt bytes")
 }
 
-func TestEncodeActionReceipt_FailsClosedOnNilReceipt(t *testing.T) {
-	encoded, err := encodeActionReceipt(nil)
+func TestEncodeEventReceipt_FailsClosedOnNilReceipt(t *testing.T) {
+	encoded, err := encodeEventReceipt(nil)
 	require.ErrorIs(t, err, constants.ErrInternal)
 	assert.Nil(t, encoded, "a governed success must never be returned without its receipt")
 }
@@ -543,9 +543,9 @@ func suspendedCallFixture(t *testing.T, proc *fakeEnvelopeProcessor, store *fake
 	return hash
 }
 
-func invalidL3ProofRejection(t *testing.T) (*operatorv1.ActionReceipt, error) {
+func invalidL3ProofRejection(t *testing.T) (*operatorv1.EventReceipt, error) {
 	t.Helper()
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-l3-invalid",
 		TransactionHash: "hash-l3-invalid",
 		SignerKeyId:     "warden-key-l3",
@@ -603,7 +603,7 @@ func assertInvalidProofRejectionKeepsSuspension(t *testing.T, g *GatewayService,
 }
 
 func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary: "tool result",
@@ -656,8 +656,8 @@ func TestGatewayService_ResumeWithL3Proof_ExpiredTransaction(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrTransactionExpired)
 }
 
-func l3DeniedRejection() (*operatorv1.ActionReceipt, error) {
-	receipt := &operatorv1.ActionReceipt{
+func l3DeniedRejection() (*operatorv1.EventReceipt, error) {
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-l3-denied",
 		TransactionHash: "hash-l3-denied",
 		SignerKeyId:     "warden-key-l3",
@@ -724,7 +724,7 @@ func TestDenySuspendedTransaction_ExecutionIsNeverADeny(t *testing.T) {
 		return res.(CallToolResult).Suspension.TxHash, nil
 	})
 
-	proc.receipt = &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	proc.receipt = &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	proc.err = nil
 	_, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
 	require.ErrorIs(t, err, constants.ErrL3DenyNotRejected)
@@ -770,24 +770,24 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 	require.NoError(t, err)
 	testVault := storagetest.CreateTestVault(t, vaultDir, privKey)
 
-	// Create audit store
+	// Create local-first events store
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
 	require.NoError(t, err)
 	defer db.Close()
 
-	auditConfig := &storage.AuditStoreConfig{
+	auditConfig := &storage.LocalFirstEventsStoreConfig{
 		RetentionDays:        7,
 		PruneIntervalMinutes: 60,
 		EncryptionVault:      testVault,
 	}
-	auditStore, err := storage.NewSQLAuditStore(auditConfig, db, slog.Default(), fileSvc)
+	eventsStore, err := storage.NewLocalFirstEventsStore(auditConfig, db, slog.Default(), fileSvc)
 	require.NoError(t, err)
-	defer auditStore.Close()
+	defer eventsStore.Close()
 
 	// Create session for the operator
 	operatorSessionID := "session-maintenance-test"
-	err = auditStore.CreateSession(operatorSessionID, "operator", "Maintenance Test", "user@test.com")
+	err = eventsStore.CreateSession(operatorSessionID, "operator", "Maintenance Test", "user@test.com")
 	require.NoError(t, err)
 
 	// Create a fake store with an expired transaction
@@ -807,15 +807,15 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 
 	g := newTestGatewayService(t,
 		withSuspendedStore(store),
-		withAuditStore(auditStore),
+		withEventsStore(eventsStore),
 	)
 
 	// Run a single maintenance sweep directly
 	err = g.runMaintenanceSweep(context.Background())
 	require.NoError(t, err)
 
-	// Verify expiry event was recorded in audit store
-	events, err := auditStore.GetEvents(models.AuditScope{OperatorSessionID: operatorSessionID}, 10, 0)
+	// Verify expiry event was recorded in local-first events store
+	events, err := eventsStore.GetEvents(models.EventsScope{OperatorSessionID: operatorSessionID}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 
@@ -841,11 +841,11 @@ func TestGatewayService_RunMaintenanceSweep_KeepsExpiredTransactionsWhenAuditFai
 		ToolName:          "test-tool",
 		OperatorSessionID: "operator-session-1",
 	}))
-	g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(failingAuditEventRecorder{err: constants.ErrAuditSessionUnknown}))
+	g := newTestGatewayService(t, withSuspendedStore(store), withEventsStore(failingAuditEventRecorder{err: constants.ErrEventsStoreSessionUnknown}))
 
 	err := g.runMaintenanceSweep(context.Background())
 
-	require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 	require.Contains(t, store.txs, "expired-unaudited", "an expiry that is not on the audit chain must not be pruned")
 }
 
@@ -894,12 +894,12 @@ func TestGatewayService_RunMaintenanceSweep_DeletesOnlyAuditedExpiredTransaction
 		ToolName:          "test-tool",
 		OperatorSessionID: "operator-session-ok",
 	}))
-	recorder := &sessionFailingAuditEventRecorder{failSession: "operator-session-broken", err: constants.ErrAuditSessionUnknown}
-	g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
+	recorder := &sessionFailingAuditEventRecorder{failSession: "operator-session-broken", err: constants.ErrEventsStoreSessionUnknown}
+	g := newTestGatewayService(t, withSuspendedStore(store), withEventsStore(recorder))
 
 	err := g.runMaintenanceSweep(context.Background())
 
-	require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 	require.NotContains(t, store.txs, "expired-audited", "an expiry on the audit chain is pruned")
 	require.Contains(t, store.txs, "expired-unaudited", "an expiry that is not on the audit chain is kept for the next sweep")
 	require.Contains(t, store.txs, "still-pending")
@@ -910,7 +910,7 @@ func TestGatewayService_RunMaintenanceSweep_DeletesOnlyAuditedExpiredTransaction
 }
 
 func TestGatewayService_HandleResourcesRead(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary: "resource content",
@@ -937,7 +937,7 @@ func TestGatewayService_HandleResourcesRead(t *testing.T) {
 }
 
 func TestGatewayService_HandlePromptsGet(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary: "prompt template",
@@ -1174,37 +1174,37 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 		require.NoError(t, err)
 		testVault := storagetest.CreateTestVault(t, vaultDir, privKey)
 
-		// Create audit store
+		// Create local-first events store
 		dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
 		db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
 		require.NoError(t, err)
 		defer db.Close()
 
-		auditConfig := &storage.AuditStoreConfig{
+		auditConfig := &storage.LocalFirstEventsStoreConfig{
 			RetentionDays:        7,
 			PruneIntervalMinutes: 60,
 			EncryptionVault:      testVault,
 		}
-		auditStore, err := storage.NewSQLAuditStore(auditConfig, db, slog.Default(), fileSvc)
+		eventsStore, err := storage.NewLocalFirstEventsStore(auditConfig, db, slog.Default(), fileSvc)
 		require.NoError(t, err)
-		defer auditStore.Close()
+		defer eventsStore.Close()
 
 		// Create session for the operator
 		operatorSessionID := "session-approval-requested-test"
-		err = auditStore.CreateSession(operatorSessionID, "operator", "Approval Requested Test", "user@test.com")
+		err = eventsStore.CreateSession(operatorSessionID, "operator", "Approval Requested Test", "user@test.com")
 		require.NoError(t, err)
 
 		store := &fakeSuspendedStore{}
 		g := newTestGatewayService(t,
 			withSuspendedStore(store),
-			withAuditStore(auditStore),
+			withEventsStore(eventsStore),
 		)
 
 		txHash := "hash-approval-123"
 		require.NoError(t, g.StoreSuspendedTransaction(context.Background(), txHash, suspendableEnvelope(t, operatorSessionID), "test-tool", json.RawMessage(`{"arg":"val"}`), "user-1", "app-1", "cert-fp-abc123"))
 
-		// Verify approval requested event was recorded in audit store
-		events, err := auditStore.GetEvents(models.AuditScope{OperatorSessionID: operatorSessionID}, 10, 0)
+		// Verify approval requested event was recorded in local-first events store
+		events, err := eventsStore.GetEvents(models.EventsScope{OperatorSessionID: operatorSessionID}, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 
@@ -1291,7 +1291,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 			Responder:        response.NewWriter(slog.Default()),
 			SuspendedStore:   &fakeSuspendedStore{},
 			MaxPayloadBytes:  10 * 1024 * 1024,
-			AuditStore:       noopAuditEventRecorder{},
+			EventsStore:      noopAuditEventRecorder{},
 			EmbeddedSession:  fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
 			ScrubbingService: newTestScrubbingService(t),
 		}
@@ -1315,7 +1315,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 			Logger:           slog.Default(),
 			Responder:        response.NewWriter(slog.Default()),
 			MaxPayloadBytes:  10 * 1024 * 1024,
-			AuditStore:       noopAuditEventRecorder{},
+			EventsStore:      noopAuditEventRecorder{},
 			EmbeddedSession:  fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
 			ScrubbingService: newTestScrubbingService(t),
 		}
@@ -1333,7 +1333,7 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 			Logger:           slog.Default(),
 			Responder:        response.NewWriter(slog.Default()),
 			MaxPayloadBytes:  10 * 1024 * 1024,
-			AuditStore:       noopAuditEventRecorder{},
+			EventsStore:      noopAuditEventRecorder{},
 			EmbeddedSession:  fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
 			ScrubbingService: newTestScrubbingService(t),
 			FieldPathRegistryFactory: func(*slog.Logger) (*FieldPathRegistry, error) {
@@ -1349,26 +1349,26 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 	})
 }
 
-func TestGatewayService_NilAuditStore_ReturnsError(t *testing.T) {
+func TestGatewayService_NilEventsStore_ReturnsError(t *testing.T) {
 	deps := Dependencies{
 		Posture:         constants.PostureDoctrine,
 		Logger:          slog.Default(),
 		Responder:       response.NewWriter(slog.Default()),
 		SuspendedStore:  &fakeSuspendedStore{},
 		MaxPayloadBytes: 10 * 1024 * 1024,
-		// AuditStore intentionally omitted — a missing audit store is a wiring
+		// EventsStore intentionally omitted — a missing local-first events store is a wiring
 		// bug, not a no-op condition. NewGatewayService must fail closed.
 	}
 
 	g, err := NewGatewayService(deps)
 	require.Error(t, err)
 	require.Nil(t, g)
-	require.ErrorIs(t, err, constants.ErrAuditStoreRequired)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRequired)
 }
 
-func TestGatewayService_AuditStore_InjectedRecorderReceivesEvents(t *testing.T) {
+func TestGatewayService_EventsStore_InjectedRecorderReceivesEvents(t *testing.T) {
 	recorder := &recordingAuditEventRecorder{}
-	g := newTestGatewayService(t, withAuditStore(recorder))
+	g := newTestGatewayService(t, withEventsStore(recorder))
 
 	require.NoError(t, g.StoreSuspendedTransaction(
 		context.Background(),
@@ -1395,7 +1395,7 @@ func (r *recordingAuditEventRecorder) RecordEvent(event *storage.Event) (int64, 
 	return int64(len(r.events)), nil
 }
 
-// RecordEventOnce mirrors SQLAuditStore.RecordEventOnce: an event with the same
+// RecordEventOnce mirrors LocalFirstEventsStore.RecordEventOnce: an event with the same
 // transaction_id and type as one already recorded is not recorded again.
 func (r *recordingAuditEventRecorder) RecordEventOnce(event *storage.Event) (int64, bool, error) {
 	for i, existing := range r.events {
@@ -1419,7 +1419,7 @@ func TestGatewayService_StoreSuspendedTransaction_FailsClosed(t *testing.T) {
 	t.Run("envelope without Operator session is not suspended", func(t *testing.T) {
 		store := &fakeSuspendedStore{}
 		recorder := &recordingAuditEventRecorder{}
-		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
+		g := newTestGatewayService(t, withSuspendedStore(store), withEventsStore(recorder))
 
 		err := g.StoreSuspendedTransaction(context.Background(), "hash-app", suspendableEnvelope(t, ""), "test-tool", json.RawMessage(`{}`), "user-1", "app-1", "")
 
@@ -1440,11 +1440,11 @@ func TestGatewayService_StoreSuspendedTransaction_FailsClosed(t *testing.T) {
 
 	t.Run("unrecordable approval event removes the suspension", func(t *testing.T) {
 		store := &fakeSuspendedStore{}
-		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(failingAuditEventRecorder{err: constants.ErrAuditSessionUnknown}))
+		g := newTestGatewayService(t, withSuspendedStore(store), withEventsStore(failingAuditEventRecorder{err: constants.ErrEventsStoreSessionUnknown}))
 
 		err := g.StoreSuspendedTransaction(context.Background(), "hash-unaudited", suspendableEnvelope(t, "operator-session-1"), "test-tool", json.RawMessage(`{}`), "user-1", "app-1", "")
 
-		require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+		require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 		require.Empty(t, store.txs, "an approval must never be pending without its approval.requested record")
 	})
 }
@@ -1474,7 +1474,7 @@ func TestGatewayService_HandleToolsCall_AppCredentialSuspendsOnEmbeddedSession(t
 	g := newTestGatewayService(t,
 		withEnvProc(&fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}),
 		withSuspendedStore(store),
-		withAuditStore(recorder))
+		withEventsStore(recorder))
 	g.posture = constants.PostureNotary
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{}}}`))
@@ -1534,7 +1534,7 @@ func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T)
 		Posture:         constants.PostureDoctrine,
 		Logger:          slog.Default(),
 		Responder:       response.NewWriter(slog.Default()),
-		AuditStore:      noopAuditEventRecorder{},
+		EventsStore:     noopAuditEventRecorder{},
 		EmbeddedSession: fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
 	})
 	require.ErrorIs(t, err, constants.ErrScrubbingServiceRequired)
@@ -1543,10 +1543,10 @@ func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T)
 
 func TestGatewayService_NewGatewayService_RequiresEmbeddedSession(t *testing.T) {
 	g, err := NewGatewayService(Dependencies{
-		Posture:    constants.PostureDoctrine,
-		Logger:     slog.Default(),
-		Responder:  response.NewWriter(slog.Default()),
-		AuditStore: noopAuditEventRecorder{},
+		Posture:     constants.PostureDoctrine,
+		Logger:      slog.Default(),
+		Responder:   response.NewWriter(slog.Default()),
+		EventsStore: noopAuditEventRecorder{},
 	})
 	require.ErrorIs(t, err, constants.ErrEmbeddedSessionResolverRequired)
 	require.Nil(t, g)
@@ -2019,10 +2019,10 @@ func withSuspendedStore(store storage.SuspendedTransactionStore) testGatewayOpti
 	}
 }
 
-// withAuditStore sets a custom audit store for the test GatewayService
-func withAuditStore(auditStore AuditEventRecorder) testGatewayOption {
+// withEventsStore sets a custom local-first events store for the test GatewayService
+func withEventsStore(eventsStore AuditEventRecorder) testGatewayOption {
 	return func(g *GatewayService) {
-		g.auditStore = auditStore
+		g.eventsStore = eventsStore
 	}
 }
 
@@ -2110,7 +2110,7 @@ func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayServ
 		logger:            slog.Default(),
 		responder:         response.NewWriter(slog.Default()),
 		suspendedStore:    &fakeSuspendedStore{},
-		auditStore:        noopAuditEventRecorder{},
+		eventsStore:       noopAuditEventRecorder{},
 		scrubbingService:  newTestScrubbingService(t),
 		threatScanner:     governance.NewL1Doctrine(),
 		publicBaseURL:     network.LocalhostHTTPSURL(constants.Ports.OperatorHttps),
@@ -2140,7 +2140,7 @@ func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayServ
 func TestGatewayService_HandleA2aCall(t *testing.T) {
 
 	t.Run("successful call", func(t *testing.T) {
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "a2a result",
@@ -2220,7 +2220,7 @@ func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
 	t.Run("suspends envelope and returns typed L3 suspension response", func(t *testing.T) {
 		store := &fakeSuspendedStore{}
 		recorder := &recordingAuditEventRecorder{}
-		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
+		g := newTestGatewayService(t, withSuspendedStore(store), withEventsStore(recorder))
 		g.posture = constants.PostureRatify
 		g.publicBaseURL = "https://gateway.local:8443"
 
@@ -2260,7 +2260,7 @@ func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
 	t.Run("fails closed when OperatorSessionId is empty", func(t *testing.T) {
 		store := &fakeSuspendedStore{}
 		recorder := &recordingAuditEventRecorder{}
-		g := newTestGatewayService(t, withSuspendedStore(store), withAuditStore(recorder))
+		g := newTestGatewayService(t, withSuspendedStore(store), withEventsStore(recorder))
 		g.posture = constants.PostureNotary
 
 		env := &commonv1.GovernanceEnvelope{

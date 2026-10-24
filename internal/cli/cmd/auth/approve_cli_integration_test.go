@@ -77,7 +77,7 @@ func writeCLIApprovalIdentity(t *testing.T, fileSvc fs.RuntimeFileService, cfg *
 
 func cliApprovalReceipt(t *testing.T, txHash string, status operatorv1.ExecutionStatus, l3 operatorv1.L3Status) []byte {
 	t.Helper()
-	body, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	body, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "tx-approval-test",
 		TransactionHash: txHash,
 		Status:          status,
@@ -177,7 +177,7 @@ func TestApproveCmd_CLI_RequiresEnrolledCredentials(t *testing.T) {
 
 func cliDenyReceipt(t *testing.T, txHash string, code operatorv1.GovernanceRejectionCode) []byte {
 	t.Helper()
-	body, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	body, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "tx-deny-test",
 		TransactionHash: txHash,
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,

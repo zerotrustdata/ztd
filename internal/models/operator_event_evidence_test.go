@@ -18,13 +18,13 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestOperatorAuditReceiptListResult_ProtoJSONSerialization(t *testing.T) {
-	orig := OperatorAuditReceiptListResult{
+func TestOperatorEventReceiptListResult_ProtoJSONSerialization(t *testing.T) {
+	orig := OperatorEventReceiptListResult{
 		Count:           1,
 		OperatorID:      "op-test",
 		Authority:       "operator_local_ledger",
 		InvestigationID: "inv-test",
-		Receipts: []*operatorv1.ActionReceipt{
+		Receipts: []*operatorv1.EventReceipt{
 			{
 				TransactionId:    "tx-123",
 				TransactionHash:  "hash-456",
@@ -48,7 +48,7 @@ func TestOperatorAuditReceiptListResult_ProtoJSONSerialization(t *testing.T) {
 	assert.NotContains(t, dataStr, `"transactionId"`)
 	assert.False(t, strings.Contains(dataStr, `"status":2`) || strings.Contains(dataStr, `"status": 2`), "must not use numeric enum encoding")
 
-	var decoded OperatorAuditReceiptListResult
+	var decoded OperatorEventReceiptListResult
 	require.NoError(t, json.Unmarshal(data, &decoded))
 	assert.Equal(t, orig.Count, decoded.Count)
 	assert.Equal(t, orig.OperatorID, decoded.OperatorID)
@@ -65,7 +65,7 @@ func TestOperatorAuditReceiptListResult_ProtoJSONSerialization(t *testing.T) {
 	assert.Equal(t, "EXECUTE_BASH", decoded.Receipts[0].GetActionType())
 }
 
-func TestOperatorAuditReceiptListResult_AcceptsNumericEnum(t *testing.T) {
+func TestOperatorEventReceiptListResult_AcceptsNumericEnum(t *testing.T) {
 	// Backward compatibility: test unmarshaling legacy JSON with numeric enum encoding
 	rawJSON := `{
 		"count": 1,
@@ -81,7 +81,7 @@ func TestOperatorAuditReceiptListResult_AcceptsNumericEnum(t *testing.T) {
 		]
 	}`
 
-	var decoded OperatorAuditReceiptListResult
+	var decoded OperatorEventReceiptListResult
 	require.NoError(t, json.Unmarshal([]byte(rawJSON), &decoded))
 	assert.Equal(t, 1, decoded.Count)
 	require.Len(t, decoded.Receipts, 1)
@@ -90,9 +90,9 @@ func TestOperatorAuditReceiptListResult_AcceptsNumericEnum(t *testing.T) {
 	assert.Equal(t, "EXECUTE_BASH", decoded.Receipts[0].GetActionType())
 }
 
-func TestOperatorAuditReceiptListResult_NilAndEmptyReceipts(t *testing.T) {
+func TestOperatorEventReceiptListResult_NilAndEmptyReceipts(t *testing.T) {
 	// Nil receipts slice
-	nilResult := OperatorAuditReceiptListResult{
+	nilResult := OperatorEventReceiptListResult{
 		Count:           0,
 		OperatorID:      "op-1",
 		Authority:       "operator_local_ledger",
@@ -102,23 +102,23 @@ func TestOperatorAuditReceiptListResult_NilAndEmptyReceipts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"receipts":null`)
 
-	var decodedNil OperatorAuditReceiptListResult
+	var decodedNil OperatorEventReceiptListResult
 	require.NoError(t, json.Unmarshal(data, &decodedNil))
 	assert.Nil(t, decodedNil.Receipts)
 
 	// Empty receipts slice
-	emptyResult := OperatorAuditReceiptListResult{
+	emptyResult := OperatorEventReceiptListResult{
 		Count:           0,
 		OperatorID:      "op-1",
 		Authority:       "operator_local_ledger",
 		InvestigationID: "inv-1",
-		Receipts:        []*operatorv1.ActionReceipt{},
+		Receipts:        []*operatorv1.EventReceipt{},
 	}
 	data, err = json.Marshal(emptyResult)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"receipts":[]`)
 
-	var decodedEmpty OperatorAuditReceiptListResult
+	var decodedEmpty OperatorEventReceiptListResult
 	require.NoError(t, json.Unmarshal(data, &decodedEmpty))
 	assert.NotNil(t, decodedEmpty.Receipts)
 	assert.Empty(t, decodedEmpty.Receipts)

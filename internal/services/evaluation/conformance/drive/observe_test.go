@@ -18,7 +18,7 @@ import (
 )
 
 func TestObserveFillsReceiptFromDispatchWhenObservationHasNone(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-dispatch"}
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-dispatch"}
 	o := &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT},
 		Dispatch:    &operatorv1.GovernedDispatchResult{Receipt: receipt},
@@ -32,9 +32,9 @@ func TestObserveKeepsObservationReceiptOverDispatch(t *testing.T) {
 	o := &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{
 			Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
-			Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-observed"},
+			Receipt: &operatorv1.EventReceipt{TransactionId: "tx-observed"},
 		},
-		Dispatch: &operatorv1.GovernedDispatchResult{Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-dispatch"}},
+		Dispatch: &operatorv1.GovernedDispatchResult{Receipt: &operatorv1.EventReceipt{TransactionId: "tx-dispatch"}},
 	}
 
 	obs := Observe(o)

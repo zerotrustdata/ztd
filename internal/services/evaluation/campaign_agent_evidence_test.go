@@ -75,14 +75,14 @@ func (l *evidenceLedger) advance() (prior, hash string) {
 }
 
 // executed appends one commitment for txID and returns its signed receipt.
-func (l *evidenceLedger) executed(txID, actionType string) *operatorv1.ActionReceipt {
+func (l *evidenceLedger) executed(txID, actionType string) *operatorv1.EventReceipt {
 	prior, hash := l.advance()
 	return l.signer.Executed(l.t, l.opts(txID, actionType), prior, hash)
 }
 
 // executedInSession appends one commitment for txID, signed as if an Operator
 // session other than the ledger's own had executed it on the same runtime.
-func (l *evidenceLedger) executedInSession(txID, actionType, sessionID string) *operatorv1.ActionReceipt {
+func (l *evidenceLedger) executedInSession(txID, actionType, sessionID string) *operatorv1.EventReceipt {
 	prior, hash := l.advance()
 	opts := l.opts(txID, actionType)
 	opts.SessionID = sessionID
@@ -90,13 +90,13 @@ func (l *evidenceLedger) executedInSession(txID, actionType, sessionID string) *
 }
 
 // rejected returns a signed governance rejection for txID.
-func (l *evidenceLedger) rejected(txID, actionType string) *operatorv1.ActionReceipt {
+func (l *evidenceLedger) rejected(txID, actionType string) *operatorv1.EventReceipt {
 	return l.signer.Rejected(l.t, l.opts(txID, actionType), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED)
 }
 
 // inference appends one completed inference whose result_summary is the
 // call's result digest.
-func (l *evidenceLedger) inference(txID string) *operatorv1.ActionReceipt {
+func (l *evidenceLedger) inference(txID string) *operatorv1.EventReceipt {
 	receipt := l.executed(txID, string(constants.ActionTypeInference))
 	receipt.ResultSummary = evidenceResultDigest(txID)
 	l.signer.Resign(l.t, receipt)
@@ -105,7 +105,7 @@ func (l *evidenceLedger) inference(txID string) *operatorv1.ActionReceipt {
 
 // inferenceFailed appends one inference whose provider failed. The handler
 // ran, so the runtime still commits it.
-func (l *evidenceLedger) inferenceFailed(txID string) *operatorv1.ActionReceipt {
+func (l *evidenceLedger) inferenceFailed(txID string) *operatorv1.EventReceipt {
 	prior, hash := l.advance()
 	return l.signer.ExecutionFailed(l.t, l.opts(txID, string(constants.ActionTypeInference)), prior, hash)
 }
@@ -114,30 +114,30 @@ func evidenceResultDigest(txID string) string {
 	return "digest-" + txID
 }
 
-func completedModelCall(txID string, receipt *operatorv1.ActionReceipt) AgentModelCall {
+func completedModelCall(txID string, receipt *operatorv1.EventReceipt) AgentModelCall {
 	return AgentModelCall{
 		ProviderAttemptID: "attempt-" + txID,
 		TransactionID:     txID,
 		ResultDigest:      evidenceResultDigest(txID),
-		Receipt:           &AgentTraceReceipt{ActionReceipt: receipt},
+		Receipt:           &AgentTraceReceipt{EventReceipt: receipt},
 	}
 }
 
-func failedModelCall(txID string, receipt *operatorv1.ActionReceipt) AgentModelCall {
+func failedModelCall(txID string, receipt *operatorv1.EventReceipt) AgentModelCall {
 	return AgentModelCall{
 		ProviderAttemptID: "attempt-" + txID,
 		TransactionID:     txID,
 		Error:             "provider failed",
-		Receipt:           &AgentTraceReceipt{ActionReceipt: receipt},
+		Receipt:           &AgentTraceReceipt{EventReceipt: receipt},
 	}
 }
 
-func allowedToolCall(txID string, receipt *operatorv1.ActionReceipt) AgentToolCall {
-	return AgentToolCall{CallID: "call-" + txID, TransactionID: txID, PolicyDecision: agentPolicyDecisionAllow, Receipt: &AgentTraceReceipt{ActionReceipt: receipt}}
+func allowedToolCall(txID string, receipt *operatorv1.EventReceipt) AgentToolCall {
+	return AgentToolCall{CallID: "call-" + txID, TransactionID: txID, PolicyDecision: agentPolicyDecisionAllow, Receipt: &AgentTraceReceipt{EventReceipt: receipt}}
 }
 
-func bracketOf(before, after *operatorv1.ActionReceipt) *AgentTraceBracket {
-	return &AgentTraceBracket{Before: AgentTraceReceipt{ActionReceipt: before}, After: AgentTraceReceipt{ActionReceipt: after}}
+func bracketOf(before, after *operatorv1.EventReceipt) *AgentTraceBracket {
+	return &AgentTraceBracket{Before: AgentTraceReceipt{EventReceipt: before}, After: AgentTraceReceipt{EventReceipt: after}}
 }
 
 func evidenceTrace(inference, data AgentTraceRuntime) *AgentTrace {
@@ -178,7 +178,7 @@ func validEvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
 	trace.ToolCalls = []AgentToolCall{
 		allowedToolCall("tx-1", executed),
-		{CallID: "call-2", TransactionID: "tx-2", PolicyDecision: agentPolicyDecisionDeny, Receipt: &AgentTraceReceipt{ActionReceipt: rejected}},
+		{CallID: "call-2", TransactionID: "tx-2", PolicyDecision: agentPolicyDecisionDeny, Receipt: &AgentTraceReceipt{EventReceipt: rejected}},
 	}
 	trace.Bracket = bracketOf(before, after)
 	return trace, signer
@@ -233,16 +233,16 @@ func TestVerifyAgentTraceEvidence_AcceptsLegacyV6Trace(t *testing.T) {
 
 func TestVerifyAgentTraceEvidence_RejectsFlippedSignatureByteInCallReceipt(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
-	receipt := trace.ToolCalls[0].Receipt.ActionReceipt
+	receipt := trace.ToolCalls[0].Receipt.EventReceipt
 	receipt.Signature = flipFirstHexDigit(receipt.Signature)
 
-	requireEvidenceError(t, trace, constants.ErrActionReceiptSignatureInvalid)
+	requireEvidenceError(t, trace, constants.ErrEventReceiptSignatureInvalid)
 }
 
 func TestVerifyAgentTraceEvidence_RejectsReceiptSignedByAnotherKey(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	stranger := newEvidenceLedger(t, oracletest.NewSigner(t))
-	trace.ToolCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: stranger.executed("tx-1", string(constants.ActionTypeExecuteBash))}
+	trace.ToolCalls[0].Receipt = &AgentTraceReceipt{EventReceipt: stranger.executed("tx-1", string(constants.ActionTypeExecuteBash))}
 
 	requireEvidenceError(t, trace, constants.ErrConformanceAnchorUnknown)
 }
@@ -279,7 +279,7 @@ func TestVerifyAgentTraceEvidence_RejectsAdmittedCallWithNoReceipt(t *testing.T)
 	trace, _ := validEvidenceTrace(t)
 	trace.ToolCalls[0].Receipt = nil
 
-	requireEvidenceError(t, trace, constants.ErrActionReceiptMissing)
+	requireEvidenceError(t, trace, constants.ErrEventReceiptMissing)
 }
 
 func TestVerifyAgentTraceEvidence_RejectsExecutedReceiptOnCallRecordedAsDeny(t *testing.T) {
@@ -419,11 +419,11 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *test
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	observer := newRuntimeLedger(t, oracletest.NewSigner(t), "operator-observer-1", "session-observer-1")
 	foreign := observer.executed("tx-observe-foreign", string(constants.ActionTypeProviderBoundaryObservation))
-	newTrace := func(observations ...*operatorv1.ActionReceipt) *AgentTrace {
+	newTrace := func(observations ...*operatorv1.EventReceipt) *AgentTrace {
 		trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 		call := completedModelCall("tx-m1", model)
 		for _, receipt := range observations {
-			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
+			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 		}
 		trace.ModelCalls = []AgentModelCall{call}
 		trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
@@ -453,7 +453,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 		{
 			name:    "recorded call has no receipt",
 			corrupt: func(_ *testing.T, trace *AgentTrace) { trace.ModelCalls[0].Receipt = nil },
-			cause:   constants.ErrActionReceiptMissing,
+			cause:   constants.ErrEventReceiptMissing,
 		},
 		{
 			name:    "result digest differs from the signed result summary",
@@ -466,12 +466,12 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 			cause:   constants.ErrEvaluationEvidenceTraceMismatch,
 		},
 		{
-			name: "completed call carries a failed execution receipt",
+			name: "completed call carries a failed event receipt",
 			corrupt: func(t *testing.T, trace *AgentTrace) {
 				t.Helper()
 				failed := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 				trace.Inference = failed.runtime()
-				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: failed.inferenceFailed("tx-m1")}
+				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{EventReceipt: failed.inferenceFailed("tx-m1")}
 			},
 			cause: constants.ErrEvaluationEvidenceTraceMismatch,
 		},
@@ -480,7 +480,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 			corrupt: func(t *testing.T, trace *AgentTrace) {
 				t.Helper()
 				impostor := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
-				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: impostor.inference("tx-m1")}
+				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{EventReceipt: impostor.inference("tx-m1")}
 			},
 			cause: constants.ErrConformanceAnchorUnknown,
 		},
@@ -610,7 +610,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			// Binding order differs from the order concurrent members committed.
 			trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
 				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1]), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
-				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.ActionReceipt{observation}},
+				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.EventReceipt{observation}},
 			})
 			if test.corrupt != nil {
 				test.corrupt(trace)

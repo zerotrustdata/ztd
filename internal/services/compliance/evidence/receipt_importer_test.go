@@ -59,7 +59,7 @@ func (s *assessedSignerStub) GetTrustedSignerPublicKey(_ context.Context, keyID 
 type standaloneReceiptFixture struct {
 	reader             *memoryArtifactReader
 	trust              *assessedSignerStub
-	receipt            *operatorv1.ActionReceipt
+	receipt            *operatorv1.EventReceipt
 	receiptBody        []byte
 	receiptBinding     ReceiptImportBinding
 	persistenceBinding PersistenceImportBinding
@@ -70,8 +70,8 @@ func newStandaloneReceiptFixture(t *testing.T) *standaloneReceiptFixture {
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	signerKeyID := "assessed-signer"
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-standalone", TransactionHash: "tx-hash", SignerKeyId: signerKeyID, ExecutedAtUnixMs: 1_700_000_001_000}
-	receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-standalone", TransactionHash: "tx-hash", SignerKeyId: signerKeyID, ExecutedAtUnixMs: 1_700_000_001_000}
+	receiptPayload, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, receiptPayload))
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: receipt.TransactionId, ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}), PersistedAtUnixMs: 1_700_000_002_000, AuditRecordId: receipt.TransactionId, SignerKeyId: signerKeyID}
@@ -83,7 +83,7 @@ func newStandaloneReceiptFixture(t *testing.T) *standaloneReceiptFixture {
 	require.NoError(t, err)
 	persistenceBody, err := compliancev1.MarshalCanonical(attestation)
 	require.NoError(t, err)
-	receiptReference := ContentReferenceForBody(constants.ActionReceiptReferencePrefix, receiptBody)
+	receiptReference := ContentReferenceForBody(constants.EventReceiptReferencePrefix, receiptBody)
 	persistenceReference := ContentReferenceForBody(constants.ReceiptPersistenceReferencePrefix, persistenceBody)
 	receiptPath := filepath.Join("receipts", digestHex(receiptBody)+constants.FileExtJSON)
 	persistencePath := filepath.Join("persistence", digestHex(persistenceBody)+constants.FileExtJSON)
@@ -161,12 +161,12 @@ func TestReceiptImporter_Import_RejectsDigestAndCanonicalMutations(t *testing.T)
 		targetErr error
 	}{
 		{name: "digest mismatch", mutate: func(f *standaloneReceiptFixture) {
-			f.receiptBinding.Reference = constants.ActionReceiptReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
+			f.receiptBinding.Reference = constants.EventReceiptReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
 		}, targetErr: constants.ErrChecksumMismatch},
 		{name: "noncanonical protojson", mutate: func(f *standaloneReceiptFixture) {
 			body := append(append([]byte{}, f.receiptBody...), '\n')
 			f.reader.files[f.receiptBinding.Path] = body
-			f.receiptBinding.Reference = ContentReferenceForBody(constants.ActionReceiptReferencePrefix, body)
+			f.receiptBinding.Reference = ContentReferenceForBody(constants.EventReceiptReferencePrefix, body)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},
 	}
 	for _, test := range tests {
@@ -219,7 +219,7 @@ func TestPersistenceImporter_Import_MarksInvalidAttestationSignatureFailed(t *te
 	require.NoError(t, err)
 	persistenceBody, err := compliancev1.MarshalCanonical(fixture.receipt.FinalPersistenceAttestation)
 	require.NoError(t, err)
-	fixture.receiptBinding.Reference = ContentReferenceForBody(constants.ActionReceiptReferencePrefix, receiptBody)
+	fixture.receiptBinding.Reference = ContentReferenceForBody(constants.EventReceiptReferencePrefix, receiptBody)
 	fixture.persistenceBinding.ReceiptReference = fixture.receiptBinding.Reference
 	fixture.persistenceBinding.Reference = ContentReferenceForBody(constants.ReceiptPersistenceReferencePrefix, persistenceBody)
 	fixture.reader.files[fixture.receiptBinding.Path] = receiptBody
@@ -320,7 +320,7 @@ func TestPersistenceImporter_Import_RejectsDigestCanonicalAndBindingMutations(t 
 			fixture.persistenceBinding.Reference = constants.ReceiptPersistenceReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
 		}, targetErr: constants.ErrChecksumMismatch},
 		{name: "receipt digest mismatch", mutate: func(_ *testing.T, fixture *standaloneReceiptFixture) {
-			fixture.persistenceBinding.ReceiptReference = constants.ActionReceiptReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
+			fixture.persistenceBinding.ReceiptReference = constants.EventReceiptReferencePrefix + ":sha256:" + strings.Repeat("0", 64)
 		}, targetErr: constants.ErrChecksumMismatch},
 		{name: "noncanonical persistence protojson", mutate: func(_ *testing.T, fixture *standaloneReceiptFixture) {
 			body := append(append([]byte{}, fixture.reader.files[fixture.persistenceBinding.Path]...), '\n')

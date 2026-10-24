@@ -91,14 +91,14 @@ func operatorPeerRequest(t *testing.T, body []byte) *http.Request {
 // for ProcessEnvelope. It captures the payload it was called with so tests
 // can assert the handler forwarded the body unchanged.
 type fakeEnvelopeProcessor struct {
-	receipt    *operatorv1.ActionReceipt
+	receipt    *operatorv1.EventReceipt
 	err        error
 	gotPayload []byte
 	calls      int
 }
 
 // using protojson field naming conventions.
-func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	f.calls++
 	f.gotPayload = append([]byte(nil), payload...)
 	return f.receipt, f.err
@@ -160,7 +160,7 @@ func TestGovernanceEnvelope_EmptyBody_ReturnsIngressRefusal(t *testing.T) {
 func TestGovernanceEnvelope_URISANMismatch_Returns403Refusal(t *testing.T) {
 	spiffeURL, parseErr := url.Parse("spiffe://ztd.local/operator/org-1/op-9/sess-9")
 	require.NoError(t, parseErr)
-	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-mismatch"}}
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{TransactionId: "tx-mismatch"}}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(operatorEnvelope(t, "tx-mismatch")))
@@ -242,7 +242,7 @@ func TestGovernanceEnvelope_VerifierUnavailable_Returns503(t *testing.T) {
 // rejection hands the caller the Operator's signed receipt with its typed
 // rejection_code, and renders only the sentinel as error text.
 func TestGovernanceEnvelope_Rejection_ReturnsSignedReceipt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-rejected",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -295,7 +295,7 @@ func TestGovernanceEnvelope_OversizedPayload_Returns400(t *testing.T) {
 }
 
 func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    "tx-abc",
 		TransactionHash:  "abc123",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -329,7 +329,7 @@ func TestGovernanceEnvelope_Success_Returns200WithSignedReceipt(t *testing.T) {
 	require.Equal(t, string(constants.PostureNotary), forwarded.GetPosture(), "handler must stamp gateway posture onto the envelope")
 
 	// Receipt is returned as canonical protojson (proto field names).
-	got := &operatorv1.ActionReceipt{}
+	got := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), got))
 	require.Equal(t, "tx-abc", got.GetTransactionId())
 	require.Equal(t, "abc123", got.GetTransactionHash())
@@ -342,7 +342,7 @@ func TestGovernanceEnvelope_CallerSuppliedPosture_ReturnsIngressRefusal(t *testi
 	// Only the gateway sets posture. A caller-supplied one (here a doctrine
 	// downgrade sent to a notary gateway) is refused before processing.
 	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureNotary} {
-		proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-posture"}}
+		proc := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{TransactionId: "tx-posture"}}
 		h := newGovernanceEnvelopeHandler(t, proc)
 
 		body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
@@ -365,7 +365,7 @@ func TestGovernanceEnvelope_CallerSuppliedPosture_ReturnsIngressRefusal(t *testi
 func TestGovernanceEnvelope_FailedExecution_StillReturns200(t *testing.T) {
 	// A signed FAILED receipt is still cryptographic evidence and must be
 	// returned to the caller with HTTP 200, not surfaced as a server error.
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-fail",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		ResultSummary: "failed: handler error",
@@ -636,7 +636,7 @@ func TestVerifyEnvelopeIdentityBinding_NoIdentityFields_FailsClosed(t *testing.T
 // client certificate is refused with 403 MTLS_REQUIRED, renders only the
 // sentinel, and never reaches the processor.
 func TestGovernanceEnvelope_NoTLS_Refused(t *testing.T) {
-	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-unbound"}}
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{TransactionId: "tx-unbound"}}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(operatorEnvelope(t, "tx-unbound")))
@@ -652,7 +652,7 @@ func TestGovernanceEnvelope_NoTLS_Refused(t *testing.T) {
 // envelope whose acting_app_id is not in the certificate is refused with 403
 // before it reaches the processor.
 func TestGovernanceEnvelope_ActingAppMismatch_Refused(t *testing.T) {
-	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-app"}}
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{TransactionId: "tx-app"}}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
 	body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
@@ -675,7 +675,7 @@ func TestGovernanceEnvelope_ActingAppMismatch_Refused(t *testing.T) {
 func TestGovernanceEnvelope_RequestorMismatch_Refused(t *testing.T) {
 	cliURL, parseErr := url.Parse("spiffe://ztd.local/cli/user-A/cli-sess-1")
 	require.NoError(t, parseErr)
-	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{TransactionId: "tx-req"}}
+	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{TransactionId: "tx-req"}}
 	h := newGovernanceEnvelopeHandler(t, proc)
 
 	body := marshalEnvelope(t, &commonv1.GovernanceEnvelope{

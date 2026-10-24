@@ -12,14 +12,14 @@ import (
 	"encoding/json"
 )
 
-//go:generate mockery --name TransactionAuditStore --output ./mocks --dir .
+//go:generate mockery --name TransactionEventsStore --output ./mocks --dir .
 
-// TransactionAuditStore defines the interface for persisting audit documents
+// TransactionEventsStore defines the interface for persisting audit documents
 // to a document store. Implemented natively by DocumentStoreService (gateway
-// mode, persists JSON documents) and storage.SQLAuditStore (outbound mode,
+// mode, persists JSON documents) and storage.LocalFirstEventsStore (outbound mode,
 // decodes the payload as an EventReceiptRecord and records it in the receipts
 // table). No adapter is required in either production mode.
-type TransactionAuditStore interface {
+type TransactionEventsStore interface {
 	DocSet(ctx context.Context, collection, id string, data json.RawMessage) error
 	DocDelete(ctx context.Context, collection, id string) error
 }

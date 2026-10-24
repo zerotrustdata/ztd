@@ -24,7 +24,7 @@ import (
 )
 
 // Content columns of commitment_ledger, bound with the commitment hash into the AEAD data
-// (see AuditContentAAD).
+// (see EventsContentAAD).
 const (
 	CommitmentColumnTargetResource  = "commitment_ledger.target_resource"
 	CommitmentColumnAttestationJSON = "commitment_ledger.attestation_json"
@@ -65,7 +65,7 @@ type CommitmentLedger struct {
 
 // NewCommitmentLedger creates a new commitment ledger backed by the given SQLite database.
 // The database must already have the commitment_ledger table in its schema.
-// The vault encrypts the content columns; it is the runtime vault shared with the audit store.
+// The vault encrypts the content columns; it is the runtime vault shared with the events store.
 func NewCommitmentLedger(db *sqliteutil.DB, logger *slog.Logger, encryptionVault *vault.Vault) *CommitmentLedger {
 	return &CommitmentLedger{
 		db:     db,
@@ -136,7 +136,7 @@ func (cl *CommitmentLedger) ListCommitments() ([]*CommitmentRow, error) {
 		if row.actionType.Valid {
 			row.row.ActionType = row.actionType.String
 		}
-		if row.row.TargetResource, err = decryptAuditContent(cl.vault, CommitmentColumnTargetResource, row.row.Hash, row.targetResource); err != nil {
+		if row.row.TargetResource, err = decryptEventsContent(cl.vault, CommitmentColumnTargetResource, row.row.Hash, row.targetResource); err != nil {
 			return nil, fmt.Errorf("commitment ledger: decrypt target_resource: %w", err)
 		}
 		if row.auditorKeyID.Valid {
@@ -145,7 +145,7 @@ func (cl *CommitmentLedger) ListCommitments() ([]*CommitmentRow, error) {
 		if row.signature.Valid {
 			row.row.Signature = row.signature.String
 		}
-		attestationJSON, err := decryptAuditContent(cl.vault, CommitmentColumnAttestationJSON, row.row.Hash, row.attestation)
+		attestationJSON, err := decryptEventsContent(cl.vault, CommitmentColumnAttestationJSON, row.row.Hash, row.attestation)
 		if err != nil {
 			return nil, fmt.Errorf("commitment ledger: decrypt attestation_json: %w", err)
 		}
@@ -242,11 +242,11 @@ func (cl *CommitmentLedger) insertCommitment(conn *sql.Conn, attestation *operat
 	if err != nil {
 		return nil, fmt.Errorf("failed to canonicalize attestation JSON: %w", err)
 	}
-	targetBytes, err := encryptAuditContent(cl.vault, CommitmentColumnTargetResource, hash, attestation.GetTargetResource())
+	targetBytes, err := encryptEventsContent(cl.vault, CommitmentColumnTargetResource, hash, attestation.GetTargetResource())
 	if err != nil {
 		return nil, fmt.Errorf("commitment ledger: encrypt target_resource: %w", err)
 	}
-	attestationBytes, err := encryptAuditContent(cl.vault, CommitmentColumnAttestationJSON, hash, string(canonicalAttestation))
+	attestationBytes, err := encryptEventsContent(cl.vault, CommitmentColumnAttestationJSON, hash, string(canonicalAttestation))
 	if err != nil {
 		return nil, fmt.Errorf("commitment ledger: encrypt attestation_json: %w", err)
 	}

@@ -58,7 +58,7 @@
     "total_tasks": {"type": "integer", "required": true},
     "started_at": {"type": "string", "format": "iso8601", "required": false},
     "ended_at": {"type": "string", "format": "iso8601", "required": false},
-    "has_receipts": {"type": "boolean", "required": true, "description": "Whether the run has at least one governance receipt"},
+    "has_receipts": {"type": "boolean", "required": true, "description": "Whether the run has at least one event receipt"},
     "evidence_count": {"type": "integer", "required": true, "description": "Number of evidence-safe artifacts associated with the run"},
     "observed_at": {"type": "string", "format": "iso8601", "required": true}
   },

@@ -26,25 +26,25 @@ import (
 //
 // It owns the start of every Gateway-side Operator session: PersistOperatorSession
 // writes the session document and the audit-store session row together, so the
-// audit store never has to create a session on first use.
+// local-first events store never has to create a session on first use.
 type OperatorSessionService struct {
-	db         *DocumentStoreService
-	auditStore *storage.SQLAuditStore
-	logger     *slog.Logger
+	db          *DocumentStoreService
+	eventsStore *storage.LocalFirstEventsStore
+	logger      *slog.Logger
 }
 
 // NewOperatorSessionService creates a new OperatorSessionService instance.
-// auditStore is the Gateway audit store that receives the session row at session
+// eventsStore is the Gateway local-first events store that receives the session row at session
 // start; it is required, and a nil store fails construction with
-// constants.ErrAuditStoreRequired rather than leaving sessions without an audit row.
-func NewOperatorSessionService(docStore *DocumentStoreService, auditStore *storage.SQLAuditStore, logger *slog.Logger) (*OperatorSessionService, error) {
-	if auditStore == nil {
-		return nil, fmt.Errorf("gateway: operator session service: %w", constants.ErrAuditStoreRequired)
+// constants.ErrLocalFirstEventsStoreRequired rather than leaving sessions without an audit row.
+func NewOperatorSessionService(docStore *DocumentStoreService, eventsStore *storage.LocalFirstEventsStore, logger *slog.Logger) (*OperatorSessionService, error) {
+	if eventsStore == nil {
+		return nil, fmt.Errorf("gateway: operator session service: %w", constants.ErrLocalFirstEventsStoreRequired)
 	}
 	return &OperatorSessionService{
-		db:         docStore,
-		auditStore: auditStore,
-		logger:     logger,
+		db:          docStore,
+		eventsStore: eventsStore,
+		logger:      logger,
 	}, nil
 }
 
@@ -91,7 +91,7 @@ func (s *OperatorSessionService) PersistOperatorSession(ctx context.Context, ope
 // StartSession is atomic and idempotent: a concurrent or repeated persist of the
 // identical session succeeds and marks the row live, and a conflicting row fails.
 func (s *OperatorSessionService) startAuditSession(operatorSessionID, operatorID string) error {
-	if err := s.auditStore.StartSession(operatorSessionID, constants.SessionTypeOperator, "Operator Session", operatorID); err != nil {
+	if err := s.eventsStore.StartSession(operatorSessionID, constants.SessionTypeOperator, "Operator Session", operatorID); err != nil {
 		return fmt.Errorf("start operator audit session: %w", err)
 	}
 	return nil
@@ -117,7 +117,7 @@ func (s *OperatorSessionService) DeactivateOperatorSession(ctx context.Context, 
 	if _, err := s.db.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID, update); err != nil {
 		return fmt.Errorf("deactivate operator session: update: %w", err)
 	}
-	if err := s.auditStore.EndSession(operatorSessionID); err != nil {
+	if err := s.eventsStore.EndSession(operatorSessionID); err != nil {
 		return fmt.Errorf("deactivate operator session: end audit session: %w", err)
 	}
 	return nil

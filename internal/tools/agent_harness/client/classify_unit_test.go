@@ -32,7 +32,7 @@ import (
 
 func TestGovernedOutcomeTyped_Unit(t *testing.T) {
 	t.Parallel()
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1"}
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1"}
 	cases := []struct {
 		name    string
 		outcome *GovernedOutcome
@@ -60,7 +60,7 @@ func TestGovernedOutcomeTyped_Unit(t *testing.T) {
 
 func TestMCPStdioOutcome_ClassifiesTheBridgeLine(t *testing.T) {
 	t.Parallel()
-	receipt := canonicalProto(t, &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED})
+	receipt := canonicalProto(t, &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED})
 	suspension, err := json.Marshal(mcp.CallToolResult{Suspension: &mcp.GovernedSuspension{ID: "tx-2", Status: "suspended", TxHash: "tx-2"}})
 	require.NoError(t, err)
 
@@ -71,7 +71,7 @@ func TestMCPStdioOutcome_ClassifiesTheBridgeLine(t *testing.T) {
 	}{
 		{name: "receipt", body: rpcLine(t, json.RawMessage(mustRaw(t, mcp.CallToolResult{Receipt: receipt})), nil), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT},
 		{name: "suspension", body: rpcLine(t, suspension, nil), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED},
-		{name: "rejection", body: rpcLine(t, nil, canonicalProto(t, &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-3", TransactionHash: "hash-tx-3"}})), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION},
+		{name: "rejection", body: rpcLine(t, nil, canonicalProto(t, &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-3", TransactionHash: "hash-tx-3"}})), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION},
 		{name: "error without data", body: []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"failed"}}`), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED},
 		{name: "not json", body: []byte("gateway unavailable"), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED},
 	}
@@ -93,7 +93,7 @@ func TestMCPStdioOutcome_ClassifiesTheBridgeLine(t *testing.T) {
 
 func TestIntentCommandOutcome_ClassifiesTheApprovedCommand(t *testing.T) {
 	t.Parallel()
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1"}
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1"}
 	cases := []struct {
 		name   string
 		result *tribunalv1.TribunalIntentResult
@@ -140,7 +140,7 @@ func TestIntentCommandOutcome_ClassifiesTheApprovedCommand(t *testing.T) {
 
 func TestDecodeHTTPOutcome_ClassifiesDirectAnswersWithoutAListener(t *testing.T) {
 	t.Parallel()
-	receipt := canonicalProto(t, &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED})
+	receipt := canonicalProto(t, &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED})
 	cases := []struct {
 		name   string
 		status int
@@ -148,13 +148,13 @@ func TestDecodeHTTPOutcome_ClassifiesDirectAnswersWithoutAListener(t *testing.T)
 		kind   evalv1.ConformanceObservationKind
 	}{
 		{name: "receipt", status: http.StatusOK, body: receipt, kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT},
-		{name: "rejection", status: http.StatusForbidden, body: canonicalProto(t, &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1"}}), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION},
+		{name: "rejection", status: http.StatusForbidden, body: canonicalProto(t, &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-tx-1"}}), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION},
 		{name: "text", status: http.StatusInternalServerError, body: []byte("internal error"), kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			outcome := decodeHTTPOutcome(tt.status, tt.body, &operatorv1.ActionReceipt{})
+			outcome := decodeHTTPOutcome(tt.status, tt.body, &operatorv1.EventReceipt{})
 			require.Equal(t, tt.kind, outcome.Observation.GetKind())
 			assert.Equal(t, tt.body, outcome.Body)
 			assert.Equal(t, int32(tt.status), outcome.Observation.GetHttpStatus())
@@ -273,9 +273,9 @@ func rpcLine(t *testing.T, result json.RawMessage, errData json.RawMessage) []by
 }
 
 func TestGovernedOutcomePreservesConsensusInferenceEvidence(t *testing.T) {
-	vote := &operatorv1.ConsensusVoteInference{SubjectTransactionId: "subject", TransactionId: "vote", Receipt: &operatorv1.ActionReceipt{TransactionId: "vote"}}
+	vote := &operatorv1.ConsensusVoteInference{SubjectTransactionId: "subject", TransactionId: "vote", Receipt: &operatorv1.EventReceipt{TransactionId: "vote"}}
 	votes := []*operatorv1.ConsensusVoteInference{vote}
-	receipt := &operatorv1.ActionReceipt{TransactionId: "subject"}
+	receipt := &operatorv1.EventReceipt{TransactionId: "subject"}
 	dispatched := &operatorv1.GovernedDispatchResult{Receipt: receipt, ConsensusInferences: votes}
 	rejection := &operatorv1.GovernanceRejection{Receipt: receipt, ConsensusInferences: votes}
 	refusal := &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED, ConsensusInferences: votes}

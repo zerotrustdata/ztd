@@ -44,7 +44,7 @@ func newReportingTestFileSvc(t *testing.T, baseDir string) fs.RuntimeFileService
 // ---------------------------------------------------------------------------
 
 func TestReportReceipts_EmptyStore(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	res, err := reportReceipts(context.Background(), outDir, store)
@@ -66,7 +66,7 @@ func TestReportReceipts_EmptyStore(t *testing.T) {
 }
 
 func TestReportReceipts_WithRecords(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	sessionID := "test-session-receipts"
 	require.NoError(t, store.CreateSession(sessionID, "operator", "Test", "user@test.com"))
 
@@ -116,7 +116,7 @@ func TestReportReceipts_WithRecords(t *testing.T) {
 }
 
 func TestReportReceipts_CancelledContext(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -132,7 +132,7 @@ func TestReportReceipts_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportSessions_EmptyStore(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	res, err := reportSessions(context.Background(), outDir, store)
@@ -142,7 +142,7 @@ func TestReportSessions_EmptyStore(t *testing.T) {
 }
 
 func TestReportSessions_WithRecords(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	require.NoError(t, store.CreateSession("sess-1", "operator", "Session 1", "user1@test.com"))
 	require.NoError(t, store.CreateSession("sess-2", "operator", "Session 2", "user2@test.com"))
 
@@ -164,7 +164,7 @@ func TestReportSessions_WithRecords(t *testing.T) {
 }
 
 func TestReportSessions_CancelledContext(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -180,7 +180,7 @@ func TestReportSessions_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportEvents_EmptyStore(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	res, err := reportEvents(context.Background(), outDir, store)
@@ -190,7 +190,7 @@ func TestReportEvents_EmptyStore(t *testing.T) {
 }
 
 func TestReportEvents_WithRecords(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	sessionID := "test-session-events"
 	require.NoError(t, store.CreateSession(sessionID, "operator", "Test", "user@test.com"))
 
@@ -228,7 +228,7 @@ func TestReportEvents_WithRecords(t *testing.T) {
 }
 
 func TestReportEvents_CancelledContext(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -244,7 +244,7 @@ func TestReportEvents_CancelledContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReportFileMutations_EmptyStore(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	res, err := reportFileMutations(context.Background(), outDir, store)
@@ -254,7 +254,7 @@ func TestReportFileMutations_EmptyStore(t *testing.T) {
 }
 
 func TestReportFileMutations_WithRecords(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	eventID := createSessionAndEvent(t, store)
 
 	require.NoError(t, store.RecordFileMutation(&storage.FileMutationLog{
@@ -290,7 +290,7 @@ func TestReportFileMutations_WithRecords(t *testing.T) {
 }
 
 func TestReportFileMutations_CancelledContext(t *testing.T) {
-	store := setupTestAuditStore(t)
+	store := setupTestEventsStore(t)
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())

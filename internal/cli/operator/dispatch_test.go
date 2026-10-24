@@ -171,7 +171,7 @@ func marshalCommandResult(t *testing.T, result *operatorv1.CommandResult) []byte
 func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 	signedRejection := &operatorv1.GovernanceRejection{
 		Error: "rejected",
-		Receipt: &operatorv1.ActionReceipt{
+		Receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-2",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -204,7 +204,7 @@ func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 					Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 					Stdout: "hi\n",
 				}),
-				Receipt: &operatorv1.ActionReceipt{
+				Receipt: &operatorv1.EventReceipt{
 					TransactionId: "tx-1",
 					Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 					SignerKeyId:   "key-1",
@@ -233,7 +233,7 @@ func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 					Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 					Error:  "command exited",
 				}),
-				Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
+				Receipt: &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
 			}),
 			wantTransaction:   "tx-1",
 			wantError:         "command exited",

@@ -200,7 +200,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerm
 		t.Run(tt.name, func(t *testing.T) {
 			svc, client, _ := newResultsTestService(t)
 			completion := &operatorv1.InferenceCompletion{
-				Receipt: &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: tt.status},
+				Receipt: &operatorv1.EventReceipt{TransactionId: "txn-1", Status: tt.status},
 			}
 
 			require.NoError(t, svc.PublishInferenceCompletion(t.Context(), inferenceCommandEnvelope(), completion))
@@ -222,7 +222,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerm
 }
 
 func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(t *testing.T) {
-	completed := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
+	completed := &operatorv1.InferenceCompletion{Receipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	tests := []struct {
 		name       string
@@ -249,7 +249,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseAct
 	svc, client, _ := newResultsTestService(t)
 	env := inferenceCommandEnvelope()
 	env.ActionType = string(constants.ActionTypeExecuteBash)
-	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
+	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	err := svc.PublishInferenceCompletion(t.Context(), env, completion)
 
@@ -260,7 +260,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseAct
 func TestPubSubResultsService_PublishInferenceCompletion_SurfacesTransportFailure(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	client.SetPublishError(true)
-	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
+	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	err := svc.PublishInferenceCompletion(t.Context(), inferenceCommandEnvelope(), completion)
 

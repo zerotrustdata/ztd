@@ -107,7 +107,7 @@ func TestJSON(t *testing.T) {
 func TestProtoJSONWritesCanonicalPayloadAndSecurityHeaders(t *testing.T) {
 	writer := NewWriter(slog.Default())
 	recorder := httptest.NewRecorder()
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-protojson",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 	}
@@ -119,7 +119,7 @@ func TestProtoJSONWritesCanonicalPayloadAndSecurityHeaders(t *testing.T) {
 	assert.Equal(t, constants.HeaderValueNoSniff, recorder.Header().Get(constants.HeaderXContentTypeOptions))
 	assert.Equal(t, constants.HeaderValueDeny, recorder.Header().Get(constants.HeaderXFrameOptions))
 	assert.Equal(t, constants.HeaderValueCSPNone, recorder.Header().Get(constants.HeaderContentSecurityPolicy))
-	parsed := &operatorv1.ActionReceipt{}
+	parsed := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(recorder.Body.Bytes(), parsed))
 	assert.Equal(t, receipt.TransactionId, parsed.TransactionId)
 	assert.Equal(t, receipt.Status, parsed.Status)
@@ -128,7 +128,7 @@ func TestProtoJSONWritesCanonicalPayloadAndSecurityHeaders(t *testing.T) {
 func TestProtoJSONMarshalFailureReturnsSecuredJSONError(t *testing.T) {
 	writer := NewWriter(slog.Default())
 	recorder := httptest.NewRecorder()
-	receipt := &operatorv1.ActionReceipt{TransactionId: string([]byte{0xff})}
+	receipt := &operatorv1.EventReceipt{TransactionId: string([]byte{0xff})}
 
 	writer.ProtoJSON(recorder, http.StatusOK, receipt)
 

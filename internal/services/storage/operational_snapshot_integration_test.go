@@ -28,7 +28,7 @@ import (
 // example). The exported segment must carry those events too, or it has sequence
 // gaps and cannot verify offline.
 func TestReadOnlyOperationalEvidence_AuditChainSpansInterleavedEvents(t *testing.T) {
-	ass, dbPath, testVault := newOperationalSnapshotAuditStore(t)
+	ass, dbPath, testVault := newOperationalSnapshotEventsStore(t)
 	now := time.Now().UTC()
 	record := func(offset time.Duration, eventType constants.EventType, transactionID, content string) int64 {
 		return recordOperationalChainEvent(t, ass, now.Add(offset), eventType, transactionID, content)
@@ -74,7 +74,7 @@ func TestReadOnlyOperationalEvidence_AuditChainSpansInterleavedEvents(t *testing
 // The release window ends at a millisecond commit time while chain timestamps carry
 // microseconds. A fact later in that same millisecond is after the window end.
 func TestReadOnlyOperationalEvidence_AuditChainWindowEndIsExact(t *testing.T) {
-	ass, dbPath, testVault := newOperationalSnapshotAuditStore(t)
+	ass, dbPath, testVault := newOperationalSnapshotEventsStore(t)
 	windowEnd := time.Now().UTC().Truncate(time.Millisecond)
 	insideSeq := recordOperationalChainEvent(t, ass, windowEnd.Add(-time.Millisecond), constants.EventOperatorReceiptRecorded, "tx-inside", `{"transactionId":"tx-inside"}`)
 	recordOperationalChainEvent(t, ass, windowEnd.Add(389*time.Microsecond), constants.EventOperatorReceiptRecorded, "tx-after", `{"transactionId":"tx-after"}`)
@@ -88,7 +88,7 @@ func TestReadOnlyOperationalEvidence_AuditChainWindowEndIsExact(t *testing.T) {
 	assert.Equal(t, insideSeq, snapshot.AuditChain[0].Seq)
 }
 
-func newOperationalSnapshotAuditStore(t *testing.T) (*SQLAuditStore, string, *vault.Vault) {
+func newOperationalSnapshotEventsStore(t *testing.T) (*LocalFirstEventsStore, string, *vault.Vault) {
 	t.Helper()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	_, privKey, err := ed25519.GenerateKey(nil)
@@ -98,16 +98,16 @@ func newOperationalSnapshotAuditStore(t *testing.T) (*SQLAuditStore, string, *va
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
-	ass, err := NewSQLAuditStore(config, db, testutil.NewTestLogger(), fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ass.Close()) })
 	require.NoError(t, ass.CreateSession("chain-session", constants.SessionTypeOperator, "", ""))
 	return ass, dbPath, testVault
 }
 
-func recordOperationalChainEvent(t *testing.T, ass *SQLAuditStore, at time.Time, eventType constants.EventType, transactionID, content string) int64 {
+func recordOperationalChainEvent(t *testing.T, ass *LocalFirstEventsStore, at time.Time, eventType constants.EventType, transactionID, content string) int64 {
 	t.Helper()
 	_, seq, _, err := ass.RecordEventChained(&Event{
 		OperatorSessionID: "chain-session",

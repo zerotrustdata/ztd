@@ -27,16 +27,16 @@ import (
 	"github.com/zerotrustdata/ztd/internal/timesvc"
 )
 
-// AuditController handles audit receipt, event, summary, report, and ingest endpoints.
+// AuditController handles event receipt, event, summary, report, and ingest endpoints.
 //
-// The audit store holds raw, decrypted content (command lines, file paths, tool
+// The local-first events store holds raw, decrypted content (command lines, file paths, tool
 // arguments). Everything this controller returns over HTTP leaves the runtime, so
 // every content-bearing field passes through the scrubber first; a disabled
 // scrubber withholds the response (constants.ErrEgressScrubberUnavailable).
 type AuditController struct {
 	cfg            *config.Config
 	logger         *slog.Logger
-	auditStore     *storage.SQLAuditStore
+	eventsStore    *storage.LocalFirstEventsStore
 	auditIngestSvc *AuditIngestService
 	responder      *response.Writer
 	scrubber       *scrubbing.ScrubbingService
@@ -46,7 +46,7 @@ type AuditController struct {
 type AuditControllerDeps struct {
 	Cfg            *config.Config
 	Logger         *slog.Logger
-	AuditStore     *storage.SQLAuditStore
+	EventsStore    *storage.LocalFirstEventsStore
 	AuditIngestSvc *AuditIngestService
 	Responder      *response.Writer
 	// Scrubber is the egress scrubber for audit content. Required: a nil scrubber
@@ -61,7 +61,7 @@ func newAuditController(d AuditControllerDeps) (*AuditController, error) {
 	return &AuditController{
 		cfg:            d.Cfg,
 		logger:         d.Logger,
-		auditStore:     d.AuditStore,
+		eventsStore:    d.EventsStore,
 		auditIngestSvc: d.AuditIngestSvc,
 		responder:      d.Responder,
 		scrubber:       d.Scrubber,
@@ -79,7 +79,7 @@ func (c *AuditController) egressReady(w http.ResponseWriter) bool {
 }
 
 // scrubReceiptRecord returns a copy of a receipt projection with its free-text fields
-// (target resource and result summary) scrubbed. The nested signed ActionReceipt is
+// (target resource and result summary) scrubbed. The nested signed EventReceipt is
 // returned unchanged: its content was scrubbed before it was signed and altering it
 // would break the signature.
 func (c *AuditController) scrubReceiptRecord(ctx context.Context, r *models.EventReceiptRecord) *models.EventReceiptRecord {
@@ -100,7 +100,7 @@ func (c *AuditController) scrubReceiptRecords(ctx context.Context, records []*mo
 	return out
 }
 
-// handleAuditRecords ingests an LFAA audit record and returns operator chain metadata.
+// handleAuditRecords ingests an LFEA audit record and returns operator chain metadata.
 func (c *AuditController) handleAuditRecords(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
@@ -137,17 +137,17 @@ func (c *AuditController) handleAuditRecords(w http.ResponseWriter, r *http.Requ
 }
 
 // @Summary		Get or list event receipts
-// @Description	Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate an event receipt. Without those selectors, returns searchable event receipt records with the complete ActionReceipt nested under action_receipt.
+// @Description	Returns one canonical protojson EventReceipt when tx_id is set or when investigation_id and action_type uniquely correlate an event receipt. Without those selectors, returns searchable event receipt records with the complete EventReceipt nested under event_receipt.
 // @Tags			audit
 // @Produce		json
-// @Param			tx_id			query		string	false	"Transaction ID for a single canonical ActionReceipt"
+// @Param			tx_id			query		string	false	"Transaction ID for a single canonical EventReceipt"
 // @Param			investigation_id	query		string	false	"Investigation ID for a unique correlation lookup"
 // @Param			action_type		query		string	false	"Action type required with investigation_id"
 // @Param acting_app_id query string false "Acting app identity filter"
 // @Param			operator_session_id	query	string	false	"Operator session filter for list results"
 // @Param			limit			query		int		false	"Maximum list results"
 // @Param			offset			query		int		false	"List offset"
-// @Success		200				{object}	models.AuditEventReceiptsResponse	"List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt"
+// @Success		200				{object}	models.AuditEventReceiptsResponse	"List wrapper; unique selectors instead return a bare operatorv1.EventReceipt"
 // @Failure		400				{string}	string	"Bad Request — conflicting or incomplete selectors"
 // @Failure		404				{string}	string	"Receipt not found"
 // @Failure		405				{string}	string	"Method Not Allowed"
@@ -165,7 +165,7 @@ func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *htt
 	investigationID := r.URL.Query().Get("investigation_id")
 	actionType := constants.ActionType(r.URL.Query().Get("action_type"))
 	if txID != "" && (investigationID != "" || actionType != "") {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrAuditStoreReceiptLookupConflict.Error())
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrLocalFirstEventsStoreReceiptLookupConflict.Error())
 		return
 	}
 	if investigationID != "" && actionType == "" {
@@ -173,11 +173,11 @@ func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *htt
 		return
 	}
 	if investigationID == "" && actionType != "" {
-		c.responder.Error(w, http.StatusBadRequest, constants.ErrAuditStoreReceiptLookupConflict.Error())
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrLocalFirstEventsStoreReceiptLookupConflict.Error())
 		return
 	}
 	if txID != "" {
-		receipt, err := c.auditStore.GetEventReceipt(txID)
+		receipt, err := c.eventsStore.GetEventReceipt(txID)
 		if err != nil {
 			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEventReceipts: %w", err).Error())
 			return
@@ -186,18 +186,18 @@ func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *htt
 			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
 			return
 		}
-		if receipt.ActionReceipt == nil {
+		if receipt.EventReceipt == nil {
 			c.responder.Error(w, http.StatusInternalServerError, constants.ErrMissingRequiredField.Error())
 			return
 		}
-		c.responder.ProtoJSON(w, http.StatusOK, receipt.ActionReceipt)
+		c.responder.ProtoJSON(w, http.StatusOK, receipt.EventReceipt)
 		return
 	}
 	if investigationID != "" {
-		receipt, err := c.auditStore.GetEventReceiptByInvestigationID(investigationID, actionType)
+		receipt, err := c.eventsStore.GetEventReceiptByInvestigationID(investigationID, actionType)
 		if err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, constants.ErrAuditStoreReceiptCorrelationDuplicate) {
+			if errors.Is(err, constants.ErrLocalFirstEventsStoreReceiptCorrelationDuplicate) {
 				status = http.StatusConflict
 			}
 			c.responder.Error(w, status, fmt.Errorf("audit_controller: handleAuditEventReceipts: %w", err).Error())
@@ -207,11 +207,11 @@ func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *htt
 			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
 			return
 		}
-		if receipt.ActionReceipt == nil {
+		if receipt.EventReceipt == nil {
 			c.responder.Error(w, http.StatusInternalServerError, constants.ErrMissingRequiredField.Error())
 			return
 		}
-		c.responder.ProtoJSON(w, http.StatusOK, receipt.ActionReceipt)
+		c.responder.ProtoJSON(w, http.StatusOK, receipt.EventReceipt)
 		return
 	}
 
@@ -235,7 +235,7 @@ func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *htt
 	if !c.egressReady(w) {
 		return
 	}
-	receipts, err := c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, offset)
+	receipts, err := c.eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, offset)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEventReceipts: %w", err).Error())
 		return
@@ -248,7 +248,7 @@ func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *htt
 }
 
 // @Summary		Export event receipts
-// @Description	Returns an AuditEventReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under action_receipt.
+// @Description	Returns an AuditEventReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under event_receipt.
 // @Tags			audit
 // @Produce		json
 // @Param			since			query		string	false	"Inclusive receipt timestamp in RFC3339 format"
@@ -292,9 +292,9 @@ func (c *AuditController) handleAuditEventReceiptsExport(w http.ResponseWriter, 
 	var receipts []*models.EventReceiptRecord
 	var err error
 	if operatorSessionID != "" || r.URL.Query().Get("acting_app_id") != "" {
-		receipts, err = c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, 0)
+		receipts, err = c.eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, 0)
 	} else {
-		receipts, err = c.auditStore.ListEventReceiptsSince(since, limit)
+		receipts, err = c.eventsStore.ListEventReceiptsSince(since, limit)
 	}
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEventReceiptsExport: %w", err).Error())
@@ -334,7 +334,7 @@ func (c *AuditController) handleAuditEvents(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	events, err := c.auditStore.GetEvents(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, offset)
+	events, err := c.eventsStore.GetEvents(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, offset)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEvents: %w", err).Error())
 		return
@@ -376,7 +376,7 @@ func (c *AuditController) handleAuditConsensusVotes(w http.ResponseWriter, r *ht
 		c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
 		return
 	}
-	events, err := c.auditStore.GetTransactionEvents(txID, constants.EventConsensusVoteRecorded)
+	events, err := c.eventsStore.GetTransactionEvents(txID, constants.EventConsensusVoteRecorded)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditConsensusVotes: %w", err).Error())
 		return
@@ -429,7 +429,7 @@ func (c *AuditController) handleAuditSummary(w http.ResponseWriter, r *http.Requ
 	operatorSessionID := r.URL.Query().Get("operator_session_id")
 
 	// Query events summary
-	events, err := c.auditStore.GetEvents(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
+	events, err := c.eventsStore.GetEvents(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditSummary: %w", err).Error())
 		return
@@ -441,7 +441,7 @@ func (c *AuditController) handleAuditSummary(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Query receipts summary
-	receipts, err := c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
+	receipts, err := c.eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditSummary: %w", err).Error())
 		return
@@ -476,14 +476,14 @@ func (c *AuditController) handleAuditReport(w http.ResponseWriter, r *http.Reque
 	operatorSessionID := r.URL.Query().Get("operator_session_id")
 
 	// Fetch events
-	events, err := c.auditStore.GetEvents(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
+	events, err := c.eventsStore.GetEvents(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditReport: %w", err).Error())
 		return
 	}
 
 	// Fetch receipts
-	receipts, err := c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
+	receipts, err := c.eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditReport: %w", err).Error())
 		return
@@ -535,8 +535,8 @@ func (c *AuditController) handleAuditVerify(w http.ResponseWriter, r *http.Reque
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 		return
 	}
-	if c.auditStore == nil {
-		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreDisabled.Error())
+	if c.eventsStore == nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrLocalFirstEventsStoreDisabled.Error())
 		return
 	}
 
@@ -550,7 +550,7 @@ func (c *AuditController) handleAuditVerify(w http.ResponseWriter, r *http.Reque
 		fromSeq = parsed
 	}
 
-	headSeq, headHash, err := c.auditStore.GetAuditChainHead(r.Context())
+	headSeq, headHash, err := c.eventsStore.GetAuditChainHead(r.Context())
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditVerify: %w", err).Error())
 		return
@@ -559,9 +559,9 @@ func (c *AuditController) handleAuditVerify(w http.ResponseWriter, r *http.Reque
 	// Verify checks the content behind the chain, not only the hash linkage: it
 	// decrypts each event and recomputes its keyed content digest. A locked vault
 	// cannot verify content and fails the request closed.
-	verifyErr := c.auditStore.VerifyChainContent(r.Context(), fromSeq)
-	if errors.Is(verifyErr, constants.ErrAuditStoreVaultLocked) {
-		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
+	verifyErr := c.eventsStore.VerifyChainContent(r.Context(), fromSeq)
+	if errors.Is(verifyErr, constants.ErrLocalFirstEventsStoreVaultLocked) {
+		c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrLocalFirstEventsStoreVaultLocked.Error())
 		return
 	}
 	resp := models.AuditVerifyResponse{

@@ -3138,6 +3138,43 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 }
 
 /* ===== Models Catalog & Capabilities Hub + Evaluation Framework Redesign ===== */
+.models-header { margin-bottom: 24px; }
+.models-header .section-heading { margin-bottom: 16px; }
+.models-score {
+  padding: 16px 20px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-elev);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.models-score-equation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.models-score-equation > span { white-space: nowrap; }
+.models-score-label { color: var(--accent); font-weight: 700; }
+.models-score-factors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 32px;
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.models-score-factors > span { max-width: 100%; }
+.models-score-factors strong { font-weight: 600; }
+.models-score-factors sup { font-size: 0.8em; }
+.models-score-notes { margin-top: 10px; font-size: 14px; }
+.models-score-notes summary { width: fit-content; color: var(--fg-muted); cursor: pointer; }
+.models-score-notes summary:hover { color: var(--fg); }
+.models-score-notes summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.models-score-notes ul { margin: 10px 0 0; padding-left: 20px; }
+.models-score-notes li + li { margin-top: 4px; }
+
 .model-identity-cell {
   display: grid;
   gap: 4px;

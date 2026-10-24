@@ -66,8 +66,8 @@ func TestZtdoService_SubServices_Initialization(t *testing.T) {
 		require.NoError(t, err)
 
 		ledger := storagetest.NewTestLedger(t)
-		auditStore := storagetest.NewTestAuditStore(t)
-		historyHandler, err := storage.NewHistoryHandler(auditStore, ledger, logger, nil, "")
+		eventsStore := storagetest.NewTestEventsStore(t)
+		historyHandler, err := storage.NewHistoryHandler(eventsStore, ledger, logger, nil, "")
 		require.NoError(t, err)
 		pubsubClient := pubsubtest.NewMockOperatorPubSubClient()
 		resultsSvc, err := pubsub.NewPubSubResultsService(cfg, logger, pubsubClient, scrubbingSvc)
@@ -83,7 +83,7 @@ func TestZtdoService_SubServices_Initialization(t *testing.T) {
 			FileEdit:       fileEditSvc,
 			PubSubClient:   pubsubClient,
 			ResultsService: resultsSvc,
-			AuditStore:     auditStore,
+			EventsStore:    eventsStore,
 			HistoryHandler: historyHandler,
 		}, pubsub.OutboundModeDeps{
 			GovernanceCoreDeps: pubsub.GovernanceCoreDeps{

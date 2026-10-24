@@ -52,7 +52,7 @@ We will not pursue legal action against researchers acting in good faith under t
 ### In Scope
 
 - **ztd Gateway (PDP)** — `GovernanceEnvelope` parsing, deterministic transaction hash binding, L1-L4 verification logic (Doctrine, Consensus, Notary, Warden), WebAuthn/Passkey L3 brokerage
-- **ztd Operator (PEP)** — execution boundary (L5 Actuator), signed `ActionReceipt` issuance, mTLS tunnel, `SQLAuditStore`, Sovereign Execution Boundary (scrubbing, rehydration)
+- **ztd Operator (PEP)** — execution boundary (L5 Actuator), signed `EventReceipt` issuance, mTLS tunnel, `LocalFirstEventsStore`, Sovereign Execution Boundary (scrubbing, rehydration)
 - **ztd Protocol** — Protobuf schemas (`common.proto`, `operator.proto`), canonical JSON (protojson) serialization, envelope integrity
 - **Authentication** — WebAuthn/FIDO2 L3 Notary flow, Ed25519 signature verification (L2 Consensus, L4 Warden, L5 Actuator), replay protection (Nonce)
 - **CLI and bootstrap** — `ztd login`, mTLS credential and PKI handling
@@ -73,7 +73,7 @@ The following are structural properties of ztd that define the intended security
 - **Fail-closed by design.** Any universal check or posture-required verification failure at the L1-L4 layers (Doctrine, Consensus, Notary, Warden) drops the payload and writes an audit record. L2 and L3 results gate execution only when the active posture requires them (`consensus` requires L2, `ratify` requires L3, `notary` requires both); otherwise they remain audit evidence. There is no fallback execution path.
 - **Sovereign Execution Boundary.** The `ztd Operator` (PEP) acts as the sovereign boundary. It refuses to mutate host reality unless the transaction satisfies every L2 Consensus and L3 human-authorization proof required by the active posture.
 - **No ambient execution authority.** No component holds standing permission to mutate state. Authority is granted strictly per-transaction via the `GovernanceEnvelope`, verified independently at the PEP.
-- **Local audit sovereignty.** Raw forensic material is stored locally in the `SQLAuditStore`. The Sovereign Execution Boundary scrubs all outbound data before delivery to remote clients or AI systems.
+- **Local audit sovereignty.** Raw forensic material is stored locally in the `LocalFirstEventsStore`. The Sovereign Execution Boundary scrubs all outbound data before delivery to remote clients or AI systems.
 - **Mandatory encryption at rest.** All storage services require an unlocked vault for initialization. Sensitive data (command stdout/stderr, file diffs, content) is encrypted at rest using AES-256-GCM with per-operation nonces. Encryption operations fail-closed if the vault is locked.
 - **mTLS everywhere.** All platform communication (Operator-to-Gateway) requires mutual TLS. Unauthenticated or unverified connections are rejected.
 - **State & Replay Protection.** Transactions are bound to a `state_merkle_root`, protected by a unique `nonce`, and carry a temporal `expires_at` deadline.

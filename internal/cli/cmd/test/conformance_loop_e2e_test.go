@@ -44,7 +44,7 @@ import (
 // smoke summary.
 const conformanceLoopEvidenceName = "conformance-loop.json"
 
-// conformanceLoopReceiptPage is one audit_receipt_list page of the receipts a
+// conformanceLoopReceiptPage is one event_receipt_list page of the receipts a
 // conformance run added to one Operator session.
 const conformanceLoopReceiptPage = 100
 
@@ -218,30 +218,30 @@ func (st *conformanceLoopState) readHeads(ctx context.Context, r *releaseSmokeRu
 	return nil
 }
 
-// listReceipts calls audit_receipt_list through the bridge for one page of a
+// listReceipts calls event_receipt_list through the bridge for one page of a
 // session's receipts, newest first, without the audit reads themselves.
-func (st *conformanceLoopState) listReceipts(ctx context.Context, session string, notBefore time.Time, limit, offset int) (mcp.AuditReceiptListResult, error) {
-	req := mcp.AuditReceiptListRequest{OperatorSessionID: session, ExcludeAuditReads: true, Limit: limit, Offset: offset}
+func (st *conformanceLoopState) listReceipts(ctx context.Context, session string, notBefore time.Time, limit, offset int) (mcp.EventReceiptListResult, error) {
+	req := mcp.EventReceiptListRequest{OperatorSessionID: session, ExcludeEventReceiptReads: true, Limit: limit, Offset: offset}
 	if !notBefore.IsZero() {
 		req.NotBefore = notBefore.Format(time.RFC3339)
 	}
 	args, err := json.Marshal(req)
 	if err != nil {
-		return mcp.AuditReceiptListResult{}, err
+		return mcp.EventReceiptListResult{}, err
 	}
-	result, err := st.bridge.CallTool(ctx, mcp.CallToolRequest{Name: constants.MCPToolAuditReceiptList, Arguments: args})
+	result, err := st.bridge.CallTool(ctx, mcp.CallToolRequest{Name: constants.MCPToolEventReceiptList, Arguments: args})
 	if err != nil {
-		return mcp.AuditReceiptListResult{}, err
+		return mcp.EventReceiptListResult{}, err
 	}
 	if result.IsError || len(result.Content) != 1 {
-		return mcp.AuditReceiptListResult{}, fmt.Errorf("audit_receipt_list %s: tool error %v: %w", session, result.Content, constants.ErrValidationFailed)
+		return mcp.EventReceiptListResult{}, fmt.Errorf("event_receipt_list %s: tool error %v: %w", session, result.Content, constants.ErrValidationFailed)
 	}
-	var list mcp.AuditReceiptListResult
+	var list mcp.EventReceiptListResult
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &list); err != nil {
-		return mcp.AuditReceiptListResult{}, fmt.Errorf("audit_receipt_list %s: %w: %w (near %q)", session, constants.ErrInvalidJSONResponse, err, jsonErrorExcerpt(result.Content[0].Text, err))
+		return mcp.EventReceiptListResult{}, fmt.Errorf("event_receipt_list %s: %w: %w (near %q)", session, constants.ErrInvalidJSONResponse, err, jsonErrorExcerpt(result.Content[0].Text, err))
 	}
 	if list.Error != "" {
-		return mcp.AuditReceiptListResult{}, fmt.Errorf("audit_receipt_list %s: %s: %w", session, list.Error, constants.ErrValidationFailed)
+		return mcp.EventReceiptListResult{}, fmt.Errorf("event_receipt_list %s: %s: %w", session, list.Error, constants.ErrValidationFailed)
 	}
 	return list, nil
 }
@@ -449,8 +449,8 @@ func approvalDecision(d evalv1.ConformanceApprovalDecision) releaseSmokeApproval
 // decide answers one pending transaction for the approvals responder.
 func (o *conformanceLoopOwner) decide(transaction models.SuspendedTxResponse) releaseSmokeApprovalDecision {
 	// Every MCP tool call is a governed mutation, so under ratify and notary the
-	// bridge's audit_receipt_list reads wait for L3 like any other call.
-	if transaction.ToolName == constants.MCPToolAuditReceiptList {
+	// bridge's event_receipt_list reads wait for L3 like any other call.
+	if transaction.ToolName == constants.MCPToolEventReceiptList {
 		return releaseSmokeApprove
 	}
 	o.mu.Lock()

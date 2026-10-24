@@ -41,7 +41,7 @@ func TestGatewayModeService_Getters(t *testing.T) {
 		assert.NotNil(t, ls.GetDocStore())
 		assert.NotNil(t, ls.GetConsensusStore())
 		assert.NotNil(t, ls.GetSignerStore())
-		assert.NotNil(t, ls.GetAuditStore())
+		assert.NotNil(t, ls.GetLocalFirstEventsStore())
 		assert.NotNil(t, ls.GetStateRootSvc())
 		assert.NotNil(t, ls.GetKVStore())
 		assert.NotNil(t, ls.GetReplayStore())

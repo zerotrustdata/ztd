@@ -88,7 +88,7 @@ func FailureCode(sentinel error) operatorv1.InferenceDispatchFailureCode {
 // trace bracket that claims the failed call must claim them as well. It
 // unwraps to the error, keeping any governance.ReceiptError in the chain.
 type ObservedFailureError struct {
-	ObservationReceipts []*operatorv1.ActionReceipt
+	ObservationReceipts []*operatorv1.EventReceipt
 	Err                 error
 }
 
@@ -97,7 +97,7 @@ func (e *ObservedFailureError) Unwrap() error { return e.Err }
 
 // WithObservationReceipts wraps err in an *ObservedFailureError when receipts
 // is non-empty; otherwise it returns err unchanged.
-func WithObservationReceipts(receipts []*operatorv1.ActionReceipt, err error) error {
+func WithObservationReceipts(receipts []*operatorv1.EventReceipt, err error) error {
 	if err == nil || len(receipts) == 0 {
 		return err
 	}
@@ -106,7 +106,7 @@ func WithObservationReceipts(receipts []*operatorv1.ActionReceipt, err error) er
 
 // ObservationReceipts returns the signed observation receipts err carries,
 // or nil.
-func ObservationReceipts(err error) []*operatorv1.ActionReceipt {
+func ObservationReceipts(err error) []*operatorv1.EventReceipt {
 	var observed *ObservedFailureError
 	if !errors.As(err, &observed) {
 		return nil

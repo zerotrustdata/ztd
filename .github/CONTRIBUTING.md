@@ -14,7 +14,7 @@ Before contributing, review the core platform architecture:
     - **L2 Consensus (L2Consensus)**: K-of-N Ed25519 quorum over the transaction hash and decision, from the members bound with `ztd consensus enroll`.
     - **L3 Notary (L3Notary)**: Human-in-the-loop authorization through WebAuthn or signed CLI proofs.
     - **L4 Warden (L4Warden)**: Pre-dispatch verification gate (transaction hash, expiry, nonce, state root).
-    - **L5 Actuator (L5Actuator)**: Execution boundary issuing signed `ActionReceipts`.
+    - **L5 Actuator (L5Actuator)**: Execution boundary issuing signed `EventReceipts`.
 
 ## Finding Work
 
@@ -77,7 +77,7 @@ For a bug in a running deployment, [file a bug report](https://github.com/zerotr
 
 1. **Version**: Output of `./ztd version`.
 2. **Environment**: OS and processor architecture.
-3. **Traceability**: If applicable, include the `transaction_hash` or relevant entries from the `SQLAuditStore`.
+3. **Traceability**: If applicable, include the `transaction_hash` or relevant entries from the `LocalFirstEventsStore`.
 4. **Reproduction**: A minimal set of steps to reproduce the behavior.
 5. **Expected vs Actual**: Description of the expected result and the observed result.
 

@@ -11,16 +11,16 @@ import (
 	"encoding/json"
 )
 
-// AuditScope selects evidence by ingress identity and investigation. Empty
+// EventsScope selects evidence by ingress identity and investigation. Empty
 // fields leave that dimension unrestricted; app records need not have an
-// Operator session. ExcludeAuditReads drops the audit-read tools' own MCP_CALL
-// receipts before pagination; every other receipt stays in scope.
-type AuditScope struct {
-	OperatorID        string
-	OperatorSessionID string
-	InvestigationID   string
-	ExcludeAuditReads bool
-	ActingAppID       string
+// Operator session. ExcludeEventReceiptReads drops the event receipt query
+// tools' own MCP_CALL receipts before pagination; every other receipt stays in scope.
+type EventsScope struct {
+	OperatorID               string
+	OperatorSessionID        string
+	InvestigationID          string
+	ExcludeEventReceiptReads bool
+	ActingAppID              string
 }
 
 // AuditEventReceiptsResponse is the typed response for GET /api/v1/audit/event-receipts.

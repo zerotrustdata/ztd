@@ -217,7 +217,7 @@ Governed Operators enforce strict listener isolation:
   - `cmd:<operator_id>:<operator_session_id>`: Gateway-to-Operator command dispatch.
   - `results:<operator_id>:<operator_session_id>`: Command execution results.
   - `heartbeat:<operator_id>:<operator_session_id>`: Operator liveness telemetry.
-  - `receipts:<operator_id>:<operator_session_id>`: Signed `ActionReceipt` publication.
+  - `receipts:<operator_id>:<operator_session_id>`: Signed `EventReceipt` publication.
   - `renewal:<operator_id>:<operator_session_id>`: Certificate leaf renewal.
   - `audit:<operator_id>:<operator_session_id>`: Gateway-to-Operator audit ingest.
 - **Embedded Substrate**: Gateway-local operations run on the in-process embedded Operator substrate (`internal/services/gateway/embedded/`), as distinct from the outbound remote Operator.

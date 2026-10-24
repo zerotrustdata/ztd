@@ -77,7 +77,7 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 		if err := ValidateRelativePath(artifact.RelativePath); err != nil {
 			return nil, fmt.Errorf("%w: operational artifact path: %w", constants.ErrEvidenceArtifactMalformed, err)
 		}
-		if artifact.SHA256 == "" || artifact.ArtifactID == "" || artifact.ProducedAtUTC == "" || artifactType != ArtifactTypeActionReceipt && artifactType != ArtifactTypeReceiptPersistence && artifactType != ArtifactTypeCommitment && artifactType != ArtifactTypeAuditChainEntry {
+		if artifact.SHA256 == "" || artifact.ArtifactID == "" || artifact.ProducedAtUTC == "" || artifactType != ArtifactTypeEventReceipt && artifactType != ArtifactTypeReceiptPersistence && artifactType != ArtifactTypeCommitment && artifactType != ArtifactTypeAuditChainEntry {
 			return nil, fmt.Errorf("%w: operational artifact inventory entry is incomplete", constants.ErrEvidenceArtifactMalformed)
 		}
 		if artifactType != ArtifactTypeAuditChainEntry && artifact.TransactionID == "" {
@@ -104,13 +104,13 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 		}
 		entriesByType[artifactType] = append(entriesByType[artifactType], artifact)
 	}
-	if inventory.ReceiptCount != len(entriesByType[ArtifactTypeActionReceipt]) || inventory.PersistenceCount != len(entriesByType[ArtifactTypeReceiptPersistence]) || inventory.CommitmentCount != len(entriesByType[ArtifactTypeCommitment]) || inventory.AuditChainCount != len(entriesByType[ArtifactTypeAuditChainEntry]) {
+	if inventory.ReceiptCount != len(entriesByType[ArtifactTypeEventReceipt]) || inventory.PersistenceCount != len(entriesByType[ArtifactTypeReceiptPersistence]) || inventory.CommitmentCount != len(entriesByType[ArtifactTypeCommitment]) || inventory.AuditChainCount != len(entriesByType[ArtifactTypeAuditChainEntry]) {
 		return nil, fmt.Errorf("%w: operational artifact counts do not match inventory", constants.ErrEvidenceArtifactMalformed)
 	}
 
-	receiptEntries := entriesByType[ArtifactTypeActionReceipt]
+	receiptEntries := entriesByType[ArtifactTypeEventReceipt]
 	receiptBindings := make(map[string]ReceiptImportBinding, len(receiptEntries))
-	receiptsByTransaction := make(map[string]*operatorv1.ActionReceipt, len(receiptEntries))
+	receiptsByTransaction := make(map[string]*operatorv1.EventReceipt, len(receiptEntries))
 	receiptNodesByTransaction := make(map[string]EvidenceNode, len(receiptEntries))
 	for _, entry := range receiptEntries {
 		entryPath := i.sourceArtifactPath(entry.RelativePath)
@@ -143,7 +143,7 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 		if err != nil {
 			return nil, err
 		}
-		receipt := &operatorv1.ActionReceipt{}
+		receipt := &operatorv1.EventReceipt{}
 		if err := compliancev1.UnmarshalCanonical(body, receipt); err != nil {
 			return nil, fmt.Errorf("%w: decode operational receipt for protocol chain: %w", constants.ErrEvidenceArtifactMalformed, err)
 		}
@@ -284,7 +284,7 @@ func validateOperationalCommitmentSegment(inventory *OperationalSourceInventory,
 	return nil
 }
 
-func validateOperationalCommitmentReceiptLink(attestation *operatorv1.CommitmentAttestation, receipt *operatorv1.ActionReceipt, receiptReference string) (string, error) {
+func validateOperationalCommitmentReceiptLink(attestation *operatorv1.CommitmentAttestation, receipt *operatorv1.EventReceipt, receiptReference string) (string, error) {
 	if attestation.GetTransactionHash() != receipt.GetTransactionHash() {
 		return "", fmt.Errorf("%w: commitment %s transaction hash does not match retained receipt", constants.ErrEvidenceScopeMismatch, attestation.GetTransactionId())
 	}
@@ -324,7 +324,7 @@ func (i *OperationalExportImporter) sourceArtifactPath(relativePath string) stri
 	return path.Join(i.sourceRoot, relativePath)
 }
 
-func operationalProtocolChainNode(receipt *operatorv1.ActionReceipt, receiptNode EvidenceNode) (*EvidenceNode, error) {
+func operationalProtocolChainNode(receipt *operatorv1.EventReceipt, receiptNode EvidenceNode) (*EvidenceNode, error) {
 	if len(receipt.GetDeterministicStageEvidence()) == 0 {
 		return nil, nil
 	}
@@ -373,7 +373,7 @@ func receiptBindingsForEntry(bindings map[string]ReceiptImportBinding, entry Ope
 }
 
 func receiptTransactionID(body []byte) (string, error) {
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := compliancev1.UnmarshalCanonical(body, receipt); err != nil || receipt.GetTransactionId() == "" {
 		return "", fmt.Errorf("%w: operational receipt transaction binding is incomplete", constants.ErrEvidenceArtifactMalformed)
 	}
@@ -476,7 +476,7 @@ func validateOperationalAuditChainInventory(inventory *OperationalSourceInventor
 	return nil
 }
 
-func operationalReceiptMatchesChainEntry(receipt *operatorv1.ActionReceipt, chainBody []byte) bool {
+func operationalReceiptMatchesChainEntry(receipt *operatorv1.EventReceipt, chainBody []byte) bool {
 	if receipt == nil {
 		return false
 	}

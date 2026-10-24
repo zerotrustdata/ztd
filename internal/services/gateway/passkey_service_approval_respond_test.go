@@ -33,13 +33,13 @@ import (
 type approvalRespondMCP struct {
 	suspended    *models.SuspendedTransaction
 	found        bool
-	receipt      *operatorv1.ActionReceipt
+	receipt      *operatorv1.EventReceipt
 	resumedHash  string
 	resumedUser  string
 	resumedProof *commonv1.L3Proof
 	resumeCalls  int
 	resumeErr    error
-	denyReceipt  *operatorv1.ActionReceipt
+	denyReceipt  *operatorv1.EventReceipt
 	denyErr      error
 	deniedHash   string
 	deniedUser   string
@@ -50,7 +50,7 @@ func (m *approvalRespondMCP) GetSuspendedTransaction(_ context.Context, _ string
 	return m.suspended, m.found, nil
 }
 
-func (m *approvalRespondMCP) ResumeWithL3Proof(_ context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
+func (m *approvalRespondMCP) ResumeWithL3Proof(_ context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.EventReceipt, error) {
 	m.resumeCalls++
 	m.resumedHash, m.resumedUser, m.resumedProof = txHash, userID, proof
 	if m.resumeErr != nil {
@@ -59,7 +59,7 @@ func (m *approvalRespondMCP) ResumeWithL3Proof(_ context.Context, txHash, userID
 	return m.receipt, nil
 }
 
-func (m *approvalRespondMCP) DenySuspendedTransaction(_ context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+func (m *approvalRespondMCP) DenySuspendedTransaction(_ context.Context, txHash, userID string) (*operatorv1.EventReceipt, error) {
 	m.denyCalls++
 	m.deniedHash, m.deniedUser = txHash, userID
 	return m.denyReceipt, m.denyErr
@@ -192,7 +192,7 @@ func TestHandleApprovalRespond(t *testing.T) {
 
 	t.Run("Failure - approved response is rejected without a signed CLI assertion", func(t *testing.T) {
 		mcp := suspendedFor(userID)
-		mcp.receipt = &operatorv1.ActionReceipt{TransactionId: "transaction-approval-respond-1", TransactionHash: txHash}
+		mcp.receipt = &operatorv1.EventReceipt{TransactionId: "transaction-approval-respond-1", TransactionHash: txHash}
 		store := &approvalRespondStore{}
 		h := newApprovalRespondHandler(mcp, store)
 		rr := httptest.NewRecorder()
@@ -219,7 +219,7 @@ func TestHandleApprovalRespond(t *testing.T) {
 
 	t.Run("Failure - deny receipt for another transaction fails closed", func(t *testing.T) {
 		mcp := suspendedFor(userID)
-		mcp.denyReceipt = &operatorv1.ActionReceipt{TransactionHash: "tx-other"}
+		mcp.denyReceipt = &operatorv1.EventReceipt{TransactionHash: "tx-other"}
 		h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
 		rr := httptest.NewRecorder()
 
@@ -230,7 +230,7 @@ func TestHandleApprovalRespond(t *testing.T) {
 
 	t.Run("Success - deny returns the signed L3_DENIED rejection receipt", func(t *testing.T) {
 		mcp := suspendedFor(userID)
-		mcp.denyReceipt = &operatorv1.ActionReceipt{
+		mcp.denyReceipt = &operatorv1.EventReceipt{
 			TransactionId:   "transaction-approval-respond-1",
 			TransactionHash: txHash,
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -244,7 +244,7 @@ func TestHandleApprovalRespond(t *testing.T) {
 		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approval_id":"`+txHash+`","approved":false}`, userID))
 
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
-		got := &operatorv1.ActionReceipt{}
+		got := &operatorv1.EventReceipt{}
 		require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), got))
 		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, got.GetRejectionCode())
 		assert.Equal(t, txHash, got.GetTransactionHash())

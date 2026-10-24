@@ -609,7 +609,7 @@ func TestPubSubResultsService_PublishExecutionStatus(t *testing.T) {
 	})
 }
 
-func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
+func TestPubSubResultsService_PublishEventReceipt(t *testing.T) {
 	t.Run("publishes signed receipt envelope to receipts channel with identity propagation", func(t *testing.T) {
 		t.Parallel()
 		db := pubsubtest.NewMockOperatorPubSubClient()
@@ -637,7 +637,7 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
 			Posture:         "doctrine",
 		}
 
-		receipt := &pb.ActionReceipt{
+		receipt := &pb.EventReceipt{
 			TransactionId:    "tx-001",
 			TransactionHash:  "hash-001",
 			Status:           pb.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -649,7 +649,7 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
 			Signature:        "deadbeef",
 		}
 
-		err = svc.PublishActionReceipt(context.Background(), cmdEnv, receipt)
+		err = svc.PublishEventReceipt(context.Background(), cmdEnv, receipt)
 		require.NoError(t, err)
 
 		published := db.LastPublished()
@@ -672,10 +672,10 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
 		assert.Equal(t, "cli-1", env.CliSessionId, "cli_session_id must propagate")
 		assert.Empty(t, env.Posture, "only the gateway sets posture; the operator receipt envelope carries none")
 
-		// The payload must be the marshaled ActionReceipt.
-		var decoded pb.ActionReceipt
+		// The payload must be the marshaled EventReceipt.
+		var decoded pb.EventReceipt
 		err = proto.Unmarshal(env.Payload, &decoded)
-		require.NoError(t, err, "payload must be a valid ActionReceipt")
+		require.NoError(t, err, "payload must be a valid EventReceipt")
 		assert.Equal(t, "tx-001", decoded.TransactionId)
 		assert.Equal(t, "hash-001", decoded.TransactionHash)
 		assert.Equal(t, pb.ExecutionStatus_EXECUTION_STATUS_COMPLETED, decoded.Status)
@@ -691,7 +691,7 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
 		svc, err := NewPubSubResultsService(cfg, logger, db, newEgressScrubber(t, true))
 		require.NoError(t, err)
 
-		err = svc.PublishActionReceipt(context.Background(), nil, &pb.ActionReceipt{})
+		err = svc.PublishEventReceipt(context.Background(), nil, &pb.EventReceipt{})
 		require.Error(t, err)
 	})
 
@@ -703,7 +703,7 @@ func TestPubSubResultsService_PublishActionReceipt(t *testing.T) {
 		svc, err := NewPubSubResultsService(cfg, logger, db, newEgressScrubber(t, true))
 		require.NoError(t, err)
 
-		err = svc.PublishActionReceipt(context.Background(), &commonv1.GovernanceEnvelope{}, nil)
+		err = svc.PublishEventReceipt(context.Background(), &commonv1.GovernanceEnvelope{}, nil)
 		require.Error(t, err)
 	})
 }

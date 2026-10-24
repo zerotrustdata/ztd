@@ -108,7 +108,7 @@ func TestDispatchRealStack(t *testing.T) {
 			require.NoError(t, err)
 			actuatorPublicKey, err := models.DecodeActuatorPublicKey(operatorDoc.GetActuatorPublicKey())
 			require.NoError(t, err)
-			require.NoError(t, governance.VerifyActionReceiptSignature(result.GetReceipt(), actuatorPublicKey))
+			require.NoError(t, governance.VerifyEventReceiptSignature(result.GetReceipt(), actuatorPublicKey))
 			require.NoError(t, governance.VerifyReceiptPersistenceAttestation(result.GetReceipt(), actuatorPublicKey))
 
 			dataFiles, err := fs.NewRuntimeFileService(stack.DataHost.WorkingDir, testutil.NewTestLogger())
@@ -116,7 +116,7 @@ func TestDispatchRealStack(t *testing.T) {
 			local, err := storage.ReadLocalEventReceipt(dataFiles, slog.Default(), keystore.Options{Keyring: stack.DataHost.Keyring}, result.GetTransactionId())
 			require.NoError(t, err)
 			require.NotNil(t, local)
-			require.True(t, proto.Equal(result.GetReceipt(), local.ActionReceipt), "returned receipt must equal Data Operator's authoritative local record")
+			require.True(t, proto.Equal(result.GetReceipt(), local.EventReceipt), "returned receipt must equal Data Operator's authoritative local record")
 
 			commitments := readDataCommitments(t, dataFiles, stack.DataHost.Keyring)
 			found := false
@@ -145,9 +145,9 @@ func readDataCommitments(t *testing.T, fileSvc fs.RuntimeFileService, keyring ke
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	storeConfig := storage.DefaultAuditStoreConfig()
+	storeConfig := storage.DefaultLocalFirstEventsStoreConfig()
 	storeConfig.EncryptionVault = localVault
-	store, err := storage.NewSQLAuditStore(storeConfig, db, logger, fileSvc)
+	store, err := storage.NewLocalFirstEventsStore(storeConfig, db, logger, fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 	rows, err := store.CommitmentLedger().ListCommitments()

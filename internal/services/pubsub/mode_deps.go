@@ -22,7 +22,7 @@ type GovernanceCoreDeps struct {
 	ExecutionTarget   governance.ExecutionTarget
 	ReplayStore       governance.ReplayStore
 	StateRootProvider governance.StateRootProvider
-	TransactionAudit  governance.TransactionAuditStore
+	TransactionAudit  governance.TransactionEventsStore
 	L3Notary          governance.L3Notary
 	SignerStore       governance.SignerStore
 	Doctrine          *governance.L1Doctrine
@@ -64,7 +64,7 @@ func validateGovernanceCoreDeps(core GovernanceCoreDeps) error {
 		return fmt.Errorf("mode_deps: state root provider: %w", constants.ErrStateRootProviderRequired)
 	}
 	if core.TransactionAudit == nil {
-		return fmt.Errorf("mode_deps: transaction audit: %w", constants.ErrTransactionAuditRequired)
+		return fmt.Errorf("mode_deps: transaction audit: %w", constants.ErrTransactionEventsStoreRequired)
 	}
 	if core.L3Notary == nil {
 		return fmt.Errorf("mode_deps: l3 notary: %w", constants.ErrL3NotaryRequired)

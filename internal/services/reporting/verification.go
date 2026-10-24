@@ -36,7 +36,7 @@ type VerificationResult struct {
 	Rows      []VerificationRow
 }
 
-func reportVerification(ctx context.Context, outDir string, auditStore *storage.SQLAuditStore, cl *storage.CommitmentLedger, ledger *storage.GitLedgerService) (FileResult, VerificationResult, error) {
+func reportVerification(ctx context.Context, outDir string, eventsStore *storage.LocalFirstEventsStore, cl *storage.CommitmentLedger, ledger *storage.GitLedgerService) (FileResult, VerificationResult, error) {
 	path := filepath.Join(outDir, constants.ReportVerificationFilename)
 
 	var vr VerificationResult
@@ -58,7 +58,7 @@ func reportVerification(ctx context.Context, outDir string, auditStore *storage.
 		// A ciphertext that fails authentication was altered or moved from another row:
 		// that is tamper evidence, not an unreadable ledger.
 		unreadable := verifyResultSkipped
-		if errors.Is(commitmentsErr, constants.ErrAuditStoreDecryptFailed) {
+		if errors.Is(commitmentsErr, constants.ErrLocalFirstEventsStoreDecryptFailed) {
 			unreadable = verifyResultFail
 		}
 		addRow("commitment_chain", "commitment_ledger", "all", unreadable, fmt.Sprintf("could not read commitments: %v", commitmentsErr))
@@ -156,10 +156,10 @@ func reportVerification(ctx context.Context, outDir string, auditStore *storage.
 	if ctx.Err() != nil {
 		return FileResult{}, vr, ctx.Err()
 	}
-	if auditStore != nil {
-		mutations, err := auditStore.ListFileMutations(1000, 0)
+	if eventsStore != nil {
+		mutations, err := eventsStore.ListFileMutations(1000, 0)
 		if err != nil {
-			addRow("file_mutation_linkage", "audit_store", "all", verifyResultSkipped, fmt.Sprintf("cannot read mutations: %v", err))
+			addRow("file_mutation_linkage", "events_store", "all", verifyResultSkipped, fmt.Sprintf("cannot read mutations: %v", err))
 		} else {
 			writeOps := 0
 			missingHash := 0
@@ -173,40 +173,40 @@ func reportVerification(ctx context.Context, outDir string, auditStore *storage.
 				}
 			}
 			if missingHash > 0 {
-				addRow("file_mutation_linkage", "audit_store", "all", verifyResultFail,
+				addRow("file_mutation_linkage", "events_store", "all", verifyResultFail,
 					fmt.Sprintf("%d WRITE/CREATE mutations missing ledger_hash_after", missingHash))
 			} else {
-				addRow("file_mutation_linkage", "audit_store", "all", verifyResultPass,
+				addRow("file_mutation_linkage", "events_store", "all", verifyResultPass,
 					fmt.Sprintf("%d mutations checked (%d write/create ops with hashes)", len(mutations), writeOps))
 			}
 		}
 	} else {
-		addRow("file_mutation_linkage", "audit_store", "all", verifyResultSkipped, "audit store not configured")
+		addRow("file_mutation_linkage", "events_store", "all", verifyResultSkipped, "local-first events store not configured")
 	}
 
 	// Check 5: Receipt/commitment cross-link (every committed transaction_id has a receipt)
 	if ctx.Err() != nil {
 		return FileResult{}, vr, ctx.Err()
 	}
-	if auditStore != nil && commitmentsErr == nil {
+	if eventsStore != nil && commitmentsErr == nil {
 		missingReceipts := 0
 		for _, c := range commitments {
 			if c.TransactionID == "" {
 				continue
 			}
-			r, err := auditStore.GetEventReceipt(c.TransactionID)
+			r, err := eventsStore.GetEventReceipt(c.TransactionID)
 			if err != nil || r == nil {
 				missingReceipts++
 			}
 		}
 		if missingReceipts > 0 {
-			addRow("receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultFail,
+			addRow("receipt_commitment_crosslink", "events_store+commitment_ledger", "all", verifyResultFail,
 				fmt.Sprintf("%d committed transaction_ids have no matching receipt", missingReceipts))
 		} else if len(commitments) > 0 {
-			addRow("receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultPass,
+			addRow("receipt_commitment_crosslink", "events_store+commitment_ledger", "all", verifyResultPass,
 				fmt.Sprintf("all %d commitments have matching receipts", len(commitments)))
 		} else {
-			addRow("receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultPass, "no commitments to cross-link")
+			addRow("receipt_commitment_crosslink", "events_store+commitment_ledger", "all", verifyResultPass, "no commitments to cross-link")
 		}
 	}
 

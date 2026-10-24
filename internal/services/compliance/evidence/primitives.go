@@ -324,10 +324,10 @@ type VerifiedReceiptEvidence struct {
 	ReceiptReference       *compliancev1.ComplianceEvidenceReference
 	PersistenceReference   *compliancev1.ComplianceEvidenceReference
 	ProtocolChainReference string
-	Receipt                *operatorv1.ActionReceipt
+	Receipt                *operatorv1.EventReceipt
 }
 
-func BuildVerifiedReceiptEvidence(binding ReceiptBinding, projection ReceiptProjection, receipt *operatorv1.ActionReceipt) (*VerifiedReceiptEvidence, error) {
+func BuildVerifiedReceiptEvidence(binding ReceiptBinding, projection ReceiptProjection, receipt *operatorv1.EventReceipt) (*VerifiedReceiptEvidence, error) {
 	if binding.RunID == "" || binding.ScenarioID == "" || binding.AttemptID == "" || binding.ExecutionID == "" || binding.InvestigationID == "" || binding.TransactionID == "" || binding.TargetOperatorID == "" || binding.TargetOperatorSessionID == "" || binding.ActionType == "" {
 		return nil, fmt.Errorf("%w: receipt binding is incomplete", constants.ErrInvalidEvidenceGraph)
 	}
@@ -357,20 +357,20 @@ func BuildVerifiedReceiptEvidence(binding ReceiptBinding, projection ReceiptProj
 	}
 	receiptBody, err := MarshalCanonicalProto(receipt)
 	if err != nil {
-		return nil, fmt.Errorf("%w: canonicalize action receipt: %v", constants.ErrInvalidEvidenceGraph, err)
+		return nil, fmt.Errorf("%w: canonicalize event receipt: %v", constants.ErrInvalidEvidenceGraph, err)
 	}
 	persistenceBody, err := MarshalCanonicalProto(attestation)
 	if err != nil {
 		return nil, fmt.Errorf("%w: canonicalize receipt persistence attestation: %v", constants.ErrInvalidEvidenceGraph, err)
 	}
-	receiptID := ContentAddress(ArtifactTypeActionReceipt, receiptBody)
+	receiptID := ContentAddress(ArtifactTypeEventReceipt, receiptBody)
 	_, receiptDigest, _ := ParseContentAddress(receiptID)
 	persistenceID := ContentAddress(ArtifactTypeReceiptPersistence, persistenceBody)
 	_, persistenceDigest, _ := ParseContentAddress(persistenceID)
 	return &VerifiedReceiptEvidence{
 		Binding: binding,
 		ReceiptReference: &compliancev1.ComplianceEvidenceReference{
-			ArtifactId: receiptID, ArtifactType: string(ArtifactTypeActionReceipt), Sha256: receiptDigest, MediaType: constants.MediaTypeJSON,
+			ArtifactId: receiptID, ArtifactType: string(ArtifactTypeEventReceipt), Sha256: receiptDigest, MediaType: constants.MediaTypeJSON,
 			RunId: binding.RunID, AttemptId: binding.AttemptID, ScenarioId: binding.ScenarioID, TransactionId: binding.TransactionID,
 		},
 		PersistenceReference: &compliancev1.ComplianceEvidenceReference{

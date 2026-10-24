@@ -202,7 +202,7 @@ func TestMTLSServerClient_InvalidClientCert(t *testing.T) {
 	}
 }
 
-func TestGetActionReceipt_Success(t *testing.T) {
+func TestGetEventReceipt_Success(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -222,7 +222,7 @@ func TestGetActionReceipt_Success(t *testing.T) {
 	caPool.AddCert(caCert)
 
 	transactionID := "test-tx-123"
-	expectedReceipt := &operatorv1.ActionReceipt{
+	expectedReceipt := &operatorv1.EventReceipt{
 		TransactionId:   transactionID,
 		TransactionHash: "hash-abc123",
 		ActionType:      "EXECUTE_BASH",
@@ -333,7 +333,7 @@ func TestGetActionReceipt_Success(t *testing.T) {
 	}
 }
 
-func TestGetActionReceipt_NotFound(t *testing.T) {
+func TestGetEventReceipt_NotFound(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -414,7 +414,7 @@ func TestGetActionReceipt_NotFound(t *testing.T) {
 	}
 }
 
-func TestGetActionReceipt_ServerError(t *testing.T) {
+func TestGetEventReceipt_ServerError(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -500,7 +500,7 @@ func TestGetActionReceipt_ServerError(t *testing.T) {
 	}
 }
 
-func TestGetActionReceipt_InvalidJSON(t *testing.T) {
+func TestGetEventReceipt_InvalidJSON(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)

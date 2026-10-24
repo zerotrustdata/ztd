@@ -510,11 +510,38 @@ export function ModelsView() {
 
   return (
     <div className="models-view">
-      <SectionHeading
-        kicker="MODEL CATALOG & CAPABILITIES"
-        title="Models, capabilities & role performance"
-        description={`${LEADERBOARD_SCORE_FORMULA}. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}. Total-parameter penalty: 10% per doubling; this is not measured resource cost. Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.`}
-      />
+      <header className="models-header">
+        <SectionHeading
+          kicker="MODEL CATALOG & CAPABILITIES"
+          title="Models, capabilities & role performance"
+        />
+        <div className="models-score" role="math" aria-label={LEADERBOARD_SCORE_FORMULA}>
+          <div className="models-score-equation" aria-hidden="true">
+            <span className="models-score-label">Role score = 100</span>
+            <span>× accuracy</span>
+            <span>× √security</span>
+            <span>× size factor</span>
+            <span>× efficiency</span>
+          </div>
+          <div className="models-score-factors" aria-hidden="true">
+            <span>
+              <strong>Size factor</strong> = 0.9<sup>doublings</sup>
+            </span>
+            <span>
+              <strong>Efficiency</strong> = 0.85 + 0.10 × speed + 0.05 × tokens
+            </span>
+          </div>
+        </div>
+        <details className="models-score-notes">
+          <summary>Scoring & model notes</summary>
+          <ul>
+            <li>{LEADERBOARD_SECURITY_SCORING_DESCRIPTION}.</li>
+            <li>Doublings = log<sub>2</sub>(total parameters ÷ smallest in role). Each doubling costs 10%. This is not measured resource cost.</li>
+            <li>Speed and tokens are best-in-role ÷ model; lower latency and fewer tokens score higher.</li>
+            <li>Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.</li>
+          </ul>
+        </details>
+      </header>
 
       <RoleLeadersPanel
         models={modelsWithinBudget}

@@ -123,7 +123,7 @@ func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
 			ActionType: string(constants.ActionTypeFsRead),
 			Payload:    []byte("result-payload-bytes"),
 		}
-		receipt := &operatorv1.ActionReceipt{TransactionId: "tx-abc-123", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+		receipt := &operatorv1.EventReceipt{TransactionId: "tx-abc-123", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 		result := &DispatchResult{
 			TransactionID:  "tx-abc-123",
 			ResultEnvelope: env,
@@ -202,10 +202,10 @@ func dispatchTestActuator() (ed25519.PublicKey, ed25519.PrivateKey, string) {
 }
 
 // publishDispatchTestReceipt publishes the simulated Operator's signed final
-// receipt for cmdEnv on its receipts channel, as PublishActionReceipt does.
+// receipt for cmdEnv on its receipts channel, as PublishEventReceipt does.
 func publishDispatchTestReceipt(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument, cmdEnv *commonv1.GovernanceEnvelope, priv ed25519.PrivateKey, keyID string) {
 	t.Helper()
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    cmdEnv.GetId(),
 		TransactionHash:  cmdEnv.GetTransactionHash(),
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -797,7 +797,7 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, result.Receipt)
-			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
+			assert.NoError(t, governance.VerifyEventReceiptSignature(result.Receipt, boundPub))
 			assert.NoError(t, governance.VerifyReceiptPersistenceAttestation(result.Receipt, boundPub))
 		})
 	}
@@ -853,7 +853,7 @@ func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, result.Receipt)
 			assert.Nil(t, result.ResultEnvelope, "MCP_CALL publishes no result envelope")
-			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
+			assert.NoError(t, governance.VerifyEventReceiptSignature(result.Receipt, boundPub))
 		})
 	}
 }
@@ -897,7 +897,7 @@ func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), got))
 	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), got.GetEventType())
 	require.NotNil(t, got.GetReceipt(), "the 200 body carries the final receipt")
-	assert.NoError(t, governance.VerifyActionReceiptSignature(got.GetReceipt(), pub))
+	assert.NoError(t, governance.VerifyEventReceiptSignature(got.GetReceipt(), pub))
 	assert.NoError(t, governance.VerifyReceiptPersistenceAttestation(got.GetReceipt(), pub))
 }
 

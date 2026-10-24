@@ -57,13 +57,13 @@ type PubSubCommandMessage struct {
 	// publication can bind it to the final signed receipt.
 	InferenceResult *operatorv1.InferenceResult `json:"-"`
 
-	// auditReceiptListSummary carries only the local route's typed allowlisted
+	// eventReceiptListSummary carries only the local route's typed allowlisted
 	// receipt result to L5 for its verified MCP_CALL summary path.
-	auditReceiptListSummary *models.OperatorAuditReceiptListResult
+	eventReceiptListSummary *models.OperatorEventReceiptListResult
 }
 
 // verifiedActionHandler executes a governed action class after L4 verification.
-// A non-empty summary is stamped into the signed ActionReceipt.
+// A non-empty summary is stamped into the signed EventReceipt.
 type verifiedActionHandler func(ctx context.Context, msg *PubSubCommandMessage) (string, error)
 
 // OperatorPubSubService manages the Operator pub/sub connection and dispatches inbound
@@ -122,8 +122,8 @@ type OperatorPubSubService struct {
 	mcpGateway   *mcp.GatewayService
 	mcpGatewayMu sync.RWMutex
 	// localNativeTools executes native MCP tools on this runtime against its
-	// own audit store. Outbound Operators route every MCP_CALL here; Gateway
-	// mode routes only the Operator-local audit_receipt_list shape here.
+	// own local-first events store. Outbound Operators route every MCP_CALL here; Gateway
+	// mode routes only the Operator-local event_receipt_list shape here.
 	localNativeTools *mcp.NativeToolHandler
 
 	// platformEnrollment dispatches the five platform enrollment
@@ -146,7 +146,7 @@ type CommandServiceConfig struct {
 	FileEdit              *execution.FileEditService
 	PubSubClient          PubSubClient
 	ResultsService        ResultsPublisher
-	AuditStore            *storage.SQLAuditStore
+	EventsStore           *storage.LocalFirstEventsStore
 	Ledger                *storage.GitLedgerService
 	HistoryHandler        *storage.HistoryHandler
 	Scrubbing             *scrubbing.ScrubbingService
@@ -212,35 +212,35 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	rs.heartbeat.ctx = serviceCtx
 	rs.heartbeat.results = c.ResultsService
 
-	commands, err := NewCommandService(c.Config, c.Logger, c.Execution, c.ResultsService, c.AuditStore)
+	commands, err := NewCommandService(c.Config, c.Logger, c.Execution, c.ResultsService, c.EventsStore)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: command service: %w", err)
 	}
 	rs.commands = commands
 
-	fileOps, err := NewFileOpsService(c.Config, c.Logger, c.FileEdit, client, c.Ledger, c.ResultsService, c.Scrubbing, c.AuditStore)
+	fileOps, err := NewFileOpsService(c.Config, c.Logger, c.FileEdit, client, c.Ledger, c.ResultsService, c.Scrubbing, c.EventsStore)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: file ops: %w", err)
 	}
 	rs.fileOps = fileOps
 
-	ports, err := NewPortService(c.Config, c.Logger, client, c.Scrubbing, c.AuditStore)
+	ports, err := NewPortService(c.Config, c.Logger, client, c.Scrubbing, c.EventsStore)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: ports: %w", err)
 	}
 	rs.ports = ports
 
-	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.AuditStore)
+	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.EventsStore)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: ollama maintenance: %w", err)
 	}
 	rs.ollama = ollama
 
-	rs.audit = NewAuditService(c.Config, c.Logger, c.AuditStore)
+	rs.audit = NewAuditService(c.Config, c.Logger, c.EventsStore)
 	nativeOperatorID := ""
 	if c.Config != nil {
 		nativeOperatorID = c.Config.OperatorID
@@ -248,15 +248,15 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	if gatewayMode {
 		nativeOperatorID = string(constants.DocIDEmbeddedOperator)
 	}
-	if nativeOperatorID != "" && c.AuditStore != nil {
-		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, nativeOperatorID, c.AuditStore, rs.fileOps.fsGrep)
+	if nativeOperatorID != "" && c.EventsStore != nil {
+		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, nativeOperatorID, c.EventsStore, rs.fileOps.fsGrep)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("pubsub: local native tool handler: %w", err)
 		}
 	}
 
-	history, err := NewHistoryService(c.Config, c.Logger, client, c.HistoryHandler, c.Scrubbing, c.AuditStore)
+	history, err := NewHistoryService(c.Config, c.Logger, client, c.HistoryHandler, c.Scrubbing, c.EventsStore)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: history: %w", err)
@@ -367,27 +367,27 @@ func NewGatewayOperatorPubSubService(c GatewayCommandServiceConfig) (*OperatorPu
 }
 
 func (rs *OperatorPubSubService) initializeGovernance(c CommandServiceConfig, core GovernanceCoreDeps, consensusPolicyStore governance.L2ConsensusPolicyStore) {
-	// Initialize L5Actuator with trusted nodes and audit store
+	// Initialize L5Actuator with trusted nodes and local-first events store
 	// ScrubbingService handles data scrubbing/rehydration at the execution boundary
 	rs.identity = core.ExecutionTarget
 	rs.actuator = &governance.L5Actuator{
-		Logger:            c.Logger,
-		SQLAuditStore:     c.AuditStore,
-		Identity:          core.ExecutionTarget, // the runtime's own session; rejection receipts are filed under it
-		StateRootProvider: core.StateRootProvider,
-		ExecutionHandler:  rs, // OperatorPubSubService implements ExecutionHandler
-		Scrubbing:         c.Scrubbing,
-		SigningKey:        c.ActuatorSigningKey,
-		KeyID:             c.ActuatorKeyID,
-		AuditorSigningKey: c.AuditorSigningKey,
-		AuditorKeyID:      c.AuditorKeyID,
+		Logger:                c.Logger,
+		LocalFirstEventsStore: c.EventsStore,
+		Identity:              core.ExecutionTarget, // the runtime's own session; rejection receipts are filed under it
+		StateRootProvider:     core.StateRootProvider,
+		ExecutionHandler:      rs, // OperatorPubSubService implements ExecutionHandler
+		Scrubbing:             c.Scrubbing,
+		SigningKey:            c.ActuatorSigningKey,
+		KeyID:                 c.ActuatorKeyID,
+		AuditorSigningKey:     c.AuditorSigningKey,
+		AuditorKeyID:          c.AuditorKeyID,
 	}
 
 	// Wire the ReceiptPublisher so the actuator publishes signed
-	// ActionReceipts to the gateway's receipts: channel after execution.
+	// EventReceipts to the gateway's receipts: channel after execution.
 	// PubSubResultsService implements governance.ReceiptPublisher via
-	// PublishActionReceipt. Nil is valid (gateway in-process operator path
-	// records receipts directly in the gateway's SQLAuditStore).
+	// PublishEventReceipt. Nil is valid (gateway in-process operator path
+	// records receipts directly in the gateway's LocalFirstEventsStore).
 	if c.ResultsService != nil {
 		if publisher, ok := c.ResultsService.(governance.ReceiptPublisher); ok {
 			rs.actuator.ReceiptPublisher = publisher
@@ -764,14 +764,14 @@ func (rs *OperatorPubSubService) handleCommandPayload(payload []byte) {
 // ProcessEnvelope is the public, synchronous entry point for fail-closed
 // Gateway transaction processing. It is used by the listen-mode HTTP surface
 // (POST /api/v1/governance/envelopes) to verify a GovernanceEnvelope and execute it
-// through the Actuator, returning the signed ActionReceipt or a verification
+// through the Actuator, returning the signed EventReceipt or a verification
 // error.
 //
 // The signed receipt is returned on execution and verification failure so callers
 // receive cryptographic evidence of the attempt. A verification failure is a
 // *governance.ReceiptError carrying that receipt, and still wraps the
 // corresponding governance.ErrXxx sentinel.
-func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	if len(payload) == 0 {
 		return nil, constants.ErrPubSubEmptyPayload
 	}
@@ -987,8 +987,8 @@ func (rs *OperatorPubSubService) ExecuteVerifiedTransaction(ctx context.Context,
 // handleMcpCallRequestSync is the Actuator egress for MCP_CALL transactions:
 // it decodes the typed payload, executes the tool on the owning runtime, and
 // returns the textual result so the Actuator can stamp it into the signed
-// ActionReceipt. Outbound Operators execute native tools locally against their
-// own audit store; Gateway mode dispatches through the MCP gateway, which also
+// EventReceipt. Outbound Operators execute native tools locally against their
+// own local-first events store; Gateway mode dispatches through the MCP gateway, which also
 // owns read_field and the downstream MCP server.
 func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	req, err := unmarshalPayload(msg.EventType, msg.Payload)
@@ -1036,7 +1036,7 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 
 // executeLocalNativeTool runs a native MCP tool on this runtime's own handler.
 // The egress scrubber is required before execution because the summary leaves
-// the execution boundary in the signed receipt. audit_receipt_list returns
+// the execution boundary in the signed receipt. event_receipt_list returns
 // canonical signed receipts that must stay byte-exact, so its result is parsed
 // into the typed allowlisted summary instead of being scrubbed; every other
 // native tool result is scrubbed like the Gateway's native dispatch.
@@ -1058,14 +1058,14 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 		return "", fmt.Errorf("mcp call %q: %w", toolName, err)
 	}
 	summary := mcp.ToolResultSummary(result)
-	if toolName != constants.MCPToolAuditReceiptList {
+	if toolName != constants.MCPToolEventReceiptList {
 		return rs.scrubbing.ScrubText(ctx, summary), nil
 	}
-	var typedResult mcp.OperatorAuditReceiptListResult
+	var typedResult mcp.OperatorEventReceiptListResult
 	if err := json.Unmarshal([]byte(summary), &typedResult); err != nil {
-		return "", fmt.Errorf("operator audit receipt result: %w: %w", constants.ErrMCPUnmarshalArguments, err)
+		return "", fmt.Errorf("operator event receipt result: %w: %w", constants.ErrMCPUnmarshalArguments, err)
 	}
-	msg.auditReceiptListSummary = &typedResult
+	msg.eventReceiptListSummary = &typedResult
 	return summary, nil
 }
 
@@ -1073,21 +1073,21 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 // Outbound Operators always own it: they never construct mcp.GatewayService.
 // Gateway mode also owns an embedded Operator ledger, but session-only public
 // Gateway queries and every other tool keep using the Gateway's MCP handler;
-// the explicit local query shape is audit_receipt_list with investigation_id
-// plus exclude_audit_reads=true, which excludes only the audit-read tools' own
+// the explicit local query shape is event_receipt_list with investigation_id
+// plus exclude_event_receipt_reads=true, which excludes only the audit-read tools' own
 // receipts and keeps every other native-tool MCP_CALL as investigation context.
 func (rs *OperatorPubSubService) useLocalNativeToolRoute(toolName string, args json.RawMessage) bool {
 	if rs == nil || !rs.gatewayMode {
 		return true
 	}
-	if toolName != constants.MCPToolAuditReceiptList {
+	if toolName != constants.MCPToolEventReceiptList {
 		return false
 	}
-	var request mcp.AuditReceiptListRequest
+	var request mcp.EventReceiptListRequest
 	if err := json.Unmarshal(args, &request); err != nil {
 		return false
 	}
-	return request.InvestigationID != "" && request.ExcludeAuditReads
+	return request.InvestigationID != "" && request.ExcludeEventReceiptReads
 }
 
 func mcpGatewayOrErr(rs *OperatorPubSubService) (*mcp.GatewayService, error) {
@@ -1165,7 +1165,7 @@ func (rs *OperatorPubSubService) handleMcpPromptListSync(ctx context.Context, ms
 // handleA2aCallRequestSync is the Actuator egress for A2A_CALL transactions:
 // it decodes the typed payload, dispatches to the configured downstream A2A
 // server via the gateway, and returns the textual result so the Actuator can
-// stamp it into the signed ActionReceipt.
+// stamp it into the signed EventReceipt.
 func (rs *OperatorPubSubService) handleA2aCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	gw := rs.GetMCPGateway()
 	if gw == nil {
@@ -1393,7 +1393,7 @@ func (rs *OperatorPubSubService) handleModelProvenanceObservationSync(ctx contex
 // stamps the canonical result digest onto the InferenceResult, stores the
 // result on the command message for the post-actuation completion
 // publication, and returns the digest as the receipt summary so the signed
-// ActionReceipt binds the complete result (see operator.proto
+// EventReceipt binds the complete result (see operator.proto
 // InferenceResult.result_digest).
 func (rs *OperatorPubSubService) handleInferenceRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	if rs.inference == nil {
@@ -1456,7 +1456,7 @@ func (rs *OperatorPubSubService) handleInferenceRequestSync(ctx context.Context,
 }
 
 // publishInferenceCompletion publishes the protocol-owned InferenceCompletion
-// — the final signed ActionReceipt plus the complete InferenceResult — to
+// — the final signed EventReceipt plus the complete InferenceResult — to
 // the operator's results channel after the L5 actuator has finalized and
 // signed the receipt, so the result and its verified receipt are a single
 // correlated outcome. A failed or rejected transaction publishes the FAILED
@@ -1465,7 +1465,7 @@ func (rs *OperatorPubSubService) handleInferenceRequestSync(ctx context.Context,
 // Publication is best-effort: the receipt is already persisted locally; a
 // delivery failure is logged and surfaces to the waiting dispatcher as a
 // missing correlated result.
-func (rs *OperatorPubSubService) publishInferenceCompletion(ctx context.Context, env *govpkg.GovernanceEnvelope, result *operatorv1.InferenceResult, receipt *operatorv1.ActionReceipt) {
+func (rs *OperatorPubSubService) publishInferenceCompletion(ctx context.Context, env *govpkg.GovernanceEnvelope, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) {
 	if rs.results == nil || env == nil || receipt == nil {
 		return
 	}
@@ -1485,7 +1485,7 @@ func (rs *OperatorPubSubService) SendAutomaticHeartbeat() error {
 	return rs.heartbeat.SendAutomatic()
 }
 
-// pubsubAuditLogger implements mcp.AuditLogger using the SQLAuditStore so that
+// pubsubAuditLogger implements mcp.AuditLogger using the LocalFirstEventsStore so that
 // read_field tool calls produce audit records in operator mode.
 type pubsubAuditLogger struct {
 	store  AuditEventRecorder
@@ -1509,7 +1509,7 @@ func (l *pubsubAuditLogger) LogFieldRead(operatorSessionID, collection, document
 		CommandStdout:     value.String(),
 	}
 	if _, err := l.store.RecordEvent(event); err != nil {
-		l.logger.Warn("Failed to record field read in audit store", "error", err,
+		l.logger.Warn("Failed to record field read in local-first events store", "error", err,
 			"session", operatorSessionID, "collection", collection)
 		return err
 	}
@@ -1528,7 +1528,7 @@ func (rs *OperatorPubSubService) blockedSummary(ctx context.Context, rejectionRe
 // logBlockedTransaction records a blocked/rejected transaction using the EventReceiptRecord schema.
 // This ensures consistency with accepted/failed Actuator receipts - all transaction outcomes use the same canonical schema.
 func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env *govpkg.GovernanceEnvelope, rejectionReason error) {
-	if rs.audit == nil || rs.audit.auditStore == nil {
+	if rs.audit == nil || rs.audit.eventsStore == nil {
 		return
 	}
 	// The envelope's operator and session ids are unverified claims; the record is
@@ -1561,9 +1561,9 @@ func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env 
 		Timestamp:         time.Now().UTC(),
 	}
 
-	// Log to audit store using canonical RecordEventReceipt for unified query experience
-	if err := rs.audit.auditStore.RecordEventReceipt(&record); err != nil {
-		rs.logger.Error("Failed to record blocked transaction in audit store", string(constants.ConnectionStateError), err, "message_id", env.Id)
+	// Log to local-first events store using canonical RecordEventReceipt for unified query experience
+	if err := rs.audit.eventsStore.RecordEventReceipt(&record); err != nil {
+		rs.logger.Error("Failed to record blocked transaction in local-first events store", string(constants.ConnectionStateError), err, "message_id", env.Id)
 	}
 }
 func (m *PubSubCommandMessage) GetPayload() []byte {
@@ -1583,13 +1583,13 @@ func (m *PubSubCommandMessage) InferenceResultDigest() string {
 	return m.InferenceResult.GetResultDigest()
 }
 
-// AuditReceiptListSummary returns the local tool's typed, allowlisted result.
+// EventReceiptListSummary returns the local tool's typed, allowlisted result.
 // L5 checks the verified MCP request and serialized output before preserving it.
-func (m *PubSubCommandMessage) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+func (m *PubSubCommandMessage) EventReceiptListSummary() *models.OperatorEventReceiptListResult {
 	if m == nil {
 		return nil
 	}
-	return m.auditReceiptListSummary
+	return m.eventReceiptListSummary
 }
 
 // ResultOrigin preserves request identity when a witness completion is published.

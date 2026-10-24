@@ -94,7 +94,7 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 }
 
 func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-denied",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -125,7 +125,7 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 		assert.Equal(t, modelCallGovernanceRejected, run.trace.ModelCalls[0].Error)
 		assert.Equal(t, "tx-denied", run.trace.ModelCalls[0].TransactionID)
 		require.NotNil(t, run.trace.ModelCalls[0].Receipt)
-		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.ActionReceipt)
+		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.EventReceipt)
 	})
 
 	t.Run("missing receipt remains an internal failure", func(t *testing.T) {
@@ -231,7 +231,7 @@ func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *test
 }
 
 func shellToolOutcome(summary string) *client.GovernedOutcome {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
+	receipt := &operatorv1.EventReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
 	return &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: receipt},
 		Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: "txn-1", Receipt: receipt},
@@ -239,7 +239,7 @@ func shellToolOutcome(summary string) *client.GovernedOutcome {
 }
 
 func approvedDispatchResult(argumentsJSON, summary string) *tribunalv1.TribunalIntentResult {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
+	receipt := &operatorv1.EventReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
 	return &tribunalv1.TribunalIntentResult{
 		Outcome:        tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED,
 		ArgumentsJson:  argumentsJSON,

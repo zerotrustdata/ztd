@@ -22,7 +22,7 @@ import (
 )
 
 func TestIsL2GovernanceDenialRequiresTypedFailureAndSignedReceipt(t *testing.T) {
-	validReceipt := &operatorv1.ActionReceipt{
+	validReceipt := &operatorv1.EventReceipt{
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		ActionType:    string(constants.ActionTypeInference),
@@ -31,7 +31,7 @@ func TestIsL2GovernanceDenialRequiresTypedFailureAndSignedReceipt(t *testing.T) 
 		SignerKeyId:   "operator-key",
 		Signature:     "signed-receipt",
 	}
-	member := func(receipt *operatorv1.ActionReceipt, code operatorv1.InferenceDispatchFailureCode) *tribunalv1.TribunalMemberCall {
+	member := func(receipt *operatorv1.EventReceipt, code operatorv1.InferenceDispatchFailureCode) *tribunalv1.TribunalMemberCall {
 		return &tribunalv1.TribunalMemberCall{
 			Receipt: receipt,
 			Failure: &operatorv1.InferenceDispatchFailure{Code: code},
@@ -42,10 +42,10 @@ func TestIsL2GovernanceDenialRequiresTypedFailureAndSignedReceipt(t *testing.T) 
 	assert.True(t, isL2GovernanceDenial(governanceFailure.GetReceipt(), err))
 	assert.True(t, isL2GovernanceDenial(validReceipt, fmt.Errorf("turn inference turn 1: %w", constants.ErrInferenceGovernanceRejected)), "a scored agent turn's signed L2 rejection is a governance denial")
 	assert.False(t, isL2GovernanceDenial(nil, err), "missing receipt must remain an infrastructure failure")
-	unsigned := proto.Clone(validReceipt).(*operatorv1.ActionReceipt)
+	unsigned := proto.Clone(validReceipt).(*operatorv1.EventReceipt)
 	unsigned.Signature = ""
 	assert.False(t, isL2GovernanceDenial(unsigned, err), "unsigned receipt must remain an infrastructure failure")
-	wrongL2 := proto.Clone(validReceipt).(*operatorv1.ActionReceipt)
+	wrongL2 := proto.Clone(validReceipt).(*operatorv1.EventReceipt)
 	wrongL2.L2Status = operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
 	assert.False(t, isL2GovernanceDenial(wrongL2, err))
 	assert.False(t, isL2GovernanceDenial(validReceipt, constants.ErrInferenceBackendUnavailable), "provider failures must not be recategorized")
@@ -57,7 +57,7 @@ func TestIsL2GovernanceDenialRequiresTypedFailureAndSignedReceipt(t *testing.T) 
 // a record with no provider attempt, so no observation or provenance window is
 // expected for it.
 func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-turn-denied",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -81,7 +81,7 @@ func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testi
 		assert.Equal(t, "tx-turn-denied", call.TransactionID)
 		assert.NotEmpty(t, call.ProviderAttemptID, "the trace keeps the attempt its signed receipt answers")
 		require.NotNil(t, call.Receipt)
-		assert.Same(t, receipt, call.Receipt.ActionReceipt)
+		assert.Same(t, receipt, call.Receipt.EventReceipt)
 
 		records, _ := modelInferenceRecordsFromAgentTrace(run.req, run.trace, run.executor.newID)
 		require.Len(t, records, 1)
@@ -89,7 +89,7 @@ func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testi
 	})
 
 	t.Run("unsigned rejection remains a harness failure", func(t *testing.T) {
-		unsigned := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		unsigned := proto.Clone(receipt).(*operatorv1.EventReceipt)
 		unsigned.Signature = ""
 		run := newTribunalAuthoringRun(t, false, &tribunalAuthoringInference{probeErr: &governance.ReceiptError{Receipt: unsigned, Err: constants.ErrInferenceGovernanceRejected}}, &tribunalAuthoringTools{})
 		require.NoError(t, run.loop(context.Background()))

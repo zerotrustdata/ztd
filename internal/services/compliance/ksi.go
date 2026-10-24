@@ -136,7 +136,7 @@ type KSIArtifactIdentity string
 
 const (
 	KSIArtifactAuditEvents             KSIArtifactIdentity = "audit_events"
-	KSIArtifactActionReceipts          KSIArtifactIdentity = "action_receipts"
+	KSIArtifactEventReceipts           KSIArtifactIdentity = "event_receipts"
 	KSIArtifactFileMutations           KSIArtifactIdentity = "file_mutations"
 	KSIArtifactLedgerCommits           KSIArtifactIdentity = "ledger_commits"
 	KSIArtifactCommitments             KSIArtifactIdentity = "commitments"
@@ -150,7 +150,7 @@ const (
 type KSICollectionBoundary string
 
 const (
-	KSICollectionAuditStore      KSICollectionBoundary = "audit_store"
+	KSICollectionEventsStore     KSICollectionBoundary = "events_store"
 	KSICollectionLedgerStore     KSICollectionBoundary = "ledger_store"
 	KSICollectionCommitmentStore KSICollectionBoundary = "commitment_store"
 	KSICollectionEvalResults     KSICollectionBoundary = "eval_results"
@@ -214,7 +214,7 @@ func (m KSIMethod) validate() error {
 
 func (a KSIArtifactIdentity) valid() bool {
 	switch a {
-	case KSIArtifactAuditEvents, KSIArtifactActionReceipts, KSIArtifactFileMutations, KSIArtifactLedgerCommits, KSIArtifactCommitments, KSIArtifactReceiptStateTransitions, KSIArtifactGraderResults, KSIArtifactHistorySnapshots, KSIArtifactLedgerStateRoot:
+	case KSIArtifactAuditEvents, KSIArtifactEventReceipts, KSIArtifactFileMutations, KSIArtifactLedgerCommits, KSIArtifactCommitments, KSIArtifactReceiptStateTransitions, KSIArtifactGraderResults, KSIArtifactHistorySnapshots, KSIArtifactLedgerStateRoot:
 		return true
 	default:
 		return false
@@ -223,7 +223,7 @@ func (a KSIArtifactIdentity) valid() bool {
 
 func (b KSICollectionBoundary) valid() bool {
 	switch b {
-	case KSICollectionAuditStore, KSICollectionLedgerStore, KSICollectionCommitmentStore, KSICollectionEvalResults, KSICollectionHistoryStore:
+	case KSICollectionEventsStore, KSICollectionLedgerStore, KSICollectionCommitmentStore, KSICollectionEvalResults, KSICollectionHistoryStore:
 		return true
 	default:
 		return false

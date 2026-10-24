@@ -46,22 +46,22 @@ const (
 
 // FileOpsService owns file edit, fs list, and fs read handling.
 type FileOpsService struct {
-	config     *config.Config
-	logger     *slog.Logger
-	fileEdit   *execution.FileEditService
-	fsList     *execution.FsListService
-	fsGrep     *execution.FsGrepService
-	results    ResultsPublisher
-	scrubbing  *scrubbing.ScrubbingService
-	auditStore *storage.SQLAuditStore
-	ledger     *storage.GitLedgerService
-	client     PubSubClient
+	config      *config.Config
+	logger      *slog.Logger
+	fileEdit    *execution.FileEditService
+	fsList      *execution.FsListService
+	fsGrep      *execution.FsGrepService
+	results     ResultsPublisher
+	scrubbing   *scrubbing.ScrubbingService
+	eventsStore *storage.LocalFirstEventsStore
+	ledger      *storage.GitLedgerService
+	client      PubSubClient
 }
 
 // NewFileOpsService creates a new FileOpsService. Every dependency is required and a nil one
 // fails closed at construction. The file ledger is required because a runtime that can mutate
-// files must snapshot them first (constants.ErrLedgerRequired). The audit store records the
-// execution event and the file mutation of every operation (constants.ErrAuditStoreRequired).
+// files must snapshot them first (constants.ErrLedgerRequired). The local-first events store records the
+// execution event and the file mutation of every operation (constants.ErrLocalFirstEventsStoreRequired).
 // The results publisher carries every result (constants.ErrPubSubResultsPublisher). The scrubber
 // is the egress choke point for observed-state responses (constants.ErrEgressScrubberUnavailable
 // when nil or disabled).
@@ -73,7 +73,7 @@ func NewFileOpsService(
 	ledger *storage.GitLedgerService,
 	results ResultsPublisher,
 	scrubbingSvc *scrubbing.ScrubbingService,
-	auditStore *storage.SQLAuditStore,
+	eventsStore *storage.LocalFirstEventsStore,
 ) (*FileOpsService, error) {
 	if cfg == nil || logger == nil || fileEditSvc == nil || client == nil {
 		return nil, fmt.Errorf("file ops service: %w", constants.ErrMissingRequiredField)
@@ -87,7 +87,7 @@ func NewFileOpsService(
 	if err := requireActiveScrubber("file ops service", scrubbingSvc); err != nil {
 		return nil, err
 	}
-	if err := requireAuditStore("file ops service", auditStore); err != nil {
+	if err := requireEventsStore("file ops service", eventsStore); err != nil {
 		return nil, err
 	}
 	fsGrep, err := execution.NewFsGrepService(cfg.WorkDir, logger)
@@ -95,16 +95,16 @@ func NewFileOpsService(
 		return nil, fmt.Errorf("file ops service: %w", err)
 	}
 	return &FileOpsService{
-		config:     cfg,
-		logger:     logger,
-		fileEdit:   fileEditSvc,
-		fsList:     execution.NewFsListService(cfg.WorkDir, logger),
-		fsGrep:     fsGrep,
-		results:    results,
-		scrubbing:  scrubbingSvc,
-		auditStore: auditStore,
-		ledger:     ledger,
-		client:     client,
+		config:      cfg,
+		logger:      logger,
+		fileEdit:    fileEditSvc,
+		fsList:      execution.NewFsListService(cfg.WorkDir, logger),
+		fsGrep:      fsGrep,
+		results:     results,
+		scrubbing:   scrubbingSvc,
+		eventsStore: eventsStore,
+		ledger:      ledger,
+		client:      client,
 	}, nil
 }
 
@@ -213,7 +213,7 @@ func (fs *FileOpsService) HandleEvaluationWorkspaceSeedRequest(ctx context.Conte
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
 		fs.logger.Error("Failed to decode evaluation workspace seed payload", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		decodeErr := fmt.Errorf("evaluation workspace seed: decode request: %w", err)
-		return "", errors.Join(decodeErr, fs.publishLFAAError(ctx, msg, constants.Event.Operator.Eval.WorkspaceSeed.Failed, "invalid request payload"))
+		return "", errors.Join(decodeErr, fs.publishLFEAError(ctx, msg, constants.Event.Operator.Eval.WorkspaceSeed.Failed, "invalid request payload"))
 	}
 	executionID := request.GetExecutionId()
 	if executionID == "" {
@@ -312,7 +312,7 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 		if beginErr != nil {
 			// Fail closed: without a pre-mutation snapshot the edit is never executed.
 			fs.logger.Error("File edit refused: ledger snapshot unavailable", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(beginErr))
-			publishErr := fs.publishLFAAError(ctx, msg, events.failed, beginErr.Error())
+			publishErr := fs.publishLFEAError(ctx, msg, events.failed, beginErr.Error())
 			return nil, errors.Join(beginErr, publishErr)
 		}
 	}
@@ -368,9 +368,9 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 			LedgerHashAfter:  ledgerResult.LedgerHashAfter,
 			DiffStat:         ledgerResult.DiffStat,
 		}
-		if err := fs.auditStore.RecordFileMutation(mutation); err != nil {
+		if err := fs.eventsStore.RecordFileMutation(mutation); err != nil {
 			fs.logger.Error("File mutation could not be recorded; result marked FAILED", logging.ErrorKind(err))
-			mutationErr := fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordFileMutationFailed, err)
+			mutationErr := fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreRecordFileMutationFailed, err)
 			execErr = errors.Join(execErr, mutationErr)
 			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 			result.ErrorMessage = mutationErr.Error()
@@ -712,7 +712,7 @@ func (fs *FileOpsService) HandleFsReadRequest(ctx context.Context, msg *PubSubCo
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
 	}
-	publishErr := fs.publishLFAATypedResponse(ctx, msg, eventType, result)
+	publishErr := fs.publishLFEATypedResponse(ctx, msg, eventType, result)
 	if err := errors.Join(readErr, publishErr); err != nil {
 		fs.logger.Warn("File system read failed",
 			"message_id", msg.ID,
@@ -788,21 +788,21 @@ func (fs *FileOpsService) executeFsRead(ctx context.Context, msg *PubSubCommandM
 	}, nil
 }
 
-func (fs *FileOpsService) publishLFAATypedResponse(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, payload proto.Message) error {
-	return publishLFAATypedResponseTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, payload, fs.auditStore, fs.scrubbing)
+func (fs *FileOpsService) publishLFEATypedResponse(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, payload proto.Message) error {
+	return publishLFEATypedResponseTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, payload, fs.eventsStore, fs.scrubbing)
 }
 
-// recordFileOpEvent writes a file operation's execution event to the audit store.
+// recordFileOpEvent writes a file operation's execution event to the local-first events store.
 func (fs *FileOpsService) recordFileOpEvent(event *storage.Event) (int64, error) {
-	id, err := fs.auditStore.RecordEvent(event)
+	id, err := fs.eventsStore.RecordEvent(event)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %w", constants.ErrExecutionRecordFailed, err)
 	}
 	return id, nil
 }
 
-func (fs *FileOpsService) publishLFAAError(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, errorMsg string) error {
-	return publishLFAAErrorTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, errorMsg, fs.auditStore, fs.scrubbing)
+func (fs *FileOpsService) publishLFEAError(ctx context.Context, msg *PubSubCommandMessage, eventType constants.EventType, errorMsg string) error {
+	return publishLFEAErrorTo(ctx, fs.client, fs.config, fs.logger, msg, eventType, errorMsg, fs.eventsStore, fs.scrubbing)
 }
 
 // payloadToFileEditRequest is a package-level helper shared by FileOpsService and tests.

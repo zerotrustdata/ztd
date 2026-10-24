@@ -35,12 +35,12 @@ func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing
 	require.NoError(t, json.Unmarshal(body, decoded))
 
 	require.NotNil(t, decoded.ToolCalls[0].Receipt)
-	assert.True(t, proto.Equal(trace.ToolCalls[0].Receipt.ActionReceipt, decoded.ToolCalls[0].Receipt.ActionReceipt))
+	assert.True(t, proto.Equal(trace.ToolCalls[0].Receipt.EventReceipt, decoded.ToolCalls[0].Receipt.EventReceipt))
 	assert.True(t, proto.Equal(trace.Inference.Anchor.ConformanceAnchor, decoded.Inference.Anchor.ConformanceAnchor))
 	assert.True(t, proto.Equal(trace.Data.Anchor.ConformanceAnchor, decoded.Data.Anchor.ConformanceAnchor))
-	assert.True(t, proto.Equal(trace.ModelCalls[0].Receipt.ActionReceipt, decoded.ModelCalls[0].Receipt.ActionReceipt))
+	assert.True(t, proto.Equal(trace.ModelCalls[0].Receipt.EventReceipt, decoded.ModelCalls[0].Receipt.EventReceipt))
 	require.NotNil(t, decoded.Bracket)
-	assert.True(t, proto.Equal(trace.Bracket.After.ActionReceipt, decoded.Bracket.After.ActionReceipt))
+	assert.True(t, proto.Equal(trace.Bracket.After.EventReceipt, decoded.Bracket.After.EventReceipt))
 
 	again, err := SealAgentTrace(decoded)
 	require.NoError(t, err)
@@ -57,7 +57,7 @@ func TestAgentTrace_ReceiptDecodeRejectsUnknownField(t *testing.T) {
 
 func TestAgentTrace_ReceiptDecodeRejectsNonCanonicalSpelling(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
-	canonical, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.ActionReceipt)
+	canonical, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.EventReceipt)
 	require.NoError(t, err)
 	// Same value, different bytes: protojson accepts it, the trace does not.
 	spaced := strings.Replace(string(canonical), `":"`, `": "`, 1)
@@ -95,7 +95,7 @@ func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) 
 	}
 	require.NoError(t, json.Unmarshal(body, &raw))
 	require.Len(t, raw.ToolCalls, 2)
-	want, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.ActionReceipt)
+	want, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.EventReceipt)
 	require.NoError(t, err)
 	assert.JSONEq(t, string(want), string(raw.ToolCalls[0].Receipt))
 	assert.Equal(t, agentTraceSchemaVersion, trace.SchemaVersion)
@@ -225,8 +225,8 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 					SubjectTransactionId: "call-1", SubjectTransactionHash: strings.Repeat("c", 64),
 					MemberAppId: "member-1", ProviderAttemptId: "attempt-vote-1", TransactionId: "tx-vote-1",
 					Result:              &operatorv1.InferenceResult{ResultDigest: strings.Repeat("d", 64)},
-					Receipt:             &operatorv1.ActionReceipt{TransactionId: "tx-vote-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
-					ObservationReceipts: []*operatorv1.ActionReceipt{{TransactionId: "tx-observe", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
+					Receipt:             &operatorv1.EventReceipt{TransactionId: "tx-vote-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
+					ObservationReceipts: []*operatorv1.EventReceipt{{TransactionId: "tx-observe", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
 				},
 				{
 					SubjectTransactionId: "call-1", SubjectTransactionHash: strings.Repeat("c", 64),

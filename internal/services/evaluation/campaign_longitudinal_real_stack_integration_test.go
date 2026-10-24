@@ -9,7 +9,7 @@
 
 // Real-stack longitudinal cases: sequential runs that share a persistent
 // investigation, a fresh-investigation control, and the planted-fault
-// investigation scenarios. The Data Operator answers audit_receipt_list from its
+// investigation scenarios. The Data Operator answers event_receipt_list from its
 // own ledger and runs the workspace's reads and shell commands; only the model
 // provider is scripted. Rig: agent_evidence_real_stack_integration_test.go.
 package evaluation_test
@@ -104,12 +104,12 @@ func TestCampaignLongitudinal_ImprovementCurveAcrossSequentialRuns(t *testing.T)
 	)
 	// Run 2 on the same persistent investigation queries its history and answers.
 	run2 := []fixtures.OllamaReply{
-		liveContextAuditList(),
+		liveContextEventReceiptList(),
 		{Content: "Diagnosis: based on prior investigation history, inventory-api listens on 8081 instead of expected port 8080. Update app/service.conf to listen_port = 8080."},
 	}
 	// The control is a fresh investigation: its history is empty, so it reads.
 	control := slices.Concat(
-		[]fixtures.OllamaReply{liveContextAuditList(), readFileOn(&env, "app/service.conf"), readFileOn(&env, "app/logs/service.log")},
+		[]fixtures.OllamaReply{liveContextEventReceiptList(), readFileOn(&env, "app/service.conf"), readFileOn(&env, "app/logs/service.log")},
 		shellScriptOn(&env, "check.sh"),
 		[]fixtures.OllamaReply{{Content: longitudinalControlAnswer}},
 	)

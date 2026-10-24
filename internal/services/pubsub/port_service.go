@@ -25,22 +25,22 @@ import (
 
 // PortService owns port connectivity check handling.
 type PortService struct {
-	config     *config.Config
-	logger     *slog.Logger
-	client     PubSubClient
-	auditStore *storage.SQLAuditStore
-	scrubbing  *scrubbing.ScrubbingService
+	config      *config.Config
+	logger      *slog.Logger
+	client      PubSubClient
+	eventsStore *storage.LocalFirstEventsStore
+	scrubbing   *scrubbing.ScrubbingService
 }
 
 // NewPortService creates a new PortService. Every dependency is required: the scrubber is the
 // egress choke point (nil or disabled fails with constants.ErrEgressScrubberUnavailable) and the
-// audit store records observed-state content evidence (nil fails with constants.ErrAuditStoreRequired).
+// local-first events store records observed-state content evidence (nil fails with constants.ErrLocalFirstEventsStoreRequired).
 func NewPortService(
 	cfg *config.Config,
 	logger *slog.Logger,
 	client PubSubClient,
 	scrubbingSvc *scrubbing.ScrubbingService,
-	auditStore *storage.SQLAuditStore,
+	eventsStore *storage.LocalFirstEventsStore,
 ) (*PortService, error) {
 	if cfg == nil || logger == nil || client == nil {
 		return nil, fmt.Errorf("port service: %w", constants.ErrMissingRequiredField)
@@ -48,15 +48,15 @@ func NewPortService(
 	if err := requireActiveScrubber("port service", scrubbingSvc); err != nil {
 		return nil, err
 	}
-	if err := requireAuditStore("port service", auditStore); err != nil {
+	if err := requireEventsStore("port service", eventsStore); err != nil {
 		return nil, err
 	}
 	return &PortService{
-		config:     cfg,
-		logger:     logger,
-		client:     client,
-		auditStore: auditStore,
-		scrubbing:  scrubbingSvc,
+		config:      cfg,
+		logger:      logger,
+		client:      client,
+		eventsStore: eventsStore,
+		scrubbing:   scrubbingSvc,
 	}, nil
 }
 
@@ -65,12 +65,12 @@ func (ps *PortService) HandlePortCheckRequest(ctx context.Context, msg *PubSubCo
 	var protoPort operatorv1.CheckPortRequested
 	if err := proto.Unmarshal(msg.Payload, &protoPort); err != nil {
 		ps.logger.Error("Failed to decode port check payload as protobuf CheckPortRequested", string(constants.ConnectionStateError), err)
-		return "", errors.Join(fmt.Errorf("port check: decode request: %w", err), publishLFAAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "invalid request payload", ps.auditStore, ps.scrubbing))
+		return "", errors.Join(fmt.Errorf("port check: decode request: %w", err), publishLFEAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "invalid request payload", ps.eventsStore, ps.scrubbing))
 	}
 
 	if protoPort.Port <= 0 || protoPort.Port > 65535 {
 		ps.logger.Warn("Port check request with invalid port", "port", protoPort.Port)
-		return "", errors.Join(fmt.Errorf("port must be between 1 and 65535: %w", constants.ErrValidationFailed), publishLFAAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "port must be between 1 and 65535", ps.auditStore, ps.scrubbing))
+		return "", errors.Join(fmt.Errorf("port must be between 1 and 65535: %w", constants.ErrValidationFailed), publishLFEAErrorTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Failed, "port must be between 1 and 65535", ps.eventsStore, ps.scrubbing))
 	}
 
 	host := protoPort.Host
@@ -109,5 +109,5 @@ func (ps *PortService) HandlePortCheckRequest(ctx context.Context, msg *PubSubCo
 		Results:     []*operatorv1.PortCheckEntry{entry},
 	}
 	// A closed port is a completed observation. Caller cancellation is an action failure.
-	return "", errors.Join(ctx.Err(), publishLFAATypedResponseTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Completed, payload, ps.auditStore, ps.scrubbing))
+	return "", errors.Join(ctx.Err(), publishLFEATypedResponseTo(ctx, ps.client, ps.config, ps.logger, msg, constants.Event.Operator.PortCheck.Completed, payload, ps.eventsStore, ps.scrubbing))
 }

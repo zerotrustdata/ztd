@@ -92,8 +92,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-PROT-CANON-01 | Canonical serialization MUST be deterministic and pinned by the vectors in `protocol/vectors/` that Go tests consume. `ActionReceipt` canonical form is deterministic UTF-8 JSON (`CanonicalizeActionReceipt`). `ReceiptPersistenceAttestation` canonical form is a binary length-prefixed encoding (`CanonicalizeReceiptPersistenceAttestation`), not JSON. Compliance and evaluation protobuf messages use canonical protojson (`MarshalCanonical` and `UnmarshalCanonical`). |
-| INV-PROT-CANON-02 | Ed25519 receipt verification in `internal/services/governance` MUST verify against the exact canonical bytes of each object: `VerifyActionReceiptSignature` verifies the bytes produced by `CanonicalizeActionReceipt`, and `VerifyReceiptPersistenceAttestation` verifies the bytes produced by `CanonicalizeReceiptPersistenceAttestation`. Both take an `ed25519.PublicKey`. |
+| INV-PROT-CANON-01 | Canonical serialization MUST be deterministic and pinned by the vectors in `protocol/vectors/` that Go tests consume. `EventReceipt` canonical form is deterministic UTF-8 JSON (`CanonicalizeEventReceipt`). `ReceiptPersistenceAttestation` canonical form is a binary length-prefixed encoding (`CanonicalizeReceiptPersistenceAttestation`), not JSON. Compliance and evaluation protobuf messages use canonical protojson (`MarshalCanonical` and `UnmarshalCanonical`). |
+| INV-PROT-CANON-02 | Ed25519 receipt verification in `internal/services/governance` MUST verify against the exact canonical bytes of each object: `VerifyEventReceiptSignature` verifies the bytes produced by `CanonicalizeEventReceipt`, and `VerifyReceiptPersistenceAttestation` verifies the bytes produced by `CanonicalizeReceiptPersistenceAttestation`. Both take an `ed25519.PublicKey`. |
 | INV-PROT-CANON-03 | Vectors in `protocol/vectors/` and `protocol/conformance/` that Go tests consume MUST pass those tests (`./ztd test unit --pkg ./protocol` and `./ztd test unit --pkg ./internal/governance --run TestHashParity`) before any release tag is cut. |
 
 ## Owned surfaces
@@ -141,14 +141,14 @@ Incoming Ingress (MCP / A2A / governed HTTP dispatch / direct envelope submissio
 To allow cross-platform cryptographic signing and verification, ztd enforces strict, deterministic JSON canonicalization:
 
 1. **Receipt Canonicalization**:
-   - `internal/services/governance.CanonicalizeActionReceipt` formats `ActionReceipt` into deterministic UTF-8 JSON.
+   - `internal/services/governance.CanonicalizeEventReceipt` formats `EventReceipt` into deterministic UTF-8 JSON.
    - Keys follow the declaration order of the internal `canonicalReceipt` struct, not lexicographic order. Enum fields serialize as integers, fields tagged `omitempty` are omitted at zero value, and the output contains no whitespace.
-   - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
-   - `GovernanceRejection` (`error`, `receipt`) is the body for an L4 rejection. The MCP endpoint returns it as JSON-RPC `error.data` (`internal/services/mcp/mcp_endpoint.go`). `receipt` can be checked with `VerifyActionReceiptSignature`.
+   - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `EventReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+   - `GovernanceRejection` (`error`, `receipt`) is the body for an L4 rejection. The MCP endpoint returns it as JSON-RPC `error.data` (`internal/services/mcp/mcp_endpoint.go`). `receipt` can be checked with `VerifyEventReceiptSignature`.
    - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
    - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`) is the HTTP 200 body of governed dispatch.
    - `InferenceDispatchFailure` (`error`, `code`, `receipt`, `observation_receipts`) is the failure body of `POST /api/v1/inference/dispatch`. `receipt` is present only when dispatch reached the executing Operator and that Operator signed a `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds). `observation_receipts` carries the verified signed observer receipts for the attempt in dispatch order.
-   - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
+   - `VerifyEventReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` verifies an Ed25519 signature over the `CanonicalizeReceiptPersistenceAttestation` bytes.
 2. **Evaluation Protojson Canonicalization**:
    - Evaluation messages use `MarshalCanonical` and `UnmarshalCanonical` (`protocol/proto/ztd/eval/v1/canonical.go`).
@@ -159,10 +159,10 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:
-     - `action_receipt_canonicalization.json`
-     - `action_receipt_failure_code_canonicalization.json`
-     - `action_receipt_rejection_code_canonicalization.json`
-     - `action_receipt_stage_evidence_canonicalization.json`
+     - `event_receipt_canonicalization.json`
+     - `event_receipt_failure_code_canonicalization.json`
+     - `event_receipt_rejection_code_canonicalization.json`
+     - `event_receipt_stage_evidence_canonicalization.json`
      - `receipt_persistence_attestation_canonicalization.json`
      - `compliance/` and `eval/` vectors.
    - Verified by `./ztd test unit --pkg ./protocol`.
@@ -222,7 +222,7 @@ All first-party components adhere strictly to the root `VERSION` file:
 - **Emitting raw binary protobuf over HTTP/SSE**: Sending binary bytes instead of canonical protojson across public or browser endpoints (`INV-PROT-SCHEMA-02`).
 - **Manual version bumping in packages**: Editing package version fields by hand instead of running `make version-sync` (`INV-PROT-VER-01`).
 - **Altering canonical hashing without vectors**: Modifying envelope hash algorithms without updating and verifying `protocol/conformance/` vectors.
-- **Using non-canonical JSON for signatures**: Computing Ed25519 signatures over raw or non-deterministic JSON instead of the canonical bytes from `CanonicalizeActionReceipt` or `CanonicalizeReceiptPersistenceAttestation` (`INV-PROT-CANON-02`).
+- **Using non-canonical JSON for signatures**: Computing Ed25519 signatures over raw or non-deterministic JSON instead of the canonical bytes from `CanonicalizeEventReceipt` or `CanonicalizeReceiptPersistenceAttestation` (`INV-PROT-CANON-02`).
 
 ## Links out
 

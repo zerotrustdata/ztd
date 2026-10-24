@@ -82,12 +82,12 @@ func (s *stubInferenceBackend) Status(_ context.Context) (*models.BackendStatus,
 const inferenceIntegrationSessionID = "session-inference-int"
 
 // newInferenceIntegrationFixture constructs an OperatorPubSubService in
-// outbound mode with a real SQLAuditStore (real SQLite, real vault,
+// outbound mode with a real LocalFirstEventsStore (real SQLite, real vault,
 // foreign_keys enforced) and a stub inference backend wired through the
 // governed execution handler. Returns the service, the stub backend, the
-// audit store, and the capturing results publisher so the test can assert
+// local-first events store, and the capturing results publisher so the test can assert
 // on persisted receipts and published InferenceCompletion envelopes.
-func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stubInferenceBackend, *storage.SQLAuditStore, *mockResultsPublisher) {
+func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stubInferenceBackend, *storage.LocalFirstEventsStore, *mockResultsPublisher) {
 	t.Helper()
 
 	cfg := testutil.NewTestConfig(t)
@@ -99,7 +99,7 @@ func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stub
 	logger := testutil.NewTestLogger()
 
 	// The Operator's session start creates its audit session row; the envelopes below are recorded against it.
-	auditStore := storagetest.NewTestAuditStore(t, inferenceIntegrationSessionID)
+	eventsStore := storagetest.NewTestEventsStore(t, inferenceIntegrationSessionID)
 
 	backend := &stubInferenceBackend{
 		resp: &models.GenerateResponse{
@@ -137,7 +137,7 @@ func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stub
 		AuditorKeyID:       hex.EncodeToString(pubKey),
 		Scrubbing:          scrubbingSvc,
 		Inference:          inferenceHandler,
-		AuditStore:         auditStore,
+		EventsStore:        eventsStore,
 	}), OutboundModeDeps{
 		GovernanceCoreDeps: GovernanceCoreDeps{
 			ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-inference-int"}, SessionID: inferenceIntegrationSessionID},
@@ -151,7 +151,7 @@ func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stub
 	})
 	require.NoError(t, err)
 
-	return svc, backend, auditStore, results
+	return svc, backend, eventsStore, results
 }
 
 // buildInferenceEnvelope constructs a governed GovernanceEnvelope carrying
@@ -213,14 +213,14 @@ func buildInferenceEnvelope(t *testing.T, role operatorv1.ModelRole, model, prom
 // verifies the full governed inference path: a GovernanceEnvelope carrying an
 // InferenceRequested payload traverses L1–L5 verification, the
 // InferenceExecutionHandler calls the stub backend, the L5 actuator stamps a
-// signed ActionReceipt whose result_summary is the canonical result digest,
-// the receipt is persisted in the real SQLAuditStore with the INFERENCE
+// signed EventReceipt whose result_summary is the canonical result digest,
+// the receipt is persisted in the real LocalFirstEventsStore with the INFERENCE
 // action type, and an InferenceCompletion carrying the final receipt plus
 // the complete digest-bound result is published to the results channel.
 // This exercises real SQLite, real vault, foreign_keys enforcement, and the
 // real L4 warden — no mocks for governance internals.
 func TestInferenceDispatch_ProcessEnvelope_PrimaryRole_PersistsReceiptAndAudit(t *testing.T) {
-	svc, backend, auditStore, results := newInferenceIntegrationFixture(t)
+	svc, backend, eventsStore, results := newInferenceIntegrationFixture(t)
 
 	wire := buildInferenceEnvelope(t, operatorv1.ModelRole_MODEL_ROLE_PRIMARY, "gemma3:4b", "What is 2+2?")
 
@@ -253,9 +253,9 @@ func TestInferenceDispatch_ProcessEnvelope_PrimaryRole_PersistsReceiptAndAudit(t
 	assert.Equal(t, wantDigest, receipt.ResultSummary, "receipt result_summary must be the result digest")
 	assert.Equal(t, wantDigest, completion.Receipt.ResultSummary, "completion receipt must bind the result digest")
 
-	receipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
+	receipts, err := eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: ""}, 10, 0)
 	require.NoError(t, err)
-	require.Len(t, receipts, 1, "exactly one inference receipt must be persisted in the audit store")
+	require.Len(t, receipts, 1, "exactly one inference receipt must be persisted in the local-first events store")
 	persisted := receipts[0]
 	assert.Equal(t, constants.ActionTypeInference, persisted.ActionType, "persisted receipt action type must be INFERENCE")
 	assert.Equal(t, wantDigest, persisted.ResultSummary, "persisted receipt summary must be the result digest")
@@ -304,7 +304,7 @@ func TestInferenceDispatch_ProcessEnvelope_NilInferenceHandler_FailsClosed(t *te
 	logger := testutil.NewTestLogger()
 
 	// The Operator's session start creates its audit session row; the envelopes below are recorded against it.
-	auditStore := storagetest.NewTestAuditStore(t, inferenceIntegrationSessionID)
+	eventsStore := storagetest.NewTestEventsStore(t, inferenceIntegrationSessionID)
 
 	pubKey, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -323,7 +323,7 @@ func TestInferenceDispatch_ProcessEnvelope_NilInferenceHandler_FailsClosed(t *te
 		AuditorSigningKey:  privKey,
 		AuditorKeyID:       hex.EncodeToString(pubKey),
 		Scrubbing:          mustNewScrubbingSvc(t, logger),
-		AuditStore:         auditStore,
+		EventsStore:        eventsStore,
 	}), OutboundModeDeps{
 		GovernanceCoreDeps: GovernanceCoreDeps{
 			ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-inference-int"}, SessionID: inferenceIntegrationSessionID},

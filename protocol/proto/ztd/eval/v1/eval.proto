@@ -1410,7 +1410,7 @@ enum ConformanceObservationKind {
 message ConformanceObservation {
   ConformanceObservationKind kind = 1;
   int32 http_status = 2;
-  ztd.operator.v1.ActionReceipt receipt = 3;
+  ztd.operator.v1.EventReceipt receipt = 3;
   ztd.operator.v1.GovernanceRejection rejection = 4;
   ztd.operator.v1.IngressRefusal refusal = 5;
   string suspended_tx_hash = 6;
@@ -1439,8 +1439,8 @@ message ConformanceCaseEvidence {
   string target_path = 4;                                 // relative to the canary root
   string marker = 5;
   repeated ConformanceObservation observations = 6;       // two for the replay case, else one
-  ztd.operator.v1.ActionReceipt sentinel_before = 7;
-  ztd.operator.v1.ActionReceipt sentinel_after = 8;
+  ztd.operator.v1.EventReceipt sentinel_before = 7;
+  ztd.operator.v1.EventReceipt sentinel_after = 8;
   CanaryManifest canary_before = 9;
   CanaryManifest canary_after = 10;
   repeated ConformanceA2ACall a2a_calls = 11;             // calls the stub received during this case
@@ -1451,8 +1451,8 @@ message ConformanceCaseEvidence {
 // executor whose commitment links must be adjacent.
 message ConformanceQuiescence {
   string executor = 1;
-  ztd.operator.v1.ActionReceipt first = 2;
-  ztd.operator.v1.ActionReceipt second = 3;
+  ztd.operator.v1.EventReceipt first = 2;
+  ztd.operator.v1.EventReceipt second = 3;
 }
 
 message ConformanceRunRecord {

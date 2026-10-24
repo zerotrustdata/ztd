@@ -53,7 +53,7 @@ The reporting pipeline separates evidence ingestion, validation, grading, analys
 flowchart TD
     subgraph Ingestion ["1. Read-Only Ingestion"]
         EVAL["Evaluation Runner"] --> IMP["Typed Evidence Importers"]
-        AUDIT["SQLite Audit Store"] --> IMP
+        EVENTS["Local-First Events Store"] --> IMP
         LEDGER["Git File Ledger"] --> IMP
         COMMIT["Commitment Ledger"] --> IMP
         KSI["KSI Evaluator Snapshots"] --> IMP
@@ -86,7 +86,7 @@ Every compliance evaluation binds to an immutable, canonical `AssessmentScope` d
 - **Environment Context**: Image digests, component inventory, network topology hash, and cryptographic mode.
 - **Evidence Time Window**: Protobuf timestamps `assessment_window_start` and `assessment_window_end` bounding the evaluation period, and `assessment_as_of`, which must fall inside that window.
 - **Policy Configuration**: Active governance posture (`active_posture`), doctrine bundle SHA-256 digests, and consensus policy hashes.
-- **Admitted Sources**: Content-addressed manifests declaring all evaluation runs, audit databases, and operational stores admitted into the assessment.
+- **Admitted Sources**: Content-addressed manifests declaring all evaluation runs, events database, and operational stores admitted into the assessment.
 
 Context that cannot be captured as a content-addressed artifact (e.g. physical perimeter security) is recorded as a typed `UnavailableAssessmentContext` record with an explicit rationale. The generator reflects these declarations as `assessment_context_unavailable` diagnostics, bounding the scope's claims.
 
@@ -100,7 +100,7 @@ The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, c
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 | Confirms that each selected permitted governed action has a valid receipt, a posture-specific deterministic chain, and an independently observed declared effect. |
 | **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that prohibited mutations fail closed at the expected layer and that the prohibited terminal state is independently observed absent. |
-| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `ActionReceipt` records bound to action, identity, transaction, and state-root fields. |
+| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `EventReceipt` records bound to action, identity, transaction, and state-root fields. |
 | **`ZTD-AU-PERSIST-001`** | Receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
 | **`ZTD-AU-CHAIN-001`** | Protocol Chain Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates unbroken cryptographic hash chains across sequential deterministic stage events. |
 | **`ZTD-AU-COMMIT-001`** | Commitment Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates signatures and canonical bindings, including the declared predecessor hash, for `commitment_ledger` records. |
@@ -245,7 +245,7 @@ ztd compliance release-prepare --new-key
 - [Compliance Alignment](compliance-alignment.md): High-level framework mappings, status semantics, and responsibility matrices.
 - [FIPS 140-3 Module Linkage and Scope](fips140-3.md): Cryptographic module boundary, pure-Go linkage, and runtime verification.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework and posture policies.
-- [Storage Architecture](../architecture/storage.md): Local-First Audit Architecture, audit stores, and commitment ledgers.
+- [Storage Architecture](../architecture/storage.md): Local-First Events Architecture, the Local-First Events Store, and commitment ledgers.
 - [Protocol Specification](../../protocol/docs/spec.md): Canonical wire contracts and protobuf schemas.
 - [Evaluation Architecture](../architecture/evals.md): Evaluation campaigns, scoring engines, and telemetry capture.
 - [Release Process](../devs/release_process.md): Release preparation, smoke tests, and compliance artifact publishing.

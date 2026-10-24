@@ -139,7 +139,7 @@ The Gateway encodes WebAuthn challenges and credential IDs as unpadded base64url
 1. GET `/api/v1/approvals/{txHash}/challenge` with credentials.
 2. Decode `publicKey` and invoke `navigator.credentials.get({ publicKey })`.
 3. POST `/api/v1/approvals/{txHash}/verify` with flat assertion as the entire JSON body.
-4. Response 200 contains the executed `ActionReceipt`.
+4. Response 200 contains the executed `EventReceipt`.
 
 ## SSE Live Audit Stream
 

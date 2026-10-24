@@ -173,7 +173,7 @@ func NewSlowMockL3Notary(delay time.Duration) *SlowMockL3Notary {
 	return &SlowMockL3Notary{Delay: delay}
 }
 
-// MockTransactionAudit implements TransactionAuditStore interface for testing.
+// MockTransactionAudit implements TransactionEventsStore interface for testing.
 // Simple version that is a no-op.
 type MockTransactionAudit struct{}
 

@@ -33,8 +33,8 @@ import (
 
 const outcomeTestSkill = "list_directory"
 
-func outcomeReceipt(txID string) *operatorv1.ActionReceipt {
-	return &operatorv1.ActionReceipt{
+func outcomeReceipt(txID string) *operatorv1.EventReceipt {
+	return &operatorv1.EventReceipt{
 		TransactionId:   txID,
 		TransactionHash: "hash-" + txID,
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,

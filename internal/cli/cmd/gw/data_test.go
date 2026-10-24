@@ -87,7 +87,7 @@ func TestDataAuditCmd(t *testing.T) {
 	t.Run("audit command has correct use", func(t *testing.T) {
 		cmd := dataAuditCmd()
 		assert.Equal(t, "audit", cmd.Use)
-		assert.Contains(t, cmd.Short, "Query the Gateway audit store")
+		assert.Contains(t, cmd.Short, "Query the Gateway local-first events store")
 	})
 
 	t.Run("audit has operator-session-id flag", func(t *testing.T) {

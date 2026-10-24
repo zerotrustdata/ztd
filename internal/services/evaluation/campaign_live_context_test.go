@@ -22,7 +22,7 @@ import (
 func TestCampaignLiveContext_V6StillRequiresCompletedQueryEvidence(t *testing.T) {
 	call := AgentToolCall{
 		ToolName: agentToolInvestigationCtx,
-		Receipt:  &AgentTraceReceipt{ActionReceipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
+		Receipt:  &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
 	}
 	require.ErrorIs(t, verifyContextRetrieval(&AgentTrace{SchemaVersion: agentTraceSchemaVersionV6}, call), constants.ErrEvaluationEvidenceTraceMismatch)
 }

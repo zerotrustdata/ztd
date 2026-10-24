@@ -30,13 +30,13 @@ import (
 
 // --- helpers for verifyInferenceCompletion tests ---
 
-// signTestReceipt signs an ActionReceipt's canonical form and attaches a
+// signTestReceipt signs an EventReceipt's canonical form and attaches a
 // signed ReceiptPersistenceAttestation, mirroring L5Actuator.signReceipt and
 // signReceiptPersistenceAttestation.
-func signTestReceipt(t *testing.T, receipt *operatorv1.ActionReceipt, signerPriv ed25519.PrivateKey, keyID string) {
+func signTestReceipt(t *testing.T, receipt *operatorv1.EventReceipt, signerPriv ed25519.PrivateKey, keyID string) {
 	t.Helper()
 	receipt.SignerKeyId = keyID
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(signerPriv, canonical))
 
@@ -125,11 +125,11 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 
 	// completedReceipt returns a signed COMPLETED receipt whose
 	// ResultSummary binds the given result's canonical digest.
-	completedReceipt := func(t *testing.T, result *operatorv1.InferenceResult) *operatorv1.ActionReceipt {
+	completedReceipt := func(t *testing.T, result *operatorv1.InferenceResult) *operatorv1.EventReceipt {
 		t.Helper()
 		digest, err := models.ComputeInferenceResultDigest(result)
 		require.NoError(t, err)
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -255,7 +255,7 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 
 	t.Run("failed receipt terminates as typed failure", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -276,7 +276,7 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 
 	t.Run("completed receipt without result fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -333,9 +333,9 @@ func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 	const txHash = "hash-inference-001"
 	cmdEnv := &commonv1.GovernanceEnvelope{Id: txID, TransactionHash: txHash}
 
-	failedReceiptWithCode := func(t *testing.T, code operatorv1.ReceiptFailureCode) *operatorv1.ActionReceipt {
+	failedReceiptWithCode := func(t *testing.T, code operatorv1.ReceiptFailureCode) *operatorv1.EventReceipt {
 		t.Helper()
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,

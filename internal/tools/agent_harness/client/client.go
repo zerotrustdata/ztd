@@ -387,7 +387,7 @@ func (c *Client) AnnounceApproval(txHash string, decision ApprovalDecision) {
 // WaitForApproval prints the human approval banner for txHash, asking for decision,
 // waits on sub for the decision, and returns the signed receipt: the resumed
 // receipt on approve, or the L3_DENIED rejection receipt on deny.
-func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.EventReceipt, error) {
 	c.AnnounceApproval(txHash, decision)
 
 	receipt, err := sub.Wait(ctx, txHash, userID)

@@ -25,7 +25,7 @@ import (
 func TestNewOperatorSessionService(t *testing.T) {
 	infra := setupTestInfrastructure(t, true)
 
-	svc, err := NewOperatorSessionService(infra.DocStore, infra.AuditStore, infra.Logger)
+	svc, err := NewOperatorSessionService(infra.DocStore, infra.EventsStore, infra.Logger)
 
 	require.NoError(t, err)
 	require.NotNil(t, svc)
@@ -33,12 +33,12 @@ func TestNewOperatorSessionService(t *testing.T) {
 	assert.Equal(t, infra.Logger, svc.logger)
 }
 
-func TestNewOperatorSessionService_RequiresAuditStore(t *testing.T) {
+func TestNewOperatorSessionService_RequiresEventsStore(t *testing.T) {
 	infra := setupTestInfrastructure(t, true)
 
 	svc, err := NewOperatorSessionService(infra.DocStore, nil, infra.Logger)
 
-	require.ErrorIs(t, err, constants.ErrAuditStoreRequired)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRequired)
 	assert.Nil(t, svc)
 }
 
@@ -176,7 +176,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 
 	t.Run("EmptySessionID_IsRejectedBeforeAnyWrite", func(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), "", "user-1", "org-1", "operator-1", "mTLS")
-		require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
+		require.ErrorIs(t, err, constants.ErrEventsStoreSessionMissing)
 
 		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), "")
 		require.NoError(t, err)
@@ -185,12 +185,12 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 
 	t.Run("StartsAuditSessionOnce", func(t *testing.T) {
 		operatorSessionID := "op-session-audit-start"
-		before, err := infra.AuditStore.GetOperatorSession(operatorSessionID)
+		before, err := infra.EventsStore.GetOperatorSession(operatorSessionID)
 		require.NoError(t, err)
 		require.Nil(t, before)
 
 		require.NoError(t, svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS"))
-		started, err := infra.AuditStore.GetOperatorSession(operatorSessionID)
+		started, err := infra.EventsStore.GetOperatorSession(operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, started)
 		assert.Equal(t, string(constants.SessionTypeOperator), started.SessionType)
@@ -198,7 +198,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 
 		// Re-persisting the same session (idempotent re-claim) leaves the row intact.
 		require.NoError(t, svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS"))
-		again, err := infra.AuditStore.GetOperatorSession(operatorSessionID)
+		again, err := infra.EventsStore.GetOperatorSession(operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, again)
 		assert.Equal(t, started.CreatedAt, again.CreatedAt)
@@ -277,7 +277,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 	})
 
 	t.Run("NilDatabase_PanicsOnPersist", func(t *testing.T) {
-		svcNilDB := newTestOperatorSessionService(t, nil, infra.AuditStore, infra.Logger)
+		svcNilDB := newTestOperatorSessionService(t, nil, infra.EventsStore, infra.Logger)
 
 		assert.Panics(t, func() {
 			svcNilDB.PersistOperatorSession(t.Context(), "op-session-nil-db", "user-1", "org-1", "operator-1", "mTLS")
@@ -285,7 +285,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 	})
 
 	t.Run("NilLogger_PersistsWithoutError", func(t *testing.T) {
-		svcNilLogger := newTestOperatorSessionService(t, infra.DocStore, infra.AuditStore, nil)
+		svcNilLogger := newTestOperatorSessionService(t, infra.DocStore, infra.EventsStore, nil)
 
 		err := svcNilLogger.PersistOperatorSession(t.Context(), "op-session-nil-logger", "user-1", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
@@ -327,7 +327,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS"))
 
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-2", "mTLS")
-		require.ErrorIs(t, err, constants.ErrAuditSessionConflict)
+		require.ErrorIs(t, err, constants.ErrEventsStoreSessionConflict)
 	})
 
 	t.Run("SpecialCharactersInFields_PersistCorrectly", func(t *testing.T) {

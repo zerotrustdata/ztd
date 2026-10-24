@@ -28,7 +28,7 @@ import (
 
 func TestGetEventReceipt_DecodesTheCanonicalReceipt(t *testing.T) {
 	t.Parallel()
-	receipt := &operatorv1.ActionReceipt{TransactionId: "transaction/1", TransactionHash: "hash-1", SignerKeyId: "signer-1"}
+	receipt := &operatorv1.EventReceipt{TransactionId: "transaction/1", TransactionHash: "hash-1", SignerKeyId: "signer-1"}
 	body, err := protojson.Marshal(receipt)
 	require.NoError(t, err)
 
@@ -59,7 +59,7 @@ func TestGetEventReceipt_DecodesTheCanonicalReceipt(t *testing.T) {
 	broken := scriptedClient(t, http.StatusOK, `{`, "")
 	_, _, err = broken.GetEventReceipt(context.Background(), "transaction/1")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "decode canonical action receipt")
+	assert.Contains(t, err.Error(), "decode canonical event receipt")
 }
 
 func TestGetTrustedSignerPublicKey_ValidatesTheGatewayAnswer(t *testing.T) {

@@ -38,15 +38,9 @@ The `acting_app_id` field in a **Governance Envelope**. It identifies the applic
 
 ---
 
-## Action Receipt
-
-The canonical protobuf `ztd.operator.v1.ActionReceipt`, signed with Ed25519 by the **L5 Actuator** as evidence of an executing, completed, or failed transaction. It binds the transaction ID and hash, execution status (`ExecutionStatus`: `EXECUTION_STATUS_EXECUTING`, `EXECUTION_STATUS_COMPLETED`, `EXECUTION_STATUS_FAILED`, `EXECUTION_STATUS_CANCELLED`, or `EXECUTION_STATUS_TIMEOUT`), failure code (`ReceiptFailureCode`), result summary, state roots before and after execution, completion timestamp (`executed_at_unix_ms`), signer key ID, signature, L2 and L3 verification status, deterministic stage evidence, and persistence attestation. L5 signs and persists an initial `EXECUTING` receipt to the SQLite audit store before dispatch (failing closed on signing or storage error), then signs and persists the final receipt and attaches a **Receipt Persistence Attestation** upon completion.
-
----
-
 ## Actuator (L5 Actuator)
 
-The singular execution boundary in the Operator substrate (`internal/services/governance/l5_actuator.go`). After the **L4 Warden** returns a verified transaction, L5 executes a fail-closed sequence: it signs and persists an initial `EXECUTING` **Action Receipt**, appends a signed **Commitment Attestation** to the SQLite **Commitment Ledger**, rehydrates scrubbed tokens locally through the **Sovereign Execution Boundary**, mints a just-in-time single-action **Capability**, dispatches the action to the registered execution handler, captures deterministic stage evidence, dissolves the capability, finalizes and signs the final receipt, and persists a signed **Receipt Persistence Attestation**. Signing, initial receipt persistence, or commitment persistence failure halts execution immediately.
+The singular execution boundary in the Operator substrate (`internal/services/governance/l5_actuator.go`). After the **L4 Warden** returns a verified transaction, L5 executes a fail-closed sequence: it signs and persists an initial `EXECUTING` **Event Receipt**, appends a signed **Commitment Attestation** to the SQLite **Commitment Ledger**, rehydrates scrubbed tokens locally through the **Sovereign Execution Boundary**, mints a just-in-time single-action **Capability**, dispatches the action to the registered execution handler, captures deterministic stage evidence, dissolves the capability, finalizes and signs the final receipt, and persists a signed **Receipt Persistence Attestation**. Signing, initial receipt persistence, or commitment persistence failure halts execution immediately.
 
 ---
 
@@ -56,15 +50,9 @@ A typed compliance record defined in `ztd.compliance.v1.AssessmentScope` that fi
 
 ---
 
-## Audit Store
-
-The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLAuditStore`) of Operator sessions, events, file mutations, deterministic stage evidence, and persistence attestations. Each **Action Receipt** is stored as the current event receipt on its `events` row (`event_receipt_*` columns, `internal/services/storage/event_receipt.go`); there is no separate receipts table. Every content column (event text and command fields, event receipt bodies, file paths and diff stats, session titles) is encrypted at rest using AES-256-GCM through the local vault (`vault.Vault`), with no plaintext branch: a locked or absent vault fails the write with `ErrAuditStoreVaultLocked`. Records are scoped to existing sessions: record paths never create a session row, and an unknown session fails with `ErrAuditSessionUnknown`. The owning runtime starts its session with `StartSession` (atomic and idempotent) and marks it ended with `EndSession`. Retention prunes records older than `RetentionDays` (default 90) and prunes only ended sessions past retention that no event row references (receipts live on event rows), so a live session is never pruned. In Gateway mode, these tables are part of `ztd.db`; each remote Governed Operator retains its own authoritative local audit database.
-
----
-
 ## Autochthon
 
-The `ztd autochthon` runtime (`internal/services/autochthon/`). It is a standalone observer, not an Operator mode. It runs in the foreground with no Gateway, enrollment, or listener. It samples the host once per second, breeds a fixed-topology predictor by selection and mutation (no gradient training), and records each sample in a hash-chained tally under `.ztd/autochthon/`. It accepts no **Governance Envelope** and produces no **Action Receipt**. `ztd autochthon status` verifies the tally chain. See [Operator Architecture](../architecture/operator.md#autochthon-subsystem).
+The `ztd autochthon` runtime (`internal/services/autochthon/`). It is a standalone observer, not an Operator mode. It runs in the foreground with no Gateway, enrollment, or listener. It samples the host once per second, breeds a fixed-topology predictor by selection and mutation (no gradient training), and records each sample in a hash-chained tally under `.ztd/autochthon/`. It accepts no **Governance Envelope** and produces no **Event Receipt**. `ztd autochthon status` verifies the tally chain. See [Operator Architecture](../architecture/operator.md#autochthon-subsystem).
 
 ---
 
@@ -76,7 +64,7 @@ The admission-gating **State Root** read from `StateRootService`. It is the root
 
 ## Canonical Gateway Database
 
-The Gateway's primary SQLite database, `ztd.db` (`constants.DbFilename`), opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService` (`internal/services/gateway/gateway_db.go`). Its canonical schema, `internal/services/gateway/db/schema.sql`, creates `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), and `sse_events`. The stores opened over the same database create their own tables: `storage.ReplayStore` creates `nonces`, the SQLite audit store creates `sessions`, `events` (which holds the **Execution Record**), `file_mutation_log`, and `commitment_ledger`, and `suspended_transaction_store.go` creates `suspended_transactions`. The public mirror is a separate file, `public-mirror/mirror.db` (`constants.PublicMirrorDBPath`). Remote Operator databases are distinct; each maintains an independent lifecycle and sovereignty boundary.
+The Gateway's primary SQLite database, `ztd.db` (`constants.DbFilename`), opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService` (`internal/services/gateway/gateway_db.go`). Its canonical schema, `internal/services/gateway/db/schema.sql`, creates `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), and `sse_events`. The stores opened over the same database create their own tables: `storage.ReplayStore` creates `nonces`, the Local-First Events Store creates `sessions`, `events` (which holds the **Execution Record**), `file_mutation_log`, and `commitment_ledger`, and `suspended_transaction_store.go` creates `suspended_transactions`. The public mirror is a separate file, `public-mirror/mirror.db` (`constants.PublicMirrorDBPath`). Remote Operator databases are distinct; each maintains an independent lifecycle and sovereignty boundary.
 
 ---
 
@@ -160,7 +148,11 @@ A one-time token (`internal/models/auth.go`, `EnrollmentToken`) used to bridge p
 
 ## Event Receipt
 
-The current signed **Action Receipt** projection for a transaction, stored on the `events` table as `event_receipt_*` columns with `event_receipt_status` marking the one current row (`internal/services/storage/event_receipt.go`). It is served by the Gateway at `/api/v1/audit/event-receipts` and `/api/v1/audit/event-receipts/export` (`internal/constants/api_paths.go`, `internal/services/gateway/gateway_http_router.go`). The Gateway-facing chain event is `ztd.v1.operator.receipt.recorded` (`internal/constants/events_gen.go`). The earlier `receipts` table is removed.
+The canonical protobuf `ztd.operator.v1.EventReceipt`, signed with Ed25519 by the **L5 Actuator** as evidence for a governed request event. It covers reads, observations, mutations, and governance rejections. It binds the transaction ID and hash, request `event_type` and `action_type`, execution status, typed failure and rejection codes, result summary, state roots, timestamp, signer key ID, L2 and L3 verification status, and deterministic stage evidence. L5 signs and persists an initial `EXECUTING` receipt before dispatch, then a final receipt with a **Receipt Persistence Attestation**. A governance rejection produces a signed `FAILED` event receipt without dispatch; a refusal before L4 carries no receipt.
+
+Each receipt stage appends a `ztd.v1.operator.receipt.recorded` chain event whose `content_text` holds the canonical receipt body. The `event_receipt_*` columns mark the current receipt for a transaction; `EventReceiptRecord` is its searchable storage/API projection, with the signed protobuf nested under `event_receipt`. A later non-terminal stage cannot replace a terminal receipt. See [Storage Architecture](../architecture/storage.md#event-receipt).
+
+The Gateway serves event receipts at `/api/v1/audit/event-receipts` and `/api/v1/audit/event-receipts/export`. The CLI uses `ztd audit event-receipts`, and `ztd report all` writes `event_receipts.csv`. The MCP query identifiers `event_receipt_list` and `event_receipt_get` name the event receipt query surface; both read these same event rows through `LocalFirstEventsStore`. Each governed query produces its own event receipt for the query transaction. The executing runtime's Local-First Events Store is authoritative; Gateway copies of remote Operator receipts are best-effort projections.
 
 ---
 
@@ -186,7 +178,7 @@ The pipeline produces evidence up to L3; L4 requires historical effectiveness st
 
 ## Execution Record
 
-The `events` table in `ztd.db` (`internal/services/storage/audit_store.go`). It is the sole record of each command and file operation, keyed by `execution_id`. It holds the full raw stdout and stderr, gzip-compressed and encrypted with the local vault, and records content hashes. Nothing truncates it. Egress is scrubbed by the publisher, not by the local record. Full file diffs are not stored; they are computed from the git file ledger on demand, and the `file_mutation_log` table keeps only encrypted diff statistics.
+The `events` table in `ztd.db` (`internal/services/storage/local_first_events_store.go`). It is the sole record of each command and file operation, keyed by `execution_id`. It holds the full raw stdout and stderr, gzip-compressed and encrypted with the local vault, and records content hashes. Nothing truncates it. Egress is scrubbed by the publisher, not by the local record. Full file diffs are not stored; they are computed from the git file ledger on demand, and the `file_mutation_log` table keeps only encrypted diff statistics.
 
 ---
 
@@ -310,9 +302,15 @@ The git-backed file-mutation history maintained by the Governed Operator (`inter
 
 ---
 
-## Local-First Audit Architecture (LFAA)
+## Local-First Events Architecture (LFEA)
 
-The architectural model in which each target host remains the authoritative root of trust for its own execution evidence, file history, and host effects. The local audit database (including execution records), commitment ledger, and git file ledger preserve the raw forensic artifacts required to reconstruct and verify execution. The Gateway coordinates platform workflows and relays commitments, while sensitive execution details remain bound to the Operator host.
+The architectural model in which each target host remains the authoritative root of trust for its own execution evidence, file history, and host effects. The local events database (including execution records), commitment ledger, and git file ledger preserve the raw forensic artifacts required to reconstruct and verify execution. The Gateway coordinates platform workflows and relays commitments, while sensitive execution details remain bound to the Operator host.
+
+---
+
+## Local-First Events Store
+
+The storage service (`internal/services/storage/local_first_events_store.go`, `LocalFirstEventsStore`) for Operator sessions, the append-only `events` chain, file mutations, deterministic stage evidence, and persistence attestations in the runtime's canonical `ztd.db`. It uses the same database connection owned by `CanonicalDBService`; it is not a separate events database or a second copy of the local events. Each **Event Receipt** stage appends a chained event; searchable `event_receipt_*` columns mark the current receipt for each transaction (`internal/services/storage/event_receipt.go`). There is no separate receipts table. Every content column (event text and command fields, event receipt bodies, file paths and diff stats, session titles) is encrypted at rest using AES-256-GCM through the local vault (`vault.Vault`), with no plaintext branch: a locked or absent vault fails the write with `ErrLocalFirstEventsStoreVaultLocked`. Records are scoped to existing sessions: record paths never create a session row, and an unknown session fails with `ErrEventsStoreSessionUnknown`. The owning runtime starts its session with `StartSession` (atomic and idempotent) and marks it ended with `EndSession`. Retention prunes records older than `RetentionDays` (default 90) and prunes only ended sessions past retention that no event row references (receipts live on event rows), so a live session is never pruned. In Gateway mode, these tables are part of `ztd.db`; each remote Governed Operator retains its own authoritative local events database.
 
 ---
 
@@ -354,7 +352,7 @@ The enrolled-CLI automation path for governed shell execution across one or more
 
 ## OperatorSession
 
-The runtime authorization and execution context of an active Governed Operator, identified by `operator_session_id`. It scopes the Operator's SPIFFE workload identity, pub/sub communication channels (`cmd:<operator_id>:<operator_session_id>`), audit records, and isolated git ledger repository. The Governed Operator holds it. Its mTLS certificate carries the session in the SPIFFE URI SAN, and `handleOperatorAuth` in `internal/services/gateway/gateway_auth.go` matches that SAN against the linked Operator document (`ValidateOperatorSession`). The Gateway persists the session in the `operator_sessions` collection (`constants.CollectionOperatorSessions`) through `OperatorSessionService` (`internal/services/gateway/operator_session_service.go`) and starts a matching `sessions` row in the audit store. It is disjoint from **CLISession** and **WebSession**.
+The runtime authorization and execution context of an active Governed Operator, identified by `operator_session_id`. It scopes the Operator's SPIFFE workload identity, pub/sub communication channels (`cmd:<operator_id>:<operator_session_id>`), audit records, and isolated git ledger repository. The Governed Operator holds it. Its mTLS certificate carries the session in the SPIFFE URI SAN, and `handleOperatorAuth` in `internal/services/gateway/gateway_auth.go` matches that SAN against the linked Operator document (`ValidateOperatorSession`). The Gateway persists the session in the `operator_sessions` collection (`constants.CollectionOperatorSessions`) through `OperatorSessionService` (`internal/services/gateway/operator_session_service.go`) and starts a matching `sessions` row in the Local-First Events Store. It is disjoint from **CLISession** and **WebSession**.
 
 ---
 
@@ -396,13 +394,13 @@ A Governed Operator started with the `provenance` capability (`OperatorCapabilit
 
 ## Receipt Failure Code
 
-A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `ActionReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because a UEI placeholder could not be rehydrated (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
+A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `EventReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because a UEI placeholder could not be rehydrated (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
 
 ---
 
 ## Receipt Persistence Attestation
 
-The canonical protobuf `ztd.operator.v1.ReceiptPersistenceAttestation`, signed by the Actuator key together with the final `ActionReceipt` and persisted with it in the same SQLite audit store write; the attestation is dropped if that write fails. It binds the transaction ID, receipt signature digest, persistence timestamp, audit record ID, signer key ID, and signature. Upstream receipt relays verify both the receipt signature and this persistence attestation.
+The canonical protobuf `ztd.operator.v1.ReceiptPersistenceAttestation`, signed by the Actuator key together with the final `EventReceipt` and persisted with it in the same Local-First Events Store write; the attestation is dropped if that write fails. It binds the transaction ID, receipt signature digest, persistence timestamp, audit record ID, signer key ID, and signature. Upstream receipt relays verify both the receipt signature and this persistence attestation.
 
 ---
 
@@ -484,7 +482,7 @@ The Gateway-hosted L2 consensus panel, selected as the `tribunal` consensus prov
 
 ## Vault
 
-The local AES-256-GCM encryption service and key management hierarchy (`internal/services/vault/`, `vault.Vault`). It secures sensitive audit fields (including execution events) and encrypted KV token records. The audit store and encrypted KV token records fail closed when the vault is locked or uninitialized; the file ledger refuses to mirror while the vault is locked and never writes plaintext. The encryption vault is distinct from the **Execution Record**, which is the `events` table in `ztd.db`.
+The local AES-256-GCM encryption service and key management hierarchy (`internal/services/vault/`, `vault.Vault`). It secures sensitive audit fields (including execution events) and encrypted KV token records. The Local-First Events Store and encrypted KV token records fail closed when the vault is locked or uninitialized; the file ledger refuses to mirror while the vault is locked and never writes plaintext. The encryption vault is distinct from the **Execution Record**, which is the `events` table in `ztd.db`.
 
 ---
 

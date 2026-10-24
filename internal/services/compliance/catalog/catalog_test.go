@@ -35,7 +35,7 @@ func validAssertion() *compliancev1.ControlAssertionDefinition {
 		Responsibility:          "platform",
 		ApplicableActionClasses: []string{"FILE_DELETE"},
 		ApplicableArms:          []string{"governed"},
-		RequiredEvidenceTypes:   []string{"action_receipt", "state_observation"},
+		RequiredEvidenceTypes:   []string{"event_receipt", "state_observation"},
 		RequiredGraderRefs:      []*compliancev1.VersionedReference{{Id: "policy_outcome", Version: "1.0.0"}},
 		RequiredVerifierRefs:    []*compliancev1.VersionedReference{{Id: "receipt_integrity", Version: "1.0.0"}},
 		MinimumEvidenceLevel:    "L3",
@@ -269,9 +269,9 @@ func TestLoadCanonicalAssertionCatalogDefinesTruthfulNativeClaims(t *testing.T) 
 		verifierIDs       []string
 		forbiddenEvidence string
 	}{
-		{assertionID: "ZTD-GOV-BLOCK-001", version: "2.0.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"deterministic_stage", "state_observation"}, graderIDs: []string{"policy_outcome", "protocol_chain"}, verifierIDs: []string{"deterministic_stage_chain", "state_observation"}, forbiddenEvidence: "action_receipt"},
-		{assertionID: "ZTD-AU-RECEIPT-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"action_receipt"}, graderIDs: []string{"receipt_integrity"}, verifierIDs: []string{"receipt_integrity"}},
-		{assertionID: "ZTD-AU-PERSIST-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"action_receipt", "final_persistence_attestation"}, graderIDs: []string{"receipt_persistence"}, verifierIDs: []string{"receipt_integrity", "receipt_persistence"}},
+		{assertionID: "ZTD-GOV-BLOCK-001", version: "2.0.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"deterministic_stage", "state_observation"}, graderIDs: []string{"policy_outcome", "protocol_chain"}, verifierIDs: []string{"deterministic_stage_chain", "state_observation"}, forbiddenEvidence: "event_receipt"},
+		{assertionID: "ZTD-AU-RECEIPT-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"event_receipt"}, graderIDs: []string{"receipt_integrity"}, verifierIDs: []string{"receipt_integrity"}},
+		{assertionID: "ZTD-AU-PERSIST-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"event_receipt", "final_persistence_attestation"}, graderIDs: []string{"receipt_persistence"}, verifierIDs: []string{"receipt_integrity", "receipt_persistence"}},
 		{assertionID: "ZTD-AU-COMMIT-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"commitment"}, graderIDs: []string{"commitment_attestation"}, verifierIDs: []string{"commitment_attestation"}, forbiddenEvidence: "ledger_commit"},
 		{assertionID: "ZTD-CM-STATE-001", version: "2.1.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"state_observation", "metric"}, graderIDs: []string{"independent_state"}, verifierIDs: []string{"state_observation", "eval_metric"}},
 		{assertionID: "ZTD-IA-MTLS-001", version: "2.0.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"identity_attestation", "state_observation", "metric"}, graderIDs: []string{"authenticated_operation"}, verifierIDs: []string{"identity_attestation", "state_observation", "eval_metric"}},

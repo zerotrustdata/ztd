@@ -16,7 +16,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
-func reportSessions(ctx context.Context, outDir string, store *storage.SQLAuditStore) (FileResult, error) {
+func reportSessions(ctx context.Context, outDir string, store *storage.LocalFirstEventsStore) (FileResult, error) {
 	path := filepath.Join(outDir, constants.ReportSessionsFilename)
 
 	var rows []Row
@@ -50,7 +50,7 @@ func reportSessions(ctx context.Context, outDir string, store *storage.SQLAuditS
 	return res, nil
 }
 
-func reportEvents(ctx context.Context, outDir string, store *storage.SQLAuditStore) (FileResult, error) {
+func reportEvents(ctx context.Context, outDir string, store *storage.LocalFirstEventsStore) (FileResult, error) {
 	path := filepath.Join(outDir, constants.ReportEventsFilename)
 
 	var rows []Row

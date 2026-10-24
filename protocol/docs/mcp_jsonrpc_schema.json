@@ -449,11 +449,11 @@
       ]
     },
     "A2ASuccessResponse": {
-      "description": "Successful A2A skill execution response. The result field contains a serialized operator ActionReceipt protobuf message.",
+      "description": "Successful A2A skill execution response. The result field contains a serialized operator EventReceipt protobuf message.",
       "properties": {
         "id": { "type": "string", "description": "The transaction hash." },
         "result": {
-          "description": "The action receipt from the operator (protobuf type). Contains transaction_id, transaction_hash, status, result_summary, state_root_before, state_root_after, executed_at_unix_ms, signer_key_id, signature, l2_status, and l3_status fields.",
+          "description": "The event receipt from the operator (protobuf type). Contains transaction_id, transaction_hash, status, result_summary, state_root_before, state_root_after, executed_at_unix_ms, signer_key_id, signature, l2_status, and l3_status fields.",
           "type": "object"
         }
       },

@@ -81,7 +81,7 @@ func decodeHTTPBody(status int, body []byte, success proto.Message) *GovernedOut
 		return untypedOutcome()
 	}
 	switch msg := success.(type) {
-	case *operatorv1.ActionReceipt:
+	case *operatorv1.EventReceipt:
 		if msg.GetTransactionId() == "" {
 			return untypedOutcome()
 		}
@@ -202,7 +202,7 @@ func decodeReceiptJSON(raw json.RawMessage) *GovernedOutcome {
 	if len(raw) == 0 {
 		return untypedOutcome()
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := decodeStrictProtoJSON(raw, receipt); err != nil {
 		return untypedOutcome()
 	}
@@ -236,7 +236,7 @@ func untypedOutcome() *GovernedOutcome {
 	return &GovernedOutcome{Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED}}
 }
 
-func receiptOutcome(receipt *operatorv1.ActionReceipt) *GovernedOutcome {
+func receiptOutcome(receipt *operatorv1.EventReceipt) *GovernedOutcome {
 	return &GovernedOutcome{Observation: &evalv1.ConformanceObservation{
 		Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		Receipt: receipt,

@@ -61,7 +61,7 @@ graph TD
         RemoteOp["Governed Operator (PEP)<br/>Same Binary · operator start"]
         RemoteL4["L4 Warden<br/>Re-validates L1–L3 locally"]
         RemoteL5["L5 Actuator<br/>Execution + Signed receipt"]
-        RemoteLedger[("Local LFAA Ledger<br/>& Audit DB")]
+        RemoteLedger[("Local LFEA Ledger<br/>& Events DB")]
         RemoteOp --> RemoteL4 --> RemoteL5 --> RemoteLedger
     end
 
@@ -76,7 +76,7 @@ graph TD
     Browser -. "HTTPS :8443 · Session Cookie" .-> Surfaces
 
     Broker -. "Outbound-only mTLS WSS<br/>cmd:&lt;id&gt;:&lt;session&gt;" .-> RemoteOp
-    RemoteOp -. "receipts:&lt;id&gt;:&lt;session&gt;<br/>Signed ActionReceipt" .-> Broker
+    RemoteOp -. "receipts:&lt;id&gt;:&lt;session&gt;<br/>Signed EventReceipt" .-> Broker
 ```
 
 ## Architecture Zoom Series
@@ -95,4 +95,4 @@ This diagram anchors the platform architecture zoom series:
 - **Layered Substrate**: The Gateway is not an isolated service; it is an administrative service stack layered directly over the in-process Operator substrate. Embedded Operator commands run in-process through the Loopback Pub/Sub Bridge (`pubsub.NewInProcessPubSubClient`) and do not traverse network sockets.
 - **Listener Isolation**: Remote Operators open **no inbound listening ports**, connecting strictly outbound to the Gateway via mTLS WebSockets.
 - **Session-Scoped Channels**: Work is multiplexed across channels addressed by operator and operator session identity (`cmd:<id>:<session>`, `receipts:<id>:<session>`).
-- **Local-First Audit Architecture (LFAA)**: Each executing Operator is authoritative for its local audit database and ledger. Gateway receipt copies are best-effort projections, never the source of truth.
+- **Local-First Events Architecture (LFEA)**: Each executing Operator is authoritative for its local events database and ledger. Gateway receipt copies are best-effort projections, never the source of truth.

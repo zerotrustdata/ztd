@@ -8,7 +8,7 @@
 package governance
 
 // RuntimeIdentity is the Operator and audit session a runtime owns. The session
-// is the one the runtime's local audit store holds; it is never taken from an
+// is the one the runtime's local-first events store holds; it is never taken from an
 // envelope's claim.
 type RuntimeIdentity struct {
 	OperatorID string

@@ -17,7 +17,7 @@ type ApprovalCompletedEvent struct {
 	Type   string `json:"type"`
 	UserID string `json:"user_id"`
 	TxHash string `json:"tx_hash"`
-	// Receipt is the canonical protojson ActionReceipt of the resumed transaction,
+	// Receipt is the canonical protojson EventReceipt of the resumed transaction,
 	// signed by the executing Operator.
 	Receipt json.RawMessage `json:"receipt"`
 }

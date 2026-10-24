@@ -265,7 +265,7 @@ func (c *ProviderBoundaryObservationCoordinator) PreflightCommandDelivery(ctx co
 // verified final signed receipt. It fails closed when the command cannot be
 // delivered or the observer does not sign an outcome. A skipped attempt (no
 // attempt ID) returns a nil receipt.
-func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error) {
+func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.EventReceipt, error) {
 	if providerAttemptID == "" {
 		return nil, nil
 	}
@@ -292,7 +292,7 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	completedAtUnixMs int64,
 	failed bool,
 	retryCount uint32,
-) (*operatorv1.ActionReceipt, error) {
+) (*operatorv1.EventReceipt, error) {
 	if providerAttemptID == "" {
 		return nil, nil
 	}
@@ -315,7 +315,7 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	return c.publishCommand(ctx, command)
 }
 
-func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) (*operatorv1.ActionReceipt, error) {
+func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) (*operatorv1.EventReceipt, error) {
 	c.mu.Lock()
 	observer := c.observer
 	c.mu.Unlock()
@@ -398,7 +398,7 @@ type ObservationDispatchRequest struct {
 // does next, so a trace bracket that closes after the inference dispatch can
 // claim it. Only observation action types are accepted: this path admits no
 // L3 approval wait.
-func (d *DispatchService) DispatchObservation(ctx context.Context, req ObservationDispatchRequest) (*operatorv1.ActionReceipt, error) {
+func (d *DispatchService) DispatchObservation(ctx context.Context, req ObservationDispatchRequest) (*operatorv1.EventReceipt, error) {
 	actionType, err := constants.ValidateGovernedRequest(constants.EventType(req.EventType))
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: observation: %w", err)

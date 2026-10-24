@@ -146,7 +146,7 @@ func TestPKIPhase3_CLI_CSR_Optional(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -763,7 +763,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -793,7 +793,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -823,7 +823,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -852,7 +852,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -882,7 +882,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -923,7 +923,7 @@ func TestRegistrationService_CompleteRegistration(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -955,7 +955,7 @@ func TestRegistrationService_CompleteRegistration(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 
@@ -992,7 +992,7 @@ func TestRegistrationService_CompleteRegistration(t *testing.T) {
 
 		userSvc := NewUserService(db.GetDocStore(), logger)
 		cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+		operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 		cfg := &config.GatewayConfig{}
 		regSvc := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, cfg)
 

@@ -7,7 +7,7 @@
 
 //go:build integration
 
-// Real-stack live-context cases. The Data Operator answers audit_receipt_list
+// Real-stack live-context cases. The Data Operator answers event_receipt_list
 // from its own ledger and runs the scenario workspace's shell commands; only
 // the model provider is scripted. Rig: agent_evidence_real_stack_integration_test.go.
 package evaluation_test
@@ -30,7 +30,7 @@ import (
 // intent tool in AllowedTools, so the catalog's own entries are kept.
 func liveContextSurface(scenario *evalv1.EvaluationScenarioDefinition) {
 	candidates := append(append([]string(nil), scenario.GetAllowedTools()...),
-		constants.MCPToolRunShellCommand, constants.MCPToolAuditReceiptList)
+		constants.MCPToolRunShellCommand, constants.MCPToolEventReceiptList)
 	seen := make(map[string]bool, len(candidates))
 	surface := make([]string, 0, len(candidates))
 	for _, name := range candidates {
@@ -43,9 +43,9 @@ func liveContextSurface(scenario *evalv1.EvaluationScenarioDefinition) {
 	scenario.AllowedTools = surface
 }
 
-// liveContextAuditList is one audit_receipt_list turn for the investigation.
-func liveContextAuditList() fixtures.OllamaReply {
-	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolAuditReceiptList, Arguments: json.RawMessage(`{"limit":20}`)}}}
+// liveContextEventReceiptList is one event_receipt_list turn for the investigation.
+func liveContextEventReceiptList() fixtures.OllamaReply {
+	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolEventReceiptList, Arguments: json.RawMessage(`{"limit":20}`)}}}
 }
 
 // liveContextEcho is one run_shell_command turn that runs a real command with
@@ -60,7 +60,7 @@ func TestRealStackLiveContext_ReturnsJustExecutedCommandAndExcludesSetup(t *test
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true,
 		suffix:     "live-context",
-		replies:    []fixtures.OllamaReply{liveContextEcho(), liveContextAuditList(), {Content: "HEALTHY"}},
+		replies:    []fixtures.OllamaReply{liveContextEcho(), liveContextEventReceiptList(), {Content: "HEALTHY"}},
 		scenario:   liveContextSurface,
 	})
 	res := env.executeNext(t)
@@ -103,7 +103,7 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true,
 		suffix:     "live-fresh",
-		replies:    []fixtures.OllamaReply{liveContextAuditList(), {Content: "No prior receipts were returned."}},
+		replies:    []fixtures.OllamaReply{liveContextEventReceiptList(), {Content: "No prior receipts were returned."}},
 		scenario:   liveContextSurface,
 	})
 	res := env.executeNext(t)
@@ -120,7 +120,7 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 
 func TestRealStackLiveContext_EmbeddedHistoryScenario(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{shared: true, singleRole: true, scenarioID: "tool-select-investigation", suffix: "embedded-history",
-		replies: []fixtures.OllamaReply{liveContextAuditList(), {Content: "There are no recorded actions."}},
+		replies: []fixtures.OllamaReply{liveContextEventReceiptList(), {Content: "There are no recorded actions."}},
 	})
 	res := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, evaluation.DerivePublicSummaryStatus(res))

@@ -19,10 +19,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-// TestSQLAuditStore_InitDatabase_CommitmentLedgerWardenIntentColumn verifies that
+// TestLocalFirstEventsStore_InitDatabase_CommitmentLedgerWardenIntentColumn verifies that
 // initDatabase creates the commitment_ledger table with the protocol-aligned
 // warden_intent_signature_digest column directly from the schema DDL.
-func TestSQLAuditStore_InitDatabase_CommitmentLedgerWardenIntentColumn(t *testing.T) {
+func TestLocalFirstEventsStore_InitDatabase_CommitmentLedgerWardenIntentColumn(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)
@@ -36,13 +36,13 @@ func TestSQLAuditStore_InitDatabase_CommitmentLedgerWardenIntentColumn(t *testin
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	config := &AuditStoreConfig{
+	config := &LocalFirstEventsStoreConfig{
 		RetentionDays:        7,
 		PruneIntervalMinutes: 60,
 		EncryptionVault:      testVault,
 	}
 
-	ass, err := NewSQLAuditStore(config, db, testutil.NewTestLogger(), fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { ass.Close() })
 

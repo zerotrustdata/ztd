@@ -63,18 +63,18 @@ func TestOperatorRun_ExecutesThroughGovernedPipeline(t *testing.T) {
 	assert.Contains(t, out.String(), identity.OperatorSessionID)
 
 	after := countExecutedBashReceipts(t, auditClient, identity.OperatorSessionID)
-	assert.Greater(t, after, before, "governed EXECUTE_BASH must append a COMPLETED action receipt for the embedded operator session")
+	assert.Greater(t, after, before, "governed EXECUTE_BASH must append a COMPLETED event receipt for the embedded operator session")
 }
 
 // countExecutedBashReceipts counts COMPLETED EXECUTE_BASH receipts recorded for
-// operatorSessionID through the Gateway audit receipts endpoint.
+// operatorSessionID through the Gateway event receipts endpoint.
 func countExecutedBashReceipts(t *testing.T, client authcmd.APIClient, operatorSessionID string) int {
 	t.Helper()
 	raw, err := client.Get(constants.APIPaths.AuditEventReceipts + "?operator_session_id=" + url.QueryEscape(operatorSessionID) + "&limit=500")
 	require.NoError(t, err)
 	var resp models.AuditEventReceiptsResponse
 	require.NoError(t, json.Unmarshal(raw, &resp))
-	require.True(t, resp.Success, "audit receipts response must report success")
+	require.True(t, resp.Success, "event receipts response must report success")
 	count := 0
 	for _, receipt := range resp.EventReceipts {
 		if receipt.ActionType == constants.ActionTypeExecuteBash && receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {

@@ -20,12 +20,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-// TestDefaultAuditStoreConfig verifies the default configuration values
-func TestDefaultAuditStoreConfig(t *testing.T) {
-	config := DefaultAuditStoreConfig()
+// TestDefaultLocalFirstEventsStoreConfig verifies the default configuration values
+func TestDefaultLocalFirstEventsStoreConfig(t *testing.T) {
+	config := DefaultLocalFirstEventsStoreConfig()
 
 	if config == nil {
-		t.Fatal("DefaultAuditStoreConfig returned nil")
+		t.Fatal("DefaultLocalFirstEventsStoreConfig returned nil")
 	}
 
 	tests := []struct {
@@ -73,9 +73,9 @@ func TestErrorConstants(t *testing.T) {
 		err  error
 		want string
 	}{
-		{"ErrAuditEventNil", constants.ErrAuditEventNil, "AUDIT_EVENT_INVALID"},
-		{"ErrAuditSessionMissing", constants.ErrAuditSessionMissing, "AUDIT_SESSION_MISSING"},
-		{"ErrAuditSessionUnknown", constants.ErrAuditSessionUnknown, "AUDIT_SESSION_UNKNOWN"},
+		{"ErrEventsStoreEventNil", constants.ErrEventsStoreEventNil, "EVENTS_STORE_EVENT_INVALID"},
+		{"ErrEventsStoreSessionMissing", constants.ErrEventsStoreSessionMissing, "EVENTS_STORE_SESSION_MISSING"},
+		{"ErrEventsStoreSessionUnknown", constants.ErrEventsStoreSessionUnknown, "EVENTS_STORE_SESSION_UNKNOWN"},
 	}
 
 	for _, tt := range tests {
@@ -92,7 +92,7 @@ func TestErrorConstants(t *testing.T) {
 
 // TestNilStoreMethods verifies nil-safe method calls
 func TestNilStoreMethods(t *testing.T) {
-	var ass *SQLAuditStore
+	var ass *LocalFirstEventsStore
 
 	// These methods should handle nil gracefully
 	ass.Wait()
@@ -116,7 +116,7 @@ func TestNilStoreMethods(t *testing.T) {
 func TestGetDataDir(t *testing.T) {
 	tests := []struct {
 		name string
-		ass  *SQLAuditStore
+		ass  *LocalFirstEventsStore
 		want string
 	}{
 		{
@@ -126,8 +126,8 @@ func TestGetDataDir(t *testing.T) {
 		},
 		{
 			name: "store with nil fileSvc",
-			ass: &SQLAuditStore{
-				config: &AuditStoreConfig{},
+			ass: &LocalFirstEventsStore{
+				config: &LocalFirstEventsStoreConfig{},
 			},
 			want: "",
 		},
@@ -143,23 +143,23 @@ func TestGetDataDir(t *testing.T) {
 	}
 }
 
-func TestSQLAuditStore_WaitJoinsInFlightWrites(t *testing.T) {
+func TestLocalFirstEventsStore_WaitJoinsInFlightWrites(t *testing.T) {
 	t.Run("nil store returns", func(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
-			var store *SQLAuditStore
+			var store *LocalFirstEventsStore
 			store.Wait()
 			close(done)
 		}()
 		select {
 		case <-done:
 		case <-time.After(time.Second):
-			t.Fatal("nil SQLAuditStore.Wait did not return")
+			t.Fatal("nil LocalFirstEventsStore.Wait did not return")
 		}
 	})
 
 	t.Run("blocks until the in-flight write finishes", func(t *testing.T) {
-		store := &SQLAuditStore{}
+		store := &LocalFirstEventsStore{}
 		store.muWrites.Add(1)
 		done := make(chan struct{})
 		go func() {
@@ -184,7 +184,7 @@ func TestSQLAuditStore_WaitJoinsInFlightWrites(t *testing.T) {
 func TestClose(t *testing.T) {
 	tests := []struct {
 		name string
-		ass  *SQLAuditStore
+		ass  *LocalFirstEventsStore
 	}{
 		{
 			name: "nil store",
@@ -192,7 +192,7 @@ func TestClose(t *testing.T) {
 		},
 		{
 			name: "store without resources",
-			ass:  &SQLAuditStore{},
+			ass:  &LocalFirstEventsStore{},
 		},
 	}
 
@@ -205,33 +205,33 @@ func TestClose(t *testing.T) {
 	}
 }
 
-// TestSQLAuditStore_NilDB verifies that NewSQLAuditStore
+// TestLocalFirstEventsStore_NilDB verifies that NewLocalFirstEventsStore
 // returns an error when db is nil.
-func TestSQLAuditStore_NilDB(t *testing.T) {
+func TestLocalFirstEventsStore_NilDB(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 	config.EncryptionVault = CreateTestVault(t, fileSvc, privKey)
 
-	ass, err := NewSQLAuditStore(config, nil, logger, fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, nil, logger, fileSvc)
 	if err == nil {
-		t.Error("NewSQLAuditStore with nil db should return error")
+		t.Error("NewLocalFirstEventsStore with nil db should return error")
 	}
 	if !errors.Is(err, constants.ErrMissingRequiredField) {
 		t.Errorf("expected ErrMissingRequiredField, got: %v", err)
 	}
 	if ass != nil {
-		t.Error("NewSQLAuditStore with nil db should return nil store")
+		t.Error("NewLocalFirstEventsStore with nil db should return nil store")
 	}
 }
 
-// TestSQLAuditStore_NilFileSvc verifies that NewSQLAuditStore
+// TestLocalFirstEventsStore_NilFileSvc verifies that NewLocalFirstEventsStore
 // returns an error when fileSvc is nil.
-func TestSQLAuditStore_NilFileSvc(t *testing.T) {
+func TestLocalFirstEventsStore_NilFileSvc(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	tempDir := testutil.TempDir(t)
 	fileSvc := newTestFileSvc(t, tempDir)
@@ -242,28 +242,28 @@ func TestSQLAuditStore_NilFileSvc(t *testing.T) {
 	}
 	defer db.Close()
 
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	_, privKey, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 	config.EncryptionVault = CreateTestVault(t, fileSvc, privKey)
 
-	ass, err := NewSQLAuditStore(config, db, logger, nil)
+	ass, err := NewLocalFirstEventsStore(config, db, logger, nil)
 	if err == nil {
-		t.Error("NewSQLAuditStore with nil fileSvc should return error")
+		t.Error("NewLocalFirstEventsStore with nil fileSvc should return error")
 	}
 	if !errors.Is(err, constants.ErrMissingRequiredField) {
 		t.Errorf("expected ErrMissingRequiredField, got: %v", err)
 	}
 	if ass != nil {
-		t.Error("NewSQLAuditStore with nil fileSvc should return nil store")
+		t.Error("NewLocalFirstEventsStore with nil fileSvc should return nil store")
 	}
 }
 
-// TestSQLAuditStore_NilEncryptionVault verifies that NewSQLAuditStore
+// TestLocalFirstEventsStore_NilEncryptionVault verifies that NewLocalFirstEventsStore
 // requires EncryptionVault in config and returns an error when vault is nil.
-func TestSQLAuditStore_NilEncryptionVault(t *testing.T) {
+func TestLocalFirstEventsStore_NilEncryptionVault(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
@@ -273,24 +273,24 @@ func TestSQLAuditStore_NilEncryptionVault(t *testing.T) {
 	}
 	defer db.Close()
 
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 
 	// Test that service fails to initialize with nil EncryptionVault
-	ass, err := NewSQLAuditStore(config, db, logger, fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, logger, fileSvc)
 	if err == nil {
-		t.Error("NewSQLAuditStore with nil EncryptionVault should return error")
+		t.Error("NewLocalFirstEventsStore with nil EncryptionVault should return error")
 	}
-	if !errors.Is(err, constants.ErrAuditStoreEncryptionVaultRequired) {
-		t.Errorf("Error should match ErrAuditStoreEncryptionVaultRequired, got: %v", err)
+	if !errors.Is(err, constants.ErrLocalFirstEventsStoreEncryptionVaultRequired) {
+		t.Errorf("Error should match ErrLocalFirstEventsStoreEncryptionVaultRequired, got: %v", err)
 	}
 	if ass != nil {
-		t.Error("NewSQLAuditStore with nil EncryptionVault should return nil store")
+		t.Error("NewLocalFirstEventsStore with nil EncryptionVault should return nil store")
 	}
 }
 
-// TestGetActionReceipt_NilStore verifies nil-safe behavior
-func TestGetActionReceipt_NilStore(t *testing.T) {
-	var ass *SQLAuditStore
+// TestGetEventReceipt_NilStore verifies nil-safe behavior
+func TestGetEventReceipt_NilStore(t *testing.T) {
+	var ass *LocalFirstEventsStore
 
 	receipt, err := ass.GetEventReceipt("test-tx-id")
 	if err == nil {
@@ -299,14 +299,14 @@ func TestGetActionReceipt_NilStore(t *testing.T) {
 	if receipt != nil {
 		t.Error("GetEventReceipt on nil store should return nil receipt")
 	}
-	if !strings.Contains(err.Error(), "audit store is disabled") {
-		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
+	if !strings.Contains(err.Error(), "events store is disabled") {
+		t.Errorf("Error should mention 'events store is disabled', got: %v", err)
 	}
 }
 
-// TestGetActionReceipt_NilDB verifies behavior when db is nil
-func TestGetActionReceipt_NilDB(t *testing.T) {
-	ass := &SQLAuditStore{
+// TestGetEventReceipt_NilDB verifies behavior when db is nil
+func TestGetEventReceipt_NilDB(t *testing.T) {
+	ass := &LocalFirstEventsStore{
 		db: nil,
 	}
 
@@ -317,55 +317,55 @@ func TestGetActionReceipt_NilDB(t *testing.T) {
 	if receipt != nil {
 		t.Error("GetEventReceipt with nil db should return nil receipt")
 	}
-	if !strings.Contains(err.Error(), "audit store is disabled") {
-		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
+	if !strings.Contains(err.Error(), "events store is disabled") {
+		t.Errorf("Error should mention 'events store is disabled', got: %v", err)
 	}
 }
 
-// TestListActionReceipts_NilStore verifies nil-safe behavior
-func TestListActionReceipts_NilStore(t *testing.T) {
-	var ass *SQLAuditStore
+// TestListEventReceipts_NilStore verifies nil-safe behavior
+func TestListEventReceipts_NilStore(t *testing.T) {
+	var ass *LocalFirstEventsStore
 
-	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
+	receipts, err := ass.ListEventReceipts(models.EventsScope{OperatorSessionID: "session-id"}, 10, 0)
 	if err == nil {
 		t.Error("ListEventReceipts on nil store should return error")
 	}
 	if receipts != nil {
 		t.Error("ListEventReceipts on nil store should return nil receipts")
 	}
-	if !strings.Contains(err.Error(), "audit store is disabled") {
-		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
+	if !strings.Contains(err.Error(), "events store is disabled") {
+		t.Errorf("Error should mention 'events store is disabled', got: %v", err)
 	}
 }
 
-// TestListActionReceipts_NilDB verifies behavior when db is nil
-func TestListActionReceipts_NilDB(t *testing.T) {
-	ass := &SQLAuditStore{
+// TestListEventReceipts_NilDB verifies behavior when db is nil
+func TestListEventReceipts_NilDB(t *testing.T) {
+	ass := &LocalFirstEventsStore{
 		db: nil,
 	}
 
-	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
+	receipts, err := ass.ListEventReceipts(models.EventsScope{OperatorSessionID: "session-id"}, 10, 0)
 	if err == nil {
 		t.Error("ListEventReceipts with nil db should return error")
 	}
 	if receipts != nil {
 		t.Error("ListEventReceipts with nil db should return nil receipts")
 	}
-	if !strings.Contains(err.Error(), "audit store is disabled") {
-		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
+	if !strings.Contains(err.Error(), "events store is disabled") {
+		t.Errorf("Error should mention 'events store is disabled', got: %v", err)
 	}
 }
 
-// TestListActionReceipts_DefaultLimit verifies default limit is applied
-func TestListActionReceipts_DefaultLimit(t *testing.T) {
+// TestListEventReceipts_DefaultLimit verifies default limit is applied
+func TestListEventReceipts_DefaultLimit(t *testing.T) {
 	// This test verifies the logic that applies default limit when limit <= 0
 	// Since we can't mock the db easily, we test the nil case which also checks limit logic
-	ass := &SQLAuditStore{
+	ass := &LocalFirstEventsStore{
 		db: nil,
 	}
 
 	// Test with zero limit (should default to 50)
-	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 0, 0)
+	receipts, err := ass.ListEventReceipts(models.EventsScope{OperatorSessionID: "session-id"}, 0, 0)
 	if err == nil {
 		t.Error("ListEventReceipts with nil db should return error")
 	}
@@ -374,9 +374,9 @@ func TestListActionReceipts_DefaultLimit(t *testing.T) {
 	}
 }
 
-// TestListActionReceiptsSince_NilStore verifies nil-safe behavior
-func TestListActionReceiptsSince_NilStore(t *testing.T) {
-	var ass *SQLAuditStore
+// TestListEventReceiptsSince_NilStore verifies nil-safe behavior
+func TestListEventReceiptsSince_NilStore(t *testing.T) {
+	var ass *LocalFirstEventsStore
 
 	since := time.Now()
 	receipts, err := ass.ListEventReceiptsSince(since, 10)
@@ -386,14 +386,14 @@ func TestListActionReceiptsSince_NilStore(t *testing.T) {
 	if receipts != nil {
 		t.Error("ListEventReceiptsSince on nil store should return nil receipts")
 	}
-	if !strings.Contains(err.Error(), "audit store is disabled") {
-		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
+	if !strings.Contains(err.Error(), "events store is disabled") {
+		t.Errorf("Error should mention 'events store is disabled', got: %v", err)
 	}
 }
 
-// TestListActionReceiptsSince_NilDB verifies behavior when db is nil
-func TestListActionReceiptsSince_NilDB(t *testing.T) {
-	ass := &SQLAuditStore{
+// TestListEventReceiptsSince_NilDB verifies behavior when db is nil
+func TestListEventReceiptsSince_NilDB(t *testing.T) {
+	ass := &LocalFirstEventsStore{
 		db: nil,
 	}
 
@@ -405,14 +405,14 @@ func TestListActionReceiptsSince_NilDB(t *testing.T) {
 	if receipts != nil {
 		t.Error("ListEventReceiptsSince with nil db should return nil receipts")
 	}
-	if !strings.Contains(err.Error(), "audit store is disabled") {
-		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
+	if !strings.Contains(err.Error(), "events store is disabled") {
+		t.Errorf("Error should mention 'events store is disabled', got: %v", err)
 	}
 }
 
-// TestListActionReceiptsSince_DefaultLimit verifies default limit is applied
-func TestListActionReceiptsSince_DefaultLimit(t *testing.T) {
-	ass := &SQLAuditStore{
+// TestListEventReceiptsSince_DefaultLimit verifies default limit is applied
+func TestListEventReceiptsSince_DefaultLimit(t *testing.T) {
+	ass := &LocalFirstEventsStore{
 		db: nil,
 	}
 

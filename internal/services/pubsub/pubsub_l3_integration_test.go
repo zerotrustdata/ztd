@@ -57,7 +57,7 @@ func TestOperatorPubSubService_L3Rejection_FailClosed(t *testing.T) {
 	fileSvc := newFileEditTestService(t, cfg, logger)
 
 	// Create command service with rejecting L3 notary in gateway mode (required for L2/L3 posture verification)
-	audit := newTestAuditBackend(t, "session-1")
+	eventsBackend := newTestEventsBackend(t, "session-1")
 	cmdSvc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
 		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
 			Ledger:             storagetest.NewTestLedger(t),
@@ -70,9 +70,9 @@ func TestOperatorPubSubService_L3Rejection_FailClosed(t *testing.T) {
 			ResultsService:     &mockResultsPublisher{},
 			ActuatorSigningKey: privKey,
 			ActuatorKeyID:      "test-key",
-			AuditStore:         audit.Store,
-			AuditorSigningKey:  audit.AuditorKey,
-			AuditorKeyID:       audit.AuditorKeyID,
+			EventsStore:        eventsBackend.EventsStore,
+			AuditorSigningKey:  eventsBackend.AuditorKey,
+			AuditorKeyID:       eventsBackend.AuditorKeyID,
 			Scrubbing:          mustNewScrubbingSvc(t, logger),
 		}),
 		GovDeps: &GatewayModeDeps{
@@ -204,7 +204,7 @@ func TestOperatorPubSubService_L3Acceptance_Success(t *testing.T) {
 	fileSvc := newFileEditTestService(t, cfg, logger)
 
 	// Create command service with accepting L3 notary in gateway mode (required for L2/L3 posture verification)
-	audit := newTestAuditBackend(t, "session-1")
+	eventsBackend := newTestEventsBackend(t, "session-1")
 	cmdSvc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
 		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
 			Ledger:             storagetest.NewTestLedger(t),
@@ -217,9 +217,9 @@ func TestOperatorPubSubService_L3Acceptance_Success(t *testing.T) {
 			ResultsService:     &mockResultsPublisher{},
 			ActuatorSigningKey: privKey,
 			ActuatorKeyID:      "test-key",
-			AuditStore:         audit.Store,
-			AuditorSigningKey:  audit.AuditorKey,
-			AuditorKeyID:       audit.AuditorKeyID,
+			EventsStore:        eventsBackend.EventsStore,
+			AuditorSigningKey:  eventsBackend.AuditorKey,
+			AuditorKeyID:       eventsBackend.AuditorKeyID,
 			Scrubbing:          mustNewScrubbingSvc(t, logger),
 		}),
 		GovDeps: &GatewayModeDeps{
@@ -346,7 +346,7 @@ func TestOperatorPubSubService_L3NilNotary_FailClosed(t *testing.T) {
 	fileSvc := newFileEditTestService(t, cfg, logger)
 
 	// Create command service with nil L3 notary in gateway mode (should fail-closed)
-	audit := newTestAuditBackend(t, "session-1")
+	eventsBackend := newTestEventsBackend(t, "session-1")
 	cmdSvc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
 		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
 			Ledger:             storagetest.NewTestLedger(t),
@@ -359,9 +359,9 @@ func TestOperatorPubSubService_L3NilNotary_FailClosed(t *testing.T) {
 			ResultsService:     &mockResultsPublisher{},
 			ActuatorSigningKey: privKey,
 			ActuatorKeyID:      "test-key",
-			AuditStore:         audit.Store,
-			AuditorSigningKey:  audit.AuditorKey,
-			AuditorKeyID:       audit.AuditorKeyID,
+			EventsStore:        eventsBackend.EventsStore,
+			AuditorSigningKey:  eventsBackend.AuditorKey,
+			AuditorKeyID:       eventsBackend.AuditorKeyID,
 			Scrubbing:          mustNewScrubbingSvc(t, logger),
 		}),
 		GovDeps: &GatewayModeDeps{

@@ -57,10 +57,10 @@ type failureInjectingProcessor struct {
 // but is declared locally to avoid importing the governance package
 // (which would create a circular dependency in some test setups).
 type governanceEnvelopeProcessor interface {
-	ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error)
+	ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error)
 }
 
-func (f *failureInjectingProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (f *failureInjectingProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	atomic.AddInt32(&f.totalCalls, 1)
 
 	// Decode the action type from the wire payload to determine which
@@ -464,7 +464,7 @@ type cancelingProcessor struct {
 	cancel context.CancelFunc
 }
 
-func (p *cancelingProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (p *cancelingProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	if decodeActionTypeFromWire(payload) == string(constants.PlatformEnrollmentActionIssue) {
 		p.cancel()
 		return nil, context.Canceled
@@ -512,7 +512,7 @@ type reclaimingProcessor struct {
 
 const reclaimedLeaseOwner = "reacquired-holder"
 
-func (p *reclaimingProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (p *reclaimingProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	if decodeActionTypeFromWire(payload) == string(constants.PlatformEnrollmentActionIssue) {
 		update, err := json.Marshal(struct {
 			Owner   string    `json:"issuance_lease_owner"`

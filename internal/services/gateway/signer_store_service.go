@@ -24,7 +24,7 @@ import (
 )
 
 // SignerStoreService provides trusted signer CRUD operations and resolves the
-// verification key for ActionReceipts by the executing Operator's identity.
+// verification key for EventReceipts by the executing Operator's identity.
 type SignerStoreService struct {
 	db     *sqliteutil.DB
 	logger *slog.Logger
@@ -37,10 +37,10 @@ type SignerStoreService struct {
 	embeddedActuatorKeyID string
 }
 
-// ReceiptSignerResolver resolves the verification key for an ActionReceipt by
+// ReceiptSignerResolver resolves the verification key for an EventReceipt by
 // the identity of the Operator that executed it. SignerStoreService implements it.
 type ReceiptSignerResolver interface {
-	ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.ActionReceipt) (ed25519.PublicKey, error)
+	ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.EventReceipt) (ed25519.PublicKey, error)
 }
 
 // NewSignerStoreService creates a new signer store service.
@@ -164,7 +164,7 @@ func (s *SignerStoreService) HasTrustedSigners(ctx context.Context) (bool, error
 // actuator key (embedded Operator) or from the key bound on the Operator's
 // document at enrollment. The receipt's own signer_key_id is never trusted:
 // it must equal the bound key id.
-func (s *SignerStoreService) ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.ActionReceipt) (ed25519.PublicKey, error) {
+func (s *SignerStoreService) ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.EventReceipt) (ed25519.PublicKey, error) {
 	boundPub, boundKeyID, err := s.boundActuatorKey(ctx, operatorID)
 	if err != nil {
 		return nil, fmt.Errorf("signer store: receipt signer key: %w", err)

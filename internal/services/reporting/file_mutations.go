@@ -16,7 +16,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
-func reportFileMutations(ctx context.Context, outDir string, store *storage.SQLAuditStore) (FileResult, error) {
+func reportFileMutations(ctx context.Context, outDir string, store *storage.LocalFirstEventsStore) (FileResult, error) {
 	path := filepath.Join(outDir, constants.ReportFileMutationsFilename)
 
 	var rows []Row

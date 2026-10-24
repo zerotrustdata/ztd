@@ -56,7 +56,7 @@ To republish every run that is not archived, run:
 
 `--all` clears each run's host publication idempotency first, as `--force` does, so runs already published are published again. A run a live process holds is skipped, because that process publishes it. A run that fails to publish does not stop the others; the command lists each failure and exits with an error.
 
-The mirror is a visibility boundary, not a Policy Decision Point or Policy Execution Point. The executing Operator retains authoritative local execution evidence in its local audit store.
+The mirror is a visibility boundary, not a Policy Decision Point or Policy Execution Point. The executing Operator retains authoritative local execution evidence in its Local-First Events Store.
 
 ## Start a fresh source chain
 

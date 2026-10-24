@@ -28,7 +28,7 @@ import (
 // AttemptStore persists durable operator-local provider-attempt records. A
 // record holds identifiers, status, timestamps, digests, sizes and a fixed
 // failure category only. Provider bytes and inference results are content and
-// are never written here: the executing Operator's encrypted audit store owns
+// are never written here: the executing Operator's encrypted local-first events store owns
 // them, and the record binds them by digest.
 type AttemptStore interface {
 	Begin(ctx context.Context, record *operatorv1.InferenceProviderAttemptRecord) error

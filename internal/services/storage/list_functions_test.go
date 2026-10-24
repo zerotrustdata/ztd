@@ -18,60 +18,60 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-// ─── AuditStore List tests ───────────────────────────────────────────────────
+// ─── EventsStore List tests ───────────────────────────────────────────────────
 
 func TestListSessions_NilStore(t *testing.T) {
 	t.Parallel()
-	var ass *SQLAuditStore
+	var ass *LocalFirstEventsStore
 	sessions, err := ass.ListSessions(10, 0)
 	require.Error(t, err)
 	assert.Nil(t, sessions)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDisabled)
 }
 
 func TestListSessions_NilDB(t *testing.T) {
 	t.Parallel()
-	ass := &SQLAuditStore{db: nil}
+	ass := &LocalFirstEventsStore{db: nil}
 	sessions, err := ass.ListSessions(10, 0)
 	require.Error(t, err)
 	assert.Nil(t, sessions)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDisabled)
 }
 
 func TestListEvents_NilStore(t *testing.T) {
 	t.Parallel()
-	var ass *SQLAuditStore
+	var ass *LocalFirstEventsStore
 	events, err := ass.ListEvents("", 10, 0)
 	require.Error(t, err)
 	assert.Nil(t, events)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDisabled)
 }
 
 func TestListEvents_NilDB(t *testing.T) {
 	t.Parallel()
-	ass := &SQLAuditStore{db: nil}
+	ass := &LocalFirstEventsStore{db: nil}
 	events, err := ass.ListEvents("session-1", 10, 0)
 	require.Error(t, err)
 	assert.Nil(t, events)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDisabled)
 }
 
 func TestListFileMutations_NilStore(t *testing.T) {
 	t.Parallel()
-	var ass *SQLAuditStore
+	var ass *LocalFirstEventsStore
 	mutations, err := ass.ListFileMutations(10, 0)
 	require.Error(t, err)
 	assert.Nil(t, mutations)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDisabled)
 }
 
 func TestListFileMutations_NilDB(t *testing.T) {
 	t.Parallel()
-	ass := &SQLAuditStore{db: nil}
+	ass := &LocalFirstEventsStore{db: nil}
 	mutations, err := ass.ListFileMutations(10, 0)
 	require.Error(t, err)
 	assert.Nil(t, mutations)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDisabled)
 }
 
 // ─── CommitmentLedger ListCommitments tests ──────────────────────────────────

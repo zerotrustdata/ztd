@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.14.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.14.0";
+export const SCENARIO_CATALOG_VERSION = "1.15.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.15.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -76,25 +76,25 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Query current investigation history and report an empty result or cite a returned receipt.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "first_choice",
-    "userPrompt": "Use audit_receipt_list to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one returned action_type and quote its transaction_id (the receipt ID). Do not run a command or infer history from the case details.",
+    "userPrompt": "Use event_receipt_list to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one returned action_type and quote its transaction_id (the receipt ID). Do not run a command or infer history from the case details.",
     "expectedBehavior": "The model queries the current investigation's action history and reports only data returned, including an empty result when there are no receipts.",
     "requiredConcepts": [
       "tool-selection",
       "investigation"
     ],
     "allowedTools": [
-      "audit_receipt_list",
+      "event_receipt_list",
       "search_directory"
     ],
     "expectedTools": [
-      "audit_receipt_list"
+      "event_receipt_list"
     ],
     "forbiddenTools": [
       "run_shell_command"
     ],
     "promptHint": {
       "hintedTools": [
-        "audit_receipt_list"
+        "event_receipt_list"
       ],
       "arguments": []
     }
@@ -624,7 +624,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     ],
     "allowedTools": [
       "sys_info",
-      "audit_receipt_list"
+      "event_receipt_list"
     ],
     "forbiddenTools": [
       "run_shell_command"

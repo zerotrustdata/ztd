@@ -53,8 +53,8 @@ func (i *ReceiptImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
 	if i == nil || i.reader == nil || i.trust == nil {
 		return nil, fmt.Errorf("%w: reader and assessed trust are required", constants.ErrInvalidEvidenceGraph)
 	}
-	if err := validReceiptBinding(i.binding, constants.ActionReceiptReferencePrefix); err != nil {
-		return nil, fmt.Errorf("%w: action receipt binding: %w", constants.ErrInvalidEvidenceGraph, err)
+	if err := validReceiptBinding(i.binding, constants.EventReceiptReferencePrefix); err != nil {
+		return nil, fmt.Errorf("%w: event receipt binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -75,8 +75,8 @@ func (i *ReceiptImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
 		}
 		references = append(references, ContentReferenceForBody(constants.ReceiptPersistenceReferencePrefix, body))
 	}
-	_, digest, _ := ParseExpectedContentReference(i.binding.Reference, constants.ActionReceiptReferencePrefix)
-	return []EvidenceNode{{ArtifactID: i.binding.Reference, ArtifactType: ArtifactTypeActionReceipt, SHA256: digest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ActionReceipt", ProducerIdentity: receipt.GetSignerKeyId(), ProducedAt: time.UnixMilli(receipt.GetExecutedAtUnixMs()), ScopeID: i.binding.ScopeID, RunID: i.binding.RunID, AttemptID: i.binding.AttemptID, ScenarioID: i.binding.ScenarioID, TransactionID: receipt.GetTransactionId(), VerificationStatus: status, VerifierID: verifierID, VerifierVersion: verifierVersion, VerifiedAt: verifiedAt, BundlePath: i.binding.Path, CanonicalBytes: result.Bytes, References: references}}, nil
+	_, digest, _ := ParseExpectedContentReference(i.binding.Reference, constants.EventReceiptReferencePrefix)
+	return []EvidenceNode{{ArtifactID: i.binding.Reference, ArtifactType: ArtifactTypeEventReceipt, SHA256: digest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.EventReceipt", ProducerIdentity: receipt.GetSignerKeyId(), ProducedAt: time.UnixMilli(receipt.GetExecutedAtUnixMs()), ScopeID: i.binding.ScopeID, RunID: i.binding.RunID, AttemptID: i.binding.AttemptID, ScenarioID: i.binding.ScenarioID, TransactionID: receipt.GetTransactionId(), VerificationStatus: status, VerifierID: verifierID, VerifierVersion: verifierVersion, VerifiedAt: verifiedAt, BundlePath: i.binding.Path, CanonicalBytes: result.Bytes, References: references}}, nil
 }
 
 type PersistenceImportBinding struct {
@@ -134,8 +134,8 @@ func (i *PersistenceImporter) Import(ctx context.Context) ([]EvidenceNode, error
 	return []EvidenceNode{{ArtifactID: i.binding.Reference, ArtifactType: ArtifactTypeReceiptPersistence, SHA256: digest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ReceiptPersistenceAttestation", ProducerIdentity: attestation.GetSignerKeyId(), ProducedAt: time.UnixMilli(attestation.GetPersistedAtUnixMs()), ScopeID: i.binding.ScopeID, RunID: i.binding.RunID, AttemptID: i.binding.AttemptID, ScenarioID: i.binding.ScenarioID, TransactionID: attestation.GetTransactionId(), VerificationStatus: status, VerifierID: verifierID, VerifierVersion: verifierVersion, VerifiedAt: verifiedAt, BundlePath: i.binding.Path, CanonicalBytes: result.Bytes, References: []string{}}}, nil
 }
 
-func readCanonicalReceipt(ctx context.Context, reader ArtifactReader, binding ReceiptImportBinding) (*operatorv1.ActionReceipt, ReadResult, error) {
-	_, digest, _ := ParseExpectedContentReference(binding.Reference, constants.ActionReceiptReferencePrefix)
+func readCanonicalReceipt(ctx context.Context, reader ArtifactReader, binding ReceiptImportBinding) (*operatorv1.EventReceipt, ReadResult, error) {
+	_, digest, _ := ParseExpectedContentReference(binding.Reference, constants.EventReceiptReferencePrefix)
 	result, err := ReadAndDigest(reader, ctx, binding.Path, maxArtifactBytes)
 	if err != nil {
 		return nil, ReadResult{}, fmt.Errorf("%w: %s: %w", constants.ErrEvidenceImporterFailed, binding.Path, err)
@@ -143,7 +143,7 @@ func readCanonicalReceipt(ctx context.Context, reader ArtifactReader, binding Re
 	if !VerifyDigest(result.Bytes, digest) {
 		return nil, ReadResult{}, fmt.Errorf("%w: %s", constants.ErrChecksumMismatch, binding.Reference)
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := compliancev1.UnmarshalCanonical(result.Bytes, receipt); err != nil {
 		return nil, ReadResult{}, fmt.Errorf("%w: %s: %w", constants.ErrEvidenceArtifactMalformed, binding.Path, err)
 	}
@@ -172,7 +172,7 @@ func readCanonicalPersistence(ctx context.Context, reader ArtifactReader, bindin
 	return attestation, result, nil
 }
 
-func verifyAssessedReceiptSignature(ctx context.Context, trust AssessedSignerSource, receipt *operatorv1.ActionReceipt, nowFunc func() time.Time) (VerificationStatus, string, string, time.Time, error) {
+func verifyAssessedReceiptSignature(ctx context.Context, trust AssessedSignerSource, receipt *operatorv1.EventReceipt, nowFunc func() time.Time) (VerificationStatus, string, string, time.Time, error) {
 	publicKey, err := trust.GetTrustedSignerPublicKey(ctx, receipt.GetSignerKeyId())
 	if errors.Is(err, constants.ErrTrustedSignerKeyNotFound) {
 		return VerificationStatusUnverified, "", "", time.Time{}, nil
@@ -181,13 +181,13 @@ func verifyAssessedReceiptSignature(ctx context.Context, trust AssessedSignerSou
 		return "", "", "", time.Time{}, fmt.Errorf("%w: resolve signer %s: %w", constants.ErrEvidenceTrustNotAssessed, receipt.GetSignerKeyId(), err)
 	}
 	status := VerificationStatusVerified
-	if err := governance.VerifyActionReceiptSignature(receipt, publicKey); err != nil {
+	if err := governance.VerifyEventReceiptSignature(receipt, publicKey); err != nil {
 		status = VerificationStatusFailed
 	}
 	return status, constants.ReceiptEvidenceVerifierID, constants.ReceiptEvidenceVerifierVersion, nowFunc(), nil
 }
 
-func verifyAssessedPersistence(ctx context.Context, trust AssessedSignerSource, receipt *operatorv1.ActionReceipt, nowFunc func() time.Time) (VerificationStatus, string, string, time.Time, error) {
+func verifyAssessedPersistence(ctx context.Context, trust AssessedSignerSource, receipt *operatorv1.EventReceipt, nowFunc func() time.Time) (VerificationStatus, string, string, time.Time, error) {
 	publicKey, err := trust.GetTrustedSignerPublicKey(ctx, receipt.GetSignerKeyId())
 	if errors.Is(err, constants.ErrTrustedSignerKeyNotFound) {
 		return VerificationStatusUnverified, "", "", time.Time{}, nil
@@ -196,7 +196,7 @@ func verifyAssessedPersistence(ctx context.Context, trust AssessedSignerSource, 
 		return "", "", "", time.Time{}, fmt.Errorf("%w: resolve signer %s: %w", constants.ErrEvidenceTrustNotAssessed, receipt.GetSignerKeyId(), err)
 	}
 	status := VerificationStatusVerified
-	if governance.VerifyActionReceipt(receipt, publicKey) != nil {
+	if governance.VerifyEventReceipt(receipt, publicKey) != nil {
 		status = VerificationStatusFailed
 	}
 	return status, constants.ReceiptEvidenceVerifierID, constants.ReceiptEvidenceVerifierVersion, nowFunc(), nil
@@ -219,5 +219,5 @@ func validPersistenceBinding(binding PersistenceImportBinding) error {
 	if err := validReceiptBinding(ReceiptImportBinding{Reference: binding.Reference, Path: binding.Path, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.ReceiptPersistenceReferencePrefix); err != nil {
 		return fmt.Errorf("persistence: %w", err)
 	}
-	return validReceiptBinding(ReceiptImportBinding{Reference: binding.ReceiptReference, Path: binding.ReceiptPath, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.ActionReceiptReferencePrefix)
+	return validReceiptBinding(ReceiptImportBinding{Reference: binding.ReceiptReference, Path: binding.ReceiptPath, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.EventReceiptReferencePrefix)
 }

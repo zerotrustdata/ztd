@@ -57,7 +57,7 @@ func NewInferenceExecutionHandler(backend Backend, cfg *config.Config, scrubbing
 // ExecuteVerifiedTransaction implements governance.ExecutionHandler. It is
 // called by the L5 actuator after L1–L4 verification passes. It delegates to
 // ExecuteInference and returns the canonical result digest as the receipt
-// summary so the signed ActionReceipt binds the complete InferenceResult
+// summary so the signed EventReceipt binds the complete InferenceResult
 // (see operator.proto InferenceResult.result_digest).
 func (h *InferenceExecutionHandler) ExecuteVerifiedTransaction(ctx context.Context, eventType constants.EventType, cmdMsg governance.CommandMessage) (string, error) {
 	resp, err := h.ExecuteInference(ctx, cmdMsg)

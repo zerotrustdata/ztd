@@ -309,7 +309,7 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 	})
 
 	t.Run("approval.completed carries its decoded receipt", func(t *testing.T) {
-		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 			TransactionHash: "tx-denied",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,

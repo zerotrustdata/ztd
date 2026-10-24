@@ -17,7 +17,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
-func reportReceipts(ctx context.Context, outDir string, store *storage.SQLAuditStore) (FileResult, error) {
+func reportReceipts(ctx context.Context, outDir string, store *storage.LocalFirstEventsStore) (FileResult, error) {
 	path := filepath.Join(outDir, constants.ReportReceiptsFilename)
 
 	var rows []Row
@@ -27,7 +27,7 @@ func reportReceipts(ctx context.Context, outDir string, store *storage.SQLAuditS
 		if ctx.Err() != nil {
 			return FileResult{}, ctx.Err()
 		}
-		batch, err := store.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, batchSize, offset)
+		batch, err := store.ListEventReceipts(models.EventsScope{OperatorSessionID: ""}, batchSize, offset)
 		if err != nil {
 			return FileResult{}, fmt.Errorf("%w: receipts: %w", constants.ErrReportStoreUnavailable, err)
 		}

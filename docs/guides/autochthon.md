@@ -68,7 +68,7 @@ Describes running `ztd autochthon` on a host, reading `ztd autochthon status`, r
 
 | ID | Rule |
 | :--- | :--- |
-| INV-AUTO-EVID-01 | The tally is a local SHA-256 hash chain from a genesis hash. It is not the commitment ledger, not an `ActionReceipt`, and `ztd audit verify` does not walk it. |
+| INV-AUTO-EVID-01 | The tally is a local SHA-256 hash chain from a genesis hash. It is not the commitment ledger, not an `EventReceipt`, and `ztd audit verify` does not walk it. |
 | INV-AUTO-EVID-02 | Chain verification detects an edited, reordered, or inserted line. `status` reports an unterminated last line as pending and does not verify it, and start refuses to run on it. Chain verification does not detect removal of whole trailing lines without an external anchor verified via `status --anchor`. |
 | INV-AUTO-EVID-03 | Sensed metrics (load, memory, process count) come from `/proc/loadavg` and `/proc/meminfo`. On platforms where those files are missing, those senses read as zero. |
 
@@ -174,7 +174,7 @@ The anchor is in the form `<lines>:<64 lowercase hex>`. When the verified chain 
 ## Anti-patterns
 
 - Omitting `--working-dir` in a Gateway or Operator working directory, which places the tally and culture under that directory's `.ztd/autochthon/` beside the runtime's own state (INV-AUTO-STATE-01).
-- Treating the autochthon tally as a cryptographic execution receipt or governance audit log (INV-AUTO-EVID-01).
+- Treating the autochthon tally as a cryptographic event receipt or governance audit log (INV-AUTO-EVID-01).
 - Assuming `chain verified` guarantees full history retention without checking an external anchor (INV-AUTO-EVID-02).
 - Treating surprises as attribution of specific user actions or security violations. A surprise row holds only a sequence number, time, the load, memory, and process-count senses, and the fit values, and it identifies no user or action (INV-AUTO-BND-01).
 

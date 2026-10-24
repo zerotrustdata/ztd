@@ -28,7 +28,7 @@ func (testOutboundProofPreparer) PrepareOutboundL3Proof(_ context.Context, _, _,
 }
 
 func TestResubmitSuspended_OutboundTargetNeverUsesEmbeddedProcessor(t *testing.T) {
-	local := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{}}
+	local := &fakeEnvelopeProcessor{receipt: &operatorv1.EventReceipt{}}
 	g := newTestGatewayService(t, withEnvProc(local))
 	wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
 		Id: "tx-remote", TransactionHash: "tx-remote", OperatorId: "remote-operator", OperatorSessionId: "remote-session",
@@ -58,7 +58,7 @@ func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
 				if embedded {
 					selected, unused = local, outbound
 				}
-				selected.receipt = &operatorv1.ActionReceipt{TransactionId: "tx-target", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+				selected.receipt = &operatorv1.EventReceipt{TransactionId: "tx-target", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 				if deny {
 					selected.receipt, selected.err = l3DeniedRejection()
 				}
@@ -74,7 +74,7 @@ func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
 				_, err := g.SuspendGovernanceEnvelope(t.Context(), env)
 				require.NoError(t, err)
 				proof := &commonv1.L3Proof{CredentialId: "credential-1"}
-				var receipt *operatorv1.ActionReceipt
+				var receipt *operatorv1.EventReceipt
 				if deny {
 					receipt, err = g.DenySuspendedTransaction(t.Context(), env.Id, "user-1")
 				} else {
@@ -112,12 +112,12 @@ func TestResubmitSuspended_MissingTargetFailsClosed(t *testing.T) {
 }
 
 type fakePendingDispatchResumer struct {
-	receipt   *operatorv1.ActionReceipt
+	receipt   *operatorv1.EventReceipt
 	handedOff bool
 	err       error
 }
 
-func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, bool, error) {
+func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.EventReceipt, bool, error) {
 	return f.receipt, f.handedOff, f.err
 }
 
@@ -125,7 +125,7 @@ func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *comm
 // retires the suspension instead of leaving it for the expiry sweep. A decision
 // that never reached the dispatch keeps the row for retry.
 func TestPendingDispatchFailure_RetiresOnlyHandedOffDecisions(t *testing.T) {
-	failed := &operatorv1.ActionReceipt{TransactionId: "tx-pending", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	failed := &operatorv1.EventReceipt{TransactionId: "tx-pending", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 	for _, handedOff := range []bool{true, false} {
 		for _, deny := range []bool{true, false} {
 			name := "not handed off"

@@ -301,7 +301,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			require.Len(t, trace.ModelCalls, 1)
 			assert.Equal(t, "READY", trace.FinalOutput)
 			require.NotNil(t, trace.ModelCalls[0].Receipt)
-			receipt := trace.ModelCalls[0].Receipt.ActionReceipt
+			receipt := trace.ModelCalls[0].Receipt.EventReceipt
 			workload, err := run.stack.Inference.Workload()
 			require.NoError(t, err)
 			assert.Equal(t, workload.OperatorID, trace.Inference.OperatorID)
@@ -316,7 +316,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			local, err := storage.ReadLocalEventReceipt(operatorFiles, slog.Default(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, receipt.GetTransactionId())
 			require.NoError(t, err)
 			require.NotNil(t, local)
-			assert.True(t, proto.Equal(receipt, local.ActionReceipt), "the imported trace receipt must match the Inference Operator's authoritative local record")
+			assert.True(t, proto.Equal(receipt, local.EventReceipt), "the imported trace receipt must match the Inference Operator's authoritative local record")
 		})
 	}
 }
@@ -369,14 +369,14 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, residency.Models, "release verifies absence inside its own execution")
 
-	receipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
+	receipts, err := run.stack.Gateway.Service.GetLocalFirstEventsStore().ListEventReceipts(models.EventsScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
 		InvestigationID:   "ollama-model-residency",
 	}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, receipts, 1, "the caller must not dispatch a second governed residency query after release")
 
-	releaseReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
+	releaseReceipts, err := run.stack.Gateway.Service.GetLocalFirstEventsStore().ListEventReceipts(models.EventsScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
 		InvestigationID:   "ollama-model-release",
 	}, 10, 0)
@@ -389,6 +389,6 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	local, err := storage.ReadLocalEventReceipt(operatorFiles, testutil.NewTestLogger(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, releaseReceipts[0].TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, local)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.ActionReceipt.GetStatus())
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, local.ActionReceipt.GetL2Status())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.EventReceipt.GetStatus())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, local.EventReceipt.GetL2Status())
 }

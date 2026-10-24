@@ -239,7 +239,7 @@ func TestTribunalConsensusRealStack_SharedRuntimeTraceClaimsVoteReceipts(t *test
 				assert.Equal(t, trace.Data.Anchor.GetKeyId(), vote.GetReceipt().GetSignerKeyId())
 				assert.Equal(t, trace.ToolCalls[0].TransactionID, vote.GetSubjectTransactionId())
 				local := tribunalVerifyLocalReceipt(t, env, vote.GetReceipt())
-				assert.True(t, proto.Equal(local.ActionReceipt, vote.GetReceipt()), "vote receipt must match the authoritative local record")
+				assert.True(t, proto.Equal(local.EventReceipt, vote.GetReceipt()), "vote receipt must match the authoritative local record")
 			}
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			// Removing any member's execution must break the ledger bracket.

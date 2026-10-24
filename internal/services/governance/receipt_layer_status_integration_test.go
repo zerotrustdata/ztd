@@ -28,17 +28,17 @@ import (
 
 // newReceiptPostureActuator returns a persisting actuator whose runtime identity is the
 // one the strict verifier uses, so an envelope signed for that runtime is filed under it.
-func newReceiptPostureActuator(t *testing.T) (*L5Actuator, *storage.SQLAuditStore) {
+func newReceiptPostureActuator(t *testing.T) (*L5Actuator, *storage.LocalFirstEventsStore) {
 	t.Helper()
-	actuator, auditStore, _ := newPersistingActuator(t)
-	require.NoError(t, auditStore.CreateSession("operator-session-1", "operator", "Test Session", "test-user"))
+	actuator, eventsStore, _ := newPersistingActuator(t)
+	require.NoError(t, eventsStore.CreateSession("operator-session-1", "operator", "Test Session", "test-user"))
 	actuator.Identity = &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"}
-	return actuator, auditStore
+	return actuator, eventsStore
 }
 
 // verifyAndExecuteReceipt runs one envelope through L4 and then L5, and returns the
 // decided transaction with the signed receipt L5 built from it.
-func verifyAndExecuteReceipt(t *testing.T, verifier *L4Warden, actuator *L5Actuator, env *govtypes.GovernanceEnvelope) (*VerifiedTransaction, *operatorv1.ActionReceipt) {
+func verifyAndExecuteReceipt(t *testing.T, verifier *L4Warden, actuator *L5Actuator, env *govtypes.GovernanceEnvelope) (*VerifiedTransaction, *operatorv1.EventReceipt) {
 	t.Helper()
 	verified, err := verifier.VerifyEnvelope(context.Background(), env)
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func verifyAndExecuteReceipt(t *testing.T, verifier *L4Warden, actuator *L5Actua
 }
 
 // receiptStageOutcome returns the outcome of the receipt's one stage of the given kind.
-func receiptStageOutcome(t *testing.T, receipt *operatorv1.ActionReceipt, kind operatorv1.DeterministicStageKind) operatorv1.DeterministicStageOutcome {
+func receiptStageOutcome(t *testing.T, receipt *operatorv1.EventReceipt, kind operatorv1.DeterministicStageKind) operatorv1.DeterministicStageOutcome {
 	t.Helper()
 	for _, stage := range receipt.GetDeterministicStageEvidence() {
 		if stage.GetKind() == kind {
@@ -131,19 +131,19 @@ func TestReceiptPostureUndecidedLayerFailsClosedBeforeDispatch(t *testing.T) {
 	tests := []struct {
 		name      string
 		undecide  func(vt *VerifiedTransaction)
-		undecided func(receipt *operatorv1.ActionReceipt) bool
+		undecided func(receipt *operatorv1.EventReceipt) bool
 	}{
 		{
 			name:     "undecided L2",
 			undecide: func(vt *VerifiedTransaction) { vt.L2Status = operatorv1.L2Status_L2_STATUS_UNSPECIFIED },
-			undecided: func(receipt *operatorv1.ActionReceipt) bool {
+			undecided: func(receipt *operatorv1.EventReceipt) bool {
 				return receipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_UNSPECIFIED
 			},
 		},
 		{
 			name:     "undecided L3",
 			undecide: func(vt *VerifiedTransaction) { vt.L3Status = operatorv1.L3Status_L3_STATUS_UNSPECIFIED },
-			undecided: func(receipt *operatorv1.ActionReceipt) bool {
+			undecided: func(receipt *operatorv1.EventReceipt) bool {
 				return receipt.GetL3Status() == operatorv1.L3Status_L3_STATUS_UNSPECIFIED
 			},
 		},
@@ -151,7 +151,7 @@ func TestReceiptPostureUndecidedLayerFailsClosedBeforeDispatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
-			actuator, auditStore := newReceiptPostureActuator(t)
+			actuator, eventsStore := newReceiptPostureActuator(t)
 			handler := actuator.ExecutionHandler.(*mockExecutionHandler)
 			env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "ratify")
 			verified, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -165,7 +165,7 @@ func TestReceiptPostureUndecidedLayerFailsClosedBeforeDispatch(t *testing.T) {
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.GetStatus())
 			assert.True(t, tt.undecided(receipt), "the undecided layer must stay UNSPECIFIED on the receipt, never a default")
 			assert.False(t, handler.executed, "an undecided transaction must not reach the execution handler")
-			persisted, err := auditStore.GetEventReceipt(env.Id)
+			persisted, err := eventsStore.GetEventReceipt(env.Id)
 			require.NoError(t, err)
 			require.NotNil(t, persisted)
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
@@ -191,7 +191,7 @@ func TestReceiptPostureDeniedL3IsSignedRejectionAndSpendsTheNonce(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
 	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_FAILED, receipt.GetL3Status())
-	require.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+	require.NoError(t, VerifyEventReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
 
 	env.Governance.L3 = approved
 	_, err = verifier.VerifyEnvelope(context.Background(), env)

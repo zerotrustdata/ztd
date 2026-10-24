@@ -34,7 +34,7 @@ type AuditChainSegmentEntry struct {
 	TransactionID string
 }
 
-type auditChainSegmentExport struct {
+type eventsChainSegmentExport struct {
 	Seq               int64  `json:"seq"`
 	PrevHash          string `json:"prev_hash"`
 	Hash              string `json:"hash"`
@@ -49,7 +49,7 @@ type auditChainSegmentExport struct {
 // MarshalAuditChainSegmentEntry returns the canonical JSON body for one exported
 // chain entry artifact.
 func MarshalAuditChainSegmentEntry(entry AuditChainSegmentEntry) ([]byte, error) {
-	body, err := json.Marshal(auditChainSegmentExport(entry))
+	body, err := json.Marshal(eventsChainSegmentExport(entry))
 	if err != nil {
 		return nil, fmt.Errorf("audit chain segment: marshal entry: %w", err)
 	}
@@ -58,7 +58,7 @@ func MarshalAuditChainSegmentEntry(entry AuditChainSegmentEntry) ([]byte, error)
 
 // UnmarshalAuditChainSegmentEntry decodes one exported chain entry artifact.
 func UnmarshalAuditChainSegmentEntry(body []byte) (AuditChainSegmentEntry, error) {
-	wire := auditChainSegmentExport{}
+	wire := eventsChainSegmentExport{}
 	if err := json.Unmarshal(body, &wire); err != nil {
 		return AuditChainSegmentEntry{}, fmt.Errorf("audit chain segment: decode entry: %w", err)
 	}
@@ -70,7 +70,7 @@ func UnmarshalAuditChainSegmentEntry(body []byte) (AuditChainSegmentEntry, error
 
 // AuditEventChainHash returns the chained hash for one audit event row.
 func AuditEventChainHash(seq int64, prevHash, eventType, sessionID, timestamp, contentDigest, transactionID string) string {
-	return computeAuditEventHash(seq, prevHash, eventType, sessionID, timestamp, contentDigest, transactionID)
+	return computeEventHash(seq, prevHash, eventType, sessionID, timestamp, contentDigest, transactionID)
 }
 
 // VerifyAuditChainSegment recomputes linkage and hashes for one exported
@@ -100,7 +100,7 @@ func VerifyAuditChainSegment(entries []AuditChainSegmentEntry, boundaryPriorHash
 		if _, err := timesvc.ParseTimestamp(entry.Timestamp); err != nil {
 			return fmt.Errorf("audit chain segment: timestamp at seq %d: %w", entry.Seq, err)
 		}
-		recomputedHash := computeAuditEventHash(
+		recomputedHash := computeEventHash(
 			entry.Seq,
 			entry.PrevHash,
 			entry.EventType,

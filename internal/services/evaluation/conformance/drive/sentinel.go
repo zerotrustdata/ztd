@@ -43,7 +43,7 @@ func NewSentinel(c *client.Client, p client.Persona, targets map[cases.Executor]
 
 // Read dispatches FS_READ of readAbs to the executor's session and returns the
 // signed receipt. Any outcome other than RECEIPT is an error.
-func (s *Sentinel) Read(ctx context.Context, ex cases.Executor, readAbs string) (*operatorv1.ActionReceipt, error) {
+func (s *Sentinel) Read(ctx context.Context, ex cases.Executor, readAbs string) (*operatorv1.EventReceipt, error) {
 	target, ok := s.targets[ex]
 	if !ok {
 		return nil, fmt.Errorf("sentinel %s: %w", ex, constants.ErrConformanceIngressUnsupported)
@@ -70,7 +70,7 @@ func (s *Sentinel) Read(ctx context.Context, ex cases.Executor, readAbs string) 
 	}
 	obs := Observe(outcome)
 	if obs.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || obs.GetReceipt() == nil {
-		return nil, fmt.Errorf("sentinel %s: outcome %s: %w", ex, obs.GetKind(), constants.ErrActionReceiptMissing)
+		return nil, fmt.Errorf("sentinel %s: outcome %s: %w", ex, obs.GetKind(), constants.ErrEventReceiptMissing)
 	}
 	return obs.GetReceipt(), nil
 }

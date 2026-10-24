@@ -30,7 +30,7 @@ This guide provides operational routing for executing sovereignty, compliance, a
 In ztd, sovereignty is established through cryptographic verification at the local host execution boundary:
 - A model can request an action, but cannot directly execute mutations.
 - Every governed mutation is carried in a canonical `GovernanceEnvelope` and passes the governance layers L1–L5. L1, L4, and L5 always run; L2 and L3 gate execution only under postures that enforce them.
-- Execution is recorded as an `ActionReceipt` signed by the Warden's signing key, and as a commitment in the local commitment ledger.
+- Execution is recorded as an `EventReceipt` signed by the Warden's signing key, and as a commitment in the local commitment ledger.
 - System integrity is evidenced through Key Security Indicators (KSIs), cross-source evidence graphs, and model evaluation suites.
 
 ## Quick index

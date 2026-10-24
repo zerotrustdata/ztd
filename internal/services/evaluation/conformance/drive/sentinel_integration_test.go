@@ -87,7 +87,7 @@ func TestSentinelReadErrorsOnRefusal(t *testing.T) {
 	receipt, err := s.Read(context.Background(), cases.ExecutorEmbedded, seedReadFile(t, fx))
 	require.Error(t, err)
 	assert.Nil(t, receipt)
-	assert.ErrorIs(t, err, constants.ErrActionReceiptMissing, "got %v", err)
+	assert.ErrorIs(t, err, constants.ErrEventReceiptMissing, "got %v", err)
 }
 
 // TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor checks that construction

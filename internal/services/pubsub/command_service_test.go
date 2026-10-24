@@ -201,35 +201,35 @@ func TestNewCommandService(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	execSvc := execution.NewExecutionService(cfg, logger)
 	results := &mockResultsPublisher{}
-	auditStore := storagetest.NewTestAuditStore(t)
+	eventsStore := storagetest.NewTestEventsStore(t)
 
 	t.Run("binds every dependency", func(t *testing.T) {
 		t.Parallel()
-		svc, err := NewCommandService(cfg, logger, execSvc, results, auditStore)
+		svc, err := NewCommandService(cfg, logger, execSvc, results, eventsStore)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
 		assert.Same(t, execSvc, svc.execution)
 		assert.Same(t, results, svc.results)
-		assert.Same(t, auditStore, svc.auditStore)
+		assert.Same(t, eventsStore, svc.eventsStore)
 	})
 
 	tests := []struct {
-		name       string
-		cfg        *config.Config
-		execSvc    *execution.ExecutionService
-		results    ResultsPublisher
-		auditStore *storage.SQLAuditStore
-		wantErr    error
+		name        string
+		cfg         *config.Config
+		execSvc     *execution.ExecutionService
+		results     ResultsPublisher
+		eventsStore *storage.LocalFirstEventsStore
+		wantErr     error
 	}{
-		{name: "nil config", execSvc: execSvc, results: results, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil execution service", cfg: cfg, results: results, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil results publisher", cfg: cfg, execSvc: execSvc, auditStore: auditStore, wantErr: constants.ErrPubSubResultsPublisher},
-		{name: "nil audit store", cfg: cfg, execSvc: execSvc, results: results, wantErr: constants.ErrAuditStoreRequired},
+		{name: "nil config", execSvc: execSvc, results: results, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil execution service", cfg: cfg, results: results, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil results publisher", cfg: cfg, execSvc: execSvc, eventsStore: eventsStore, wantErr: constants.ErrPubSubResultsPublisher},
+		{name: "nil local-first events store", cfg: cfg, execSvc: execSvc, results: results, wantErr: constants.ErrLocalFirstEventsStoreRequired},
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc, err := NewCommandService(tt.cfg, logger, tt.execSvc, tt.results, tt.auditStore)
+			svc, err := NewCommandService(tt.cfg, logger, tt.execSvc, tt.results, tt.eventsStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})

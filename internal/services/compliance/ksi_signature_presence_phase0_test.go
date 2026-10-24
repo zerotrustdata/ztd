@@ -18,7 +18,7 @@ import (
 func TestKSIReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
 	deps := fullDeps(t)
 	record := deps.Audit.(*mockAuditReader).receipts[0]
-	record.ActionReceipt.ResultSummary = "tampered-after-signing"
+	record.EventReceipt.ResultSummary = "tampered-after-signing"
 
 	methods := DefaultMethods(deps)
 	mla08Methods, ok := methods["KSI-MLA-08"]
@@ -33,7 +33,7 @@ func TestKSIReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
 func TestKSIReceiptVerification_RejectsMissingFinalPersistenceAttestation(t *testing.T) {
 	deps := fullDeps(t)
 	record := deps.Audit.(*mockAuditReader).receipts[0]
-	record.ActionReceipt.FinalPersistenceAttestation = nil
+	record.EventReceipt.FinalPersistenceAttestation = nil
 
 	methods := DefaultMethods(deps)
 	mla08Methods := methods["KSI-MLA-08"]

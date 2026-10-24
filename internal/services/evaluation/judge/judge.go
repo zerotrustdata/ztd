@@ -76,7 +76,7 @@ type Score struct {
 	JudgeModelTag    string
 	JudgeModelDigest string
 	TransactionID    string // the governed inference transaction
-	Receipt          *operatorv1.ActionReceipt
+	Receipt          *operatorv1.EventReceipt
 	Result           *operatorv1.InferenceResult // the result the receipt's result summary binds
 	RubricVersion    string
 	Detail           string

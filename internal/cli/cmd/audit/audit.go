@@ -64,7 +64,7 @@ func auditEventReceiptsCmdWithConfig(configLoader func(string) (*config.Config, 
 		Short: "List signed event receipts from the running Gateway",
 		Long: `List signed event receipts from the running Gateway over mTLS. Use
 --session to filter by operator session ID or --app to select an acting app, --tx-id to look up a specific
-transaction (returns the canonical ActionReceipt as JSON), and --json to output
+transaction (returns the canonical EventReceipt as JSON), and --json to output
 list results as raw JSON instead of a table. Without either identity selector, includes
 Gateway-local app records that have no Operator session.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -87,7 +87,7 @@ Gateway-local app records that have no Operator session.`,
 			if txID != "" {
 				query.Set("tx_id", txID)
 			}
-			path := auditQueryPath(constants.APIPaths.AuditEventReceipts, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditEventReceipts, models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -194,7 +194,7 @@ file path (defaults to stdout).`,
 			}
 
 			query := url.Values{}
-			path := auditQueryPath(constants.APIPaths.AuditEventReceiptsExport, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditEventReceiptsExport, models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -254,7 +254,7 @@ directory for the report file.`,
 			}
 
 			query := url.Values{}
-			path := auditQueryPath(constants.APIPaths.AuditReport, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditReport, models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -305,7 +305,7 @@ func auditEventsCmdWithConfig(configLoader func(string) (*config.Config, error),
 
 	cmd := &cobra.Command{
 		Use:   "events",
-		Short: "Query raw audit events from the Gateway audit store",
+		Short: "Query raw audit events from the Gateway local-first events store",
 		Long: `Query raw audit events from the running Gateway over mTLS. Use --session to
 filter by operator session ID or --app to select an acting app, --limit to control
 the number of results, and
@@ -334,7 +334,7 @@ Gateway-local app records that have no Operator session.`,
 
 			query := url.Values{}
 			query.Set("limit", fmt.Sprint(limit))
-			path := auditQueryPath(constants.APIPaths.AuditEvents, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditEvents, models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -482,7 +482,7 @@ Gateway over mTLS. Use --session to filter by operator session ID or --app to fi
 			}
 
 			query := url.Values{}
-			path := auditQueryPath(constants.APIPaths.AuditSummary, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditSummary, models.EventsScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -592,7 +592,7 @@ Use --from-seq to verify from a specific sequence number (defaults to the latest
 }
 
 // auditQueryPath encodes explicit selectors without deriving query scope from credentials.
-func auditQueryPath(path string, scope models.AuditScope, query url.Values) string {
+func auditQueryPath(path string, scope models.EventsScope, query url.Values) string {
 	if scope.OperatorSessionID != "" {
 		query.Set("operator_session_id", scope.OperatorSessionID)
 	}

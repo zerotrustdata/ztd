@@ -455,7 +455,7 @@ func (s *PlatformEnrollmentService) Decide(ctx context.Context, actorUserID stri
 	// Load the request to verify it exists and is pending before
 	// submitting the envelope. The handler re-checks the state via
 	// conditional update, but an early check gives a precise error
-	// without consuming a governance receipt.
+	// without consuming a event receipt.
 	existing, err := s.loadByID(ctx, req.RequestID)
 	if err != nil {
 		return nil, err

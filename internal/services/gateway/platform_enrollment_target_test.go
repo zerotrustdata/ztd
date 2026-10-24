@@ -21,8 +21,8 @@ import (
 
 type enrollmentTargetProcessor struct{}
 
-func (*enrollmentTargetProcessor) ProcessEnvelope(context.Context, []byte) (*operatorv1.ActionReceipt, error) {
-	return &operatorv1.ActionReceipt{}, nil
+func (*enrollmentTargetProcessor) ProcessEnvelope(context.Context, []byte) (*operatorv1.EventReceipt, error) {
+	return &operatorv1.EventReceipt{}, nil
 }
 
 func TestPlatformEnrollment_EnvelopesBoundToEmbeddedOperator(t *testing.T) {

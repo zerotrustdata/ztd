@@ -160,7 +160,7 @@ Persisted Event             Ephemeral Event
 | `ztd.v1.app.run.status.updated` | `gateway.sse_store` | `observe_producer.go` | Run state emitted by registered application workloads |
 | `ztd.v1.ai.eval.*` (except `stop.requested`) | per registry entry | `observe_producer.go` (`emitLiveSSEEvent`) | Campaign progress events from the observe producer. A repeated `event_id` is rejected before emission (`ErrObserveDuplicateEventID`) |
 | `ztd.v1.ai.eval.stop.requested` | `ephemeral` | `observe_producer.go` | Run-scoped stop request from an app workload; carries `campaign_id` and `run_id`. Sent to the named session's open stream only and never stored |
-| `approval.completed` (non-registry) | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
+| `approval.completed` (non-registry) | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `EventReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
 | `passkey.registered` (non-registry) | persisted | `passkey_orchestrator.go` | Direct CLI notification of completed passkey registration |
 
 Registry rows take their persistence value from `protocol/constants/events.json`, which is the canonical source; this table does not replace it.

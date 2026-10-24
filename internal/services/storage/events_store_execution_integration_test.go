@@ -26,7 +26,7 @@ func commandEventTime() time.Time { return time.Now().UTC() }
 // record: the full raw stdout and stderr (well past the old truncation threshold) are
 // stored encrypted and read back byte-for-byte by execution_id.
 func TestRecordEvent_ExecutionIDRoundTripsRawOutput(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("exec-sess", constants.SessionTypeOperator, "Exec", "user-exec"))
 
 	stdout := strings.Repeat("A", 300*1024) + "TAIL-STDOUT"
@@ -51,16 +51,16 @@ func TestRecordEvent_ExecutionIDRoundTripsRawOutput(t *testing.T) {
 // TestGetEventByExecutionID_MissingIsTyped verifies that an unknown execution fails with
 // the typed sentinel instead of an empty record.
 func TestGetEventByExecutionID_MissingIsTyped(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 
 	_, err := ass.GetEventByExecutionID("exec-does-not-exist")
-	require.ErrorIs(t, err, constants.ErrAuditExecutionNotFound)
+	require.ErrorIs(t, err, constants.ErrEventsStoreExecutionNotFound)
 }
 
 // TestGetFileMutationByID_ResolvesSessionForDiff verifies that a file mutation resolves to its
 // owning session and timestamp, the keys the ledger diff needs, with decrypted columns.
 func TestGetFileMutationByID_ResolvesSessionForDiff(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("mut-sess", constants.SessionTypeOperator, "Mut", "user-mut"))
 
 	eventID, err := ass.RecordEvent(commandEvent("mut-sess", "edit", commandEventTime()))
@@ -87,13 +87,13 @@ func TestGetFileMutationByID_ResolvesSessionForDiff(t *testing.T) {
 	assert.False(t, got.Timestamp.IsZero())
 
 	_, err = ass.GetFileMutationByID(999999)
-	require.ErrorIs(t, err, constants.ErrAuditFileMutationNotFound)
+	require.ErrorIs(t, err, constants.ErrEventsStoreFileMutationNotFound)
 }
 
 // TestFetchExecutionLogs_ReadsEventsRecord verifies FETCH_LOGS is served from events by
 // execution_id, and that a diff without a ledger fails closed instead of returning empty.
 func TestFetchExecutionLogs_ReadsEventsRecord(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("fetch-sess", constants.SessionTypeOperator, "Fetch", "user-fetch"))
 	event := commandEvent("fetch-sess", "fetch", commandEventTime())
 	event.CommandStdout = "out-line"
@@ -113,8 +113,8 @@ func TestFetchExecutionLogs_ReadsEventsRecord(t *testing.T) {
 	assert.Equal(t, int32(len("out-line")), logs.GetStdoutSize())
 
 	_, err = hh.FetchExecutionLogs("exec-fetch-missing")
-	require.ErrorIs(t, err, constants.ErrAuditExecutionNotFound)
+	require.ErrorIs(t, err, constants.ErrEventsStoreExecutionNotFound)
 
 	_, err = hh.FetchFileDiff(1)
-	require.ErrorIs(t, err, constants.ErrAuditFileMutationNotFound)
+	require.ErrorIs(t, err, constants.ErrEventsStoreFileMutationNotFound)
 }

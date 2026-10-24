@@ -24,24 +24,24 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// AuditService owns LFAA audit event recording for user messages, AI messages,
+// AuditService owns LFEA audit event recording for user messages, AI messages,
 // and direct terminal command capture.
 type AuditService struct {
-	config     *config.Config
-	logger     *slog.Logger
-	auditStore *storage.SQLAuditStore
+	config      *config.Config
+	logger      *slog.Logger
+	eventsStore *storage.LocalFirstEventsStore
 }
 
 // NewAuditService creates a new AuditService.
-func NewAuditService(cfg *config.Config, logger *slog.Logger, auditStore *storage.SQLAuditStore) *AuditService {
+func NewAuditService(cfg *config.Config, logger *slog.Logger, eventsStore *storage.LocalFirstEventsStore) *AuditService {
 	return &AuditService{
-		config:     cfg,
-		logger:     logger,
-		auditStore: auditStore,
+		config:      cfg,
+		logger:      logger,
+		eventsStore: eventsStore,
 	}
 }
 
-// recordMessage records a user or AI message to the audit store.
+// recordMessage records a user or AI message to the local-first events store.
 func (as *AuditService) recordMessage(msg *PubSubCommandMessage, eventType constants.EventType, unmarshalErr, recordErr error) error {
 	var protoMsg operatorv1.AuditMsgRequested
 	if err := proto.Unmarshal(msg.Payload, &protoMsg); err != nil {
@@ -49,7 +49,7 @@ func (as *AuditService) recordMessage(msg *PubSubCommandMessage, eventType const
 	}
 	content := protoMsg.Content
 	if content == "" {
-		as.logger.Warn("LFAA: Message has no content")
+		as.logger.Warn("LFEA: Message has no content")
 		return nil
 	}
 
@@ -60,29 +60,29 @@ func (as *AuditService) recordMessage(msg *PubSubCommandMessage, eventType const
 		ContentText:       content,
 	}
 
-	if _, err := as.auditStore.RecordEvent(event); err != nil {
+	if _, err := as.eventsStore.RecordEvent(event); err != nil {
 		return fmt.Errorf("audit service: %w: %w", recordErr, err)
 	}
 
-	as.logger.Info("Message recorded in audit store (LFAA)",
+	as.logger.Info("Message recorded in local-first events store (LFEA)",
 		"operator_session_id", as.config.OperatorSessionId,
 		"content_length", len(content))
 	return nil
 }
 
-// HandleUserMsgRequest records an inbound user message to the audit store.
+// HandleUserMsgRequest records an inbound user message to the local-first events store.
 func (as *AuditService) HandleUserMsgRequest(ctx context.Context, msg *PubSubCommandMessage) error {
-	as.logger.Info("LFAA: Recording user message (via Protobuf)")
+	as.logger.Info("LFEA: Recording user message (via Protobuf)")
 	return as.recordMessage(msg, constants.Event.Operator.Audit.UserMsg, constants.ErrAuditUnmarshalUserMsg, constants.ErrAuditRecordUserMsg)
 }
 
-// HandleAIMsgRequest records an inbound AI message to the audit store.
+// HandleAIMsgRequest records an inbound AI message to the local-first events store.
 func (as *AuditService) HandleAIMsgRequest(ctx context.Context, msg *PubSubCommandMessage) error {
-	as.logger.Info("LFAA: Recording AI message (via Protobuf)")
+	as.logger.Info("LFEA: Recording AI message (via Protobuf)")
 	return as.recordMessage(msg, constants.Event.Operator.Audit.AIMsg, constants.ErrAuditUnmarshalAIMsg, constants.ErrAuditRecordAIMsg)
 }
 
-// recordDirectCommand records a direct terminal command to the audit store.
+// recordDirectCommand records a direct terminal command to the local-first events store.
 func (as *AuditService) recordDirectCommand(msg *PubSubCommandMessage, unmarshalErr, recordErr error, withResult bool) error {
 	var event *storage.Event
 
@@ -92,7 +92,7 @@ func (as *AuditService) recordDirectCommand(msg *PubSubCommandMessage, unmarshal
 			return fmt.Errorf("audit service: %w: %w", unmarshalErr, err)
 		}
 		if protoResult.Command == "" {
-			as.logger.Warn("LFAA: Direct command result audit has no command")
+			as.logger.Warn("LFEA: Direct command result audit has no command")
 			return nil
 		}
 
@@ -108,7 +108,7 @@ func (as *AuditService) recordDirectCommand(msg *PubSubCommandMessage, unmarshal
 			ExecutionDurationMs: int64(protoResult.ExecutionTimeSeconds * 1000),
 		}
 
-		as.logger.Info("Direct terminal command result recorded in audit store (LFAA)",
+		as.logger.Info("Direct terminal command result recorded in local-first events store (LFEA)",
 			"operator_session_id", as.config.OperatorSessionId,
 			"execution_id", protoResult.ExecutionId)
 	} else {
@@ -117,7 +117,7 @@ func (as *AuditService) recordDirectCommand(msg *PubSubCommandMessage, unmarshal
 			return fmt.Errorf("audit service: %w: %w", unmarshalErr, err)
 		}
 		if protoCmd.Command == "" {
-			as.logger.Warn("LFAA: Direct command audit has no command")
+			as.logger.Warn("LFEA: Direct command audit has no command")
 			return nil
 		}
 
@@ -130,34 +130,34 @@ func (as *AuditService) recordDirectCommand(msg *PubSubCommandMessage, unmarshal
 			CommandExitCode:   constants.ExitCodeNone,
 		}
 
-		as.logger.Info("Direct terminal command recorded in audit store (LFAA)",
+		as.logger.Info("Direct terminal command recorded in local-first events store (LFEA)",
 			"operator_session_id", as.config.OperatorSessionId,
 			"execution_id", protoCmd.ExecutionId)
 	}
 
-	if _, err := as.auditStore.RecordEvent(event); err != nil {
+	if _, err := as.eventsStore.RecordEvent(event); err != nil {
 		return fmt.Errorf("audit service: %w: %w", recordErr, err)
 	}
 
 	return nil
 }
 
-// HandleDirectCmdRequest records an inbound direct terminal command to the audit store.
+// HandleDirectCmdRequest records an inbound direct terminal command to the local-first events store.
 func (as *AuditService) HandleDirectCmdRequest(ctx context.Context, msg *PubSubCommandMessage) error {
-	as.logger.Info("LFAA: Recording direct terminal command (via Protobuf)")
+	as.logger.Info("LFEA: Recording direct terminal command (via Protobuf)")
 	return as.recordDirectCommand(msg, constants.ErrAuditUnmarshalDirectCmd, constants.ErrAuditRecordDirectCmd, false)
 }
 
-// HandleDirectCmdResultRequest records an inbound direct terminal command result to the audit store.
+// HandleDirectCmdResultRequest records an inbound direct terminal command result to the local-first events store.
 func (as *AuditService) HandleDirectCmdResultRequest(ctx context.Context, msg *PubSubCommandMessage) error {
-	as.logger.Info("LFAA: Recording direct terminal command result (via Protobuf)")
+	as.logger.Info("LFEA: Recording direct terminal command result (via Protobuf)")
 	return as.recordDirectCommand(msg, constants.ErrAuditUnmarshalDirectResult, constants.ErrAuditRecordDirectResult, true)
 }
 
-// HandleAuditRecord ingests one LFAA audit record from the audit: channel and publishes an ack.
+// HandleAuditRecord ingests one LFEA audit record from the audit: channel and publishes an ack.
 func (as *AuditService) HandleAuditRecord(ctx context.Context, data []byte, client PubSubClient) error {
-	if as.auditStore == nil {
-		return constants.ErrAuditStoreDisabled
+	if as.eventsStore == nil {
+		return constants.ErrLocalFirstEventsStoreDisabled
 	}
 
 	var wire models.AuditRecordPublish
@@ -168,7 +168,7 @@ func (as *AuditService) HandleAuditRecord(ctx context.Context, data []byte, clie
 		return constants.ErrAuditIngestInvalidRequest
 	}
 
-	if seq, hash, found, err := as.auditStore.GetEventChainMetaByTransactionID(wire.IdempotencyKey); err != nil {
+	if seq, hash, found, err := as.eventsStore.GetEventChainMetaByTransactionID(wire.IdempotencyKey); err != nil {
 		return err
 	} else if found {
 		return as.publishAuditAck(ctx, client, wire, seq, hash)
@@ -185,12 +185,12 @@ func (as *AuditService) HandleAuditRecord(ctx context.Context, data []byte, clie
 	}
 	event.TransactionID = wire.IdempotencyKey
 
-	_, seq, hash, err := as.auditStore.RecordEventChained(event)
+	_, seq, hash, err := as.eventsStore.RecordEventChained(event)
 	if err != nil {
 		return err
 	}
 
-	as.logger.Info("LFAA audit record appended to chain",
+	as.logger.Info("LFEA audit record appended to chain",
 		"event_type", recorded,
 		"idempotency_key", wire.IdempotencyKey,
 		"seq", seq)

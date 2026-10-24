@@ -38,7 +38,7 @@ func newTestMCPController(t *testing.T) *MCPController {
 	g, err := mcp.NewGatewayService(mcp.Dependencies{
 		Logger:           logger,
 		Responder:        resp,
-		AuditStore:       noopAuditEventRecorder{},
+		EventsStore:      noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 		ScrubbingService: scrubber,
 		Posture:          constants.PostureDoctrine,

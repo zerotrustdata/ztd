@@ -32,7 +32,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func newIntegrationAuditStore(t *testing.T) *SQLAuditStore {
+func newIntegrationEventsStore(t *testing.T) *LocalFirstEventsStore {
 	t.Helper()
 
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
@@ -45,10 +45,10 @@ func newIntegrationAuditStore(t *testing.T) *SQLAuditStore {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
 
-	ass, err := NewSQLAuditStore(config, db, testutil.NewTestLogger(), fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ass.Close()) })
 	return ass
@@ -76,7 +76,7 @@ func sampleEventReceiptRecord(t *testing.T, sessionID string) *models.EventRecei
 		SignerKeyID:       "signer-1",
 		Signature:         "signature-1",
 		Timestamp:         now,
-		ActionReceipt: &operatorv1.ActionReceipt{
+		EventReceipt: &operatorv1.EventReceipt{
 			TransactionId:   "tx-integration-1",
 			TransactionHash: "hash-integration-1",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -85,13 +85,13 @@ func sampleEventReceiptRecord(t *testing.T, sessionID string) *models.EventRecei
 	}
 }
 
-func TestNewSQLAuditStore_NilLoggerUsesDefault(t *testing.T) {
+func TestNewLocalFirstEventsStore_NilLoggerUsesDefault(t *testing.T) {
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	testVault := CreateTestVault(t, fileSvc, privKey)
 
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
@@ -99,7 +99,7 @@ func TestNewSQLAuditStore_NilLoggerUsesDefault(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	ass, err := NewSQLAuditStore(config, db, nil, fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, nil, fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ass.Close()) })
 
@@ -109,8 +109,8 @@ func TestNewSQLAuditStore_NilLoggerUsesDefault(t *testing.T) {
 	ass.Wait()
 }
 
-func TestSQLAuditStore_IntegrationLifecycle(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_IntegrationLifecycle(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 
 	require.NoError(t, ass.CreateSession("session-1", constants.SessionTypeOperator, "Integration Session", "user-1"))
 	session, err := ass.GetOperatorSession("session-1")
@@ -144,7 +144,7 @@ func TestSQLAuditStore_IntegrationLifecycle(t *testing.T) {
 		},
 	}))
 
-	events, err := ass.GetEvents(models.AuditScope{OperatorSessionID: "session-1"}, 10, 0)
+	events, err := ass.GetEvents(models.EventsScope{OperatorSessionID: "session-1"}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 
@@ -181,15 +181,15 @@ func TestSQLAuditStore_IntegrationLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	assert.Equal(t, record.TransactionID, persisted.TransactionID)
-	require.NotNil(t, persisted.ActionReceipt)
-	assert.True(t, proto.Equal(record.ActionReceipt, persisted.ActionReceipt))
+	require.NotNil(t, persisted.EventReceipt)
+	assert.True(t, proto.Equal(record.EventReceipt, persisted.EventReceipt))
 
 	correlated, err := ass.GetEventReceiptByInvestigationID(record.InvestigationID, record.ActionType)
 	require.NoError(t, err)
 	require.NotNil(t, correlated)
 	assert.Equal(t, record.TransactionID, correlated.TransactionID)
 
-	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-1"}, 10, 0)
+	receipts, err := ass.ListEventReceipts(models.EventsScope{OperatorSessionID: "session-1"}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, receipts, 1)
 
@@ -202,8 +202,8 @@ func TestSQLAuditStore_IntegrationLifecycle(t *testing.T) {
 	assert.Nil(t, missing)
 }
 
-func TestSQLAuditStore_DocSetAndDocDelete(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_DocSetAndDocDelete(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 
 	require.NoError(t, ass.CreateSession("docset-session", constants.SessionTypeOperator, "DocSet", "user-1"))
 	record := sampleEventReceiptRecord(t, "docset-session")
@@ -221,25 +221,25 @@ func TestSQLAuditStore_DocSetAndDocDelete(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestParseStoredActionReceipt_InvalidCanonicalPayload(t *testing.T) {
-	receipt, err := parseStoredActionReceipt("{not-canonical")
+func TestParseStoredEventReceipt_InvalidCanonicalPayload(t *testing.T) {
+	receipt, err := parseStoredEventReceipt("{not-canonical")
 	require.Error(t, err)
 	assert.Nil(t, receipt)
 
-	empty, err := parseStoredActionReceipt("")
+	empty, err := parseStoredEventReceipt("")
 	require.NoError(t, err)
 	assert.Nil(t, empty)
 }
 
-func TestSQLAuditStore_RecordActionReceiptUnknownSessionIsRejected(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_RecordEventReceiptUnknownSessionIsRejected(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 
 	record := sampleEventReceiptRecord(t, "")
 	record.TransactionID = "tx-unknown-session"
 	record.OperatorSessionID = "unknown-session"
 	err := ass.RecordEventReceipt(record)
-	require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
-	require.ErrorIs(t, err, constants.ErrAuditStoreRecordReceiptFailed)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRecordReceiptFailed)
 
 	session, err := ass.GetOperatorSession("unknown-session")
 	require.NoError(t, err)
@@ -249,26 +249,26 @@ func TestSQLAuditStore_RecordActionReceiptUnknownSessionIsRejected(t *testing.T)
 	assert.Nil(t, persisted)
 }
 
-func TestSQLAuditStore_RecordActionReceiptStartedSessionPersists(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_RecordEventReceiptStartedSessionPersists(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 
 	record := sampleEventReceiptRecord(t, "")
 	record.TransactionID = "tx-started-session"
 	record.OperatorSessionID = "started-session"
 	require.NoError(t, ass.CreateSession(record.OperatorSessionID, constants.SessionTypeOperator, "Operator Session", record.OperatorID))
-	record.ActionReceipt = &operatorv1.ActionReceipt{
+	record.EventReceipt = &operatorv1.EventReceipt{
 		TransactionId:   record.TransactionID,
 		TransactionHash: record.TransactionHash,
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 	}
-	body, err := compliancev1.MarshalCanonical(record.ActionReceipt)
+	body, err := compliancev1.MarshalCanonical(record.EventReceipt)
 	require.NoError(t, err)
-	record.ActionReceipt = nil
+	record.EventReceipt = nil
 	require.NoError(t, ass.RecordEventReceipt(record))
 
 	var seq int64
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT seq FROM events WHERE transaction_id = ? AND type = ?`, record.TransactionID, string(constants.EventOperatorReceiptRecorded)).Scan(&seq))
-	encryptedBody, err := encryptAuditContent(ass.encryptionVault, auditColumnEventContentText, auditEventRowID(seq), string(body))
+	encryptedBody, err := encryptEventsContent(ass.encryptionVault, eventColumnContentText, eventRowID(seq), string(body))
 	require.NoError(t, err)
 	_, err = ass.db.ExecWithRetry(t.Context(), `UPDATE events SET content_text = ? WHERE seq = ?`, encryptedBody, seq)
 	require.NoError(t, err)
@@ -276,12 +276,12 @@ func TestSQLAuditStore_RecordActionReceiptStartedSessionPersists(t *testing.T) {
 	persisted, err := ass.GetEventReceipt(record.TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
-	require.NotNil(t, persisted.ActionReceipt)
-	assert.Equal(t, record.TransactionID, persisted.ActionReceipt.GetTransactionId())
+	require.NotNil(t, persisted.EventReceipt)
+	assert.Equal(t, record.TransactionID, persisted.EventReceipt.GetTransactionId())
 }
 
-func TestSQLAuditStore_VerifyChain_AppendAndTamper(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_VerifyChain_AppendAndTamper(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("chain-session", constants.SessionTypeOperator, "Chain Session", "user-1"))
 
 	events := []*Event{
@@ -314,8 +314,8 @@ func TestSQLAuditStore_VerifyChain_AppendAndTamper(t *testing.T) {
 	assert.Contains(t, err.Error(), "hash mismatch at seq 1")
 }
 
-func TestPruneChainedAuditEvents_WritesCheckpoint(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestPruneChainedEvents_WritesCheckpoint(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("prune-session", constants.SessionTypeOperator, "Prune", "user-prune"))
 
 	oldTimestamp := time.Now().UTC().AddDate(0, 0, -120)
@@ -329,7 +329,7 @@ func TestPruneChainedAuditEvents_WritesCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339Nano)
-	require.NoError(t, PruneChainedAuditEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, cutoff))
+	require.NoError(t, PruneChainedEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, cutoff))
 
 	var checkpointCount int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM audit_chain_checkpoints`).Scan(&checkpointCount))
@@ -342,8 +342,8 @@ func TestPruneChainedAuditEvents_WritesCheckpoint(t *testing.T) {
 	require.NoError(t, ass.VerifyChain(context.Background(), 0))
 }
 
-func TestSQLAuditStore_VerifyChain_PrevHashTamper(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_VerifyChain_PrevHashTamper(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("prevhash-session", constants.SessionTypeOperator, "PrevHash", "user-prev"))
 
 	for i := 0; i < 3; i++ {
@@ -358,15 +358,15 @@ func TestSQLAuditStore_VerifyChain_PrevHashTamper(t *testing.T) {
 	}
 	require.NoError(t, ass.VerifyChain(context.Background(), 0))
 
-	_, err := ass.db.ExecWithRetry(t.Context(), `UPDATE events SET prev_hash = ? WHERE seq = 2`, auditChainGenesisPrevHash)
+	_, err := ass.db.ExecWithRetry(t.Context(), `UPDATE events SET prev_hash = ? WHERE seq = 2`, eventsChainGenesisPrevHash)
 	require.NoError(t, err)
 	err = ass.VerifyChain(context.Background(), 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "prev_hash mismatch")
 }
 
-func TestSQLAuditStore_VerifyChain_SeqReorderTamper(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_VerifyChain_SeqReorderTamper(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("reorder-session", constants.SessionTypeOperator, "Reorder", "user-reorder"))
 
 	for i := 0; i < 3; i++ {
@@ -393,8 +393,8 @@ func TestSQLAuditStore_VerifyChain_SeqReorderTamper(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestSQLAuditStore_VerifyChain_ConcurrentAppends(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_VerifyChain_ConcurrentAppends(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("concurrent-session", constants.SessionTypeOperator, "Concurrent", "user-concurrent"))
 
 	const workers = 8
@@ -426,7 +426,7 @@ func TestSQLAuditStore_VerifyChain_ConcurrentAppends(t *testing.T) {
 	require.NoError(t, ass.VerifyChain(context.Background(), 0))
 }
 
-func TestSQLAuditStore_VerifyChain_SurvivesVaultRekey(t *testing.T) {
+func TestLocalFirstEventsStore_VerifyChain_SurvivesVaultRekey(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	oldKey := []byte("audit-chain-old-vault-key!!")
 	newKey := []byte("audit-chain-new-vault-key!!")
@@ -439,9 +439,9 @@ func TestSQLAuditStore_VerifyChain_SurvivesVaultRekey(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
-	ass, err := NewSQLAuditStore(config, db, testutil.NewTestLogger(), fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 
 	require.NoError(t, ass.CreateSession("rekey-chain-session", constants.SessionTypeOperator, "Rekey Chain", "user-rekey"))
@@ -472,7 +472,7 @@ func TestSQLAuditStore_VerifyChain_SurvivesVaultRekey(t *testing.T) {
 	t.Cleanup(func() { rekeyedVault.Close() })
 
 	config.EncryptionVault = rekeyedVault
-	ass2, err := NewSQLAuditStore(config, db, testutil.NewTestLogger(), fileSvc)
+	ass2, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, ass2.Close()) })
 
@@ -489,10 +489,10 @@ func TestSQLAuditStore_VerifyChain_SurvivesVaultRekey(t *testing.T) {
 	require.NoError(t, ass2.VerifyChain(context.Background(), 0))
 }
 
-// TestSQLAuditStore_CloseDrainsInFlightWritersWithoutClosingDB verifies that
+// TestLocalFirstEventsStore_CloseDrainsInFlightWritersWithoutClosingDB verifies that
 // Close() waits for in-flight writers to finish before returning, and does NOT
 // close the caller's injected database connection pool.
-func TestSQLAuditStore_CloseDrainsInFlightWritersWithoutClosingDB(t *testing.T) {
+func TestLocalFirstEventsStore_CloseDrainsInFlightWritersWithoutClosingDB(t *testing.T) {
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -503,10 +503,10 @@ func TestSQLAuditStore_CloseDrainsInFlightWritersWithoutClosingDB(t *testing.T) 
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	config := DefaultAuditStoreConfig()
+	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
 
-	ass, err := NewSQLAuditStore(config, db, testutil.NewTestLogger(), fileSvc)
+	ass, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 
 	// Simulate an in-flight writer registered with muWrites.
@@ -539,21 +539,21 @@ func TestSQLAuditStore_CloseDrainsInFlightWritersWithoutClosingDB(t *testing.T) 
 	// Crucial contract: The injected db MUST still be open and usable!
 	var one int
 	require.NoError(t, db.QueryRowWithRetry(context.Background(), "SELECT 1").Scan(&one))
-	assert.Equal(t, 1, one, "injected database must remain open and queryable after auditStore.Close()")
+	assert.Equal(t, 1, one, "injected database must remain open and queryable after eventsStore.Close()")
 }
 
-// TestSQLAuditStore_RecordActionReceipt_RejectsEmptySession asserts every receipt is filed
+// TestLocalFirstEventsStore_RecordEventReceipt_RejectsEmptySession asserts every receipt is filed
 // under a session: an empty operator_session_id fails closed instead of storing NULL.
-func TestSQLAuditStore_RecordActionReceipt_RejectsEmptySession(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestLocalFirstEventsStore_RecordEventReceipt_RejectsEmptySession(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	err := ass.RecordEventReceipt(sampleEventReceiptRecord(t, ""))
-	require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionMissing)
 }
 
 // TestGetTransactionEventsReturnsTypedEventsInOrder asserts the transaction
 // read returns only the requested type for that transaction, oldest first, decrypted.
 func TestGetTransactionEventsReturnsTypedEventsInOrder(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("votes-session", constants.SessionTypeOperator, "Votes", "user-votes"))
 	record := func(tx string, eventType constants.EventType, content string) {
 		_, err := ass.RecordEvent(&Event{
@@ -581,11 +581,11 @@ func TestGetTransactionEventsReturnsTypedEventsInOrder(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
-// TestAuditQueriesUseIndexes asserts the per-append event lookups and the
-// acting-app audit filters stay on an index instead of scanning the audit tables.
-func TestAuditQueriesUseIndexes(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
-	receiptsByApp, _ := eventReceiptScopeQuery(models.AuditScope{ActingAppID: "app"})
+// TestEventQueriesUseIndexes asserts the per-append event lookups and the
+// acting-app event filters stay on an index instead of scanning the event tables.
+func TestEventQueriesUseIndexes(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
+	receiptsByApp, _ := eventReceiptScopeQuery(models.EventsScope{ActingAppID: "app"})
 	for _, tc := range []struct {
 		name, query string
 		args        []any

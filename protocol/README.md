@@ -41,7 +41,7 @@ The protocol has several source types with distinct responsibilities:
 The protobuf module is `buf.build/ztd/platform`, configured in `proto/buf.yaml`.
 
 - `ztd/common/v1/common.proto` defines governance envelopes and metadata, component identifiers, command intent, and platform enrollment messages.
-- `ztd/operator/v1/operator.proto` defines the `OperatorService`, operator request and result payloads, execution and governance status enums, deterministic stage evidence, action receipts, commitment attestations, and persistence attestations.
+- `ztd/operator/v1/operator.proto` defines the `OperatorService`, operator request and result payloads, execution and governance status enums, deterministic stage evidence, event receipts, commitment attestations, and persistence attestations.
 - `ztd/pubsub/v1/pubsub.proto` defines the shared pub/sub message and event envelopes.
 - `ztd/compliance/v1/compliance.proto` defines compliance catalogs, assessment scope and evidence, control assessments, trust policies, signed report bundles, verification results, analysis records, framework profiles.
 - `ztd/eval/v1/eval.proto` defines eval-native campaign specs, provider-boundary observation, storage-side model provenance, bundle verification, publication metadata, and agent trace, conformance, and containment records.

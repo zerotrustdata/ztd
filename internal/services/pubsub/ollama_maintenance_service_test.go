@@ -32,10 +32,10 @@ const (
 )
 
 type ollamaMaintenanceEnv struct {
-	svc    *OllamaMaintenanceService
-	client *pubsubtest.MockOperatorPubSubClient
-	cfg    *config.Config
-	audit  *storage.SQLAuditStore
+	svc         *OllamaMaintenanceService
+	client      *pubsubtest.MockOperatorPubSubClient
+	cfg         *config.Config
+	eventsStore *storage.LocalFirstEventsStore
 }
 
 // newOllamaMaintenanceEnv wires the service to an in-memory pub/sub client and
@@ -43,19 +43,19 @@ type ollamaMaintenanceEnv struct {
 // path.
 func newOllamaMaintenanceEnv(t *testing.T, endpoint string) *ollamaMaintenanceEnv {
 	t.Helper()
-	return newOllamaMaintenanceEnvWithAudit(t, endpoint, storagetest.NewTestAuditStore(t, ollamaTestSessionID))
+	return newOllamaMaintenanceEnvWithEventsStore(t, endpoint, storagetest.NewTestEventsStore(t, ollamaTestSessionID))
 }
 
-// newOllamaMaintenanceEnvWithAudit is newOllamaMaintenanceEnv over a caller-supplied real audit store.
-func newOllamaMaintenanceEnvWithAudit(t *testing.T, endpoint string, audit *storage.SQLAuditStore) *ollamaMaintenanceEnv {
+// newOllamaMaintenanceEnvWithEventsStore is newOllamaMaintenanceEnv over a caller-supplied real local-first events store.
+func newOllamaMaintenanceEnvWithEventsStore(t *testing.T, endpoint string, eventsStore *storage.LocalFirstEventsStore) *ollamaMaintenanceEnv {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
 	cfg.Inference.OllamaEndpoint = endpoint
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	logger := testutil.NewTestLogger()
-	svc, err := NewOllamaMaintenanceService(cfg, logger, client, mustNewScrubbingSvc(t, logger), audit)
+	svc, err := NewOllamaMaintenanceService(cfg, logger, client, mustNewScrubbingSvc(t, logger), eventsStore)
 	require.NoError(t, err)
-	return &ollamaMaintenanceEnv{svc: svc, client: client, cfg: cfg, audit: audit}
+	return &ollamaMaintenanceEnv{svc: svc, client: client, cfg: cfg, eventsStore: eventsStore}
 }
 
 func ollamaJSON(body string) http.HandlerFunc {
@@ -139,30 +139,30 @@ func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	scrubber := newEgressScrubber(t, true)
-	auditStore := storagetest.NewTestAuditStore(t)
+	eventsStore := storagetest.NewTestEventsStore(t)
 
 	tests := []struct {
-		name       string
-		cfg        *config.Config
-		scrubber   *scrubbing.ScrubbingService
-		auditStore *storage.SQLAuditStore
-		wantErr    error
+		name        string
+		cfg         *config.Config
+		scrubber    *scrubbing.ScrubbingService
+		eventsStore *storage.LocalFirstEventsStore
+		wantErr     error
 	}{
-		{name: "nil config", scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil scrubber", cfg: cfg, auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "disabled scrubber", cfg: cfg, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "nil audit store", cfg: cfg, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
+		{name: "nil config", scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil scrubber", cfg: cfg, eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "disabled scrubber", cfg: cfg, scrubber: newEgressScrubber(t, false), eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "nil local-first events store", cfg: cfg, scrubber: scrubber, wantErr: constants.ErrLocalFirstEventsStoreRequired},
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.auditStore)
+			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.eventsStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})
 	}
 
 	t.Run("accepts every dependency", func(t *testing.T) {
-		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, auditStore)
+		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, eventsStore)
 		require.NoError(t, err)
 		assert.NotNil(t, svc)
 	})

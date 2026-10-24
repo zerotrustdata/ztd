@@ -23,7 +23,7 @@ import (
 )
 
 // countEventsForSession counts raw events rows for one session, bypassing the store read path.
-func countEventsForSession(t *testing.T, ass *SQLAuditStore, sessionID string) int {
+func countEventsForSession(t *testing.T, ass *LocalFirstEventsStore, sessionID string) int {
 	t.Helper()
 	var n int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events WHERE operator_session_id = ?`, sessionID).Scan(&n))
@@ -46,7 +46,7 @@ func commandEvent(sessionID, content string, ts time.Time) *Event {
 // one event for a session that does not exist fails with the typed session error and
 // leaves no partial rows behind, including for the valid event that preceded it.
 func TestRecordEvents_UnknownSessionRollsBackWholeBatch(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("batch-known", constants.SessionTypeOperator, "Batch", "user-batch"))
 
 	before := countEventsForSession(t, ass, "batch-known")
@@ -57,7 +57,7 @@ func TestRecordEvents_UnknownSessionRollsBackWholeBatch(t *testing.T) {
 		commandEvent("batch-missing", "second-unknown", time.Now().UTC()),
 		commandEvent("batch-known", "third-valid", time.Now().UTC()),
 	})
-	require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 
 	assert.Equal(t, before, countEventsForSession(t, ass, "batch-known"), "valid events before the failing one must roll back")
 	assert.Equal(t, totalBefore, rawEventCount(t, ass), "no rows may persist from a failed batch")
@@ -65,9 +65,9 @@ func TestRecordEvents_UnknownSessionRollsBackWholeBatch(t *testing.T) {
 }
 
 // TestRecordEvents_EmptySessionReturnsTypedErrorAndRollsBack verifies that a batch
-// event without an operator session fails with ErrAuditSessionMissing and writes nothing.
+// event without an operator session fails with ErrEventsStoreSessionMissing and writes nothing.
 func TestRecordEvents_EmptySessionReturnsTypedErrorAndRollsBack(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("batch-empty-known", constants.SessionTypeOperator, "Batch", "user-batch"))
 
 	totalBefore := rawEventCount(t, ass)
@@ -75,32 +75,32 @@ func TestRecordEvents_EmptySessionReturnsTypedErrorAndRollsBack(t *testing.T) {
 		commandEvent("batch-empty-known", "valid", time.Now().UTC()),
 		commandEvent("", "no-session", time.Now().UTC()),
 	})
-	require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionMissing)
 	assert.Equal(t, totalBefore, rawEventCount(t, ass))
 }
 
 // TestRecordEvent_EmptySessionReturnsSessionMissing verifies the single-event path
 // rejects an event with no operator session using the typed sentinel and no event id.
 func TestRecordEvent_EmptySessionReturnsSessionMissing(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 
 	totalBefore := rawEventCount(t, ass)
 	eventID, err := ass.RecordEvent(commandEvent("", "orphan", time.Now().UTC()))
-	require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionMissing)
 	assert.Zero(t, eventID)
 	assert.Equal(t, totalBefore, rawEventCount(t, ass))
 }
 
 // TestRecordEvent_UnknownSessionIsRejected pins the single-event contract: RecordEvent
 // never creates a session. An event naming a session its owner never started fails with
-// ErrAuditSessionUnknown, persists nothing, and leaves no session row behind, exactly
+// ErrEventsStoreSessionUnknown, persists nothing, and leaves no session row behind, exactly
 // like the batch path (see TestRecordEvents_UnknownSessionRollsBackWholeBatch).
 func TestRecordEvent_UnknownSessionIsRejected(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 
 	totalBefore := rawEventCount(t, ass)
 	eventID, err := ass.RecordEvent(commandEvent("single-unknown-session", "direct", time.Now().UTC()))
-	require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 	assert.Zero(t, eventID)
 	assert.Equal(t, totalBefore, rawEventCount(t, ass))
 
@@ -109,13 +109,13 @@ func TestRecordEvent_UnknownSessionIsRejected(t *testing.T) {
 	assert.Nil(t, session, "a rejected event must not create its session")
 
 	_, _, _, err = ass.RecordEventChained(commandEvent("single-unknown-session", "chained", time.Now().UTC()))
-	require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+	require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 }
 
 // TestListEvents_SessionFilterIsolatesSessions verifies that a session filter returns only
 // that session's events and that an empty session ID returns events across all sessions.
 func TestListEvents_SessionFilterIsolatesSessions(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("iso-a", constants.SessionTypeOperator, "A", "user-a"))
 	require.NoError(t, ass.CreateSession("iso-b", constants.SessionTypeOperator, "B", "user-b"))
 
@@ -134,7 +134,7 @@ func TestListEvents_SessionFilterIsolatesSessions(t *testing.T) {
 		assert.Equal(t, "iso-a", event.OperatorSessionID)
 	}
 
-	onlyAScoped, err := ass.GetEvents(models.AuditScope{OperatorSessionID: "iso-a"}, 100, 0)
+	onlyAScoped, err := ass.GetEvents(models.EventsScope{OperatorSessionID: "iso-a"}, 100, 0)
 	require.NoError(t, err)
 	assert.Len(t, onlyAScoped, 2)
 
@@ -152,7 +152,7 @@ func TestListEvents_SessionFilterIsolatesSessions(t *testing.T) {
 // returns every event exactly once, in ascending timestamp order, and that a short last page
 // is returned without error.
 func TestListEvents_PaginationWalksEveryEventOnce(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("page-session", constants.SessionTypeOperator, "Page", "user-page"))
 
 	base := time.Now().UTC().Add(-time.Hour)
@@ -194,9 +194,9 @@ func TestListEvents_PaginationWalksEveryEventOnce(t *testing.T) {
 }
 
 // TestListEvents_LockedVaultFailsRead verifies that once the vault is locked, event reads fail
-// closed with ErrAuditStoreVaultLocked rather than returning ciphertext or plaintext.
+// closed with ErrLocalFirstEventsStoreVaultLocked rather than returning ciphertext or plaintext.
 func TestListEvents_LockedVaultFailsRead(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("locked-read", constants.SessionTypeOperator, "Locked", "user-locked"))
 	_, err := ass.RecordEvent(commandEvent("locked-read", "secret-output", time.Now().UTC()))
 	require.NoError(t, err)
@@ -206,19 +206,19 @@ func TestListEvents_LockedVaultFailsRead(t *testing.T) {
 	vault.Lock()
 
 	events, err := ass.ListEvents("locked-read", 10, 0)
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked)
 	assert.Nil(t, events)
 
-	scoped, err := ass.GetEvents(models.AuditScope{OperatorSessionID: "locked-read"}, 10, 0)
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+	scoped, err := ass.GetEvents(models.EventsScope{OperatorSessionID: "locked-read"}, 10, 0)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked)
 	assert.Nil(t, scoped)
 }
 
-// TestPruneChainedAuditEvents_RemovesOnlyExpiredEventsAndChainVerifies verifies that pruning
+// TestPruneChainedEvents_RemovesOnlyExpiredEventsAndChainVerifies verifies that pruning
 // deletes events older than the cutoff, keeps recent events, writes a checkpoint, and leaves
 // the remaining chain verifiable.
-func TestPruneChainedAuditEvents_RemovesOnlyExpiredEventsAndChainVerifies(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+func TestPruneChainedEvents_RemovesOnlyExpiredEventsAndChainVerifies(t *testing.T) {
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("prune-partial", constants.SessionTypeOperator, "Prune", "user-prune"))
 
 	old := time.Now().UTC().AddDate(0, 0, -120)
@@ -235,7 +235,7 @@ func TestPruneChainedAuditEvents_RemovesOnlyExpiredEventsAndChainVerifies(t *tes
 	}
 
 	cutoffTime := time.Now().UTC().AddDate(0, 0, -30)
-	require.NoError(t, PruneChainedAuditEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, cutoffTime.Format(time.RFC3339Nano)))
+	require.NoError(t, PruneChainedEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, cutoffTime.Format(time.RFC3339Nano)))
 
 	var expired int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(),
@@ -258,7 +258,7 @@ func TestPruneChainedAuditEvents_RemovesOnlyExpiredEventsAndChainVerifies(t *tes
 }
 
 // rawEventCount counts every events row, bypassing the store read path.
-func rawEventCount(t *testing.T, ass *SQLAuditStore) int {
+func rawEventCount(t *testing.T, ass *LocalFirstEventsStore) int {
 	t.Helper()
 	var n int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events`).Scan(&n))
@@ -270,7 +270,7 @@ func rawEventCount(t *testing.T, ass *SQLAuditStore) int {
 // the same transaction_id and type writes nothing, while a different type or a different
 // transaction still records.
 func TestRecordEventOnce_IsIdempotentPerTransactionAndType(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("once-session", constants.SessionTypeOperator, "Once", "user-once"))
 
 	expired := func(txID string) *Event {

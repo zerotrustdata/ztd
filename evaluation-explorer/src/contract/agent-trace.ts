@@ -129,7 +129,7 @@ export interface AgentTraceRetrievalQuery {
   operator_session_id?: string;
   investigation_id?: string;
   action_type?: string;
-  exclude_audit_reads?: boolean;
+  exclude_event_receipt_reads?: boolean;
   not_before?: string;
   limit?: number;
   offset?: number;
@@ -329,7 +329,7 @@ const TOOL_CALL_FIELDS = [
 ] as const;
 
 const RETRIEVAL_QUERY_FIELDS = [
-  'operator_session_id', 'investigation_id', 'action_type', 'exclude_audit_reads', 'not_before', 'limit', 'offset',
+  'operator_session_id', 'investigation_id', 'action_type', 'exclude_event_receipt_reads', 'not_before', 'limit', 'offset',
 ] as const;
 
 function parseRetrieval(value: unknown, path: string, investigationId: string | undefined): AgentTraceRetrieval {
@@ -352,7 +352,7 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
   });
   assertString(value.query.investigation_id, `${path}.query.investigation_id`);
   assert(value.query.investigation_id === investigationId, `${path}.query.investigation_id`, 'must match trace investigation_id');
-  assert(value.query.exclude_audit_reads === true, `${path}.query.exclude_audit_reads`, 'expected true');
+  assert(value.query.exclude_event_receipt_reads === true, `${path}.query.exclude_event_receipt_reads`, 'expected true');
   assertInteger(value.query.limit, `${path}.query.limit`);
   assert(value.query.limit >= 1 && value.query.limit <= 50, `${path}.query.limit`, 'expected a limit from 1 through 50');
   assert(value.query.operator_session_id === undefined || value.query.operator_session_id === '', `${path}.query.operator_session_id`, 'operator-local query must not be session-scoped');
@@ -414,7 +414,7 @@ const TRACE_FIELDS = [
 ] as const;
 
 const INVESTIGATION_CONTEXT_TOOL = 'query_investigation_context';
-const AUDIT_RECEIPT_LIST_TOOL = 'audit_receipt_list';
+const EVENT_RECEIPT_LIST_TOOL = 'event_receipt_list';
 const INVESTIGATION_STATUS_TYPE = 'investigation_status';
 const COMPLETED_EXECUTION_STATUS = 'EXECUTION_STATUS_COMPLETED';
 
@@ -435,8 +435,8 @@ function parseContextCallArguments(call: AgentTraceToolCall, path: string): Reco
 function validateV6ContextRetrievals(calls: AgentTraceToolCall[], investigationId: string | undefined): void {
   calls.forEach((call, index) => {
     const path = `agent_trace.tool_calls[${index}]`;
-    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL && call.tool_name !== AUDIT_RECEIPT_LIST_TOOL) {
-      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context or audit_receipt_list');
+    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL && call.tool_name !== EVENT_RECEIPT_LIST_TOOL) {
+      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context or event_receipt_list');
       return;
     }
     const completedReceipt = call.receipt?.status === COMPLETED_EXECUTION_STATUS;

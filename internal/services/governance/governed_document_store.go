@@ -16,7 +16,7 @@ import (
 // (cases, investigations, memories). Only the gateway-mode DocumentStoreService
 // implements this; outbound mode has no governed document store and fails
 // closed if a document action reaches it. This is intentionally separate from
-// TransactionAuditStore, which persists signed ActionReceipt records and has
+// TransactionEventsStore, which persists signed EventReceipt records and has
 // different semantics (receipts are keyed by transaction_id, never merged).
 type GovernedDocumentStore interface {
 	// DocReplace creates or replaces a document. data must be valid JSON.

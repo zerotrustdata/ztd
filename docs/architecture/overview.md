@@ -64,7 +64,7 @@ Defines the architecture of the ztd zero-trust governance and execution platform
   - [Network Topology, Ports, and SPIFFE Identity](#network-topology-ports-and-spiffe-identity)
   - [Authentication and Enrollment Lifecycle](#authentication-and-enrollment-lifecycle)
   - [Cryptographic Key Custody and Vault Hierarchy](#cryptographic-key-custody-and-vault-hierarchy)
-  - [Local-First Audit Architecture (LFAA)](#local-first-audit-architecture-lfaa)
+  - [Local-First Events Architecture (LFEA)](#local-first-events-architecture-lfea)
   - [Server-Sent Events (SSE) Infrastructure](#server-sent-events-sse-infrastructure)
   - [Observation Projections and Public Spectator Mirror](#observation-projections-and-public-spectator-mirror)
   - [Protocol Contracts and Code Generation](#protocol-contracts-and-code-generation)
@@ -113,7 +113,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-ARCH-STOR-01 | Under the Local-First Audit Architecture (LFAA), each executing runtime (Gateway and remote Operators) is authoritative for its sovereign SQLite audit database, execution events, and local state root. Gateway receipt copies mirrored over pub/sub are best-effort projections. |
+| INV-ARCH-STOR-01 | Under the Local-First Events Architecture (LFEA), each executing runtime (Gateway and remote Operators) is authoritative for its sovereign SQLite events database, execution events, and local state root. Gateway receipt copies mirrored over pub/sub are best-effort projections. |
 | INV-ARCH-STOR-02 | Sensitive command results, diffs, and governed file contents MUST be encrypted at rest using AES-256-GCM via a three-tier vault key hierarchy (vault key sealed under the platform master key, HKDF-derived KEK, and wrapped DEK). |
 
 ## Owned surfaces
@@ -204,7 +204,7 @@ sequenceDiagram
     OP->>Vault: Execute Action & Capture State Root
     Note over OP: 5. Dissolve JIT Capability<br/>6. Sign & Persist COMPLETED Receipt<br/>7. Attach Persistence Attestation
     OP-->>GW: Publish Receipt (receipts:<op_id>:<session_id>)
-    GW-->>Client: Return Result & Signed ActionReceipt
+    GW-->>Client: Return Result & Signed EventReceipt
 ```
 
 A caller can instead deny a suspended transaction through `POST /api/v1/approvals/respond`. The Gateway resubmits it with an L3 deny marker; the Operator rejects it and returns a signed `L3_DENIED` receipt, which the Gateway returns and publishes as `approval.completed`. The denied transaction does not continue through normal execution. An enrolled CLI session can deny the same way with `ztd auth approve --deny`, which denies over mTLS instead of approving.
@@ -271,9 +271,9 @@ ztd protects sensitive data using a three-tier encryption hierarchy:
 - **Key Encryption Key (KEK)**: Derived from the vault key using HKDF-SHA256 with a domain-specific info string.
 - **Data Encryption Key (DEK)**: 256-bit AES key wrapped by the KEK using AES Key Wrap and stored in `.ztd/vault/vault.header`. Encrypts sensitive audit logs, file diffs, and scrubber tokens using AES-256-GCM.
 
-### Local-First Audit Architecture (LFAA)
+### Local-First Events Architecture (LFEA)
 
-Under the Local-First Audit Architecture (LFAA), each executing runtime is authoritative for its own local execution evidence:
+Under the Local-First Events Architecture (LFEA), each executing runtime is authoritative for its own local execution evidence:
 - **Primary SQLite Database (`ztd.db`)**: Located in `.ztd/data/` for each runtime. Contains the audit chain (`events`, including the current event receipt on each transaction's row), nonce replay tables, and commitment ledgers.
 - **Commitment Ledger**: Hash-chained SQLite table linking consecutive execution commitments cryptographically to prove historical tamper resistance.
 - **Git-Backed File Ledger**: Tracks all governed file mutations under `.ztd/data/ledger/` as encrypted Git commits, exposing the repository HEAD commit as a verifiable state snapshot.
@@ -321,7 +321,7 @@ The primary deployment model is host-native execution using the single static bi
 - **Bypassing the Five-Layer Pipeline for Client-Native Tools**: Assuming client-native tools or directly reached MCP servers provide governance without traversing a ztd ingress (INV-ARCH-INGR-01).
 - **Mutating Governance Posture at Runtime**: Attempting to alter `--posture` after Gateway startup without a process restart (INV-ARCH-PIPE-02).
 - **Synthesizing Missing L2/L3 Proofs on Direct Ingress**: Allowing direct envelope submissions or HTTP command dispatch to fabricate missing consensus votes or notary proofs (INV-ARCH-INGR-02).
-- **Treating Gateway Mirrors as Authoritative Execution Truth**: Relying on Gateway receipt mirrors rather than the executing Operator's sovereign local audit store (INV-ARCH-STOR-01).
+- **Treating Gateway Mirrors as Authoritative Execution Truth**: Relying on Gateway receipt mirrors rather than the executing Operator's sovereign Local-First Events Store (INV-ARCH-STOR-01).
 - **Opening Inbound Management Listeners on Operators**: Exposing inbound network ports on remote Operators instead of maintaining outbound-only mTLS connections (INV-ARCH-NODE-02).
 - **Dispatching Mutating Actions to Witness Operators**: Routing general command execution to Provenance or Observer operators rather than Data operators (INV-ARCH-NODE-03).
 - **Exposing Internal Gateway Routes to Public Spectators**: Routing public traffic directly to the private Gateway on port 8443 rather than through the isolated public mirror on port 8082 (`INV-SPEC-ISO-01` in [Public Spectator Architecture](public_spectator.md)).
@@ -336,7 +336,7 @@ The primary deployment model is host-native execution using the single static bi
 - [Authentication & Authorization](auth.md): CLI enrollment, recovery, rotation, and WebAuthn notary approvals.
 - [Network Architecture](network.md): PKI hierarchy, TLS 1.3/mTLS transport, SPIFFE identity, and port topology.
 - [Encryption Architecture](encryption.md): Vault lifecycle, three-tier key hierarchy, and FIPS compliance.
-- [Storage Architecture](storage.md): Audit store, commitment ledger, replay store, and SQLite persistence.
+- [Storage Architecture](storage.md): Local-First Events Store, commitment ledger, replay store, and SQLite persistence.
 - [Events Architecture](events.md): Canonical event taxonomy, routing keys, and action classifications.
 - [AI Agents and Governance Boundary](agents.md): Agent ingress paths, downstream MCP egress, and tool call constraints.
 - [Evaluations](evals.md): Model evaluation framework, campaign scoring, and Operator capabilities used by evaluations.

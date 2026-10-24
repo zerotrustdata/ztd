@@ -29,7 +29,7 @@ func TestVerifyErrorClassMapsEachVerificationSentinel(t *testing.T) {
 		{"anchor unknown", constants.ErrConformanceAnchorUnknown, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN},
 		{"receipt unclassifiable", constants.ErrConformanceReceiptUnclassifiable, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE},
 		{"stage chain invalid", constants.ErrInvalidEvidenceGraph, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID},
-		{"action receipt signature invalid", constants.ErrActionReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+		{"event receipt signature invalid", constants.ErrEventReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 		{"attestation signature invalid", constants.ErrReceiptPersistenceAttestationInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 		{"attestation digest mismatch", constants.ErrReceiptPersistenceSignatureMismatch, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 		{"wrapped anchor unknown", fmt.Errorf("oracle: resolve: %w", constants.ErrConformanceAnchorUnknown), evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN},

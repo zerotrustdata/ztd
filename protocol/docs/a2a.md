@@ -11,7 +11,7 @@ The **Agent-to-Agent (A2A)** protocol defines a cryptographically governed mecha
 
 Autonomous workflows frequently require agents to collaborate across boundaries of authority. In ztd, peer agent delegation is never unmediated:
 - **Zero-Trust Boundary**: Inbound agent skill requests are treated as untrusted intent.
-- **Unified Governance**: Every skill call undergoes identical validation to host-native commands, requiring state Merkle root verification, policy evaluation, and cryptographic audit receipt generation.
+- **Unified Governance**: Every skill call undergoes identical validation to host-native commands, requiring state Merkle root verification, policy evaluation, and cryptographic event receipt generation.
 - **Fail-Closed Execution**: Downstream skill providers receive invocations only after all governance layers confirm validity.
 
 ```text
@@ -36,7 +36,7 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 │ 2. Mint capability bound to action type & tx hash      │
 │ 3. Forward to downstream (DispatchToA2ADownstream)     │
 │ 4. Bound receipt summary to 4096 bytes (A2A handler)   │
-│ 5. Produce signed ActionReceipt & commit to ledger     │
+│ 5. Produce signed EventReceipt & commit to ledger      │
 └───────────────────────────┬────────────────────────────┘
                             │ HTTP / JSON
                             ▼
@@ -145,7 +145,7 @@ The typed payload message is defined in [`protocol/proto/ztd/operator/v1/operato
 - Builds the `EXECUTING` receipt, signs and logs it. The receipt and its commitment attestation are persisted in one write (`signAndLogReceipt`, `internal/services/governance/l5_actuator.go`).
 - Mints an ephemeral execution capability (`MintCapability`). `Capability.Verify` checks the action type and transaction hash. The capability records `target_resource`, but `Verify` does not check it.
 - Invokes the handler. For A2A this is the Operator's A2A handler, which calls `DispatchToA2ADownstream` (§6).
-- Finalizes the signed `ActionReceipt` as `EXECUTION_STATUS_COMPLETED` or `EXECUTION_STATUS_FAILED` and writes it through `LogEventReceipt` to `SQLAuditStore`.
+- Finalizes the signed `EventReceipt` as `EXECUTION_STATUS_COMPLETED` or `EXECUTION_STATUS_FAILED` and writes it through `LogEventReceipt` to `LocalFirstEventsStore`.
 
 ---
 
@@ -229,7 +229,7 @@ The dispatch issues an HTTP `POST` to the configured A2A downstream URL (`--a2a-
 
 The Operator's A2A handler truncates the result to `ReceiptSummaryMaxBytes` (`4096` bytes, `internal/constants/pubsub.go`) before it becomes the receipt summary.
 
-Any error from the handler finalizes the L5 receipt as `EXECUTION_STATUS_FAILED`, with the L5 execution stage marked failed. The dispatch path returns that signed FAILED receipt as the call's result (`executionFailedReceipt` and `verifiedTransactionReceipt`, `internal/services/gateway/dispatch_service.go`). The JSON-RPC response is therefore a success carrying a FAILED receipt, not a JSON-RPC error.
+Any error from the handler finalizes the L5 receipt as `EXECUTION_STATUS_FAILED`, with the L5 execution stage marked failed. The dispatch path returns that signed FAILED receipt as the call's result (`executionFailedReceipt` and `verifiedTransactionEventReceipt`, `internal/services/gateway/dispatch_service.go`). The JSON-RPC response is therefore a success carrying a FAILED receipt, not a JSON-RPC error.
 
 ### 6.3 Shared Circuit Breaker
 A2A dispatch and MCP egress use the same circuit-breaker state in `GatewayService` (`recordFailure`, `recordSuccess`, `isCircuitOpen`):
@@ -242,7 +242,7 @@ A2A dispatch and MCP egress use the same circuit-breaker state in `GatewayServic
 
 ## 7. Execution Success Response
 
-When the call completes, the Gateway returns `A2ASuccessResponse` as the JSON-RPC `result`. Its `id` is the transaction hash and its `result` is the executing Operator's signed `ActionReceipt`, encoded as canonical protojson with proto field names (`UseProtoNames`). Enum values use their proto names, such as `EXECUTION_STATUS_COMPLETED`. A FAILED receipt is returned the same way (§6.2).
+When the call completes, the Gateway returns `A2ASuccessResponse` as the JSON-RPC `result`. Its `id` is the transaction hash and its `result` is the executing Operator's signed `EventReceipt`, encoded as canonical protojson with proto field names (`UseProtoNames`). Enum values use their proto names, such as `EXECUTION_STATUS_COMPLETED`. A FAILED receipt is returned the same way (§6.2).
 
 ```json
 {
@@ -268,7 +268,7 @@ When the call completes, the Gateway returns `A2ASuccessResponse` as the JSON-RP
 }
 ```
 
-The example is abridged. `l2_status` and `l3_status` depend on posture; their values are defined by the `L2Status` and `L3Status` enums in `protocol/proto/ztd/operator/v1/operator.proto`. The full `ActionReceipt` message is in the same file.
+The example is abridged. `l2_status` and `l3_status` depend on posture; their values are defined by the `L2Status` and `L3Status` enums in `protocol/proto/ztd/operator/v1/operator.proto`. The full `EventReceipt` message is in the same file.
 
 ---
 

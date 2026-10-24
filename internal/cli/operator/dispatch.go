@@ -66,7 +66,7 @@ type RunResult struct {
 	ConsensusVotesError string                       `json:"consensus_votes_error,omitempty"`
 	// Receipt, Rejection and Refusal are the typed bodies behind the fields
 	// above, for callers that need the signed evidence itself.
-	Receipt   *operatorv1.ActionReceipt       `json:"-"`
+	Receipt   *operatorv1.EventReceipt        `json:"-"`
 	Rejection *operatorv1.GovernanceRejection `json:"-"`
 	Refusal   *operatorv1.IngressRefusal      `json:"-"`
 	// TransportErr is the Post error when the Gateway sent no HTTP answer, so

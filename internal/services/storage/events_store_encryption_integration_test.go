@@ -22,7 +22,7 @@ import (
 
 // rawColumn reads one stored column straight from SQLite, bypassing the store
 // decrypt path, so the test sees exactly what is on disk.
-func rawColumn(t *testing.T, ass *SQLAuditStore, query string, args ...any) []byte {
+func rawColumn(t *testing.T, ass *LocalFirstEventsStore, query string, args ...any) []byte {
 	t.Helper()
 	var raw []byte
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), query, args...).Scan(&raw))
@@ -32,7 +32,7 @@ func rawColumn(t *testing.T, ass *SQLAuditStore, query string, args ...any) []by
 // TestContentColumnsAreEncryptedAtRest writes a distinctive marker into every
 // content column of ztd.db and asserts the raw column never holds the marker.
 func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	const marker = "PLAINTEXT-MARKER-7f3a"
 
 	require.NoError(t, ass.CreateSession("enc-session", constants.SessionTypeOperator, "title "+marker, "identity "+marker))
@@ -70,7 +70,7 @@ func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
 	record := sampleEventReceiptRecord(t, "enc-session")
 	record.TargetResource = "/target/" + marker
 	record.ResultSummary = "summary " + marker
-	record.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: record.TransactionID, TransactionHash: record.TransactionHash}
+	record.EventReceipt = &operatorv1.EventReceipt{TransactionId: record.TransactionID, TransactionHash: record.TransactionHash}
 	require.NoError(t, ass.RecordEventReceipt(record))
 	rawTarget := rawColumn(t, ass, `SELECT event_receipt_target_resource FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
 	require.NotContains(t, string(rawTarget), marker, "events.event_receipt_target_resource")
@@ -117,7 +117,7 @@ func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
 // TestLockedVaultFailsContentWrites asserts that every content write fails with
 // the typed locked-vault sentinel and never falls back to plaintext.
 func TestLockedVaultFailsContentWrites(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("locked-session", constants.SessionTypeOperator, "", ""))
 	eventID, err := ass.RecordEvent(&Event{
 		OperatorSessionID: "locked-session",
@@ -129,7 +129,7 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 	ass.encryptionVault.Lock()
 
 	err = ass.CreateSession("locked-session-2", constants.SessionTypeOperator, "title", "identity")
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "sessions: %v", err)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "sessions: %v", err)
 
 	err = ass.RecordFileMutation(&FileMutationLog{
 		EventID:   eventID,
@@ -137,13 +137,13 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 		Operation: FileMutationWrite,
 		DiffStat:  "1 file changed",
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "file_mutation_log: %v", err)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "file_mutation_log: %v", err)
 
 	record := sampleEventReceiptRecord(t, "locked-session")
 	record.TargetResource = "/locked/target"
 	record.ResultSummary = "locked summary"
 	err = ass.RecordEventReceipt(record)
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "receipts: %v", err)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "receipts: %v", err)
 
 	_, err = ass.RecordEvent(&Event{
 		OperatorSessionID: "locked-session",
@@ -151,14 +151,14 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 		Type:              constants.EventType("COMMAND_EXECUTION"),
 		CommandRaw:        "echo locked",
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "events.command_raw: %v", err)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "events.command_raw: %v", err)
 
 	err = ass.CommitmentLedger().AppendCommitment(func(prior string) (*operatorv1.CommitmentAttestation, error) {
 		return &operatorv1.CommitmentAttestation{TransactionId: "tx-locked", PriorCommitmentHash: prior, TargetResource: "/locked"}, nil
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "commitment_ledger: %v", err)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "commitment_ledger: %v", err)
 }
 
-func scopeForSession(sessionID string) models.AuditScope {
-	return models.AuditScope{OperatorSessionID: sessionID}
+func scopeForSession(sessionID string) models.EventsScope {
+	return models.EventsScope{OperatorSessionID: sessionID}
 }

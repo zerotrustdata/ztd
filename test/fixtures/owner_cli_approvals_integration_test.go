@@ -76,7 +76,7 @@ func TestEvalStackOwnerCLIApprovals(t *testing.T) {
 			for _, receipt := range receipts {
 				require.NotEmpty(t, receipt.GetTransactionHash())
 				_, duplicate := seenHashes[receipt.GetTransactionHash()]
-				require.False(t, duplicate, "each enrollment must yield a distinct transaction receipt")
+				require.False(t, duplicate, "each enrollment must yield a distinct transaction event receipt")
 				seenHashes[receipt.GetTransactionHash()] = struct{}{}
 				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
 				require.Equal(t, string(constants.ActionTypePlatformEnrollmentDecide), receipt.GetActionType())
@@ -85,13 +85,13 @@ func TestEvalStackOwnerCLIApprovals(t *testing.T) {
 				require.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, receipt.GetL2Status())
 				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
 				require.Equal(t, stack.Gateway.ActuatorKeyID, receipt.GetSignerKeyId())
-				require.NoError(t, receiptgov.VerifyActionReceipt(receipt, publicKey), "receipt must verify with the Gateway actuator key")
+				require.NoError(t, receiptgov.VerifyEventReceipt(receipt, publicKey), "receipt must verify with the Gateway actuator key")
 
-				persisted, err := stack.Gateway.Service.GetAuditStore().GetEventReceipt(receipt.GetTransactionId())
+				persisted, err := stack.Gateway.Service.GetLocalFirstEventsStore().GetEventReceipt(receipt.GetTransactionId())
 				require.NoError(t, err)
-				require.NotNil(t, persisted, "approval receipt must be present in the Gateway's authoritative audit store")
-				require.NotNil(t, persisted.ActionReceipt)
-				require.True(t, proto.Equal(receipt, persisted.ActionReceipt), "the API receipt must equal the Gateway's persisted receipt")
+				require.NotNil(t, persisted, "approval receipt must be present in the Gateway's authoritative local-first events store")
+				require.NotNil(t, persisted.EventReceipt)
+				require.True(t, proto.Equal(receipt, persisted.EventReceipt), "the API receipt must equal the Gateway's persisted receipt")
 			}
 
 			stack.RequireOutboundMTLS(t, stack.Data)
@@ -134,7 +134,7 @@ func TestRespondSuspendedTransactionsContinuesAfterFailedApproval(t *testing.T) 
 				http.Error(w, "approval store unavailable", http.StatusInternalServerError)
 				return
 			}
-			wire, err := protojson.Marshal(&operatorv1.ActionReceipt{
+			wire, err := protojson.Marshal(&operatorv1.EventReceipt{
 				TransactionHash: req.ApprovalID,
 				Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 				L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
@@ -151,7 +151,7 @@ func TestRespondSuspendedTransactionsContinuesAfterFailedApproval(t *testing.T) 
 	}))
 	t.Cleanup(server.Close)
 
-	owner := &OwnerConsole{approvalReceipts: newEventLog[*operatorv1.ActionReceipt]()}
+	owner := &OwnerConsole{approvalReceipts: newEventLog[*operatorv1.EventReceipt]()}
 	err := respondSuspendedTransactions(t.Context(), server.Client(), server.URL, identity, owner)
 	require.ErrorContains(t, err, failedHash, "the failed approval must be reported")
 

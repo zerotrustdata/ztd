@@ -41,7 +41,7 @@ type TestInfrastructure struct {
 	KVStore            *KVStoreService
 	SSEStore           *SSEEventService
 	BlobStore          *BlobStoreService
-	AuditStore         *storage.SQLAuditStore
+	EventsStore        *storage.LocalFirstEventsStore
 	Pubsub             *GatewayWebSocketHandler
 	SecretMgr          *SecretManager
 	PKI                *PKIAuthority
@@ -75,10 +75,10 @@ func newTestFileSvc(tb testing.TB) fs.RuntimeFileService {
 }
 
 // newTestOperatorSessionService builds an OperatorSessionService over a real
-// audit store; the constructor rejects a nil one.
-func newTestOperatorSessionService(t *testing.T, docStore *DocumentStoreService, auditStore *storage.SQLAuditStore, logger *slog.Logger) *OperatorSessionService {
+// local-first events store; the constructor rejects a nil one.
+func newTestOperatorSessionService(t *testing.T, docStore *DocumentStoreService, eventsStore *storage.LocalFirstEventsStore, logger *slog.Logger) *OperatorSessionService {
 	t.Helper()
-	svc, err := NewOperatorSessionService(docStore, auditStore, logger)
+	svc, err := NewOperatorSessionService(docStore, eventsStore, logger)
 	require.NoError(t, err)
 	return svc
 }
@@ -141,7 +141,7 @@ func setupTestInfrastructure(t *testing.T, _ bool) *TestInfrastructure {
 	// Wire up auth service to user service for cache invalidation
 	userSvc.SetAuthService(auth)
 	cliSessionSvc := NewCLISessionService(docStore, logger)
-	operatorSessionSvc := newTestOperatorSessionService(t, docStore, db.GetAuditStore(), logger)
+	operatorSessionSvc := newTestOperatorSessionService(t, docStore, db.GetLocalFirstEventsStore(), logger)
 	embeddedOperator := embedded.New(docStore, operatorSessionSvc)
 	webSessionSvc := NewWebSessionService(docStore, logger)
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
@@ -175,7 +175,7 @@ func setupTestInfrastructure(t *testing.T, _ bool) *TestInfrastructure {
 		KVStore:            db.GetKVStore(),
 		SSEStore:           db.GetSSEStore(),
 		BlobStore:          db.GetBlobStore(),
-		AuditStore:         db.GetAuditStore(),
+		EventsStore:        db.GetLocalFirstEventsStore(),
 		Pubsub:             pubsub,
 		SecretMgr:          sm,
 		PKI:                pki,

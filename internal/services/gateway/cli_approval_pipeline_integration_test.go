@@ -105,18 +105,18 @@ func TestCLIApproval_RatifyResumesSuspendedEnvelopeAndCommitsMutation(t *testing
 	require.Zero(t, mutationCount.Load(), "the mutation must wait for signed L3 approval")
 
 	approvalRespBody := approveCLISuspension(t, f, client, identity, txHash)
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(approvalRespBody, &receipt))
 	require.Equal(t, txHash, receipt.GetTransactionHash())
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
 	require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
 	require.EqualValues(t, 1, mutationCount.Load(), "approval must resume and execute the governed mutation exactly once")
 
-	persisted, err := f.Service.GetAuditStore().GetEventReceipt(txHash)
+	persisted, err := f.Service.GetLocalFirstEventsStore().GetEventReceipt(txHash)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
-	require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, persisted.ActionReceipt.GetL3Status())
-	commitments, err := f.Service.GetAuditStore().CommitmentLedger().ListCommitments()
+	require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, persisted.EventReceipt.GetL3Status())
+	commitments, err := f.Service.GetLocalFirstEventsStore().CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	require.NotEmpty(t, commitments, "the resumed mutation must be recorded in the commitment ledger")
 	foundCommitment := false
@@ -256,7 +256,7 @@ func TestCLIApproval_SignedApprovalSurvivesInPlaceBind(t *testing.T) {
 	require.Zero(t, mutationCount.Load(), "the mutation must wait for signed L3 approval")
 
 	approvalRespBody := approveCLISuspension(t, f, client, identity, txHash)
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(approvalRespBody, &receipt))
 	require.Equal(t, txHash, receipt.GetTransactionHash())
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
@@ -322,7 +322,7 @@ func TestCLIApproval_SignedApprovalSurvivesRefreshInPlace(t *testing.T) {
 	require.Zero(t, mutationCount.Load(), "the mutation must wait for signed L3 approval")
 
 	approvalRespBody := approveCLISuspension(t, f, client, identity, txHash)
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(approvalRespBody, &receipt))
 	require.Equal(t, txHash, receipt.GetTransactionHash())
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())

@@ -19,7 +19,7 @@ import (
 	vault "github.com/zerotrustdata/ztd/internal/services/vault"
 )
 
-// ReadLocalEventReceipt opens one runtime's canonical audit database through
+// ReadLocalEventReceipt opens one runtime's canonical events database through
 // fileSvc and returns the signed receipt that runtime recorded for
 // transactionID, decrypted with the runtime's own vault key from the key store
 // opts selects (zero Options select the OS key store). It reads only the local, authoritative store and
@@ -52,9 +52,9 @@ func ReadLocalEventReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, o
 		return nil, fmt.Errorf("local receipt: %w", err)
 	}
 	defer db.Close()
-	cfg := DefaultAuditStoreConfig()
+	cfg := DefaultLocalFirstEventsStoreConfig()
 	cfg.EncryptionVault = v
-	store, err := NewSQLAuditStore(cfg, db, logger, fileSvc)
+	store, err := NewLocalFirstEventsStore(cfg, db, logger, fileSvc)
 	if err != nil {
 		return nil, fmt.Errorf("local receipt: %w", err)
 	}

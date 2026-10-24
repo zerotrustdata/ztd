@@ -46,7 +46,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | INV-BUILD-OP-02 | The `operator start` command accepts connection parameters (`--endpoint`, `--trust-bundle`) and capability flags (`--capabilities`). Unknown flags are rejected before startup. |
 | INV-BUILD-OP-03 | Multiple Operators on the same host MUST use distinct working directories to prevent fingerprint collisions. They share a Gateway endpoint and expose no inbound ports. The Gateway differentiates instances by SHA-256 composite fingerprint. |
 | INV-BUILD-OP-04 | The `.ztd/` runtime state tree is created by `CreateRuntimeTree` (`internal/services/fs/bootstrap.go`) and contains `pki/` (with its `root/`, `authorities/`, `issued/`, `trust/`, `revocation/`, `binaries/`, and `client/` subdirectories), `data/` (with `data/ledger/` and `data/ledger/files/`), `vault/`, `secrets/`, `logs/`, `pids/`, `bin/`, `public-feed/`, and `public-mirror/`. It never stores the Operator's enrollment identity on disk; credentials live only in process memory. Auto-initialization occurs on first `operator start`. |
-| INV-BUILD-OP-05 | L1 Doctrine re-execution, L2/L3 posture verification, replay and expiry checks, transaction hash equality, and state-root binding MUST be performed in L4 Warden before L5 Actuator execution. L5 Actuator signs the execution receipts. |
+| INV-BUILD-OP-05 | L1 Doctrine re-execution, L2/L3 posture verification, replay and expiry checks, transaction hash equality, and state-root binding MUST be performed in L4 Warden before L5 Actuator execution. L5 Actuator signs the event receipts. |
 
 ## Owned surfaces
 
@@ -195,6 +195,6 @@ Set `OPERATOR_SESSION_ID` to the Operator session to stop and `REQUEST_ID` to th
 ## Links out
 
 - [Connect Operator to Gateway](connect_operator_to_gateway.md) — Enrollment, connection, health checks, and fleet operations.
-- [Operator Architecture](../architecture/operator.md) — Service stack, execution boundary, audit stores, and tool handlers.
+- [Operator Architecture](../architecture/operator.md) — Service stack, execution boundary, Local-First Events Store, and tool handlers.
 - [Protocol Architecture](../architecture/protocol.md) — Protocol schemas, models, and constants.
 - [Build Applications](build_apps.md) — Connect applications to the Gateway.

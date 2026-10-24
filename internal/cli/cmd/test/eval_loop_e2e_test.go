@@ -307,7 +307,7 @@ const (
 	// evalLoopTribunalDissent is Nemesis's adversarial proposal: the vote
 	// always excludes Nemesis's command, so it must differ from the agreed one.
 	evalLoopTribunalDissent = `{"command":"head","args":["app/service.conf"]}`
-	evalLoopTribunalAnswer   = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
+	evalLoopTribunalAnswer  = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
 )
 
 // logEvalLoopChatRequests logs every chat request's messages, so a failed loop
@@ -543,7 +543,7 @@ func (r *releaseSmokeRun) verifyEvalTraceRuntimes(trace *evaluation.AgentTrace, 
 // transaction IDs it verified.
 func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluation.AgentTrace, inferenceRoot, inferenceID, inferenceSession string) ([]string, error) {
 	var txs []string
-	for _, receipt := range []*operatorv1.ActionReceipt{trace.Bracket.Before.ActionReceipt, trace.Bracket.After.ActionReceipt} {
+	for _, receipt := range []*operatorv1.EventReceipt{trace.Bracket.Before.EventReceipt, trace.Bracket.After.EventReceipt} {
 		if receipt == nil {
 			return nil, constants.ErrEvidenceArtifactMalformed
 		}

@@ -22,7 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func recordContentEvent(t *testing.T, ass *SQLAuditStore, sessionID, text, stdout string) int64 {
+func recordContentEvent(t *testing.T, ass *LocalFirstEventsStore, sessionID, text, stdout string) int64 {
 	t.Helper()
 	id, err := ass.RecordEvent(&Event{
 		OperatorSessionID: sessionID,
@@ -37,14 +37,14 @@ func recordContentEvent(t *testing.T, ass *SQLAuditStore, sessionID, text, stdou
 	return id
 }
 
-func setRawColumn(t *testing.T, ass *SQLAuditStore, query string, args ...any) {
+func setRawColumn(t *testing.T, ass *LocalFirstEventsStore, query string, args ...any) {
 	t.Helper()
 	_, err := ass.db.ExecWithRetry(t.Context(), query, args...)
 	require.NoError(t, err)
 }
 
 func TestContentDigest_IsKeyedNotPlainSHA256(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("digest-session", constants.SessionTypeOperator, "", ""))
 	// Short, low-entropy content with no execution id is the offline brute-force case.
 	id := recordContentEvent(t, ass, "digest-session", "yes", "")
@@ -66,7 +66,7 @@ func TestContentDigest_IsKeyedNotPlainSHA256(t *testing.T) {
 }
 
 func TestVerifyChainContent_DetectsTamperedCiphertext(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("tamper-session", constants.SessionTypeOperator, "", ""))
 	first := recordContentEvent(t, ass, "tamper-session", "first", "out-one")
 	recordContentEvent(t, ass, "tamper-session", "second", "out-two")
@@ -84,7 +84,7 @@ func TestVerifyChainContent_DetectsTamperedCiphertext(t *testing.T) {
 }
 
 func TestVerifyChainContent_DetectsSwappedCiphertext(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("swap-session", constants.SessionTypeOperator, "", ""))
 	first := recordContentEvent(t, ass, "swap-session", "first", "out-one")
 	second := recordContentEvent(t, ass, "swap-session", "second", "out-two")
@@ -99,7 +99,7 @@ func TestVerifyChainContent_DetectsSwappedCiphertext(t *testing.T) {
 
 		// The read path refuses the moved blob as well, instead of returning another row's output.
 		_, err := ass.GetEvents(scopeForSession("swap-session"), 10, 0)
-		require.ErrorIs(t, err, constants.ErrAuditStoreDecryptFailed)
+		require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDecryptFailed)
 
 		setRawColumn(t, ass, `UPDATE events SET command_stdout = ? WHERE id = ?`, a, first)
 		setRawColumn(t, ass, `UPDATE events SET command_stdout = ? WHERE id = ?`, b, second)
@@ -118,7 +118,7 @@ func TestVerifyChainContent_DetectsSwappedCiphertext(t *testing.T) {
 }
 
 func TestEncryptedColumnsAreBoundToTheirRow(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("bind-a", constants.SessionTypeOperator, "title a", "identity a"))
 	require.NoError(t, ass.CreateSession("bind-b", constants.SessionTypeOperator, "title b", "identity b"))
 
@@ -127,14 +127,14 @@ func TestEncryptedColumnsAreBoundToTheirRow(t *testing.T) {
 	setRawColumn(t, ass, `UPDATE sessions SET title = ? WHERE id = ?`, b, "bind-a")
 	setRawColumn(t, ass, `UPDATE sessions SET title = ? WHERE id = ?`, a, "bind-b")
 	_, err := ass.GetOperatorSession("bind-a")
-	require.ErrorIs(t, err, constants.ErrAuditStoreDecryptFailed)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDecryptFailed)
 
 	// A blob moved to another column of the same row fails too.
 	setRawColumn(t, ass, `UPDATE sessions SET title = ? WHERE id = ?`, a, "bind-a")
 	identity := rawColumn(t, ass, `SELECT user_identity FROM sessions WHERE id = ?`, "bind-a")
 	setRawColumn(t, ass, `UPDATE sessions SET title = ? WHERE id = ?`, identity, "bind-a")
 	_, err = ass.GetOperatorSession("bind-a")
-	require.ErrorIs(t, err, constants.ErrAuditStoreDecryptFailed)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDecryptFailed)
 
 	// Two file mutations of one event are bound to distinct row identities.
 	eventID := recordContentEvent(t, ass, "bind-b", "files", "")
@@ -149,11 +149,11 @@ func TestEncryptedColumnsAreBoundToTheirRow(t *testing.T) {
 	setRawColumn(t, ass, `UPDATE file_mutation_log SET filepath = ? WHERE id = ?`, pathB, mutations[0].ID)
 	setRawColumn(t, ass, `UPDATE file_mutation_log SET filepath = ? WHERE id = ?`, pathA, mutations[1].ID)
 	_, err = ass.GetFileMutations(eventID)
-	require.ErrorIs(t, err, constants.ErrAuditStoreDecryptFailed)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreDecryptFailed)
 }
 
 func TestLockedVaultFailsClosedForEventWriteAndContentVerify(t *testing.T) {
-	ass := newIntegrationAuditStore(t)
+	ass := newIntegrationEventsStore(t)
 	require.NoError(t, ass.CreateSession("locked-digest", constants.SessionTypeOperator, "", ""))
 	recordContentEvent(t, ass, "locked-digest", "kept", "")
 	require.NoError(t, ass.VerifyChainContent(t.Context(), 0))
@@ -166,9 +166,9 @@ func TestLockedVaultFailsClosedForEventWriteAndContentVerify(t *testing.T) {
 		Timestamp:         time.Now().UTC(),
 		Type:              constants.EventType("COMMAND_EXECUTION"),
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked)
 
 	// The link-only walk still runs; content verification cannot and fails closed.
 	require.NoError(t, ass.VerifyChain(t.Context(), 0))
-	require.ErrorIs(t, ass.VerifyChainContent(t.Context(), 0), constants.ErrAuditStoreVaultLocked)
+	require.ErrorIs(t, ass.VerifyChainContent(t.Context(), 0), constants.ErrLocalFirstEventsStoreVaultLocked)
 }

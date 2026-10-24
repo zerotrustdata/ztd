@@ -28,7 +28,7 @@ import (
 type ArtifactType string
 
 const (
-	ArtifactTypeActionReceipt                    ArtifactType = "action-receipt"
+	ArtifactTypeEventReceipt                     ArtifactType = "event-receipt"
 	ArtifactTypeReceiptPersistence               ArtifactType = "receipt-persistence"
 	ArtifactTypeStateObservation                 ArtifactType = "state-observation"
 	ArtifactTypeProtocolChain                    ArtifactType = "protocol-chain"
@@ -64,7 +64,7 @@ func EvalScopeID(suiteID string) string {
 
 func SupportedArtifactTypes() []ArtifactType {
 	return []ArtifactType{
-		ArtifactTypeActionReceipt,
+		ArtifactTypeEventReceipt,
 		ArtifactTypeReceiptPersistence,
 		ArtifactTypeStateObservation,
 		ArtifactTypeProtocolChain,

@@ -58,9 +58,9 @@ type GatewayWebSocketHandler struct {
 
 	// receiptRelayDeps are wired by SetReceiptRelayDeps for the receipts:
 	// relay path. When set, publishes to receipts: channels from
-	// authorized operators are intercepted, the ActionReceipt signature is
+	// authorized operators are intercepted, the EventReceipt signature is
 	// verified against the operator's actuator public key, the receipt is
-	// recorded in the gateway's SQLAuditStore, and the envelope is fanned
+	// recorded in the gateway's LocalFirstEventsStore, and the envelope is fanned
 	// out to subscribers. When nil (the default), the receipts: relay path
 	// is disabled and publishes to receipts: are rejected fail-closed.
 	receiptRelayMu       sync.RWMutex
@@ -75,8 +75,8 @@ type GatewayWebSocketHandler struct {
 
 // EventReceiptRecorder is the narrow interface wrapping
 // RecordEventReceipt(*models.EventReceiptRecord) error so the pubsub broker
-// does not depend directly on *storage.SQLAuditStore. Implemented by
-// *storage.SQLAuditStore.
+// does not depend directly on *storage.LocalFirstEventsStore. Implemented by
+// *storage.LocalFirstEventsStore.
 type EventReceiptRecorder interface {
 	RecordEventReceipt(record *models.EventReceiptRecord) error
 }
@@ -218,14 +218,14 @@ func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 }
 
 // SetReceiptRelayDeps wires the SignerStore and EventReceiptRecorder required for
-// the receipts: ActionReceipt relay. When set, publishes to receipts:
-// channels from authorized operators are intercepted, the ActionReceipt
+// the receipts: EventReceipt relay. When set, publishes to receipts:
+// channels from authorized operators are intercepted, the EventReceipt
 // signature is verified against the operator's actuator public key (looked up
 // via the SignerStore), the receipt is recorded in the gateway's
-// SQLAuditStore via the EventReceiptRecorder, and the envelope is fanned out to
+// LocalFirstEventsStore via the EventReceiptRecorder, and the envelope is fanned out to
 // subscribers. When nil (the default), the receipts: relay path is disabled
 // and publishes to receipts: are rejected fail-closed. Called once during
-// gateway startup after the SignerStore and AuditStore are constructed.
+// gateway startup after the SignerStore and EventsStore are constructed.
 func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore ReceiptSignerResolver, recorder EventReceiptRecorder) {
 	b.receiptRelayMu.Lock()
 	b.receiptSignerStore = signerStore
@@ -535,10 +535,10 @@ func (h *pubSubSessionHandler) handlePublish(msg *pubsubv1.PubSubMessage) {
 	}
 
 	// receipts: channels from operators are intercepted: the gateway
-	// verifies the ActionReceipt signature, records the receipt in its
-	// SQLAuditStore, and fans out the envelope to subscribers.
+	// verifies the EventReceipt signature, records the receipt in its
+	// LocalFirstEventsStore, and fans out the envelope to subscribers.
 	if strings.HasPrefix(msg.Channel, constants.ChannelPrefixReceipts+":") {
-		h.relayActionReceipt(msg.Channel, msg.Data)
+		h.relayEventReceipt(msg.Channel, msg.Data)
 		return
 	}
 
@@ -554,13 +554,13 @@ func (h *pubSubSessionHandler) handlePublish(msg *pubsubv1.PubSubMessage) {
 	h.broker.Publish(msg.Channel, msg.Data)
 }
 
-// relayActionReceipt decodes a GovernanceEnvelope published by an authorized
-// operator to a receipts: channel, verifies the embedded ActionReceipt
+// relayEventReceipt decodes a GovernanceEnvelope published by an authorized
+// operator to a receipts: channel, verifies the embedded EventReceipt
 // signature against the operator's actuator public key, records the receipt
-// in the gateway's SQLAuditStore, and fans out the original envelope to
+// in the gateway's LocalFirstEventsStore, and fans out the original envelope to
 // subscribers. Fail-closed on any error: a malformed envelope, identity
 // mismatch, unknown signer, or invalid signature is dropped and logged.
-func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
+func (h *pubSubSessionHandler) relayEventReceipt(channel string, data []byte) {
 	b := h.broker
 	b.receiptRelayMu.RLock()
 	signerStore := b.receiptSignerStore
@@ -596,15 +596,15 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 		return
 	}
 
-	// 3. Unmarshal the envelope payload as an ActionReceipt.
+	// 3. Unmarshal the envelope payload as an EventReceipt.
 	if len(env.Payload) == 0 {
-		b.logger.Warn("PubSub receipts: relay: envelope missing ActionReceipt payload",
+		b.logger.Warn("PubSub receipts: relay: envelope missing EventReceipt payload",
 			"channel", channel, "transaction_id", env.Id)
 		return
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := proto.Unmarshal(env.Payload, receipt); err != nil {
-		b.logger.Warn("PubSub receipts: relay: failed to decode ActionReceipt payload",
+		b.logger.Warn("PubSub receipts: relay: failed to decode EventReceipt payload",
 			"channel", channel, "error", err.Error())
 		return
 	}
@@ -624,7 +624,7 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 			"error", err.Error())
 		return
 	}
-	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
+	if err := governance.VerifyEventReceiptSignature(receipt, pubKey); err != nil {
 		b.logger.Warn("PubSub receipts: relay: invalid receipt signature",
 			"channel", channel,
 			"transaction_id", receipt.TransactionId,
@@ -646,16 +646,16 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 	// The audit session is the channel-validated publisher session (step 2).
 	record := governance.BuildEventReceiptRecord(env, govtypes.RuntimeIdentity{OperatorID: env.OperatorId, SessionID: env.OperatorSessionId}, receipt)
 
-	// 6. Record the receipt in the gateway's SQLAuditStore. Log on error
+	// 6. Record the receipt in the gateway's LocalFirstEventsStore. Log on error
 	// but do not block fan-out: the receipt is still useful to subscribers
 	// even if the gateway's local recording fails.
 	if err := recorder.RecordEventReceipt(record); err != nil {
-		b.logger.Error("PubSub receipts: relay: failed to record receipt in audit store",
+		b.logger.Error("PubSub receipts: relay: failed to record receipt in local-first events store",
 			"channel", channel,
 			"transaction_id", receipt.TransactionId,
 			"error", err.Error())
 	} else {
-		b.logger.Info("PubSub receipts: relay: recorded operator receipt in gateway audit store",
+		b.logger.Info("PubSub receipts: relay: recorded operator receipt in gateway local-first events store",
 			"channel", channel,
 			"transaction_id", receipt.TransactionId,
 			"status", receipt.Status.String())
@@ -665,7 +665,7 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 	// channel. The gateway records as-is (preserving the operator's
 	// signature) so downstream consumers can independently verify offline.
 	delivered := b.Publish(channel, data)
-	b.logger.Info("PubSub receipts: relay: verified and fanned out action receipt",
+	b.logger.Info("PubSub receipts: relay: verified and fanned out event receipt",
 		"channel", channel,
 		"transaction_id", receipt.TransactionId,
 		"delivered", delivered)

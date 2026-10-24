@@ -6,8 +6,8 @@
 // released under the Apache License, Version 2.0.
 
 // Package storagetest provides test helpers (vaults, file services, token store)
-// and the chaos run's own event store and summary reader. It is not an audit store:
-// tests and the chaos tool use the production storage.SQLAuditStore.
+// and the chaos run's own event store and summary reader. It is not an events store:
+// tests and the chaos tool use the production storage.LocalFirstEventsStore.
 package storagetest
 
 import (
@@ -61,11 +61,11 @@ func NewTestFileSvc(tb testing.TB, baseDir string) fs.RuntimeFileService {
 	return svc
 }
 
-// NewTestAuditStore builds a real storage.SQLAuditStore (real SQLite with foreign keys
+// NewTestEventsStore builds a real storage.LocalFirstEventsStore (real SQLite with foreign keys
 // enforced, real unlocked vault) over a fresh isolated runtime root. Each sessionID is created
 // as an Operator audit session so events recorded against it satisfy the session foreign key.
 // Cleanup closes the store and its database.
-func NewTestAuditStore(t *testing.T, sessionIDs ...string) *storage.SQLAuditStore {
+func NewTestEventsStore(t *testing.T, sessionIDs ...string) *storage.LocalFirstEventsStore {
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	fileSvc := NewTestFileSvc(t, testutil.TempDir(t))
@@ -80,17 +80,17 @@ func NewTestAuditStore(t *testing.T, sessionIDs ...string) *storage.SQLAuditStor
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	auditStore, err := storage.NewSQLAuditStore(&storage.AuditStoreConfig{
+	eventsStore, err := storage.NewLocalFirstEventsStore(&storage.LocalFirstEventsStoreConfig{
 		RetentionDays:   1,
 		EncryptionVault: testVault,
 	}, db, logger, fileSvc)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, auditStore.Close()) })
+	t.Cleanup(func() { require.NoError(t, eventsStore.Close()) })
 
 	for _, id := range sessionIDs {
-		require.NoError(t, auditStore.CreateSession(id, constants.SessionTypeOperator, "Operator Session", "test-operator"))
+		require.NoError(t, eventsStore.CreateSession(id, constants.SessionTypeOperator, "Operator Session", "test-operator"))
 	}
-	return auditStore
+	return eventsStore
 }
 
 // NewTestLedger builds a real git file ledger over a fresh isolated runtime root.

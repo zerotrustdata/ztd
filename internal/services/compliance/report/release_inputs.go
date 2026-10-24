@@ -120,7 +120,7 @@ func CollectOperationalSignerKeys(snapshot *storage.OperationalEvidenceSnapshot)
 		if len(receipt.Body) == 0 {
 			continue
 		}
-		message := &operatorv1.ActionReceipt{}
+		message := &operatorv1.EventReceipt{}
 		if err := compliancev1.UnmarshalCanonical(receipt.Body, message); err != nil {
 			return nil, fmt.Errorf("release trust: decode receipt %s: %w", receipt.TransactionID, err)
 		}

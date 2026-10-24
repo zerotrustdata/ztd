@@ -98,13 +98,13 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			})
 			t.Cleanup(unregisterCmd)
 
-			receipts := make(chan *operatorv1.ActionReceipt, 16)
+			receipts := make(chan *operatorv1.EventReceipt, 16)
 			unregisterReceipt := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
 				envelope := &commonv1.GovernanceEnvelope{}
 				if err := protojson.Unmarshal(data, envelope); err != nil {
 					return
 				}
-				receipt := &operatorv1.ActionReceipt{}
+				receipt := &operatorv1.EventReceipt{}
 				if err := proto.Unmarshal(envelope.Payload, receipt); err == nil {
 					receipts <- receipt
 				}
@@ -166,7 +166,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			}
 
 			// Collect the receipts emitted for this mutation.
-			var failed *operatorv1.ActionReceipt
+			var failed *operatorv1.EventReceipt
 			if tc.l4Sentinel != nil {
 				timer := time.NewTimer(time.Second)
 				defer timer.Stop()
@@ -183,7 +183,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 				}
 				assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, failed.FailureCode)
 				assert.Contains(t, failed.ResultSummary, tc.l4Sentinel.Error(), "receipt must carry the missing-proof sentinel")
-				require.NoError(t, govsvc.VerifyActionReceiptSignature(failed, pubKey))
+				require.NoError(t, govsvc.VerifyEventReceiptSignature(failed, pubKey))
 				require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(failed, pubKey))
 			}
 

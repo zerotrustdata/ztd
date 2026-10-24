@@ -21,7 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-// Vault manages the encrypted LFAA data store.
+// Vault manages the encrypted LFEA data store.
 // It handles initialization, unlocking, re-keying, and provides
 // the DEK for database encryption operations.
 type Vault struct {

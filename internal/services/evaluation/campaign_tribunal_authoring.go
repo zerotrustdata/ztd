@@ -137,7 +137,7 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(constants.MCPToolRunShellCommand, dispatched)})
 	}
 	summary := "{}"
-	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetResultSummary() != "" {
+	if record.Receipt != nil && record.Receipt.EventReceipt != nil && record.Receipt.GetResultSummary() != "" {
 		summary = record.Receipt.GetResultSummary()
 	}
 	failure, err := shellCommandFailure(summary)
@@ -195,7 +195,7 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 		if err != nil {
 			if call.Receipt == nil && member.GetReceipt() != nil {
 				call.TransactionID = member.GetReceipt().GetTransactionId()
-				call.Receipt = &AgentTraceReceipt{ActionReceipt: member.GetReceipt()}
+				call.Receipt = &AgentTraceReceipt{EventReceipt: member.GetReceipt()}
 			}
 			if isL2GovernanceDenial(member.GetReceipt(), err) {
 				call.Error = modelCallGovernanceRejected
@@ -225,7 +225,7 @@ const tribunalGovernanceRejected = "governance_rejected"
 // failure, whether the inference was a Tribunal member call or a scored agent
 // turn. Receipt authenticity is verified by canonical trace evidence
 // verification before the outcome is accepted.
-func isL2GovernanceDenial(receipt *operatorv1.ActionReceipt, err error) bool {
+func isL2GovernanceDenial(receipt *operatorv1.EventReceipt, err error) bool {
 	if !errors.Is(err, constants.ErrInferenceGovernanceRejected) {
 		return false
 	}

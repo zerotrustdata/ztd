@@ -119,27 +119,27 @@ func (c *OwnerConsole) approvesTool(toolName string) bool {
 
 // ApprovalReceipts returns the validated receipts produced by the
 // owner's CLI approvals, in the order the Gateway returned them.
-func (c *OwnerConsole) ApprovalReceipts() []*operatorv1.ActionReceipt {
+func (c *OwnerConsole) ApprovalReceipts() []*operatorv1.EventReceipt {
 	recorded := c.approvalReceipts.snapshot()
-	receipts := make([]*operatorv1.ActionReceipt, 0, len(recorded))
+	receipts := make([]*operatorv1.EventReceipt, 0, len(recorded))
 	for _, receipt := range recorded {
-		receipts = append(receipts, proto.Clone(receipt).(*operatorv1.ActionReceipt))
+		receipts = append(receipts, proto.Clone(receipt).(*operatorv1.EventReceipt))
 	}
 	return receipts
 }
 
 // AwaitApprovalReceipts blocks until n CLI approval receipts have been
 // validated and recorded.
-func (c *OwnerConsole) AwaitApprovalReceipts(ctx context.Context, n int) ([]*operatorv1.ActionReceipt, error) {
-	recorded, err := c.approvalReceipts.awaitAll(ctx, func(receipts []*operatorv1.ActionReceipt) bool {
+func (c *OwnerConsole) AwaitApprovalReceipts(ctx context.Context, n int) ([]*operatorv1.EventReceipt, error) {
+	recorded, err := c.approvalReceipts.awaitAll(ctx, func(receipts []*operatorv1.EventReceipt) bool {
 		return len(receipts) >= n
 	})
 	if err != nil {
 		return nil, fmt.Errorf("owner console: await %d CLI approval receipts (have %d): %w", n, len(recorded), err)
 	}
-	receipts := make([]*operatorv1.ActionReceipt, 0, len(recorded))
+	receipts := make([]*operatorv1.EventReceipt, 0, len(recorded))
 	for _, receipt := range recorded {
-		receipts = append(receipts, proto.Clone(receipt).(*operatorv1.ActionReceipt))
+		receipts = append(receipts, proto.Clone(receipt).(*operatorv1.EventReceipt))
 	}
 	return receipts, nil
 }
@@ -290,7 +290,7 @@ func respondSuspendedTransaction(ctx context.Context, client *http.Client, baseU
 	if approvalResponse.StatusCode != http.StatusOK {
 		return fmt.Errorf("approve transaction %s: HTTP %d: %s", transaction.TransactionHash, approvalResponse.StatusCode, approvalWire)
 	}
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	if err := protojson.Unmarshal(approvalWire, &receipt); err != nil {
 		return fmt.Errorf("decode transaction %s receipt: %w", transaction.TransactionHash, err)
 	}

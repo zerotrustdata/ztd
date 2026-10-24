@@ -36,11 +36,11 @@ import (
 
 const lifecycleSession = "session-lifecycle"
 
-// lifecycleStores is the real suspended-transaction store and audit store over one
+// lifecycleStores is the real suspended-transaction store and local-first events store over one
 // canonical database, the way the Gateway wires them.
 type lifecycleStores struct {
 	db        *sqliteutil.DB
-	audit     *storage.SQLAuditStore
+	audit     *storage.LocalFirstEventsStore
 	suspended *storage.SuspendedTransactionService
 }
 
@@ -59,7 +59,7 @@ func newLifecycleStores(t *testing.T) lifecycleStores {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	audit, err := storage.NewSQLAuditStore(&storage.AuditStoreConfig{RetentionDays: 7, PruneIntervalMinutes: 60, EncryptionVault: testVault}, db, slog.Default(), fileSvc)
+	audit, err := storage.NewLocalFirstEventsStore(&storage.LocalFirstEventsStoreConfig{RetentionDays: 7, PruneIntervalMinutes: 60, EncryptionVault: testVault}, db, slog.Default(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = audit.Close() })
 	require.NoError(t, audit.CreateSession(lifecycleSession, constants.SessionTypeOperator, "Lifecycle", "user@test.com"))
@@ -94,7 +94,7 @@ func (s lifecycleStores) expireNow(t *testing.T, hash string) {
 
 func (s lifecycleStores) expiredEvents(t *testing.T, hash string) int {
 	t.Helper()
-	events, err := s.audit.GetEvents(models.AuditScope{OperatorSessionID: lifecycleSession}, 1000, 0)
+	events, err := s.audit.GetEvents(models.EventsScope{OperatorSessionID: lifecycleSession}, 1000, 0)
 	require.NoError(t, err)
 	n := 0
 	for _, e := range events {
@@ -153,7 +153,7 @@ func TestRunMaintenanceSweep_UndecryptableRowDoesNotHaltExpiry(t *testing.T) {
 		[]byte("not-a-valid-ciphertext"), []byte("not-a-valid-ciphertext"), "corrupt")
 	require.NoError(t, err)
 
-	g := newTestGatewayService(t, withSuspendedStore(s.suspended), withAuditStore(s.audit))
+	g := newTestGatewayService(t, withSuspendedStore(s.suspended), withEventsStore(s.audit))
 	require.NoError(t, g.runMaintenanceSweep(context.Background()))
 
 	assert.Equal(t, 1, s.expiredEvents(t, "good"))
@@ -170,7 +170,7 @@ func TestRunMaintenanceSweep_RecordsExpiryOnceWhenDeleteFails(t *testing.T) {
 	deleteFailure := errors.New("disk I/O error")
 	flaky := &flakySuspendedStore{SuspendedTransactionStore: s.suspended, deleteExpiredErr: deleteFailure}
 	flaky.failExpiredDel.Store(1)
-	g := newTestGatewayService(t, withSuspendedStore(flaky), withAuditStore(s.audit))
+	g := newTestGatewayService(t, withSuspendedStore(flaky), withEventsStore(s.audit))
 
 	err := g.runMaintenanceSweep(context.Background())
 	require.ErrorIs(t, err, deleteFailure, "the delete failure is returned with its cause")
@@ -193,7 +193,7 @@ func TestRunMaintenanceSweep_FailsClosedAndKeepsTheCause(t *testing.T) {
 	t.Run("list failure wraps the cause", func(t *testing.T) {
 		s := newLifecycleStores(t)
 		cause := errors.New("database is locked")
-		g := newTestGatewayService(t, withSuspendedStore(&flakySuspendedStore{SuspendedTransactionStore: s.suspended, getExpiredErr: cause}), withAuditStore(s.audit))
+		g := newTestGatewayService(t, withSuspendedStore(&flakySuspendedStore{SuspendedTransactionStore: s.suspended, getExpiredErr: cause}), withEventsStore(s.audit))
 		err := g.runMaintenanceSweep(context.Background())
 		require.ErrorIs(t, err, cause)
 	})
@@ -201,7 +201,7 @@ func TestRunMaintenanceSweep_FailsClosedAndKeepsTheCause(t *testing.T) {
 
 func resumeFixture(t *testing.T, s lifecycleStores, store storage.SuspendedTransactionStore, proc *fakeEnvelopeProcessor) *GatewayService {
 	t.Helper()
-	return newTestGatewayService(t, withSuspendedStore(store), withAuditStore(s.audit), withEnvProc(proc))
+	return newTestGatewayService(t, withSuspendedStore(store), withEventsStore(s.audit), withEnvProc(proc))
 }
 
 // An executed transaction whose suspended record could not be deleted must never be recorded
@@ -212,7 +212,7 @@ func TestResumeWithL3Proof_ExecutedTransactionIsNeverRecordedExpired(t *testing.
 	s.store(t, "tx-executed", time.Hour)
 	deleteFailure := errors.New("disk I/O error")
 	flaky := &flakySuspendedStore{SuspendedTransactionStore: s.suspended, deleteErr: deleteFailure}
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-executed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-executed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	g := resumeFixture(t, s, flaky, &fakeEnvelopeProcessor{receipt: receipt})
 
 	got, err := g.ResumeWithL3Proof(context.Background(), "tx-executed", "user-1", &commonv1.L3Proof{})
@@ -226,7 +226,7 @@ func TestResumeWithL3Proof_ExecutedTransactionIsNeverRecordedExpired(t *testing.
 
 	// The record outlives its TTL; the sweep deletes it without ever recording an expiry.
 	s.expireNow(t, "tx-executed")
-	sweep := newTestGatewayService(t, withSuspendedStore(s.suspended), withAuditStore(s.audit))
+	sweep := newTestGatewayService(t, withSuspendedStore(s.suspended), withEventsStore(s.audit))
 	require.NoError(t, sweep.runMaintenanceSweep(context.Background()))
 	assert.Zero(t, s.expiredEvents(t, "tx-executed"), "an executed transaction must never get transaction.expired")
 	assert.False(t, s.remaining(t, "tx-executed"))
@@ -244,7 +244,7 @@ func TestResumeWithL3Proof_FailedExecutionReleasesTheClaim(t *testing.T) {
 	require.True(t, s.remaining(t, "tx-retry"), "the suspension stays so the proof can be retried")
 
 	proc.err = nil
-	proc.receipt = &operatorv1.ActionReceipt{TransactionId: "tx-retry"}
+	proc.receipt = &operatorv1.EventReceipt{TransactionId: "tx-retry"}
 	_, err = g.ResumeWithL3Proof(context.Background(), "tx-retry", "user-1", &commonv1.L3Proof{})
 	require.NoError(t, err, "the released claim lets the retry execute")
 	assert.False(t, s.remaining(t, "tx-retry"))

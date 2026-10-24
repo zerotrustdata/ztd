@@ -22,9 +22,9 @@ import (
 
 // newSignedPersistedReceipt returns a receipt carrying a valid actuator signature and a valid
 // final-persistence attestation, signed by the test actuator.
-func newSignedPersistedReceipt(t *testing.T, actuator *L5Actuator) *operatorv1.ActionReceipt {
+func newSignedPersistedReceipt(t *testing.T, actuator *L5Actuator) *operatorv1.EventReceipt {
 	t.Helper()
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    "test-transaction",
 		TransactionHash:  "test-transaction-hash",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -41,7 +41,7 @@ func newSignedPersistedReceipt(t *testing.T, actuator *L5Actuator) *operatorv1.A
 	return receipt
 }
 
-func TestVerifyActionReceipt(t *testing.T) {
+func TestVerifyEventReceipt(t *testing.T) {
 	t.Parallel()
 	actuator, publicKey := newTestActuator(t)
 	wrongPublicKey, _, err := ed25519.GenerateKey(nil)
@@ -49,13 +49,13 @@ func TestVerifyActionReceipt(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		receipt   func(*testing.T) *operatorv1.ActionReceipt
+		receipt   func(*testing.T) *operatorv1.EventReceipt
 		publicKey ed25519.PublicKey
 		wantErr   error
 	}{
 		{
 			name: "valid signature and persistence attestation",
-			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+			receipt: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return newSignedPersistedReceipt(t, actuator)
 			},
@@ -63,7 +63,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		},
 		{
 			name: "flipped signature byte",
-			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+			receipt: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := newSignedPersistedReceipt(t, actuator)
 				signature, err := hex.DecodeString(receipt.Signature)
@@ -73,11 +73,11 @@ func TestVerifyActionReceipt(t *testing.T) {
 				return receipt
 			},
 			publicKey: publicKey,
-			wantErr:   constants.ErrActionReceiptSignatureInvalid,
+			wantErr:   constants.ErrEventReceiptSignatureInvalid,
 		},
 		{
 			name: "missing persistence attestation",
-			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+			receipt: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := newSignedPersistedReceipt(t, actuator)
 				receipt.FinalPersistenceAttestation = nil
@@ -88,16 +88,16 @@ func TestVerifyActionReceipt(t *testing.T) {
 		},
 		{
 			name: "wrong public key",
-			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+			receipt: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return newSignedPersistedReceipt(t, actuator)
 			},
 			publicKey: wrongPublicKey,
-			wantErr:   constants.ErrActionReceiptSignatureInvalid,
+			wantErr:   constants.ErrEventReceiptSignatureInvalid,
 		},
 		{
 			name: "attestation signed by a key other than the actuator",
-			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+			receipt: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				receipt := newSignedPersistedReceipt(t, actuator)
 				attestation := proto.Clone(receipt.FinalPersistenceAttestation).(*operatorv1.ReceiptPersistenceAttestation)
@@ -114,18 +114,18 @@ func TestVerifyActionReceipt(t *testing.T) {
 		},
 		{
 			name: "missing receipt",
-			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+			receipt: func(t *testing.T) *operatorv1.EventReceipt {
 				t.Helper()
 				return nil
 			},
 			publicKey: publicKey,
-			wantErr:   constants.ErrActionReceiptMissing,
+			wantErr:   constants.ErrEventReceiptMissing,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyActionReceipt(tt.receipt(t), tt.publicKey)
+			err := VerifyEventReceipt(tt.receipt(t), tt.publicKey)
 			if tt.wantErr == nil {
 				assert.NoError(t, err)
 				return

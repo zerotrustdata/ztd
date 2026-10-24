@@ -43,7 +43,7 @@ func NewEnvelopeSuspender(store storage.SuspendedTransactionStore, audit AuditEv
 		return nil, constants.ErrSuspendedStoreRequired
 	}
 	if audit == nil {
-		return nil, constants.ErrAuditStoreRequired
+		return nil, constants.ErrLocalFirstEventsStoreRequired
 	}
 	if !posture.Valid() {
 		return nil, constants.ErrInvalidPosture
@@ -55,7 +55,7 @@ func (s *EnvelopeSuspender) SuspendGovernanceEnvelope(ctx context.Context, env *
 	return suspendGovernanceEnvelope(ctx, env, s.store, s.audit, s.posture, s.publicBaseURL)
 }
 
-func storeSuspension(ctx context.Context, suspendedStore storage.SuspendedTransactionStore, auditStore AuditEventRecorder, tx *models.SuspendedTransaction) error {
+func storeSuspension(ctx context.Context, suspendedStore storage.SuspendedTransactionStore, eventsStore AuditEventRecorder, tx *models.SuspendedTransaction) error {
 	if suspendedStore == nil {
 		return fmt.Errorf("gateway: store suspended transaction %s: %w", tx.TransactionHash, constants.ErrSuspendedStoreRequired)
 	}
@@ -71,7 +71,7 @@ func storeSuspension(ctx context.Context, suspendedStore storage.SuspendedTransa
 		Type:              constants.Event.Operator.Notary.ApprovalRequested,
 		ContentText:       fmt.Sprintf("Transaction %s approval requested (tool: %s, expires at: %s)", tx.TransactionHash, tx.ToolName, tx.ExpiresAt.Format(time.RFC3339)),
 	}
-	if _, err := auditStore.RecordEvent(event); err != nil {
+	if _, err := eventsStore.RecordEvent(event); err != nil {
 		auditErr := fmt.Errorf("gateway: record approval requested for transaction %s on session %s: %w", tx.TransactionHash, tx.OperatorSessionID, err)
 		if delErr := suspendedStore.DeleteSuspendedTransaction(ctx, tx.TransactionHash); delErr != nil {
 			return errors.Join(auditErr, fmt.Errorf("gateway: roll back suspended transaction %s: %w", tx.TransactionHash, delErr))
@@ -81,7 +81,7 @@ func storeSuspension(ctx context.Context, suspendedStore storage.SuspendedTransa
 	return nil
 }
 
-func suspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.GovernanceEnvelope, suspendedStore storage.SuspendedTransactionStore, auditStore AuditEventRecorder, posture constants.Posture, publicBaseURL string) (models.PlatformEnrollmentL3SuspensionResponse, error) {
+func suspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.GovernanceEnvelope, suspendedStore storage.SuspendedTransactionStore, eventsStore AuditEventRecorder, posture constants.Posture, publicBaseURL string) (models.PlatformEnrollmentL3SuspensionResponse, error) {
 	if envelope == nil || strings.TrimSpace(envelope.GetTransactionHash()) == "" || strings.TrimSpace(envelope.GetOperatorSessionId()) == "" {
 		return models.PlatformEnrollmentL3SuspensionResponse{}, fmt.Errorf("gateway: suspend governance envelope: %w", constants.ErrMissingRequiredField)
 	}
@@ -116,7 +116,7 @@ func suspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.Governanc
 		OperatorSessionID:     strings.TrimSpace(envelope.GetOperatorSessionId()),
 		SubmitterCLISessionID: cliSessionID,
 	}
-	if err := storeSuspension(ctx, suspendedStore, auditStore, tx); err != nil {
+	if err := storeSuspension(ctx, suspendedStore, eventsStore, tx); err != nil {
 		return models.PlatformEnrollmentL3SuspensionResponse{}, err
 	}
 	approvalURL := publicBaseURL + constants.APIPaths.ApprovePagePrefix + txHash

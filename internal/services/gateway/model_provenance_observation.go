@@ -173,7 +173,7 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	campaignID string,
 	startedAtUnixMs int64,
 	retryCount uint32,
-) (*operatorv1.ActionReceipt, error) {
+) (*operatorv1.EventReceipt, error) {
 	if providerAttemptID == "" || servedModelTag == "" || expectedModelDigest == "" {
 		return nil, nil
 	}
@@ -209,7 +209,7 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	completedAtUnixMs int64,
 	failed bool,
 	retryCount uint32,
-) (*operatorv1.ActionReceipt, error) {
+) (*operatorv1.EventReceipt, error) {
 	if providerAttemptID == "" {
 		return nil, nil
 	}
@@ -236,7 +236,7 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	return c.publishCommand(ctx, command)
 }
 
-func (c *ModelProvenanceObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ModelProvenanceObservationCommand) (*operatorv1.ActionReceipt, error) {
+func (c *ModelProvenanceObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ModelProvenanceObservationCommand) (*operatorv1.EventReceipt, error) {
 	c.mu.Lock()
 	operator := c.operator
 	c.mu.Unlock()

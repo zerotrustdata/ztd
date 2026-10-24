@@ -17,24 +17,24 @@ import (
 )
 
 var (
-	operatorAuditReceiptMarshal   = protojson.MarshalOptions{UseProtoNames: true}
-	operatorAuditReceiptUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
+	operatorEventReceiptMarshal   = protojson.MarshalOptions{UseProtoNames: true}
+	operatorEventReceiptUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
 )
 
-// OperatorAuditReceiptListResult is the allowlisted response for a local
+// OperatorEventReceiptListResult is the allowlisted response for a local
 // Operator receipt query. It carries only query authority/scope metadata and
 // canonical signed receipts; unsigned text projections stay local.
-type OperatorAuditReceiptListResult struct {
-	Receipts        []*operatorv1.ActionReceipt `json:"receipts"`
-	Count           int                         `json:"count"`
-	OperatorID      string                      `json:"operator_id"`
-	Authority       string                      `json:"authority"`
-	InvestigationID string                      `json:"investigation_id"`
+type OperatorEventReceiptListResult struct {
+	Receipts        []*operatorv1.EventReceipt `json:"receipts"`
+	Count           int                        `json:"count"`
+	OperatorID      string                     `json:"operator_id"`
+	Authority       string                     `json:"authority"`
+	InvestigationID string                     `json:"investigation_id"`
 }
 
 // MarshalJSON encodes the result with canonical protojson for each nested
-// ActionReceipt, preserving proto field names and string enum representation.
-func (r OperatorAuditReceiptListResult) MarshalJSON() ([]byte, error) {
+// EventReceipt, preserving proto field names and string enum representation.
+func (r OperatorEventReceiptListResult) MarshalJSON() ([]byte, error) {
 	type Wire struct {
 		Receipts        []json.RawMessage `json:"receipts"`
 		Count           int               `json:"count"`
@@ -50,9 +50,9 @@ func (r OperatorAuditReceiptListResult) MarshalJSON() ([]byte, error) {
 				receiptWires = append(receiptWires, json.RawMessage("null"))
 				continue
 			}
-			raw, err := operatorAuditReceiptMarshal.Marshal(receipt)
+			raw, err := operatorEventReceiptMarshal.Marshal(receipt)
 			if err != nil {
-				return nil, fmt.Errorf("operator audit receipt list: marshal action receipt: %w", err)
+				return nil, fmt.Errorf("operator event receipt list: marshal event receipt: %w", err)
 			}
 			receiptWires = append(receiptWires, raw)
 		}
@@ -66,8 +66,8 @@ func (r OperatorAuditReceiptListResult) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON decodes the result, using protojson for each nested ActionReceipt.
-func (r *OperatorAuditReceiptListResult) UnmarshalJSON(data []byte) error {
+// UnmarshalJSON decodes the result, using protojson for each nested EventReceipt.
+func (r *OperatorEventReceiptListResult) UnmarshalJSON(data []byte) error {
 	type Wire struct {
 		Receipts        []json.RawMessage `json:"receipts"`
 		Count           int               `json:"count"`
@@ -87,15 +87,15 @@ func (r *OperatorAuditReceiptListResult) UnmarshalJSON(data []byte) error {
 		r.Receipts = nil
 		return nil
 	}
-	r.Receipts = make([]*operatorv1.ActionReceipt, 0, len(wire.Receipts))
+	r.Receipts = make([]*operatorv1.EventReceipt, 0, len(wire.Receipts))
 	for _, raw := range wire.Receipts {
 		if len(raw) == 0 || string(raw) == "null" {
 			r.Receipts = append(r.Receipts, nil)
 			continue
 		}
-		receipt := &operatorv1.ActionReceipt{}
-		if err := operatorAuditReceiptUnmarshal.Unmarshal(raw, receipt); err != nil {
-			return fmt.Errorf("operator audit receipt list: unmarshal action receipt: %w", err)
+		receipt := &operatorv1.EventReceipt{}
+		if err := operatorEventReceiptUnmarshal.Unmarshal(raw, receipt); err != nil {
+			return fmt.Errorf("operator event receipt list: unmarshal event receipt: %w", err)
 		}
 		r.Receipts = append(r.Receipts, receipt)
 	}

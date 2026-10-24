@@ -25,8 +25,8 @@ import (
 )
 
 // startReceiptSession creates the session row the receipt tests record against; the
-// session owner, not the audit store, creates it at session start.
-func startReceiptSession(t *testing.T, store *SQLAuditStore, sessionID string) {
+// session owner, not the events store, creates it at session start.
+func startReceiptSession(t *testing.T, store *LocalFirstEventsStore, sessionID string) {
 	t.Helper()
 	require.NoError(t, store.CreateSession(sessionID, constants.SessionTypeOperator, "Operator Session", "operator-integration-1"))
 }
@@ -34,11 +34,11 @@ func startReceiptSession(t *testing.T, store *SQLAuditStore, sessionID string) {
 func TestReceiptPreparationDoesNotWaitForLedger(t *testing.T) {
 	for _, invalid := range []string{"canonical JSON", "locked vault", "session whitespace"} {
 		t.Run(invalid, func(t *testing.T) {
-			store := newIntegrationAuditStore(t)
+			store := newIntegrationEventsStore(t)
 			record := sampleEventReceiptRecord(t, "session")
 			switch invalid {
 			case "canonical JSON":
-				record.ActionReceipt.ResultSummary = string([]byte{0xff})
+				record.EventReceipt.ResultSummary = string([]byte{0xff})
 			case "locked vault":
 				store.encryptionVault.Lock()
 			case "session whitespace":
@@ -64,9 +64,9 @@ func TestReceiptPreparationDoesNotWaitForLedger(t *testing.T) {
 			require.Error(t, err)
 			switch invalid {
 			case "locked vault":
-				require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+				require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked)
 			case "session whitespace":
-				require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
+				require.ErrorIs(t, err, constants.ErrEventsStoreSessionMissing)
 			}
 			var count int
 			require.NoError(t, store.db.QueryRow("SELECT count(*) FROM events WHERE type = ?", string(constants.EventOperatorReceiptRecorded)).Scan(&count))
@@ -88,7 +88,7 @@ func (h receiptLogObserver) Handle(_ context.Context, record slog.Record) error 
 func (h receiptLogObserver) Enabled(context.Context, slog.Level) bool { return true }
 
 func TestReceiptSuccessLogsFollowCommitAndUnlock(t *testing.T) {
-	store := newIntegrationAuditStore(t)
+	store := newIntegrationEventsStore(t)
 	startReceiptSession(t, store, "session")
 	var messages []string
 	logger := slog.New(receiptLogObserver{
@@ -121,7 +121,7 @@ func TestReceiptSuccessLogsFollowCommitAndUnlock(t *testing.T) {
 }
 
 func TestReceiptCommitFailureRollsBackWithoutSuccessLogs(t *testing.T) {
-	store := newIntegrationAuditStore(t)
+	store := newIntegrationEventsStore(t)
 	startReceiptSession(t, store, "session")
 	// Fail COMMIT after the commitment INSERT has succeeded, rather than
 	// failing the builder before the old in-transaction success log ran.
@@ -147,7 +147,7 @@ func TestReceiptCommitFailureRollsBackWithoutSuccessLogs(t *testing.T) {
 			PriorCommitmentHash: prior, Hash: "commitment-hash",
 		}, nil
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreRecordReceiptFailed)
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRecordReceiptFailed)
 	require.Empty(t, messages, "a rolled-back write must not emit success logs")
 	for _, table := range []string{"events", "commitment_ledger"} {
 		var count int
@@ -158,7 +158,7 @@ func TestReceiptCommitFailureRollsBackWithoutSuccessLogs(t *testing.T) {
 }
 
 func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
-	store := newIntegrationAuditStore(t)
+	store := newIntegrationEventsStore(t)
 	startReceiptSession(t, store, "shared-session")
 	const writers = 32
 	start := make(chan struct{})
@@ -167,9 +167,9 @@ func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
 	for i := range writers {
 		record := sampleEventReceiptRecord(t, "shared-session")
 		record.TransactionID = fmt.Sprintf("receipt-%d", i)
-		record.ActionReceipt.TransactionId = record.TransactionID
+		record.EventReceipt.TransactionId = record.TransactionID
 		record.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
-		record.ActionReceipt.Status = record.Status
+		record.EventReceipt.Status = record.Status
 		wg.Go(func() {
 			<-start
 			err := store.RecordEventReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
@@ -181,7 +181,7 @@ func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
 			})
 			if err == nil {
 				record.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
-				record.ActionReceipt.Status = record.Status
+				record.EventReceipt.Status = record.Status
 				err = store.RecordEventReceipt(record)
 			}
 			errs <- err
@@ -214,7 +214,7 @@ func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
 func TestReceiptMissingSessionFailsClosedAtomically(t *testing.T) {
 	for _, withCommitment := range []bool{false, true} {
 		t.Run(fmt.Sprintf("commitment=%t", withCommitment), func(t *testing.T) {
-			store := newIntegrationAuditStore(t)
+			store := newIntegrationEventsStore(t)
 			headSeq, headHash, err := store.GetAuditChainHead(t.Context())
 			require.NoError(t, err)
 
@@ -227,8 +227,8 @@ func TestReceiptMissingSessionFailsClosedAtomically(t *testing.T) {
 			} else {
 				err = store.RecordEventReceipt(record)
 			}
-			require.ErrorIs(t, err, constants.ErrAuditStoreRecordReceiptFailed)
-			require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
+			require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRecordReceiptFailed)
+			require.ErrorIs(t, err, constants.ErrEventsStoreSessionUnknown)
 			persisted, err := store.GetEventReceipt(record.TransactionID)
 			require.NoError(t, err)
 			require.Nil(t, persisted)
@@ -248,7 +248,7 @@ func TestReceiptMissingSessionFailsClosedAtomically(t *testing.T) {
 func TestReceiptCommitmentInvalidBuilderResultRollsBackAtomically(t *testing.T) {
 	for _, invalid := range []string{"head mismatch", "nil attestation", "invalid UTF-8"} {
 		t.Run(invalid, func(t *testing.T) {
-			store := newIntegrationAuditStore(t)
+			store := newIntegrationEventsStore(t)
 			startReceiptSession(t, store, "session")
 			record := sampleEventReceiptRecord(t, "session")
 			err := store.RecordEventReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
@@ -266,7 +266,7 @@ func TestReceiptCommitmentInvalidBuilderResultRollsBackAtomically(t *testing.T) 
 				}
 				return attestation, nil
 			})
-			require.ErrorIs(t, err, constants.ErrAuditStoreRecordReceiptFailed)
+			require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRecordReceiptFailed)
 			switch invalid {
 			case "head mismatch":
 				require.ErrorIs(t, err, constants.ErrValidationFailed)

@@ -60,25 +60,25 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 			files, err := fs.NewRuntimeFileService(env.stack.DataHost.WorkingDir, testutil.NewTestLogger())
 			require.NoError(t, err)
 
-			query := func(scope string) []*operatorv1.ActionReceipt {
+			query := func(scope string) []*operatorv1.EventReceipt {
 				t.Helper()
-				args, err := json.Marshal(mcp.AuditReceiptListRequest{InvestigationID: scope, ExcludeAuditReads: true, Limit: 10})
+				args, err := json.Marshal(mcp.EventReceiptListRequest{InvestigationID: scope, ExcludeEventReceiptReads: true, Limit: 10})
 				require.NoError(t, err)
-				payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolAuditReceiptList, ArgumentsJson: string(args)})
+				payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolEventReceiptList, ArgumentsJson: string(args)})
 				require.NoError(t, err)
-				out, err := lane.DispatchAgentTool(ctx, target, "run", scope, "attempt", constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList, payload)
+				out, err := lane.DispatchAgentTool(ctx, target, "run", scope, "attempt", constants.ActionTypeMcpCall, constants.MCPToolEventReceiptList, payload)
 				require.NoError(t, err)
 				receipt := out.Outcome.Observation.GetReceipt()
 				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
-				require.NoError(t, governance.VerifyActionReceiptSignature(receipt, publicKey))
-				var result models.OperatorAuditReceiptListResult
+				require.NoError(t, governance.VerifyEventReceiptSignature(receipt, publicKey))
+				var result models.OperatorEventReceiptListResult
 				require.NoError(t, json.Unmarshal([]byte(receipt.GetResultSummary()), &result))
 				assert.Equal(t, target.OperatorID, result.OperatorID)
 				assert.Equal(t, "operator_local_ledger", result.Authority)
 				assert.Equal(t, scope, result.InvestigationID)
 				assert.Equal(t, len(result.Receipts), result.Count)
 				for _, receipt := range result.Receipts {
-					require.NoError(t, governance.VerifyActionReceiptSignature(receipt, publicKey))
+					require.NoError(t, governance.VerifyEventReceiptSignature(receipt, publicKey))
 					require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, publicKey))
 					wantL3 := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
 					if posture.RequiresL3() && receipt.GetActionType() == string(constants.ActionTypeEvalWorkspaceSeed) {
@@ -86,7 +86,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 					}
 					assert.Equal(t, wantL3, receipt.GetL3Status())
 					// These scoped results contain workspace-seed and FsRead receipts;
-					// ActionReceipt does not carry a target for MCP's finer classification.
+					// EventReceipt does not carry a target for MCP's finer classification.
 					wantL2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
 					actionType := constants.ActionType(receipt.GetActionType())
 					if posture.RequiresL2() && !actionType.IsBootstrapAction() && actionType.IsStateChange() {
@@ -96,7 +96,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 					local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
 					require.NoError(t, err)
 					require.NotNil(t, local)
-					assert.True(t, proto.Equal(receipt, local.ActionReceipt))
+					assert.True(t, proto.Equal(receipt, local.EventReceipt))
 				}
 				return result.Receipts
 			}

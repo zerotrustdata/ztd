@@ -69,7 +69,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	// Open ztd.db once; the audit store and its commitment ledger share the pool.
+	// Open ztd.db once; the local-first events store and its commitment ledger share the pool.
 	if err := fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return RunResult{}, fmt.Errorf("%w: data dir: %w", constants.ErrReportStoreUnavailable, err)
 	}
@@ -79,15 +79,15 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	}
 	defer mainDB.Close()
 
-	// Open audit store (sessions, events, file_mutations, receipts, commitment_ledger).
-	auditStoreCfg := storage.DefaultAuditStoreConfig()
-	auditStoreCfg.EncryptionVault = v
-	auditStore, err := storage.NewSQLAuditStore(auditStoreCfg, mainDB, logger, fileSvc)
+	// Open local-first events store (sessions, events, file_mutations, receipts, commitment_ledger).
+	eventsStoreCfg := storage.DefaultLocalFirstEventsStoreConfig()
+	eventsStoreCfg.EncryptionVault = v
+	eventsStore, err := storage.NewLocalFirstEventsStore(eventsStoreCfg, mainDB, logger, fileSvc)
 	if err != nil {
-		return RunResult{}, fmt.Errorf("%w: audit store: %w", constants.ErrReportStoreUnavailable, err)
+		return RunResult{}, fmt.Errorf("%w: local-first events store: %w", constants.ErrReportStoreUnavailable, err)
 	}
-	defer auditStore.Close()
-	cl := auditStore.CommitmentLedger()
+	defer eventsStore.Close()
+	cl := eventsStore.CommitmentLedger()
 
 	// Replay store shares the ztd.db pool.
 	rs, err := storage.NewReplayStore(mainDB, logger)
@@ -126,10 +126,10 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	}
 
 	// Per-store reporters.
-	run("receipts", func() (FileResult, error) { return reportReceipts(ctx, opts.OutDir, auditStore) })
-	run("sessions", func() (FileResult, error) { return reportSessions(ctx, opts.OutDir, auditStore) })
-	run("events", func() (FileResult, error) { return reportEvents(ctx, opts.OutDir, auditStore) })
-	run("file_mutations", func() (FileResult, error) { return reportFileMutations(ctx, opts.OutDir, auditStore) })
+	run("receipts", func() (FileResult, error) { return reportReceipts(ctx, opts.OutDir, eventsStore) })
+	run("sessions", func() (FileResult, error) { return reportSessions(ctx, opts.OutDir, eventsStore) })
+	run("events", func() (FileResult, error) { return reportEvents(ctx, opts.OutDir, eventsStore) })
+	run("file_mutations", func() (FileResult, error) { return reportFileMutations(ctx, opts.OutDir, eventsStore) })
 	run("commitments", func() (FileResult, error) { return reportCommitments(ctx, opts.OutDir, cl) })
 
 	run("replay_nonces", func() (FileResult, error) { return reportReplayNonces(ctx, opts.OutDir, rs) })
@@ -142,7 +142,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	// Verification pass.
 	var failCount int
 	if ctx.Err() == nil {
-		verRes, vr, verErr := reportVerification(ctx, opts.OutDir, auditStore, cl, ledger)
+		verRes, vr, verErr := reportVerification(ctx, opts.OutDir, eventsStore, cl, ledger)
 		if verErr != nil {
 			logger.Warn("Verification reporter failed", "error", verErr)
 		} else {

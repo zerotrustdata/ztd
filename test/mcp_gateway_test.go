@@ -204,7 +204,7 @@ func TestMCPGateway_EndToEnd(t *testing.T) {
 		status, approval := fixtures.ApproveWithPasskey(t, fixture, mtlsClient, session, identity, txHash)
 		require.Equal(t, http.StatusOK, status, "passkey approval must resume the MCP call: %s", approval)
 
-		receipt := &operatorv1.ActionReceipt{}
+		receipt := &operatorv1.EventReceipt{}
 		require.NoError(t, protojson.Unmarshal(approval, receipt))
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "approved MCP call must complete")
 		require.Equal(t, txHash, receipt.TransactionHash)

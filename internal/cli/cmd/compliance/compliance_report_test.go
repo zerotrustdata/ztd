@@ -255,8 +255,8 @@ func TestBuildOperationalReportSources_BindsProtectedAdmissionAndBundlePaths(t *
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	signerKeyID := hex.EncodeToString(publicKey)
-	receipt := &operatorv1.ActionReceipt{TransactionId: "transaction-1", TransactionHash: "hash-1", SignerKeyId: signerKeyID, ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli()}
-	payload, err := governance.CanonicalizeActionReceipt(receipt)
+	receipt := &operatorv1.EventReceipt{TransactionId: "transaction-1", TransactionHash: "hash-1", SignerKeyId: signerKeyID, ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli()}
+	payload, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
 	receiptBody, err := compliancev1.MarshalCanonical(receipt)

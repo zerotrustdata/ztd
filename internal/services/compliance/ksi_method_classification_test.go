@@ -23,19 +23,19 @@ type expectedMethodMetadata struct {
 
 var expectedDefaultMethodMetadata = map[string]expectedMethodMetadata{
 	"auditEventsExist": {
-		artifact: KSIArtifactAuditEvents, boundary: KSICollectionAuditStore,
+		artifact: KSIArtifactAuditEvents, boundary: KSICollectionEventsStore,
 		verifier: KSIVerifierExistence, property: KSIPropertyPresence,
 	},
 	"receiptsExist": {
-		artifact: KSIArtifactActionReceipts, boundary: KSICollectionAuditStore,
+		artifact: KSIArtifactEventReceipts, boundary: KSICollectionEventsStore,
 		verifier: KSIVerifierExistence, property: KSIPropertyPresence,
 	},
 	"receiptsCryptographicallyVerified": {
-		artifact: KSIArtifactActionReceipts, boundary: KSICollectionAuditStore,
+		artifact: KSIArtifactEventReceipts, boundary: KSICollectionEventsStore,
 		verifier: KSIVerifierCryptographic, property: KSIPropertyReceiptPersistenceIntegrity,
 	},
 	"fileMutationsTracked": {
-		artifact: KSIArtifactFileMutations, boundary: KSICollectionAuditStore,
+		artifact: KSIArtifactFileMutations, boundary: KSICollectionEventsStore,
 		verifier: KSIVerifierExistence, property: KSIPropertyPresence,
 	},
 	"ledgerCommitsExist": {
@@ -59,7 +59,7 @@ var expectedDefaultMethodMetadata = map[string]expectedMethodMetadata{
 		verifier: KSIVerifierStateObservation, property: KSIPropertyStateRootMatchesHead,
 	},
 	"independentStateObserved": {
-		artifact: KSIArtifactReceiptStateTransitions, boundary: KSICollectionAuditStore,
+		artifact: KSIArtifactReceiptStateTransitions, boundary: KSICollectionEventsStore,
 		verifier: KSIVerifierStateObservation, property: KSIPropertyStateTransitionBinding,
 	},
 	"deterministicGraderResultsVerified": {

@@ -34,7 +34,7 @@ import (
 type mockMCPServiceProvider struct {
 	suspendedTx *models.SuspendedTransaction
 	found       bool
-	receipt     *operatorv1.ActionReceipt
+	receipt     *operatorv1.EventReceipt
 	err         error
 }
 
@@ -42,11 +42,11 @@ func (m *mockMCPServiceProvider) GetSuspendedTransaction(_ context.Context, _ st
 	return m.suspendedTx, m.found, nil
 }
 
-func (m *mockMCPServiceProvider) ResumeWithL3Proof(_ context.Context, _, _ string, _ *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
+func (m *mockMCPServiceProvider) ResumeWithL3Proof(_ context.Context, _, _ string, _ *commonv1.L3Proof) (*operatorv1.EventReceipt, error) {
 	return m.receipt, m.err
 }
 
-func (m *mockMCPServiceProvider) DenySuspendedTransaction(_ context.Context, _, _ string) (*operatorv1.ActionReceipt, error) {
+func (m *mockMCPServiceProvider) DenySuspendedTransaction(_ context.Context, _, _ string) (*operatorv1.EventReceipt, error) {
 	return m.receipt, m.err
 }
 
@@ -349,7 +349,7 @@ func TestEmitApprovalCompletedSSE(t *testing.T) {
 		const userID = "u-approval-sse-1"
 		const txHash = "tx-approval-sse-1"
 
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId: "transaction-approval-sse-1", TransactionHash: txHash,
 			SignerKeyId: "warden-key-approval-sse-1", Signature: "signature-approval-sse-1",
 		}
@@ -467,7 +467,7 @@ func TestHandleApprovalVerify_SSE_EmittedToApproverWhenSuspendedTxUserIDEmpty(t 
 			ExpiresAt:             time.Now().Add(5 * time.Minute),
 		},
 		found: true,
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId: "transaction-approval-sse-test", TransactionHash: txHash,
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId: "warden-key-approval-sse-test", Signature: "signature-approval-sse-test",
@@ -508,7 +508,7 @@ func TestHandleApprovalVerify_SSE_EmittedToApproverWhenSuspendedTxUserIDEmpty(t 
 	assert.Equal(t, constants.SSEEventTypeApprovalCompleted, inner.Type)
 	assert.Equal(t, approverUserID, inner.UserID)
 	assert.Equal(t, txHash, inner.TxHash)
-	var receipt operatorv1.ActionReceipt
+	var receipt operatorv1.EventReceipt
 	require.NoError(t, protojson.Unmarshal(inner.Receipt, &receipt), "approval.completed must carry the strict protojson receipt")
 	assert.Equal(t, "transaction-approval-sse-test", receipt.GetTransactionId())
 	assert.Equal(t, txHash, receipt.GetTransactionHash())
@@ -549,7 +549,7 @@ func TestHandleApprovalVerify_FailsClosedWhenResumedReceiptIsForAnotherTransacti
 		},
 		found: true,
 		// The resumed receipt names a different transaction than the suspended one.
-		receipt: &operatorv1.ActionReceipt{
+		receipt: &operatorv1.EventReceipt{
 			TransactionId: "transaction-other", TransactionHash: "tx-other-transaction",
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId: "warden-key-mismatch", Signature: "signature-mismatch",

@@ -45,9 +45,9 @@ type mockEnvelopeProcessor struct {
 	Captured []byte
 }
 
-func (m *mockEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (m *mockEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	m.Captured = payload
-	return &operatorv1.ActionReceipt{TransactionHash: "mocked-hash"}, nil
+	return &operatorv1.EventReceipt{TransactionHash: "mocked-hash"}, nil
 }
 
 func setupTestIdP(t *testing.T) (*rsa.PrivateKey, *httptest.Server) {
@@ -141,7 +141,7 @@ func TestGateway_JWTIntegration(t *testing.T) {
 	auth := NewAuthService(db.GetDocStore(), pki, logger, userSvc, personaSvc, resp, NewJWKSProvider(cfg.Gateway.JWKSURL), cfg.Gateway.JWTRoleClaim, "", "")
 
 	cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
 	reg := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
 	passkey, _ := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
@@ -157,7 +157,7 @@ func TestGateway_JWTIntegration(t *testing.T) {
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  cfg.Gateway.MaxPayloadBytes,
 		Posture:          cfg.Gateway.Posture,
-		AuditStore:       noopAuditEventRecorder{},
+		EventsStore:      noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 		EnvProc:          mockEnvProc,
 	})
@@ -187,11 +187,11 @@ func TestGateway_JWTIntegration(t *testing.T) {
 			Responder:    resp,
 		},
 		AuditControllerDeps: AuditControllerDeps{
-			Cfg:        cfg,
-			Logger:     logger,
-			AuditStore: db.GetAuditStore(),
-			Responder:  resp,
-			Scrubber:   newTestScrubber(t),
+			Cfg:         cfg,
+			Logger:      logger,
+			EventsStore: db.GetLocalFirstEventsStore(),
+			Responder:   resp,
+			Scrubber:    newTestScrubber(t),
 		},
 		DataControllerDeps: DataControllerDeps{
 			Cfg:       cfg,
@@ -380,7 +380,7 @@ func TestGateway_JITPasskeyBootstrapWithURL(t *testing.T) {
 	auth := NewAuthService(db.GetDocStore(), pki, logger, userSvc, personaSvc, resp, NewJWKSProvider(cfg.Gateway.JWKSURL), cfg.Gateway.JWTRoleClaim, "", "")
 
 	cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
 	reg := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
 	passkey, _ := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
@@ -396,7 +396,7 @@ func TestGateway_JITPasskeyBootstrapWithURL(t *testing.T) {
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  cfg.Gateway.MaxPayloadBytes,
 		Posture:          cfg.Gateway.Posture,
-		AuditStore:       noopAuditEventRecorder{},
+		EventsStore:      noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 		EnvProc:          mockEnvProc,
 	})
@@ -426,11 +426,11 @@ func TestGateway_JITPasskeyBootstrapWithURL(t *testing.T) {
 			Responder:    resp,
 		},
 		AuditControllerDeps: AuditControllerDeps{
-			Cfg:        cfg,
-			Logger:     logger,
-			AuditStore: db.GetAuditStore(),
-			Responder:  resp,
-			Scrubber:   newTestScrubber(t),
+			Cfg:         cfg,
+			Logger:      logger,
+			EventsStore: db.GetLocalFirstEventsStore(),
+			Responder:   resp,
+			Scrubber:    newTestScrubber(t),
 		},
 		DataControllerDeps: DataControllerDeps{
 			Cfg:       cfg,
@@ -634,7 +634,7 @@ func TestGateway_JITPasskeyStepUpRequired(t *testing.T) {
 	auth := NewAuthService(db.GetDocStore(), pki, logger, userSvc, personaSvc, resp, NewJWKSProvider(cfg.Gateway.JWKSURL), cfg.Gateway.JWTRoleClaim, "", "")
 
 	cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
 	reg := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
 	passkey, _ := NewPasskeyService(db.GetDocStore(), logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
@@ -650,7 +650,7 @@ func TestGateway_JITPasskeyStepUpRequired(t *testing.T) {
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  cfg.Gateway.MaxPayloadBytes,
 		Posture:          cfg.Gateway.Posture,
-		AuditStore:       noopAuditEventRecorder{},
+		EventsStore:      noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 		EnvProc:          mockEnvProc,
 	})
@@ -680,11 +680,11 @@ func TestGateway_JITPasskeyStepUpRequired(t *testing.T) {
 			Responder:    resp,
 		},
 		AuditControllerDeps: AuditControllerDeps{
-			Cfg:        cfg,
-			Logger:     logger,
-			AuditStore: db.GetAuditStore(),
-			Responder:  resp,
-			Scrubber:   newTestScrubber(t),
+			Cfg:         cfg,
+			Logger:      logger,
+			EventsStore: db.GetLocalFirstEventsStore(),
+			Responder:   resp,
+			Scrubber:    newTestScrubber(t),
 		},
 		DataControllerDeps: DataControllerDeps{
 			Cfg:       cfg,

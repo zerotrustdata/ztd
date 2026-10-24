@@ -69,7 +69,7 @@ func TestNewSuspendedTransactionService_NilVault(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, sts)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreEncryptionVaultRequired)
+	assert.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreEncryptionVaultRequired)
 }
 
 func TestStoreSuspendedTransaction_NilStore(t *testing.T) {

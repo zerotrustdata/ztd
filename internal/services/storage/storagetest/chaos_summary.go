@@ -36,7 +36,7 @@ func ChaosRunDatabaseExists(ctx context.Context, runFileSvc fs.RuntimeFileServic
 func ReadChaosEventSummary(ctx context.Context, runFileSvc fs.RuntimeFileService, logger *slog.Logger) ([]ChaosEventSummary, error) {
 	db, err := sqliteutil.OpenReadOnlyDB(sqliteutil.DefaultDBConfig(runFileSvc.Resolve(constants.ChaosDBRelPath)), logger)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreOpenDBFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreOpenDBFailed, err)
 	}
 	defer db.Close()
 

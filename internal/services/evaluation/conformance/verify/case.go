@@ -33,8 +33,8 @@ var verifyErrorClasses = []struct {
 	{constants.ErrConformanceAnchorUnknown, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN},
 	{constants.ErrConformanceReceiptUnclassifiable, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE},
 	{constants.ErrInvalidEvidenceGraph, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID},
-	{constants.ErrActionReceiptMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-	{constants.ErrActionReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 	{constants.ErrL5ActuatorCanonicalizeReceipt, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 	{constants.ErrReceiptPersistenceAttestationMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 	{constants.ErrReceiptPersistenceAttestationInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
@@ -173,7 +173,7 @@ func (r *recordCheck) checkObservation(runtime string, obs *evalv1.ConformanceOb
 	}
 }
 
-func (r *recordCheck) checkReceipt(runtime string, receipt *operatorv1.ActionReceipt, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
+func (r *recordCheck) checkReceipt(runtime string, receipt *operatorv1.EventReceipt, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
 	if receipt == nil {
 		return oracle.Outcome{}, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING
 	}
@@ -296,7 +296,7 @@ func a2aCarriesMarker(payloadJSON, marker string) bool {
 
 // classifyReceipt verifies a receipt against runtime's pinned anchor and classifies
 // its outcome.
-func classifyReceipt(anchors *oracle.AnchorSet, runtime string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+func classifyReceipt(anchors *oracle.AnchorSet, runtime string, receipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
 	if receipt == nil {
 		return oracle.Outcome{}, fmt.Errorf("conformance verify: receipt missing: %w", constants.ErrConformanceReceiptUnclassifiable)
 	}
@@ -311,7 +311,7 @@ func classifyReceipt(anchors *oracle.AnchorSet, runtime string, receipt *operato
 }
 
 // classifyExecuted is classifyReceipt for a sentinel, which must be an executed receipt.
-func classifyExecuted(anchors *oracle.AnchorSet, runtime string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+func classifyExecuted(anchors *oracle.AnchorSet, runtime string, receipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
 	outcome, err := classifyReceipt(anchors, runtime, receipt)
 	if err != nil {
 		return oracle.Outcome{}, err

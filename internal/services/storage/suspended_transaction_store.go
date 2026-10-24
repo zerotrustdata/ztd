@@ -80,8 +80,8 @@ type SuspendedTransactionStore interface {
 // SuspendedTransactionService provides storage for L3 approval workflow transactions.
 // It stores transactions awaiting human approval in the runtime's canonical ztd.db.
 // The envelope and tool_arguments columns hold content and are encrypted with the
-// runtime vault through encryptAuditContent; a nil or locked vault fails the write
-// and the read with constants.ErrAuditStoreVaultLocked. Identifiers, hashes,
+// runtime vault through encryptEventsContent; a nil or locked vault fails the write
+// and the read with constants.ErrLocalFirstEventsStoreVaultLocked. Identifiers, hashes,
 // timestamps and claim state stay plaintext.
 //
 // The service does not own the database handle and has no background pruner:
@@ -104,7 +104,7 @@ func NewSuspendedTransactionService(db *sqliteutil.DB, v *vault.Vault, logger *s
 		return nil, fmt.Errorf("suspended_transaction_store: database: %w", constants.ErrMissingRequiredField)
 	}
 	if v == nil {
-		return nil, fmt.Errorf("suspended_transaction_store: %w", constants.ErrAuditStoreEncryptionVaultRequired)
+		return nil, fmt.Errorf("suspended_transaction_store: %w", constants.ErrLocalFirstEventsStoreEncryptionVaultRequired)
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -219,13 +219,13 @@ func (row suspendedTxRow) metadataTransaction() *models.SuspendedTransaction {
 }
 
 // toTransaction decrypts the content columns and builds the model. A nil or locked
-// vault returns constants.ErrAuditStoreVaultLocked.
+// vault returns constants.ErrLocalFirstEventsStoreVaultLocked.
 func (sts *SuspendedTransactionService) toTransaction(row suspendedTxRow) (*models.SuspendedTransaction, error) {
-	envelope, err := decryptAuditContent(sts.vault, suspendedColumnEnvelope, row.txHash, row.envelope)
+	envelope, err := decryptEventsContent(sts.vault, suspendedColumnEnvelope, row.txHash, row.envelope)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt envelope: %w", err)
 	}
-	toolArgs, err := decryptAuditContent(sts.vault, suspendedColumnToolArguments, row.txHash, row.toolArguments)
+	toolArgs, err := decryptEventsContent(sts.vault, suspendedColumnToolArguments, row.txHash, row.toolArguments)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt tool_arguments: %w", err)
 	}
@@ -261,7 +261,7 @@ func (sts *SuspendedTransactionService) queryTransactions(ctx context.Context, q
 
 // StoreSuspendedTransaction stores a transaction awaiting L3 approval. The envelope
 // and tool arguments are encrypted with the runtime vault; a nil or locked vault
-// fails the write with constants.ErrAuditStoreVaultLocked.
+// fails the write with constants.ErrLocalFirstEventsStoreVaultLocked.
 func (sts *SuspendedTransactionService) StoreSuspendedTransaction(ctx context.Context, tx *models.SuspendedTransaction) error {
 	if sts == nil || sts.db == nil {
 		return fmt.Errorf("suspended_transaction_store: store transaction: %w", constants.ErrSuspendedStoreNotInitialized)
@@ -273,11 +273,11 @@ func (sts *SuspendedTransactionService) StoreSuspendedTransaction(ctx context.Co
 		return fmt.Errorf("suspended_transaction_store: store transaction: operator_session_id: %w", constants.ErrMissingRequiredField)
 	}
 
-	encEnvelope, err := encryptAuditContent(sts.vault, suspendedColumnEnvelope, tx.TransactionHash, string(tx.Envelope))
+	encEnvelope, err := encryptEventsContent(sts.vault, suspendedColumnEnvelope, tx.TransactionHash, string(tx.Envelope))
 	if err != nil {
 		return fmt.Errorf("suspended_transaction_store: store transaction: encrypt envelope: %w", err)
 	}
-	encToolArgs, err := encryptAuditContent(sts.vault, suspendedColumnToolArguments, tx.TransactionHash, string(tx.ToolArguments))
+	encToolArgs, err := encryptEventsContent(sts.vault, suspendedColumnToolArguments, tx.TransactionHash, string(tx.ToolArguments))
 	if err != nil {
 		return fmt.Errorf("suspended_transaction_store: store transaction: encrypt tool_arguments: %w", err)
 	}

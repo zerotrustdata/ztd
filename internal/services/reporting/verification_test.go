@@ -39,9 +39,9 @@ import (
 // Test helpers
 // ---------------------------------------------------------------------------
 
-// setupTestAuditStore creates a real SQLAuditStore with a temp directory and
+// setupTestEventsStore creates a real LocalFirstEventsStore with a temp directory and
 // unlocked vault for encryption. Cleanup is registered via t.Cleanup.
-func setupTestAuditStore(t *testing.T) *storage.SQLAuditStore {
+func setupTestEventsStore(t *testing.T) *storage.LocalFirstEventsStore {
 	t.Helper()
 	tempDir := testutil.TempDir(t)
 
@@ -58,12 +58,12 @@ func setupTestAuditStore(t *testing.T) *storage.SQLAuditStore {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	cfg := &storage.AuditStoreConfig{
+	cfg := &storage.LocalFirstEventsStoreConfig{
 		RetentionDays:        7,
 		PruneIntervalMinutes: 60,
 		EncryptionVault:      testVault,
 	}
-	store, err := storage.NewSQLAuditStore(cfg, db, testutil.NewTestLogger(), fileSvc)
+	store, err := storage.NewLocalFirstEventsStore(cfg, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
 	return store
@@ -163,7 +163,7 @@ func insertCommitmentDirect(t *testing.T, db *sqliteutil.DB, testVault *vault.Va
 
 // createSessionAndEvent creates a session and an event, returning the event ID.
 // Needed because file_mutations and receipts have FK constraints on events/sessions.
-func createSessionAndEvent(t *testing.T, store *storage.SQLAuditStore) int64 {
+func createSessionAndEvent(t *testing.T, store *storage.LocalFirstEventsStore) int64 {
 	t.Helper()
 	sessionID := "test-session-verify"
 	err := store.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
@@ -408,7 +408,7 @@ func TestReportVerification_NilLedger_MerkleRootSkipped(t *testing.T) {
 // Check 4: File mutation linkage
 // ---------------------------------------------------------------------------
 
-func TestReportVerification_NilAuditStore_MutationLinkageSkipped(t *testing.T) {
+func TestReportVerification_NilEventsStore_MutationLinkageSkipped(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 
@@ -418,16 +418,16 @@ func TestReportVerification_NilAuditStore_MutationLinkageSkipped(t *testing.T) {
 	mutationRow := findRow(vr, "file_mutation_linkage")
 	require.NotNil(t, mutationRow)
 	assert.Equal(t, verifyResultSkipped, mutationRow.Result)
-	assert.Contains(t, mutationRow.Detail, "audit store not configured")
+	assert.Contains(t, mutationRow.Detail, "local-first events store not configured")
 }
 
 func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	auditStore := setupTestAuditStore(t)
-	eventID := createSessionAndEvent(t, auditStore)
+	eventsStore := setupTestEventsStore(t)
+	eventID := createSessionAndEvent(t, eventsStore)
 
-	err := auditStore.RecordFileMutation(&storage.FileMutationLog{
+	err := eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
 		Operation:        storage.FileMutationWrite,
@@ -436,7 +436,7 @@ func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = auditStore.RecordFileMutation(&storage.FileMutationLog{
+	err = eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file2",
 		Operation:        storage.FileMutationCreate,
@@ -445,7 +445,7 @@ func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil)
 	require.NoError(t, err)
 
 	mutationRow := findRow(vr, "file_mutation_linkage")
@@ -457,10 +457,10 @@ func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	auditStore := setupTestAuditStore(t)
-	eventID := createSessionAndEvent(t, auditStore)
+	eventsStore := setupTestEventsStore(t)
+	eventID := createSessionAndEvent(t, eventsStore)
 
-	err := auditStore.RecordFileMutation(&storage.FileMutationLog{
+	err := eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
 		Operation:        storage.FileMutationWrite,
@@ -469,7 +469,7 @@ func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil)
 	require.NoError(t, err)
 	assert.Positive(t, vr.FailCount)
 
@@ -482,10 +482,10 @@ func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
 func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	auditStore := setupTestAuditStore(t)
-	eventID := createSessionAndEvent(t, auditStore)
+	eventsStore := setupTestEventsStore(t)
+	eventID := createSessionAndEvent(t, eventsStore)
 
-	err := auditStore.RecordFileMutation(&storage.FileMutationLog{
+	err := eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
 		Operation:        "READ",
@@ -494,7 +494,7 @@ func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil)
 	require.NoError(t, err)
 
 	mutationRow := findRow(vr, "file_mutation_linkage")
@@ -509,14 +509,14 @@ func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
 func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	auditStore := setupTestAuditStore(t)
+	eventsStore := setupTestEventsStore(t)
 	sessionID := "test-session-receipts"
-	err := auditStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
+	err := eventsStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
 	require.NoError(t, err)
 
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
 
-	err = auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+	err = eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-1",
 		TransactionHash:   "hash-1",
 		OperatorID:        "op-1",
@@ -529,7 +529,7 @@ func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, vr.FailCount)
 
@@ -542,15 +542,15 @@ func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
 func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	auditStore := setupTestAuditStore(t)
+	eventsStore := setupTestEventsStore(t)
 	sessionID := "test-session-missing-receipt"
-	err := auditStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
+	err := eventsStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
 	require.NoError(t, err)
 
 	firstHash := insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
 	insertCommitment(t, cl, "tx-2", "hash-2", firstHash, "FS_WRITE", "/file2")
 
-	err = auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+	err = eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-1",
 		TransactionHash:   "hash-1",
 		OperatorID:        "op-1",
@@ -563,7 +563,7 @@ func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil)
 	require.NoError(t, err)
 	assert.Positive(t, vr.FailCount)
 
@@ -576,9 +576,9 @@ func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	auditStore := setupTestAuditStore(t)
+	eventsStore := setupTestEventsStore(t)
 
-	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil)
 	require.NoError(t, err)
 
 	// An empty ledger still produces an explicit successful cross-link result.
