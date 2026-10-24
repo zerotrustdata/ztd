@@ -79,7 +79,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	}
 	defer mainDB.Close()
 
-	// Open local-first events store (sessions, events, file_mutations, receipts, commitment_ledger).
+	// Open the local-first events store; event receipts project its events rows.
 	eventsStoreCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	eventsStoreCfg.EncryptionVault = v
 	eventsStore, err := storage.NewLocalFirstEventsStore(eventsStoreCfg, mainDB, logger, fileSvc)
