@@ -81,6 +81,10 @@ func (s *stubFileSvc) OpenForRead(ctx context.Context, relPath string) (*os.File
 	return s.openReadFile, nil
 }
 
+func (s *stubFileSvc) Truncate(context.Context, string, int64) error {
+	panic("unexpected")
+}
+
 func (s *stubFileSvc) TryLock(context.Context, string, os.FileMode) (io.Closer, error) {
 	panic("unexpected")
 }

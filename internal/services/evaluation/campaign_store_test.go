@@ -85,6 +85,23 @@ func (m *campaignMemoryFileService) OpenForAppend(context.Context, string, os.Fi
 	return nil, os.ErrInvalid
 }
 
+func (m *campaignMemoryFileService) Truncate(_ context.Context, relPath string, size int64) error {
+	body, ok := m.files[relPath]
+	if !ok {
+		return constants.ErrNotFound
+	}
+	if int64(len(body)) > size {
+		m.files[relPath] = append([]byte(nil), body[:size]...)
+		return nil
+	}
+	if int64(len(body)) < size {
+		padded := make([]byte, size)
+		copy(padded, body)
+		m.files[relPath] = padded
+	}
+	return nil
+}
+
 func (m *campaignMemoryFileService) OpenForRead(context.Context, string) (*os.File, error) {
 	return nil, os.ErrInvalid
 }

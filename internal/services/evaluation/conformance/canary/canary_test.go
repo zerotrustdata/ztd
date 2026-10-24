@@ -9,7 +9,6 @@ package canary
 
 import (
 	"context"
-	"os"
 	"path"
 	"path/filepath"
 	"testing"
@@ -275,7 +274,7 @@ func TestSnapshotRejectsSymlinkUnderRoot(t *testing.T) {
 	files := newFiles(t)
 	set := seedRun(t, files, "run-symlink")
 	link := filepath.Join(files.Resolve(set.Root), "link.txt")
-	require.NoError(t, os.Symlink(filepath.Join(files.Resolve(set.Root), "alpha.txt"), link))
+	testutil.Symlink(t, filepath.Join(files.Resolve(set.Root), "alpha.txt"), link)
 
 	_, err := Snapshot(context.Background(), files, set.Root)
 

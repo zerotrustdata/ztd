@@ -339,9 +339,21 @@ func (s *PublicPublisherService) appendProofSegmentLocked(ctx context.Context, s
 	}
 	if info.Size() > index.offset {
 		s.logger.Warn("public-feed: discarding incomplete proof segment tail", "bytes", info.Size()-index.offset)
-		if err := f.Truncate(index.offset); err != nil {
+		// Close the O_APPEND handle before truncating: File.Truncate on an
+		// O_APPEND handle fails on Windows with "Access is denied" because
+		// the handle carries FILE_APPEND_DATA only. Truncate by path, then
+		// reopen for the append below.
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("public-feed: close proof segments before truncate: %w", err)
+		}
+		if err := s.fileSvc.Truncate(ctx, constants.PublicProofSegmentsFilename, index.offset); err != nil {
 			return fmt.Errorf("public-feed: discard incomplete proof segment tail: %w", err)
 		}
+		reopened, err := s.fileSvc.OpenForAppend(ctx, constants.PublicProofSegmentsFilename, constants.PermFilePrivate)
+		if err != nil {
+			return fmt.Errorf("public-feed: reopen proof segments after truncate: %w", err)
+		}
+		f = reopened
 	}
 	if _, err := f.Write(line); err != nil {
 		return fmt.Errorf("public-feed: write proof segment: %w", err)

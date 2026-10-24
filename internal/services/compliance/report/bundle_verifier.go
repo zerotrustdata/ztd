@@ -1886,6 +1886,9 @@ func (r *bundledRuntimeArtifactReader) WriteFile(context.Context, string, []byte
 func (r *bundledRuntimeArtifactReader) OpenForAppend(context.Context, string, os.FileMode) (*os.File, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }
+func (r *bundledRuntimeArtifactReader) Truncate(context.Context, string, int64) error {
+	return constants.ErrReadOnlyEvidenceSource
+}
 func (r *bundledRuntimeArtifactReader) OpenForRead(context.Context, string) (*os.File, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }

@@ -10,9 +10,11 @@
 package drive
 
 import (
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -173,7 +175,14 @@ func TestCLIDriveUnreachableGatewayAbortsTheAttempt(t *testing.T) {
 	a := gatewayAttempt(t, f, c)
 
 	driven, err := cli.Drive(t.Context(), a)
-	require.ErrorIs(t, err, syscall.ECONNREFUSED)
+	require.Error(t, err)
+	// Portable connection-refused check: Unix reports ECONNREFUSED
+	// ("connection refused") while Windows reports WSAECONNREFUSED
+	// ("actively refused"). Accept either the errno or the message.
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		assert.Contains(t, strings.ToLower(err.Error()), "refus",
+			"unreachable gateway must fail with connection refused, got: %v", err)
+	}
 	assert.Empty(t, driven.Observations)
 	_, statErr := os.Stat(a.TargetAbs)
 	assert.True(t, os.IsNotExist(statErr), "an unreachable Gateway must write nothing")

@@ -121,3 +121,21 @@ func TestOpenForRead_CancelledContextReturnsContextError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+func TestTruncate_ShortensAppendedFile(t *testing.T) {
+	svc := setupTestFS(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.WriteFile(ctx, "truncate.log", []byte("abcdef"), constants.PermFilePrivate))
+	require.NoError(t, svc.Truncate(ctx, "truncate.log", 3))
+	got, err := svc.ReadFile(ctx, "truncate.log")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("abc"), got)
+}
+
+func TestTruncate_MissingFileReturnsNotFound(t *testing.T) {
+	svc := setupTestFS(t)
+	err := svc.Truncate(context.Background(), "missing.log", 0)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrNotFound)
+}

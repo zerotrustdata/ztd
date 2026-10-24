@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
@@ -112,9 +113,18 @@ func runtimeTestDir(tb testing.TB, subdir, prefix string) string {
 		tb.Fatalf("testutil: create test dir: %v", err)
 	}
 	tb.Cleanup(func() {
-		if err := os.RemoveAll(dir); err != nil {
-			tb.Errorf("testutil: remove test dir %s: %v", dir, err)
+		// On Windows a just-killed Gateway child still holds its
+		// .ztd/bin/ztd.exe image briefly, so RemoveAll fails with
+		// "Access is denied". Retry to let the reaped child release the
+		// image instead of failing the test during cleanup.
+		var err error
+		for attempt := 0; attempt < 25; attempt++ {
+			if err = os.RemoveAll(dir); err == nil {
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
 		}
+		tb.Errorf("testutil: remove test dir %s: %v", dir, err)
 	})
 	return dir
 }

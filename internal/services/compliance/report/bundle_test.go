@@ -182,6 +182,23 @@ func (s *recordingBundleFileService) OpenForAppend(context.Context, string, os.F
 	panic("unexpected OpenForAppend")
 }
 
+func (s *recordingBundleFileService) Truncate(_ context.Context, relPath string, size int64) error {
+	body, ok := s.files[relPath]
+	if !ok {
+		return constants.ErrNotFound
+	}
+	if int64(len(body)) > size {
+		s.files[relPath] = append([]byte(nil), body[:size]...)
+		return nil
+	}
+	if int64(len(body)) < size {
+		padded := make([]byte, size)
+		copy(padded, body)
+		s.files[relPath] = padded
+	}
+	return nil
+}
+
 func (s *recordingBundleFileService) OpenForRead(context.Context, string) (*os.File, error) {
 	panic("unexpected OpenForRead")
 }
