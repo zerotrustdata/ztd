@@ -6,7 +6,7 @@
 
 export const ZTD_REPO_URL = 'https://github.com/zerotrustdata/ztd';
 
-export const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/Badoot';
+export const SPONSOR_URL = 'https://buy.stripe.com/5kQ14p0iA7NZ7fK1wg7EQ07';
 
 export const PLATFORM_SITE_URL = 'https://opendevops.ai';
 

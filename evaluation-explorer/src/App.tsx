@@ -19,7 +19,7 @@ import { TasksView } from './views/TasksView';
 import { ThemeToggle } from './components/ThemeToggle';
 import { NavDrawer } from './components/NavDrawer';
 import { AppFooter } from './components/AppFooter';
-import { ZTD_REPO_URL, GITHUB_SPONSORS_URL } from './content/platform';
+import { ZTD_REPO_URL, SPONSOR_URL } from './content/platform';
 
 function Shell() {
   const feedStatus = useFeedStatus();
@@ -70,7 +70,7 @@ function Shell() {
             </a>
             <a
               className="header-cta header-cta-sponsor"
-              href={GITHUB_SPONSORS_URL}
+              href={SPONSOR_URL}
               target="_blank"
               rel="noopener noreferrer"
             >
