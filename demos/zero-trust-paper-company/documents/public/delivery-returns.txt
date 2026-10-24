@@ -1,0 +1,7 @@
+ZERO TRUST PAPER COMPANY — FICTIONAL DELIVERY AND RETURNS
+
+Order status progresses from confirmed to shipped to delivered. Confirmed means stock is reserved. Shipped means the warehouse has loaded a truck and removed that stock from the warehouse count. Delivered means dispatch has recorded receipt.
+
+School deliveries must reach a staffed reception before 15:00. Customers can ask support to verify a route and delivery window. A support reply does not itself change a delivery schedule.
+
+Unshipped, unpaid orders can be cancelled. Paid orders require a finance review; the sandbox blocks cancellation because a refund workflow is not implemented. Report damaged cartons with the order reference and quantity. Never send payment account details in a support ticket.

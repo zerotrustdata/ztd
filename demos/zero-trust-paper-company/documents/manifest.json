@@ -1,0 +1,12 @@
+[
+  {"id":"DOC-001","title":"Product guide","classification":"public","audience":"","source":"public/product-guide.txt"},
+  {"id":"DOC-002","title":"Published price list","classification":"public","audience":"","source":"public/price-list.txt"},
+  {"id":"DOC-003","title":"Delivery and returns","classification":"public","audience":"","source":"public/delivery-returns.txt"},
+  {"id":"DOC-101","title":"Warehouse fulfillment procedure","classification":"internal","audience":"ops,procurement,support,driver","source":"internal/fulfillment.txt"},
+  {"id":"DOC-102","title":"Customer information handling policy","classification":"internal","audience":"ops,sales,finance,support,driver,hr,procurement","source":"internal/information-handling.txt"},
+  {"id":"DOC-103","title":"Time-off policy","classification":"internal","audience":"ops,sales,finance,support,driver,hr,procurement","source":"internal/time-off.txt"},
+  {"id":"DOC-201","title":"Northstar supplier contract","classification":"confidential","audience":"procurement,finance","source":"private/northstar-contract.txt"},
+  {"id":"DOC-202","title":"Acorn collections agreement","classification":"confidential","audience":"finance,sales","source":"private/acorn-collections.txt"},
+  {"id":"DOC-203","title":"Warehouse recovery runbook","classification":"confidential","audience":"ops","source":"private/recovery-runbook.txt"},
+  {"id":"DOC-301","title":"Payroll and benefits memorandum","classification":"restricted","audience":"hr","source":"private/payroll-memo.txt"}
+]

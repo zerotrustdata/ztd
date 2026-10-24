@@ -791,6 +791,10 @@ console-test:
 	@echo "Running the console vitest suite..."
 	@cd console && npm test
 
+.PHONY: demos-test
+demos-test:
+	@python3 -B -m unittest discover -s demos/zero-trust-paper-company/tests -v
+
 .PHONY: explorer-lint
 explorer-lint:
 	@echo "Typechecking and linting the evaluation explorer..."
@@ -958,6 +962,7 @@ stop: down
 # refreshes local artifacts; GitHub Actions separately enforces committed freshness.
 .PHONY: ci
 ci: dev-check
+	@$(MAKE) demos-test
 	@$(MAKE) ci-console
 	@$(MAKE) ci-explorer
 	@$(MAKE) ci-platform

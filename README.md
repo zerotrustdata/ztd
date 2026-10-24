@@ -227,6 +227,7 @@ internal/
 protocol/             Canonical Protobuf schemas (proto/ztd/) and generated Go/TS bindings
 console/              React + TypeScript (Vite) web console (embedded into the Go binary)
 eval/                 Model evaluation fixtures, model catalogs, and rollout intake data
+demos/                Fictional organizations and runnable business infrastructure sandboxes
 docs/                 Complete platform architecture, developer invariants, and user guides
 ```
 
@@ -243,6 +244,7 @@ Always run test suites through `./ztd test <suite>` or the root `Makefile` (they
 ./ztd test chaos         # In-process synthetic governance fault injection
 
 make console-test        # Vitest suite for the browser console
+make demos-test          # Python/SQLite fictional business simulation checks
 make proto-generate      # Regenerate Go and TypeScript protobuf bindings
 make doctrines-validate  # Verify JSON doctrine rule definitions
 ```
@@ -260,6 +262,7 @@ We document the architectural rationale, breaking changes, and operational scars
 - **Core Philosophy:** [docs/core/about.md](docs/core/about.md) and [docs/core/position_paper.md](docs/core/position_paper.md)
 - **Architecture Specs:** [docs/architecture/overview.md](docs/architecture/overview.md) and [docs/architecture/governance.md](docs/architecture/governance.md)
 - **Guides:** [docs/guides/getting_started.md](docs/guides/getting_started.md) and [docs/guides/unified_stack.md](docs/guides/unified_stack.md)
+- **Hands-on sandboxes:** [Fictional organizations](demos/README.md), starting with [Zero Trust Paper Company](demos/zero-trust-paper-company/README.md).
 
 ---
 

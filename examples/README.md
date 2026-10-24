@@ -1,6 +1,6 @@
 # ztd Examples
 
-Runnable examples, client configuration templates, and reference shapes for integrating with ztd. This is the single home for maintained examples; evaluation campaigns live under [`eval/`](../eval/README.md).
+Runnable examples, client configuration templates, and reference shapes for integrating with ztd. This is the home for integration examples; complete fictional business sandboxes live under [demos](../demos/README.md), and evaluation campaigns live under [`eval/`](../eval/README.md).
 
 ## Index
 

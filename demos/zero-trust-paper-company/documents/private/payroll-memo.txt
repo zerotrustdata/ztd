@@ -1,0 +1,5 @@
+RESTRICTED — FICTIONAL PAYROLL MEMORANDUM
+
+Morgan Reed has an annual synthetic salary of $124,000.00. Alex Chen has an annual synthetic salary of $88,500.00. Employee payroll account references have the form FICTIONAL-PAYROLL-EMP-xxx and cannot be used for bank transfers. The HR payroll endpoint is the structured source for all ten employees.
+
+Salary, account references and emergency contacts are limited to People Operations and the demo administrator. Directory readers receive only work identity, title, department, email and manager. Delivery operators and customers must not retrieve this memorandum through search or direct document access.

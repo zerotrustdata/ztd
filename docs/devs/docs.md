@@ -4,7 +4,7 @@ title: Documentation Guide
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-24
 owners:
   - docs/
   - protocol/docs/
@@ -277,6 +277,9 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Public Proof Offline Verification](../../ztd-adapter/contract-pack/public/offline-verifier.md): Cryptographic and manifest offline verification runbook for public proofs and feed fixtures.
 - [Examples README](../../examples/README.md): Platform example applications index and runnable samples.
 - [External Console Example](../../examples/external-console/README.md): External standalone console sample application.
+- [Fictional Organizations](../../demos/README.md): Maintained business sandbox index and conventions for adding organizations.
+- [Zero Trust Paper Company](../../demos/zero-trust-paper-company/README.md): Python/SQLite business services, demo identities, retrieval, lifecycle and ztd invocation boundary.
+- [Paper Company Scenarios](../../demos/zero-trust-paper-company/SCENARIOS.md): Repeatable cross-system operational exercises and expected outcomes.
 
 #### Release notes and evidence projections (`docs/release_notes/`)
 
