@@ -47,8 +47,8 @@ func readFileOn(env **realStackAgentRun, relPath string) fixtures.OllamaReply {
 // shellScriptOn is a provider turn that proposes running one workspace-relative
 // script with sh, from the attempt in flight, followed by the Tribunal rounds
 // that author it: investigation scenarios route run_shell_command through
-// Tribunal, so five matching candidates, the risk check, and the audit approve
-// the proposed command.
+// Tribunal, so four matching candidates, Nemesis's distinct negative control,
+// the risk check, and the audit approve the proposed command.
 func shellScriptOn(env **realStackAgentRun, relPath string) []fixtures.OllamaReply {
 	script := func(reply func(json.RawMessage) fixtures.OllamaReply) fixtures.OllamaReply {
 		return fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
@@ -66,7 +66,8 @@ func shellScriptOn(env **realStackAgentRun, relPath string) []fixtures.OllamaRep
 		return fixtures.OllamaReply{Content: string(arguments)}
 	})
 	return slices.Concat([]fixtures.OllamaReply{proposal},
-		slices.Repeat([]fixtures.OllamaReply{candidate}, 5),
+		slices.Repeat([]fixtures.OllamaReply{candidate}, 4),
+		tribunalTurn(tribunalRealDissent),
 		tribunalTurn(tribunalRealLowRisk), tribunalTurn(tribunalRealApprove))
 }
 

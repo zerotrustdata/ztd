@@ -238,7 +238,7 @@ docs/                 Complete platform architecture, developer invariants, and 
 Always run test suites through `./ztd test <suite>` or the root `Makefile` (they configure mandatory FIPS tags, race detectors, and environment isolation):
 
 ```bash
-make test                # Full suite and quality gates, including 1000-Operator scale
+make test                # Full suite and quality gates, including a 100-Operator fleet smoke
 
 ./ztd test unit          # Fast, in-memory, parallel-safe unit tests
 ./ztd test integration   # Real SQLite/PKI/mTLS integration tests (-race enabled)

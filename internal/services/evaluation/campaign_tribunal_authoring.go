@@ -212,7 +212,8 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 			}
 			return r.trace.ProviderFailure
 		}
-		call.Text, call.Thinking, _ = agentResponseParts(member.GetResult())
+		text, thinking, toolCalls := agentResponseParts(member.GetResult())
+		call.Text, call.Thinking, call.ToolCallCount = text, thinking, len(toolCalls)
 		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 	}
 	return ""

@@ -103,6 +103,7 @@ pwsh scripts/windows-setup.ps1
 
 - **Options**: `-y` / `--yes` (unattended installation), `--build-only` (skip Node/explorer, build binary only), `-h` (help).
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
+- **Linux Packages**: Detects the package manager before translating prerequisite names. The C compiler prerequisite installs `build-essential` on apt, `gcc` on dnf/zypper, or `base-devel` on pacman.
 - **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or `~/.profile` (Linux and macOS) or the user-level `Path` in the registry (Windows). Profiles are only appended to, never rewritten.
 - **Env File**: After building `./ztd`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Only `./ztd` commands that pass the root pre-run load it, and only `secret` and `user_endpoint` keys are accepted (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
 
@@ -124,7 +125,7 @@ make dev-check    # Preflight verification; runs before all CI targets
 
 - **`scripts/smoke-test-go.sh`**: Creates an ephemeral Go module under `.ztd/tmp/` with a `replace` directive mapping `github.com/zerotrustdata/ztd` to the local repository, then builds a program that imports `github.com/zerotrustdata/ztd/protocol`.
 - **`make test-onboarding`**: Offline, hermetic unit tests validating setup scripts, version checking, and quickstart execution.
-- **`make test-onboarding-docker`**: Replays setup and execution across clean container images (`ubuntu`, `debian`, `fedora`, `arch`).
+- **`make test-onboarding-docker`**: Replays setup and execution across clean container images (`ubuntu`, `debian`, `fedora`, `arch`). After build-only setup installs Git, the disposable working-tree snapshot receives a local commit so release-smoke evidence can identify the exact source it tests.
 
 ## Host Lifecycle Targets
 

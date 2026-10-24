@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,6 +139,46 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 		assert.Empty(t, run.trace.ProviderFailureClass)
 		assert.Empty(t, run.trace.ModelCalls)
 	})
+}
+
+func TestRecordMemberCallsPreservesProviderToolCallsInTranscript(t *testing.T) {
+	for _, count := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("%d tool calls", count), func(t *testing.T) {
+			run := newTribunalAuthoringRun(t, true, &tribunalAuthoringInference{}, &tribunalAuthoringTools{})
+			result := &operatorv1.InferenceResult{
+				ProviderAttemptId: "attempt-member", RequestedModel: "model:tag",
+				Parts: []*operatorv1.InferenceResponsePart{
+					{Part: &operatorv1.InferenceResponsePart_Text{Text: " answer "}},
+					{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "reasoning"}},
+				},
+			}
+			for i := 0; i < count; i++ {
+				result.Parts = append(result.Parts, &operatorv1.InferenceResponsePart{
+					Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+						CallId: fmt.Sprintf("call-%d", i), Name: constants.MCPToolRunShellCommand,
+						ArgumentsJson: `{"command":"echo","args":["hello"]}`,
+					}},
+				})
+			}
+			digest, err := models.ComputeInferenceResultDigest(result)
+			require.NoError(t, err)
+			result.ResultDigest = digest
+			member := &tribunalv1.TribunalMemberCall{
+				ProviderAttemptId: result.GetProviderAttemptId(), Result: result,
+				Receipt: &operatorv1.EventReceipt{ResultSummary: digest},
+			}
+
+			failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{member})
+
+			require.Empty(t, failure)
+			require.Len(t, run.trace.ModelCalls, 1)
+			call := run.trace.ModelCalls[0]
+			assert.Equal(t, "answer", call.Text)
+			assert.Equal(t, "reasoning", call.Thinking)
+			assert.Equal(t, count, call.ToolCallCount)
+			assert.NoError(t, verifyV7ModelCallTranscript(call, call.InferenceResult.InferenceResult))
+		})
+	}
 }
 
 func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {

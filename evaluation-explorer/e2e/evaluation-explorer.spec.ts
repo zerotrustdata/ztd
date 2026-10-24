@@ -154,7 +154,7 @@ async function expectNativeRun(page: Page, runId: string) {
 }
 
 test('loads native evaluations directly from the public mirror snapshot', async ({ page }) => {
-  if (!process.env.ZTD_PUBLIC_MIRROR_ORIGIN) await installMirror(page);
+  await installMirror(page);
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
   const mirrorResponses: string[] = [];

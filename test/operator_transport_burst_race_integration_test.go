@@ -15,7 +15,7 @@ import (
 )
 
 // Under the race detector the burst checks the same contract at a size the
-// detector can carry; the full scale runs without it.
+// detector can carry; the larger smoke cohort runs without it.
 const (
 	burstOperators         = 16
 	burstHeartbeatInterval = 2 * time.Second

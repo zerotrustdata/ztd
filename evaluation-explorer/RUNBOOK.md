@@ -133,9 +133,12 @@ npm run typecheck
 npm test
 npm run build
 npm run test:e2e
+npm run test:e2e:production
 npm audit --audit-level=moderate
 npm run health
 ```
+
+Both browser suites intercept mirror requests and serve deterministic fixtures, including when the production suite sets `ZTD_PUBLIC_MIRROR_ORIGIN` to the public origin.
 
 For a platform production-code change:
 

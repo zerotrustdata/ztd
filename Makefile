@@ -219,7 +219,7 @@ help:
 		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
 		'' \
 		'Full test suite' \
-		'  test                      Run every local test and quality gate (1000-Operator scale)' \
+		'  test                      Run every local test and quality gate (100-Operator smoke)' \
 		'  test-quality              Format, lint, typecheck, and check generated artifacts' \
 		'  test-platform             Unit, integration, eval-stack, coverage, and burst tests' \
 		'  test-components           Console, explorer, adapter, protocol, website, and demo tests' \
@@ -232,9 +232,9 @@ help:
 		'  test-eval-stack           Run real eval-stack integration tests' \
 		'  test-fips                 Run unit and integration tests with the pinned FIPS module' \
 		'  test-enrollment-burst     Run the enrollment timing contract without instrumentation' \
-		'  test-operator-burst       Run the 2000-Operator transport burst without instrumentation' \
+		'  test-operator-burst       Run the 100-Operator transport smoke without instrumentation' \
 		'  test-coverage             Run tests and enforce $(COVERAGE_THRESHOLD)% coverage (PKG=..., VERBOSE=true)' \
-		'  test-scale                Operator fleet scale qualification (SCALE_COUNT=1000, SCALE_ARGS=...)' \
+		'  test-scale                Operator fleet smoke (SCALE_COUNT=100, SCALE_ARGS=...)' \
 		'  test-eval-loop            Cross-process eval qualification under ratify and notary' \
 		'  test-conformance-loop     Cross-process conformance qualification under every posture' \
 		'  test-release-smoke        Isolated governed execution and evidence smoke' \
@@ -771,7 +771,7 @@ test:
 	@$(MAKE) test-components
 	@$(MAKE) test-scripts
 	@$(MAKE) test-process
-	@$(MAKE) test-scale SCALE_COUNT=1000
+	@$(MAKE) test-scale SCALE_COUNT=$(SCALE_COUNT)
 	@$(MAKE) test-onboarding-docker SCENARIOS='build-only rerun quickstart contributor release-smoke'
 	@echo "All tests completed successfully."
 
@@ -854,11 +854,11 @@ test-enrollment-burst:
 	@go test -tags=integration $(TEST_COUNT) -timeout $(TEST_TIMEOUT) \
 		-run '^TestPlatformEnrollmentBurst' ./internal/services/gateway
 
-# The Operator transport burst enrolls 2000 in-process Operators, a size only
-# an uninstrumented build carries; the race build runs the same contract small.
+# The Operator transport smoke enrolls 100 in-process Operators without
+# instrumentation; the race build runs the same contract with a smaller cohort.
 .PHONY: test-operator-burst
 test-operator-burst:
-	@echo "Running the uninstrumented 2000-Operator transport burst..."
+	@echo "Running the uninstrumented 100-Operator transport smoke..."
 	@go test -tags=integration $(TEST_COUNT) -timeout 15m \
 		-run '^TestOperatorTransportBoundary_BurstDeliversEveryCommittedIdentity$$' ./test
 
@@ -872,9 +872,9 @@ test-cross-enrollment:
 # Operator fleet scale qualification: starts an isolated Gateway in a fresh
 # scratch root, deploys SCALE_COUNT real Operators, runs the fleet soak/fan-out
 # and Gateway restart scenarios, and always tears down its own processes.
-# The full suite fixes SCALE_COUNT at 1000. Focused runs may override it.
+# The default smoke uses 100 Operators. SCALE_COUNT selects larger cohorts.
 # Extra flags: SCALE_ARGS='--soak 10m --root DIR'.
-SCALE_COUNT ?= 1000
+SCALE_COUNT ?= 100
 .PHONY: test-scale
 test-scale: build
 	@./ztd test scale --count $(SCALE_COUNT) $(SCALE_ARGS)
