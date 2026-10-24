@@ -10,13 +10,9 @@
 package gw
 
 import (
-	"context"
-	"os"
-	"path/filepath"
-	"strconv"
 	"testing"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
@@ -27,17 +23,13 @@ func startZombieReaper(t *testing.T) {
 
 func reapRemainingChild(t *testing.T, fileSvc fs.RuntimeFileService) {
 	t.Helper()
-	pidRel := filepath.Join(constants.PidDirname, constants.OperatorPIDFilename)
-	data, err := fileSvc.ReadFile(context.Background(), pidRel)
+	pm, err := platform.NewProcessManager(fileSvc)
 	if err != nil {
 		return
 	}
-	pid, err := strconv.Atoi(string(data))
-	if err != nil || pid == 0 {
-		return
-	}
-	if p, err := os.FindProcess(pid); err == nil {
-		_ = p.Kill()
-	}
-	_ = fileSvc.Remove(context.Background(), pidRel)
+	// StopOperator waits for the child to exit and release the
+	// .ztd/bin/ztd.exe image; a bare Kill returns immediately and
+	// leaves the binary locked, so TempDir removal fails on Windows
+	// with "Access is denied".
+	_ = pm.StopOperator()
 }

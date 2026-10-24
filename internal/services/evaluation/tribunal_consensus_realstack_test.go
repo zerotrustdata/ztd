@@ -15,6 +15,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/protocol"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -72,6 +74,7 @@ func tribunalConsensusVotes(n int) []fixtures.OllamaReply {
 // identity, and a key in the Gateway's member signer. It runs before Operators
 // enroll, so their enrollment bundles carry the Tribunal L2 trust.
 func bindTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity) {
+	t.Helper()
 	ctx := t.Context()
 	gw := gateway.Service
 	consensusStore := gw.GetConsensusStore()
@@ -124,7 +127,7 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	ctx := t.Context()
 	env := newRealStackAgentRun(t, realStackOptions{
 		posture: constants.PostureConsensus, singleRole: true, suffix: "tribunal-consensus",
-		replies:       append([]fixtures.OllamaReply{{Content: "inference complete"}}, tribunalConsensusVotes(tribunalConsensusQuorum)...),
+		replies:       append([]fixtures.OllamaReply{{Content: "inference complete"}}, tribunalConsensusVotes(len(tribunal.AllMembers))...),
 		bindConsensus: bindTribunalConsensus,
 	})
 
@@ -186,7 +189,65 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status(), "the Tribunal quorum proof must be valid")
 
 	// The no-tool inference used one provider request, while read_file added none.
-	// The shell mutation adds exactly three member inferences, each on the pinned model.
-	assert.Equal(t, tribunalConsensusQuorum+1, env.stack.Provider.ChatCount(), "the mutation must add exactly quorum vote inferences")
-	assert.Equal(t, []string{realStackModelTag, realStackModelTag, realStackModelTag, realStackModelTag}, tribunalWireModels(t, env))
+	// The shell mutation adds exactly five member inferences, each on the pinned model.
+	assert.Equal(t, len(tribunal.AllMembers)+1, env.stack.Provider.ChatCount(), "the mutation must collect the full Tribunal panel")
+	assert.Equal(t, []string{realStackModelTag, realStackModelTag, realStackModelTag, realStackModelTag, realStackModelTag, realStackModelTag}, tribunalWireModels(t, env))
+}
+
+func TestTribunalConsensusRealStack_SharedRuntimeTraceClaimsVoteReceipts(t *testing.T) {
+	for _, test := range []struct {
+		posture  constants.Posture
+		approved bool
+	}{
+		{posture: constants.PostureConsensus, approved: true},
+		{posture: constants.PostureConsensus, approved: false},
+		{posture: constants.PostureNotary, approved: true},
+	} {
+		t.Run(fmt.Sprintf("%s/approved=%t", test.posture, test.approved), func(t *testing.T) {
+			posture, approved := test.posture, test.approved
+			replies := []fixtures.OllamaReply{{ToolCalls: []fixtures.OllamaToolCall{{ID: "call-1", Name: constants.MCPToolRunShellCommand, Arguments: json.RawMessage(`{"command":"echo","args":["HEALTHY"]}`)}}}}
+			votes := tribunalConsensusVotes(len(tribunal.AllMembers))
+			if !approved {
+				for i := range votes {
+					votes[i].Content = `{"decision":"deny","reason":"not approved"}`
+				}
+			}
+			replies = append(replies, votes...)
+			replies = append(replies, fixtures.OllamaReply{Content: "HEALTHY"})
+			env := newRealStackAgentRun(t, realStackOptions{
+				posture: posture, shared: true, singleRole: true, suffix: "shared-tribunal-" + string(posture), replies: replies, bindConsensus: bindTribunalConsensus,
+				scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
+					scenario.AllowedTools = []string{constants.MCPToolRunShellCommand}
+					scenario.ForbiddenTools = nil
+					scenario.ExpectedTools = nil
+					scenario.TribunalCommands = false
+				},
+			})
+			res := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, res)
+			require.True(t, trace.SharedRuntime())
+			require.Len(t, trace.ToolCalls, 1)
+			assert.Equal(t, approved, trace.ToolCalls[0].Success, "%s", trace.ToolCalls[0].Error)
+			if !approved {
+				assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET, trace.ToolCalls[0].Receipt.GetRejectionCode())
+			}
+			inferences := trace.ToolCalls[0].ConsensusInferences
+			require.Len(t, inferences, len(tribunal.AllMembers))
+			for _, vote := range inferences {
+				require.NotNil(t, vote.GetReceipt())
+				assert.Equal(t, trace.Data.Anchor.GetKeyId(), vote.GetReceipt().GetSignerKeyId())
+				assert.Equal(t, trace.ToolCalls[0].TransactionID, vote.GetSubjectTransactionId())
+				local := tribunalVerifyLocalReceipt(t, env, vote.GetReceipt())
+				assert.True(t, proto.Equal(local.ActionReceipt, vote.GetReceipt()), "vote receipt must match the authoritative local record")
+			}
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			// Removing any member's execution must break the ledger bracket.
+			trace.ToolCalls[0].ConsensusInferences = inferences[:len(inferences)-1]
+			require.Error(t, evaluation.VerifyAgentTraceEvidence(trace))
+			trace.ToolCalls[0].ConsensusInferences = inferences
+			inferences[0].Receipt.Signature = "00"
+			require.Error(t, evaluation.VerifyAgentTraceEvidence(trace))
+		})
+	}
 }

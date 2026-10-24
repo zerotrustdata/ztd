@@ -2,6 +2,9 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AgentTraceSection } from '../src/components/AgentTraceSection';
@@ -10,7 +13,6 @@ import type { ProofCatalogEntry, PublicEvidenceBinding } from '../src/contract/t
 import { evalStore } from '../src/state/store';
 
 vi.mock('../src/state/feed', () => ({
-  loadRuntimeConfig: vi.fn().mockResolvedValue({ schema_version: '1.0.0', mirror_origin: 'http://127.0.0.1:8082' }),
   fetchProofCatalogEntry: vi.fn().mockResolvedValue(null),
 }));
 
@@ -87,6 +89,9 @@ function sealedBody(schemaVersion = 'agent-trace.v4', overrides: Record<string, 
   return new TextEncoder().encode(`{"schema_version":"${schemaVersion}","evidence_digest":"${digest}",${tail}`);
 }
 
+// The Go producer test seals the same typed trace and compares these exact bytes.
+const consensusBody = new Uint8Array(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../internal/services/evaluation/testdata/agent-trace-consensus.json')));
+
 const scope = (body: Uint8Array) => ({ sha256: sha256(body), runId: 'run-1', assignmentId: 'assignment-1' });
 
 function investigationRetrievalToolCall(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -136,6 +141,39 @@ describe('verifyAgentTraceArtifact', () => {
 
   const toolCallWith = (fields: Record<string, unknown>) => ({ ...(traceTail('agent-trace.v8').tool_calls as Record<string, unknown>[])[0], ...fields });
 
+  it('verifies the Go-sealed trace with successful and failed L2 vote inferences', async () => {
+    const trace = await verifyAgentTraceArtifact(consensusBody, scope(consensusBody));
+    const inferences = trace.tool_calls[0]?.consensus_inferences;
+    expect(inferences).toHaveLength(2);
+    expect(inferences?.[0]?.member_app_id).toBe('member-1');
+    expect(inferences?.[0]?.result?.result_digest).toBe('d'.repeat(64));
+    expect(inferences?.[0]?.receipt?.transaction_id).toBe('tx-vote-1');
+    expect(inferences?.[0]?.observation_receipts?.[0]?.transaction_id).toBe('tx-observe');
+    expect(inferences?.[1]?.failure?.error).toBe('Provider unavailable');
+  });
+
+  it.each([
+    ['non-array inferences', 'bad', 'consensus_inferences'],
+    ['non-object inference', [false], 'consensus_inferences[0]'],
+    ['unknown inference field', [{ unexpected: true }], 'consensus_inferences[0]'],
+    ['non-string member identity', [{ member_app_id: 42 }], 'consensus_inferences[0].member_app_id'],
+    ['non-object result', [{ result: 'bad' }], 'consensus_inferences[0].result'],
+    ['non-object receipt', [{ receipt: false }], 'consensus_inferences[0].receipt'],
+    ['non-object failure', [{ failure: 'bad' }], 'consensus_inferences[0].failure'],
+    ['non-array observation receipts', [{ observation_receipts: {} }], 'consensus_inferences[0].observation_receipts'],
+    ['non-object observation receipt', [{ observation_receipts: [null] }], 'consensus_inferences[0].observation_receipts[0]'],
+  ])('rejects %s in consensus evidence', async (_label, inferences, path) => {
+    const body = sealedBody('agent-trace.v8', {
+      model_calls: [v7Call()], tool_calls: [toolCallWith({ consensus_inferences: inferences })],
+    });
+    await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path: `agent_trace.tool_calls[0].${path}` });
+  });
+
+  it('still rejects edited consensus evidence when only its artifact binding is recomputed', async () => {
+    const edited = new TextEncoder().encode(new TextDecoder().decode(consensusBody).replace('member-1', 'member-9'));
+    await expect(verifyAgentTraceArtifact(edited, scope(edited))).rejects.toThrow(/evidence_digest does not match/u);
+  });
+
   it('decodes approved_arguments_json on a v8 tool call and rejects it when empty', async () => {
     const approved = '{"args":["app/service.conf"],"command":"cat"}';
     const body = sealedBody('agent-trace.v8', { model_calls: [v7Call()], tool_calls: [toolCallWith({ approved_arguments_json: approved })] });
@@ -154,6 +192,26 @@ describe('verifyAgentTraceArtifact', () => {
         tool_calls: [toolCallWith({ approved_arguments_json: '{"args":[],"command":"cat"}' })],
       });
       await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toThrow(/approved_arguments_json/u);
+    }
+  });
+
+  it('keeps consensus evidence optional and accepts empty Go lists', async () => {
+    for (const inferences of [undefined, null, []]) {
+      const body = sealedBody('agent-trace.v8', {
+        model_calls: [v7Call()], tool_calls: [toolCallWith({ consensus_inferences: inferences })],
+      });
+      const trace = await verifyAgentTraceArtifact(body, scope(body));
+      expect(trace.tool_calls[0]?.consensus_inferences).toEqual(inferences === undefined ? undefined : []);
+    }
+  });
+
+  it('rejects consensus_inferences on historical trace versions', async () => {
+    for (const schemaVersion of ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7']) {
+      const body = sealedBody(schemaVersion, {
+        ...(schemaVersion === 'agent-trace.v7' ? { model_calls: [v7Call()] } : {}),
+        tool_calls: [toolCallWith({ consensus_inferences: [] })],
+      });
+      await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toThrow(/consensus_inferences/u);
     }
   });
 
@@ -297,11 +355,23 @@ describe('AgentTraceSection', () => {
 
   beforeEach(() => {
     evalStore.loadFixtures([], []);
+    evalStore.setMirrorOrigin('http://127.0.0.1:8082');
     evalStore.loadProofCatalog([entry(sha256(body))]);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('renders a Go-sealed consensus trace instead of showing a verification failure', async () => {
+    evalStore.loadProofCatalog([entry(sha256(consensusBody))]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(consensusBody.slice())));
+    render(<AgentTraceSection id="trace" bindings={[{ ...bindings[0]!, sha256: sha256(consensusBody) }]} runId="run-1" assignmentId="assignment-1" />);
+
+    expect(await screen.findByText('L2 consensus inferences')).toBeInTheDocument();
+    expect(screen.getByText(/"member_app_id": "member-1"/u)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download trace' })).toBeInTheDocument();
   });
 
   it('renders the verified trace: input, thinking, tool call, receipt, and download', async () => {

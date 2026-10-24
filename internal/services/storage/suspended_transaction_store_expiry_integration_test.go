@@ -127,10 +127,32 @@ func TestSuspendedTransactionStore_TypedSentinels(t *testing.T) {
 	sts, _, _ := newSuspendedStoreWithVault(t)
 	ctx := context.Background()
 
-	err := sts.ApproveSuspendedTransaction(ctx, "missing", models.ApprovalProof{})
-	require.ErrorIs(t, err, constants.ErrSuspendedTransactionNotFound)
+	require.ErrorIs(t, sts.ClaimSuspendedTransaction(ctx, "missing"), constants.ErrSuspendedTransactionNotFound)
 
 	var nilStore *SuspendedTransactionService
 	require.ErrorIs(t, nilStore.ClaimSuspendedTransaction(ctx, "x"), constants.ErrSuspendedStoreNotInitialized)
 	require.ErrorIs(t, nilStore.ReleaseSuspendedTransaction(ctx, "x"), constants.ErrSuspendedStoreNotInitialized)
+}
+
+// Human authorization belongs to the L3Proof carried by the resumed envelope,
+// verified at L4. The pending store must not offer a second authorization record.
+func TestSuspendedTransactionStore_DoesNotPersistApprovalDecisions(t *testing.T) {
+	_, db, _ := newSuspendedStoreWithVault(t)
+	rows, err := db.QueryContext(t.Context(), "SELECT name FROM pragma_table_info('suspended_transactions')")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, rows.Close()) })
+
+	var columns []string
+	for rows.Next() {
+		var column string
+		require.NoError(t, rows.Scan(&column))
+		columns = append(columns, column)
+	}
+	require.NoError(t, rows.Err())
+	for _, column := range []string{
+		"approved", "approved_at", "approved_by", "approval_signature", "approval_public_key",
+		"passkey_credential_id", "passkey_client_data_json", "passkey_authenticator_data", "passkey_signature",
+	} {
+		assert.NotContains(t, columns, column, "pending storage must not duplicate L3 authorization")
+	}
 }

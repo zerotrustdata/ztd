@@ -212,7 +212,7 @@ func TestPlatformEnrollmentService_CreateCancellationInterruptsBootstrapRead(t *
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := createPlatformEnrollmentRequest(t, env.enrollSvc, ctx, models.PlatformEnrollmentCreateRequest{
+		_, err := createPlatformEnrollmentRequest(t, env.enrollSvc, ctx, models.PlatformEnrollmentCreateRequest{ //nolint:testifylint // shared helper keeps require for the test goroutine
 			ComponentKind: models.PlatformComponentDashboard,
 			InstanceID:    "dashboard-blocked-bootstrap",
 			Hostname:      "dashboard.local",

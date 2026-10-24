@@ -20,6 +20,7 @@
     - [CommandRequested.EnvironmentEntry](#ztd-operator-v1-CommandRequested-EnvironmentEntry)
     - [CommandResult](#ztd-operator-v1-CommandResult)
     - [CommitmentAttestation](#ztd-operator-v1-CommitmentAttestation)
+    - [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference)
     - [CreateDeviceLinkRequested](#ztd-operator-v1-CreateDeviceLinkRequested)
     - [DeleteDeviceLinkRequested](#ztd-operator-v1-DeleteDeviceLinkRequested)
     - [DeterministicStageEvidence](#ztd-operator-v1-DeterministicStageEvidence)
@@ -510,6 +511,31 @@ authorized to be executed.
 | auditor_key_id | [string](#string) |  | AuditorKeyID identifies which Auditor key signed this attestation. |
 | signature | [string](#string) |  | ED25519 signature over the canonical serialization of fields 1-11. String fields are UTF-8 encoded in field-number order as an unsigned 32-bit big-endian byte length followed by the bytes. CommittedAtUnixMs is encoded as a signed 64-bit two&#39;s-complement big-endian integer without a length prefix. |
 | hash | [string](#string) |  | Lowercase hexadecimal SHA-256 of the canonical serialization signed by Signature. It is what the next attestation chains to. |
+
+
+
+
+
+
+<a name="ztd-operator-v1-ConsensusVoteInference"></a>
+
+### ConsensusVoteInference
+ConsensusVoteInference retains one Tribunal member&#39;s governed vote inference,
+including failures and observation executions. These receipts are independent
+signed evidence; they never replace the subject&#39;s L2 quorum proof.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| subject_transaction_id | [string](#string) |  |  |
+| subject_transaction_hash | [string](#string) |  |  |
+| member_app_id | [string](#string) |  |  |
+| provider_attempt_id | [string](#string) |  |  |
+| transaction_id | [string](#string) |  |  |
+| result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| failure | [InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure) |  |  |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated |  |
 
 
 
@@ -1318,6 +1344,7 @@ display only.
 | ----- | ---- | ----- | ----------- |
 | error | [string](#string) |  |  |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| consensus_inferences | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
 
 
 
@@ -1340,6 +1367,7 @@ GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 | result_payload | [bytes](#bytes) |  | result_payload is the proto-marshaled terminal operator result for event_type (for example FsReadResult), the same bytes the dispatch response carries today. |
 | inference_result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| consensus_inferences | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
 
 
 
@@ -2072,6 +2100,7 @@ direct and dispatch ingresses, and JSON-RPC error.data on MCP and A2A.
 | ----- | ---- | ----- | ----------- |
 | code | [IngressRefusalCode](#ztd-operator-v1-IngressRefusalCode) |  |  |
 | error | [string](#string) |  |  |
+| consensus_inferences | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
 
 
 

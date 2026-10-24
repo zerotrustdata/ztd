@@ -21,9 +21,13 @@ func TestActionTypeIsMutation_MutationTypesReturnTrue(t *testing.T) {
 		ActionTypeCancel,
 		ActionTypeDocumentDelete,
 		ActionTypeDocumentUpdate,
+		ActionTypeEvalWorkspaceSeed,
 		ActionTypeExecuteBash,
 		ActionTypeFileEdit,
+		ActionTypeInference,
 		ActionTypeMcpCall,
+		ActionTypeOllamaModelRelease,
+		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy,
@@ -142,12 +146,55 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 func TestActionTypeIsMutation_EveryActionTypeClassified(t *testing.T) {
 	t.Parallel()
 
-	for _, at := range AllActionTypes {
-		// Every action type should return a definitive true or false.
-		// This test ensures no action type falls through to the default case
-		// unintentionally — if a new action type is added, it should be
-		// explicitly classified.
-		_ = at.IsMutation()
+	mutations := []ActionType{
+		ActionTypeA2aCall,
+		ActionTypeCancel,
+		ActionTypeDocumentDelete,
+		ActionTypeDocumentUpdate,
+		ActionTypeEvalWorkspaceSeed,
+		ActionTypeExecuteBash,
+		ActionTypeFileEdit,
+		ActionTypeInference,
+		ActionTypeMcpCall,
+		ActionTypeOllamaModelRelease,
+		ActionTypePlatformEnrollmentBindConsensus,
+		ActionTypePlatformEnrollmentCreateSession,
+		ActionTypePlatformEnrollmentDecide,
+		ActionTypePlatformEnrollmentIssue,
+		ActionTypePlatformEnrollmentPersistPolicy,
+		ActionTypePlatformEnrollmentRevoke,
+		ActionTypeRestoreFile,
+		ActionTypeShutdown,
+	}
+	reads := []ActionType{
+		ActionTypeEvalAnswer,
+		ActionTypeFetchFileDiff,
+		ActionTypeFetchFileHistory,
+		ActionTypeFetchHistory,
+		ActionTypeFetchLogs,
+		ActionTypeFsGrep,
+		ActionTypeFsList,
+		ActionTypeFsRead,
+		ActionTypeHeartbeat,
+		ActionTypeMcpPromptGet,
+		ActionTypeMcpPromptList,
+		ActionTypeMcpResourceList,
+		ActionTypeMcpResourceRead,
+		ActionTypeModelProvenanceObservation,
+		ActionTypeOllamaModelInventory,
+		ActionTypeOllamaModelResidency,
+		ActionTypePlatformEnrollmentCreate,
+		ActionTypePortCheck,
+		ActionTypeProviderBoundaryObservation,
+	}
+
+	classified := append(append([]ActionType{}, mutations...), reads...)
+	assert.ElementsMatch(t, AllActionTypes, classified)
+	for _, at := range mutations {
+		assert.True(t, at.IsMutation(), at)
+	}
+	for _, at := range reads {
+		assert.False(t, at.IsMutation(), at)
 	}
 }
 

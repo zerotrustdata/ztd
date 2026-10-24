@@ -36,7 +36,7 @@ func TestUTCRFC3339(t *testing.T) {
 
 func TestOptionalTime(t *testing.T) {
 	t.Run("nil returns empty string", func(t *testing.T) {
-		assert.Equal(t, "", optionalTime(nil))
+		assert.Empty(t, optionalTime(nil))
 	})
 
 	t.Run("non-nil returns RFC3339", func(t *testing.T) {

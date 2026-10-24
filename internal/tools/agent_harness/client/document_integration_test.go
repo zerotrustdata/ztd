@@ -27,8 +27,8 @@ import (
 func TestSubmitDocumentUpdate_BuildsCanonicalEnvelope(t *testing.T) {
 	var receivedBody []byte
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, constants.APIPaths.GovernanceEnvelopes, r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, constants.APIPaths.GovernanceEnvelopes, r.URL.Path)
 		receivedBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte(`{"status":"accepted"}`))
@@ -110,8 +110,8 @@ func TestSubmitDocumentUpdate_MergeTrueSetsMergeFlag(t *testing.T) {
 func TestSubmitDocumentDelete_BuildsCanonicalEnvelope(t *testing.T) {
 	var receivedBody []byte
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, constants.APIPaths.GovernanceEnvelopes, r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, constants.APIPaths.GovernanceEnvelopes, r.URL.Path)
 		receivedBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte(`{"status":"accepted"}`))
@@ -217,8 +217,8 @@ func TestSubmitDocumentUpdate_DefaultTTL(t *testing.T) {
 
 func TestGetDocument_ReturnsDocument(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodGet, r.Method)
-		require.Equal(t, constants.APIPaths.DataPrefix+"investigations/inv-get-001", r.URL.Path)
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, constants.APIPaths.DataPrefix+"investigations/inv-get-001", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"case_title":"Found Investigation","status":"open","id":"inv-get-001","case_flag":true}`))
 	})

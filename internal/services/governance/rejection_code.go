@@ -159,7 +159,7 @@ func RejectionResponse(err error) *operatorv1.GovernanceRejection {
 	if _, sentinel := GovernanceRejectionSentinel(rejection.Err); sentinel != nil {
 		text = sentinel.Error()
 	}
-	return &operatorv1.GovernanceRejection{Error: text, Receipt: rejection.Receipt}
+	return &operatorv1.GovernanceRejection{Error: text, Receipt: rejection.Receipt, ConsensusInferences: ConsensusInferences(err)}
 }
 
 // ReceiptRejection returns the typed client body for a signed rejection receipt

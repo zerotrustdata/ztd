@@ -116,8 +116,8 @@ func TestMarshalHeartbeatSnapshot_UsesProtoFieldNames(t *testing.T) {
 }
 
 func TestCurrentHostnameFromHeartbeat(t *testing.T) {
-	assert.Equal(t, "", currentHostnameFromHeartbeat(nil))
-	assert.Equal(t, "", currentHostnameFromHeartbeat(&operatorv1.HeartbeatResult{}))
+	assert.Empty(t, currentHostnameFromHeartbeat(nil))
+	assert.Empty(t, currentHostnameFromHeartbeat(&operatorv1.HeartbeatResult{}))
 	assert.Equal(t, "edge-node", currentHostnameFromHeartbeat(&operatorv1.HeartbeatResult{
 		SystemIdentity: &operatorv1.SystemIdentity{Hostname: "edge-node"},
 	}))

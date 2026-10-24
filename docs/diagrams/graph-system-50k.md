@@ -4,7 +4,7 @@ title: "Diagram: System Overview 50,000-Foot View"
 audience: maintainers, architects, and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - cmd/ztd/
   - internal/services/gateway/
@@ -24,8 +24,8 @@ do_not_use_for:
 
 Provides the comprehensive 50,000-foot view of the platform. The single static `ztd` binary deploys into two primary architectural roles:
 
-- **Governance Gateway (Policy Decision Point, PDP)**: Coordinates incoming agent intent, L1–L3 governance, platform PKI, WebSocket pub/sub brokering, and SSE delivery. The Gateway hosts the L2 Tribunal panel or routes L2 votes to a bound application. Sits directly on top of an embedded Operator substrate in the same process when running in Gateway mode.
-- **Governed Operator (Policy Execution Point, PEP)**: The execution substrate beneath all operations. Enforces L4 Warden pre-dispatch verification and L5 Actuator execution boundaries. Deploys embedded within the Gateway for local operations, or as an independent outbound daemon on sovereign remote nodes.
+- **Governance Gateway (Policy Decision Point, PDP)**: Coordinates incoming agent intent, L1–L3 governance, platform PKI, WebSocket pub/sub brokering, and SSE delivery. The Gateway hosts the Tribunal L2 panel or collects L2 votes from an enrolled application deliberation endpoint. Sits directly on top of an embedded Operator substrate in the same process when running in Gateway mode.
+- **Governed Operator (Policy Execution Point, PEP)**: The execution substrate beneath all operations. Enforces L4 Warden pre-dispatch verification and L5 Actuator execution boundaries. Deploys embedded within the Gateway for local operations, or as an independent outbound Operator process on remote hosts.
 
 ```mermaid
 graph TD
@@ -38,9 +38,9 @@ graph TD
             Services["Core Services<br/>PKI · Auth · Registration · Passkeys"]
             Persistence["Persistence<br/>SQLite Stores · Audit · Merkle Roots"]
             Broker["Pub/Sub Broker<br/>WebSocket Fan-out · cmd:* · receipts:*"]
-            MCP["MCP / A2A Gateway<br/>/mcp · /api/v1/a2a/call"]
-            Gov["Governance Surface<br/>Envelope Admission · L2 Consensus (Tribunal or bound app) · Dispatch"]
-            SSE["SSE Event Bridge<br/>Push · Poll · Stream"]
+            MCP["MCP / A2A Gateway<br/>/mcp · /api/v1/a2a/call (A2A when enabled)"]
+            Gov["Governance Surface<br/>Envelope Admission · L2 Consensus (Tribunal or application provider) · Dispatch"]
+            SSE["SSE Event Bridge<br/>Cursor Fetch /api/v1/sse/events · Live Stream /api/v1/sse/stream"]
         end
 
         subgraph OpSubstrate ["Operator Substrate (PEP) — Embedded"]
@@ -51,17 +51,17 @@ graph TD
             Loopback --> L4 --> L5
         end
 
-        Gov -- "ProcessEnvelope (synchronous)" --> Loopback
+        Gov -- "ProcessEnvelope (synchronous, in-process)" --> L4
         Broker -- "Loopback publish" --> Loopback
-        MCP --> Loopback
+        MCP -- "Envelope admission" --> Gov
     end
 
     subgraph RemoteHost ["Remote Host — Outbound Governed Operator"]
         direction TB
         RemoteOp["Governed Operator (PEP)<br/>Same Binary · operator start"]
-        RemoteL4["L4 Warden<br/>Re-validates L1–L4 locally"]
+        RemoteL4["L4 Warden<br/>Re-validates L1–L3 locally"]
         RemoteL5["L5 Actuator<br/>Execution + Signed receipt"]
-        RemoteLedger[("Local LFAA Ledger<br/>& Audit Vault")]
+        RemoteLedger[("Local LFAA Ledger<br/>& Audit DB")]
         RemoteOp --> RemoteL4 --> RemoteL5 --> RemoteLedger
     end
 
@@ -71,7 +71,7 @@ graph TD
         Browser["Browser · Console<br/>(WebAuthn Session)"]
     end
 
-    Agent -. "mTLS · Streamable HTTP" .-> Surfaces
+    Agent -. "mTLS (JWT when JWKS enabled) · Streamable HTTP" .-> Surfaces
     BYO -. "mTLS · HTTPS :8443" .-> Gov
     Browser -. "HTTPS :8443 · Session Cookie" .-> Surfaces
 
@@ -92,7 +92,7 @@ This diagram anchors the platform architecture zoom series:
 ## Key Architectural Invariants
 
 - **Single Binary Architecture**: The single static binary (`ztd`) runs as Gateway (`ztd gw start --posture <posture>`) or Operator (`ztd operator start`).
-- **Layered Substrate**: The Gateway is not an isolated service; it is an administrative service stack layered directly over the in-process Operator substrate. Local commands never traverse external network stacks.
+- **Layered Substrate**: The Gateway is not an isolated service; it is an administrative service stack layered directly over the in-process Operator substrate. Embedded Operator commands run in-process through the Loopback Pub/Sub Bridge (`pubsub.NewInProcessPubSubClient`) and do not traverse network sockets.
 - **Listener Isolation**: Remote Operators open **no inbound listening ports**, connecting strictly outbound to the Gateway via mTLS WebSockets.
-- **Session-Scoped Channels**: Work is multiplexed across dedicated session channels (`cmd:<id>:<session>`, `receipts:<id>:<session>`), eliminating cross-tenant broadcast risks.
-- **Local-First Audit Architecture (LFAA)**: Each executing Operator is the sole authority for its local audit database and state Merkle root. Gateway receipt copies are verified mirrors.
+- **Session-Scoped Channels**: Work is multiplexed across channels addressed by operator and operator session identity (`cmd:<id>:<session>`, `receipts:<id>:<session>`).
+- **Local-First Audit Architecture (LFAA)**: Each executing Operator is authoritative for its local audit database and ledger. Gateway receipt copies are best-effort projections, never the source of truth.

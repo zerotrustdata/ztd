@@ -272,7 +272,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	}
 
 	// --- Certificate identity and PKI initialization ---
-	extraIPs, extraDNSNames, err := resolveGatewayCertificateIdentity(cfg.Gateway.CertMode, cfg.Gateway.NetworkIdentityFile, network.NewDetector(logger), logger)
+	extraIPs, extraDNSNames, err := resolveGatewayCertificateIdentity(cfg.Gateway.CertMode, cfg.Gateway.NetworkIdentityFile, b.fileSvc, network.NewDetector(logger), logger)
 	if err != nil {
 		return nil, err
 	}
@@ -638,6 +638,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 			return nil, fmt.Errorf("gateway: initialize public spectator: %w", err)
 		}
 		ls.publicSpectator = spectator
+		bindTribunalVoteFeed(ls.tribunalConsensus, spectator)
 	}
 
 	return ls, nil
@@ -666,12 +667,12 @@ type networkIdentityDetector interface {
 	DetectAll(context.Context) (*network.NetworkIdentity, error)
 }
 
-func resolveGatewayCertificateIdentity(certMode, identityFile string, detector networkIdentityDetector, logger *slog.Logger) ([]net.IP, []string, error) {
+func resolveGatewayCertificateIdentity(certMode, identityFile string, fileSvc fs.RuntimeFileService, detector networkIdentityDetector, logger *slog.Logger) ([]net.IP, []string, error) {
 	switch certMode {
 	case "localhost":
 		return resolveLocalhostCertificateIdentity(detector, logger)
 	default:
-		return resolveFullCertificateIdentity(identityFile, detector, logger)
+		return resolveFullCertificateIdentity(identityFile, fileSvc, detector, logger)
 	}
 }
 
@@ -694,10 +695,14 @@ func resolveLocalhostCertificateIdentity(detector networkIdentityDetector, logge
 	return extraIPs, []string{"localhost"}, nil
 }
 
-func resolveFullCertificateIdentity(identityFile string, detector networkIdentityDetector, logger *slog.Logger) ([]net.IP, []string, error) {
+func resolveFullCertificateIdentity(identityFile string, fileSvc fs.RuntimeFileService, detector networkIdentityDetector, logger *slog.Logger) ([]net.IP, []string, error) {
 	if identityFile != "" {
 		logger.Info("Using pre-detected network identity from file", "file", identityFile)
-		identityData, err := os.ReadFile(identityFile)
+		relPath, err := fileSvc.RelFromAbs(identityFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("gateway: resolve network identity file: %w", err)
+		}
+		identityData, err := fileSvc.ReadFile(context.Background(), relPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("gateway: failed to read network identity file: %w", err)
 		}
@@ -815,7 +820,6 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Cfg:                cfg,
 			Logger:             logger,
 			DocStore:           ls.docStore,
-			SSEStore:           ls.sseStore,
 			BlobStore:          ls.blobStore,
 			Pubsub:             pubsub,
 			Responder:          ls.responder,
@@ -927,6 +931,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		TribunalIntentControllerDeps: TribunalIntentControllerDeps{
 			CommandDispatchSvc:   ls.dispatchSvc,
 			InferenceDispatchSvc: ls.inferenceDispatchSvc,
+			Doctrine:             ls.doctrine,
 			Responder:            ls.responder,
 			Logger:               logger,
 			MaxPayload:           cfg.Gateway.MaxPayloadBytes,

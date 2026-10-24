@@ -152,7 +152,7 @@ func TestGatewayL3Notary_PasskeyVerifierErrorPropagates(t *testing.T) {
 
 	allowed, err := notary.VerifyL3Proof(context.Background(), "user-1", "tx-hash-1", "session-1", webauthnProof)
 	assert.False(t, allowed)
-	assert.ErrorIs(t, err, expectedErr)
+	require.ErrorIs(t, err, expectedErr)
 	assert.True(t, passkeyMock.called)
 }
 
@@ -166,7 +166,7 @@ func TestGatewayL3Notary_NilProofReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, allowed)
 	assert.False(t, passkeyMock.called)
-	assert.True(t, errors.Is(err, constants.ErrGatewayL3ProofRequired))
+	assert.ErrorIs(t, err, constants.ErrGatewayL3ProofRequired)
 }
 
 // mockCLISessionVerifier is a test double for the CLISessionVerifier interface.
@@ -284,6 +284,6 @@ func TestPasskeyL3Notary_PropagatesVerifierError(t *testing.T) {
 
 	allowed, err := notary.VerifyL3Proof(context.Background(), "user-1", "tx-hash-1", "session-1", proof)
 	assert.False(t, allowed)
-	assert.ErrorIs(t, err, expectedErr)
+	require.ErrorIs(t, err, expectedErr)
 	assert.True(t, verifier.called)
 }

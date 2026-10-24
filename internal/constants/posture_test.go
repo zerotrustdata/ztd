@@ -8,7 +8,6 @@
 package constants
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,7 +59,7 @@ func TestParsePosture(t *testing.T) {
 	}
 	for _, name := range []string{"", "NOTARY", "strict"} {
 		_, err := ParsePosture(name)
-		assert.True(t, errors.Is(err, ErrInvalidPosture), "%q: %v", name, err)
+		assert.ErrorIs(t, err, ErrInvalidPosture, "%q: %v", name, err)
 	}
 }
 

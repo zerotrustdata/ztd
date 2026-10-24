@@ -136,7 +136,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 
 			if tc.upFrontErr != nil {
 				// Rejected at envelope construction: nothing reaches the cmd channel.
-				assert.ErrorIs(t, dispatchErr, tc.upFrontErr)
+				require.ErrorIs(t, dispatchErr, tc.upFrontErr)
 				select {
 				case <-published:
 					t.Fatal("up-front rejected mutation reached the operator cmd channel")
@@ -147,8 +147,8 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			if tc.l4Sentinel != nil {
 				// Published with no proof; the Operator's L4 warden rejects it and
 				// its signed receipt ends the wait with the L4 sentinel's text.
-				assert.ErrorIs(t, dispatchErr, constants.ErrDispatchGovernanceRejected)
-				assert.NotErrorIs(t, dispatchErr, constants.ErrDispatchResultTimeout)
+				require.ErrorIs(t, dispatchErr, constants.ErrDispatchGovernanceRejected)
+				require.NotErrorIs(t, dispatchErr, constants.ErrDispatchResultTimeout)
 				assert.Contains(t, dispatchErr.Error(), tc.l4Sentinel.Error())
 				status, _ := dispatchErrorCode(dispatchErr)
 				assert.Equal(t, http.StatusForbidden, status)

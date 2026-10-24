@@ -2142,6 +2142,29 @@ definitions:
         description: Original GovernanceEnvelope ID
         type: string
     type: object
+  operatorv1.ConsensusVoteInference:
+    properties:
+      failure:
+        $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
+      member_app_id:
+        type: string
+      observation_receipts:
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
+      provider_attempt_id:
+        type: string
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
+      result:
+        $ref: '#/definitions/operatorv1.InferenceResult'
+      subject_transaction_hash:
+        type: string
+      subject_transaction_id:
+        type: string
+      transaction_id:
+        type: string
+    type: object
   operatorv1.DeterministicStageEvidence:
     properties:
       acting_app_id:
@@ -2258,6 +2281,10 @@ definitions:
     - ExecutionStatus_EXECUTION_STATUS_TIMEOUT
   operatorv1.GovernanceRejection:
     properties:
+      consensus_inferences:
+        items:
+          $ref: '#/definitions/operatorv1.ConsensusVoteInference'
+        type: array
       error:
         type: string
       receipt:
@@ -2324,6 +2351,10 @@ definitions:
     properties:
       action_type:
         type: string
+      consensus_inferences:
+        items:
+          $ref: '#/definitions/operatorv1.ConsensusVoteInference'
+        type: array
       event_type:
         type: string
       inference_result:
@@ -2849,6 +2880,10 @@ definitions:
     properties:
       code:
         $ref: '#/definitions/operatorv1.IngressRefusalCode'
+      consensus_inferences:
+        items:
+          $ref: '#/definitions/operatorv1.ConsensusVoteInference'
+        type: array
       error:
         type: string
     type: object

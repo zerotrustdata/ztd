@@ -11,7 +11,6 @@ package evaluation_test
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,7 +38,10 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 			ctx := t.Context()
 			target := evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID}
 			lane := evaluation.NewCommandLane(env.gateway, env.persona)
-			path := filepath.Join(env.stack.DataHost.WorkingDir, "fixture.txt")
+			workspace, err := evaluation.NewScenarioWorkspace(env.stack.DataHost.WorkingDir, "run", "attempt")
+			require.NoError(t, err)
+			path, err := workspace.FilePath("fixture.txt")
+			require.NoError(t, err)
 			const investigation = "scored-investigation"
 			require.NoError(t, lane.WriteWorkspaceFile(ctx, target, "run", investigation, "attempt", path, "planted fault"))
 			content, err := lane.ReadWorkspaceFile(ctx, target, "run", investigation, "attempt", path)
@@ -79,11 +81,11 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 					require.NoError(t, governance.VerifyActionReceiptSignature(receipt, publicKey))
 					require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, publicKey))
 					wantL3 := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
-					if posture.RequiresL3() && receipt.GetActionType() == string(constants.ActionTypeFileEdit) {
+					if posture.RequiresL3() && receipt.GetActionType() == string(constants.ActionTypeEvalWorkspaceSeed) {
 						wantL3 = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
 					}
 					assert.Equal(t, wantL3, receipt.GetL3Status())
-					// These scoped results contain FileEdit and FsRead receipts;
+					// These scoped results contain workspace-seed and FsRead receipts;
 					// ActionReceipt does not carry a target for MCP's finer classification.
 					wantL2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
 					actionType := constants.ActionType(receipt.GetActionType())
@@ -104,6 +106,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 			assert.Equal(t, scored.TransactionID, visible[0].GetTransactionId())
 			harnessReceipts := query("eval-harness:attempt")
 			require.Len(t, harnessReceipts, 2)
+			assert.ElementsMatch(t, []string{string(constants.ActionTypeEvalWorkspaceSeed), string(constants.ActionTypeFsRead)}, []string{harnessReceipts[0].GetActionType(), harnessReceipts[1].GetActionType()})
 			if posture.RequiresL2() {
 				validVotes := 0
 				for _, receipt := range harnessReceipts {
@@ -111,7 +114,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 						validVotes++
 					}
 				}
-				assert.Equal(t, 1, validVotes, "only the FileEdit fixture requires L2; FsRead is read-only")
+				assert.Zero(t, validVotes, "workspace seeding and read-only probes do not require L2")
 			}
 			assert.Empty(t, query("fresh-investigation"))
 			// Every query is recorded in the scored investigation. A repeated

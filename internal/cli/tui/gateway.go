@@ -73,17 +73,6 @@ func (g *gateway) fetchHealth(ctx context.Context) HealthMsg {
 	return HealthMsg{Health: health}
 }
 
-// verifyApproval confirms a transaction's approval after approval.completed,
-// exactly as 'ztd auth approve' does.
-func (g *gateway) verifyApproval(ctx context.Context, txHash string) ApprovalVerifiedMsg {
-	body, err := g.session.DoRequestContext(ctx, http.MethodGet, auth.ApprovalStatusPath(txHash), nil)
-	if err != nil {
-		return ApprovalVerifiedMsg{TxHash: txHash, Err: fmt.Errorf("verify status: %w", err)}
-	}
-	status, err := auth.VerifyApprovalStatus(txHash, body)
-	return ApprovalVerifiedMsg{TxHash: txHash, Status: status, Err: err}
-}
-
 // fetchEnrollments lists the pending platform enrollment requests and the
 // completed enrollments, as 'ztd auth enroll pending' and 'ztd auth enroll
 // list' do.

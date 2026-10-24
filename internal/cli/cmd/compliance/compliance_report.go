@@ -1024,6 +1024,9 @@ func (r *explicitSourceReader) WriteFile(context.Context, string, []byte, os.Fil
 func (r *explicitSourceReader) OpenForAppend(context.Context, string, os.FileMode) (*os.File, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }
+func (r *explicitSourceReader) Truncate(context.Context, string, int64) error {
+	return constants.ErrReadOnlyEvidenceSource
+}
 func (r *explicitSourceReader) OpenForRead(context.Context, string) (*os.File, error) {
 	return nil, constants.ErrReadOnlyEvidenceSource
 }

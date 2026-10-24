@@ -46,7 +46,7 @@ func TestRunConcurrentStream_ContextCancelled(t *testing.T) {
 	assert.Len(t, results, len(hosts))
 	for _, res := range results {
 		assert.Equal(t, constants.StreamStatusCancelled, res.Status)
-		assert.NotEmpty(t, res.Error)
+		assert.Error(t, res.Error)
 	}
 }
 
@@ -142,7 +142,7 @@ func TestRunStream_ValidZtdBinaryWithCancelledContext(t *testing.T) {
 		DialTimeout: 50 * time.Millisecond,
 	}, 1)
 	require.Len(t, results, 1)
-	assert.NotEmpty(t, results[0].Error)
+	assert.Error(t, results[0].Error)
 }
 
 func TestBuildAuthMethods_NoKeysNoAgent_ReturnsEmpty(t *testing.T) {

@@ -9,8 +9,8 @@ package operatorcmd
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
+	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -18,15 +18,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, constants.RuntimeDirname, constants.CliKeyFilename)
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
-	require.NoError(t, os.WriteFile(path, []byte("old-key"), constants.PermFilePrivate))
+	fileSvc, err := fs.NewRuntimeFileService(dir, slog.Default())
+	require.NoError(t, err)
+	path := constants.CliKeyFilename
+	require.NoError(t, fileSvc.WriteFile(context.Background(), path, []byte("old-key"), constants.PermFilePrivate))
 	selectedSignals, otherSignals, closed := 0, 0, 0
 	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]localOperatorProcess, error) {
 		return []localOperatorProcess{
@@ -40,8 +42,9 @@ func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 	require.Equal(t, 1, selectedSignals)
 	require.Zero(t, otherSignals)
 	require.Equal(t, 2, closed)
-	_, err := os.Stat(path)
-	require.True(t, os.IsNotExist(err))
+	exists, err := fileSvc.FileExists(context.Background(), path)
+	require.NoError(t, err)
+	require.False(t, exists)
 }
 
 func TestResetIdentityDeclinedDoesNotDiscoverOrDelete(t *testing.T) {

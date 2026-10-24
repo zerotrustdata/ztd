@@ -32,7 +32,7 @@ func TestApproveCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"abc123"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -46,7 +46,7 @@ func TestApproveRecoveryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"abc123"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -60,7 +60,7 @@ func TestApprovePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T
 
 	err := cmd.RunE(cmd, []string{"req-001"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -74,7 +74,7 @@ func TestDenyPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"req-001"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -89,7 +89,7 @@ func TestRevokePlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T)
 
 	err := cmd.RunE(cmd, []string{"req-001"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -103,7 +103,7 @@ func TestPendingPlatformEnrollmentCmdWithConfig_FileSvcFactoryError(t *testing.T
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -117,7 +117,7 @@ func TestLogoutCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -131,7 +131,7 @@ func TestAuthContextCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -144,7 +144,7 @@ func TestEnrollUserCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -156,6 +156,6 @@ func TestEnrollAppCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, []string{"my-app"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

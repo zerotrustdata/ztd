@@ -245,8 +245,11 @@ describe('adaptCampaignProjectionEnvelope', () => {
       },
     });
     adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED'), context);
-    // A terminal lifecycle record defers its event to the result projection.
-    expect(adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE'), context)).toEqual([]);
+    // The lifecycle updates the Live icon even before the detailed result arrives.
+    const terminal = adaptCampaignProjectionEnvelope(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE'), context);
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0]).toMatchObject({ kind: 'assignment_failed', terminal_status: 'invalid_evidence' });
+    expect(() => decodeViewRecord(terminal[0]!.kind, terminal[0])).not.toThrow();
 
     const records = adaptCampaignProjectionEnvelope(
       {
@@ -1261,7 +1264,7 @@ describe('EvalStore campaign ingest', () => {
     expect(resultRecords.some((record) => record.kind === 'assignment_completed')).toBe(true);
   });
 
-  it('uses catalog assignment_count as the campaign matrix total', () => {
+  it('uses catalog matrix size for activity without overriding canonical run totals', () => {
     const store = new EvalStore();
     const runId = 'run-catalog-total';
     const datasetId = campaignDatasetId(runId);
@@ -1347,7 +1350,7 @@ describe('EvalStore campaign ingest', () => {
 
     const run = store.getEvaluation(datasetId, runId);
     const failEvent = store.getEvents(runId, datasetId).find((event) => event.kind === 'assignment_failed');
-    expect(run).toMatchObject({ assignment_total: 4 });
+    expect(run).toMatchObject({ assignment_total: 1 });
     expect(failEvent).toMatchObject({ completed: 1, total: 4 });
   });
 

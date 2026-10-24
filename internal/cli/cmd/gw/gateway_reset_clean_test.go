@@ -206,7 +206,7 @@ func TestGatewayCleanCmd_RemovesOSTrustAnchors(t *testing.T) {
 
 	// ListStaleAnchors must be called with an empty fingerprint (list all).
 	assert.Equal(t, 1, mock.listCalls, "ListStaleAnchors should be called once")
-	assert.Equal(t, "", mock.lastFingerprint, "ListStaleAnchors should receive an empty keep-fingerprint")
+	assert.Empty(t, mock.lastFingerprint, "ListStaleAnchors should receive an empty keep-fingerprint")
 
 	// RemoveStaleAnchors must be called with the listed anchors.
 	assert.Equal(t, 1, mock.removeCalls, "RemoveStaleAnchors should be called once")

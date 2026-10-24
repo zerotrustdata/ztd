@@ -9,6 +9,7 @@ package eval
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -184,8 +186,9 @@ func TestModelsAdd_DefaultsToRegistryAndCreatesIt(t *testing.T) {
 	assert.Contains(t, out, "Added gemma4:12b")
 	assert.Contains(t, out, "registry")
 
-	registryPath := filepath.Join(root, constants.RuntimeDirname, evaluation.DefaultModelInventoryRelPath)
-	_, statErr := os.Stat(registryPath)
+	fileSvc, err := fs.NewRuntimeFileService(root, nil)
+	require.NoError(t, err)
+	_, statErr := fileSvc.Stat(context.Background(), evaluation.DefaultModelInventoryRelPath)
 	require.NoError(t, statErr)
 	_, statErr = os.Stat(filepath.Join(root, evaluation.DefaultBaseModelInventoryRelPath))
 	assert.True(t, os.IsNotExist(statErr), "registry add must not touch the catalog")
@@ -257,8 +260,10 @@ func TestModelsRemove_ByFilterAndLastModelClearsRegistry(t *testing.T) {
 
 	_, err := runModelsCmd(t, root, "remove", "--all")
 	require.NoError(t, err)
-	_, statErr := os.Stat(filepath.Join(root, constants.RuntimeDirname, evaluation.DefaultModelInventoryRelPath))
-	assert.True(t, os.IsNotExist(statErr), "removing every registry model removes the registry file")
+	fileSvc, err := fs.NewRuntimeFileService(root, nil)
+	require.NoError(t, err)
+	_, statErr := fileSvc.Stat(context.Background(), evaluation.DefaultModelInventoryRelPath)
+	require.ErrorIs(t, statErr, constants.ErrNotFound, "removing every registry model removes the registry file")
 
 	_, err = runModelsCmd(t, root, "remove", "--all", "--catalog")
 	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)

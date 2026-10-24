@@ -119,7 +119,6 @@ type testSession struct {
 	auditEventsJSON  string
 	auditSummaryJSON string
 	auditVerifyJSON  string
-	statusJSON       string
 	err              error
 	mu               sync.Mutex
 	listCalls        int
@@ -192,8 +191,6 @@ func (s *testSession) DoRequestContext(_ context.Context, method, path string, b
 		return []byte(orDefault(s.auditSummaryJSON, `{"success":true,"events_summary":{},"events_total":0,"receipts_summary":{},"receipts_total":0,"total_records":0}`)), nil
 	case strings.HasPrefix(path, constants.APIPaths.AuditVerify):
 		return []byte(orDefault(s.auditVerifyJSON, `{"success":true,"ok":true,"verified_from_seq":0,"head_seq":0,"head_hash":""}`)), nil
-	case strings.HasPrefix(path, constants.APIPaths.ApprovalsCLIStatus):
-		return []byte(orDefault(s.statusJSON, `{"status":"approved"}`)), nil
 	}
 	return nil, constants.ErrNotFound
 }
@@ -311,7 +308,7 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-abc"}}, msgs)
 	})
 
-	t.Run("approval.completed with the L3_DENIED receipt is a deny", func(t *testing.T) {
+	t.Run("approval.completed carries its decoded receipt", func(t *testing.T) {
 		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
 			TransactionHash: "tx-denied",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -324,7 +321,24 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		frame, err := json.Marshal(models.SSEPushPayload{UserID: "user-1", CliSessionID: "cli-1", Event: event})
 		require.NoError(t, err)
 		msgs := translateSSEEvents("", string(frame))
-		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-denied", Denied: true}}, msgs)
+		require.Len(t, msgs, 1)
+		completed, ok := msgs[0].(ApprovalCompletedMsg)
+		require.True(t, ok)
+		assert.Equal(t, "tx-denied", completed.TxHash)
+		require.NotNil(t, completed.Receipt)
+		assert.Equal(t, "tx-denied", completed.Receipt.GetTransactionHash())
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, completed.Receipt.GetRejectionCode())
+	})
+
+	t.Run("approval.completed with an undecodable receipt is a decode failure", func(t *testing.T) {
+		event, err := json.Marshal(models.ApprovalCompletedEvent{Type: constants.SSEEventTypeApprovalCompleted, UserID: "user-1", TxHash: "tx-bad", Receipt: json.RawMessage(`{"status":"NOT_A_STATUS"}`)})
+		require.NoError(t, err)
+		frame, err := json.Marshal(models.SSEPushPayload{UserID: "user-1", CliSessionID: "cli-1", Event: event})
+		require.NoError(t, err)
+		msgs := translateSSEEvents("", string(frame))
+		require.Len(t, msgs, 1)
+		_, ok := msgs[0].(ApprovalCompletedMsg)
+		assert.False(t, ok, "an undecodable receipt never reaches the model as a completion")
 	})
 
 	t.Run("transaction approvals.changed produces no message", func(t *testing.T) {

@@ -6,7 +6,7 @@ The protocol directory contains the shared wire contracts, external constant reg
 
 ### Go
 
-The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, which requires Go 1.27.3. Install the module with `go get github.com/zerotrustdata/ztd`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
+The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, declared in the repository's `go.mod` with `go 1.27.3`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
 
 ### TypeScript
 
@@ -20,7 +20,7 @@ The protocol has several source types with distinct responsibilities:
 - `internal/constants/` defines the Go protocol constants. The JSON registries in `constants/` are external protocol definitions and reference data; contract tests keep mirrored Go values aligned with them.
 - `models/` defines JSON wire shapes used outside protobuf surfaces.
 - `schemas/oscal/` embeds the authenticated NIST OSCAL 1.1.2 assessment-results schema and its provenance for offline validation.
-- `vectors/` and `conformance/hash_vectors.json` define shared canonicalization and transaction-hash examples consumed by cross-language tests. Vectors are executable examples derived from another source of truth, not schemas or parallel message descriptors. Evaluation vectors with a `canonical_json` field exercise canonical protobuf JSON; `vectors/eval/agent_trace.json` pins the canonical JSON of the agent system-under-test trace (`AgentTrace`), which an external SUT produces; the `ScoredTurnRequest` and `ScoredTurnEvent` messages and their vector no longer exist; `vectors/eval/canonical_json_numbers.json` pins how that encoder writes numbers and escaped strings so independent implementations agree byte for byte (an integral float such as `0.0` is `0`).
+- `vectors/` define shared canonicalization examples consumed by cross-language tests, and `conformance/hash_vectors.json` and `conformance/hash_vectors_v2.json` define transaction-hash examples consumed by the Go test `internal/governance/envelope_hash_parity_test.go`. Vectors are executable examples derived from another source of truth, not schemas or parallel message descriptors. Evaluation vectors with a `canonical_json` field exercise canonical protobuf JSON; `vectors/eval/agent_trace.json` pins the canonical JSON of the agent system-under-test trace (`AgentTrace`), which an external SUT produces; the `ScoredTurnRequest` and `ScoredTurnEvent` messages and their vector no longer exist; `vectors/eval/canonical_json_numbers.json` pins how that encoder writes numbers and escaped strings so independent implementations agree byte for byte (an integral float such as `0.0` is `0`).
 
 ## Directory Map
 
@@ -29,8 +29,8 @@ The protocol has several source types with distinct responsibilities:
 - `models/`: JSON model schemas.
 - `schemas/`: Authenticated third-party schemas and provenance used by protocol consumers.
 - `node/`: Generated TypeScript protobuf modules and their generation configuration.
-- `docs/`: Governance, MCP, A2A, constants, and generated protobuf reference documentation.
-- `conformance/`: Shared transaction-hash vectors (`hash_vectors.json`, `hash_vectors_v2.json`) and their conformance guide.
+- `docs/`: The [protocol specification](docs/spec.md) (envelope and L1 to L3 proof wire contract), MCP, A2A, constants, and generated protobuf reference documentation.
+- `conformance/`: Shared transaction-hash vectors (`hash_vectors.json`, `hash_vectors_v2.json`, consumed by `internal/governance/envelope_hash_parity_test.go`) and their conformance guide.
 - `test-fixtures/`: Shared JSON fixtures consumed by Go and console tests, such as `operator-document.json`.
 - `vectors/`: Cross-language receipt, persistence-attestation, compliance, and evaluation canonicalization vectors.
 
@@ -51,13 +51,13 @@ Generated Go code lives beside each schema, generated TypeScript modules live un
 
 ### Governance and receipts
 
-`GovernanceEnvelope` carries identity, intent, replay-protection, state, and governance proof data for governed mutations. The [protocol specification](docs/spec.md) defines its wire contract and canonical transaction hash.
+`GovernanceEnvelope` carries identity, intent, replay-protection, state, and governance proof data for governed mutations. The [protocol specification](docs/spec.md) defines its wire contract and canonical transaction hash. The [governance architecture](../docs/architecture/governance.md) describes how the Gateway and Operator apply the pipeline.
 
 The execution path uses five interlocked layers:
 
 1. **L1 Doctrine** applies hard gates, forbidden-pattern matching, and MITRE threat detection.
-2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>` under `consensus` and `notary` postures, for state-changing actions only.
-3. **L3 Notary** verifies human authorization through WebAuthn or signed CLI proofs.
+2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>` under `consensus` and `notary` postures, for state-changing actions only. Bootstrap actions such as platform enrollment are exempt.
+3. **L3 Notary** verifies human authorization through WebAuthn or signed CLI proofs under `ratify` and `notary` postures, for mutations, excluding actions the registry marks `AuthorizedByDecision`.
 4. **L4 Warden** performs pre-dispatch transaction-hash recompute, expiry, nonce reservation for replay protection, state-root, and posture-required L2 and L3 proof checks.
 5. **L5 Actuator** dispatches the registered action handler, mints just-in-time capabilities, and produces signed receipts.
 
@@ -65,7 +65,7 @@ The execution path uses five interlocked layers:
 
 The top-level JSON registries cover events, event dashboard classification, statuses, collections, API paths, authentication values, headers, key-value keys, channels, pub/sub values, intents, prompts, agents, platform settings and enrollment, senders, exit codes, field paths, document identifiers, network values, output formats, ports, timestamps, environment variables, compliance paths, and platform enrollment transcript vectors. `constants/doctrine/` contains L1 detection and allowlist registries. `constants/compliance/` contains digest-verified assertion, framework, and FedRAMP-to-NIST crosswalk catalogs exposed to Go through `constants/compliance/catalogs.go`.
 
-The JSON schemas in `models/` cover persisted records, runtime and security configuration, governance data, filesystem and execution results, SSE payloads and wire messages, observe API read and producer models, observe event payloads, public spectator feed batches and proofs, platform enrollment, WebAuthn data, and per-agent role definitions. `schemas/oscal/` provides the official NIST OSCAL 1.1.2 assessment-results schema with pinned SHA-256 and provenance metadata for offline, fail-closed validation. See the [constants reference](docs/constants.md) for registry conventions.
+The JSON schemas in `models/` cover persisted records, runtime and security configuration, governance data, filesystem and execution results, SSE payloads and wire messages, observe API read and producer models, observe event payloads, public spectator feed batches and proofs, platform enrollment, WebAuthn data, and per-agent definitions under `models/agents/`. `schemas/oscal/` provides the official NIST OSCAL 1.1.2 assessment-results schema with pinned SHA-256 and provenance metadata for offline, fail-closed validation. See the [constants reference](docs/constants.md) for registry conventions.
 
 ### Workload identities
 
@@ -110,7 +110,7 @@ The [examples overview](../examples/README.md) describes the Go governance-envel
 
 ## Versioning
 
-The protocol packages share the repository version in `VERSION`. Breaking wire changes increment the major version, backward-compatible protocol additions increment the minor version, and backward-compatible fixes increment the patch version.
+The protocol packages share the repository version in `VERSION`. Release version bumps follow `INV-REL-VER-10` in the [release process](../docs/devs/release_process.md). `make version-sync` sets the `Version:` headers of the specifications in `protocol/docs/` to match `VERSION`, and `make version-sync-check` verifies them.
 
 ## Documentation Contributions
 

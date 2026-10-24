@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -38,7 +39,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 type fakeEnvelopeProcessor struct {
@@ -90,20 +90,6 @@ func (f *fakeSuspendedStore) ListSuspendedTransactions(_ context.Context, userID
 		}
 	}
 	return result, nil
-}
-
-func (f *fakeSuspendedStore) ApproveSuspendedTransaction(_ context.Context, txHash string, proof models.ApprovalProof) error {
-	if tx, ok := f.txs[txHash]; ok {
-		tx.ApprovedBy = proof.ApprovedBy
-		tx.ApprovalSignature = proof.CliSignature
-		tx.ExpectedCertFingerprint = proof.CertFingerprint
-		tx.ApprovalPublicKey = proof.ApprovalPublicKey
-		tx.PasskeyCredentialID = proof.CredentialID
-		tx.PasskeyClientDataJSON = proof.ClientDataJSON
-		tx.PasskeyAuthenticatorData = proof.AuthenticatorData
-		tx.PasskeySignature = proof.Signature
-	}
-	return nil
 }
 
 func (f *fakeSuspendedStore) DeleteSuspendedTransaction(_ context.Context, txHash string) error {
@@ -1525,7 +1511,7 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 
 	t.Run("processGatewayTransaction", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), constants.ContextKeyAppID, "calling-app")
-		_, envelope, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
+		_, envelope, _, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: constants.Event.Operator.Mcp.CallRequested, targetResource: "tool", payloadBytes: []byte("payload")})
 		require.ErrorIs(t, err, constants.ErrEmbeddedOperatorUnclaimed)
 		require.Nil(t, envelope)
 	})
@@ -2115,8 +2101,9 @@ func newTestScrubbingService(t *testing.T) *scrubbing.ScrubbingService {
 }
 
 func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayService {
-	// Generate default signing key
-	_, privKey, _ := ed25519.GenerateKey(rand.Reader)
+	t.Helper()
+	_, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	g := &GatewayService{
 		posture:           constants.PostureDoctrine,

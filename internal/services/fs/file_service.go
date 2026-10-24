@@ -67,6 +67,14 @@ type RuntimeFileService interface {
 	// the returned handle. Used for tail/follow operations on log files.
 	OpenForRead(ctx context.Context, relPath string) (*os.File, error)
 
+	// Truncate changes the size of a file within the runtime directory.
+	// It is the only truncate entry point so log repair (discarding an
+	// incomplete tail) stays inside the service. Unlike File.Truncate on a
+	// handle opened with O_APPEND — which fails with "Access is denied" on
+	// Windows because the handle carries FILE_APPEND_DATA only — this
+	// truncates by path with write access and works on all platforms.
+	Truncate(ctx context.Context, relPath string, size int64) error
+
 	// TryLock creates relPath if needed and takes a non-blocking exclusive
 	// lock on it. It returns constants.ErrRuntimeFileLocked when another
 	// process holds the lock. Closing the returned handle releases it; the

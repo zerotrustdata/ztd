@@ -190,6 +190,7 @@ func TestZtdoService_Start_InferenceProviderAvailabilityDoesNotGateStartup(t *te
 		{
 			name: "provider reachable",
 			endpoint: func(t *testing.T) string {
+				t.Helper()
 				return fakeOllamaWithModels(t, `{"models":[{"name":"qwen3:4b","digest":"sha256:aa"}]}`, http.StatusOK)
 			},
 			wantReady: true,
@@ -197,13 +198,17 @@ func TestZtdoService_Start_InferenceProviderAvailabilityDoesNotGateStartup(t *te
 		{
 			name: "provider reachable with no models installed",
 			endpoint: func(t *testing.T) string {
+				t.Helper()
 				return fakeOllamaWithModels(t, `{"models":[]}`, http.StatusOK)
 			},
 			wantReady: true,
 		},
 		{
-			name:      "provider unavailable",
-			endpoint:  func(t *testing.T) string { return fakeOllamaWithModels(t, "", http.StatusServiceUnavailable) },
+			name: "provider unavailable",
+			endpoint: func(t *testing.T) string {
+				t.Helper()
+				return fakeOllamaWithModels(t, "", http.StatusServiceUnavailable)
+			},
 			wantReady: true,
 		},
 		{
@@ -213,7 +218,7 @@ func TestZtdoService_Start_InferenceProviderAvailabilityDoesNotGateStartup(t *te
 		},
 		{
 			name:      "provider returns malformed status",
-			endpoint:  func(t *testing.T) string { return fakeOllamaWithModels(t, "not JSON", http.StatusOK) },
+			endpoint:  func(t *testing.T) string { t.Helper(); return fakeOllamaWithModels(t, "not JSON", http.StatusOK) },
 			wantReady: true,
 		},
 		{
@@ -294,5 +299,5 @@ func TestOperatorRuntimeRoot_OneDatabaseAndLedger(t *testing.T) {
 	service := newStartableZtdoService(t, nil)
 	require.NoError(t, startWithTimeout(t, service))
 
-	testutil.AssertOneDatabaseAndLedger(t, paths.Infra.DataDir)
+	testutil.AssertOneDatabaseAndLedger(t, service.fileSvc)
 }

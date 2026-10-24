@@ -57,7 +57,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if err != nil {
 		return agentEvidenceError("ledger bracket after", err)
 	}
-	var modelClaims, toolClaims, observationClaims []oracle.Outcome
+	var modelClaims, toolClaims, observationClaims, consensusClaims []oracle.Outcome
 	for _, call := range trace.ModelCalls {
 		outcome, err := verifyModelCallEvidence(anchors, trace, call)
 		if err != nil {
@@ -78,6 +78,11 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 	}
 	for _, call := range trace.ToolCalls {
+		votes, err := verifyConsensusInferenceEvidence(anchors, trace, call)
+		if err != nil {
+			return agentEvidenceError("tool call "+call.CallID+" consensus", err)
+		}
+		consensusClaims = append(consensusClaims, votes...)
 		if err := verifyContextRetrieval(trace, call); err != nil {
 			return agentEvidenceError("context retrieval "+call.CallID, err)
 		}
@@ -90,6 +95,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 	}
 	claims := append(slices.Clone(modelClaims), toolClaims...)
+	claims = append(claims, consensusClaims...)
 	ordered, err := oracle.OrderLedger(before, after, append(claims, observationClaims...))
 	if err == nil {
 		err = oracle.VerifyBracket(before, after, ordered)

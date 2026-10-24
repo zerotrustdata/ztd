@@ -38,6 +38,7 @@ type approvalRespondMCP struct {
 	resumedUser  string
 	resumedProof *commonv1.L3Proof
 	resumeCalls  int
+	resumeErr    error
 	denyReceipt  *operatorv1.ActionReceipt
 	denyErr      error
 	deniedHash   string
@@ -52,6 +53,9 @@ func (m *approvalRespondMCP) GetSuspendedTransaction(_ context.Context, _ string
 func (m *approvalRespondMCP) ResumeWithL3Proof(_ context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
 	m.resumeCalls++
 	m.resumedHash, m.resumedUser, m.resumedProof = txHash, userID, proof
+	if m.resumeErr != nil {
+		return nil, m.resumeErr
+	}
 	return m.receipt, nil
 }
 
@@ -61,18 +65,11 @@ func (m *approvalRespondMCP) DenySuspendedTransaction(_ context.Context, txHash,
 	return m.denyReceipt, m.denyErr
 }
 
-// approvalRespondStore records the approve/deny mutations the handler performs
+// approvalRespondStore records deletion attempts the handler performs
 // on the suspended-transaction store. Unused methods panic via the nil embed.
 type approvalRespondStore struct {
 	storage.SuspendedTransactionStore
-	approvedHash string
-	proof        models.ApprovalProof
-	deletedHash  string
-}
-
-func (s *approvalRespondStore) ApproveSuspendedTransaction(_ context.Context, txHash string, proof models.ApprovalProof) error {
-	s.approvedHash, s.proof = txHash, proof
-	return nil
+	deletedHash string
 }
 
 func (s *approvalRespondStore) DeleteSuspendedTransaction(_ context.Context, txHash string) error {
@@ -151,7 +148,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 		assert.Contains(t, rr.Body.String(), "transaction not found or expired")
-		assert.Empty(t, store.approvedHash, "no approval may be recorded without a suspended transaction")
 		assert.Empty(t, store.deletedHash)
 		assert.Zero(t, mcp.resumeCalls)
 	})
@@ -166,7 +162,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		assert.Contains(t, rr.Body.String(), "invalid JSON body")
-		assert.Empty(t, store.approvedHash)
 		assert.Empty(t, store.deletedHash)
 	})
 
@@ -179,7 +174,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approved":false}`, userID))
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
-		assert.Empty(t, store.approvedHash)
 		assert.Zero(t, mcp.resumeCalls)
 	})
 
@@ -192,7 +186,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 		h.handleApprovalRespond(rr, approvalRespondRequest(`{"approval_id":"`+txHash+`","approved":false}`, userID))
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
-		assert.Empty(t, store.approvedHash)
 		assert.Empty(t, store.deletedHash)
 		assert.Zero(t, mcp.resumeCalls)
 	})
@@ -208,7 +201,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
 		assert.Contains(t, rr.Body.String(), constants.ErrCLIL3SignatureRequired.Error())
-		assert.Empty(t, store.approvedHash, "approve must not record an approval without a signed CLI assertion")
 		assert.Empty(t, store.deletedHash)
 		assert.Zero(t, mcp.resumeCalls, "approve must not resume the suspended transaction")
 	})
@@ -260,7 +252,6 @@ func TestHandleApprovalRespond(t *testing.T) {
 		assert.Equal(t, 1, mcp.denyCalls)
 		assert.Equal(t, txHash, mcp.deniedHash)
 		assert.Equal(t, userID, mcp.deniedUser)
-		assert.Empty(t, store.approvedHash)
 		assert.Empty(t, store.deletedHash, "the deny path owns the suspended record, the handler never deletes it")
 		assert.Zero(t, mcp.resumeCalls, "a denied transaction is never resumed")
 	})

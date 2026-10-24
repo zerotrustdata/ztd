@@ -472,7 +472,7 @@ func TestExecute_WriteGeneratesFilesThatCheckModeThenAccepts(t *testing.T) {
 	assert.Equal(t, "generated constants from protocol/constants/events.json\n", stdout.String())
 	for _, rel := range []string{eventsGoRel, actionTypesGoRel, consoleTSRel} {
 		_, err := os.Stat(filepath.Join(root, rel))
-		assert.NoError(t, err, rel)
+		require.NoError(t, err, rel)
 	}
 
 	stdout.Reset()
@@ -535,7 +535,7 @@ func TestExecute_ReportsMissingInputRegistries(t *testing.T) {
 			err := execute(root, true, &bytes.Buffer{})
 
 			require.Error(t, err)
-			assert.ErrorIs(t, err, os.ErrNotExist)
+			require.ErrorIs(t, err, os.ErrNotExist)
 			assert.Contains(t, filepath.ToSlash(err.Error()), tt.wantErr)
 		})
 	}

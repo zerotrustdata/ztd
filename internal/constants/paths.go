@@ -94,7 +94,6 @@ const (
 
 // System paths (Windows) for registry, hosts, and Git Bash locations.
 const (
-	PathWindowsSystemRoot                 = "SystemRoot"
 	PathWindowsHostsFile                  = "System32\\drivers\\etc\\hosts"
 	PathWindowsRegistryCryptography       = "SOFTWARE\\Microsoft\\Cryptography"
 	PathWindowsRegistryMachineGuid        = "MachineGuid"
@@ -921,9 +920,8 @@ const (
 	PublicFeedMaxArtifactBytes         = 64 << 20
 	PublicFeedProofIngestMaxBytes      = 512 << 20
 	PublicFeedKeyRegistrationMaxBytes  = 16 << 10
-	// Init-campaign restore publishes up to three proof artifacts per assignment
-	// (audit slice, vault key, agent trace) across many verified runs; keep
-	// headroom above ~4.5k assignment proof artifacts.
+	// Bound one signed segment or legacy full-manifest request. A segmented
+	// catalog grows across publications without a lifetime artifact ceiling.
 	PublicFeedProofMaxArtifacts       = 12288
 	PublicFeedFreshnessDelayedSeconds = 60
 	PublicFeedFreshnessStaleSeconds   = 300

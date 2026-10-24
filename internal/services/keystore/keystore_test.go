@@ -8,6 +8,7 @@
 package keystore_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -94,7 +95,7 @@ func TestKeystore_Initialize_RejectsInvalidKeyLength(t *testing.T) {
 }
 
 func TestKeystore_EncryptSecret(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -105,14 +106,13 @@ func TestKeystore_EncryptSecret(t *testing.T) {
 	err = ks.EncryptSecret("test-secret", "my-plaintext-value")
 	require.NoError(t, err)
 
-	secretPath := filepath.Join(secretsDir, "test-secret")
-	info, err := os.Stat(secretPath)
+	info, err := fileSvc.Stat(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret"))
 	require.NoError(t, err)
 	assert.NotZero(t, info.Size())
 }
 
 func TestKeystore_EncryptSecret_Atomically(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -123,9 +123,8 @@ func TestKeystore_EncryptSecret_Atomically(t *testing.T) {
 	err = ks.EncryptSecret("test-secret", "my-plaintext-value")
 	require.NoError(t, err)
 
-	tmpPath := filepath.Join(secretsDir, "test-secret.tmp")
-	_, err = os.Stat(tmpPath)
-	assert.True(t, os.IsNotExist(err), "temp file should be cleaned up")
+	_, err = fileSvc.Stat(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret.tmp"))
+	assert.ErrorIs(t, err, constants.ErrNotFound, "temp file should be cleaned up")
 }
 
 func TestKeystore_DecryptSecret(t *testing.T) {
@@ -161,7 +160,7 @@ func TestKeystore_DecryptSecret_MissingFile(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_CorruptedFile(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -170,8 +169,7 @@ func TestKeystore_DecryptSecret_CorruptedFile(t *testing.T) {
 	require.NoError(t, ks.Initialize())
 
 	corruptedData := []byte(`{"version":2,"nonce":"AAAAAA==","ciphertext":"corrupted"}`)
-	secretPath := filepath.Join(secretsDir, "test-secret")
-	err = os.WriteFile(secretPath, corruptedData, 0600)
+	err = fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret"), corruptedData, constants.PermFilePrivate)
 	require.NoError(t, err)
 
 	_, err = ks.DecryptSecret("test-secret")
@@ -180,7 +178,7 @@ func TestKeystore_DecryptSecret_CorruptedFile(t *testing.T) {
 }
 
 func TestKeystore_DeleteSecret(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -194,9 +192,8 @@ func TestKeystore_DeleteSecret(t *testing.T) {
 	err = ks.DeleteSecret("test-secret")
 	require.NoError(t, err)
 
-	secretPath := filepath.Join(secretsDir, "test-secret")
-	_, err = os.Stat(secretPath)
-	assert.True(t, os.IsNotExist(err))
+	_, err = fileSvc.Stat(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret"))
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestKeystore_DeleteSecret_Nonexistent(t *testing.T) {
@@ -213,7 +210,7 @@ func TestKeystore_DeleteSecret_Nonexistent(t *testing.T) {
 }
 
 func TestKeystore_Purge(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -233,13 +230,13 @@ func TestKeystore_Purge(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, constants.ErrKeyStoreKeyNotFound, err)
 
-	entries, err := os.ReadDir(secretsDir)
+	entries, err := fileSvc.ReadDir(context.Background(), constants.SecretsDirname)
 	require.NoError(t, err)
 	assert.Empty(t, entries)
 }
 
 func TestKeystore_EnsurePermissions(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -253,7 +250,7 @@ func TestKeystore_EnsurePermissions(t *testing.T) {
 	err = ks.EnforcePermissions()
 	require.NoError(t, err)
 
-	info, err := os.Stat(secretsDir)
+	info, err := fileSvc.Stat(context.Background(), constants.SecretsDirname)
 	require.NoError(t, err)
 	// Windows doesn't support Unix permissions exactly, so skip the permission check on Windows
 	if runtime.GOOS != "windows" {
@@ -261,8 +258,7 @@ func TestKeystore_EnsurePermissions(t *testing.T) {
 		assert.NotEqual(t, os.FileMode(0777), perm, "directory should not be world-writable")
 	}
 
-	secretPath := filepath.Join(secretsDir, "test-secret")
-	info, err = os.Stat(secretPath)
+	info, err = fileSvc.Stat(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret"))
 	require.NoError(t, err)
 	// Windows doesn't support Unix permissions exactly, so skip the permission check on Windows
 	if runtime.GOOS != "windows" {
@@ -461,7 +457,7 @@ func TestKeystore_Encrypt_LargePlaintext(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_InvalidJSON(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -470,8 +466,7 @@ func TestKeystore_DecryptSecret_InvalidJSON(t *testing.T) {
 	require.NoError(t, ks.Initialize())
 
 	invalidJSON := []byte(`{invalid json`)
-	secretPath := filepath.Join(secretsDir, "test-secret")
-	err = os.WriteFile(secretPath, invalidJSON, 0600)
+	err = fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret"), invalidJSON, constants.PermFilePrivate)
 	require.NoError(t, err)
 
 	_, err = ks.DecryptSecret("test-secret")
@@ -480,7 +475,7 @@ func TestKeystore_DecryptSecret_InvalidJSON(t *testing.T) {
 }
 
 func TestKeystore_DecryptSecret_UnsupportedVersion(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	keyring := keystoretest.NewMemoryKeyring()
 
@@ -495,8 +490,7 @@ func TestKeystore_DecryptSecret_UnsupportedVersion(t *testing.T) {
 	}
 	data, err := json.Marshal(enc)
 	require.NoError(t, err)
-	secretPath := filepath.Join(secretsDir, "test-secret")
-	err = os.WriteFile(secretPath, data, 0600)
+	err = fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, "test-secret"), data, constants.PermFilePrivate)
 	require.NoError(t, err)
 
 	_, err = ks.DecryptSecret("test-secret")
@@ -520,7 +514,7 @@ func TestKeystore_RejectsUnsafeSecretNames(t *testing.T) {
 }
 
 func TestKeystore_Initialize_RejectsOrphanedSecrets(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	logger := testutil.NewTestLogger()
 	original, err := keystore.NewWithKeyringAndFS(logger, keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
@@ -536,8 +530,8 @@ func TestKeystore_Initialize_RejectsOrphanedSecrets(t *testing.T) {
 	_, err = keyring.RetrieveMasterKey()
 	require.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound, "no replacement key may be stored")
 
-	require.NoError(t, os.Remove(filepath.Join(secretsDir, "sealed_test_secret")))
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileBootstrapDigest), []byte(`{"version":1,"secrets":{}}`), constants.PermFilePrivate))
+	require.NoError(t, fileSvc.Remove(context.Background(), filepath.Join(constants.SecretsDirname, "sealed_test_secret")))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest), []byte(`{"version":1,"secrets":{}}`), constants.PermFilePrivate))
 	require.NoError(t, replacement.Initialize(), "files EncryptSecret did not write are not sealed secrets")
 }
 
@@ -557,15 +551,15 @@ func TestKeystore_KeyMaterialRoundTrip(t *testing.T) {
 }
 
 func TestKeystore_CiphertextIsBoundToName(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.EncryptSecret("api_key_a", "secret-a"))
 
-	sealed, err := os.ReadFile(filepath.Join(secretsDir, "api_key_a"))
+	sealed, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.SecretsDirname, "api_key_a"))
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "api_key_b"), sealed, constants.PermFilePrivate))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, "api_key_b"), sealed, constants.PermFilePrivate))
 	_, err = ks.DecryptSecret("api_key_b")
 	require.ErrorIs(t, err, constants.ErrInvalidCiphertext, "a secret moved to another name must not open")
 
@@ -594,21 +588,20 @@ func TestKeystore_ValueIsBoundToBinding(t *testing.T) {
 }
 
 func TestKeystore_RejectsVersion1Secrets(t *testing.T) {
-	fileSvc, secretsDir := keystoretest.NewTestFileService(t)
+	fileSvc, _ := keystoretest.NewTestFileService(t)
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keystoretest.NewMemoryKeyring(), fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.EncryptSecret("sealed_test_secret", "v"))
 
-	path := filepath.Join(secretsDir, "sealed_test_secret")
-	data, err := os.ReadFile(path)
+	data, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.SecretsDirname, "sealed_test_secret"))
 	require.NoError(t, err)
 	var enc keystore.EncryptedSecret
 	require.NoError(t, json.Unmarshal(data, &enc))
 	enc.Version = 1
 	data, err = json.Marshal(enc)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, data, constants.PermFilePrivate))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, "sealed_test_secret"), data, constants.PermFilePrivate))
 
 	_, err = ks.DecryptSecret("sealed_test_secret")
 	require.ErrorIs(t, err, constants.ErrKeyStoreUnsupportedVersion)

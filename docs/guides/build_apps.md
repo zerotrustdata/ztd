@@ -4,7 +4,7 @@ title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - docs/guides/build_apps.md
   - internal/services/mcp/
@@ -31,7 +31,7 @@ The Gateway supports four application integration patterns:
 
 | Pattern | Client sends | Gateway responsibility | Credential |
 | :--- | :--- | :--- | :--- |
-| **MCP or A2A** | JSON-RPC tool or skill intent | Builds `GovernanceEnvelope`, binds state Merkle root, runs L2 deliberation, manages L3 suspension, dispatches action | Enrolled app or CLI mTLS certificate; JWT when JWKS configured |
+| **MCP or A2A** | JSON-RPC tool or skill intent | Builds `GovernanceEnvelope`, binds state Merkle root, runs L2 deliberation, manages L3 suspension, dispatches action | Enrolled app or CLI mTLS certificate; JWT when JWKS is enabled (MCP and A2A) |
 | **Gateway HTTP dispatch** | Registered request `event_type` and base64 protobuf payload at `POST /api/v1/operators/commands` | Derives `action_type`, binds state root and posture, constructs envelope, dispatches to Operator | Enrolled app mTLS certificate and `AppPolicy` |
 | **Direct envelope** | Complete canonical protojson `GovernanceEnvelope` | Verifies envelope structure, hash, state root, nonces, and proofs; dispatches synchronously | CLI or Operator mTLS certificate; app mTLS certificate for platform document writes only |
 | **Audit ingest** | Registered audit request `event_type` at `POST /api/v1/audit/records` | Validates session binding, publishes to operator `audit:` channel, waits for append acknowledgement | Enrolled app mTLS certificate |
@@ -75,7 +75,7 @@ For an enrolled application identity, append `"--app", "etl-service"` to `args`.
 
 ### 2. Agent-to-Agent (A2A)
 
-Use A2A for inter-agent skill invocation: `POST /api/v1/a2a/call` over mTLS with `Content-Type: application/json`:
+Use A2A for inter-agent skill invocation. A2A is opt-in: the Gateway must be started with a downstream A2A server, `./ztd gw start --a2a-downstream-url <url>`. Without it, `POST /api/v1/a2a/call` is not registered and the MCP `a2a/call` method returns method-not-found. With it enabled, send `POST /api/v1/a2a/call` over mTLS with `Content-Type: application/json`:
 
 ```json
 {
@@ -118,7 +118,7 @@ Direct submission requires constructing the complete canonical protojson `Govern
 ./ztd auth enroll user
 ```
 
-Issues the CLI certificate with SPIFFE ID `spiffe://ztd.local/cli/<user_id>/<session_id>`. The private key is sealed under the keystore master key and is never written as PEM, so only `ztd` can use it. On a Linux host without an OS key store, load a key into an ssh-agent first (see [Encryption Architecture](../architecture/encryption.md#master-key-and-keyring-providers)).
+Issues the CLI certificate with SPIFFE ID `spiffe://ztd.local/cli/<user_id>/<cli_session_id>`. The private key is sealed under the keystore master key and is not stored as a plaintext PEM file; `ztd` unseals it in process (see [INV-ENC-STORE-06](../architecture/encryption.md)). On a Linux host without an OS key store, load a key into an ssh-agent first (see [Encryption Architecture](../architecture/encryption.md#master-key-and-keyring-providers)).
 
 ### Application Workload Credentials
 
@@ -134,7 +134,7 @@ The platform owner sets `REQUEST_ID` to the request ID printed by the enrollment
 ./ztd auth enroll approve "$REQUEST_ID" --yes
 ```
 
-The issued certificate carries SPIFFE ID `spiffe://ztd.local/app/etl-service`. The application's private key is sealed under the keystore master key and is never written as PEM. It is used only through `ztd` or the `ztd mcp stdio --app etl-service` bridge, which unseal it in process.
+The issued certificate carries SPIFFE ID `spiffe://ztd.local/app/etl-service`. The application's private key is sealed under the keystore master key and is not stored as a plaintext PEM file. It is used only through `ztd` or the `ztd mcp stdio --app etl-service` bridge, which unseal it in process.
 
 `auth enroll app` waits for the owner decision. An authenticated owner CLI approves inline under `doctrine` and `consensus` postures. Under `ratify` and `notary`, the owner approves with a passkey at the printed URL. Without an owner CLI identity, approve from an owner CLI with `./ztd auth enroll approve <request-id> --yes`.
 
@@ -154,7 +154,7 @@ Bind the member set through governance. The primary application MUST appear in t
 ./ztd consensus enroll app etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
 ```
 
-The Gateway stores one bound consensus policy, and every binding names a consensus provider. An empty provider is rejected. The `application` provider uses the enrolled member set above. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>` (`--quorum` between 3 and 5, default 3). The panel is `tribunal-axiom`, `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, and `tribunal-nemesis`. It votes only on state-change actions and does not use application endpoints. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd consensus status` prints the bound provider, quorum, member IDs, and signer readiness. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
+Every consensus binding names a provider, `application` or `tribunal`; an empty or unknown provider is rejected. The `application` provider uses the enrolled member set above. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>` (`--quorum` between 3 and 5, default 3). The panel is `tribunal-axiom`, `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, and `tribunal-nemesis`. Its members vote on envelopes that change state; a member's own INFERENCE call is never voted on, and the binding takes no application endpoint. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd consensus status` prints the bound provider, quorum, member IDs, and signer readiness. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
 
 ---
 
@@ -163,7 +163,7 @@ The Gateway stores one bound consensus policy, and every binding names a consens
 When constructing a `GovernanceEnvelope` directly:
 
 1. **Fetch State Merkle Root**: `GET /api/v1/state` returns `state_merkle_root`.
-2. **Serialize Typed Payload**: Create the protobuf message (e.g. `ztd.operator.v1.CommandRequested`), serialize to binary, and base64-encode. Set `event_type` to a registered request event type and `protocol_version` to `"2"`; protocol version 2 is required for new ingress.
+2. **Serialize Typed Payload**: Create the protobuf message (e.g. `ztd.operator.v1.CommandRequested`), serialize to binary, and base64-encode. Set `event_type` to a registered request event type and `protocol_version` to `"2"`. The Warden (L4) rejects any envelope whose `protocol_version` is not `"2"`.
 3. **Compute Transaction Hash**: Compute the lowercase hexadecimal SHA-256 of `ztd-tx-v2|<action_type>|<event_type>|<canonical_v1>`. `<canonical_v1>` appends each populated field, followed by `|`, in this order: `action_type`, `target_resource`, `payload`, `state_merkle_root`, `nonce`, `expires_at`, `intent_data`, `requestor_user_id`, `acting_app_id`, `operator_id`, `operator_session_id`, `case_id`, `investigation_id`, `task_id`, `web_session_id`, `cli_session_id`. Absent optional fields are omitted. The canonical encoding is defined in [Governance Architecture](../architecture/governance.md).
 4. **Attach Posture-Required Proofs**: Under `consensus` and `notary` postures, set `governance.l2.consensus_set_id` and include `votes` from at least K distinct bound members. Each vote carries `signer_key_id`, `decision`, and a hex-encoded Ed25519 `consensus_signature` over `<transaction_hash>|<decision>`. Attach L3 authorization when the posture requires it. Direct submission does not synthesize missing L2 or L3 proofs; the envelope fails closed at L4.
 5. **Submit**: `POST /api/v1/governance/envelopes` returns HTTP 200 with `ActionReceipt`.

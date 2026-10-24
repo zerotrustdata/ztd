@@ -32,13 +32,11 @@ import { decodeLiveEventWire, isLiveEventKind } from '../contract/live-event-wir
 import { decodeViewRecord, isProjectionRecord, ValidationError } from '../contract/validators';
 import {
   deriveFreshness,
-  isRunLevelQualityEvent,
-  mergeQualityState,
   type FeedConnectionState,
   type FeedStatus,
   type StreamConnectionState,
 } from '../utils/feed-state';
-import { CAMPAIGN_MESSAGE_TYPES } from '../contract/campaign-wire';
+import { CAMPAIGN_MESSAGE_TYPES, decodeCampaignProjectionEnvelope } from '../contract/campaign-wire';
 import {
   adaptCampaignProjectionEnvelope,
   campaignProgressCounts,
@@ -89,21 +87,6 @@ function normalizeQualityRecord<T extends SnapshotRecord | LiveEvent>(record: T)
   return qualityState === record.quality_state ? record : { ...record, quality_state: qualityState };
 }
 
-/** Preserve a bound verification result when a later aggregate revision has no report. */
-function mergeEvaluationSummary(existing: EvaluationSummary, incoming: EvaluationSummary): EvaluationSummary {
-  const incomingIsUnverified = incoming.verifier_state === 'not_run' || incoming.verifier_state === 'not_applicable';
-  const existingIsBound = existing.verifier_state === 'passed' || existing.verifier_state === 'failed';
-  if (!incomingIsUnverified || !existingIsBound) return incoming;
-  return {
-    ...incoming,
-    quality_state: existing.quality_state,
-    run_status: existing.verifier_state === 'passed' ? 'verified' : 'verify_failed',
-    verifier_state: existing.verifier_state,
-    verifier_failure_summary: existing.verifier_failure_summary,
-    verification_metadata: existing.verification_metadata,
-  };
-}
-
 const MODEL_ROLE_ID = /^(.+):(primary|assistant|lite)$/;
 
 export function resolveModelSummary(
@@ -128,6 +111,7 @@ export interface StoreState {
   connection: FeedConnectionState;
   streamConnection: StreamConnectionState;
   feedStatus: FeedStatus | null;
+  mirrorOrigin: string | null;
   sourceId: string | null;
   observedSequence: number;
   currentSnapshot: FeedSnapshot | null;
@@ -180,6 +164,7 @@ function emptyState(): StoreState {
     connection: 'connecting',
     streamConnection: 'disconnected',
     feedStatus: null,
+    mirrorOrigin: null,
     sourceId: null,
     observedSequence: 0,
     currentSnapshot: null,
@@ -206,8 +191,9 @@ type Listener = () => void;
 export class EvalStore {
   private state: StoreState = emptyState();
   private listeners = new Set<Listener>();
-  private campaignContext: CampaignAdaptContext = createCampaignAdaptContext();
-  /** Suppress subscriber notifications while replaying history pages. */
+  // Validation copies only the affected run's context, never the full corpus.
+  private campaignContexts = new Map<string, CampaignAdaptContext>();
+  /** Suppress subscriber notifications while applying a group of records. */
   private batchDepth = 0;
 
   getState = (): StoreState => this.state;
@@ -217,12 +203,12 @@ export class EvalStore {
     return () => this.listeners.delete(listener);
   };
 
-  /** True while history replay has not yet sealed the bootstrap snapshot. */
+  /** True while stream replay has not reached its announced cursor. */
   isReconciling(): boolean {
     return this.state.pendingSnapshot !== null;
   }
 
-  /** Coalesce store updates during cold-load history replay. */
+  /** Coalesce related store updates. */
   beginBatch(): void {
     this.batchDepth++;
   }
@@ -246,6 +232,10 @@ export class EvalStore {
     this.emitIfNotBatching();
   }
 
+  setMirrorOrigin(mirrorOrigin: string): void {
+    this.setState((state) => ({ ...state, mirrorOrigin }));
+  }
+
   setConnection(connection: FeedConnectionState, message?: string): void {
     this.setState((state) => ({
       ...state,
@@ -260,32 +250,35 @@ export class EvalStore {
     this.setState((state) => ({ ...state, streamConnection }));
   }
 
-  /** Initialize from a mirror bootstrap. The snapshot is the seal target:
-   *  it stays pending until reconciled history reaches its high-water
-   *  sequence. Recent projections are indexed immediately for first paint;
-   *  history replay re-indexes them idempotently. */
+  /** Install the mirror's complete current read model atomically. Sparse
+   *  entity revisions need no history replay to reach the snapshot cursor. */
   initBootstrap(
     snapshot: FeedSnapshot,
     recentProjections: ProjectionRecord[],
     proofCount: number,
   ): void {
-    this.campaignContext = createCampaignAdaptContext();
+    this.campaignContexts = new Map();
     const state = emptyState();
     state.connection = 'live';
+    state.mirrorOrigin = this.state.mirrorOrigin;
     state.sourceId = snapshot.source_id;
-    state.observedSequence = 0;
-    if (snapshot.high_water_sequence === 0) {
-      state.currentSnapshot = snapshot;
-    } else {
-      state.pendingSnapshot = snapshot;
-    }
-    state.feedStatus = withFeedSnapshot(state, snapshot, 'Reconciling feed history.');
+    state.observedSequence = snapshot.high_water_sequence;
+    state.currentSnapshot = snapshot;
+    state.feedStatus = withFeedSnapshot(state, snapshot, 'Current snapshot loaded.');
     state.feedStatus.connection = 'live';
     state.proofArtifactCount = proofCount;
-    // Mirror bootstrap recent_projections are newest-first; reverse so ingest order
-    // matches /history replay (oldest-first) and slice(-N) retention keeps the tail.
-    for (const record of [...recentProjections].reverse()) {
+    // Snapshot entities are sparse revisions, ordered by their accepted sequence.
+    const records = [...recentProjections].sort((a, b) => a.sequence - b.sequence);
+    for (const record of records) {
+      isProjectionRecord(record);
+      if (record.sequence > snapshot.high_water_sequence || record.sequence < 1) {
+        throw new ValidationError('record exceeds snapshot cursor', 'bootstrap.sequence');
+      }
       this.ingestProjection(state, record);
+    }
+    if (state.errors.length > 0) {
+      for (const error of state.errors) this.pushError(error);
+      throw new ValidationError('current snapshot contains invalid records', 'bootstrap');
     }
     this.state = state;
     this.emitIfNotBatching();
@@ -326,7 +319,7 @@ export class EvalStore {
         ...state,
         pendingSnapshot: snapshot,
         feedStatus: state.feedStatus
-          ? { ...withFeedSnapshot(state, snapshot, 'Reconciling feed history.'), connection: state.connection }
+          ? { ...withFeedSnapshot(state, snapshot, 'Receiving stream updates.'), connection: state.connection }
           : null,
       }));
       return;
@@ -385,10 +378,12 @@ export class EvalStore {
         payload.model_role_mapping = {};
       }
       if (isCampaignProjectionPayload(payload)) {
-        const candidateContext = cloneCampaignAdaptContext(this.campaignContext);
-        const adapted = adaptCampaignProjectionEnvelope(payload, candidateContext);
+        const envelope = decodeCampaignProjectionEnvelope(payload);
+        const runId = envelope.record.run_id;
+        const candidateContext = cloneCampaignAdaptContext(this.campaignContexts.get(runId) ?? createCampaignAdaptContext());
+        const adapted = adaptCampaignProjectionEnvelope(envelope, candidateContext);
         const validated = adapted.map((decoded) => decodeViewRecord(decoded.kind, decoded));
-        this.campaignContext = candidateContext;
+        this.campaignContexts.set(runId, candidateContext);
         for (const decoded of validated) {
           this.indexRecord(state, decoded, record.sequence);
           if (decoded.kind === 'assignment_result') {
@@ -420,7 +415,9 @@ export class EvalStore {
         if (record.assignment_count > 0) {
           const runId = campaignRunIdFromDatasetId(record.dataset_id);
           if (runId) {
-            recordCampaignMatrixTotal(this.campaignContext, runId, record.assignment_count);
+            const context = this.campaignContexts.get(runId) ?? createCampaignAdaptContext();
+            recordCampaignMatrixTotal(context, runId, record.assignment_count);
+            this.campaignContexts.set(runId, context);
             this.refreshRunProgressTotals(state, record.dataset_id, runId);
           }
         }
@@ -433,8 +430,7 @@ export class EvalStore {
         break;
       case 'evaluation_summary': {
         const key = recordKey(record.dataset_id, record.run_id);
-        const existing = state.evaluations.get(key);
-        state.evaluations.set(key, existing ? mergeEvaluationSummary(existing, record) : record);
+        state.evaluations.set(key, record);
         break;
       }
       case 'assignment_result':
@@ -461,7 +457,6 @@ export class EvalStore {
             if (replacedId) state.eventIds.delete(replacedId);
             state.eventIds.add(event.event_id);
             state.events = events;
-            this.applyLiveEvent(state, event);
             this.retainLiveEvents(state, LIVE_EVENT_STORE_LIMIT);
           }
         }
@@ -477,41 +472,16 @@ export class EvalStore {
     state.eventIds = new Set(retained.map((event) => event.event_id));
   }
 
-  /** Reconcile assignment_total on summaries and live events after the matrix size is known. */
+  /** Reconcile activity progress after the catalog's matrix size is known. */
   private refreshRunProgressTotals(state: StoreState, datasetId: string, runId: string): void {
-    const progress = this.campaignContext.runTotals.get(runId);
+    const progress = this.campaignContexts.get(runId)?.runTotals.get(runId);
     if (!progress) return;
     const { total } = campaignProgressCounts(progress);
     if (total <= 0) return;
 
-    const evalKey = recordKey(datasetId, runId);
-    const existing = state.evaluations.get(evalKey);
-    if (existing) {
-      state.evaluations.set(evalKey, { ...existing, assignment_total: total });
-    }
     state.events = state.events.map((event) =>
       event.run_id === runId && event.dataset_id === datasetId ? { ...event, total } : event,
     );
-  }
-
-  /** A committed live event updates its run's summary so detail pages
-   *  reflect lifecycle, progress, and metric deltas without a refresh. */
-  private applyLiveEvent(state: StoreState, event: LiveEvent): void {
-    const key = recordKey(event.dataset_id, event.run_id);
-    const existing = state.evaluations.get(key);
-    if (!existing) return;
-    state.evaluations.set(key, {
-      ...existing,
-      lifecycle_state: isRunLevelQualityEvent(event.kind) ? event.lifecycle_status : existing.lifecycle_state,
-      assignment_total: event.total > 0 ? event.total : existing.assignment_total,
-      quality_state: isRunLevelQualityEvent(event.kind)
-        ? mergeQualityState(existing.quality_state, event.quality_state)
-        : existing.quality_state,
-      headline_metrics: event.metric_delta
-        ? { ...existing.headline_metrics, ...event.metric_delta }
-        : existing.headline_metrics,
-      observed_at: event.observed_at,
-    });
   }
 
   pushError(message: string): void {
@@ -550,7 +520,7 @@ export class EvalStore {
   }
 
   loadFixtures(snapshotRecords: SnapshotRecord[], liveEvents: LiveEvent[]): void {
-    this.campaignContext = createCampaignAdaptContext();
+    this.campaignContexts = new Map();
     const state = emptyState();
     state.connection = 'offline';
     state.feedStatus = {

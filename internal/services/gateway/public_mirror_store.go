@@ -167,6 +167,10 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 		_ = store.Close()
 		return nil, err
 	}
+	if err := store.initializePublicSnapshots(ctx); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
@@ -537,6 +541,9 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 		if err := insertPublicMirrorBatch(ctx, tx, batch); err != nil {
 			return err
 		}
+		if err := updatePublicSnapshot(ctx, tx, batch); err != nil {
+			return fmt.Errorf("update current snapshot: %w", err)
+		}
 		if (maxRetainedBatches > 0 && summary.RetainedBatchCount > maxRetainedBatches) ||
 			(maxRetainedBytes > 0 && summary.RetainedRecordBytes > maxRetainedBytes) {
 			rows, err := tx.QueryContext(ctx, `SELECT first_sequence, last_sequence, content_hash, record_count, byte_size
@@ -675,18 +682,6 @@ func (s *PublicMirrorStore) recordsAfter(ctx context.Context, sourceID string, a
 		[]interface{}{sourceID, after, through, limit}, scanPublicMirrorRecord)
 	if err != nil {
 		return nil, fmt.Errorf("public mirror store: read records: %w", err)
-	}
-	return records, nil
-}
-
-// recordsBefore returns up to limit retained records of one type with
-// sequence < before, newest first.
-func (s *PublicMirrorStore) recordsBefore(ctx context.Context, sourceID string, recordType models.PublicFeedRecordType, before int64, limit int) ([]models.PublicFeedRecord, error) {
-	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM records
-		WHERE source_id = ? AND record_type = ? AND sequence < ? ORDER BY sequence DESC LIMIT ?`,
-		[]interface{}{sourceID, string(recordType), before, limit}, scanPublicMirrorRecord)
-	if err != nil {
-		return nil, fmt.Errorf("public mirror store: read recent records: %w", err)
 	}
 	return records, nil
 }
@@ -1019,10 +1014,6 @@ func (s *PublicMirrorStore) putProofSegment(ctx context.Context, sourceID string
 			activeCount++
 			totalByteSize += entry.ByteSize
 		}
-		if activeCount > constants.PublicFeedProofMaxArtifacts {
-			return constants.ErrPublicFeedProofCatalogMismatch
-		}
-
 		stmt, err := tx.PrepareContext(ctx, `INSERT INTO proof_manifest_entries (source_id, segment_index, ordinal, artifact_id, entry_json) VALUES (?, ?, ?, ?, ?)`)
 		if err != nil {
 			return fmt.Errorf("prepare proof manifest entry upsert: %w", err)

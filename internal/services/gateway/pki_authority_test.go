@@ -17,7 +17,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
 	"log/slog"
 	"path/filepath"
 	"runtime"
@@ -215,7 +214,7 @@ func TestPKIAuthority_InitializePKI(t *testing.T) {
 
 		rootKeyRelPath := filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCAKey)
 		_, err := ctx.fileSvc.Stat(context.Background(), rootKeyRelPath)
-		assert.True(t, errors.Is(err, constants.ErrNotFound), "root CA private key must not exist as PEM file")
+		require.ErrorIs(t, err, constants.ErrNotFound, "root CA private key must not exist as PEM file")
 
 		keyDER, err := ctx.sm.GetCAPrivateKey("root")
 		require.NoError(t, err)
@@ -241,7 +240,7 @@ func TestPKIAuthority_InitializePKI(t *testing.T) {
 			require.NoError(t, err, "%s cert should exist", name)
 
 			_, err = ctx.fileSvc.Stat(context.Background(), keyRelPath)
-			assert.True(t, errors.Is(err, constants.ErrNotFound), "%s private key must not exist as PEM file", name)
+			require.ErrorIs(t, err, constants.ErrNotFound, "%s private key must not exist as PEM file", name)
 
 			caType := strings.TrimSuffix(name, "_ca")
 			keyDER, err := ctx.sm.GetCAPrivateKey(caType)
@@ -303,7 +302,7 @@ func TestPKIAuthority_InitializePKI(t *testing.T) {
 		const rootCAMirrorFilename = "ca.crt"
 		rootCAMirrorRelPath := filepath.Join(constants.PkiDirname, rootCAMirrorFilename)
 		_, err := ctx.fileSvc.Stat(context.Background(), rootCAMirrorRelPath)
-		assert.True(t, errors.Is(err, constants.ErrNotFound), "ca.crt must not exist at PKI root")
+		assert.ErrorIs(t, err, constants.ErrNotFound, "ca.crt must not exist at PKI root")
 	})
 
 	t.Run("Serving certificate verifies against trust bundle", func(t *testing.T) {

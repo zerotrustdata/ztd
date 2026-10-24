@@ -166,7 +166,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	for _, ds := range res.GetDecomposedScores() {
 		if ds.GetDimension() == "diagnosis_quality" {
 			hasDiagDecomposedScore = true
-			assert.Equal(t, 4.0, ds.GetValue())
+			assert.InDelta(t, 4.0, ds.GetValue(), 0)
 			break
 		}
 	}
@@ -225,6 +225,7 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 		{
 			name: "judge receipt signed by an unpinned key",
 			tamper: func(t *testing.T, response *operatorv1.InferenceDispatchResponse) {
+				t.Helper()
 				oracletest.NewSigner(t).Resign(t, response.Receipt)
 			},
 		},

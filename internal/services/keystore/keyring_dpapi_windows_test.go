@@ -28,7 +28,7 @@ func TestDPAPIKeyring_New_RequiresFileService(t *testing.T) {
 	t.Parallel()
 	_, err := newDPAPIKeyring(nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestDPAPIKeyring_StoreRetrieveDelete_RoundTrip(t *testing.T) {
@@ -42,17 +42,17 @@ func TestDPAPIKeyring_StoreRetrieveDelete_RoundTrip(t *testing.T) {
 	// Retrieve before store returns ErrKeyStoreKeyNotFound
 	_, err = kr.RetrieveMasterKey()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound)
+	require.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound)
 
 	// Invalid key lengths rejected
 	err = kr.StoreMasterKey([]byte("too-short"))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrKeyStoreInvalidKeyLength)
+	require.ErrorIs(t, err, constants.ErrKeyStoreInvalidKeyLength)
 
 	tooLongKey := make([]byte, 64)
 	err = kr.StoreMasterKey(tooLongKey)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrKeyStoreInvalidKeyLength)
+	require.ErrorIs(t, err, constants.ErrKeyStoreInvalidKeyLength)
 
 	// Valid key store
 	testKey := make([]byte, vault.KeySize)
@@ -81,10 +81,10 @@ func TestDPAPIKeyring_StoreRetrieveDelete_RoundTrip(t *testing.T) {
 	// Retrieve after delete returns ErrKeyStoreKeyNotFound
 	_, err = kr.RetrieveMasterKey()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound)
+	require.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound)
 
 	// Delete again is idempotent
-	assert.NoError(t, kr.DeleteMasterKey())
+	require.NoError(t, kr.DeleteMasterKey())
 	_ = secretsDir
 }
 

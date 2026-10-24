@@ -13,6 +13,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
 
 // JSONRPCRequest is an alias for response.JSONRPCRequest
@@ -36,8 +37,9 @@ type CallToolRequest struct {
 // carries the executing Operator's signed ActionReceipt; a suspended call
 // carries a GovernedSuspension instead.
 type CallToolResult struct {
-	Content []TextContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
+	ConsensusInferences []governance.ConsensusInference `json:"consensus_inferences,omitempty"`
+	Content             []TextContent                   `json:"content"`
+	IsError             bool                            `json:"isError,omitempty"`
 	// Receipt is the executing Operator's signed ActionReceipt, canonical protojson.
 	Receipt json.RawMessage `json:"receipt,omitempty"`
 	// Suspension is set when the call awaits L3 human approval.
@@ -166,18 +168,20 @@ type PromptsListResult struct {
 // GovernedSuspension is the typed suspension body returned by MCP and A2A when a
 // governed call is paused for L3 human approval. Only a missing L3 proof suspends.
 type GovernedSuspension struct {
-	ID          string `json:"id"`
-	Status      string `json:"status"`
-	TxHash      string `json:"tx_hash"`
-	ApprovalURL string `json:"approval_url"`
-	Message     string `json:"message"`
+	ConsensusInferences []governance.ConsensusInference `json:"consensus_inferences,omitempty"`
+	ID                  string                          `json:"id"`
+	Status              string                          `json:"status"`
+	TxHash              string                          `json:"tx_hash"`
+	ApprovalURL         string                          `json:"approval_url"`
+	Message             string                          `json:"message"`
 }
 
 // A2ASuccessResponse is returned when an A2A call succeeds. Result is the
 // executing Operator's signed ActionReceipt, canonical protojson.
 type A2ASuccessResponse struct {
-	ID     string          `json:"id"`
-	Result json.RawMessage `json:"result"`
+	ConsensusInferences []governance.ConsensusInference `json:"consensus_inferences,omitempty"`
+	ID                  string                          `json:"id"`
+	Result              json.RawMessage                 `json:"result"`
 }
 
 // A2ACallRequest is the params for the "a2a/call" method.

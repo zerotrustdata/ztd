@@ -179,6 +179,6 @@ func TestRefreshCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	Err := cmd.RunE(cmd, nil)
 	require.Error(t, Err)
-	assert.ErrorIs(t, Err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, Err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, Err, errFactory)
 }

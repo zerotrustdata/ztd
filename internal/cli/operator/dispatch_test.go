@@ -321,7 +321,7 @@ func TestParseCommandResult_CorruptPayloadWrapsTheProtobufError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "operator dispatch: decode command result")
-	assert.NotNil(t, errors.Unwrap(err), "the underlying protobuf error must stay reachable")
+	assert.Error(t, errors.Unwrap(err), "the underlying protobuf error must stay reachable")
 }
 
 func TestSummarizeRunPercentilesUseSuccessfulDispatchesOnly(t *testing.T) {

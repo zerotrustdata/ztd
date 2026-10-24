@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -40,6 +41,12 @@ type gatewayDispatcherAdapter struct {
 // gateway's DispatchService and converting between the gateway-agnostic
 // and gateway-specific request/result types.
 func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.CommandDispatchRequest) (*dispatch.CommandDispatchResult, error) {
+	var onAdmitted func(context.Context, *commonv1.GovernanceEnvelope, []*operatorv1.ConsensusVoteInference) error
+	if req.OnAdmitted != nil {
+		onAdmitted = func(ctx context.Context, _ *commonv1.GovernanceEnvelope, _ []*operatorv1.ConsensusVoteInference) error {
+			return req.OnAdmitted(ctx)
+		}
+	}
 	result, err := a.svc.Dispatch(ctx, DispatchRequest{
 		TargetOperatorSessionID: req.TargetOperatorSessionID,
 		EventType:               req.EventType,
@@ -54,7 +61,7 @@ func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.Co
 		CliSessionID:            req.CliSessionID,
 		Timeout:                 req.Timeout,
 		OnInferenceProgress:     req.OnInferenceProgress,
-		OnAdmitted:              req.OnAdmitted,
+		OnAdmitted:              onAdmitted,
 	})
 	if err != nil {
 		return nil, err

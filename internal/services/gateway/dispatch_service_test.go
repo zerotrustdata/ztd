@@ -106,7 +106,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 			err := tt.req.Validate()
 			if tt.wantErr != nil {
 				require.Error(t, err)
-				assert.True(t, errors.Is(err, tt.wantErr), "expected %v, got %v", tt.wantErr, err)
+				assert.ErrorIs(t, err, tt.wantErr, "expected %v, got %v", tt.wantErr, err)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -497,7 +497,7 @@ func TestDispatchService_Dispatch_RequestTimeoutOverridesDefault(t *testing.T) {
 		Timeout:                 100 * time.Millisecond,
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
+	require.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
 	assert.Less(t, time.Since(start), 5*time.Second, "request timeout must override the default dispatch timeout")
 }
 
@@ -519,8 +519,8 @@ func TestDispatchService_Dispatch_CallerCancelReturnsCtxErr(t *testing.T) {
 		Timeout:                 30 * time.Second,
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceCanceled)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, constants.ErrInferenceCanceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.NotErrorIs(t, err, constants.ErrDispatchResultTimeout,
 		"caller cancellation must not be reported as a dispatch timeout")
 }
@@ -568,7 +568,7 @@ func TestDispatchService_Dispatch_StreamingProgressOverflowFailsClosed(t *testin
 		OnInferenceProgress:     func(*operatorv1.InferenceProgressEvent) error { return nil },
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceProgressBackpressure)
+	require.ErrorIs(t, err, constants.ErrInferenceProgressBackpressure)
 	assert.NotErrorIs(t, err, constants.ErrDispatchResultTimeout)
 }
 
@@ -586,6 +586,7 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 	}
 
 	publishResult := func(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument) func(string, []byte) {
+		t.Helper()
 		return func(_ string, data []byte) {
 			cmdEnv := &commonv1.GovernanceEnvelope{}
 			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {

@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // ConfigStrategy selects how an agent's MCP configuration is written.
@@ -65,6 +66,7 @@ const (
 // VerifyInput is what a VerifyHook inspects: the config the launcher just
 // wrote and the argv it computed for the agent binary.
 type VerifyInput struct {
+	Files      fs.RuntimeFileService
 	ConfigPath string
 	LaunchArgs []string
 }

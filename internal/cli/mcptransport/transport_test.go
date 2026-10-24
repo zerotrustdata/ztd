@@ -43,7 +43,7 @@ func TestServeStdio_BasicRequestResponse(t *testing.T) {
 	err = json.Unmarshal(out.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "2.0", resp.JSONRPC)
-	assert.Equal(t, float64(1), resp.ID)
+	assert.InDelta(t, float64(1), resp.ID, 0)
 	assert.Nil(t, resp.Error)
 	assert.NotNil(t, resp.Result)
 }
@@ -74,7 +74,7 @@ func TestServeStdio_NotificationDropped(t *testing.T) {
 	var resp JSONRPCResponse
 	err = json.Unmarshal(out.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, float64(2), resp.ID)
+	assert.InDelta(t, float64(2), resp.ID, 0)
 	assert.Equal(t, "pong", resp.Result)
 }
 
@@ -107,7 +107,7 @@ func TestServeStdio_ParseError(t *testing.T) {
 	// Second response should be valid ping response
 	var okResp JSONRPCResponse
 	require.NoError(t, decoder.Decode(&okResp))
-	assert.Equal(t, float64(3), okResp.ID)
+	assert.InDelta(t, float64(3), okResp.ID, 0)
 	assert.Equal(t, "pong", okResp.Result)
 }
 
@@ -126,7 +126,7 @@ func TestServeStdio_HandlerError(t *testing.T) {
 	var resp JSONRPCResponse
 	err = json.Unmarshal(out.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, float64(4), resp.ID)
+	assert.InDelta(t, float64(4), resp.ID, 0)
 	require.NotNil(t, resp.Error)
 	assert.Equal(t, -32603, resp.Error.Code)
 	assert.Contains(t, resp.Error.Message, "something went wrong")
@@ -152,7 +152,7 @@ func TestServeStdio_BlankLinesSkipped(t *testing.T) {
 	var resp JSONRPCResponse
 	err = json.Unmarshal(out.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, float64(5), resp.ID)
+	assert.InDelta(t, float64(5), resp.ID, 0)
 }
 
 func TestServeStdio_ContextCancellation(t *testing.T) {
@@ -178,7 +178,7 @@ func TestSendError(t *testing.T) {
 
 	var resp JSONRPCResponse
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &resp))
-	assert.Equal(t, float64(20), resp.ID)
+	assert.InDelta(t, float64(20), resp.ID, 0)
 	require.NotNil(t, resp.Error)
 	assert.Equal(t, -32600, resp.Error.Code)
 	assert.Equal(t, "invalid request", resp.Error.Message)

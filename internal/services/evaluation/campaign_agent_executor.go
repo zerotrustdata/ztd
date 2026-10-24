@@ -1068,6 +1068,7 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 // record. It returns denied=true with the record already completed for a
 // governance rejection or an ingress refusal.
 func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedToolDispatch) (bool, error) {
+	record.ConsensusInferences = governance.WrapConsensusInferences(dispatched.Outcome.ConsensusInferences)
 	if receipt := answerReceipt(dispatched.Outcome); receipt != nil {
 		record.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 	}

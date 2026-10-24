@@ -30,10 +30,11 @@ import (
 // exactly one typed body matching its kind; Dispatch is set only on a dispatch
 // success; Suspension only on an MCP or A2A suspension.
 type GovernedOutcome struct {
-	Observation *evalv1.ConformanceObservation
-	Dispatch    *operatorv1.GovernedDispatchResult
-	Suspension  *mcp.GovernedSuspension
-	Body        []byte
+	ConsensusInferences []*operatorv1.ConsensusVoteInference
+	Observation         *evalv1.ConformanceObservation
+	Dispatch            *operatorv1.GovernedDispatchResult
+	Suspension          *mcp.GovernedSuspension
+	Body                []byte
 }
 
 // Typed returns ErrIngressResponseUntyped (wrapped) when the ingress answered
@@ -91,6 +92,7 @@ func decodeHTTPBody(status int, body []byte, success proto.Message) *GovernedOut
 		}
 		outcome := receiptOutcome(msg.GetReceipt())
 		outcome.Dispatch = msg
+		outcome.ConsensusInferences = msg.GetConsensusInferences()
 		return outcome
 	default:
 		return untypedOutcome()
@@ -108,6 +110,7 @@ func IntentCommandOutcome(result *tribunalv1.TribunalIntentResult) *GovernedOutc
 		}
 		governed := receiptOutcome(outcome.Dispatched.GetReceipt())
 		governed.Dispatch = outcome.Dispatched
+		governed.ConsensusInferences = outcome.Dispatched.GetConsensusInferences()
 		return governed
 	case *tribunalv1.TribunalIntentResult_Rejection:
 		return rejectionOutcome(outcome.Rejection)
@@ -170,7 +173,11 @@ func decodeMCPResult(result json.RawMessage) *GovernedOutcome {
 	if call.Suspension != nil && call.Suspension.TxHash != "" {
 		return suspendedOutcome(call.Suspension)
 	}
-	return decodeReceiptJSON(call.Receipt)
+	outcome := decodeReceiptJSON(call.Receipt)
+	for _, inference := range call.ConsensusInferences {
+		outcome.ConsensusInferences = append(outcome.ConsensusInferences, inference.ConsensusVoteInference)
+	}
+	return outcome
 }
 
 // decodeA2AResult classifies an a2a/call result: a typed suspension, or the
@@ -184,7 +191,11 @@ func decodeA2AResult(result json.RawMessage) *GovernedOutcome {
 	if err := decodeStrictJSON(result, &success); err != nil {
 		return untypedOutcome()
 	}
-	return decodeReceiptJSON(success.Result)
+	outcome := decodeReceiptJSON(success.Result)
+	for _, inference := range success.ConsensusInferences {
+		outcome.ConsensusInferences = append(outcome.ConsensusInferences, inference.ConsensusVoteInference)
+	}
+	return outcome
 }
 
 func decodeReceiptJSON(raw json.RawMessage) *GovernedOutcome {
@@ -233,14 +244,14 @@ func receiptOutcome(receipt *operatorv1.ActionReceipt) *GovernedOutcome {
 }
 
 func rejectionOutcome(rejection *operatorv1.GovernanceRejection) *GovernedOutcome {
-	return &GovernedOutcome{Observation: &evalv1.ConformanceObservation{
+	return &GovernedOutcome{ConsensusInferences: rejection.GetConsensusInferences(), Observation: &evalv1.ConformanceObservation{
 		Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 		Rejection: rejection,
 	}}
 }
 
 func refusalOutcome(refusal *operatorv1.IngressRefusal) *GovernedOutcome {
-	return &GovernedOutcome{Observation: &evalv1.ConformanceObservation{
+	return &GovernedOutcome{ConsensusInferences: refusal.GetConsensusInferences(), Observation: &evalv1.ConformanceObservation{
 		Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
 		Refusal: refusal,
 	}}

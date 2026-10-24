@@ -9,7 +9,6 @@ package auth
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	runtimefs "github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -31,18 +31,27 @@ import (
 
 // assertNoOrphanedTmpFiles walks the runtime directory and fails if any
 // `.ztd-tmp-*` file remains from an interrupted atomic write.
-func assertNoOrphanedTmpFiles(t *testing.T, dir string) {
+func assertNoOrphanedTmpFiles(t *testing.T, fileSvc runtimefs.RuntimeFileService) {
 	t.Helper()
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	var walk func(string) error
+	walk = func(relPath string) error {
+		entries, err := fileSvc.ReadDir(context.Background(), relPath)
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasPrefix(d.Name(), ".ztd-tmp-") {
-			t.Errorf("orphaned temp file remains: %s", path)
+		for _, entry := range entries {
+			entryPath := filepath.Join(relPath, entry.Name())
+			if entry.IsDir() {
+				if err := walk(entryPath); err != nil {
+					return err
+				}
+			} else if strings.HasPrefix(entry.Name(), ".ztd-tmp-") {
+				t.Errorf("orphaned temp file remains: %s", entryPath)
+			}
 		}
 		return nil
-	})
-	require.NoError(t, err)
+	}
+	require.NoError(t, walk(""))
 }
 
 // TestCredentialStore_InterruptedCommitRetry verifies that after a Commit
@@ -84,7 +93,7 @@ func TestCredentialStore_InterruptedCommitRetry(t *testing.T) {
 	assert.Equal(t, artifacts.UserID, creds.UserID)
 
 	// No orphaned tmp files remain in the runtime tree.
-	assertNoOrphanedTmpFiles(t, fileSvc.Resolve(""))
+	assertNoOrphanedTmpFiles(t, fileSvc)
 }
 
 // TestCredentialStore_RollbackWritesNoCanonicalFiles verifies that Rollback
@@ -203,7 +212,7 @@ func TestCredentialStore_ConcurrentStageCommitNoTornState(t *testing.T) {
 		"CLI cert and key must match after concurrent commits")
 
 	// No orphaned tmp files.
-	assertNoOrphanedTmpFiles(t, fileSvc.Resolve(""))
+	assertNoOrphanedTmpFiles(t, fileSvc)
 }
 
 // TestCredentialStore_ClearRetainsTrustBundle verifies that Clear (logout)

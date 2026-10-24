@@ -24,32 +24,8 @@ type SuspendedTransaction struct {
 	OperatorID              string
 	OperatorSessionID       string // Operator session the envelope targets (envelope.OperatorSessionId); owns the approval audit chain
 	SubmitterCLISessionID   string // CLI session that submitted the transaction
-	Approved                bool
-	ApprovedAt              *time.Time
-	ApprovedBy              string // CLI session ID or user ID of approver
-	ApprovalSignature       string // Signature over transaction_hash by approver
 	ExpectedCertFingerprint string // Expected mTLS cert fingerprint for verification
-	ApprovalPublicKey       string // Hex-encoded Ed25519 public key of the approver
 	// ClaimedAt is set while an approved transaction is being executed. A claimed row is never
 	// recorded as expired: its execution was attempted.
 	ClaimedAt *time.Time
-	// Passkey WebAuthn fields (present for all approvals going forward)
-	PasskeyCredentialID      string // WebAuthn credential ID
-	PasskeyClientDataJSON    string // WebAuthn clientDataJSON
-	PasskeyAuthenticatorData string // WebAuthn authenticatorData
-	PasskeySignature         string // WebAuthn signature
-}
-
-// ApprovalProof holds all fields needed to record an L3 approval.
-// CLI Ed25519 fields are present for CLI approvals; passkey WebAuthn fields
-// are present for all approvals going forward.
-type ApprovalProof struct {
-	ApprovedBy        string
-	CliSignature      string
-	CertFingerprint   string
-	ApprovalPublicKey string
-	CredentialID      string
-	ClientDataJSON    string
-	AuthenticatorData string
-	Signature         string
 }

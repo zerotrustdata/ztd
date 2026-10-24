@@ -136,7 +136,7 @@ func TestClassifyIngressRefusal(t *testing.T) {
 // TestClassifyIngressRefusalTableCoversEveryEntry fails when a classifier
 // entry has no row in the explicit case table, so the table cannot drift.
 func TestClassifyIngressRefusalTableCoversEveryEntry(t *testing.T) {
-	require.Equal(t, len(ingressRefusalCodes), len(ingressRefusalCases), "table rows must match classifier entries one-to-one")
+	require.Len(t, ingressRefusalCases, len(ingressRefusalCodes), "table rows must match classifier entries one-to-one")
 	for _, entry := range ingressRefusalCodes {
 		found := false
 		for _, tc := range ingressRefusalCases {

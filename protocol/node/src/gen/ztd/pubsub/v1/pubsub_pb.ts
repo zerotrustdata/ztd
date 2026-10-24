@@ -17,7 +17,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file ztd/pubsub/v1/pubsub.proto.
  */
 export const file_ztd_pubsub_v1_pubsub: GenFile = /*@__PURE__*/
-  fileDesc("Chp6dGQvcHVic3ViL3YxL3B1YnN1Yi5wcm90bxINenRkLnB1YnN1Yi52MSI+Cg1QdWJTdWJNZXNzYWdlEg4KBmFjdGlvbhgBIAEoCRIPCgdjaGFubmVsGAIgASgJEgwKBGRhdGEYAyABKAwiSwoLUHViU3ViRXZlbnQSDAoEdHlwZRgBIAEoCRIPCgdjaGFubmVsGAIgASgJEg8KB3BhdHRlcm4YAyABKAkSDAoEZGF0YRgEIAEoDEJEWkJnaXRodWIuY29tL3plcm90cnVzdGRhdGEvenRkL3Byb3RvY29sL3Byb3RvL3p0ZC9wdWJzdWIvdjE7cHVic3VidjFiBnByb3RvMw");
+  fileDesc("Chp6dGQvcHVic3ViL3YxL3B1YnN1Yi5wcm90bxINenRkLnB1YnN1Yi52MSI+Cg1QdWJTdWJNZXNzYWdlEg4KBmFjdGlvbhgBIAEoCRIPCgdjaGFubmVsGAIgASgJEgwKBGRhdGEYAyABKAwiSQoLUHViU3ViRXZlbnQSDAoEdHlwZRgBIAEoCRIPCgdjaGFubmVsGAIgASgJEgwKBGRhdGEYBCABKAxKBAgDEARSB3BhdHRlcm5CRFpCZ2l0aHViLmNvbS96ZXJvdHJ1c3RkYXRhL3p0ZC9wcm90b2NvbC9wcm90by96dGQvcHVic3ViL3YxO3B1YnN1YnYxYgZwcm90bzM");
 
 /**
  * PubSubMessage is the client-to-server WebSocket frame for pub/sub operations.
@@ -27,7 +27,7 @@ export const file_ztd_pubsub_v1_pubsub: GenFile = /*@__PURE__*/
  */
 export type PubSubMessage = Message<"ztd.pubsub.v1.PubSubMessage"> & {
   /**
-   * Operation to perform: "subscribe", "psubscribe", "unsubscribe", or "publish".
+   * Operation to perform: "subscribe", "unsubscribe", or "publish".
    *
    * @generated from field: string action = 1;
    */
@@ -63,7 +63,7 @@ export const PubSubMessageSchema: GenMessage<PubSubMessage> = /*@__PURE__*/
  */
 export type PubSubEvent = Message<"ztd.pubsub.v1.PubSubEvent"> & {
   /**
-   * Event type: "message", "pmessage", "subscribed", "unsubscribed", or "error".
+   * Event type: "message", "subscribed", "unsubscribed", or "error".
    *
    * @generated from field: string type = 1;
    */
@@ -77,14 +77,7 @@ export type PubSubEvent = Message<"ztd.pubsub.v1.PubSubEvent"> & {
   channel: string;
 
   /**
-   * Pattern matched for pmessage events. Empty for direct channel deliveries.
-   *
-   * @generated from field: string pattern = 3;
-   */
-  pattern: string;
-
-  /**
-   * Message payload for message/pmessage events. Empty for acknowledgment events.
+   * Message payload for message events. Empty for acknowledgment events.
    *
    * @generated from field: bytes data = 4;
    */

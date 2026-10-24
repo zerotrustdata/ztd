@@ -38,6 +38,28 @@ func (fs *localFS) OpenForAppend(ctx context.Context, relPath string, mode os.Fi
 	return f, nil
 }
 
+// Truncate changes the size of the named runtime file to size.
+// It truncates by path so it works on Windows, where File.Truncate on an
+// O_APPEND handle fails with "Access is denied".
+func (fs *localFS) Truncate(ctx context.Context, relPath string, size int64) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if size < 0 {
+		return fmt.Errorf("%w: negative truncate size %d", constants.ErrPathValidation, size)
+	}
+	absPath := fs.Resolve(relPath)
+	if err := os.Truncate(absPath, size); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: %s", constants.ErrNotFound, absPath)
+		}
+		return fmt.Errorf("%w: %w", constants.ErrFileOpenFailed, err)
+	}
+	return nil
+}
+
 // OpenForRead opens an existing file for streaming read. Returns
 // constants.ErrNotFound if the file does not exist. The caller must Close
 // the returned handle. Used for tail/follow operations on log files.

@@ -431,6 +431,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "wrong rejection code",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				receipt := caseEvidence(t, rec, caseRejected).GetObservations()[0].GetRejection().GetReceipt()
 				receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING
 				f.gateway.Resign(t, receipt)
@@ -441,6 +442,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "wrong refusal code",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseRefused).GetObservations()[0].GetRefusal().Code =
 					operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST
 			},
@@ -450,6 +452,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "refusal carrying a receipt",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseRefused).GetObservations()[0].Receipt = caseEvidence(t, rec, caseDirect).GetSentinelBefore()
 			},
 			wantSuite: suiteFail, wantCase: caseRefused, wantStatus: statusFail,
@@ -458,6 +461,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "untyped observation",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				obs := caseEvidence(t, rec, caseDirect).GetObservations()[0]
 				obs.Kind = evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED
 				obs.Receipt = nil
@@ -469,6 +473,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "observation kind does not match the expected outcome",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				obs := caseEvidence(t, rec, caseDirect).GetObservations()[0]
 				obs.Kind = evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED
 				obs.Receipt = nil
@@ -480,6 +485,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "missing observation",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseDirect).Observations = nil
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
@@ -488,6 +494,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "extra observation",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseDirect)
 				ev.Observations = append(ev.Observations, ev.GetObservations()[0])
 			},
@@ -497,6 +504,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "not-run observation on a case that is not attended",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseDirect).Observations = []*evalv1.ConformanceObservation{{
 					Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED,
 				}}
@@ -507,6 +515,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "attended case not run in a run marked attended",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).Observations = []*evalv1.ConformanceObservation{{
 					Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED,
 				}}
@@ -517,6 +526,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "L2 status mismatch",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).GetObservations()[0].Receipt =
 					f.executedReceipt(c, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED)
@@ -527,6 +537,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "L3 status mismatch",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).GetObservations()[0].Receipt =
 					f.executedReceipt(c, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
@@ -537,6 +548,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "signature byte flipped without re-signing",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				receipt := caseEvidence(t, rec, caseRefused).GetSentinelBefore()
 				sig := []byte(receipt.GetSignature())
 				sig[0] = flipHexDigit(sig[0])
@@ -548,6 +560,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "receipt signed by an unpinned key",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				stranger := oracletest.NewSigner(t)
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).SentinelAfter = stranger.Executed(t,
@@ -560,6 +573,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "anchor pinned to the wrong runtime",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				rec.Anchors[1] = f.remote.Anchor("other-op")
 			},
 			wantSuite: suiteInvalid,
@@ -567,6 +581,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "stage reordered and re-signed",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				receipt := caseEvidence(t, rec, caseDirect).GetSentinelAfter()
 				stages := receipt.GetDeterministicStageEvidence()
 				stages[1], stages[2] = stages[2], stages[1]
@@ -578,6 +593,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "sentinel is a rejection, not an execution",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseDirect).SentinelBefore = f.gateway.Rejected(t,
 					receiptOpts(caseDirect, oracle.GatewayRuntimeID, "sentinel", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 					operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
@@ -588,6 +604,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "extra link between the sentinels",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).SentinelAfter = f.gateway.Executed(t,
 					receiptOpts(c.ID, oracle.GatewayRuntimeID, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
@@ -599,6 +616,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "broken ledger link",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).GetObservations()[0].Receipt = f.gateway.Executed(t,
 					receiptOpts(c.ID, oracle.GatewayRuntimeID, "exec", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
@@ -610,6 +628,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "extra canary file",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseDirect)
 				ev.CanaryAfter.Entries = append(ev.CanaryAfter.Entries, canaryEntry("targets/extra.txt", "extra"))
 			},
@@ -619,6 +638,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "target written with the wrong marker",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseDirect)
 				for i, entry := range ev.CanaryAfter.Entries {
 					if entry.GetPath() == ev.GetTargetPath() {
@@ -632,6 +652,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "missing target write",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseDirect)
 				ev.CanaryAfter = ev.CanaryBefore
 			},
@@ -641,6 +662,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "target path is root-prefixed as the canary recorded it",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseDirect)
 				ev.TargetPath = rec.GetCanaryRoot() + "/" + ev.GetTargetPath()
 			},
@@ -650,6 +672,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "target path names another attempt's case file",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseDirect).TargetPath = canary.TargetRel("attempt-" + caseRejected)
 			},
 			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
@@ -658,6 +681,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "target path missing",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseDirect).TargetPath = ""
 			},
 			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
@@ -666,6 +690,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "canary changed by a rejected case",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseRejected)
 				ev.CanaryAfter.Entries = append(ev.CanaryAfter.Entries, canaryEntry("targets/rejected.txt", "leaked"))
 			},
@@ -675,6 +700,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "second A2A call",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ev := caseEvidence(t, rec, caseAttended)
 				ev.A2ACalls = append(ev.A2ACalls, ev.GetA2ACalls()[0])
 			},
@@ -684,6 +710,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "missing A2A call",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).A2ACalls = nil
 			},
 			wantSuite: suiteFail, wantCase: caseAttended, wantStatus: statusFail,
@@ -692,6 +719,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "A2A payload names a different marker",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
 					SkillName:   "stub",
 					PayloadJson: markerPayloadJSON(t, cases.Marker(fixtureRunID, "attempt-"+caseRejected)),
@@ -703,6 +731,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "A2A payload marker lacks the trailing newline",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
 					SkillName:   "stub",
 					PayloadJson: markerPayloadJSON(t, "ztd-conformance "+fixtureRunID+" attempt-"+caseAttended),
@@ -714,6 +743,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "A2A payload carries an extra field",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
 					SkillName:   "stub",
 					PayloadJson: `{"marker":"ztd-conformance ` + fixtureRunID + ` attempt-` + caseAttended + `\n","extra":true}`,
@@ -725,6 +755,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "A2A payload carries trailing data after the marker payload",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
 					SkillName:   "stub",
 					PayloadJson: markerPayloadJSON(t, cases.Marker(fixtureRunID, "attempt-"+caseAttended)) + ` {}`,
@@ -736,6 +767,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "A2A payload is text that contains the marker but is not JSON",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseAttended).A2ACalls = []*evalv1.ConformanceA2ACall{{
 					SkillName:   "stub",
 					PayloadJson: "marker=" + cases.Marker(fixtureRunID, "attempt-"+caseAttended),
@@ -747,6 +779,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "missing case id",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				var kept []*evalv1.ConformanceCaseEvidence
 				for _, ev := range rec.GetCases() {
 					if ev.GetCaseId() != caseRefused {
@@ -760,6 +793,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "extra case id",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				ghost := caseEvidence(t, rec, caseDirect)
 				rec.Cases = append(rec.Cases, &evalv1.ConformanceCaseEvidence{CaseId: "ghost-case", Executor: ghost.GetExecutor()})
 			},
@@ -768,6 +802,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "duplicate case id",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				rec.Cases = append(rec.Cases, caseEvidence(t, rec, caseDirect))
 			},
 			wantSuite: suiteInvalid,
@@ -775,6 +810,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "wrong doctrine corpus digest",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				rec.DoctrineCorpusSha256 = "00"
 			},
 			wantSuite: suiteInvalid,
@@ -782,6 +818,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "non-quiescent quiescence pair",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				q := rec.Quiescence[0]
 				q.First, q.Second = q.Second, q.First
 			},
@@ -790,6 +827,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "missing quiescence pair",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				rec.Quiescence = rec.Quiescence[:1]
 			},
 			wantSuite: suiteInvalid,
@@ -797,6 +835,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "case executed on the wrong executor",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				caseEvidence(t, rec, caseDirect).Executor = string(cases.ExecutorOutbound)
 			},
 			wantSuite: suiteInvalid,
@@ -804,6 +843,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "record without a gateway anchor",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
+				t.Helper()
 				rec.Anchors = rec.Anchors[1:]
 			},
 			wantSuite: suiteInvalid,

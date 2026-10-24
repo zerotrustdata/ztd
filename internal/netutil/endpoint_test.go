@@ -8,7 +8,6 @@
 package netutil
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,7 +61,7 @@ func TestSplitEndpoint_Rejects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := SplitEndpoint(tt.endpoint)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, constants.ErrGatewayEndpointInvalid))
+			assert.ErrorIs(t, err, constants.ErrGatewayEndpointInvalid)
 		})
 	}
 }

@@ -137,7 +137,7 @@ func TestPlatformEnrollmentFailureInjection_AfterSigning(t *testing.T) {
 		fmt.Errorf("simulated crash after signing"))
 	_, err := env.enrollSvc.Complete(context.Background(), token, proof)
 	restore()
-	assert.Error(t, err, "completion must fail when PERSIST_POLICY fails")
+	require.Error(t, err, "completion must fail when PERSIST_POLICY fails")
 
 	// The request should be in the completed state (ISSUE succeeded),
 	// but the policy may not be persisted yet.
@@ -233,8 +233,8 @@ func TestPlatformEnrollmentFailureInjection_AfterOperatorDocWrite(t *testing.T) 
 		fmt.Errorf("simulated crash after operator doc write"))
 	_, err := env.enrollSvc.Complete(context.Background(), token, proof)
 	restore()
-	assert.Error(t, err, "completion must fail when CREATE_SESSION fails")
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentIssuanceFailed,
+	require.Error(t, err, "completion must fail when CREATE_SESSION fails")
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentIssuanceFailed,
 		"a downstream failure must be retryable so the Operator redials instead of stranding")
 
 	// The request should be completed (ISSUE succeeded).
@@ -329,7 +329,7 @@ func TestPlatformEnrollmentFailureInjection_AfterResponsePersisted(t *testing.T)
 		fmt.Errorf("simulated crash after response persisted"))
 	_, err := env.enrollSvc.Complete(context.Background(), token, proof)
 	restore()
-	assert.Error(t, err, "completion must fail when downstream envelope fails")
+	require.Error(t, err, "completion must fail when downstream envelope fails")
 
 	// The request must be in the completed state with issued material.
 	stored := loadStoredRequest(t, env, requestID)
@@ -371,7 +371,7 @@ func TestPlatformEnrollmentFailureInjection_RetryDoesNotCreateSecondIdentity(t *
 		fmt.Errorf("simulated crash"))
 	_, err := env.enrollSvc.Complete(context.Background(), token, proof)
 	restore()
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Retry successfully.
 	resp, err := env.enrollSvc.Complete(context.Background(), token, proof)
@@ -410,8 +410,8 @@ func TestPlatformEnrollmentFailureInjection_RetryDoesNotConsumeApproval(t *testi
 		fmt.Errorf("simulated crash before signing"))
 	_, err := env.enrollSvc.Complete(context.Background(), token, proof)
 	restore()
-	assert.Error(t, err, "completion must fail when ISSUE fails")
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentIssuanceFailed,
+	require.Error(t, err, "completion must fail when ISSUE fails")
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentIssuanceFailed,
 		"a failed ISSUE must be retryable so the Operator redials instead of stranding")
 
 	// The request must be rolled back to approved (not consumed).

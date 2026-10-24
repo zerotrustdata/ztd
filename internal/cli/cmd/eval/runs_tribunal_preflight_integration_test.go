@@ -22,7 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
-func TestRunsStart_RefusesSharedRuntimeUnderTribunalConsensusBeforePersistingRun(t *testing.T) {
+func TestRunsStart_AllowsSharedRuntimeUnderTribunalConsensus(t *testing.T) {
 	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureConsensus, SharedRuntime: true})
 	bindRunTribunalConsensus(t, run.stack.Gateway, run.stack.Identity)
 	data, err := run.stack.Data.Workload()
@@ -44,9 +44,9 @@ func TestRunsStart_RefusesSharedRuntimeUnderTribunalConsensusBeforePersistingRun
 		CampaignID: "eval-shared-tribunal-runtime",
 		RunID:      "run-shared-tribunal-runtime",
 	})
-	require.ErrorIs(t, err, constants.ErrEvaluationSharedRuntimeTribunalL2)
-	assert.Zero(t, run.stack.Provider.ChatCount(), "preflight must refuse before Tribunal inference")
+	require.NoError(t, err)
+	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "the first answer-only assignment executes without a Tribunal vote round")
 	runIDs, err := evaluation.NewStore(env.fileSvc(t)).ListRunIDs(context.Background())
 	require.NoError(t, err)
-	assert.Empty(t, runIDs, "preflight must refuse before persisting a run")
+	assert.Contains(t, runIDs, "run-shared-tribunal-runtime")
 }

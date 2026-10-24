@@ -17,6 +17,8 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
@@ -33,12 +35,20 @@ type MemberDispatcher interface {
 // every member call dispatched as governed inference. It returns the audited
 // typed arguments; dispatching them is the caller's ordinary governed MCP_CALL.
 type Service struct {
-	members MemberDispatcher
+	members  MemberDispatcher
+	doctrine *governance.L1Doctrine
 }
 
-// NewService builds the Tribunal over the governed inference dispatcher.
-func NewService(members MemberDispatcher) *Service {
-	return &Service{members: members}
+// NewService builds the Tribunal over governed inference and the active
+// Gateway doctrine. Neither dependency may be omitted.
+func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine) (*Service, error) {
+	if members == nil {
+		return nil, fmt.Errorf("tribunal: member dispatcher: %w", constants.ErrMissingRequiredField)
+	}
+	if doctrine == nil {
+		return nil, fmt.Errorf("tribunal: %w", constants.ErrDoctrineRequired)
+	}
+	return &Service{members: members, doctrine: doctrine}, nil
 }
 
 // Deliberate runs one intent through the Tribunal. The result never carries an
@@ -53,6 +63,7 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 	inferer := &memberInferer{members: s.members, template: template, prefix: req.GetProviderAttemptPrefix()}
 	cfg := Config{
 		Inferer:     inferer,
+		Doctrine:    s.doctrine,
 		Tier:        req.GetTier(),
 		ModelTag:    template.GetModel(),
 		ModelDigest: template.GetModelDigest(),
@@ -85,6 +96,81 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 		result.AuditFailure = run.Audit.Failure
 	}
 	return result, nil
+}
+
+// ReviewAdmitted gives the final Auditor the actual L1 assessment, recorded
+// L2 votes and their inference records, and L3 human decision. It is technical
+// context, never proof verification. A changed command returns
+// ErrTribunalCommandRevised so the caller obtains fresh decisions before review
+// and dispatch; it must never alter the already-authorized envelope.
+//
+// A human denial is never reviewed: L4 records it as signed, whatever a model
+// thinks. An envelope without L2 votes or an L3 proof carries nothing beyond
+// the L1 check every authored argument already passed, so it is not reviewed
+// again. The review must finish within the envelope's lifetime; a review that
+// cannot fails closed before publish instead of dispatching an expired envelope.
+func (s *Service) ReviewAdmitted(ctx context.Context, req *tribunalv1.TribunalIntentRequest, result *tribunalv1.TribunalIntentResult, env *commonv1.GovernanceEnvelope, votes []*operatorv1.ConsensusVoteInference) error {
+	l3 := env.GetGovernance().GetL3()
+	if l3.GetDenied() || (len(env.GetGovernance().GetL2().GetVotes()) == 0 && l3.GetProof() == nil) {
+		return nil
+	}
+	reviewCtx, cancel := context.WithDeadline(ctx, env.GetExpiresAt().AsTime())
+	defer cancel()
+	// failed classifies a review that ended without a verdict: running out of
+	// envelope lifetime is a failed audit, a failed member call is an
+	// inference failure, and the caller's own cancellation stays an error.
+	failed := func(err error) error {
+		switch {
+		case ctx.Err() == nil && reviewCtx.Err() != nil:
+			result.Outcome = tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED
+			result.AuditFailure = "contextual review did not finish within the admitted envelope's lifetime"
+		case errors.Is(err, constants.ErrTribunalInferenceFailed):
+			result.Outcome = tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED
+		}
+		return fmt.Errorf("tribunal: contextual review: %w", err)
+	}
+	arguments := models.RunShellCommandRequestFromProto(result.GetArguments())
+	inferer := &memberInferer{members: s.members, template: req.GetMemberInference(), prefix: req.GetProviderAttemptPrefix(), calls: result.GetMemberCalls()}
+	defer func() { result.MemberCalls = inferer.calls }()
+	cfg := Config{Inferer: inferer, Doctrine: s.doctrine, Tier: req.GetTier(), ModelTag: req.GetMemberInference().GetModel(), ModelDigest: req.GetMemberInference().GetModelDigest()}
+	index := req.GetStepStartIndex() + uint32(len(result.GetSteps()))
+	steps := stepRecorder{cfg: cfg, index: index}
+	defer func() { result.Steps = append(result.Steps, steps.steps...) }()
+	reviewReq := Request{
+		Request: req.GetRequest(), Guidelines: req.GetGuidelines(), WorkingDirectory: req.GetWorkingDirectory(),
+		TimeoutSeconds: int(req.GetTimeoutSeconds()), OS: req.GetOs(), Shell: req.GetShell(),
+		Governance: &AuditorGovernanceContext{
+			Envelope: env, ConsensusInferences: votes, AuthoringSteps: result.GetSteps(),
+			DoctrineBundleHash: s.doctrine.DoctrineBundleHash(), DoctrineBundleVersion: s.doctrine.DoctrineBundleVersion(),
+		},
+	}
+	vote := Vote{Round: 1, Winner: arguments, Clusters: []Cluster{{ID: clusterID(0), Arguments: arguments}}}
+	review, err := audit(reviewCtx, cfg, reviewReq, vote)
+	if err != nil {
+		return failed(err)
+	}
+	steps.review(review)
+	if review.Failure != "" {
+		result.Outcome = tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED
+		result.AuditFailure = review.Failure
+		return fmt.Errorf("tribunal: contextual review: %w", constants.ErrTribunalAnswerInvalid)
+	}
+	if review.Arguments.CanonicalJSON() == arguments.CanonicalJSON() {
+		return nil
+	}
+	risk, err := assessRisk(reviewCtx, cfg, reviewReq, review.Arguments)
+	if err != nil {
+		return failed(err)
+	}
+	steps.risk(review.Arguments, risk)
+	if risk.Blocked() {
+		result.Outcome = tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED
+		result.RiskRationale, result.RiskFeedback = risk.Rationale, risk.Feedback
+		return fmt.Errorf("tribunal: contextual revision risk: %w", constants.ErrTribunalAnswerInvalid)
+	}
+	result.Arguments = review.Arguments.Proto()
+	result.ArgumentsJson = review.Arguments.CanonicalJSON()
+	return constants.ErrTribunalCommandRevised
 }
 
 // ValidateIntentRequest checks the fields the Tribunal needs, rejects a member

@@ -47,7 +47,7 @@ func (i Integration) Prepare(ctx context.Context, files fs.RuntimeFileService, h
 	}
 
 	if verify {
-		if err := i.Verify(configPath, launchArgs); err != nil {
+		if err := i.Verify(files, configPath, launchArgs); err != nil {
 			cleanup()
 			return Prepared{}, err
 		}
@@ -79,14 +79,23 @@ func (i Integration) VerifyIsolated(ctx context.Context, files fs.RuntimeFileSer
 // Verify runs every VerifyHook of the integration against the config the
 // launcher wrote and the argv it computed. It catches config write failures,
 // missing launch flags, and config format drift before the agent starts.
-func (i Integration) Verify(configPath string, launchArgs []string) error {
-	input := VerifyInput{ConfigPath: configPath, LaunchArgs: launchArgs}
+func (i Integration) Verify(files fs.RuntimeFileService, configPath string, launchArgs []string) error {
+	input := VerifyInput{Files: files, ConfigPath: configPath, LaunchArgs: launchArgs}
 	for _, hook := range i.VerifyHooks {
 		if err := hook(input); err != nil {
 			return fmt.Errorf("agent %s: %w", i.ID, err)
 		}
 	}
 	return nil
+}
+
+func readVerifyFile(in VerifyInput) ([]byte, error) {
+	if in.Files != nil {
+		if rel, err := in.Files.Rel(in.ConfigPath); err == nil {
+			return in.Files.ReadFile(context.Background(), rel)
+		}
+	}
+	return os.ReadFile(in.ConfigPath)
 }
 
 func verifyFailure(format string, args ...any) error {
@@ -109,7 +118,7 @@ func hasFlag(args []string, flag string, needValue bool) bool {
 // ztd entry in its mcpServers map. It serves Claude/Codex temp files, Devin's
 // config.json, and Gemini's settings.json, which share that shape.
 func verifyMCPServersJSON(in VerifyInput) error {
-	data, err := os.ReadFile(in.ConfigPath)
+	data, err := readVerifyFile(in)
 	if err != nil {
 		return verifyFailure("read mcp config %q: %v", in.ConfigPath, err)
 	}
@@ -149,7 +158,7 @@ func verifyGooseLaunchFlags(in VerifyInput) error {
 
 // verifyGooseExtensionEntry verifies Goose's config.yaml carries the ztd extension.
 func verifyGooseExtensionEntry(in VerifyInput) error {
-	data, err := os.ReadFile(in.ConfigPath)
+	data, err := readVerifyFile(in)
 	if err != nil {
 		return verifyFailure("read goose config %q: %v", in.ConfigPath, err)
 	}
@@ -166,7 +175,7 @@ func verifyGooseExtensionEntry(in VerifyInput) error {
 // verifyGeminiToolsCoreEmpty verifies Gemini's settings.json sets tools.core to
 // an empty array, which disables every built-in tool.
 func verifyGeminiToolsCoreEmpty(in VerifyInput) error {
-	data, err := os.ReadFile(in.ConfigPath)
+	data, err := readVerifyFile(in)
 	if err != nil {
 		return verifyFailure("read gemini settings %q: %v", in.ConfigPath, err)
 	}

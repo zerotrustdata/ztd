@@ -68,7 +68,10 @@ type OwnerConsole struct {
 	approvalReceipts *eventLog[*operatorv1.ActionReceipt]
 	decisions        sync.WaitGroup
 	l3Responder      bool
-	closed           bool
+	// approvals marks each transaction a CLI responder is answering (false)
+	// or has answered (true), so concurrent responders answer it once.
+	approvals map[string]bool
+	closed    bool
 	// deniedTool names the tool whose transactions the CLI responder denies;
 	// every other transaction is still approved. It is set after setup.
 	deniedTool atomic.Pointer[string]

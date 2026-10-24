@@ -45,7 +45,7 @@ func TestOpenBrowser(t *testing.T) {
 		}
 		err := openBrowserWithExecutor("", mock)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrBrowserURLEmpty)
+		require.ErrorIs(t, err, constants.ErrBrowserURLEmpty)
 		assert.Equal(t, 0, mock.callCount, "executor should not be called for empty URL")
 	})
 

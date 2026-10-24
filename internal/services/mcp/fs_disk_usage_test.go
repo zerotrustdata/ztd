@@ -150,7 +150,7 @@ proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
 	err = json.Unmarshal([]byte(result.Content[0].Text), &diskResult)
 	require.NoError(t, err)
 
-	require.Greater(t, diskResult.Count, 0)
+	require.Positive(t, diskResult.Count)
 	require.Len(t, diskResult.Filesystems, diskResult.Count)
 	require.Nil(t, diskResult.Filesystem)
 }
@@ -264,6 +264,7 @@ func TestGetDiskUsageForPath(t *testing.T) {
 			},
 			path: "/var",
 			verify: func(t *testing.T, result FSDiskUsageResult) {
+				t.Helper()
 				require.Equal(t, "/var", result.Path)
 				require.NotNil(t, result.Filesystem)
 				require.Equal(t, "/var", result.Filesystem.Path)
@@ -290,6 +291,7 @@ func TestGetDiskUsageForPath(t *testing.T) {
 			},
 			path: "/empty",
 			verify: func(t *testing.T, result FSDiskUsageResult) {
+				t.Helper()
 				require.Equal(t, uint64(0), result.Filesystem.TotalBytes)
 				require.Equal(t, uint64(0), result.Filesystem.UsedBytes)
 				require.Equal(t, uint64(0), result.Filesystem.FreeBytes)
@@ -344,7 +346,7 @@ func TestGetAllDiskUsage_Success(t *testing.T) {
 	result, err := getAllDiskUsage(mockStat, mockRead)
 	require.NoError(t, err)
 
-	require.Greater(t, result.Count, 0)
+	require.Positive(t, result.Count)
 	require.Len(t, result.Filesystems, result.Count)
 	require.Nil(t, result.Filesystem)
 }

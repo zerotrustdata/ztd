@@ -12036,8 +12036,12 @@ type CandidateOutput struct {
 	// command is the shell text an agent-trace.v7 or earlier candidate step
 	// recorded. It is decoded only so historical traces stay verifiable; new
 	// steps never set it and agent-trace.v8 rejects it.
-	Command       string                        `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
-	Arguments     *v11.RunShellCommandArguments `protobuf:"bytes,2,opt,name=arguments,proto3" json:"arguments,omitempty"`
+	Command   string                        `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	Arguments *v11.RunShellCommandArguments `protobuf:"bytes,2,opt,name=arguments,proto3" json:"arguments,omitempty"`
+	// excluded marks a candidate that matched Nemesis's adversarial proposal in
+	// its round, Nemesis's own included. It is recorded but never tallied, so it
+	// can never be the selected command.
+	Excluded      bool `protobuf:"varint,3,opt,name=excluded,proto3" json:"excluded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12084,6 +12088,13 @@ func (x *CandidateOutput) GetArguments() *v11.RunShellCommandArguments {
 		return x.Arguments
 	}
 	return nil
+}
+
+func (x *CandidateOutput) GetExcluded() bool {
+	if x != nil {
+		return x.Excluded
+	}
+	return false
 }
 
 type CandidateVote struct {
@@ -13830,10 +13841,11 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x18\n" +
 	"\aposture\x18\x03 \x01(\tR\aposture\"'\n" +
 	"\x0fResponderOutput\x12\x14\n" +
-	"\x05reply\x18\x01 \x01(\tR\x05reply\"t\n" +
+	"\x05reply\x18\x01 \x01(\tR\x05reply\"\x90\x01\n" +
 	"\x0fCandidateOutput\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x12G\n" +
-	"\targuments\x18\x02 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\"Y\n" +
+	"\targuments\x18\x02 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\x12\x1a\n" +
+	"\bexcluded\x18\x03 \x01(\bR\bexcluded\"Y\n" +
 	"\rCandidateVote\x12\x1f\n" +
 	"\vvoter_label\x18\x01 \x01(\tR\n" +
 	"voterLabel\x12'\n" +

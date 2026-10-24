@@ -11,7 +11,7 @@ import { StreamProvider } from '../../state/stream';
 import { ToastProvider } from '../../state/toast';
 import { ApprovalsView } from './ApprovalsView';
 
-type Handler = (body: unknown, url: URL) => [number, unknown];
+type Handler = (body: unknown, url: URL) => [number, unknown] | Promise<[number, unknown]>;
 
 interface RecordedCall {
   method: string;
@@ -78,7 +78,7 @@ describe('ApprovalsView platform enrollment decisions', () => {
         const body = init.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ method, path: url.pathname, body });
         const handler = routes[`${method} ${url.pathname}`];
-        const [status, payload] = handler ? handler(body, url) : [404, { error: 'not found' }];
+        const [status, payload] = handler ? await handler(body, url) : [404, { error: 'not found' }];
         return new Response(JSON.stringify(payload), {
           status,
           headers: { 'Content-Type': 'application/json' },
@@ -218,6 +218,49 @@ describe('ApprovalsView platform enrollment decisions', () => {
       screen.queryByText('Enrollment approved. The workload can now complete enrollment.'),
     ).toBeNull();
     expect(screen.getByText('req-1')).toBeInTheDocument();
+  });
+
+  it('keeps other transactions approvable while a signed approval is still executing', async () => {
+    const getCredMock = vi.fn().mockResolvedValue(fakeAssertion());
+    vi.stubGlobal('navigator', { credentials: { get: getCredMock } });
+    let finishFirst: (result: [number, unknown]) => void = () => {};
+    const tx = (hash: string, tool: string) => ({
+      transaction_hash: hash,
+      tool_name: tool,
+      created_at: '2026-10-17T19:00:00Z',
+      expires_at: '2026-10-17T20:00:00Z',
+    });
+
+    routes = {
+      'GET /api/v1/approvals': () => [
+        200,
+        { transactions: [tx('tx-command', 'run_shell_command'), tx('tx-review', 'inference')] },
+      ],
+      'GET /api/v1/auth/platform-enrollments/pending': () => [200, { requests: [] }],
+      'GET /api/v1/approvals/tx-command/challenge': () => [200, { publicKey: { challenge: 'AQ', allowCredentials: [] } }],
+      'GET /api/v1/approvals/tx-review/challenge': () => [200, { publicKey: { challenge: 'AQ', allowCredentials: [] } }],
+      // The command's execution waits on the review inference's own approval.
+      'POST /api/v1/approvals/tx-command/verify': () => new Promise((resolve) => (finishFirst = resolve)),
+      'POST /api/v1/approvals/tx-review/verify': () => {
+        finishFirst([200, { receipt: {} }]);
+        return [200, { receipt: {} }];
+      },
+    };
+
+    const user = userEvent.setup();
+    renderApprovalsView();
+
+    const [commandApprove] = await screen.findAllByRole('button', { name: 'Approve' });
+    expect(commandApprove).toBeDefined();
+    await user.click(commandApprove!);
+    expect(await screen.findByRole('button', { name: 'Executing…' })).toBeDisabled();
+
+    const reviewApprove = screen.getByRole('button', { name: 'Approve' });
+    expect(reviewApprove).toBeEnabled();
+    await user.click(reviewApprove);
+
+    await waitFor(() => expect(screen.getAllByText('Transaction approved. Execution resumed.')).toHaveLength(2));
+    expect(getCredMock).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces verification rejection when approveTransaction returns ok: false', async () => {

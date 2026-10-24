@@ -365,8 +365,8 @@ func TestCLIRotationController_Rotate_ConcurrentOnlyOneSucceeds(t *testing.T) {
 	for i := 0; i < goroutines; i++ {
 		go func() {
 			defer wg.Done()
-			csrPEM, _, _ := generateTestCSR(t, "rotation-concurrent")
-			req := rotationRequestWithContext(t, user.ID, oldSessionID, csrPEM)
+			csrPEM, _, _ := generateTestCSR(t, "rotation-concurrent")           //nolint:testifylint // shared helper keeps require for the test goroutine
+			req := rotationRequestWithContext(t, user.ID, oldSessionID, csrPEM) //nolint:testifylint // shared helper keeps require for the test goroutine
 			rr := httptest.NewRecorder()
 			c.handleRotate(rr, req)
 			mu.Lock()

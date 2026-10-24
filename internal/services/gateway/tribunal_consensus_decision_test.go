@@ -13,13 +13,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type decisionVoteInferer struct {
@@ -32,8 +33,12 @@ func (f decisionVoteInferer) DispatchInference(_ context.Context, r dispatch.Dis
 		return nil, constants.ErrInferenceOperatorNotFound
 	}
 	result := &operatorv1.InferenceDecisionResult{}
+	prob := f.probability
+	if r.ActingAppID == constants.TribunalConsensusAppIDPrefix+"nemesis" {
+		prob = 1 - f.probability
+	}
 	for _, q := range r.Decision.Questions {
-		result.Answers = append(result.Answers, &operatorv1.InferenceDecisionAnswer{Name: q.Name, Kind: &operatorv1.InferenceDecisionAnswer_Noul{Noul: f.probability}})
+		result.Answers = append(result.Answers, &operatorv1.InferenceDecisionAnswer{Name: q.Name, Kind: &operatorv1.InferenceDecisionAnswer_Noul{Noul: prob}})
 	}
 	return &dispatch.DispatchInferenceResult{TransactionID: "decision-inference", Result: &operatorv1.InferenceResult{Decision: result}}, nil
 }
@@ -68,8 +73,8 @@ func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
 	out, err := d.Deliberate(t.Context(), marshalTestEnvelope(t, env))
 	require.NoError(t, err)
 	var deliberated commonv1.GovernanceEnvelope
-	require.NoError(t, protojson.Unmarshal(out, &deliberated))
-	require.Len(t, deliberated.GetGovernance().GetL2().GetVotes(), binding.Quorum)
+	require.NoError(t, protojson.Unmarshal(out.Envelope, &deliberated))
+	require.Len(t, deliberated.GetGovernance().GetL2().GetVotes(), len(binding.MemberAppIDs))
 	for _, vote := range deliberated.GetGovernance().GetL2().GetVotes() {
 		require.True(t, vote.Decision)
 		assertVoteSignature(t, signer, hash, vote)

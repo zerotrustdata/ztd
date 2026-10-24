@@ -187,7 +187,7 @@ func TestCampaignControllerResumeNextAssignmentFailsOnUnresolvedRunningAssignmen
 	require.NoError(t, store.SaveAssignment(context.Background(), assignments[0]))
 
 	resumed, ok, err := controller.ResumeNextAssignment(context.Background(), req.RunID)
-	assert.ErrorIs(t, err, constants.ErrEvaluationAssignmentUnresolved)
+	require.ErrorIs(t, err, constants.ErrEvaluationAssignmentUnresolved)
 	assert.False(t, ok)
 	assert.Nil(t, resumed)
 }
@@ -201,13 +201,13 @@ func TestCampaignControllerRunSummaryCountsAssignments(t *testing.T) {
 	require.NoError(t, err)
 	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
-	require.Greater(t, count, 0)
+	require.Positive(t, count)
 
 	summary, err := controller.RunSummary(context.Background(), req.RunID)
 	require.NoError(t, err)
 	require.NotNil(t, summary)
 	assert.Equal(t, req.RunID, summary.Run.GetRunId())
-	assert.Greater(t, summary.ExpectedAssignment, uint64(0))
+	assert.Positive(t, summary.ExpectedAssignment)
 	assert.Equal(t, uint32(count), summary.QueuedCount)
 }
 

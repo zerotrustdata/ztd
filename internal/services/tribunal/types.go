@@ -20,7 +20,10 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // Stage names the deliberation stage a model call serves.
@@ -90,10 +93,20 @@ func ConsensusMemberAppIDs() []string {
 // generationRounds is the sealed round plus the one anonymized regeneration.
 const generationRounds = 2
 
-// MaxMemberCalls bounds the member inferences of one deliberation: every
-// member in both generation rounds, Marshal on the vote winner and again on a
-// command the Auditor changed, and each Auditor attempt.
-var MaxMemberCalls = generationRounds*len(AllMembers) + 2 + auditorMaxAttempts
+// candidateMaxAttempts bounds each member's generation and L1 repair calls
+// within a voting round. An exhausted member abstains.
+const candidateMaxAttempts = 3
+
+// MaxAdmissionReviews bounds the admitted envelopes one intent may dispatch:
+// the approved command, plus one fresh envelope when the contextual Auditor
+// review of the admitted command revises it.
+const MaxAdmissionReviews = 2
+
+// MaxMemberCalls bounds the member inferences of one intent: both rounds
+// including L1 repairs, Marshal on the winner and an Auditor change, each
+// Auditor attempt, and every contextual review's Auditor attempts and Marshal
+// assessment of its revision.
+var MaxMemberCalls = generationRounds*len(AllMembers)*candidateMaxAttempts + 2 + auditorMaxAttempts + MaxAdmissionReviews*(auditorMaxAttempts+1)
 
 // RiskLevel is Marshal's classification of a command.
 type RiskLevel string
@@ -140,7 +153,9 @@ const (
 // requires the member template's role to be Tier's inference role. ModelTag
 // and ModelDigest identify the variant on each recorded step.
 type Config struct {
-	Inferer     Inferer
+	Inferer Inferer
+	// Doctrine is the active Gateway doctrine, also used by governed dispatch.
+	Doctrine    *governance.L1Doctrine
 	Tier        evalv1.ModelCampaignRole
 	ModelTag    string
 	ModelDigest string
@@ -155,6 +170,18 @@ type Request struct {
 	TimeoutSeconds   int
 	OS               string
 	Shell            string
+	// Governance is supplied only by the Gateway after actual decisions arrive.
+	Governance *AuditorGovernanceContext
+}
+
+// AuditorGovernanceContext carries the actual admission facts as context for
+// technical review. Model review does not verify or replace any proof.
+type AuditorGovernanceContext struct {
+	Envelope              *commonv1.GovernanceEnvelope
+	ConsensusInferences   []*operatorv1.ConsensusVoteInference
+	DoctrineBundleHash    string
+	DoctrineBundleVersion string
+	AuthoringSteps        []*evalv1.AgentStep
 }
 
 // Candidate is one member's typed proposal in one generation round.
@@ -179,13 +206,16 @@ type Vote struct {
 	// Winner is the selected command; empty when no cluster reached the
 	// minimum consensus or the tie-break ladder left a tie.
 	Winner models.RunShellCommandRequest
+	// Excluded is Nemesis's proposal in this round; empty when Nemesis
+	// abstained. It and every matching proposal are never tallied.
+	Excluded models.RunShellCommandRequest
 }
 
-// Unanimous reports whether every panel member proposed the winner.
+// Unanimous reports whether every eligible panel member (all non-Nemesis members) proposed the winner.
 func (v Vote) Unanimous() bool {
 	for _, cluster := range v.Clusters {
 		if cluster.Arguments.CanonicalJSON() == v.Winner.CanonicalJSON() {
-			return len(cluster.Members) == len(AllMembers)
+			return len(cluster.Members) == len(AllMembers)-1
 		}
 	}
 	return false

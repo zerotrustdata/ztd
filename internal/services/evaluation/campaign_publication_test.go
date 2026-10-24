@@ -26,7 +26,8 @@ import (
 )
 
 type recordingCampaignFeedExporter struct {
-	records []CampaignPublicFeedRecord
+	records    []CampaignPublicFeedRecord
+	batchSizes []int
 }
 
 func (r *recordingCampaignFeedExporter) HighWaterSequence(context.Context) (int64, error) {
@@ -34,6 +35,7 @@ func (r *recordingCampaignFeedExporter) HighWaterSequence(context.Context) (int6
 }
 
 func (r *recordingCampaignFeedExporter) ExportBatch(_ context.Context, records []CampaignPublicFeedRecord) error {
+	r.batchSizes = append(r.batchSizes, len(records))
 	r.records = append(r.records, records...)
 	return nil
 }
@@ -114,7 +116,9 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesSealedObservat
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
 		"unverified",
 	))
-	require.Len(t, exporter.records, 1)
+	require.Greater(t, len(exporter.records), 1)
+	require.Len(t, evaluationSummaries(t, exporter.records), 1, "result publication also carries canonical run values")
+	require.Equal(t, []int{len(exporter.records)}, exporter.batchSizes, "result and run summary share one signed batch")
 
 	envelope := CampaignProjectionEnvelope{}
 	require.NoError(t, json.Unmarshal([]byte(exporter.records[0].RecordBytes), &envelope))
@@ -124,7 +128,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesSealedObservat
 	require.NotNil(t, record.BenchmarkObservations.GPU)
 	require.NotNil(t, record.BenchmarkObservations.GPU.VRAMPeakBytes)
 	require.NotNil(t, record.BenchmarkObservations.GPU.VRAMPeakBytes.Value)
-	assert.Equal(t, float64(16_000_000_000), *record.BenchmarkObservations.GPU.VRAMPeakBytes.Value)
+	assert.InDelta(t, float64(16_000_000_000), *record.BenchmarkObservations.GPU.VRAMPeakBytes.Value, 0)
 }
 
 func TestCampaignPublicationCoordinatorPublishAssignmentResultFailedAssignmentWithoutInferences(t *testing.T) {
@@ -169,7 +173,8 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultFailedAssignmentWi
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
 		"unverified",
 	))
-	require.Len(t, exporter.records, 1)
+	require.Greater(t, len(exporter.records), 1)
+	require.Len(t, evaluationSummaries(t, exporter.records), 1, "failed assignment publication refreshes the run summary")
 }
 
 // savePublicRunIdentity stores the campaign spec and run identity the public
@@ -337,7 +342,7 @@ func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
 
 	count, err := coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_100, 0).UTC())
 	require.NoError(t, err)
-	require.Greater(t, count, 0)
+	require.Positive(t, count)
 	preVerify := evaluationSummaries(t, exporter.records)
 	require.NotEmpty(t, preVerify)
 	assert.Equal(t, "not_run", preVerify[len(preVerify)-1].VerifierState)
@@ -401,11 +406,11 @@ func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T)
 
 	_, err := coordinator.PublishRunAggregates(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 
 	_, err = coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 
 	assert.Empty(t, exporter.records, "a failed bind must publish nothing")
 }
@@ -424,7 +429,7 @@ func TestPublishRunCatchUpWithVerificationRejectsCallerReportForSettledRun(t *te
 
 	_, err := coordinator.PublishRunCatchUpWithVerification(context.Background(), run.GetRunId(), report)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 	assert.Empty(t, exporter.records)
 }
 

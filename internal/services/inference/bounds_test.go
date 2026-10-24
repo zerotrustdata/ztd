@@ -23,7 +23,7 @@ func TestValidateKeepAlive(t *testing.T) {
 	assert.NoError(t, validateKeepAlive(""))
 	assert.NoError(t, validateKeepAlive("-1"))
 	assert.NoError(t, validateKeepAlive("5m"))
-	assert.ErrorIs(t, validateKeepAlive("not-a-duration"), constants.ErrInferenceGenerationOptionsInvalid)
+	require.ErrorIs(t, validateKeepAlive("not-a-duration"), constants.ErrInferenceGenerationOptionsInvalid)
 	assert.ErrorIs(t, validateKeepAlive(strings.Repeat("x", maxInferenceKeepAliveBytes+1)), constants.ErrInferenceGenerationOptionsInvalid)
 }
 

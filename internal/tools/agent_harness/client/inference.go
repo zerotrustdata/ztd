@@ -128,10 +128,11 @@ func (c *Client) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalInt
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: marshal tribunal intent request: %v", constants.ErrRequestMarshalFailed, err)
 	}
-	// Every member call may run to the inference deadline, and the approved
-	// command may wait for a human decision before its own dispatch deadline.
+	// Every member call may run to the inference deadline, and each admitted
+	// envelope (a contextual revision needs a fresh one) may wait for a human
+	// decision before its own dispatch deadline.
 	httpClient := &http.Client{
-		Timeout:   time.Duration(tribunal.MaxMemberCalls)*dispatch.RequestDeadline + mcp.ApprovalRequestTTL + dispatch.RequestDeadline,
+		Timeout:   time.Duration(tribunal.MaxMemberCalls)*dispatch.RequestDeadline + tribunal.MaxAdmissionReviews*(mcp.ApprovalRequestTTL+dispatch.RequestDeadline),
 		Transport: c.http.Transport,
 	}
 	status, respBody, err := c.doInference(ctx, httpClient, c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsIntents, body, nil)

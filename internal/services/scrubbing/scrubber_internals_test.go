@@ -87,7 +87,7 @@ func TestTokenize_KeepsExistingTokens(t *testing.T) {
 
 func TestTokenKeymapHash_Empty(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "", newTestService(t, nil).TokenKeymapHash())
+	assert.Empty(t, newTestService(t, nil).TokenKeymapHash())
 }
 
 func TestTokenKeymapHash_WithTokens(t *testing.T) {

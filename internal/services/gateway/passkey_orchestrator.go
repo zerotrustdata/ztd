@@ -61,11 +61,6 @@ func (o *PasskeyOrchestrator) ResumeWithL3Proof(ctx context.Context, txHash, use
 	return o.mcpSvc.ResumeWithL3Proof(ctx, txHash, userID, proof)
 }
 
-// ApproveSuspendedTransaction records an approval proof against a suspended transaction.
-func (o *PasskeyOrchestrator) ApproveSuspendedTransaction(ctx context.Context, txHash string, proof models.ApprovalProof) error {
-	return o.suspendedStore.ApproveSuspendedTransaction(ctx, txHash, proof)
-}
-
 // DenySuspendedTransaction ends a suspended transaction the user declined and
 // returns the executing Operator's signed L3_DENIED rejection receipt.
 func (o *PasskeyOrchestrator) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {

@@ -199,7 +199,17 @@ func (c *CampaignPublicationCoordinator) PublishAssignmentResult(ctx context.Con
 	if err != nil {
 		return err
 	}
-	_, err = c.exportFeedRecords(ctx, assignment.GetRunId(), []campaignFeedPublishRequest{request})
+	var observedAt time.Time
+	if completed := result.GetCompletedAt(); completed != nil {
+		observedAt = completed.AsTime()
+	}
+	aggregates, err := c.buildRunAggregatePublishRequests(ctx, assignment.GetRunId(), observedAt)
+	if err != nil {
+		return err
+	}
+	// The mirror commits the result and its derived summaries together. A
+	// browser never has to infer a run's totals from assignment activity.
+	_, err = c.exportFeedRecords(ctx, assignment.GetRunId(), append([]campaignFeedPublishRequest{request}, aggregates...))
 	return err
 }
 
@@ -317,26 +327,33 @@ func (c *CampaignPublicationCoordinator) buildAssignmentBenchmarkObservations(ct
 // A bound, applicable persisted verification report keeps the emitted summary in
 // its verified state so later aggregate revisions cannot regress verification.
 func (c *CampaignPublicationCoordinator) PublishRunAggregates(ctx context.Context, runID string, observedAt time.Time) (int, error) {
+	requests, err := c.buildRunAggregatePublishRequests(ctx, runID, observedAt)
+	if err != nil {
+		return 0, err
+	}
+	return c.exportFeedRecords(ctx, runID, requests)
+}
+
+func (c *CampaignPublicationCoordinator) buildRunAggregatePublishRequests(ctx context.Context, runID string, observedAt time.Time) ([]campaignFeedPublishRequest, error) {
 	if c == nil || c.store == nil || c.files == nil || c.exporter == nil || runID == "" {
-		return 0, fmt.Errorf("evaluation: publish run aggregates: %w", constants.ErrMissingRequiredField)
+		return nil, fmt.Errorf("evaluation: publish run aggregates: %w", constants.ErrMissingRequiredField)
 	}
 	run, assignments, results, state, err := c.loadRunAggregateState(ctx, runID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if state.Scheduled == 0 {
-		return 0, nil
+		return nil, nil
 	}
 	report, err := c.loadBoundRunVerification(ctx, runID, run, assignments, results)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	records, err := BuildRunAggregateViewRecords(run, state, report, observedAt)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	requests := viewRecordsToPublishRequests(records)
-	return c.exportFeedRecords(ctx, runID, requests)
+	return viewRecordsToPublishRequests(records), nil
 }
 
 // PublishRunVerification emits the post-verify evaluation_summary revision and

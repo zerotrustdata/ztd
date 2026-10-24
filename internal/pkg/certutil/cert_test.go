@@ -160,7 +160,7 @@ func TestEncodeCertAndKey_SeparatorNoDuplicateNewline(t *testing.T) {
 	content := string(certBytes)
 
 	assert.True(t, strings.HasPrefix(content, "-----BEGIN CERTIFICATE-----"))
-	assert.True(t, strings.Contains(content, "-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----"))
+	assert.Contains(t, content, "-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----")
 
-	assert.False(t, strings.Contains(content, "-----END CERTIFICATE-----\n\n\n"), "no triple newline")
+	assert.NotContains(t, content, "-----END CERTIFICATE-----\n\n\n", "no triple newline")
 }

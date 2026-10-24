@@ -39,42 +39,42 @@ const embeddedDoctrineRecordSHA256 = "8b65b90be2f9dfdf4c0d1b22bcac64a6ea2f71500f
 // their digest sidecar holds. The decompressed bytes are pinned against
 // doctrineRecordSHA256, so a changed testdata file fails the test instead of
 // being trusted. Each call returns fresh bytes that the caller may mutate.
-func DoctrineRecord(t testing.TB) ([]byte, string) {
-	t.Helper()
-	return decodePinnedRecord(t, doctrineRecordGzip, doctrineRecordSHA256)
+func DoctrineRecord(tb testing.TB) ([]byte, string) {
+	tb.Helper()
+	return decodePinnedRecord(tb, doctrineRecordGzip, doctrineRecordSHA256)
 }
 
 // EmbeddedDoctrineRecord returns the pinned canonical record of a doctrine run
 // whose Data Operator was the embedded Operator, so every case, including the
 // outbound-role ingresses, ran on the embedded executor. It is pinned the same
 // way as DoctrineRecord.
-func EmbeddedDoctrineRecord(t testing.TB) ([]byte, string) {
-	t.Helper()
-	return decodePinnedRecord(t, embeddedDoctrineRecordGzip, embeddedDoctrineRecordSHA256)
+func EmbeddedDoctrineRecord(tb testing.TB) ([]byte, string) {
+	tb.Helper()
+	return decodePinnedRecord(tb, embeddedDoctrineRecordGzip, embeddedDoctrineRecordSHA256)
 }
 
 // decodePinnedRecord decompresses gz and returns the bytes with their hex sha256.
 // It fails the test unless the sha256 equals want.
-func decodePinnedRecord(t testing.TB, gz []byte, want string) ([]byte, string) {
-	t.Helper()
+func decodePinnedRecord(tb testing.TB, gz []byte, want string) ([]byte, string) {
+	tb.Helper()
 	reader, err := gzip.NewReader(bytes.NewReader(gz))
 	if err != nil {
-		t.Fatalf("conformancetest: open pinned doctrine record: %v", err)
+		tb.Fatalf("conformancetest: open pinned doctrine record: %v", err)
 		return nil, ""
 	}
 	raw, err := io.ReadAll(reader)
 	if err != nil {
-		t.Fatalf("conformancetest: decompress pinned doctrine record: %v", err)
+		tb.Fatalf("conformancetest: decompress pinned doctrine record: %v", err)
 		return nil, ""
 	}
 	if err := reader.Close(); err != nil {
-		t.Fatalf("conformancetest: close pinned doctrine record reader: %v", err)
+		tb.Fatalf("conformancetest: close pinned doctrine record reader: %v", err)
 		return nil, ""
 	}
 	sum := sha256.Sum256(raw)
 	digestHex := hex.EncodeToString(sum[:])
 	if digestHex != want {
-		t.Fatalf("conformancetest: pinned doctrine record sha256 = %s, want %s", digestHex, want)
+		tb.Fatalf("conformancetest: pinned doctrine record sha256 = %s, want %s", digestHex, want)
 		return nil, ""
 	}
 	return raw, digestHex

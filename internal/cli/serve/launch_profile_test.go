@@ -66,7 +66,7 @@ func TestWriteLaunchProfile_RoundTripPreservesAllFields(t *testing.T) {
 	assert.Equal(t, cfg.PasskeyRpID, profile.Config.PasskeyRpID)
 	assert.Equal(t, cfg.PasskeyRpName, profile.Config.PasskeyRpName)
 	assert.Equal(t, cfg.PasskeyRpOrigins, profile.Config.PasskeyRpOrigins)
-	assert.Equal(t, cfg.RateLimitRPS, profile.Config.RateLimitRPS)
+	assert.InDelta(t, cfg.RateLimitRPS, profile.Config.RateLimitRPS, 0)
 	assert.Equal(t, cfg.RateLimitBurst, profile.Config.RateLimitBurst)
 	assert.Equal(t, cfg.LogLevel, profile.Config.LogLevel)
 	assert.Equal(t, cfg.CertIdentityMode, profile.Config.CertIdentityMode)

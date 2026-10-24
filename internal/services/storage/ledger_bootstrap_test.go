@@ -66,9 +66,9 @@ func setupBootstrapLedger(t *testing.T) (*GitLedgerService, string) {
 // construction, even when it did not exist before.
 func TestBootstrap_CreatesBaseDir(t *testing.T) {
 	t.Parallel()
-	_, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
-	info, err := os.Stat(ledgerDir)
+	info, err := svc.fileSvc.Stat(t.Context(), filepath.Join(constants.DataDirname, constants.LedgerDirname))
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 }
@@ -77,10 +77,9 @@ func TestBootstrap_CreatesBaseDir(t *testing.T) {
 // immediately after construction.
 func TestBootstrap_CreatesFilesDir(t *testing.T) {
 	t.Parallel()
-	_, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
-	filesDir := filepath.Join(ledgerDir, constants.FilesDirname)
-	info, err := os.Stat(filesDir)
+	info, err := svc.fileSvc.Stat(t.Context(), filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname))
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 }
@@ -89,10 +88,9 @@ func TestBootstrap_CreatesFilesDir(t *testing.T) {
 // exists immediately after construction.
 func TestBootstrap_CreatesSessionsDir(t *testing.T) {
 	t.Parallel()
-	_, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
-	sessionsDir := filepath.Join(ledgerDir, constants.SessionsDirname)
-	info, err := os.Stat(sessionsDir)
+	info, err := svc.fileSvc.Stat(t.Context(), filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.SessionsDirname))
 	require.NoError(t, err)
 	assert.True(t, info.IsDir())
 }
@@ -101,10 +99,9 @@ func TestBootstrap_CreatesSessionsDir(t *testing.T) {
 // valid .git directory immediately after construction.
 func TestBootstrap_FilesDirHasGitRepo(t *testing.T) {
 	t.Parallel()
-	_, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
-	gitDir := filepath.Join(ledgerDir, constants.FilesDirname, constants.GitDirname)
-	info, err := os.Stat(gitDir)
+	info, err := svc.fileSvc.Stat(t.Context(), filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname, constants.GitDirname))
 	require.NoError(t, err)
 	assert.True(t, info.IsDir(), ".git directory must exist in files/")
 }
@@ -113,10 +110,9 @@ func TestBootstrap_FilesDirHasGitRepo(t *testing.T) {
 // was created in the files/ directory during bootstrap.
 func TestBootstrap_GitignoreExistsInFilesDir(t *testing.T) {
 	t.Parallel()
-	_, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
-	gitignorePath := filepath.Join(ledgerDir, constants.FilesDirname, constants.GitignoreFilename)
-	info, err := os.Stat(gitignorePath)
+	info, err := svc.fileSvc.Stat(t.Context(), filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname, constants.GitignoreFilename))
 	require.NoError(t, err)
 	assert.False(t, info.IsDir())
 }
@@ -125,19 +121,19 @@ func TestBootstrap_GitignoreExistsInFilesDir(t *testing.T) {
 // verifies the entire expected directory tree in one assertion block.
 func TestBootstrap_AllPathsExist(t *testing.T) {
 	t.Parallel()
-	_, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
 	expectedPaths := []string{
-		ledgerDir,
-		filepath.Join(ledgerDir, constants.FilesDirname),
-		filepath.Join(ledgerDir, constants.FilesDirname, constants.GitDirname),
-		filepath.Join(ledgerDir, constants.FilesDirname, constants.GitignoreFilename),
-		filepath.Join(ledgerDir, constants.SessionsDirname),
+		filepath.Join(constants.DataDirname, constants.LedgerDirname),
+		filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname),
+		filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname, constants.GitDirname),
+		filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname, constants.GitignoreFilename),
+		filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.SessionsDirname),
 	}
 
-	for _, p := range expectedPaths {
-		_, err := os.Stat(p)
-		require.NoError(t, err, "expected path to exist: %s", p)
+	for _, relPath := range expectedPaths {
+		_, err := svc.fileSvc.Stat(t.Context(), relPath)
+		require.NoError(t, err, "expected path to exist: %s", relPath)
 	}
 }
 
@@ -368,25 +364,26 @@ func TestBootstrap_OpenSessionLedgerEmptyReturnsFilesDir(t *testing.T) {
 // is created on first access (not during bootstrap) and has a valid initial commit.
 func TestBootstrap_SessionRepoCreatedLazily(t *testing.T) {
 	t.Parallel()
-	svc, ledgerDir := setupBootstrapLedger(t)
+	svc, _ := setupBootstrapLedger(t)
 
 	sessionID := "bootstrap-test-session"
-	sessionPath := filepath.Join(ledgerDir, constants.SessionsDirname, sessionID)
+	sessionRelPath := filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.SessionsDirname, sessionID)
+	sessionPath := svc.fileSvc.Resolve(sessionRelPath)
 
 	// Before creation, the session directory should not exist, and a read-path lookup must not create it
-	_, err := os.Stat(filepath.Join(sessionPath, constants.GitDirname))
-	assert.True(t, os.IsNotExist(err), "session .git should not exist before first access")
+	_, err := svc.fileSvc.Stat(t.Context(), filepath.Join(sessionRelPath, constants.GitDirname))
+	require.ErrorIs(t, err, constants.ErrNotFound, "session .git should not exist before first access")
 	_, err = svc.openSessionLedger(sessionID)
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
-	_, err = os.Stat(sessionPath)
-	assert.True(t, os.IsNotExist(err), "a read-path lookup must not create the session ledger")
+	_, err = svc.fileSvc.Stat(t.Context(), sessionRelPath)
+	require.ErrorIs(t, err, constants.ErrNotFound, "a read-path lookup must not create the session ledger")
 
 	// After creation, it should exist and be a valid git repo
 	path, err := svc.createSessionLedger(sessionID)
 	require.NoError(t, err)
 	assert.Equal(t, sessionPath, path)
 
-	_, err = os.Stat(filepath.Join(sessionPath, constants.GitDirname))
+	_, err = svc.fileSvc.Stat(t.Context(), filepath.Join(sessionRelPath, constants.GitDirname))
 	require.NoError(t, err, "session .git must exist after createSessionLedger")
 
 	// Verify the session repo has an initial commit

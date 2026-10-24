@@ -96,8 +96,8 @@ func TestValidateAssignmentAndFeedRecordsRejectMalformedInput(t *testing.T) {
 func TestValidatePublicDisclosureResultsAndBindings(t *testing.T) {
 	validBinding := &evalv1.PublicEvidenceBinding{Sha256: strings.Repeat("a", 64), SchemaRef: "schema@1.0.0", Kind: "proof"}
 	require.NoError(t, validateBindings([]*evalv1.PublicEvidenceBinding{validBinding}))
-	assert.ErrorIs(t, validateBindings([]*evalv1.PublicEvidenceBinding{{Sha256: "bad"}}), constants.ErrEvidenceArtifactMalformed)
-	assert.ErrorIs(t, validateBindings([]*evalv1.PublicEvidenceBinding{validBinding, validBinding}), constants.ErrEvidenceArtifactMalformed)
+	require.ErrorIs(t, validateBindings([]*evalv1.PublicEvidenceBinding{{Sha256: "bad"}}), constants.ErrEvidenceArtifactMalformed)
+	require.ErrorIs(t, validateBindings([]*evalv1.PublicEvidenceBinding{validBinding, validBinding}), constants.ErrEvidenceArtifactMalformed)
 	require.NoError(t, validateResult("1.0.0", json.RawMessage(`{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","result_digest":"`+strings.Repeat("b", 64)+`"}`)))
 	assert.ErrorIs(t, validateResult("1.0.0", json.RawMessage(`{"assignment_id":"assignment-1"}`)), constants.ErrEvidenceSchemaMismatch)
 }
@@ -147,7 +147,7 @@ func TestValidateAssignmentRecordTrajectoryFieldsRequireEnvelope120(t *testing.T
 func TestValidatePublicDisclosureEvents(t *testing.T) {
 	event := []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-01-01T00:00:00Z","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":1,"total":1}`)
 	require.NoError(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, event))
-	assert.ErrorIs(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"bad","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":1,"total":1}`)), constants.ErrPublicFeedRecordSchemaInvalid)
+	require.ErrorIs(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"bad","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":1,"total":1}`)), constants.ErrPublicFeedRecordSchemaInvalid)
 	assert.ErrorIs(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-01-01T00:00:00Z","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":2,"total":1}`)), constants.ErrPublicFeedRecordSchemaInvalid)
 }
 
@@ -200,7 +200,7 @@ func TestValidatePublicDisclosureEnvelopeAndJSONDecoding(t *testing.T) {
 	fields, err := decodeObject(projection)
 	require.NoError(t, err)
 	assert.Equal(t, `"evaluation_summary"`, string(fields["kind"]))
-	assert.Error(t, func() error { _, decodeErr := decodeObject([]byte(`null`)); return decodeErr }())
+	require.Error(t, func() error { _, decodeErr := decodeObject([]byte(`null`)); return decodeErr }())
 	assert.Error(t, func() error { var value map[string]any; return decodeStrict([]byte(`{} {}`), &value) }())
 }
 

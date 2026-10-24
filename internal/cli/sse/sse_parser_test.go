@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseSSEStream_SingleLineData(t *testing.T) {
@@ -25,7 +26,7 @@ func TestParseSSEStream_SingleLineData(t *testing.T) {
 		gotType = eventType
 		gotData = data
 	}, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "test", gotType)
 	assert.Equal(t, "hello", gotData)
 }
@@ -40,7 +41,7 @@ func TestParseSSEStream_MultiLineData(t *testing.T) {
 		gotType = eventType
 		gotData = data
 	}, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "test", gotType)
 	assert.Equal(t, "line1\nline2\nline3", gotData,
 		"multiple data: lines must be concatenated with newlines per SSE spec")
@@ -55,7 +56,7 @@ func TestParseSSEStream_MultipleEvents(t *testing.T) {
 	err := parseSSEStream(context.Background(), strings.NewReader(input), func(eventType, data string) {
 		events = append(events, struct{ Type, Data string }{eventType, data})
 	}, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, events, 2)
 	assert.Equal(t, "first", events[0].Type)
 	assert.Equal(t, "a", events[0].Data)
@@ -72,7 +73,7 @@ func TestParseSSEStream_EmptyData(t *testing.T) {
 	err := parseSSEStream(context.Background(), strings.NewReader(input), func(eventType, data string) {
 		called = true
 	}, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, called, "handler should not be called when data is empty")
 }
 
@@ -86,7 +87,7 @@ func TestParseSSEStream_DataOnlyNoEvent(t *testing.T) {
 		gotType = eventType
 		gotData = data
 	}, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, "", gotType, "event type should be empty when not set")
+	require.NoError(t, err)
+	assert.Empty(t, gotType, "event type should be empty when not set")
 	assert.Equal(t, "payload", gotData)
 }

@@ -77,7 +77,7 @@ type Deliberator struct {
 }
 
 // Deliberate implements mcp.L2ConsensusDeliberator.
-func (d *Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
+func (d *Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) (*govsvc.ConsensusDeliberation, error) {
 	var env commonv1.GovernanceEnvelope
 	isJSON := false
 	if err := proto.Unmarshal(envelopeBytes, &env); err != nil {
@@ -135,9 +135,11 @@ func (d *Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byt
 	env.Governance.L2.Votes = votes
 
 	if isJSON {
-		return protojson.Marshal(&env)
+		wire, err := protojson.Marshal(&env)
+		return &govsvc.ConsensusDeliberation{Envelope: wire}, err
 	}
-	return proto.Marshal(&env)
+	wire, err := proto.Marshal(&env)
+	return &govsvc.ConsensusDeliberation{Envelope: wire}, err
 }
 
 // SetupConsensus seeds nMembers trusted signers and a consensus policy with
@@ -202,7 +204,7 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 			return
 		}
 		w.Header().Set("Content-Type", "application/x-protobuf")
-		_, _ = w.Write(signed)
+		_, _ = w.Write(signed.Envelope)
 	}))
 	server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{serverCert}}
 	server.StartTLS()

@@ -34,7 +34,7 @@ func TestHandleInternalSSEStream_FirstFlushCanDeliverDeploymentAnnouncements(t *
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
 			route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
-			publisher := NewSSEEventPublisher(h.dataController.sseStore, h.GetGatewayWebSocketHandler())
+			publisher := NewSSEEventPublisher(h.sseController.sseStore, h.GetGatewayWebSocketHandler())
 			writer := &startupStreamWriter{ResponseRecorder: httptest.NewRecorder()}
 			var publishErrors []error
 			var connectedAtFlush []string
@@ -69,7 +69,7 @@ func TestHandleInternalSSEStream_FirstFlushCanDeliverDeploymentAnnouncements(t *
 			assert.Equal(t, 1, strings.Count(writer.Body.String(), "session-at-flush"))
 			assert.NotContains(t, writer.Body.String(), "id:", "ephemeral announcements must not alter the replay cursor")
 			assert.Empty(t, publisher.ConnectedCLISessionIDs(), "cancellation must unregister the listener")
-			rows, err := h.dataController.sseStore.SSEEventsListSince(route, 0, 100)
+			rows, err := h.sseController.sseStore.SSEEventsListSince(route, 0, 100)
 			require.NoError(t, err)
 			assert.Empty(t, rows, "the test cannot recover a missed announcement through durable replay")
 		})

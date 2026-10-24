@@ -132,7 +132,7 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	signedWire, err := env.svc.GetConsensusStore().NewConsensusAppDeliberatorWithClientFactory(env.svc.GetPKI().NewConsensusAppHTTPClient).Deliberate(t.Context(), wire)
 	require.NoError(t, err)
 	var signed commonv1.GovernanceEnvelope
-	require.NoError(t, protojson.Unmarshal(signedWire, &signed))
+	require.NoError(t, protojson.Unmarshal(signedWire.Envelope, &signed))
 	require.Equal(t, envelope.TransactionHash, signed.GetTransactionHash())
 	require.Equal(t, envelope.Payload, signed.GetPayload())
 	proof := signed.GetGovernance().GetL2()

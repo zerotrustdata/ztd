@@ -407,7 +407,7 @@ func TestExecutionService_ConcurrencyStress(t *testing.T) {
 			require.ErrorIs(t, err, constants.ErrExecutionServiceStopping)
 			require.ErrorIs(t, err, context.Canceled)
 		}
-		assert.Zero(t, len(freeSvc.semaphore))
+		assert.Empty(t, freeSvc.semaphore)
 	})
 
 	t.Run("concurrent active executions tracking", func(t *testing.T) {

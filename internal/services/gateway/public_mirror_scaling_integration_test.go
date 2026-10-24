@@ -127,6 +127,40 @@ func checkpointStore(ctx context.Context, env *mirrorTestEnv) {
 	_, _ = env.store.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 }
 
+func TestPublicMirror_SegmentCatalogGrowsBeyondOneSegmentLimit(t *testing.T) {
+	ctx := context.Background()
+	env := newMirrorTestEnv(t)
+	_, _, index, root := populateScalingMirror(t, env, 0, constants.PublicFeedProofMaxArtifacts)
+	content := []byte(`{"assignment":"next"}`)
+	entry := makeTestCatalogEntry("next-assignment.json", content)
+	segment := makeTestSegment(env, index+1, root, []models.PublicProofCatalogEntry{entry}, nil)
+	request := models.PublicProofIngestRequest{
+		SourceID: env.sourceID, Segment: &segment,
+		Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}},
+	}
+	code, response := sendProofIngestToHandler(t, env.mirror.IngestHandler(), request)
+	require.Equal(t, http.StatusOK, code)
+	require.True(t, response.Accepted)
+	// Replayed acknowledgements must not increment the stored totals twice.
+	require.NoError(t, env.mirror.storeProofPackage(ctx, request))
+	summary, found, err := env.store.proofSummary(ctx, env.sourceID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, constants.PublicFeedProofMaxArtifacts+1, summary.ArtifactCount)
+	require.NoError(t, env.store.verify(ctx), "startup verification accepts a catalog larger than one segment")
+
+	// Withdrawals still apply deltas correctly after crossing the old ceiling.
+	withdrawal := makeTestSegment(env, index+2, segment.ProofRootSHA256, nil, []string{entry.ArtifactID})
+	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &withdrawal}))
+	summary, found, err = env.store.proofSummary(ctx, env.sourceID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, constants.PublicFeedProofMaxArtifacts, summary.ArtifactCount)
+	assert.Equal(t, withdrawal.ProofRootSHA256, summary.ProofRootSHA256)
+	// Run the same verification used at startup over signed history and bytes.
+	require.NoError(t, env.store.verify(ctx))
+}
+
 func TestPublicMirror_ScalingIntegration(t *testing.T) {
 	ctx := context.Background()
 
@@ -261,7 +295,7 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 	t.Logf("Store disk growth per batch: small avg=%d bytes, large avg=%d bytes (sample batch JSON=%d bytes)",
 		avgSmallBatchBytes, avgLargeBatchBytes, sampleBatchLen)
 
-	assert.Greater(t, sampleBatchLen, 0)
+	assert.Positive(t, sampleBatchLen)
 	// In SQLite WAL mode, each commit writes WAL frames (~4KB-8KB).
 	// A small multiple of batch size (e.g. 50x) proves it is not rewriting full history (which would be tens/hundreds of MBs).
 	assert.Less(t, avgSmallBatchBytes, int64(sampleBatchLen)*50, "small mirror store growth per batch must be bounded by small multiple of batch size")

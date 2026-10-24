@@ -8,11 +8,11 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
@@ -26,7 +26,7 @@ func TestRevocationCheckErrorWrapping_SemanticallyCorrect(t *testing.T) {
 	revocationErr := fmt.Errorf("certificate revoked: serial 0xabc")
 	wrapped := fmt.Errorf("gateway: auth: verify certificate: %w: %s", revocationErr, constants.ErrCertRevocationCheckFailed)
 
-	assert.True(t, errors.Is(wrapped, revocationErr), "real cause must be unwrappable via errors.Is")
-	assert.False(t, errors.Is(wrapped, constants.ErrCertParseFailed), "revocation failure must not match ErrCertParseFailed")
+	require.ErrorIs(t, wrapped, revocationErr, "real cause must be unwrappable via errors.Is")
+	require.NotErrorIs(t, wrapped, constants.ErrCertParseFailed, "revocation failure must not match ErrCertParseFailed")
 	assert.Contains(t, wrapped.Error(), constants.ErrCertRevocationCheckFailed.Error(), "classification constant must appear in message")
 }

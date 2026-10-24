@@ -81,6 +81,10 @@ func (s *stubFileSvc) OpenForRead(ctx context.Context, relPath string) (*os.File
 	return s.openReadFile, nil
 }
 
+func (s *stubFileSvc) Truncate(context.Context, string, int64) error {
+	panic("unexpected")
+}
+
 func (s *stubFileSvc) TryLock(context.Context, string, os.FileMode) (io.Closer, error) {
 	panic("unexpected")
 }
@@ -183,7 +187,7 @@ func TestLogService_OpenLogForRead_NotFound(t *testing.T) {
 
 	_, err := svc.OpenLogForRead(context.Background())
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrNotFound), "error should wrap constants.ErrNotFound")
+	assert.ErrorIs(t, err, constants.ErrNotFound, "error should wrap constants.ErrNotFound")
 }
 
 func TestLogService_OpenLogForRead_OpenError(t *testing.T) {

@@ -383,7 +383,7 @@ func TestPlatformEnrollmentService_NonOwnerDecisionFailsClosed(t *testing.T) {
 		RequestID: resp.RequestID,
 		Decision:  models.PlatformEnrollmentDecisionApprove,
 	})
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision)
 
 	// The request remains pending.
 	stored := loadStoredRequest(t, env, resp.RequestID)
@@ -501,7 +501,7 @@ func TestPlatformEnrollmentService_RevokeAppDisablesPolicyAndCertificate(t *test
 	require.NotNil(t, block)
 	cert, err := x509.ParseCertificate(block.Bytes)
 	require.NoError(t, err)
-	assert.ErrorIs(t, env.pki.VerifyCertificate(t.Context(), cert), constants.ErrPKICertificateRevoked)
+	require.ErrorIs(t, env.pki.VerifyCertificate(t.Context(), cert), constants.ErrPKICertificateRevoked)
 	stored := loadStoredRequest(t, env, requestID)
 	assert.Equal(t, models.PlatformEnrollmentStateRevoked, stored.State)
 	assert.Equal(t, env.ownerID, stored.RevokedByUserID)
@@ -540,7 +540,7 @@ func TestPlatformEnrollmentService_RevokeOperatorDisablesBothCertificatesAndSess
 		require.NotNil(t, block)
 		cert, parseErr := x509.ParseCertificate(block.Bytes)
 		require.NoError(t, parseErr)
-		assert.ErrorIs(t, env.pki.VerifyCertificate(t.Context(), cert), constants.ErrPKICertificateRevoked)
+		require.ErrorIs(t, env.pki.VerifyCertificate(t.Context(), cert), constants.ErrPKICertificateRevoked)
 	}
 	opDoc, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), resp.Operator.OperatorID)
 	require.NoError(t, err)
@@ -1187,7 +1187,7 @@ func TestPlatformEnrollmentService_ConcurrentApproveDeny(t *testing.T) {
 	stored := loadStoredRequest(t, env, createResp.RequestID)
 	assert.True(t, stored.State == models.PlatformEnrollmentStateApproved || stored.State == models.PlatformEnrollmentStateDenied,
 		"exactly one decision must win; state=%s", stored.State)
-	assert.True(t, (approveErr == nil) != (denyErr == nil),
+	assert.NotEqual(t, (approveErr == nil), (denyErr == nil),
 		"exactly one decision must succeed; approveErr=%v denyErr=%v", approveErr, denyErr)
 	loserErr := approveErr
 	if approveErr == nil {

@@ -12,6 +12,7 @@ package eval
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"regexp"
@@ -88,10 +89,6 @@ func newPublicationEnv(t *testing.T, replies []fixtures.OllamaReply) (*runEnv, *
 	previous := gwremote.PublicMirrorOrigin
 	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
 	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previous })
-	// Every projection of a test run must fit in the bootstrap window the
-	// assertions read.
-	run.stack.Gateway.Service.GetPublicMirror().SetMaxBootstrapProjections(1000)
-
 	env := &runEnv{root: run.root, deps: run.deps, cmd: cmd, control: control,
 		dataOperatorID: data.OperatorID, dataSession: data.OperatorSessionID, inferenceSession: inference.OperatorSessionID}
 	return env, run
@@ -183,14 +180,39 @@ func verifyCLI(t *testing.T, env *runEnv, runID string) (string, error) {
 	return out, err
 }
 
-// mirrorProjections reads the projections the real public mirror serves, oldest
-// first, through the production bootstrap reader.
+// mirrorProjections reads signed publication history for append/idempotency
+// assertions. Bootstrap serves current entities and contains no old revisions.
 func mirrorProjections(t *testing.T) []publicationProjection {
 	t.Helper()
-	bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
-	require.NoError(t, err)
-	projections := make([]publicationProjection, 0, len(bootstrap.RecentProjections))
-	for _, item := range bootstrap.RecentProjections {
+	var items []models.PublicFeedObject
+	var cursor string
+	for {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, gwremote.PublicMirrorOrigin+"/history?limit=500", nil)
+		require.NoError(t, err)
+		query := request.URL.Query()
+		query.Set("cursor", cursor)
+		request.URL.RawQuery = query.Encode()
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		var page models.PublicFeedCursorPage
+		err = json.NewDecoder(response.Body).Decode(&page)
+		require.NoError(t, response.Body.Close())
+		require.NoError(t, err)
+		items = append(items, page.Items...)
+		if !page.HasMore {
+			break
+		}
+		require.NotEqual(t, cursor, page.Cursor, "history must advance")
+		cursor = page.Cursor
+	}
+	projections := make([]publicationProjection, 0, len(items))
+	for _, item := range items {
+		recordType, _ := item.StringField("record_type")
+		if recordType != string(models.PublicFeedRecordTypeProjection) {
+			continue
+		}
+		delete(item, "record_type")
 		raw, err := json.Marshal(item)
 		require.NoError(t, err)
 		projection := publicationProjection{raw: string(raw), record: raw}
@@ -330,7 +352,7 @@ func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 	// A republish appends the live summary revision it reports and no lifecycle.
-	assert.Equal(t, len(before)+publishedCount(t, out), len(mirrorProjections(t)), "the count printed matches the projections the mirror served")
+	assert.Len(t, mirrorProjections(t), len(before)+publishedCount(t, out), "the count printed matches the projections the mirror served")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 }
@@ -672,6 +694,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 			name:   "agent trace unpublished",
 			forget: func(artifacts *evaluation.CampaignPublishedProofArtifacts) { artifacts.AgentTraceSHA256 = "" },
 			check: func(t *testing.T, artifacts evaluation.CampaignPublishedProofArtifacts) {
+				t.Helper()
 				assert.NotEmpty(t, artifacts.AgentTraceSHA256, "the rebuild binds the trace again")
 			},
 		},
@@ -682,6 +705,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 				artifacts.ScenarioGoldSHA256 = ""
 			},
 			check: func(t *testing.T, artifacts evaluation.CampaignPublishedProofArtifacts) {
+				t.Helper()
 				assert.NotEmpty(t, artifacts.ScenarioInputSHA256, "the rebuild binds the scenario input again")
 				assert.NotEmpty(t, artifacts.ScenarioGoldSHA256, "the rebuild binds the scenario gold again")
 			},
@@ -806,6 +830,19 @@ func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T)
 		summaries := mirrorSummaries(t)
 		require.Len(t, summaries, before+1, "a publish appends one aggregate revision")
 		assert.Equal(t, want, summaries[len(summaries)-1].RunStatus)
+		bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
+		require.NoError(t, err)
+		currentCount := 0
+		for _, item := range bootstrap.RecentProjections {
+			kind, _ := item.StringField("kind")
+			if kind != "evaluation_summary" {
+				continue
+			}
+			currentCount++
+			status, _ := item.StringField("run_status")
+			assert.Equal(t, want, status, "current snapshot agrees with the latest signed revision")
+		}
+		require.Equal(t, 1, currentCount, "bootstrap contains only the current run summary")
 	}
 	assertStatus("scheduled")
 

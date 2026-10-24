@@ -168,7 +168,7 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, call.Success)
 		assert.Equal(t, 1, inference.intentCalls)
-		assert.Equal(t, `{"args":["hello"],"command":"echo"}`, inference.intent.GetRequest(), "the intent carries the proposal in canonical sorted-key form")
+		assert.Equal(t, `{"args":["hello"],"command":"echo"}`, inference.intent.GetRequest(), "the intent carries the proposal in canonical sorted-key form") //nolint:testifylint // exact bytes, not JSON equivalence
 		assert.Equal(t, "/operator/workspace", inference.intent.GetWorkingDirectory())
 		assert.Equal(t, int32(constants.DefaultShellCommandTimeout), inference.intent.GetTimeoutSeconds())
 		assert.Zero(t, tools.dispatches)
@@ -212,7 +212,7 @@ func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *test
 				CallID: "call-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: proposal,
 			}, approvedDispatchResult(approvedJSON, tc.summary))
 			require.NoError(t, err)
-			assert.Equal(t, approvedJSON, record.ApprovedArgumentsJSON)
+			assert.Equal(t, approvedJSON, record.ApprovedArgumentsJSON) //nolint:testifylint // exact bytes, not JSON equivalence
 			assert.Equal(t, tc.wantSuccess, record.Success)
 			if tc.wantSuccess {
 				// Success is a typed result carrying the approved arguments.

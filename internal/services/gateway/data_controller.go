@@ -24,12 +24,11 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 )
 
-// DataController handles document DB, blob storage, SSE events, and pub/sub publish endpoints.
+// DataController handles document DB, blob storage, and pub/sub publish endpoints.
 type DataController struct {
 	cfg                *config.Config
 	logger             *slog.Logger
 	docStore           *DocumentStoreService
-	sseStore           *SSEEventService
 	blobStore          *BlobStoreService
 	pubsub             *GatewayWebSocketHandler
 	responder          *response.Writer
@@ -41,7 +40,6 @@ type DataControllerDeps struct {
 	Cfg                *config.Config
 	Logger             *slog.Logger
 	DocStore           *DocumentStoreService
-	SSEStore           *SSEEventService
 	BlobStore          *BlobStoreService
 	Pubsub             *GatewayWebSocketHandler
 	Responder          *response.Writer
@@ -53,7 +51,6 @@ func newDataController(d DataControllerDeps) *DataController {
 		cfg:                d.Cfg,
 		logger:             d.Logger,
 		docStore:           d.DocStore,
-		sseStore:           d.SSEStore,
 		blobStore:          d.BlobStore,
 		pubsub:             d.Pubsub,
 		responder:          d.Responder,
@@ -120,11 +117,6 @@ func (c *DataController) handleDataDB(w http.ResponseWriter, r *http.Request) {
 
 	if id == "_query" && r.Method == http.MethodPost {
 		c.handleDBQuery(w, r, collection)
-		return
-	}
-
-	if collection == "_sse_events" {
-		c.handleSSEEvents(w, r, id)
 		return
 	}
 
@@ -245,30 +237,6 @@ func (c *DataController) handleDBQuery(w http.ResponseWriter, r *http.Request, c
 		wire = append(wire, d.ForWire())
 	}
 	c.responder.JSON(w, http.StatusOK, wire)
-}
-
-func (c *DataController) handleSSEEvents(w http.ResponseWriter, r *http.Request, id string) {
-	if id == "count" && r.Method == http.MethodGet {
-		count, err := c.sseStore.SSEEventsCount()
-		if err != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("data_controller: handleSSEEvents: %w", err).Error())
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, models.SSEEventsCountResponse{Count: count})
-		return
-	}
-
-	if id == "" && r.Method == http.MethodDelete {
-		deleted, err := c.sseStore.SSEEventsWipe()
-		if err != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("data_controller: handleSSEEvents: %w", err).Error())
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, models.SSEEventsWipeResponse{Deleted: deleted})
-		return
-	}
-
-	c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 }
 
 func blobSegmentValid(s string) bool {

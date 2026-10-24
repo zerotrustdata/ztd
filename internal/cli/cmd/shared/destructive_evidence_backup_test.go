@@ -215,7 +215,7 @@ func TestConfirmDestructive_WithEvidenceBackupPrintsTheSnapshotSummaryBeforeProc
 	require.NoError(t, err)
 	assert.True(t, proceed)
 	// The backup copies the record as stored: sealed, so larger than its plaintext.
-	stored, err := os.Stat(f.fileSvc.Resolve(runRecordRelPath))
+	stored, err := f.fileSvc.Stat(context.Background(), runRecordRelPath)
 	require.NoError(t, err)
 	assert.Contains(t, out.String(), fmt.Sprintf("Backed up evaluation evidence (1 file(s), %d bytes)", stored.Size()))
 	assert.Len(t, f.snapshotDirs(t), 1)

@@ -9,7 +9,6 @@ package gw
 
 import (
 	"bytes"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,14 +41,7 @@ func TestCommandErrorHandling(t *testing.T) {
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
 
-		// Unset the environment variable
-		originalEnv := os.Getenv("ZTD_OPERATOR_SESSION_ID")
-		os.Unsetenv("ZTD_OPERATOR_SESSION_ID")
-		defer func() {
-			if originalEnv != "" {
-				os.Setenv("ZTD_OPERATOR_SESSION_ID", originalEnv)
-			}
-		}()
+		t.Setenv("ZTD_OPERATOR_SESSION_ID", "")
 
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)

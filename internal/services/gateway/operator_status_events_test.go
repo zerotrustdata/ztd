@@ -249,9 +249,7 @@ func connectWebSession(t *testing.T, ls *GatewayModeService, webSessionID string
 			return
 		}
 		assert.Zero(t, published.ID, "heartbeat events are ephemeral")
-		if !assert.NoError(t, json.Unmarshal(envelope.Data, &payload)) {
-			return
-		}
+		require.NoError(t, json.Unmarshal(envelope.Data, &payload))
 		mu.Lock()
 		defer mu.Unlock()
 		received = append(received, payload)

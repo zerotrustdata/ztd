@@ -149,7 +149,9 @@ func (o PublicFeedObject) SetInt64Field(name string, value int64) {
 	o[name] = json.RawMessage(strconv.FormatInt(value, 10))
 }
 
-// PublicFeedBootstrap is one bounded initial snapshot for public first paint.
+// PublicFeedBootstrap is the complete current read model at Snapshot's cursor.
+// RecentProjections carries the latest record per entity plus bounded activity,
+// newest first. It is independent of replay-history retention.
 type PublicFeedBootstrap struct {
 	ProtocolVersion     string                    `json:"protocol_version"`
 	Snapshot            PublicFeedSnapshot        `json:"snapshot"`

@@ -79,30 +79,30 @@ func TestGatewayStartCmd(t *testing.T) {
 		// Verify directory flags
 		dataDirFlag := flags.Lookup("data-dir")
 		assert.NotNil(t, dataDirFlag, "data-dir flag should exist")
-		assert.Equal(t, "", dataDirFlag.DefValue)
+		assert.Empty(t, dataDirFlag.DefValue)
 
 		pkiDirFlag := flags.Lookup("pki-dir")
 		assert.NotNil(t, pkiDirFlag, "pki-dir flag should exist")
-		assert.Equal(t, "", pkiDirFlag.DefValue)
+		assert.Empty(t, pkiDirFlag.DefValue)
 
 		secretsDirFlag := flags.Lookup("secrets-dir")
 		assert.NotNil(t, secretsDirFlag, "secrets-dir flag should exist")
-		assert.Equal(t, "", secretsDirFlag.DefValue)
+		assert.Empty(t, secretsDirFlag.DefValue)
 
 		vaultDirFlag := flags.Lookup("vault-dir")
 		assert.NotNil(t, vaultDirFlag, "vault-dir flag should exist")
-		assert.Equal(t, "", vaultDirFlag.DefValue)
+		assert.Empty(t, vaultDirFlag.DefValue)
 
 		assert.Nil(t, flags.Lookup("master-key-file"), "the master key lives in the OS keyring or ssh-agent, never a key file")
 
 		// Verify passkey flags
 		passkeyRpIDFlag := flags.Lookup("passkey-rp-id")
 		assert.NotNil(t, passkeyRpIDFlag, "passkey-rp-id flag should exist")
-		assert.Equal(t, "", passkeyRpIDFlag.DefValue)
+		assert.Empty(t, passkeyRpIDFlag.DefValue)
 
 		passkeyRpNameFlag := flags.Lookup("passkey-rp-name")
 		assert.NotNil(t, passkeyRpNameFlag, "passkey-rp-name flag should exist")
-		assert.Equal(t, "", passkeyRpNameFlag.DefValue)
+		assert.Empty(t, passkeyRpNameFlag.DefValue)
 
 		// Verify rate limiting flags
 		rateLimitRPSFlag := flags.Lookup("rate-limit-rps")
@@ -121,7 +121,7 @@ func TestGatewayStartCmd(t *testing.T) {
 		// Verify cert mode flag
 		certModeFlag := flags.Lookup("cert-mode")
 		assert.NotNil(t, certModeFlag, "cert-mode flag should exist")
-		assert.Equal(t, "", certModeFlag.DefValue)
+		assert.Empty(t, certModeFlag.DefValue)
 
 		// Verify follow flag
 		followFlag := flags.Lookup("follow")

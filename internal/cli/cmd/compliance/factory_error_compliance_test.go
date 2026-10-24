@@ -31,7 +31,7 @@ func TestComplianceKSIHistoryCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -42,7 +42,7 @@ func TestComplianceOverlayCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -56,7 +56,7 @@ func TestComplianceEvidenceGraphVerifyCmdWithConfig_FileSvcFactoryError(t *testi
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -78,6 +78,6 @@ func TestComplianceReportGenerateCmdWithConfig_FileSvcFactoryError(t *testing.T)
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

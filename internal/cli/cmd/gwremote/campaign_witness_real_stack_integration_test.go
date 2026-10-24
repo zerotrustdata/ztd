@@ -211,7 +211,7 @@ func TestCampaignWitnessCaptureRealStack_WaitForRunModelProvenanceReportsMissing
 	err := capture.WaitForRunModelProvenanceEvidence(ctx, "run-never")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-	assert.ErrorContains(t, err, "1 missing")
+	require.ErrorContains(t, err, "1 missing")
 	assert.ErrorContains(t, err, "attempt-never")
 }
 
@@ -227,7 +227,7 @@ func TestCampaignWitnessCaptureRealStack_WaitForRunProviderObservationReportsMis
 	err := capture.WaitForRunProviderObservationEvidence(ctx, "run-never")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-	assert.ErrorContains(t, err, "provider observation")
+	require.ErrorContains(t, err, "provider observation")
 	assert.ErrorContains(t, err, "attempt-never")
 }
 
@@ -246,7 +246,7 @@ func TestCampaignWitnessCaptureRealStack_WaitForProvenancePropagatesReadFailure(
 	err := capture.WaitForRunModelProvenanceEvidence(ctx, "run-unreachable")
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.ErrorContains(t, err, "attempt-failed")
+	require.ErrorContains(t, err, "attempt-failed")
 
 	err = capture.CaptureRunModelProvenanceEvidence(t.Context(), "run-unreachable")
 	require.Error(t, err)
@@ -270,8 +270,8 @@ func TestCampaignWitnessCaptureRealStack_WaitForProvenanceIgnoresOtherAttempts(t
 
 	err := capture.WaitForRunModelProvenanceEvidence(ctx, "run-pending")
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-	assert.ErrorContains(t, err, "1 missing")
-	assert.ErrorContains(t, err, "attempt-pending")
+	require.ErrorContains(t, err, "1 missing")
+	require.ErrorContains(t, err, "attempt-pending")
 	assert.NotContains(t, err.Error(), recorded)
 
 	_, err = e.store.LoadModelProvenanceWindow(t.Context(), "run-pending", recorded)

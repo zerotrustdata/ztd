@@ -145,12 +145,6 @@ func TestExtractWorkingDirectory_EmptyHeartbeat(t *testing.T) {
 	assert.Empty(t, pwd)
 }
 
-func TestExtractWorkingDirectory_InvalidJSON(t *testing.T) {
-	t.Parallel()
-	// This test is no longer applicable since extractWorkingDirectory now takes a proto message
-	// rather than JSON bytes, so there's no JSON parsing to fail on
-}
-
 func TestExtractWorkingDirectory_NoPwdInHeartbeat(t *testing.T) {
 	t.Parallel()
 

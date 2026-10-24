@@ -76,7 +76,7 @@ func TestPrepareAgentLaunch_Claude_VerifyTrue(t *testing.T) {
 	assert.FileExists(t, configPath)
 	assert.Contains(t, launchArgs, "--strict-mcp-config")
 	assert.Contains(t, launchArgs, "--disallowed-tools")
-	assert.True(t, strings.Contains(strings.Join(launchArgs, " "), "--mcp-config"))
+	assert.Contains(t, strings.Join(launchArgs, " "), "--mcp-config")
 }
 
 func TestPrepareAgentLaunch_Codex_VerifyTrue(t *testing.T) {

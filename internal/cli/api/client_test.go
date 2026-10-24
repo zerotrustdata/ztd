@@ -284,12 +284,12 @@ func TestNewClient_TLSConfig(t *testing.T) {
 
 func TestStatusError(t *testing.T) {
 	err := fmt.Errorf("list approvals: %w", &StatusError{StatusCode: http.StatusUnauthorized, Body: "expired"})
-	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.True(t, IsUnauthorized(err))
 	assert.Equal(t, "list approvals: HTTP status error: status 401: expired", err.Error())
 
 	forbidden := &StatusError{StatusCode: http.StatusForbidden}
-	assert.ErrorIs(t, forbidden, constants.ErrHTTPStatusError)
+	require.ErrorIs(t, forbidden, constants.ErrHTTPStatusError)
 	assert.False(t, IsUnauthorized(forbidden))
 	assert.False(t, IsUnauthorized(constants.ErrHTTPStatusError))
 }
@@ -298,8 +298,8 @@ func TestDecodeGatewayError_PlatformEnrollmentRequiresBootstrap(t *testing.T) {
 	body := []byte(fmt.Sprintf(`{"error":%q}`, constants.ErrPlatformEnrollmentRequiresBootstrap.Error()))
 	err := DecodeGatewayError(http.StatusForbidden, body)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequiresBootstrap)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequiresBootstrap)
 
 	statusErr := &StatusError{StatusCode: http.StatusForbidden, Body: string(body)}
 	assert.ErrorIs(t, statusErr, constants.ErrPlatformEnrollmentRequiresBootstrap)

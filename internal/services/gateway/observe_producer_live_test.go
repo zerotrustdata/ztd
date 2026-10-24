@@ -74,9 +74,7 @@ func tapStopRequests(t *testing.T, ws *GatewayWebSocketHandler, channel string) 
 		}
 		assert.Zero(t, published.ID, "stop requests are ephemeral")
 		var stop models.EvalStopRequestedPayload
-		if !assert.NoError(t, json.Unmarshal(envelope.Data, &stop)) {
-			return
-		}
+		require.NoError(t, json.Unmarshal(envelope.Data, &stop))
 		tap.mu.Lock()
 		defer tap.mu.Unlock()
 		tap.requests = append(tap.requests, liveStopRequest{push: push, stop: stop})
@@ -381,7 +379,7 @@ func TestRecordMetricAvailable_EmitsSSEWithPerVariantAggregation(t *testing.T) {
 	assert.Equal(t, 8, emitted.Numerator)
 	assert.Equal(t, 10, emitted.Denominator)
 	assert.NotNil(t, emitted.Rate)
-	assert.Equal(t, 0.8, *emitted.Rate)
+	assert.InDelta(t, 0.8, *emitted.Rate, 0)
 	assert.Equal(t, "variant-4", emitted.VariantID)
 }
 
@@ -551,7 +549,7 @@ func TestEmitHeartbeat_PersistsProjectionAndEmitsSSE(t *testing.T) {
 	require.NoError(t, json.Unmarshal(env.Data, &payload))
 	assert.Equal(t, "source-1", payload.SourceID)
 	assert.NotEmpty(t, payload.EventID)
-	assert.Greater(t, payload.SourceSequence, int64(0))
+	assert.Positive(t, payload.SourceSequence)
 }
 
 // TestRequestStop_PersistsProjectionAndEmitsSSE verifies that RequestStop
@@ -607,7 +605,7 @@ func TestRequestStop_RequiresRunID(t *testing.T) {
 
 	err := producer.RequestStop(context.Background(), userID, route, "sup-norun", "campaign-norun", "", models.StopReasonGraceful, models.StopScopeSupervisor)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveRunIDRequired)
+	require.ErrorIs(t, err, constants.ErrObserveRunIDRequired)
 
 	collection := marshaler.CollectionName(constants.CollectionObserveSupervisorStates)
 	doc, err := docStore.DocGet(context.Background(), collection, "sup-norun")
@@ -725,7 +723,7 @@ func TestDuplicateEventIDSuppression(t *testing.T) {
 		EventID:        "forced-duplicate-id",
 		SourceID:       "source-dup",
 	})
-	assert.ErrorIs(t, err, constants.ErrObserveDuplicateEventID)
+	require.ErrorIs(t, err, constants.ErrObserveDuplicateEventID)
 
 	// Only one SSE event should exist.
 	rows, err := sseStore.SSEEventsListSince(route, 0, 100)
@@ -758,7 +756,7 @@ func TestPersistBeforeEvent_NoSSEOnPersistenceFailure(t *testing.T) {
 	require.NoError(t, db.Close())
 
 	err = producer.EmitHeartbeat(context.Background(), userID, route, "source-fail", "campaign-fail")
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// No SSE event should exist (the SSE store is also closed, so we
 	// verify the error path was hit before emission).
@@ -1214,7 +1212,7 @@ func TestErrors_NotNil(t *testing.T) {
 		constants.ErrObserveDuplicateEventID,
 	}
 	for _, e := range errs {
-		assert.NotNil(t, e)
+		require.Error(t, e)
 	}
 	// Verify they are distinct.
 	for i, a := range errs {

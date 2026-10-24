@@ -72,6 +72,37 @@ CREATE TABLE IF NOT EXISTS assignment_event_records (
 
 CREATE INDEX IF NOT EXISTS idx_public_mirror_assignment_event_records_assignment ON assignment_event_records(source_id, run_id, assignment_id);
 
+-- Current records outlive replay-history retention. Their original signed
+-- batches remain while referenced, preserving independently verifiable bytes.
+CREATE TABLE IF NOT EXISTS snapshot_batches (
+    source_id TEXT NOT NULL REFERENCES sources(source_id),
+    first_sequence INTEGER NOT NULL,
+    batch_json TEXT NOT NULL,
+    PRIMARY KEY (source_id, first_sequence)
+);
+
+CREATE TABLE IF NOT EXISTS snapshot_records (
+    source_id TEXT NOT NULL,
+    record_key TEXT NOT NULL,
+    dataset_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    first_sequence INTEGER NOT NULL,
+    is_event INTEGER NOT NULL,
+    record_type TEXT NOT NULL,
+    record_hash TEXT NOT NULL,
+    record_bytes TEXT NOT NULL,
+    PRIMARY KEY (source_id, record_key),
+    FOREIGN KEY (source_id, first_sequence) REFERENCES snapshot_batches(source_id, first_sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_batch ON snapshot_records(source_id, first_sequence);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_sequence ON snapshot_records(source_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_events ON snapshot_records(source_id, is_event, sequence);
+
+CREATE TABLE IF NOT EXISTS snapshot_heads (
+    source_id TEXT PRIMARY KEY REFERENCES sources(source_id),
+    high_water_sequence INTEGER NOT NULL
+);
+
 -- Source signing keys, keyed "<source_id>:<key_id>".
 CREATE TABLE IF NOT EXISTS key_registry (
     registry_id TEXT PRIMARY KEY,

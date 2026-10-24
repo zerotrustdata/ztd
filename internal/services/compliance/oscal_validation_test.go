@@ -58,7 +58,7 @@ func TestOSCALDocumentValidator_ValidateAssessmentResultsRejectsNilDocument(t *t
 
 	result, err := validator.ValidateAssessmentResults(nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOSCALValidationFailed)
+	require.ErrorIs(t, err, constants.ErrOSCALValidationFailed)
 	assert.Nil(t, result)
 }
 

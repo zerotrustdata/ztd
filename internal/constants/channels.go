@@ -22,7 +22,6 @@ package constants
 // PubSub wire protocol action strings (used in PubSubMessage.Action).
 const (
 	PubSubActionSubscribe   = "subscribe"
-	PubSubActionPSubscribe  = "psubscribe"
 	PubSubActionUnsubscribe = "unsubscribe"
 	PubSubActionPublish     = "publish"
 )
@@ -30,7 +29,6 @@ const (
 // PubSub wire protocol event type strings (used in PubSubEvent.Type).
 const (
 	PubSubEventMessage      = "message"
-	PubSubEventPMessage     = "pmessage"
 	PubSubEventSubscribed   = "subscribed"
 	PubSubEventUnsubscribed = "unsubscribed"
 	PubSubEventError        = "error"

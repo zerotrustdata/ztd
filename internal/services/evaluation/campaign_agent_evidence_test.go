@@ -17,6 +17,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -40,12 +41,14 @@ type evidenceLedger struct {
 	seq        int
 }
 
-func newEvidenceLedger(t testing.TB, signer oracletest.Signer) *evidenceLedger {
-	return newRuntimeLedger(t, signer, evidenceOperatorID, evidenceSessionID)
+func newEvidenceLedger(tb testing.TB, signer oracletest.Signer) *evidenceLedger {
+	tb.Helper()
+	return newRuntimeLedger(tb, signer, evidenceOperatorID, evidenceSessionID)
 }
 
-func newRuntimeLedger(t testing.TB, signer oracletest.Signer, operatorID, sessionID string) *evidenceLedger {
-	return &evidenceLedger{t: t, signer: signer, operatorID: operatorID, sessionID: sessionID, head: "h-0"}
+func newRuntimeLedger(tb testing.TB, signer oracletest.Signer, operatorID, sessionID string) *evidenceLedger {
+	tb.Helper()
+	return &evidenceLedger{t: tb, signer: signer, operatorID: operatorID, sessionID: sessionID, head: "h-0"}
 }
 
 // runtime is the trace record of this ledger's runtime, anchored to its key.
@@ -210,7 +213,7 @@ func flipFirstHexDigit(s string) string {
 func requireEvidenceError(t *testing.T, trace *AgentTrace, cause error) {
 	t.Helper()
 	err := VerifyAgentTraceEvidence(trace)
-	assert.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
+	require.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
 	assert.ErrorIs(t, err, cause)
 }
 
@@ -465,6 +468,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 		{
 			name: "completed call carries a failed execution receipt",
 			corrupt: func(t *testing.T, trace *AgentTrace) {
+				t.Helper()
 				failed := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 				trace.Inference = failed.runtime()
 				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: failed.inferenceFailed("tx-m1")}
@@ -474,6 +478,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 		{
 			name: "inference receipt signed by a key the runtime did not enroll",
 			corrupt: func(t *testing.T, trace *AgentTrace) {
+				t.Helper()
 				impostor := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: impostor.inference("tx-m1")}
 			},
@@ -555,4 +560,67 @@ func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing
 		trace.Input.Tools[0].JSONSchema = "{"
 		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrEvaluationEvidenceTraceMismatch)
 	})
+}
+
+func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		corrupt func(*AgentTrace)
+		wantErr bool
+	}{
+		{name: "completed and failed votes in concurrent ledger order"},
+		{name: "missing vote leaves an unclaimed execution", corrupt: func(trace *AgentTrace) {
+			trace.ToolCalls[0].ConsensusInferences = trace.ToolCalls[0].ConsensusInferences[:1]
+		}, wantErr: true},
+		{name: "tampered vote signature", corrupt: func(trace *AgentTrace) { trace.ToolCalls[0].ConsensusInferences[0].Receipt.Signature = "00" }, wantErr: true},
+		{name: "vote belongs to another subject", corrupt: func(trace *AgentTrace) {
+			trace.ToolCalls[0].ConsensusInferences[0].SubjectTransactionHash = "another-subject"
+		}, wantErr: true},
+		{name: "vote result changed", corrupt: func(trace *AgentTrace) { trace.ToolCalls[0].ConsensusInferences[1].Result.Model = "changed" }, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+			before := ledger.executed("before", string(constants.ActionTypeFsRead))
+			model := ledger.inference("turn")
+			members := constants.TribunalConsensusMemberAppIDs()
+			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[0])}
+			digest, err := models.ComputeInferenceResultDigest(result)
+			require.NoError(t, err)
+			result.ResultDigest = digest
+			completed := ledger.inference("vote-completed")
+			completed.ResultSummary = digest
+			for _, stage := range completed.DeterministicStageEvidence {
+				stage.ActingAppId = members[0]
+			}
+			ledger.signer.Resign(t, completed)
+			observation := ledger.executed("vote-observation", string(constants.ActionTypeProviderBoundaryObservation))
+			failed := ledger.inferenceFailed("vote-failed")
+			for _, stage := range failed.DeterministicStageEvidence {
+				stage.ActingAppId = members[1]
+			}
+			ledger.signer.Resign(t, failed)
+			tool := ledger.executed("tool", string(constants.ActionTypeMcpCall))
+			tool.TransactionHash = "hash-tool"
+			ledger.signer.Resign(t, tool)
+			after := ledger.executed("after", string(constants.ActionTypeFsRead))
+			trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+			trace.Bracket = bracketOf(before, after)
+			trace.ModelCalls = []AgentModelCall{completedModelCall("turn", model)}
+			trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
+			// Binding order differs from the order concurrent members committed.
+			trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
+				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1]), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
+				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.ActionReceipt{observation}},
+			})
+			if test.corrupt != nil {
+				test.corrupt(trace)
+			}
+			err = VerifyAgentTraceEvidence(trace)
+			if test.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

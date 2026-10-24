@@ -208,7 +208,7 @@ func TestReportVerification_EmptyLedger_AllPass(t *testing.T) {
 	fileRes, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, vr.FailCount)
-	assert.True(t, fileRes.RowCount > 0)
+	assert.Positive(t, fileRes.RowCount)
 
 	chainRow := findRow(vr, "commitment_chain")
 	require.NotNil(t, chainRow)
@@ -267,7 +267,7 @@ func TestReportVerification_ModifiedSignedFieldFails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 	assert.True(t, hasVerificationDetail(vr, "commitment_hash_recompute", "diverge"))
 }
 
@@ -286,7 +286,7 @@ func TestReportVerification_ModifiedHashFails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 	assert.True(t, hasVerificationDetail(vr, "commitment_hash_recompute", "canonical attestation hash"))
 }
 
@@ -310,7 +310,7 @@ func TestReportVerification_MalformedAuditorKeyIDFails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 	row := findRow(vr, "commitment_signature")
 	require.NotNil(t, row)
 	assert.Equal(t, verifyResultFail, row.Result)
@@ -332,7 +332,7 @@ func TestReportVerification_InvalidAuditorSignatureFails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 	row := findRow(vr, "commitment_signature")
 	require.NotNil(t, row)
 	assert.Equal(t, verifyResultFail, row.Result)
@@ -349,7 +349,7 @@ func TestReportVerification_StructuredColumnDivergenceFails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 	assert.True(t, hasVerificationDetail(vr, "commitment_hash_recompute", "structured commitment columns diverge"))
 }
 
@@ -361,7 +361,7 @@ func TestReportVerification_FirstCommitmentHasNonEmptyPriorHash_Fails(t *testing
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 
 	chainRow := findRow(vr, "commitment_chain")
 	require.NotNil(t, chainRow)
@@ -379,7 +379,7 @@ func TestReportVerification_BrokenChainSecondCommit_Fails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 
 	chainRow := findRow(vr, "commitment_chain")
 	require.NotNil(t, chainRow)
@@ -471,7 +471,7 @@ func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 
 	mutationRow := findRow(vr, "file_mutation_linkage")
 	require.NotNil(t, mutationRow)
@@ -565,7 +565,7 @@ func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, auditStore, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 
 	crossRow := findRow(vr, "receipt_commitment_crosslink")
 	require.NotNil(t, crossRow)
@@ -620,7 +620,7 @@ func TestReportVerification_CSVFileWritten(t *testing.T) {
 	csvPath := filepath.Join(outDir, constants.ReportVerificationFilename)
 	info, err := os.Stat(csvPath)
 	require.NoError(t, err)
-	assert.Greater(t, info.Size(), int64(0))
+	assert.Positive(t, info.Size())
 }
 
 // ---------------------------------------------------------------------------
@@ -651,6 +651,6 @@ func TestReportVerification_SwappedCommitmentHashFailsOnDecrypt(t *testing.T) {
 
 	_, vr, err := reportVerification(context.Background(), outDir, nil, cl, nil)
 	require.NoError(t, err)
-	assert.Greater(t, vr.FailCount, 0)
+	assert.Positive(t, vr.FailCount)
 	assert.True(t, hasVerificationDetail(vr, "commitment_chain", "could not read commitments"))
 }

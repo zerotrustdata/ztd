@@ -123,6 +123,34 @@ describe('OverviewView', () => {
     vi.unstubAllGlobals();
   });
 
+  it('updates Runs from canonical SSE summaries and preserves the same values on a snapshot reload', () => {
+    render(<MemoryRouter><OverviewView /></MemoryRouter>);
+    const runs = within(screen.getByRole('region', { name: 'Runs' }));
+    expect(runs.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '6');
+    const updated: EvaluationSummary = {
+      ...evaluation, assignment_completed: 6, run_seconds: 180,
+      terminal_outcomes: { ...evaluation.terminal_outcomes, completed: 6 },
+    };
+    act(() => {
+      evalStore.acceptProjection({ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify(updated) });
+    });
+    expect(runs.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '7');
+    expect(runs.getByText('6 passed · 1 failed · 0 no verdict · 68 remaining')).toBeInTheDocument();
+    act(() => {
+      evalStore.acceptProjection({ sequence: 2, record_type: 'event', record_bytes: JSON.stringify({
+        ...events[0], kind: 'assignment_completed', event_id: 'completed-live', completed: 999, total: 999,
+        metric_delta: { pass_rate: { value: 0 } },
+      }) });
+    });
+    expect(runs.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '7');
+    act(() => {
+      evalStore.initBootstrap({ protocol_version: '1.0.0', source_id: 'test', high_water_sequence: 2,
+        feed_chain_hash: '0'.repeat(64), withdrawal_digest: '0'.repeat(64), batch_count: 1, generated_at: evaluation.observed_at, freshness: 'active' },
+      [{ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify(updated) }], 0);
+    });
+    expect(runs.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '7');
+  });
+
   it.each(['running', 'completed', 'cancelled', 'interrupted', 'verified', 'verify_failed', 'scheduled', 'in_progress', 'initialized', 'unknown'])(
     'shows the published CLI run status %s instead of assignment lifecycle', (status) => {
       evalStore.loadFixtures([catalog, Object.assign({}, evaluation, { run_status: status })], []);

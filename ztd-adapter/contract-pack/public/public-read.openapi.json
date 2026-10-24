@@ -65,7 +65,7 @@
                 }
               }
             },
-            "description": "Bounded initial state"
+            "description": "Coherent current entity snapshot with bounded recent activity"
           }
         }
       }

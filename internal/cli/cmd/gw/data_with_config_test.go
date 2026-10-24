@@ -185,7 +185,7 @@ func TestDataOperatorsCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testin
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
+	require.ErrorIs(t, err, constants.ErrNotAuthenticated)
 	assert.Empty(t, client.GetCalls, "client must not be called when credentials are missing")
 }
 

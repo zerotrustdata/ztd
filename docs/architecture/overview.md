@@ -4,7 +4,7 @@ title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -144,7 +144,7 @@ The platform ships as a single static Go binary (`ztd`) serving multiple operati
 1. **Governance Gateway (`ztd gw start`)**: The central Policy Decision Point (PDP) and protocol coordinator. The Gateway admits client transactions, manages PKI, runs L1 Doctrine screening, coordinates L2 Consensus deliberation for state-changing actions (hosting the Tribunal vote producer for a `tribunal` binding), manages L3 Notary approval suspensions, brokers outbound-only pub/sub WebSocket channels to Operators, and persists Gateway coordination state. For local operations, the Gateway executes through an in-process embedded Operator substrate (`internal/services/gateway/embedded/`).
 2. **Governed Operator (`ztd operator start`)**: The sovereign Policy Execution Point (PEP) for target runtimes. The Operator exposes no inbound management listeners, initiates an outbound-only TLS 1.3 mTLS connection to the Gateway, pulls work exclusively from a dedicated session command channel (`cmd:<operator_id>:<operator_session_id>`), independently executes L4 Warden verification, and executes accepted actions through the L5 Actuator.
 3. **Embedded Operator**: The in-process Operator substrate inside the Gateway (`operator_type: embedded`). It runs concurrently with the Gateway, always carries the `data` and `inference` capabilities, works in `.ztd/operators/embedded-operator`, and accesses local execution evidence via `storage.OpenLocalExecutionEvidence`.
-4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, `eval`, and `autochthon`, plus the top-level `login` and `logout` commands. Flags and defaults resolve via `./ztd <command> --help`.
+4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `consensus`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, `eval`, and `autochthon`, plus the top-level `login` and `logout` commands. Flags and defaults resolve via `./ztd <command> --help`.
 5. **Terminal UI (`ztd tui`)**: Interactive terminal interface monitoring Gateway state, connected Operators, session leases, and recent transactions.
 6. **Console**: React and TypeScript Single Page Application embedded into the Gateway binary and served at `/console/` on the Gateway HTTPS origin. It calls Gateway APIs for WebAuthn authentication, human approvals, Operator inventory, and audit telemetry; it does not communicate directly with Operators.
 7. **Evaluation Explorer**: Optional evaluation campaign interface served by the Gateway's loopback Explorer listener when enabled and configured. It is an auxiliary surface, not a separate always-running platform service.
@@ -165,12 +165,12 @@ Every transaction entering a governed platform path traverses five distinct veri
 
 The platform operates under one of four immutable governance postures set at Gateway startup via `--posture <posture>`:
 
-| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) | L3 Notary (Read-Only) |
-| :--- | :--- | :--- | :--- | :--- |
-| **`doctrine`** | Enforced | Audited | Audited | Not Required |
-| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited | Not Required |
-| **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required |
-| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) | Not Required |
+| Posture | L1 Doctrine | L2 Consensus | L3 Notary (Mutations) |
+| :--- | :--- | :--- | :--- |
+| **`doctrine`** | Enforced | Audited | Audited |
+| **`consensus`** | Enforced | Enforced ($K$-of-$N$) | Audited |
+| **`ratify`** | Enforced | Audited | Enforced (Human) |
+| **`notary`** | Enforced | Enforced ($K$-of-$N$) | Enforced (Human) |
 
 Posture selects which evidence gates execution; it does not by itself configure Consensus services, voters, or human identities.
 
@@ -243,7 +243,7 @@ The network topology strictly isolates management, application, observation, and
 | **8081** | HTTP | Gateway | Loopback Only | Private ingest listener for exporting public spectator mirror feeds |
 | **8082** | HTTP | Public Mirror | Anonymous / Public | Public spectator mirror serving sanitized feeds, SSE, and content-addressed proofs |
 | **5173 default** | HTTP | Gateway Explorer | Loopback Only | Optional evaluation Explorer SPA when enabled/configured |
-| **11434**| HTTP | Ollama Provider | Localhost / Private LAN | Model provider dialed exclusively by the Inference Operator |
+| **11434**| HTTP | Ollama Provider | Localhost / Private LAN | Model provider. The Gateway uses it for embedded inference (`gw start --inference-ollama-endpoint`), and Operators use it for model maintenance (`--inference-ollama-endpoint`). Default `http://127.0.0.1:11434` (`constants.InferenceOllamaDefaultPort`). |
 
 The Gateway's HTTP and HTTPS values are defaults. After configuration validation, startup checks availability and may bind both listeners at the same higher offset; the selected values are persisted in the launch profile. Auxiliary mirror and Explorer listeners have separate loopback defaults and may be configured independently.
 
@@ -253,6 +253,7 @@ Certificates are issued under the `ztd.local` SPIFFE trust domain:
 - App Workload: `spiffe://ztd.local/app/<app_id>`
 - Human User: `spiffe://ztd.local/user/<user_id>`
 - Gateway Hub: `spiffe://ztd.local/hub/operator-listen`
+- Gateway Peer: `spiffe://ztd.local/gateway/<gateway_id>`
 
 ### Authentication and Enrollment Lifecycle
 
@@ -302,9 +303,9 @@ The protocol library (`protocol/`) establishes the canonical platform contracts:
 ### Compliance Evidence and Verification Engine
 
 The platform provides a built-in compliance evidence engine:
-- **Framework Mapping**: Protocol catalogs in `protocol/constants/compliance/` map platform controls to FedRAMP 20x and NIST SP 800-53 Rev. 5. COSAiS AI security overlays map to platform KSI definitions. Frameworks without a reviewed crosswalk receive no generated assessment ([Compliance Alignment Reference](../reference/compliance-alignment.md)).
+- **Framework Mapping**: Protocol catalogs in `protocol/constants/compliance/` map platform controls to FedRAMP 20x and NIST SP 800-53 Rev. 5. COSAiS AI security overlays map to platform KSI definitions. The FedRAMP and NIST crosswalk is embedded from `protocol/constants/compliance/fedramp-nist-crosswalk.json` ([Compliance Alignment Reference](../reference/compliance-alignment.md)).
 - **Evidence Graphs**: Evaluation and runtime evidence is imported into a content-addressed evidence graph verified via `ztd compliance evidence-graph verify --eval-run <run-id>`.
-- **Release Preparation**: `ztd compliance release-prepare` exports bounded operational evidence, generates a sealed public report bundle, exports and verifies it offline, and generates immutable compliance evidence projections.
+- **Release Preparation**: `ztd compliance release-prepare` derives the assessment scope from `VERSION`, git, and the running binary digest, reads the runtime database read-only, generates a public signed bundle, verifies it offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/`. The command does not commit or tag.
 
 ### Host Deployment Topology
 

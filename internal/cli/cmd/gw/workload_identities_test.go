@@ -9,7 +9,9 @@ package gw
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -29,9 +32,9 @@ func TestCleanupReportsRecordedIdentitiesWithoutScanningHome(t *testing.T) {
 	known := filepath.Join(home, "custom-operator")
 	unlisted := filepath.Join(home, "unlisted-operator")
 	for _, dir := range []string{known, unlisted} {
-		path := filepath.Join(dir, ".ztd/pki/trust/ztdg-ca-bundle.pem")
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
-		require.NoError(t, os.WriteFile(path, []byte("old-ca"), 0600))
+		fileSvc, err := fs.NewRuntimeFileService(dir, slog.Default())
+		require.NoError(t, err)
+		require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle), []byte("old-ca"), constants.PermFilePrivate))
 	}
 	data, err := json.Marshal([]map[string]string{{"capability": "observer", "directory": known}})
 	require.NoError(t, err)
@@ -43,7 +46,9 @@ func TestCleanupReportsRecordedIdentitiesWithoutScanningHome(t *testing.T) {
 	reportWorkloadIdentities(cmd)
 	require.Contains(t, out.String(), known)
 	require.NotContains(t, out.String(), unlisted)
-	retained, err := os.ReadFile(filepath.Join(known, ".ztd/pki/trust/ztdg-ca-bundle.pem"))
+	fileSvc, err := fs.NewRuntimeFileService(known, slog.Default())
+	require.NoError(t, err)
+	retained, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle))
 	require.NoError(t, err)
 	require.Equal(t, "old-ca", string(retained))
 }
@@ -54,16 +59,17 @@ func TestCleanupReportsDefaultDataIdentityWithoutRegistry(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	dir := filepath.Join(home, constants.OllamaZTDWorkloadsDirPath, "data")
-	path := filepath.Join(dir, ".ztd/pki/trust/ztdg-ca-bundle.pem")
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
-	require.NoError(t, os.WriteFile(path, []byte("old-ca"), 0600))
+	fileSvc, err := fs.NewRuntimeFileService(dir, slog.Default())
+	require.NoError(t, err)
+	bundlePath := filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
+	require.NoError(t, fileSvc.WriteFile(context.Background(), bundlePath, []byte("old-ca"), constants.PermFilePrivate))
 	cmd := &cobra.Command{}
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	reportWorkloadIdentities(cmd)
 	require.Contains(t, out.String(), "data: "+dir)
 	require.Contains(t, out.String(), "ztd operator reset-identity --working-dir")
-	retained, err := os.ReadFile(path)
+	retained, err := fileSvc.ReadFile(context.Background(), bundlePath)
 	require.NoError(t, err)
 	require.Equal(t, "old-ca", string(retained))
 }

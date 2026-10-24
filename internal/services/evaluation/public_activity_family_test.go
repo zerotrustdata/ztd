@@ -48,6 +48,6 @@ func TestBuildPublicAssignmentEvidence_EmitsEmptyActivityRecordsOnWire(t *testin
 	} {
 		var family publicActivityFamilyWire
 		require.NoError(t, json.Unmarshal(familyRaw, &family), familyName)
-		assert.Equal(t, json.RawMessage("[]"), family.Records, "%s should include records array on wire", familyName)
+		assert.Equal(t, json.RawMessage("[]"), family.Records, "%s should include records array on wire", familyName) //nolint:testifylint // exact bytes, not JSON equivalence
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
@@ -30,40 +31,43 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// sseApproveServer returns an httptest.Server that serves a single
-// approval.completed SSE event for the test user and given transaction.
-func sseApproveServer(t *testing.T, txHash string) *httptest.Server {
-	t.Helper()
-	return sseDecisionServer(t, txHash, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED)
+// completedApprovalReceipt is the resumed execution receipt of an approved
+// transaction: completed, with the required L3 proof valid.
+func completedApprovalReceipt(txHash string) *operatorv1.ActionReceipt {
+	return &operatorv1.ActionReceipt{
+		TransactionId:   "transaction-approve-test",
+		TransactionHash: txHash,
+		SignerKeyId:     "warden-key-approve-test",
+		Signature:       "signature-approve-test",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
+	}
 }
 
-// sseDecisionServer serves one approval.completed event whose receipt carries
-// rejection, so a deny is the signed L3_DENIED receipt.
-func sseDecisionServer(t *testing.T, txHash string, rejection operatorv1.GovernanceRejectionCode) *httptest.Server {
+// sseDecisionServer serves one approval.completed event for txHash carrying
+// receipt. A nil receipt sends the event without one.
+func sseDecisionServer(t *testing.T, txHash string, receipt *operatorv1.ActionReceipt) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
-			TransactionId:   "transaction-approve-test",
-			TransactionHash: txHash,
-			SignerKeyId:     "warden-key-approve-test",
-			Signature:       "signature-approve-test",
-			RejectionCode:   rejection,
-		})
-		require.NoError(t, err)
-		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-			Type:    constants.SSEEventTypeApprovalCompleted,
-			UserID:  "user-test",
-			TxHash:  txHash,
-			Receipt: receipt,
-		})
-		require.NoError(t, err)
+		event := models.ApprovalCompletedEvent{
+			Type:   constants.SSEEventTypeApprovalCompleted,
+			UserID: "user-test",
+			TxHash: txHash,
+		}
+		if receipt != nil {
+			body, err := response.MarshalProtoJSONCanonical(receipt)
+			assert.NoError(t, err)
+			event.Receipt = body
+		}
+		eventPayload, err := json.Marshal(event)
+		assert.NoError(t, err)
 		envelope := models.SSEPushPayload{
 			UserID: "user-test",
 			Event:  eventPayload,
 		}
 		envelopeJSON, err := json.Marshal(envelope)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, string(envelopeJSON))
 	}))
 }
@@ -94,17 +98,14 @@ func sseNoEventServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func TestApproveCmd_SSE_HappyPath(t *testing.T) {
+// newBrowserApprove builds 'ztd auth approve' against the SSE server at srvURL
+// and returns it with its output buffer and the API client it uses.
+func newBrowserApprove(t *testing.T, srvURL string) (*cobra.Command, *bytes.Buffer, *cmdtest.MockAPIClient) {
+	t.Helper()
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	cmdtest.WithEndpointOverride(t, srvURL)
 
-	srv := sseApproveServer(t, "txhash123")
-	t.Cleanup(srv.Close)
-	cmdtest.WithEndpointOverride(t, srv.URL)
-
-	mockClient := &cmdtest.MockAPIClient{
-		GetResp: []byte(`{"status":"approved","result_summary":"success"}`),
-	}
-
+	mockClient := &cmdtest.MockAPIClient{}
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
 
@@ -112,155 +113,88 @@ func TestApproveCmd_SSE_HappyPath(t *testing.T) {
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
+	return cmd, &buf, mockClient
+}
 
-	err := cmd.RunE(cmd, []string{"txhash123"})
-	require.NoError(t, err)
+// runBrowserApprove runs 'ztd auth approve txHash' against the SSE server at
+// srvURL and returns its output and error.
+func runBrowserApprove(t *testing.T, srvURL, txHash string) (string, error) {
+	t.Helper()
+	cmd, out, _ := newBrowserApprove(t, srvURL)
+	err := cmd.RunE(cmd, []string{txHash})
+	return out.String(), err
+}
 
-	assert.Contains(t, buf.String(), "approved successfully")
-	assert.Contains(t, buf.String(), "txhash123")
+func TestApproveCmd_SSE_HappyPath(t *testing.T) {
+	srv := sseDecisionServer(t, "txhash123", completedApprovalReceipt("txhash123"))
+	t.Cleanup(srv.Close)
+
+	cmd, out, client := newBrowserApprove(t, srv.URL)
+	require.NoError(t, cmd.RunE(cmd, []string{"txhash123"}))
+
+	assert.Contains(t, out.String(), "approved successfully")
+	assert.Contains(t, out.String(), "txhash123")
+	assert.Contains(t, out.String(), "EXECUTION_STATUS_COMPLETED")
+	assert.Empty(t, client.GetCalls, "the executed transaction has left the pending store; the receipt alone is checked")
 }
 
 func TestApproveCmd_SSE_DenyIsNeverReportedApproved(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
-	srv := sseDecisionServer(t, "txhash123", operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
+	srv := sseDecisionServer(t, "txhash123", &operatorv1.ActionReceipt{
+		TransactionHash: "txhash123",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+	})
 	t.Cleanup(srv.Close)
-	cmdtest.WithEndpointOverride(t, srv.URL)
 
-	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"status":"approved"}`)}
-	loader := func(string) (*config.Config, error) { return cfg, nil }
-	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
-
-	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	err := cmd.RunE(cmd, []string{"txhash123"})
+	out, err := runBrowserApprove(t, srv.URL, "txhash123")
 	require.ErrorIs(t, err, constants.ErrTxL3Denied)
-	assert.NotContains(t, buf.String(), "approved successfully")
+	assert.NotContains(t, out, "approved successfully")
+}
+
+func TestApproveCmd_SSE_ReceiptRejected(t *testing.T) {
+	failed := completedApprovalReceipt("txhash123")
+	failed.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+	failed.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
+
+	unproven := completedApprovalReceipt("txhash123")
+	unproven.L3Status = operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
+
+	rejected := completedApprovalReceipt("txhash123")
+	rejected.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET
+
+	cases := []struct {
+		name    string
+		receipt *operatorv1.ActionReceipt
+		want    error
+	}{
+		{name: "missing receipt", receipt: nil, want: constants.ErrActionReceiptMissing},
+		{name: "receipt for another transaction", receipt: completedApprovalReceipt("txhash-other"), want: constants.ErrActionReceiptMissing},
+		{name: "failed execution", receipt: failed, want: constants.ErrActionExecutionFailed},
+		{name: "governance rejection", receipt: rejected, want: constants.ErrActionExecutionFailed},
+		{name: "completed without required L3 proof", receipt: unproven, want: constants.ErrTxL3ProofInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := sseDecisionServer(t, "txhash123", tc.receipt)
+			t.Cleanup(srv.Close)
+
+			out, err := runBrowserApprove(t, srv.URL, "txhash123")
+			require.ErrorIs(t, err, tc.want)
+			assert.NotContains(t, out, "approved successfully")
+		})
+	}
 }
 
 func TestApproveCmd_SSE_Timeout(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
 	srv := sseNoEventServer(t)
-	cmdtest.WithEndpointOverride(t, srv.URL)
-
-	mockClient := &cmdtest.MockAPIClient{
-		GetResp: []byte(`{"status":"approved"}`),
-	}
-
-	loader := func(string) (*config.Config, error) { return cfg, nil }
-	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
-
-	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	cmd.SetContext(ctx)
 
+	cmd, _, _ := newBrowserApprove(t, srv.URL)
+	cmd.SetContext(ctx)
 	err := cmd.RunE(cmd, []string{"txhash123"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "timed out")
-}
-
-func TestApproveCmd_SSE_Success_GetError(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
-	srv := sseApproveServer(t, "txhash123")
-	t.Cleanup(srv.Close)
-	cmdtest.WithEndpointOverride(t, srv.URL)
-
-	mockClient := &cmdtest.MockAPIClient{
-		GetErr: fmt.Errorf("network failure"),
-	}
-
-	loader := func(string) (*config.Config, error) { return cfg, nil }
-	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
-
-	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	err := cmd.RunE(cmd, []string{"txhash123"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "verify status")
-}
-
-func TestApproveCmd_SSE_Success_InvalidJSONStatus(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
-	srv := sseApproveServer(t, "txhash123")
-	t.Cleanup(srv.Close)
-	cmdtest.WithEndpointOverride(t, srv.URL)
-
-	mockClient := &cmdtest.MockAPIClient{
-		GetResp: []byte(`not json {{{`),
-	}
-
-	loader := func(string) (*config.Config, error) { return cfg, nil }
-	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
-
-	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	err := cmd.RunE(cmd, []string{"txhash123"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse status response")
-}
-
-func TestApproveCmd_SSE_Success_EmptyStatus(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
-	srv := sseApproveServer(t, "txhash456")
-	t.Cleanup(srv.Close)
-	cmdtest.WithEndpointOverride(t, srv.URL)
-
-	mockClient := &cmdtest.MockAPIClient{
-		GetResp: []byte(`{}`),
-	}
-
-	loader := func(string) (*config.Config, error) { return cfg, nil }
-	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
-
-	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	err := cmd.RunE(cmd, []string{"txhash456"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected status")
-	assert.Contains(t, buf.String(), "txhash456")
-}
-
-func TestApproveCmd_SSE_Success_StatusNotApproved(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-
-	srv := sseApproveServer(t, "txhash789")
-	t.Cleanup(srv.Close)
-	cmdtest.WithEndpointOverride(t, srv.URL)
-
-	mockClient := &cmdtest.MockAPIClient{
-		GetResp: []byte(`{"status":"pending"}`),
-	}
-
-	loader := func(string) (*config.Config, error) { return cfg, nil }
-	factory := func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil }
-
-	cmd := approveCmdWithConfig(loader, factory, cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	err := cmd.RunE(cmd, []string{"txhash789"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected status")
 }

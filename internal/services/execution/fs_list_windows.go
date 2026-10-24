@@ -96,8 +96,10 @@ func (s *FsListService) ExecuteFsList(ctx context.Context, req *models.FsListReq
 
 	// Build entry list
 	entryCount := 0
+	truncated := false
 	for _, entry := range entries {
 		if entryCount >= maxEntries {
+			truncated = true
 			break
 		}
 
@@ -119,6 +121,8 @@ func (s *FsListService) ExecuteFsList(ctx context.Context, req *models.FsListReq
 	}
 
 	// Mark as successful
+	result.TotalCount = len(result.Entries)
+	result.Truncated = truncated
 	endTime := time.Now().UTC()
 	result.EndTime = endTime
 	result.DurationSeconds = endTime.Sub(startTime).Seconds()

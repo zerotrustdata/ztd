@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, LiveEvent } from '../src/contract/types';
 import { LiveEventStream } from '../src/components/LiveEventStream';
 import { evalStore, recordKey } from '../src/state/store';
+import { adaptCampaignProjectionEnvelope, createCampaignAdaptContext } from '../src/state/campaign-adapter';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 
 function liveEvent(partial: Partial<LiveEvent> = {}): LiveEvent {
@@ -41,10 +42,10 @@ describe('LiveEventStream', () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
-  it('keeps eight columns and links the task and result directly to evidence', () => {
+  it('keeps nine columns and links the task and result directly to evidence', () => {
     render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, input_tokens: { value: 350 } } })]));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
-      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
+      .toEqual(['Result', 'Task', 'Model', 'Tribunal', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
     const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
     expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
@@ -52,6 +53,59 @@ describe('LiveEventStream', () => {
     expect(screen.getByText('780')).toBeInTheDocument();
     expect(screen.getByText('350')).toBeInTheDocument();
     expect(screen.getByText('Primary')).toHaveClass('stream-role');
+  });
+
+  it.each([1, 0, undefined])('updates the stage icon from terminal lifecycle without a result projection (pass=%s)', (pass) => {
+    const context = createCampaignAdaptContext();
+    const lifecycle = (status: string) => adaptCampaignProjectionEnvelope({
+      schema_version: '1.0.0', message_type: 'PublicAssignmentLifecycleRecord',
+      idempotency_key: `run-a:assignment-1:lifecycle:${status}`,
+      record: {
+        run_id: 'run-a', assignment_id: 'assignment-1', scenario_id: 'tool-select-file-read',
+        designated_role: 'MODEL_CAMPAIGN_ROLE_PRIMARY', variant_id: 'model-a',
+        lifecycle_status: `EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_${status}`,
+        observed_at: status === 'RUNNING' ? '2026-09-17T07:59:00Z' : '2026-09-17T08:00:00Z',
+      },
+    }, context) as LiveEvent[];
+    const activity = liveEvent({
+      dataset_id: 'ds-live-run-a', kind: 'stage_updated', lifecycle_status: 'running',
+      metric_delta: { latency_ms: { value: 82 }, input_tokens: { value: 880 }, output_tokens: { value: 27 } },
+    });
+    const events = [...lifecycle('RUNNING'), activity];
+    const { rerender } = render(stream(events));
+    expect(screen.getByRole('link', { name: /Stage Updated:/ })).toHaveTextContent('•');
+    if (pass !== undefined) events.push(liveEvent({
+      dataset_id: 'ds-live-run-a', event_id: 'pass', kind: 'metric_updated', lifecycle_status: 'running',
+      metric_delta: { pass: { value: pass } },
+    }));
+    events.push(...lifecycle('COMPLETED'));
+    // Reconciliation may deliver records in either order.
+    rerender(stream([...events].reverse()));
+    expect(rows()).toHaveLength(1);
+    const label = pass === 0 ? 'Model failed' : pass === 1 ? 'Passed' : 'Completed';
+    expect(screen.getByRole('link', { name: `${label}: tool-select-file-read. View details` }))
+      .toHaveTextContent(pass === 0 ? '×' : '✓');
+    expect(screen.queryByRole('link', { name: /Stage Updated:/ })).not.toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
+    expect(screen.getByText('880')).toBeInTheDocument();
+    expect(screen.getByText('27')).toBeInTheDocument();
+  });
+
+  it('replaces a lifecycle completion with the classified result without borrowing another role’s grade', () => {
+    const terminal = liveEvent({ event_id: 'lifecycle', terminal_status: undefined });
+    const { rerender } = render(stream([
+      terminal,
+      liveEvent({ event_id: 'other-role', kind: 'metric_updated', role: 'lite', metric_delta: { pass: { value: 0 } } }),
+    ]));
+    expect(screen.getByRole('link', { name: /Completed:/ })).toHaveTextContent('✓');
+    const result = liveEvent({
+      event_id: 'run-a:assignment-1:result:event', kind: 'assignment_failed', terminal_status: 'model_failed',
+      metric_delta: { pass: { value: 0 } },
+    });
+    rerender(stream([result, terminal]));
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Model failed:/ })).toHaveTextContent('×');
+    expect(screen.queryByRole('link', { name: /Completed:/ })).not.toBeInTheDocument();
   });
 
   it('caps the unfiltered feed at 100 rows and paginates 25 at a time', async () => {
@@ -280,6 +334,76 @@ describe('LiveEventStream', () => {
     expect(screen.queryByRole('region', { name: 'Live timeline' })).not.toBeInTheDocument();
     expect(screen.queryByText('Page 1 of 2 (30 events)')).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  describe('Tribunal votes', () => {
+    const voteEvent = (id: string, member: string, outcome: string, observedAt: string, transaction = 'tx-1') => liveEvent({
+      event_id: id, kind: 'stage_updated', lifecycle_status: 'running', observed_at: observedAt,
+      dataset_id: 'ds-live-investigation', run_id: 'investigation', assignment_id: undefined,
+      role: undefined, task_id: undefined, variant_id: undefined,
+      stage_label: `tribunal vote\n${JSON.stringify({
+        member_app_id: `tribunal-${member}`, outcome, reason: 'read-only query', model_tag: 'gemma4:e2b', transaction_id: transaction,
+      })}`,
+    });
+    const started = (assignmentId: string, observedAt: string) => liveEvent({
+      event_id: `start-${assignmentId}`, kind: 'assignment_started', lifecycle_status: 'running',
+      assignment_id: assignmentId, task_id: `task-${assignmentId}`, observed_at: observedAt,
+    });
+    const rowFor = (task: string) => rows().find((row) => row.textContent?.includes(task)) as HTMLElement;
+
+    it('renders no Tribunal outside a row and none on rows without votes', () => {
+      render(stream([liveEvent()]));
+      expect(screen.queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
+    });
+
+    it('spawns all five seats in the row of the assignment that was active, keeping votes out of the row set', async () => {
+      const user = userEvent.setup();
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:00:05Z'),
+        voteEvent('v-nemesis', 'nemesis', 'deny', '2026-09-17T08:00:06Z'),
+      ]));
+      expect(rows()).toHaveLength(1);
+      const tribunal = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
+      expect(within(tribunal).getByText('Coherent Composer')).toBeInTheDocument();
+      expect(within(tribunal).getByText('Approve')).toBeInTheDocument();
+      expect(within(tribunal).getByText('Deny')).toBeInTheDocument();
+      expect(within(tribunal).getAllByText('Pending')).toHaveLength(3);
+      const axiom = within(tribunal).getByText('Axiom').closest('details') as HTMLElement;
+      expect(axiom).toHaveAttribute('data-outcome', 'approve');
+      expect(axiom).not.toHaveAttribute('open');
+      await user.click(within(axiom).getByText('Axiom'));
+      expect(axiom).toHaveAttribute('open');
+      expect(within(axiom).getByText(/read-only query/)).toBeInTheDocument();
+      expect(within(axiom).getByText(/gemma4:e2b/)).toBeInTheDocument();
+    });
+
+    it('moves later votes to the next assignment and leaves the earlier row as it was', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:00:05Z'),
+        started('a-2', '2026-09-17T08:01:00Z'),
+        voteEvent('v-pragma', 'pragma', 'deny', '2026-09-17T08:01:05Z', 'tx-2'),
+      ]));
+      const first = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
+      const second = within(rowFor('task-a-2')).getByRole('group', { name: 'Tribunal' });
+      expect(within(first).getByText('Approve')).toBeInTheDocument();
+      expect(within(first).queryByText('Deny')).not.toBeInTheDocument();
+      expect(within(second).getByText('Deny')).toBeInTheDocument();
+      expect(within(second).queryByText('Approve')).not.toBeInTheDocument();
+    });
+
+    it('shows only the latest round of a row', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        voteEvent('v-axiom-1', 'axiom', 'approve', '2026-09-17T08:00:05Z', 'tx-1'),
+        voteEvent('v-axiom-2', 'concord', 'deny', '2026-09-17T08:00:30Z', 'tx-2'),
+      ]));
+      const tribunal = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
+      expect(within(tribunal).queryByText('Approve')).not.toBeInTheDocument();
+      expect(within(tribunal).getByText('Deny')).toBeInTheDocument();
+      expect(within(tribunal).getAllByText('Pending')).toHaveLength(4);
+    });
   });
 
 });

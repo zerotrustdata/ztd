@@ -69,7 +69,7 @@ func TestZtdoService_Stop_CancelsServiceContextAndMarksStopped(t *testing.T) {
 	require.NoError(t, service.Stop(t.Context()))
 
 	assert.False(t, service.running)
-	assert.Error(t, service.ctx.Err(), "stop must cancel the service context so background work exits")
+	require.Error(t, service.ctx.Err(), "stop must cancel the service context so background work exits")
 	require.NoError(t, service.Stop(t.Context()), "a second stop is a no-op")
 }
 

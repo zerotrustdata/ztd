@@ -10,6 +10,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -128,13 +129,13 @@ func (i Integration) WriteConfig(ctx context.Context, files fs.RuntimeFileServic
 		if err != nil {
 			return "", nil, fmt.Errorf("agent: marshal %s config: %w", i.ID, err)
 		}
-		return writeConfigWithBackup(agentPaths.DevinConfigDir, agentPaths.DevinConfigPath, configJSON)
+		return writeConfigWithBackup(ctx, files, agentPaths.DevinConfigDir, agentPaths.DevinConfigPath, configJSON)
 
 	case ConfigGeminiSettings:
-		return writeGeminiSettings(agentPaths, server)
+		return writeGeminiSettings(ctx, files, agentPaths, server)
 
 	case ConfigGooseYAML:
-		return writeGooseConfig(agentPaths, binaryPath, appName)
+		return writeGooseConfig(ctx, files, agentPaths, binaryPath, appName)
 
 	case ConfigTempJSON:
 		return writeTempMCPConfig(ctx, files, server)
@@ -181,16 +182,32 @@ func removeScratch(files fs.RuntimeFileService, relDir string) {
 
 // writeGeminiSettings merges the ztd server into Gemini's settings.json and
 // disables all built-in tools by setting tools.core to an empty array.
-func writeGeminiSettings(agentPaths paths.AgentConfigPaths, server mcpServer) (string, func(), error) {
-	if err := os.MkdirAll(agentPaths.GeminiConfigDir, constants.PermDirStandard); err != nil {
+func writeGeminiSettings(ctx context.Context, files fs.RuntimeFileService, agentPaths paths.AgentConfigPaths, server mcpServer) (string, func(), error) {
+	runtimeDir, runtime, err := runtimePath(files, agentPaths.GeminiConfigPath)
+	if err != nil {
+		return "", nil, err
+	}
+	if runtime {
+		if err := files.MkdirAll(ctx, filepath.Dir(runtimeDir), constants.PermDirStandard); err != nil {
+			return "", nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+		}
+	} else if err := os.MkdirAll(agentPaths.GeminiConfigDir, constants.PermDirStandard); err != nil {
 		return "", nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
 	}
 
 	var settings geminiSettings
-	if existingData, err := os.ReadFile(agentPaths.GeminiConfigPath); err == nil {
+	var existingData []byte
+	if runtime {
+		existingData, err = files.ReadFile(ctx, runtimeDir)
+	} else {
+		existingData, err = os.ReadFile(agentPaths.GeminiConfigPath)
+	}
+	if err == nil {
 		if err := json.Unmarshal(existingData, &settings); err != nil {
 			return "", nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 		}
+	} else if (runtime && !errors.Is(err, constants.ErrNotFound)) || (!runtime && !os.IsNotExist(err)) {
+		return "", nil, fmt.Errorf("agent: read gemini settings: %w", err)
 	}
 	if settings.MCPServers == nil {
 		settings.MCPServers = make(map[string]mcpServer)
@@ -204,7 +221,12 @@ func writeGeminiSettings(agentPaths paths.AgentConfigPaths, server mcpServer) (s
 	}
 
 	fmt.Fprintf(os.Stderr, "[ztd] Writing MCP config to %s with native tools disabled\n", pathutil.ToSlash(agentPaths.GeminiConfigPath))
-	if err := os.WriteFile(agentPaths.GeminiConfigPath, configJSON, constants.PermFilePublic); err != nil {
+	if runtime {
+		err = files.WriteFile(ctx, runtimeDir, configJSON, constants.PermFilePublic)
+	} else {
+		err = os.WriteFile(agentPaths.GeminiConfigPath, configJSON, constants.PermFilePublic)
+	}
+	if err != nil {
 		return "", nil, fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
 	}
 	return agentPaths.GeminiConfigPath, nil, nil
@@ -214,7 +236,7 @@ func writeGeminiSettings(agentPaths paths.AgentConfigPaths, server mcpServer) (s
 // preserving provider and other settings. The --no-profile launch flag skips
 // every profile extension (including the developer extension that provides
 // shell/file tools); --with-extension loads ztd as the sole MCP server.
-func writeGooseConfig(agentPaths paths.AgentConfigPaths, binaryPath, appName string) (string, func(), error) {
+func writeGooseConfig(ctx context.Context, files fs.RuntimeFileService, agentPaths paths.AgentConfigPaths, binaryPath, appName string) (string, func(), error) {
 	ztdExt := gooseExtension{
 		Enabled: true,
 		Config: gooseExtConfig{
@@ -232,10 +254,22 @@ func writeGooseConfig(agentPaths paths.AgentConfigPaths, binaryPath, appName str
 	// extensions map, so schema-less passthrough is required to avoid
 	// dropping fields on re-marshal.
 	var rawConfig map[string]any
-	if existingData, err := os.ReadFile(agentPaths.GooseYAMLConfigPath); err == nil {
+	runtimePath, runtime, err := runtimePath(files, agentPaths.GooseYAMLConfigPath)
+	if err != nil {
+		return "", nil, err
+	}
+	var existingData []byte
+	if runtime {
+		existingData, err = files.ReadFile(ctx, runtimePath)
+	} else {
+		existingData, err = os.ReadFile(agentPaths.GooseYAMLConfigPath)
+	}
+	if err == nil {
 		if err := yaml.Unmarshal(existingData, &rawConfig); err != nil {
 			return "", nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 		}
+	} else if (runtime && !errors.Is(err, constants.ErrNotFound)) || (!runtime && !os.IsNotExist(err)) {
+		return "", nil, fmt.Errorf("agent: read goose config: %w", err)
 	}
 	if rawConfig == nil {
 		rawConfig = make(map[string]any)
@@ -253,12 +287,35 @@ func writeGooseConfig(agentPaths paths.AgentConfigPaths, binaryPath, appName str
 	if err != nil {
 		return "", nil, fmt.Errorf("agent: marshal goose config: %w", err)
 	}
-	return writeConfigWithBackup(agentPaths.GooseYAMLConfigDir, agentPaths.GooseYAMLConfigPath, configYAML)
+	return writeConfigWithBackup(ctx, files, agentPaths.GooseYAMLConfigDir, agentPaths.GooseYAMLConfigPath, configYAML)
 }
 
 // writeConfigWithBackup creates the config dir, backs up an existing config,
 // and writes the new config.
-func writeConfigWithBackup(configDir, configPath string, content []byte) (string, func(), error) {
+func writeConfigWithBackup(ctx context.Context, files fs.RuntimeFileService, configDir, configPath string, content []byte) (string, func(), error) {
+	runtimeConfigPath, runtime, err := runtimePath(files, configPath)
+	if err != nil {
+		return "", nil, err
+	}
+	if runtime {
+		if err := files.MkdirAll(ctx, filepath.Dir(runtimeConfigPath), constants.PermDirStandard); err != nil {
+			return "", nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+		}
+		existing, err := files.ReadFile(ctx, runtimeConfigPath)
+		if err == nil {
+			if err := files.WriteFile(ctx, runtimeConfigPath+".bak", existing, constants.PermFilePublic); err != nil {
+				return "", nil, fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
+			}
+			fmt.Fprintf(os.Stderr, "[ztd] Backing up existing config to %s\n", pathutil.ToSlash(configPath+".bak"))
+		} else if !errors.Is(err, constants.ErrNotFound) {
+			return "", nil, fmt.Errorf("agent: read config backup source: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "[ztd] Writing MCP config to %s (ztd as only MCP server for governance)\n", pathutil.ToSlash(configPath))
+		if err := files.WriteFile(ctx, runtimeConfigPath, content, constants.PermFilePublic); err != nil {
+			return "", nil, fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
+		}
+		return configPath, nil, nil
+	}
 	if err := os.MkdirAll(configDir, constants.PermDirStandard); err != nil {
 		return "", nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
 	}
@@ -273,6 +330,20 @@ func writeConfigWithBackup(configDir, configPath string, content []byte) (string
 		return "", nil, fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
 	}
 	return configPath, nil, nil
+}
+
+func runtimePath(files fs.RuntimeFileService, absPath string) (string, bool, error) {
+	if files == nil {
+		return "", false, nil
+	}
+	relPath, err := files.Rel(absPath)
+	if err == nil {
+		return relPath, true, nil
+	}
+	if errors.Is(err, constants.ErrPathValidation) {
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf("agent: resolve runtime config path: %w", err)
 }
 
 // LaunchArgs returns the argv to pass to the agent binary for a governed

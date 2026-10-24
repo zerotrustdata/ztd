@@ -8,8 +8,9 @@
 package testutil
 
 import (
+	"context"
 	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"testing"
 
@@ -28,6 +29,12 @@ var runtimeEvidenceStoreDirs = map[string]bool{
 	constants.EvaluationDirname: true,
 }
 
+type runtimeFileService interface {
+	ReadDir(context.Context, string) ([]os.DirEntry, error)
+	Resolve(string) string
+	Stat(context.Context, string) (os.FileInfo, error)
+}
+
 // AssertOneDatabaseAndLedger enforces INV-STOR-ONE-01 on a runtime data
 // directory: it must hold the canonical SQLite database (with its SQLite
 // sidecars) and the file ledger directory, plus only the named evidence-store
@@ -35,7 +42,7 @@ var runtimeEvidenceStoreDirs = map[string]bool{
 // unexpected entry fails the test by name. Data-bearing entries must also be
 // private: the data directory and every allowed directory 0700, the database
 // and its sidecars 0600.
-func AssertOneDatabaseAndLedger(t *testing.T, dataDir string) {
+func AssertOneDatabaseAndLedger(t *testing.T, fileSvc runtimeFileService) {
 	t.Helper()
 
 	allowedFiles := map[string]bool{
@@ -45,12 +52,15 @@ func AssertOneDatabaseAndLedger(t *testing.T, dataDir string) {
 		constants.DbFilename + constants.SQLiteJournalSuffix: true,
 	}
 
-	entries, err := os.ReadDir(dataDir)
+	ctx := t.Context()
+	dataDir := constants.DataDirname
+	dataDirAbs := fileSvc.Resolve(dataDir)
+	entries, err := fileSvc.ReadDir(ctx, dataDir)
 	if err != nil {
-		t.Fatalf("read runtime data dir %s: %v", dataDir, err)
+		t.Fatalf("read runtime data dir %s: %v", dataDirAbs, err)
 	}
 
-	assertMode(t, dataDir, constants.PermDirPrivate, true)
+	assertMode(t, fileSvc, ctx, dataDir, constants.PermDirPrivate, true)
 
 	var sawDB, sawLedger bool
 	var unexpected []string
@@ -59,14 +69,14 @@ func AssertOneDatabaseAndLedger(t *testing.T, dataDir string) {
 		switch {
 		case name == constants.LedgerDirname && entry.IsDir():
 			sawLedger = true
-			assertMode(t, filepath.Join(dataDir, name), constants.PermDirPrivate, true)
+			assertMode(t, fileSvc, ctx, path.Join(dataDir, name), constants.PermDirPrivate, true)
 		case runtimeEvidenceStoreDirs[name] && entry.IsDir():
-			assertMode(t, filepath.Join(dataDir, name), constants.PermDirPrivate, true)
+			assertMode(t, fileSvc, ctx, path.Join(dataDir, name), constants.PermDirPrivate, true)
 		case allowedFiles[name] && !entry.IsDir():
 			if name == constants.DbFilename {
 				sawDB = true
 			}
-			assertMode(t, filepath.Join(dataDir, name), constants.PermFilePrivate, false)
+			assertMode(t, fileSvc, ctx, path.Join(dataDir, name), constants.PermFilePrivate, false)
 		default:
 			unexpected = append(unexpected, name)
 		}
@@ -87,14 +97,14 @@ func AssertOneDatabaseAndLedger(t *testing.T, dataDir string) {
 
 // assertMode fails the test unless path has exactly the wanted permission bits
 // (adjusted for Windows, which has no group or other bits).
-func assertMode(t *testing.T, path string, want os.FileMode, directory bool) {
+func assertMode(t *testing.T, fileSvc runtimeFileService, ctx context.Context, path string, want os.FileMode, directory bool) {
 	t.Helper()
-	info, err := os.Stat(path)
+	info, err := fileSvc.Stat(ctx, path)
 	if err != nil {
-		t.Errorf("stat %s: %v", path, err)
+		t.Errorf("stat %s: %v", fileSvc.Resolve(path), err)
 		return
 	}
 	if got, wantMode := info.Mode().Perm(), FileMode(want, directory); got != wantMode {
-		t.Errorf("runtime data entry %s has mode %#o, want %#o", path, got, wantMode)
+		t.Errorf("runtime data entry %s has mode %#o, want %#o", fileSvc.Resolve(path), got, wantMode)
 	}
 }

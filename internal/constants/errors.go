@@ -428,6 +428,7 @@ var (
 	ErrPubSubCertificateMissingOperatorID = errors.New("certificate missing Operator identity")
 	ErrPubSubInvalidChannelFormat         = errors.New("invalid channel format")
 	ErrPubSubPublishUnauthorized          = errors.New("publish unauthorized: channel not permitted for publisher identity")
+	ErrPubSubSubscribeUnauthorized        = errors.New("subscribe unauthorized: channel not permitted for subscriber identity")
 
 	ErrScrubbingRegexTimeout          = errors.New("regex compilation timeout")
 	ErrScrubbingTokenPersist          = errors.New("failed to persist token to local store")
@@ -1431,7 +1432,6 @@ var (
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationRunGovernanceChanged      = errors.New("evaluation: Gateway posture or consensus binding differs from what the run froze at start; start a new run")
-	ErrEvaluationSharedRuntimeTribunalL2   = errors.New("evaluation: enforced Tribunal L2 requires distinct Inference and Data Operators")
 	ErrEvaluationTribunalNotAssistant      = errors.New("evaluation: enforced Tribunal L2 must vote on every formation's Assistant slot model")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")
@@ -1497,6 +1497,7 @@ var (
 	ErrTribunalInferenceFailed             = errors.New("tribunal: member inference failed")
 	ErrTribunalTemplateInvalid             = errors.New("tribunal: member inference template sets a Gateway-owned field")
 	ErrTribunalTierMismatch                = errors.New("tribunal: member inference role does not run the requested tier")
+	ErrTribunalCommandRevised              = errors.New("tribunal: contextual review changed the command; fresh governance decisions required")
 
 	// Governed transaction errors
 	ErrTxUnknownEventType      = errors.New("TX_UNKNOWN_EVENT: event type not registered")

@@ -198,27 +198,25 @@ func (r ReplayNonceRow) Record() []string {
 
 // SuspendedTxRow maps to suspended_transactions.csv.
 type SuspendedTxRow struct {
-	TxHash            string
-	UserID            string
-	ActionType        string
-	Status            string
-	CreatedAtUTC      string
-	ExpiresAtUTC      string
-	ApprovedBy        string
-	ApprovalSignature string
+	TxHash       string
+	UserID       string
+	ActionType   string
+	Status       string
+	CreatedAtUTC string
+	ExpiresAtUTC string
 }
 
 func (SuspendedTxRow) Columns() []string {
 	return []string{
 		"tx_hash", "user_id", "action_type", "status",
-		"created_at_utc", "expires_at_utc", "approved_by", "approval_signature",
+		"created_at_utc", "expires_at_utc",
 	}
 }
 
 func (r SuspendedTxRow) Record() []string {
 	return []string{
 		r.TxHash, r.UserID, r.ActionType, r.Status,
-		r.CreatedAtUTC, r.ExpiresAtUTC, r.ApprovedBy, r.ApprovalSignature,
+		r.CreatedAtUTC, r.ExpiresAtUTC,
 	}
 }
 

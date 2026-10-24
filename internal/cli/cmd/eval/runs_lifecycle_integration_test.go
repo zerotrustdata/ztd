@@ -102,7 +102,7 @@ func TestRunsCancel_FailsClosedWhenGatewayRejectsTerminalTransition(t *testing.T
 
 	_, err := env.run(t, "runs", "cancel", runID, "--publish=false")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	var show runShowJSON
 	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
 	assert.Equal(t, "cancelled", show.Status, "the local cancellation remains recorded even when the Gateway rejects its projection")
@@ -257,7 +257,7 @@ func TestRunsResume_OfACompletedRunIsRejectedByTheGateway(t *testing.T) {
 	require.NotNil(t, seeded.Status)
 	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	var transition *models.ObserveTransitionError
 	require.ErrorAs(t, err, &transition, "the Gateway's refused transition reaches the CLI typed")
 	assert.Equal(t, &models.ObserveTransitionError{
@@ -324,7 +324,7 @@ func TestRunsResume_FailsClosedWhenGatewayRejectsRunning(t *testing.T) {
 	require.NotNil(t, seeded.Status)
 	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	var show runShowJSON
 	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
 	assert.Equal(t, uint32(testModelRoleCells(t)), show.Queued)
@@ -414,7 +414,7 @@ func TestRunsArchive_ArchivedRunsStayReadable(t *testing.T) {
 
 	_, err := env.run(t, "runs", "verify", "run-a-1", "--coverage")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "an incomplete archived run is still verifiable, and reports as incomplete")
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "an incomplete archived run is still verifiable, and reports as incomplete")
 
 	env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", "export/run-a-1")
 
@@ -447,7 +447,7 @@ func TestRunsArchive_RefusesARunThatIsRunning(t *testing.T) {
 
 	_, err := env.run(t, "runs", "archive", "run-a-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationRunRunning)
+	require.ErrorIs(t, err, constants.ErrEvaluationRunRunning)
 
 	var listed runListJSON
 	require.NoError(t, env.runJSON(t, &listed, "runs", "list"))
@@ -473,7 +473,7 @@ func TestRunsArchive_RejectsBadTargets(t *testing.T) {
 	env.mustRun(t, "runs", "archive", "run-a-1")
 	_, err = env.run(t, "runs", "archive", "run-a-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationArchived)
+	require.ErrorIs(t, err, constants.ErrEvaluationArchived)
 
 	env.mustRun(t, "runs", "unarchive", "run-a-1")
 	_, err = env.run(t, "runs", "unarchive", "run-a-1")
@@ -558,7 +558,7 @@ func TestCampaignsArchive_MovesNothingWhenARunIsRunning(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "archive", "eval-a")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationRunRunning)
+	require.ErrorIs(t, err, constants.ErrEvaluationRunRunning)
 
 	var runs runListJSON
 	require.NoError(t, env.runJSON(t, &runs, "runs", "list"))
@@ -576,7 +576,7 @@ func TestCampaignsArchive_ARunUnarchivedAloneNeedsItsCampaignActive(t *testing.T
 
 	_, err := env.run(t, "runs", "unarchive", "run-a-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationArchived)
+	require.ErrorIs(t, err, constants.ErrEvaluationArchived)
 	assert.Contains(t, err.Error(), "unarchive the campaign first")
 }
 

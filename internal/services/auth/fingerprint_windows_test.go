@@ -11,7 +11,6 @@
 package auth
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,8 +37,8 @@ func TestGetWindowsMachineID(t *testing.T) {
 		machineID, err := getWindowsMachineID(logger)
 		require.NoError(t, err)
 
-		require.False(t, strings.Contains(machineID, "{"), "MachineID should not contain braces")
-		require.False(t, strings.Contains(machineID, "}"), "MachineID should not contain braces")
-		require.False(t, strings.Contains(machineID, "-"), "MachineID should not contain dashes")
+		require.NotContains(t, machineID, "{", "MachineID should not contain braces")
+		require.NotContains(t, machineID, "}", "MachineID should not contain braces")
+		require.NotContains(t, machineID, "-", "MachineID should not contain dashes")
 	})
 }

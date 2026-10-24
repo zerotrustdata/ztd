@@ -34,7 +34,8 @@ verified only when a full run passes.
   skip     exclude models from rollout runs
   list     show the queue
   next     show the next pending model
-  run      qualify pending models`,
+  run      qualify queued models
+  resume   qualify pending campaigns`,
 	}
 	addLeaves(cmd,
 		rolloutListCmd(deps),
@@ -44,6 +45,7 @@ verified only when a full run passes.
 		rolloutRetryCmd(deps),
 		rolloutSkipCmd(deps),
 		rolloutRunCmd(deps),
+		rolloutResumeCmd(deps),
 	)
 	return cmd
 }

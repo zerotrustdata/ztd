@@ -4,7 +4,7 @@ title: Operator Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-22
+last_updated: 2026-10-23
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/
@@ -115,7 +115,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-OP-ACT-02 | When SQL audit is enabled, L5 Actuator MUST append a signed `CommitmentAttestation` to the SQLite commitment ledger in the same transaction as the `EXECUTING` receipt. |
 | INV-OP-ACT-03 | L5 Actuator MUST mint a single-action capability bound to the transaction hash, action type, target resource, operator ID, and session before execution, and MUST dissolve the capability immediately upon handler return. |
 | INV-OP-ACT-04 | L5 Actuator MUST finalize the receipt with status `COMPLETED` or `FAILED`, capture the local state root after execution, sign the receipt, and attach a signed `ReceiptPersistenceAttestation`. |
-| INV-OP-ACT-05 | A transaction rejected by L4 verification MUST be recorded as a signed `FAILED` rejection receipt with `failure_code` `GOVERNANCE_REJECTED` and a signed `rejection_code` naming the failed check. Verifiers MUST attribute the rejection from `rejection_code`, not `result_summary` (`INV-GOV-ACT-09`). |
+| INV-OP-ACT-05 | A transaction rejected by L4 verification MUST be recorded as a signed `FAILED` rejection receipt with `failure_code` `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED` and a signed `rejection_code` naming the failed check. Verifiers MUST attribute the rejection from `rejection_code`, not `result_summary` (`INV-GOV-ACT-09`). |
 | INV-OP-ACT-06 | The outbound Operator MUST load its Actuator key and export `pki/Actuator_pub.json` at startup, fatal on failure, and MUST present its Actuator public key in the bootstrap enrollment request (`PlatformOperatorCSRPayload.actuator_public_key`). The Gateway binds that key to the Operator document at enrollment. A presented key that differs from an already-bound non-empty key MUST be refused with `ErrOperatorActuatorKeyChanged`. Rotation is re-enrollment, which mints a new `operator_id` and a new binding. Malformed keys (non-hex, not `ed25519.PublicKeySize` bytes) MUST be refused with `ErrOperatorActuatorKeyInvalid`. The enrolled key and the receipt-signing key MUST come from one store open: `StartOperator` opens the keystore and canonical database once, before enrollment, and `ZtdoService` MUST receive that database and never open its own. |
 
 ### Local-First Audit Storage (`INV-OP-STOR`)
@@ -189,7 +189,7 @@ Each Operator process declares its functional roles through startup flags:
 Witness constraints:
 - Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the audit-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.
-- Streamed inference progress is scrubbed at the source before publication. Streams are buffered line-by-line and scrubbed against regex patterns. Private keys are buffered until completion. The terminal `output_hash` binds the concatenated scrubbed progress chunks.
+- Streamed inference progress is scrubbed at the source before publication. Text is released only at newline cuts that keep one non-blank line of lookahead, so a value a scrubber can match is complete before release. A PEM block is held from its BEGIN marker until its END line completes. Nothing is released on a timer or by size, so a stream that never emits a newline is held until its terminal event. The terminal `output_hash` is a SHA-256 over the deterministic protobuf encoding of the response parts and finish reason (`ComputeInferenceOutputHash`), and the terminal parts are exactly the concatenation of the released segments.
 
 Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
 
@@ -259,15 +259,15 @@ The Operator owns the final two layers of the governance interlock:
 
 #### L5 Actuator Execution Boundary
 1. **Initial Receipt Logging**: Persists an `EXECUTING` status `ActionReceipt` signed by the Operator's Actuator key.
-2. **Commitment Append**: Appends a signed `CommitmentAttestation` to the hash-chained SQLite commitment ledger under write lock.
+2. **Commitment Append**: Appends a signed `CommitmentAttestation` to the hash-chained SQLite commitment ledger in the same `BEGIN IMMEDIATE` transaction as the `EXECUTING` receipt.
 3. **Secret Rehydration**: Rehydrates scrubbed tokens in memory via local vault keys.
 4. **JIT Capability Minting**: Mints a single-action capability bound to the transaction hash and attaches it to the execution context.
 5. **Handler Dispatch**: Executes the typed action handler.
 6. **Capability Dissolution**: Dissolves the capability immediately upon return.
 7. **Final Attestation**: Captures the final state root, marks the receipt `COMPLETED` or `FAILED`, signs the receipt, and attaches a signed `ReceiptPersistenceAttestation`.
-8. **Asynchronous Gateway Relay**: Mirrors the receipt to the Gateway `receipts:` channel on a best-effort basis.
+8. **Best-Effort Gateway Relay**: Mirrors the receipt to the Gateway `receipts:` channel on a best-effort basis.
 
-A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `GOVERNANCE_REJECTED`, and its signed `rejection_code` (`ActionReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`). Every ingress returns this receipt to the caller as `GovernanceRejection` (`INV-GOV-ACT-10`); `ztd operator run` prints its transaction ID and rejection code. When a governed inference execution reaches the Operator and the provider subsequently fails after L5 execution has started, the Operator marks the receipt `FAILED` with status `EXECUTION_STATUS_FAILED`, signs it, and appends the commitment to its local ledger. The Gateway returns this signed `FAILED` receipt to the caller in `InferenceDispatchFailure.receipt` so the caller holds cryptographic proof of the failed execution.
+A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`, and its signed `rejection_code` (`ActionReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`). Every ingress returns this receipt to the caller as `GovernanceRejection` (`INV-GOV-ACT-10`); `ztd operator run` prints its transaction ID and rejection code. When a governed inference execution reaches the Operator and the provider subsequently fails after L5 execution has started, the Operator marks the receipt `FAILED` with status `EXECUTION_STATUS_FAILED`, signs it, and appends the commitment to its local ledger. The Gateway returns this signed `FAILED` receipt to the caller in `InferenceDispatchFailure.receipt` so the caller holds cryptographic proof of the failed execution.
 
 ### Local State, Native Tools, and Git File Ledger
 
@@ -275,13 +275,13 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 - **Git File Ledger**: A governed `FILE_EDIT` that mutates a file writes encrypted snapshots to the Git file ledger before and after the change. `RESTORE_FILE` restores a file from a ledger commit under the same path policy.
 - **Native Tools**: A verified `MCP_CALL` envelope runs a tool from the shared registry (`RegisterNativeTools`) on the Operator's own host, `mcp.NewOperatorNativeToolHandler`; the Operator never constructs `mcp.GatewayService`. `audit_receipt_list` and `audit_receipt_get` read the Operator's own audit store, so their answers are authoritative for its receipts. Every other tool's result is scrubbed before it enters the signed receipt, and a missing egress scrubber fails the call closed. Witness-only Operators run only the audit-receipt reads (INV-OP-CAP-01). L1 screens `run_shell_command` as the command line it executes, exactly as `EXECUTE_BASH`.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
-- **Unsupported Patches**: File editing rejects the `patch` operation without creating a backup or changing the target. Protobuf field 12 (`patch_content`) remains in the wire contract for compatibility and is not consumed by the file-edit handler.
+- **Unsupported Patches**: A file-edit request whose operation is outside the handled set (`read`, `write`, `replace`, `insert`, `delete`), including `patch`, fails with `ErrFileEditUnsupportedOperation`. The target is opened first, and for an existing file the pre-mutation ledger snapshot (`beginLedgerTwoPhaseCommit`) is taken before execution and never completed. The file is not modified and no backup is created. Protobuf field 12 (`patch_content`) remains in the wire contract and is not consumed by the file-edit handler.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
 - **Model Store Isolation**: An Operator's runtime state (`.ztd/`) must never reside inside the model storage root (`--model-storage-root`). `operator start` validates this pre-flight via `refuseModelStoreRuntime` and fails closed with `ErrOperatorModelStoreRuntime` (INV-OP-STOR-04), preserving the provenance model store as a pure read-only witness.
 
 ### Autochthon Subsystem
 
-The `ztd autochthon` command is an isolated, autonomous runtime observer and forecaster operating without Gateway dependencies:
+`ztd autochthon` is a separate subsystem, not an Operator mode. It is an isolated, autonomous runtime observer and forecaster operating without Gateway dependencies:
 - **Operation**: Samples once per second: load, memory in use, the `TERM` environment variable, process count, and the UTC hour, weekday, and minute. The hour, weekday, and minute senses are inputs only. Breeds a population of 16 fixed-topology networks (8 hidden units, direct input-to-output connections) by selection and mutation, with no gradient training. Each network predicts the next value of load, memory, TERM, and process count as a change from the current sample; the zero genome is persistence. The champion is the fittest genome over the last 128 samples, re-selected at each 32-sample episode boundary. Children are mutated copies of the top four genomes, with no crossover.
 - **State Storage**: Persisted under `.ztd/autochthon/` (`run.lock`, `culture.bin`, and hash-chained `tally.jsonl`).
 - **Independence**: Accepts no governance envelopes, opens no network listeners, and produces no `ActionReceipt` records. `ztd autochthon status` verifies the tally hash chain from genesis without acquiring locks.

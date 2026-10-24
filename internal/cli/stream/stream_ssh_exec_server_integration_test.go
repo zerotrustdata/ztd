@@ -57,6 +57,18 @@ func startExecSSHServer(t *testing.T, rejectSessions bool, respond func(command 
 	return server
 }
 
+// sftpPathToLocalPath maps a POSIX-style SFTP path back to an OS path for
+// test assertions. The in-process SFTP server reports Windows scratch paths
+// as "/D:/..." while filepath.Join produces "D:\..."; stripping the leading
+// slash before a drive letter makes Stat and prefix checks portable. On Unix
+// the path is returned unchanged.
+func sftpPathToLocalPath(p string) string {
+	if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+		return filepath.FromSlash(p[1:])
+	}
+	return filepath.FromSlash(p)
+}
+
 func TestStreamToHost_DeliversBinaryViaSFTPAndExecutesDirectly(t *testing.T) {
 	var executedCommand string
 	var remoteUploadedPath string
@@ -68,9 +80,9 @@ func TestStreamToHost_DeliversBinaryViaSFTPAndExecutesDirectly(t *testing.T) {
 		parts := strings.SplitN(command, " ", 2)
 		if len(parts) > 0 {
 			remoteUploadedPath = parts[0]
-			if info, err := os.Stat(remoteUploadedPath); err == nil {
+			if info, err := os.Stat(sftpPathToLocalPath(remoteUploadedPath)); err == nil {
 				remoteUploadedMode = info.Mode().Perm()
-				remoteUploadedContent, _ = os.ReadFile(remoteUploadedPath)
+				remoteUploadedContent, _ = os.ReadFile(sftpPathToLocalPath(remoteUploadedPath))
 			}
 		}
 		return execReply{status: 0}
@@ -86,15 +98,19 @@ func TestStreamToHost_DeliversBinaryViaSFTPAndExecutesDirectly(t *testing.T) {
 	assert.Equal(t, int64(len(binary)), res.SizeBytes)
 	assert.Positive(t, res.Elapsed)
 
-	// Verify the binary was uploaded via SFTP with 0755 permissions and expected content
+	// Verify the binary was uploaded via SFTP with 0755 permissions and expected content.
+	// SFTP paths are POSIX-style: on Windows the remote path arrives as
+	// "/D:/..." while the local scratch dir is "D:\...". Normalize before
+	// comparing so the same assertion holds on both platforms.
 	remoteScratch := filepath.Join(server.loginDir, constants.RuntimeDirname, constants.TmpDirname)
-	assert.True(t, strings.HasPrefix(remoteUploadedPath, filepath.Join(remoteScratch, constants.StreamTempBinaryPrefix)),
+	localUploadedPath := sftpPathToLocalPath(remoteUploadedPath)
+	assert.True(t, strings.HasPrefix(filepath.ToSlash(localUploadedPath), filepath.ToSlash(filepath.Join(remoteScratch, constants.StreamTempBinaryPrefix))),
 		"uploaded path %q should be staged in the remote runtime scratch dir %q", remoteUploadedPath, remoteScratch)
 	assert.Equal(t, testutil.FileMode(0o755, false), remoteUploadedMode, "remote binary must have 0755 permissions")
 	assert.Equal(t, binary, remoteUploadedContent, "remote uploaded content must match binary")
 
 	// Verify remote binary was cleaned up on exit
-	_, err := os.Stat(remoteUploadedPath)
+	_, err := os.Stat(localUploadedPath)
 	assert.True(t, os.IsNotExist(err), "remote binary must be cleaned up on session exit, but still exists: %v", err)
 
 	// Verify command format: "<remotePath> operator start --endpoint 127.0.0.1 --gateway-http-port <p1> --gateway-https-port <p2>"
@@ -314,7 +330,7 @@ func TestStreamToHost_CancellationInterruptsRunningRemoteCommand(t *testing.T) {
 	select {
 	case res := <-resultCh:
 		assert.NotEqual(t, constants.StreamStatusCompleted, res.Status)
-		assert.Error(t, res.Error)
+		require.Error(t, res.Error)
 	case <-time.After(5 * time.Second):
 		t.Fatal("streamToHost did not return after the context was cancelled")
 	}

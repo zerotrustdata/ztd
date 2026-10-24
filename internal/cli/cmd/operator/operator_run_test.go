@@ -134,7 +134,7 @@ func TestOperatorStopCmdWithConfig_RejectsEmbeddedOperator(t *testing.T) {
 
 	err = cmd.Execute()
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrOperatorStopEmbedded)
+	require.ErrorIs(t, err, constants.ErrOperatorStopEmbedded)
 	assert.Empty(t, mockClient.PostCalls)
 }
 

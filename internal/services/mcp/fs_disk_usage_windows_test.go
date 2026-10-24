@@ -179,7 +179,7 @@ func TestFSDiskUsageTool_Execute_AllDrives_NoDrives(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &usageResult)
 	require.NoError(t, err)
 
-	require.Equal(t, 0, len(usageResult.Filesystems))
+	require.Empty(t, usageResult.Filesystems)
 	require.Equal(t, 0, usageResult.Count)
 }
 
@@ -213,7 +213,7 @@ func TestFSDiskUsageTool_Execute_AllDrives_SkipFailedDrives(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &usageResult)
 	require.NoError(t, err)
 
-	require.Equal(t, 1, len(usageResult.Filesystems))
+	require.Len(t, usageResult.Filesystems, 1)
 	require.Equal(t, "C:\\", usageResult.Filesystems[0].Path)
 }
 
@@ -243,7 +243,7 @@ func TestFSDiskUsageTool_Execute_AllDrives_DriveTypeError(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &usageResult)
 	require.NoError(t, err)
 
-	require.Equal(t, 1, len(usageResult.Filesystems))
+	require.Len(t, usageResult.Filesystems, 1)
 }
 
 func TestGetDiskUsageForPath_Success(t *testing.T) {
@@ -334,7 +334,7 @@ func TestGetAllDiskUsage_SingleDrive(t *testing.T) {
 
 	result, err := getAllDiskUsage(mockAPI)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(result.Filesystems))
+	require.Len(t, result.Filesystems, 1)
 	require.Equal(t, 1, result.Count)
 	require.Equal(t, "C:\\", result.Filesystems[0].Path)
 }
@@ -361,7 +361,7 @@ func TestGetAllDiskUsage_MultipleDriveTypes(t *testing.T) {
 
 	result, err := getAllDiskUsage(mockAPI)
 	require.NoError(t, err)
-	require.Equal(t, 3, len(result.Filesystems))
+	require.Len(t, result.Filesystems, 3)
 	require.Equal(t, 3, result.Count)
 }
 
@@ -387,7 +387,7 @@ func TestGetAllDiskUsage_SkipUnknownDrives(t *testing.T) {
 
 	result, err := getAllDiskUsage(mockAPI)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(result.Filesystems)) // Only C:
+	require.Len(t, result.Filesystems, 1) // Only C:
 	require.Equal(t, "C:\\", result.Filesystems[0].Path)
 }
 
@@ -400,7 +400,7 @@ func TestGetAllDiskUsage_NilAPI(t *testing.T) {
 
 	result, err := getAllDiskUsage(mockAPI)
 	require.NoError(t, err)
-	require.Equal(t, 0, len(result.Filesystems))
+	require.Empty(t, result.Filesystems)
 }
 
 func TestGetAllDiskUsage_DrivePathFormatting(t *testing.T) {
@@ -418,7 +418,7 @@ func TestGetAllDiskUsage_DrivePathFormatting(t *testing.T) {
 
 	result, err := getAllDiskUsage(mockAPI)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(result.Filesystems))
+	require.Len(t, result.Filesystems, 1)
 	// Path should be formatted with backslash (C:\)
 	require.Equal(t, "C:\\", result.Filesystems[0].Path)
 }

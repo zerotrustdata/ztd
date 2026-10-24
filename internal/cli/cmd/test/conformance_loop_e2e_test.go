@@ -127,6 +127,7 @@ type conformanceLoopAuditChain struct {
 // Data Operator. Under ratify and notary the conformance runs are attended, and
 // the owner answers them through the CLI approval flow.
 func conformanceLoopPhases(t *testing.T, r *releaseSmokeRun, st *conformanceLoopState) []smokePhase {
+	t.Helper()
 	return []smokePhase{
 		{"prepare", func(ctx context.Context) error {
 			if err := r.prepare(ctx); err != nil {

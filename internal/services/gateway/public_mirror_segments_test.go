@@ -80,7 +80,7 @@ func TestMirror_SegmentIngest_MissingStoredFileRejected(t *testing.T) {
 	}
 	err := env.mirror.storeProofPackage(ctx, req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedProofArtifactsMissing)
+	require.ErrorIs(t, err, constants.ErrPublicFeedProofArtifactsMissing)
 
 	// Now ingest with inline artifact -> succeeds
 	req.Artifacts = []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}}
@@ -193,7 +193,7 @@ func TestMirror_SegmentIngest_StartupRejectsChainBreakAndSignatureFailure(t *tes
 
 		_, err = OpenPublicMirrorStore(ctx, env.fileSvc, testutil.NewTestLogger())
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
+		require.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
 	}
 
 	// 2. Signature failure
@@ -256,6 +256,13 @@ func TestMirror_SegmentIngest_RejectsUnsignedLinksAndInvalidTransitions(t *testi
 		{"duplicate entry", func(env *mirrorTestEnv, seg *models.PublicProofManifestSegment) {
 			*seg = makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, append(seg.Entries, seg.Entries[0]), nil)
 		}, constants.ErrPublicFeedProofCatalogMismatch},
+		{"oversized segment", func(env *mirrorTestEnv, seg *models.PublicProofManifestSegment) {
+			entries := make([]models.PublicProofCatalogEntry, constants.PublicFeedProofMaxArtifacts+1)
+			for i := range entries {
+				entries[i] = seg.Entries[0]
+			}
+			*seg = makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, entries, nil)
+		}, constants.ErrPublicFeedProofSegmentInvalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

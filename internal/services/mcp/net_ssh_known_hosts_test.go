@@ -10,7 +10,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,8 +33,8 @@ func TestNetSSHKnownHostsTool_Execute_Validation(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, err := tool.Execute(ctx, []byte(`{invalid}`))
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPUnmarshalArguments))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
 	})
 
 	t.Run("dangerous path config", func(t *testing.T) {
@@ -43,8 +42,8 @@ func TestNetSSHKnownHostsTool_Execute_Validation(t *testing.T) {
 			SSHConfigPath: "../dangerous",
 		})
 		_, err := tool.Execute(ctx, args)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPValidatePathParentDirRef))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPValidatePathParentDirRef)
 	})
 
 	t.Run("dangerous path known_hosts", func(t *testing.T) {
@@ -52,8 +51,8 @@ func TestNetSSHKnownHostsTool_Execute_Validation(t *testing.T) {
 			KnownHostsPath: "/etc/passwd\x00",
 		})
 		_, err := tool.Execute(ctx, args)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPValidatePathNullBytes))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPValidatePathNullBytes)
 	})
 }
 

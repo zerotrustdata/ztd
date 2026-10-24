@@ -59,7 +59,7 @@ func TestInspectCertificate(t *testing.T) {
 	assert.Equal(t, notBefore.Format(time.RFC3339), result.NotBefore)
 	assert.Equal(t, notAfter.Format(time.RFC3339), result.NotAfter)
 	assert.False(t, result.IsExpired)
-	assert.True(t, result.DaysUntilExpiry >= 0)
+	assert.GreaterOrEqual(t, result.DaysUntilExpiry, 0)
 	assert.Equal(t, "SHA256-RSA", result.SignatureAlgorithm)
 	assert.Equal(t, "RSA", result.PublicKeyAlgorithm)
 	assert.Equal(t, x509.KeyUsageDigitalSignature, result.KeyUsage)
@@ -80,7 +80,7 @@ func TestInspectCertificate_Expired(t *testing.T) {
 
 	result := inspectCertificate(cert)
 	assert.True(t, result.IsExpired)
-	assert.True(t, result.DaysUntilExpiry < 0)
+	assert.Negative(t, result.DaysUntilExpiry)
 	assert.False(t, result.IsNearExpiry)
 }
 

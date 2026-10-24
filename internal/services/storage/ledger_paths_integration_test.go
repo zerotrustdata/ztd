@@ -11,7 +11,6 @@ package storage
 
 import (
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,15 +33,11 @@ const (
 	ledgerContentMarkerText = "ZTDCONTENTMARKER"
 )
 
-// ledgerRoot is the on-disk ledger tree of a service.
-func ledgerRoot(lms *GitLedgerService) string {
-	return lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname))
-}
-
-// assertLedgerHoldsNoMarkers walks every entry of the ledger tree and asserts that no marker
+// assertLedgerHoldsNoMarkers walks every entry of the ledger tree through the
+// runtime file service and asserts that no marker
 // appears in any directory or file name, any file's bytes, or any decompressed git object
 // (commit messages, trees, blobs) of the default repository or a session repository.
-func assertLedgerHoldsNoMarkers(t *testing.T, root string, markers ...string) {
+func assertLedgerHoldsNoMarkers(t *testing.T, lms *GitLedgerService, markers ...string) {
 	t.Helper()
 	contains := func(data []byte) (string, bool) {
 		for _, m := range markers {
@@ -53,26 +48,38 @@ func assertLedgerHoldsNoMarkers(t *testing.T, root string, markers ...string) {
 		return "", false
 	}
 
+	rootRel := filepath.Join(constants.DataDirname, constants.LedgerDirname)
+	root := lms.fileSvc.Resolve(rootRel)
 	repoDirs := map[string]bool{}
-	require.NoError(t, filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	var walk func(string)
+	walk = func(relPath string) {
+		entries, err := lms.fileSvc.ReadDir(t.Context(), relPath)
 		require.NoError(t, err)
-		rel, err := filepath.Rel(root, path)
-		require.NoError(t, err)
-		if m, found := contains([]byte(rel)); found {
-			t.Errorf("ledger entry name carries marker %q", m)
-		}
-		if d.IsDir() && d.Name() == constants.GitDirname {
-			repoDirs[filepath.Dir(path)] = true
-		}
-		if d.Type().IsRegular() {
-			data, err := os.ReadFile(path)
+		for _, entry := range entries {
+			childRel := filepath.Join(relPath, entry.Name())
+			childAbs := lms.fileSvc.Resolve(childRel)
+			rel, err := filepath.Rel(root, childAbs)
 			require.NoError(t, err)
-			if m, found := contains(data); found {
-				t.Errorf("ledger file %s carries marker %q", filepath.Base(path), m)
+			if m, found := contains([]byte(rel)); found {
+				t.Errorf("ledger entry name carries marker %q", m)
+			}
+			if entry.IsDir() {
+				if entry.Name() == constants.GitDirname {
+					repoDirs[filepath.Dir(childAbs)] = true
+				}
+				walk(childRel)
+				continue
+			}
+			if entry.Type().IsRegular() {
+				data, err := lms.fileSvc.ReadFile(t.Context(), childRel)
+				require.NoError(t, err)
+				if m, found := contains(data); found {
+					t.Errorf("ledger file %s carries marker %q", entry.Name(), m)
+				}
 			}
 		}
-		return nil
-	}))
+	}
+	walk(rootRel)
 	require.NotEmpty(t, repoDirs, "the ledger tree must contain git repositories")
 
 	objects := 0
@@ -123,7 +130,7 @@ func TestLedgerPaths_NothingOnDiskCarriesAPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(hostDir, "default-"+ledgerPathMarkerFile), []byte(ledgerContentMarkerText), 0o644))
 	require.NoError(t, lms.CompleteMirrorCreate(defaultCreate, ""))
 
-	assertLedgerHoldsNoMarkers(t, ledgerRoot(lms), ledgerPathMarkerDir, ledgerPathMarkerFile, ledgerContentMarkerText, tempDir)
+	assertLedgerHoldsNoMarkers(t, lms, ledgerPathMarkerDir, ledgerPathMarkerFile, ledgerContentMarkerText, tempDir)
 
 	// Reads still resolve the path through the keyed name, and nothing they return carries a path.
 	history, err := lms.GetFileHistory(hostFile, 50, sessionID)
@@ -269,7 +276,6 @@ func TestLedgerPaths_ReadOfUnknownSessionCreatesNothing(t *testing.T) {
 	hh, _, _, tempDir := setupTestHistoryHandler(t)
 	lms, ok := hh.ledger.(*GitLedgerService)
 	require.True(t, ok)
-	sessionsDir := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.SessionsDirname))
 	hostFile := filepath.Join(tempDir, "unknown-session.txt")
 	const sessionID = "sess-never-written"
 
@@ -292,7 +298,7 @@ func TestLedgerPaths_ReadOfUnknownSessionCreatesNothing(t *testing.T) {
 	require.ErrorIs(t, restoreErr, constants.ErrLedgerSessionNotFound)
 	assert.False(t, restore.Success)
 
-	entries, err := os.ReadDir(sessionsDir)
+	entries, err := lms.fileSvc.ReadDir(t.Context(), filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.SessionsDirname))
 	require.NoError(t, err)
 	assert.Empty(t, entries, "reading an unknown session must not create a ledger for it")
 }

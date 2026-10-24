@@ -3,8 +3,8 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-23
 owners:
   - protocol/
   - internal/constants/
@@ -64,14 +64,14 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-PROT-VER-01 | The root `VERSION` file is the sole source of truth for platform and protocol version numbers. The declarations that `internal/tools/versionsync` checks MUST remain in exact string synchronization with it: the protocol document headers (`protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, `protocol/docs/spec.md`) and the `version` declarations in `package.json` and `package-lock.json` for first-party npm packages (`console`, `evaluation-explorer`, `ztd-adapter`, `protocol/node`, and `website`). |
 | INV-PROT-VER-02 | Go protocol packages are part of the root module `github.com/zerotrustdata/ztd` (`go.mod`) and are versioned exclusively through root git tags of the form `vX.Y.Z`. External consumers resolve them with `go get github.com/zerotrustdata/ztd@vX.Y.Z`. Release tooling creates no `protocol/v*` tags. |
 | INV-PROT-VER-03 | The release target `make release` MUST run from clean `main` at `origin/main` after a successful release-workflow rehearsal for that commit. It MUST fail closed if version synchronization leaves uncommitted changes, if the release notes document `docs/release_notes/v<MAJOR_MINOR>.x/v<VERSION>.md` is missing, or if the local tag `v<VERSION>` already exists. |
-| INV-PROT-VER-04 | The CI job `Verify Version Sync` in `.github/workflows/build-and-test.yml` MUST run `make version-sync-check` on pushes and pull requests to `main`, terminating the build if any version declaration diverges from `VERSION`. |
+| INV-PROT-VER-04 | The CI step `Verify Version Sync` in job `ci` of `.github/workflows/build-and-test.yml` MUST run `make version-sync-check` on pushes and pull requests to `main`, terminating the build if any version declaration diverges from `VERSION`. |
 
 ### Protobuf and Wire Schemas (`INV-PROT-SCHEMA`)
 
 | ID | Rule |
 | --- | --- |
 | INV-PROT-SCHEMA-01 | Protobuf schemas in `protocol/proto/ztd/` are the canonical source of truth for wire structures. Generated Go code under `protocol/proto/ztd/` and generated TypeScript code under `protocol/node/src/gen/` MUST NOT be hand-edited and MUST only be updated through `make proto-generate`. |
-| INV-PROT-SCHEMA-02 | Client-facing surfaces (HTTP API, WebSocket pub/sub, receipts, audit exports) MUST carry `GovernanceEnvelope` as canonical protojson. Raw binary protobuf is strictly restricted to internal node storage and private gRPC communications. |
+| INV-PROT-SCHEMA-02 | Client-facing surfaces (HTTP API, WebSocket pub/sub, receipts, audit exports) MUST carry `GovernanceEnvelope` as canonical protojson. Raw binary protobuf is restricted to internal encodings. |
 | INV-PROT-SCHEMA-03 | Protobuf code generation MUST use Buf configured via `protocol/proto/buf.yaml`, the root `buf.gen.yaml` (Go), and `protocol/node/buf.gen.yaml` (TypeScript). The build MUST rely on `buf generate` rather than requiring a standalone `protoc` compiler binary. |
 
 ### Constants Registries and Schemas (`INV-PROT-CONST`)
@@ -92,8 +92,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-PROT-CANON-01 | Canonical serialization of `ActionReceipt`, `ReceiptPersistenceAttestation`, compliance records, and evaluation reports MUST be deterministic UTF-8 JSON, pinned by the vectors in `protocol/vectors/` that Go tests consume. |
-| INV-PROT-CANON-02 | Ed25519 receipt signature verification in `internal/services/governance` (`VerifyActionReceiptSignature` and `VerifyReceiptPersistenceAttestation`) MUST verify against the bytes produced by `CanonicalizeActionReceipt` using an `ed25519.PublicKey`. |
+| INV-PROT-CANON-01 | Canonical serialization MUST be deterministic and pinned by the vectors in `protocol/vectors/` that Go tests consume. `ActionReceipt` canonical form is deterministic UTF-8 JSON (`CanonicalizeActionReceipt`). `ReceiptPersistenceAttestation` canonical form is a binary length-prefixed encoding (`CanonicalizeReceiptPersistenceAttestation`), not JSON. Compliance and evaluation protobuf messages use canonical protojson (`MarshalCanonical` and `UnmarshalCanonical`). |
+| INV-PROT-CANON-02 | Ed25519 receipt verification in `internal/services/governance` MUST verify against the exact canonical bytes of each object: `VerifyActionReceiptSignature` verifies the bytes produced by `CanonicalizeActionReceipt`, and `VerifyReceiptPersistenceAttestation` verifies the bytes produced by `CanonicalizeReceiptPersistenceAttestation`. Both take an `ed25519.PublicKey`. |
 | INV-PROT-CANON-03 | Vectors in `protocol/vectors/` and `protocol/conformance/` that Go tests consume MUST pass those tests (`./ztd test unit --pkg ./protocol` and `./ztd test unit --pkg ./internal/governance --run TestHashParity`) before any release tag is cut. |
 
 ## Owned surfaces
@@ -115,7 +115,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 ## Wire Protocol and Protobuf Compilation
 
-The wire protocol defines the structure of all transactions moving through the platform:
+The wire protocol defines the structure of all transactions moving through the platform. The field groups below are abridged; `GovernanceEnvelope` in `protocol/proto/ztd/common/v1/common.proto` is the complete definition:
 
 ```text
 Incoming Ingress (MCP / A2A / governed HTTP dispatch / direct envelope submission / CLI operator run)
@@ -130,7 +130,7 @@ Incoming Ingress (MCP / A2A / governed HTTP dispatch / direct envelope submissio
                       └── State: state_merkle_root
 ```
 
-- **Wire Format**: Client-facing endpoints (HTTP, WebSocket pub/sub, receipt logs) transmit `GovernanceEnvelope` as canonical protojson (`INV-PROT-SCHEMA-02`). Raw binary protobuf is used only for internal storage blobs and private gRPC communications.
+- **Wire Format**: Client-facing endpoints (HTTP, WebSocket pub/sub, receipt logs) transmit `GovernanceEnvelope` as canonical protojson (`INV-PROT-SCHEMA-02`). Raw binary protobuf is restricted to internal encodings (`INV-PROT-SCHEMA-02`).
 - **Code Generation via Buf**: Managed entirely through Buf CLI (`protocol/proto/buf.yaml` defines module `buf.build/ztd/platform`):
   - `make proto-go`: Emits Go structs to `protocol/proto/ztd/` using `protoc-gen-go` and generates API documentation to `protocol/docs/reference/api/` using `protoc-gen-doc`.
   - `make proto-node`: Emits TypeScript stubs to `protocol/node/src/gen/` using `@bufbuild/protoc-gen-es`.
@@ -144,18 +144,18 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - `internal/services/governance.CanonicalizeActionReceipt` formats `ActionReceipt` into deterministic UTF-8 JSON.
    - Keys follow the declaration order of the internal `canonicalReceipt` struct, not lexicographic order. Enum fields serialize as integers, fields tagged `omitempty` are omitted at zero value, and the output contains no whitespace.
    - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
-   - `GovernanceRejection` (`error`, `receipt`) is the client body for an L4 rejection on every ingress. Ingresses render it with `protojson` proto names, and clients verify `receipt` with `VerifyActionReceiptSignature`.
-   - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body on the direct and dispatch ingresses, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
+   - `GovernanceRejection` (`error`, `receipt`) is the body for an L4 rejection. The MCP endpoint returns it as JSON-RPC `error.data` (`internal/services/mcp/mcp_endpoint.go`). `receipt` can be checked with `VerifyActionReceiptSignature`.
+   - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
    - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`) is the HTTP 200 body of governed dispatch.
-   - `InferenceDispatchFailure` (`error`, `code`, `receipt`, `observation_receipts`) is the client body for a non-2xx failure on `POST /api/v1/inference/dispatch`. When dispatch reaches the executing Operator and the provider subsequently fails or governance rejects the execution, `receipt` carries the executing Operator's verified signed `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds). `observation_receipts` carries the verified signed observer receipts for the attempt in dispatch order.
+   - `InferenceDispatchFailure` (`error`, `code`, `receipt`, `observation_receipts`) is the failure body of `POST /api/v1/inference/dispatch`. `receipt` is present only when dispatch reached the executing Operator and that Operator signed a `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds). `observation_receipts` carries the verified signed observer receipts for the attempt in dispatch order.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
-   - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
+   - `VerifyReceiptPersistenceAttestation` verifies an Ed25519 signature over the `CanonicalizeReceiptPersistenceAttestation` bytes.
 2. **Evaluation Protojson Canonicalization**:
    - Evaluation messages use `MarshalCanonical` and `UnmarshalCanonical` (`protocol/proto/ztd/eval/v1/canonical.go`).
    - Uses protobuf field names through protojson, compacts whitespace, and omits proto3 zero-value scalar fields.
    - `UnmarshalCanonical` rejects any payload whose raw bytes differ from its canonical re-encoding.
    - `ConformanceRunRecord`, `ConformanceVerdictSet` and their evidence messages (`ConformanceCaseEvidence`, `ConformanceObservation`, `CanaryManifest`, `ConformanceAnchor`) hold the governance-conformance suite: raw evidence per case and the verdict set, kept as separate messages.
-   - `AgentRole`, `AgentStep` and `AgentTrace` define the agent trace shape. This protobuf `AgentTrace` is the protobuf projection (`AgentTrace.ToProto`) of the campaign executor's persisted evidence envelope, whose JSON schema is `agent-trace.v8` (`agent-trace.v7` before Tribunal-approved tool arguments were recorded, `agent-trace.v6` before per-call model bindings and complete inference results were recorded, `agent-trace.v5` before investigation identity and authoritative retrieval evidence were recorded, `agent-trace.v4` before held repetition context was recorded, `agent-trace.v3` before exact model input was captured; `internal/services/evaluation/campaign_agent_trace.go`) and which is published as the `ztd.eval.v1.PublicAssignmentAgentTrace` proof artifact with a SHA-256 binding. Campaign runs use the built-in governed executor; ztd defines no external system-under-test exchange.
+   - `AgentRole`, `AgentStep` and `AgentTrace` define the agent trace shape. This protobuf `AgentTrace` is the protobuf projection (`AgentTrace.ToProto`) of the campaign executor's persisted evidence envelope, whose JSON schema is `agent-trace.v8` (`agent-trace.v7` before Tribunal-approved tool arguments were recorded, `agent-trace.v6` before per-call model bindings and complete inference results were recorded, `agent-trace.v5` before investigation identity and authoritative retrieval evidence were recorded, `agent-trace.v4` before held repetition context was recorded, `agent-trace.v3` before exact model input was captured; `internal/services/evaluation/campaign_agent_trace.go`) and which the assignment audit publication references as `ztd.eval.v1.PublicAssignmentAgentTrace` (`assignmentAgentTraceRef` in `internal/services/evaluation/assignment_audit_publication.go`), bound by `AgentTraceSHA256`. `AgentTrace.ToProto` (`internal/services/evaluation/campaign_agent_trace.go`) produces the protobuf form.
    - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:
@@ -169,7 +169,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
 
 ## Envelope Hashing and Parity Vectors
 
-Every governed transaction has a transaction hash computed over its envelope fields. The envelope `id` and `transaction_hash` both carry this value:
+Every governed transaction has a transaction hash computed over its envelope fields. The envelope `id` and `transaction_hash` both carry this value. The field list below is abridged; the exact fields and their order are defined by `canonicalEnvelopeFieldsV1` in `internal/governance/envelope.go`:
 
 ```text
 Envelope Fields (action_type, target_resource, payload, state_merkle_root, nonce, expires_at, intent_data, identity and context IDs)
@@ -184,7 +184,7 @@ Envelope Fields (action_type, target_resource, payload, state_merkle_root, nonce
                           Envelope.Id and Envelope.TransactionHash
 ```
 
-- **Algorithm**: `GenerateMessageID` computes the SHA-256 hash across canonical envelope fields in a deterministic order. Protocol version 2 envelopes add `event_type` and a `ztd-tx-v2|` domain prefix to the digest input.
+- **Algorithm**: `GenerateMessageID` (`internal/governance/envelope.go`) computes a SHA-256 digest over canonical envelope fields in a deterministic order. Protocol version 2 envelopes prefix the digest input with `ztd-tx-v2|` and include `event_type`.
 - **L4 Verification**: The L4 Warden recalculates this hash before dispatch (`verifyTransactionHash` in `internal/services/governance/l4_warden.go`) and rejects any transaction whose `transaction_hash` or `id` does not match the recomputed hash.
 - **Hash Parity Vectors**:
   - `protocol/conformance/hash_vectors.json`: Golden vectors for standard envelope hashing.
@@ -199,7 +199,7 @@ The `protocol/constants/` directory maintains the authoritative JSON registries 
 - `event_dashboard_classification.json`: Maps events to dashboard stream behaviors (`produced_to_sse`, `governed_record_only`, `mixed`, `unsupported`).
 - `internal/constants/action_types_gen.go` and `internal/constants/events_gen.go`: Code-generated Go constants mirroring the JSON registries via `make constants-generate`.
 - `console/src/generated/events.ts`: Code-generated TypeScript constants for browser clients.
-- `doctrine/`: L1 security heuristic registries (`blacklist_doctrine.json`, `whitelist_doctrine.json`, `gitleaks_doctrine.json`, `owasp_crs_doctrine.json`, `mcp_vectors_doctrine.json`) and the source index `doctrine_registry.json`.
+- `protocol/constants/doctrine/`: L1 security heuristic registries (`blacklist_doctrine.json`, `whitelist_doctrine.json`, `gitleaks_doctrine.json`, `owasp_crs_doctrine.json`, `mcp_vectors_doctrine.json`) and the source index `doctrine_registry.json`.
 
 ## Workload Identity (SPIFFE)
 
@@ -222,7 +222,7 @@ All first-party components adhere strictly to the root `VERSION` file:
 - **Emitting raw binary protobuf over HTTP/SSE**: Sending binary bytes instead of canonical protojson across public or browser endpoints (`INV-PROT-SCHEMA-02`).
 - **Manual version bumping in packages**: Editing package version fields by hand instead of running `make version-sync` (`INV-PROT-VER-01`).
 - **Altering canonical hashing without vectors**: Modifying envelope hash algorithms without updating and verifying `protocol/conformance/` vectors.
-- **Using non-canonical JSON for signatures**: Computing Ed25519 signatures over raw or non-deterministic JSON instead of `CanonicalizeActionReceipt` output (`INV-PROT-CANON-02`).
+- **Using non-canonical JSON for signatures**: Computing Ed25519 signatures over raw or non-deterministic JSON instead of the canonical bytes from `CanonicalizeActionReceipt` or `CanonicalizeReceiptPersistenceAttestation` (`INV-PROT-CANON-02`).
 
 ## Links out
 

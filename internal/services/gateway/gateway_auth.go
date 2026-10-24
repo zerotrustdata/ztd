@@ -214,7 +214,6 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	// --- RouteAuthMTLS: mTLS-protected sub-paths under WebSession prefixes ---
 	// These exact paths must be checked before the WebSession prefix matches.
 	r.addExact(constants.APIPaths.AuthPasskeysCLIStatus, RouteAuthMTLS)
-	r.addExact(constants.APIPaths.ApprovalsCLIStatus, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ApprovalsCLIList, RouteAuthMTLS)
 	// Direct approval response: CLI (mTLS) or browser (web session). The
 	// handler enforces posture-specific grounding (mTLS cert or passkey).

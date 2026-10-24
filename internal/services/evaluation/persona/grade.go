@@ -17,7 +17,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // Status is the outcome of one deterministic grade.
@@ -274,7 +273,7 @@ func gradeRouter(labels *RouterLabels, out *evalv1.RouterOutput) (Status, FailCl
 // gradeCandidate screens the typed candidate through the same MCP_CALL L1 path as live dispatch.
 func gradeCandidate(doctrine *governance.L1Doctrine, out *evalv1.CandidateOutput) (Status, FailClass) {
 	request := models.RunShellCommandRequestFromProto(out.GetArguments())
-	if len(doctrine.ValidatePayload(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: request.CanonicalJSON()})) > 0 {
+	if len(doctrine.ValidatePayload(request.DoctrineCheckPayload())) > 0 {
 		return fail(FailL1Violation)
 	}
 	return pass()

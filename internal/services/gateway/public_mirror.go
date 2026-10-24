@@ -83,10 +83,6 @@ type PublicMirrorServer struct {
 	// empty, ingest authentication is disabled (test mode).
 	ingestAuthToken string
 
-	// maxBootstrapProjections is the bounded number of recent projections
-	// included in the bootstrap response.
-	maxBootstrapProjections int
-
 	// maxSSEQueueSize is the bounded SSE queue size per subscriber.
 	maxSSEQueueSize int
 	// maxSSEReplayRecords caps how many backlog records are sent on connect.
@@ -156,7 +152,6 @@ func NewPublicMirrorServer(logger *slog.Logger, store *PublicMirrorStore, cfg Pu
 		sources:                  state.sources,
 		keys:                     state.keys,
 		sseSubscribers:           make(map[*mirrorSSESubscriber]struct{}),
-		maxBootstrapProjections:  50,
 		maxSSEQueueSize:          100,
 		maxSSEReplayRecords:      constants.PublicFeedSSEReplayMaxRecords,
 		maxRetainedBatches:       constants.PublicFeedMirrorRetainedBatches,
@@ -182,14 +177,6 @@ func (m *PublicMirrorServer) SetIngestAuthToken(token string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ingestAuthToken = token
-}
-
-// SetMaxBootstrapProjections sets the bounded number of recent projections
-// in the bootstrap response.
-func (m *PublicMirrorServer) SetMaxBootstrapProjections(n int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.maxBootstrapProjections = n
 }
 
 // SetMaxSSEQueueSize sets the bounded SSE queue size per subscriber.
@@ -1240,38 +1227,55 @@ func (m *PublicMirrorServer) writeStoreUnavailable(w http.ResponseWriter, messag
 	http.Error(w, "mirror store unavailable", http.StatusInternalServerError)
 }
 
-// handleBootstrap handles GET /bootstrap — bounded initial snapshot for
-// public first paint.
+// handleBootstrap handles GET /bootstrap — the coherent current read model.
 func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
+	bootstrap, err := m.currentBootstrap(r.Context(), r.URL.Query().Get("source"))
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read current snapshot", err)
+		return
+	}
+	m.writeJSON(w, http.StatusOK, bootstrap)
+}
+
+// currentBootstrap captures records, proofs, withdrawals and cursor under the
+// same mutation lock, releasing it before writing to a potentially slow client.
+func (m *PublicMirrorServer) currentBootstrap(ctx context.Context, requestedSource string) (models.PublicFeedBootstrap, error) {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	sourceID, summary := m.sourceView(requestedSource)
 	if summary == nil {
-		m.writeJSON(w, http.StatusOK, models.PublicFeedBootstrap{
+		return models.PublicFeedBootstrap{
 			ProtocolVersion:     constants.PublicFeedProtocolVersion,
 			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
 			SourceFreshness:     models.CampaignFreshnessSourceOffline,
 			RecentProjections:   []models.PublicFeedObject{},
 			ProofCatalogSummary: models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0},
 			GeneratedAt:         time.Now().UTC(),
-		})
-		return
+		}, nil
 	}
 
-	m.mu.RLock()
-	maxProjections := m.maxBootstrapProjections
-	m.mu.RUnlock()
-	recent, err := m.recentProjections(r.Context(), summary, maxProjections)
+	records, err := m.store.snapshotRecords(ctx, sourceID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read recent projections", err)
-		return
+		return models.PublicFeedBootstrap{}, err
 	}
-	proofSummary, hasProof, err := m.store.proofSummary(r.Context(), sourceID)
+	// Preserve the transport's newest-first ordering. Unlike a history tail,
+	// these are the latest records for every current entity plus recent activity.
+	recent := make([]models.PublicFeedObject, 0, len(records))
+	for i := len(records) - 1; i >= 0; i-- {
+		var item models.PublicFeedObject
+		if err := json.Unmarshal([]byte(records[i].RecordBytes), &item); err != nil {
+			return models.PublicFeedBootstrap{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
+		}
+		item.SetInt64Field("sequence", records[i].Sequence)
+		recent = append(recent, item)
+	}
+	proofSummary, hasProof, err := m.store.proofSummary(ctx, sourceID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read proof summary", err)
-		return
+		return models.PublicFeedBootstrap{}, err
 	}
 	catalogSummary := models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0}
 	if hasProof && proofSummary.ArtifactCount > 0 {
@@ -1280,14 +1284,14 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 		catalogSummary.LastGeneratedAt = &proofSummary.GeneratedAt
 	}
 
-	m.writeJSON(w, http.StatusOK, models.PublicFeedBootstrap{
+	return models.PublicFeedBootstrap{
 		ProtocolVersion:     constants.PublicFeedProtocolVersion,
 		Snapshot:            m.snapshotOf(sourceID, summary),
 		SourceFreshness:     m.sourceFreshness(summary),
 		RecentProjections:   recent,
 		ProofCatalogSummary: catalogSummary,
 		GeneratedAt:         time.Now().UTC(),
-	})
+	}, nil
 }
 
 // handleSnapshot handles GET /snapshot — current high-water sequence and
@@ -1801,38 +1805,6 @@ func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.
 	if _, err := io.CopyN(w, file, artifact.ByteSize); err != nil {
 		m.logResponseError("mirror: write proof response", err)
 	}
-}
-
-// recentProjections returns up to max of the newest non-withdrawn projection
-// records through the summary high-water mark as deserialized JSON objects.
-func (m *PublicMirrorServer) recentProjections(ctx context.Context, summary *PublicMirrorSourceSummary, max int) ([]models.PublicFeedObject, error) {
-	projections := []models.PublicFeedObject{}
-	before := summary.HighWaterSequence + 1
-	for len(projections) < max {
-		records, err := m.store.recordsBefore(ctx, summary.SourceID, models.PublicFeedRecordTypeProjection, before, publicMirrorReadPageRecords)
-		if err != nil {
-			return nil, err
-		}
-		for _, rec := range records {
-			if len(projections) >= max {
-				break
-			}
-			if mirrorRecordWithdrawn(summary.WithdrawnDatasetIDs, rec) {
-				continue
-			}
-			var item models.PublicFeedObject
-			if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
-				continue
-			}
-			item.SetInt64Field("sequence", rec.Sequence)
-			projections = append(projections, item)
-		}
-		if len(records) < publicMirrorReadPageRecords {
-			break
-		}
-		before = records[len(records)-1].Sequence
-	}
-	return projections, nil
 }
 
 // offlinePublicMirrorSnapshot is the snapshot of a source the mirror has

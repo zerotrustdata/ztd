@@ -350,7 +350,7 @@ func (d *Detector) detectHostnames() []string {
 // getHostsFilePath returns the OS-specific hosts file path.
 func getHostsFilePath() string {
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv(constants.PathWindowsSystemRoot), constants.PathWindowsHostsFile)
+		return filepath.Join(os.Getenv(string(constants.EnvVar.SystemRoot)), constants.PathWindowsHostsFile)
 	}
 	return constants.PathEtcHosts
 }

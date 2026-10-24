@@ -327,7 +327,7 @@ func TestStopOperator_NoPIDFileSignalsNothing(t *testing.T) {
 	pm.commandExecutor = mockExecutor
 
 	err = pm.StopOperator()
-	assert.NoError(t, err, "StopOperator should return nil when no PID file exists")
+	require.NoError(t, err, "StopOperator should return nil when no PID file exists")
 	assert.Empty(t, mockExecutor.commandCalls, "StopOperator must not execute kill commands when no PID file exists")
 }
 
@@ -335,7 +335,7 @@ func TestStopProcess_ZeroPID(t *testing.T) {
 	pm := &ProcessManager{}
 
 	err := pm.stopProcess(0, "test")
-	assert.NoError(t, err, "stopProcess should not error for PID 0")
+	require.NoError(t, err, "stopProcess should not error for PID 0")
 }
 
 func TestStopProcess_ProcessNotRunning(t *testing.T) {
@@ -349,7 +349,7 @@ func TestStopProcess_ProcessNotRunning(t *testing.T) {
 	}
 
 	err := pm.stopProcess(1234, "test")
-	assert.NoError(t, err, "stopProcess should not error when process is not running")
+	require.NoError(t, err, "stopProcess should not error when process is not running")
 }
 
 func TestStopProcess_GracefulShutdownSucceeds(t *testing.T) {
@@ -381,7 +381,7 @@ func TestStopProcess_GracefulShutdownSucceeds(t *testing.T) {
 	}
 
 	err := pm.stopProcess(1234, "test")
-	assert.NoError(t, err, "stopProcess should succeed with graceful shutdown")
+	require.NoError(t, err, "stopProcess should succeed with graceful shutdown")
 	assert.Len(t, mockExecutor.runCalls, 1, "taskkill should be called once for graceful shutdown")
 }
 
@@ -418,7 +418,7 @@ func TestStopProcess_GracefulShutdownFailsForceKillSucceeds(t *testing.T) {
 	}
 
 	err := pm.stopProcess(1234, "test")
-	assert.NoError(t, err, "stopProcess should succeed with force kill")
+	require.NoError(t, err, "stopProcess should succeed with force kill")
 	assert.Len(t, mockExecutor.runCalls, 2, "taskkill should be called twice (graceful + force)")
 }
 
@@ -445,7 +445,7 @@ func TestStopProcess_ForceKillFails(t *testing.T) {
 	}
 
 	err := pm.stopProcess(1234, "test")
-	assert.Error(t, err, "stopProcess should error when force kill fails")
+	require.Error(t, err, "stopProcess should error when force kill fails")
 	assert.ErrorIs(t, err, constants.ErrProcessStopFailed)
 }
 
@@ -474,7 +474,7 @@ func TestStopProcess_WaitForExit(t *testing.T) {
 	}
 
 	err := pm.stopProcess(1234, "test")
-	assert.NoError(t, err, "stopProcess should succeed after waiting for exit")
+	require.NoError(t, err, "stopProcess should succeed after waiting for exit")
 }
 
 func TestStopProcess_CommandArguments(t *testing.T) {
@@ -541,15 +541,14 @@ func TestStopProcess_ForceKillSucceedsButProcessDoesNotExit(t *testing.T) {
 	}
 
 	err := pm.stopProcess(1234, "test")
-	assert.Error(t, err, "stopProcess should error when process does not exit after force kill")
+	require.Error(t, err, "stopProcess should error when process does not exit after force kill")
 	assert.ErrorIs(t, err, constants.ErrProcessForceKillTimeout)
 }
 
-func TestRealWindowsProcessChecker(t *testing.T) {
-	// Test that real implementations satisfy the interfaces
-	var _ WindowsProcessChecker = realWindowsProcessChecker{}
-	var _ CommandExecutor = realCommandExecutor{}
-}
+var (
+	_ WindowsProcessChecker = realWindowsProcessChecker{}
+	_ CommandExecutor       = realCommandExecutor{}
+)
 
 func TestProcessManager_NilDependencies(t *testing.T) {
 	// Test that ProcessManager works with nil dependencies (uses real implementations)

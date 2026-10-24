@@ -283,6 +283,8 @@ function adaptLifecycleRecord(
   }
 
   const eventKind = lifecycleEventKind(lifecycle);
+  const terminal = LIFECYCLE_TO_TERMINAL[record.lifecycle_status];
+  const terminalStatus = terminal === 'by_verdict' || terminal === 'non_terminal' ? undefined : terminal;
   const { completed, total } = liveEventProgressCounts(progress, eventKind);
   if (eventKind) {
     records.push({
@@ -300,6 +302,7 @@ function adaptLifecycleRecord(
       variant_id: record.variant_id,
       role,
       lifecycle_status: lifecycle,
+      ...(terminalStatus ? { terminal_status: terminalStatus } : {}),
       completed,
       total,
       stage_label: buildStageLabel(lifecycle, scenarioCategory, record.scenario_id),
@@ -400,19 +403,22 @@ function buildTerminalMetricDelta(metricValues: Record<string, MetricValue>): Li
   return Object.keys(delta).length > 0 ? delta : undefined;
 }
 
-function lifecycleEventKind(lifecycle: LifecycleStatus): LiveEventKind | undefined {
+function lifecycleEventKind(lifecycle: LifecycleStatus): LiveEventKind {
   switch (lifecycle) {
     case 'queued':
       return 'stage_updated';
     case 'running':
       return 'assignment_started';
-    default:
-      return undefined;
+    case 'completed':
+      return 'assignment_completed';
+    case 'failed':
+    case 'stopped':
+      return 'assignment_failed';
   }
 }
 
 function lifecycleQualityState(lifecycle: LifecycleStatus): QualityState {
-  return lifecycle === 'queued' || lifecycle === 'running' ? 'live_in_progress' : 'terminal_failed';
+  return lifecycle === 'failed' || lifecycle === 'stopped' ? 'terminal_failed' : 'live_in_progress';
 }
 
 function buildStageLabel(

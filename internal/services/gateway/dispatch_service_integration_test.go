@@ -649,10 +649,12 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 }
 
 func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string) ed25519.PublicKey {
+	t.Helper()
 	return startFileEditOperatorWithNotary(t, infra, operatorID, sessionID, workDir, nil)
 }
 
 func startFileEditOperatorWithNotary(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string, notary govsvc.L3Notary) ed25519.PublicKey {
+	t.Helper()
 	return startFileEditOperatorWithGovernance(t, infra, operatorID, sessionID, workDir, notary, nil)
 }
 
@@ -1311,6 +1313,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "ambiguous capable sessions without target",
 			seed: func(t *testing.T, infra *TestInfrastructure, userID string) {
+				t.Helper()
 				seedInferenceOperator(t, infra, userID, "operator-ambiguous-a", "session-ambiguous-a", true)
 				seedInferenceOperator(t, infra, userID, "operator-ambiguous-b", "session-ambiguous-b", true)
 			},
@@ -1319,6 +1322,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "explicit incapable session",
 			seed: func(t *testing.T, infra *TestInfrastructure, userID string) {
+				t.Helper()
 				seedInferenceOperator(t, infra, userID, "operator-incapable", "session-incapable", false)
 			},
 			target:  "session-incapable",
@@ -1327,6 +1331,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "cross-user target is nondisclosed",
 			seed: func(t *testing.T, infra *TestInfrastructure, _ string) {
+				t.Helper()
 				otherUserID := "user-inference-other"
 				seedActiveUser(t, infra, otherUserID)
 				seedInferenceOperator(t, infra, otherUserID, "operator-other-user", "session-other-user", true)
@@ -1337,6 +1342,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "capable session with zero delivery",
 			seed: func(t *testing.T, infra *TestInfrastructure, userID string) {
+				t.Helper()
 				seedInferenceOperator(t, infra, userID, "operator-no-delivery", "session-no-delivery", true)
 			},
 			target:  "session-no-delivery",
@@ -1426,8 +1432,8 @@ func TestInferenceDispatch_CallerCancellationRemovesHandlerWhileRemoteExecutionC
 	select {
 	case err := <-dispatchErr:
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceCanceled)
-		assert.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, constants.ErrInferenceCanceled)
+		require.ErrorIs(t, err, context.Canceled)
 	case <-time.After(time.Second):
 		t.Fatal("dispatch did not return after caller cancellation")
 	}
@@ -1528,7 +1534,7 @@ func TestInferenceDispatch_ResultMutatedAfterDigestComputationFailsClosed(t *tes
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceResultDigestMismatch)
+	require.ErrorIs(t, err, constants.ErrInferenceResultDigestMismatch)
 	calls, _ := backend.snapshot()
 	assert.Equal(t, 1, calls)
 }
@@ -1628,7 +1634,7 @@ func TestInferenceDispatch_NotaryPostureRejectsMutationBeforeBackendInvocation(t
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
+	require.ErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
 	calls, _ := backend.snapshot()
 	assert.Zero(t, calls)
 }

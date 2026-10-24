@@ -225,9 +225,10 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 			if ok {
 				return approvalReceipt(event, txHash)
 			}
-			// A stream bound to the caller's context ends when that context
-			// does; both channels are then ready, and the deadline is the cause.
-			if waitCtx.Err() != nil {
+			// The stream and wait contexts are siblings. Caller cancellation
+			// can stop the stream before it reaches waitCtx, so consult the
+			// caller directly as well as the wait's own timeout.
+			if ctx.Err() != nil || waitCtx.Err() != nil {
 				return nil, constants.ErrApprovalSSETimeout
 			}
 			if s.dropErr != nil {

@@ -142,15 +142,12 @@ func TestHTTPCampaignMirrorProbe_ReportsPresentAndAbsentDatasets(t *testing.T) {
 }
 
 func TestHTTPCampaignMirrorProbe_DatasetPresentFromHistory(t *testing.T) {
-	gateway, fileSvc, cfg := newPublicMirrorGateway(t)
-	// A one-projection bootstrap window pushes the older dataset out of the
-	// bootstrap, so only the cursor history can report it.
-	gateway.Service.GetPublicMirror().SetMaxBootstrapProjections(1)
+	_, fileSvc, cfg := newPublicMirrorGateway(t)
 	publishCatalogSnapshots(t, fileSvc, cfg, "eval-run-history", "eval-run-recent")
 
 	bootstrap, err := FetchPublicMirrorBootstrap(t.Context())
 	require.NoError(t, err)
-	require.Len(t, bootstrap.RecentProjections, 1, "bootstrap must hold only the newest projection")
+	require.Len(t, bootstrap.RecentProjections, 2, "the current snapshot retains both datasets")
 
 	probe := NewHTTPCampaignMirrorProbe(t.Context())
 	for datasetID, expected := range map[string]bool{

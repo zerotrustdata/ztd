@@ -116,7 +116,7 @@ func TestFSDiskProfileTool_Execute_SingleFile(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &profileResult)
 	require.NoError(t, err)
 
-	require.Greater(t, len(profileResult.Entries), 0)
+	require.NotEmpty(t, profileResult.Entries)
 
 	// Find the root entry (should be ".")
 	var rootEntry *DirEntry
@@ -299,7 +299,7 @@ func TestFSDiskProfileTool_Execute_ZeroMaxDepth(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should see entries (default depth applies)
-	require.Greater(t, len(profileResult.Entries), 0)
+	require.NotEmpty(t, profileResult.Entries)
 }
 
 func TestFSDiskProfileTool_Execute_NegativeMaxDepth(t *testing.T) {
@@ -324,7 +324,7 @@ func TestFSDiskProfileTool_Execute_NegativeMaxDepth(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &profileResult)
 	require.NoError(t, err)
 
-	require.Greater(t, len(profileResult.Entries), 0)
+	require.NotEmpty(t, profileResult.Entries)
 }
 
 func TestFSDiskProfileTool_Execute_ContextCancellation(t *testing.T) {

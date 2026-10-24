@@ -31,9 +31,9 @@ type countingL2Deliberator struct {
 	calls int
 }
 
-func (d *countingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
+func (d *countingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	d.calls++
-	return envelopeBytes, nil
+	return &governance.ConsensusDeliberation{Envelope: envelopeBytes}, nil
 }
 
 // postureDependencies returns the minimum valid Dependencies for NewGatewayService with the given posture name.
@@ -104,7 +104,7 @@ func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) 
 			g.l2ConsensusDeliberator = deliberator
 			ctx := context.WithValue(context.Background(), constants.ContextKeyOperatorSessionID, "operator-session-1")
 
-			_, wire, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: tc.eventType, targetResource: tc.target, payloadBytes: []byte("payload")})
+			_, wire, _, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: tc.eventType, targetResource: tc.target, payloadBytes: []byte("payload")})
 			require.NoError(t, err)
 
 			env := &commonv1.GovernanceEnvelope{}

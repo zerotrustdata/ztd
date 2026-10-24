@@ -173,7 +173,7 @@ func TestAssignmentRunSeconds_ExcludesIdleGapsAndCountsOverlapOnce(t *testing.T)
 	}
 	seconds := assignmentRunSeconds(assignments, results)
 	require.NotNil(t, seconds)
-	assert.Equal(t, 120.0, *seconds)
+	assert.InDelta(t, 120.0, *seconds, 0)
 
 	assert.Nil(t, assignmentRunSeconds([]*evalv1.EvaluationAssignment{interrupted, queued}, nil))
 }
@@ -221,7 +221,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 	assert.Equal(t, "completed", publicSummary.RunStatus)
 	assert.Equal(t, "exploratory_partial", summary.QualityState)
 	require.NotNil(t, summary.RunSeconds)
-	assert.Equal(t, 30.0, *summary.RunSeconds)
+	assert.InDelta(t, 30.0, *summary.RunSeconds, 0)
 
 	var catalog catalogSnapshotRecord
 	require.NoError(t, json.Unmarshal(records[1].Body, &catalog))
@@ -451,7 +451,7 @@ func TestBuildRunVerificationViewRecords(t *testing.T) {
 	assert.Equal(t, "exploratory_verified", model.QualityState)
 	assert.Equal(t, "qwen3-4b", model.VariantID)
 	assert.Equal(t, "primary", model.Role)
-	assert.Equal(t, 1.0, model.EvaluationCoverage)
+	assert.InDelta(t, 1.0, model.EvaluationCoverage, 0)
 	require.NotNil(t, model.PassRate)
 	assert.Equal(t, uint32(1), model.PassRate.Denominator)
 }
@@ -540,7 +540,7 @@ func TestBuildRunVerificationViewRecordsEmitsEveryEligibleVariantRole(t *testing
 	assert.Equal(t, "exploratory_verified", firstModel.QualityState)
 	assert.Equal(t, "exploratory_verified", secondModel.QualityState)
 	require.NotNil(t, secondModel.PassRate)
-	assert.Equal(t, 0.0, secondModel.PassRate.Estimate)
+	assert.InDelta(t, 0.0, secondModel.PassRate.Estimate, 0)
 	assert.NotEqual(t, firstModel.VariantID, secondModel.VariantID)
 }
 
@@ -569,7 +569,7 @@ func TestVerifiedModelSummaryIdempotencyKeyIsDistinctAndScoped(t *testing.T) {
 }
 
 func TestFormatCampaignVerifierFailureSummary(t *testing.T) {
-	assert.Equal(t, "", formatCampaignVerifierFailureSummary(nil))
+	assert.Empty(t, formatCampaignVerifierFailureSummary(nil))
 	assert.Equal(t, "assignment a: missing window", formatCampaignVerifierFailureSummary(&evalv1.EvaluationVerificationReport{
 		FailureReasons: []string{"assignment a: missing window"},
 	}))
@@ -674,7 +674,7 @@ func TestCollectRunHeadlineMetricsPassRate(t *testing.T) {
 	require.NotNil(t, state.Headline)
 	passRate := state.Headline.PassRate
 	require.NotNil(t, passRate.Value)
-	assert.Equal(t, 1.0, *passRate.Value)
+	assert.InDelta(t, 1.0, *passRate.Value, 0)
 	assert.Equal(t, uint32(2), passRate.Eligible)
 	assert.Equal(t, uint32(2), passRate.Observed)
 	assert.Equal(t, uint32(0), passRate.Unavailable)
@@ -718,7 +718,7 @@ func TestCollectRunHeadlineMetricsLatencyMedian(t *testing.T) {
 			require.NoError(t, err)
 			latency := state.Headline.LatencyP50MS
 			require.NotNil(t, latency.Value)
-			assert.Equal(t, tt.wantValue, *latency.Value)
+			assert.InDelta(t, tt.wantValue, *latency.Value, 0)
 			assert.Equal(t, uint32(len(tt.spansMS)), latency.Observed)
 			assert.Equal(t, uint32(len(tt.spansMS)), latency.Eligible)
 			assert.Equal(t, uint32(0), latency.Unavailable)
@@ -742,7 +742,7 @@ func TestCollectRunHeadlineMetricsLatencyPartialCoverage(t *testing.T) {
 	require.NoError(t, err)
 	latency := state.Headline.LatencyP50MS
 	require.NotNil(t, latency.Value)
-	assert.Equal(t, 150.0, *latency.Value)
+	assert.InDelta(t, 150.0, *latency.Value, 0)
 	assert.Equal(t, uint32(1), latency.Observed)
 	assert.Equal(t, uint32(2), latency.Eligible)
 	assert.Equal(t, uint32(1), latency.Unavailable)
@@ -815,16 +815,16 @@ func TestCollectVariantRoleMetricsPerformance(t *testing.T) {
 	primary := state.VariantRoles["qwen3-4b:primary"]
 	require.NotNil(t, primary)
 	require.NotNil(t, primary.LatencyP50MS.Value)
-	assert.Equal(t, 200.0, *primary.LatencyP50MS.Value)
+	assert.InDelta(t, 200.0, *primary.LatencyP50MS.Value, 0)
 	require.NotNil(t, primary.OutputThroughputP50.Value)
-	assert.Equal(t, 20.0, *primary.OutputThroughputP50.Value)
+	assert.InDelta(t, 20.0, *primary.OutputThroughputP50.Value, 0)
 
 	assistant := state.VariantRoles["qwen3-4b:assistant"]
 	require.NotNil(t, assistant)
 	assert.Nil(t, assistant.LatencyP50MS.Value)
 	assert.Equal(t, "source_unavailable", assistant.LatencyP50MS.UnavailableReason)
 	require.NotNil(t, assistant.OutputThroughputP50.Value)
-	assert.Equal(t, 10.0, *assistant.OutputThroughputP50.Value)
+	assert.InDelta(t, 10.0, *assistant.OutputThroughputP50.Value, 0)
 }
 
 func TestCollectVariantRoleMetricsPairwiseAgreement(t *testing.T) {
@@ -864,7 +864,7 @@ func TestCollectVariantRoleMetricsPairwiseAgreement(t *testing.T) {
 	primary := state.VariantRoles["qwen3-4b:primary"]
 	require.NotNil(t, primary)
 	require.NotNil(t, primary.AgreementPairwise.Value)
-	assert.Equal(t, 0.5, *primary.AgreementPairwise.Value)
+	assert.InDelta(t, 0.5, *primary.AgreementPairwise.Value, 0)
 }
 
 func TestBuildRunAggregateViewRecordsModelPerformanceMetrics(t *testing.T) {
@@ -899,13 +899,13 @@ func TestBuildRunAggregateViewRecordsModelPerformanceMetrics(t *testing.T) {
 	require.NoError(t, json.Unmarshal(records[2].Body, &model))
 	require.NotNil(t, model.LatencyP50MS)
 	require.NotNil(t, model.LatencyP50MS.Value)
-	assert.Equal(t, 300.0, *model.LatencyP50MS.Value)
+	assert.InDelta(t, 300.0, *model.LatencyP50MS.Value, 0)
 	require.NotNil(t, model.OutputThroughputP50)
 	require.NotNil(t, model.OutputThroughputP50.Value)
-	assert.Equal(t, 20.0, *model.OutputThroughputP50.Value)
+	assert.InDelta(t, 20.0, *model.OutputThroughputP50.Value, 0)
 	require.NotNil(t, model.AgreementPairwise)
 	require.NotNil(t, model.AgreementPairwise.Value)
-	assert.Equal(t, 1.0, *model.AgreementPairwise.Value)
+	assert.InDelta(t, 1.0, *model.AgreementPairwise.Value, 0)
 }
 
 func TestCollectRunHeadlineMetricsOutputThroughput(t *testing.T) {
@@ -928,7 +928,7 @@ func TestCollectRunHeadlineMetricsOutputThroughput(t *testing.T) {
 	throughput := state.Headline.OutputThroughputP50
 	require.NotNil(t, throughput.Value)
 	// assign-1: 40 tokens / 2s = 20 tok/s; assign-2: 30 tok/s. Median = 25.
-	assert.Equal(t, 25.0, *throughput.Value)
+	assert.InDelta(t, 25.0, *throughput.Value, 0)
 	assert.Equal(t, uint32(2), throughput.Observed)
 	assert.Equal(t, uint32(2), throughput.Eligible)
 }
@@ -1002,9 +1002,9 @@ func TestCollectRunHeadlineMetricsFailedAssignmentContributesMeasurements(t *tes
 	state, err := CollectRunAggregateState(assignments, results)
 	require.NoError(t, err)
 	require.NotNil(t, state.Headline.LatencyP50MS.Value)
-	assert.Equal(t, 500.0, *state.Headline.LatencyP50MS.Value)
+	assert.InDelta(t, 500.0, *state.Headline.LatencyP50MS.Value, 0)
 	require.NotNil(t, state.Headline.OutputThroughputP50.Value)
-	assert.Equal(t, 15.0, *state.Headline.OutputThroughputP50.Value)
+	assert.InDelta(t, 15.0, *state.Headline.OutputThroughputP50.Value, 0)
 }
 
 func boundTestReport(runID string, status evalv1.EvaluationVerdictStatus) *evalv1.EvaluationVerificationReport {
@@ -1124,7 +1124,7 @@ func TestBuildRunAggregateViewRecordsHeadlineMetricsShape(t *testing.T) {
 	passRate := summary.HeadlineMetrics.PassRate
 	assert.Equal(t, "ratio", passRate.Unit)
 	require.NotNil(t, passRate.Value)
-	assert.Equal(t, 1.0, *passRate.Value)
+	assert.InDelta(t, 1.0, *passRate.Value, 0)
 	assert.Equal(t, uint32(1), passRate.ObservedCount)
 	assert.Equal(t, uint32(1), passRate.EligibleCount)
 	assert.Equal(t, uint32(0), passRate.UnavailableCount)
@@ -1132,14 +1132,14 @@ func TestBuildRunAggregateViewRecordsHeadlineMetricsShape(t *testing.T) {
 	latency := summary.HeadlineMetrics.LatencyP50MS
 	assert.Equal(t, "milliseconds", latency.Unit)
 	require.NotNil(t, latency.Value)
-	assert.Equal(t, 200.0, *latency.Value)
+	assert.InDelta(t, 200.0, *latency.Value, 0)
 	assert.Equal(t, uint32(1), latency.ObservedCount)
 	assert.Equal(t, uint32(1), latency.EligibleCount)
 
 	throughput := summary.HeadlineMetrics.OutputThroughputP50
 	assert.Equal(t, "tokens_per_second", throughput.Unit)
 	require.NotNil(t, throughput.Value)
-	assert.Equal(t, 10.0, *throughput.Value)
+	assert.InDelta(t, 10.0, *throughput.Value, 0)
 	assert.Equal(t, uint32(1), throughput.ObservedCount)
 	assert.Equal(t, uint32(1), throughput.EligibleCount)
 }

@@ -132,7 +132,7 @@ func TestRestore_DefaultMergesEverySnapshotIncludingEvidenceOnlyAnOlderOneHolds(
 	for _, rel := range onlyInFirst {
 		assert.True(t, got[rel], "%s exists only in the older snapshot and must be restored", rel)
 		_, err := fileSvc.ReadFile(ctx, rel)
-		assert.NoError(t, err, rel)
+		require.NoError(t, err, rel)
 	}
 	for _, file := range second.Files {
 		assert.True(t, got[file.Path], "%s is in the newest snapshot and must be restored", file.Path)

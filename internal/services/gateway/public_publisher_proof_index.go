@@ -73,8 +73,9 @@ func newPublicProofIndex() *publicProofIndex {
 }
 
 // check reports whether seg is the valid next link: consecutive index and
-// root link, no relisted artifact, withdrawals of active artifacts only, and
-// an active set within the artifact limit. These are the mirror's rules.
+// root link, no relisted artifact, and withdrawals of active artifacts only.
+// Artifact limits apply to each signed segment, not the
+// accumulated catalog. These are the mirror's rules.
 func (x *publicProofIndex) check(seg models.PublicProofManifestSegment) error {
 	previousRoot := constants.PublicFeedZeroHashHex
 	if len(x.segments) > 0 {
@@ -92,9 +93,6 @@ func (x *publicProofIndex) check(seg models.PublicProofManifestSegment) error {
 		if _, active := x.active[id]; !active {
 			return constants.ErrPublicFeedProofSegmentInvalid
 		}
-	}
-	if len(x.active)+len(seg.Entries)-len(seg.WithdrawnArtifactIDs) > constants.PublicFeedProofMaxArtifacts {
-		return constants.ErrPublicFeedProofCatalogMismatch
 	}
 	return nil
 }
@@ -341,9 +339,21 @@ func (s *PublicPublisherService) appendProofSegmentLocked(ctx context.Context, s
 	}
 	if info.Size() > index.offset {
 		s.logger.Warn("public-feed: discarding incomplete proof segment tail", "bytes", info.Size()-index.offset)
-		if err := f.Truncate(index.offset); err != nil {
+		// Close the O_APPEND handle before truncating: File.Truncate on an
+		// O_APPEND handle fails on Windows with "Access is denied" because
+		// the handle carries FILE_APPEND_DATA only. Truncate by path, then
+		// reopen for the append below.
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("public-feed: close proof segments before truncate: %w", err)
+		}
+		if err := s.fileSvc.Truncate(ctx, constants.PublicProofSegmentsFilename, index.offset); err != nil {
 			return fmt.Errorf("public-feed: discard incomplete proof segment tail: %w", err)
 		}
+		reopened, err := s.fileSvc.OpenForAppend(ctx, constants.PublicProofSegmentsFilename, constants.PermFilePrivate)
+		if err != nil {
+			return fmt.Errorf("public-feed: reopen proof segments after truncate: %w", err)
+		}
+		f = reopened
 	}
 	if _, err := f.Write(line); err != nil {
 		return fmt.Errorf("public-feed: write proof segment: %w", err)

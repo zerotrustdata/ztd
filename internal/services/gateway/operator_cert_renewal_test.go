@@ -75,6 +75,7 @@ func renewalPeer(t *testing.T, spiffeID string) *x509.Certificate {
 }
 
 func operatorPeer(t *testing.T) *x509.Certificate {
+	t.Helper()
 	return renewalPeer(t, "spiffe://ztd.local/operator/"+renewalOrgID+"/"+renewalOpID+"/"+renewalSessionID)
 }
 
@@ -130,8 +131,11 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 		wantErrIs error
 	}{
 		{
-			name:      "peer is not an Operator",
-			peer:      func(t *testing.T) *x509.Certificate { return renewalPeer(t, "spiffe://ztd.local/app/test-app") },
+			name: "peer is not an Operator",
+			peer: func(t *testing.T) *x509.Certificate {
+				t.Helper()
+				return renewalPeer(t, "spiffe://ztd.local/app/test-app")
+			},
 			wantErrIs: constants.ErrOperatorRenewalPeerNotOperator,
 		},
 		{
@@ -168,6 +172,7 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 		{
 			name: "CSR names a subject alternative name",
 			req: func(t *testing.T) *models.OperatorRenewalRequest {
+				t.Helper()
 				return &models.OperatorRenewalRequest{CSR: renewalCSR(t, "gateway.example")}
 			},
 			wantErrIs: constants.ErrOperatorRenewalCSRSubjectAltName,
@@ -202,7 +207,7 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 			_, err := r.svc.Renew(t.Context(), peer, channel, req)
 			require.ErrorIs(t, err, constants.ErrOperatorRenewalRefused)
 			if tc.wantErrIs != nil {
-				assert.ErrorIs(t, err, tc.wantErrIs)
+				require.ErrorIs(t, err, tc.wantErrIs)
 			}
 			assert.Empty(t, r.pki.signed, "a refused renewal signs nothing")
 		})

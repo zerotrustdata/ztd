@@ -14,9 +14,6 @@ import (
 	"slices"
 	"time"
 
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -29,6 +26,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // gatewayEvalDeps carries the dependencies the operator-facing eval commands
@@ -232,36 +231,23 @@ func evalPreflightGatewayGovernance(
 			return evaluation.RunGovernance{}, err
 		}
 	}
-	if (!health.Posture.RequiresL2() && health.Consensus.VoteKind != models.ConsensusVoteKindDecision) || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
+	if health.Consensus.VoteKind != models.ConsensusVoteKindDecision || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
 		return governance, nil
 	}
 	operators, err := evalListOperators(cmd, deps, cfg, authContext)
 	if err != nil {
-		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: shared-runtime Tribunal preflight: %w", err)
+		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: decision provider preflight: %w", err)
 	}
 	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", spec.GetInvestigation().GetDataOperatorId())
 	if err != nil {
-		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: shared-runtime Tribunal preflight: %w", err)
+		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: decision provider preflight: %w", err)
 	}
 	if health.Consensus.VoteKind == models.ConsensusVoteKindDecision {
 		if err := evaluation.ValidateConsensusProviderIsolation(binding, operators, topology.Inference.OperatorID); err != nil {
 			return evaluation.RunGovernance{}, err
 		}
 	}
-	if err := evalRejectSharedRuntimeTribunalL2(health, topology); err != nil {
-		return evaluation.RunGovernance{}, err
-	}
 	return governance, nil
-}
-
-func evalRejectSharedRuntimeTribunalL2(health *models.HealthResponse, topology evaluation.CampaignOperatorTopology) error {
-	if health == nil || !health.Posture.RequiresL2() || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
-		return nil
-	}
-	if topology.Inference.OperatorID == topology.Data.OperatorID && topology.Inference.OperatorSessionID == topology.Data.OperatorSessionID {
-		return fmt.Errorf("evaluation: campaign preflight: shared Inference/Data Operator under enforced Tribunal L2: enroll and select a dedicated inference Operator, then create a new run: %w", constants.ErrEvaluationSharedRuntimeTribunalL2)
-	}
-	return nil
 }
 
 // gatewayHealth reads the Gateway's typed /health once.

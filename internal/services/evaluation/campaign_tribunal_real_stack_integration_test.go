@@ -14,6 +14,7 @@ package evaluation_test
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,8 +74,14 @@ func tribunalPanel(commands ...string) []fixtures.OllamaReply {
 	return replies
 }
 
+// tribunalRealDissent is Nemesis's adversarial proposal: the vote always
+// excludes Nemesis's command, so it must differ from the agreed one.
+const tribunalRealDissent = `{"command":"printf","args":["HEALTHY"]}`
+
+// tribunalUnanimous is a round in which every eligible member proposes command
+// and Nemesis dissents.
 func tribunalUnanimous(command string) []fixtures.OllamaReply {
-	return tribunalPanel(command, command, command, command, command)
+	return tribunalPanel(command, command, command, command, tribunalRealDissent)
 }
 
 // tribunalScenario scopes the scenario to the native run_shell_command tool routed through Tribunal authoring.
@@ -88,6 +95,7 @@ func tribunalScenario(scenario *evalv1.EvaluationScenarioDefinition) {
 // tribunalRun initializes a one-assignment campaign on the real stack whose
 // provider script is the concatenation of the given rounds, in order.
 func tribunalRun(t *testing.T, suffix string, rounds ...[]fixtures.OllamaReply) *realStackAgentRun {
+	t.Helper()
 	return tribunalRunWithPosture(t, suffix, constants.PostureDoctrine, false, rounds...)
 }
 
@@ -260,7 +268,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	require.Len(t, trace.ToolCalls, 1)
 	tool := trace.ToolCalls[0]
 	assert.True(t, tool.Success, "tool error: %s", tool.Error)
-	assert.Equal(t, `{"args":["HEALTHY"],"command":"echo"}`, tool.ArgumentsJSON, "the proposal is recorded in canonical sorted-key form")
+	assert.Equal(t, `{"args":["HEALTHY"],"command":"echo"}`, tool.ArgumentsJSON, "the proposal is recorded in canonical sorted-key form") //nolint:testifylint // exact bytes, not JSON equivalence
 	approved := tribunalExpectedApprovedArguments(trace)
 	assert.Equal(t, approved, tool.ApprovedArgumentsJSON, "Gateway-owned timeout and working directory are composed before review")
 	require.NotNil(t, tool.Receipt, "the dispatched command keeps its signed receipt")
@@ -365,14 +373,23 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	assert.Equal(t, "tribunal:audit", inferences[7].GetCallSite())
 }
 
-func TestCampaignTribunalIntegration_L1ScreensApprovedTypedArguments(t *testing.T) {
+// The Gateway's active L1 doctrine screens every candidate before the vote:
+// a blocked member is told its violations and retries, a member still blocked
+// after every attempt abstains, and only the repaired command dispatches.
+func TestCampaignTribunalIntegration_L1RepairsCandidatesBeforeVote(t *testing.T) {
 	const dangerous = `{"command":"rm","args":["-rf","/"]}`
 	env := tribunalRun(t, "l1-doctrine",
 		tribunalIntent("call-1", dangerous),
-		tribunalUnanimous(dangerous),
+		tribunalPanel(
+			dangerous, tribunalRealCommand, // Axiom repairs on its second attempt.
+			dangerous, tribunalRealCommand, // Concord repairs on its second attempt.
+			tribunalRealCommand,             // Variance
+			dangerous, dangerous, dangerous, // Pragma exhausts its attempts and abstains.
+			tribunalRealDissent, // Nemesis
+		),
 		tribunalTurn(tribunalRealLowRisk),
 		tribunalTurn(tribunalRealApprove),
-		tribunalTurn("The destructive command was blocked by policy."),
+		tribunalTurn("HEALTHY"),
 	)
 
 	res := env.executeNext(t)
@@ -380,28 +397,41 @@ func TestCampaignTribunalIntegration_L1ScreensApprovedTypedArguments(t *testing.
 	trace := executorLoadTrace(t, env, res)
 	require.Len(t, trace.ToolCalls, 1)
 	call := trace.ToolCalls[0]
-	assert.False(t, call.Success)
-	assert.Contains(t, call.Error, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE.String())
-	assert.Empty(t, call.TransactionID, "L1 refuses the typed call before an envelope reaches the Operator")
-	assert.Nil(t, call.Receipt)
-	assert.Empty(t, call.PolicyDecision)
-	// The Tribunal approved these bytes before L1 refused the dispatch; the
-	// trace keeps them as evidence, and the refusal names them.
-	assert.Equal(t, (models.RunShellCommandRequest{
-		Command: "rm", Args: []string{"-rf", "/"},
-		Timeout:    constants.DefaultShellCommandTimeout,
-		WorkingDir: trace.Workspace.OperatorWorkingDirectory,
-	}).CanonicalJSON(), trace.ToolCalls[0].ApprovedArgumentsJSON, "the refused call records the approved bytes it was refused with")
-	assert.Contains(t, call.Error, "Approved arguments: ")
+	assert.True(t, call.Success, "tool error: %s", call.Error)
+	assert.Equal(t, tribunalExpectedApprovedArguments(trace), call.ApprovedArgumentsJSON, "only the repaired command is approved")
+	require.NotNil(t, call.Receipt)
+
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 13, "the turn, nine generation attempts, Marshal, the Auditor, and the closing turn")
+	feedback := func(body executorChatBody) bool {
+		last := body.Messages[len(body.Messages)-1]
+		return strings.Contains(last.Content, "L1 doctrine rejected these arguments")
+	}
+	for i, wantFeedback := range []bool{false, true, false, true, false, false, true, true, false} {
+		assert.Equal(t, wantFeedback, feedback(bodies[1+i]), "generation attempt %d", i+1)
+	}
+
+	require.Len(t, trace.ModelCalls, 13)
+	for _, modelCall := range trace.ModelCalls[1:10] {
+		assert.Equal(t, "tribunal_generate", modelCall.Purpose)
+		require.NotNil(t, modelCall.Receipt, "every L1 repair attempt is a governed inference with a signed receipt")
+	}
+	vote := trace.Steps[5].GetVote()
+	require.NotNil(t, vote)
+	assert.True(t, vote.GetConsensusReached())
+	assert.JSONEq(t, tribunalExpectedApprovedArguments(trace), vote.GetSelectedCommand())
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }
 
 func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture)+"-approval", func(t *testing.T) {
+			// The second approval is the contextual Auditor review of the
+			// admitted envelope, after the human's L3 approval.
 			env := tribunalRunWithPosture(t, "l3-approve-"+string(posture), posture, false,
 				tribunalIntent("call-1"), tribunalUnanimous(tribunalRealCommand),
 				tribunalTurn(tribunalRealLowRisk), tribunalTurn(tribunalRealApprove),
+				tribunalTurn(tribunalRealApprove),
 				tribunalTurn("HEALTHY"),
 			)
 			res := env.executeNext(t)
@@ -444,7 +474,8 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 }
 
 func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConflict(t *testing.T) {
-	const destructive = `{"command":"rm","args":["-rf","."]}`
+	// A scoped delete passes L1 doctrine, so only Marshal's risk assessment blocks it.
+	const destructive = `{"command":"rm","args":["-rf","./build"]}`
 	env := tribunalRun(t, "marshal-block",
 		tribunalIntent("call-1"),
 		tribunalUnanimous(destructive),

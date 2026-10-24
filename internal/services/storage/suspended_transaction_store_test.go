@@ -114,7 +114,6 @@ func TestStoreSuspendedTransaction_Success(t *testing.T) {
 		ToolArguments:           []byte(`{"arg": "value"}`),
 		UserID:                  "user-123",
 		OperatorID:              "operator-456",
-		Approved:                false,
 		ExpectedCertFingerprint: "cert-fingerprint",
 	}
 
@@ -186,7 +185,6 @@ func TestStoreSuspendedTransaction_UpdateExisting(t *testing.T) {
 		ToolArguments:           []byte(`{"arg": "value"}`),
 		UserID:                  "user-123",
 		OperatorID:              "operator-456",
-		Approved:                false,
 		ExpectedCertFingerprint: "cert-fingerprint",
 	}
 
@@ -280,7 +278,6 @@ func TestGetSuspendedTransaction_Success(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC()
-	approvedAt := now.Add(5 * time.Minute)
 
 	tx := &models.SuspendedTransaction{
 		TransactionHash:         "get-test-hash",
@@ -292,10 +289,6 @@ func TestGetSuspendedTransaction_Success(t *testing.T) {
 		ToolArguments:           []byte(`{"arg": "value"}`),
 		UserID:                  "user-123",
 		OperatorID:              "operator-456",
-		Approved:                true,
-		ApprovedAt:              &approvedAt,
-		ApprovedBy:              "approver-789",
-		ApprovalSignature:       "signature-abc",
 		ExpectedCertFingerprint: "cert-fingerprint",
 	}
 
@@ -311,14 +304,10 @@ func TestGetSuspendedTransaction_Success(t *testing.T) {
 	assert.Equal(t, "get-test-hash", retrieved.TransactionHash)
 	assert.Equal(t, "test-envelope", string(retrieved.Envelope))
 	assert.Equal(t, "test_tool", retrieved.ToolName)
-	assert.Equal(t, `{"arg": "value"}`, string(retrieved.ToolArguments))
+	assert.Equal(t, `{"arg": "value"}`, string(retrieved.ToolArguments)) //nolint:testifylint // exact bytes, not JSON equivalence
 	assert.Equal(t, "user-123", retrieved.UserID)
 	assert.Equal(t, "operator-456", retrieved.OperatorID)
-	assert.True(t, retrieved.Approved)
-	assert.Equal(t, "approver-789", retrieved.ApprovedBy)
-	assert.Equal(t, "signature-abc", retrieved.ApprovalSignature)
 	assert.Equal(t, "cert-fingerprint", retrieved.ExpectedCertFingerprint)
-	assert.NotNil(t, retrieved.ApprovedAt)
 }
 
 func TestListSuspendedTransactions_NilStore(t *testing.T) {
@@ -506,120 +495,6 @@ func TestListSuspendedTransactions_ExcludesExpired(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, txs, 1)
 	assert.Equal(t, "active-hash", txs[0].TransactionHash)
-}
-
-func TestApproveSuspendedTransaction_NilStore(t *testing.T) {
-	t.Parallel()
-
-	var sts *SuspendedTransactionService
-	ctx := context.Background()
-
-	err := sts.ApproveSuspendedTransaction(ctx, "hash", models.ApprovalProof{})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrSuspendedStoreNotInitialized)
-}
-
-func TestApproveSuspendedTransaction_NilDB(t *testing.T) {
-	t.Parallel()
-
-	sts := &SuspendedTransactionService{
-		db: nil,
-	}
-	ctx := context.Background()
-
-	err := sts.ApproveSuspendedTransaction(ctx, "hash", models.ApprovalProof{})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrSuspendedStoreNotInitialized)
-}
-
-func TestApproveSuspendedTransaction_NotFound(t *testing.T) {
-	t.Parallel()
-
-	sts := setupTestSuspendedTransactionStore(t)
-	ctx := context.Background()
-
-	err := sts.ApproveSuspendedTransaction(ctx, "nonexistent-hash", models.ApprovalProof{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "transaction not found or expired")
-}
-
-func TestApproveSuspendedTransaction_Expired(t *testing.T) {
-	t.Parallel()
-
-	sts := setupTestSuspendedTransactionStore(t)
-	ctx := context.Background()
-
-	now := time.Now().UTC()
-
-	tx := &models.SuspendedTransaction{
-		TransactionHash:   "expired-approval-hash",
-		OperatorSessionID: "operator-session-1",
-		Envelope:          []byte("env"),
-		CreatedAt:         now,
-		ExpiresAt:         now.Add(-time.Hour),
-		UserID:            "user-1",
-		OperatorID:        "op-1",
-	}
-
-	err := sts.StoreSuspendedTransaction(ctx, tx)
-	require.NoError(t, err)
-
-	// Try to approve expired transaction
-	err = sts.ApproveSuspendedTransaction(ctx, "expired-approval-hash", models.ApprovalProof{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "transaction not found or expired")
-}
-
-func TestApproveSuspendedTransaction_Success(t *testing.T) {
-	t.Parallel()
-
-	sts := setupTestSuspendedTransactionStore(t)
-	ctx := context.Background()
-
-	now := time.Now().UTC()
-
-	tx := &models.SuspendedTransaction{
-		TransactionHash:   "approval-test-hash",
-		OperatorSessionID: "operator-session-1",
-		Envelope:          []byte("env"),
-		CreatedAt:         now,
-		ExpiresAt:         now.Add(time.Hour),
-		UserID:            "user-1",
-		OperatorID:        "op-1",
-		Approved:          false,
-	}
-
-	err := sts.StoreSuspendedTransaction(ctx, tx)
-	require.NoError(t, err)
-
-	// Approve the transaction
-	proof := models.ApprovalProof{
-		ApprovedBy:        "approver-123",
-		CliSignature:      "signature-abc",
-		CertFingerprint:   "fingerprint-xyz",
-		ApprovalPublicKey: "pubkey-abc",
-		CredentialID:      "cred-id-1",
-		ClientDataJSON:    "client-data",
-		AuthenticatorData: "auth-data",
-		Signature:         "passkey-sig",
-	}
-	err = sts.ApproveSuspendedTransaction(ctx, "approval-test-hash", proof)
-	require.NoError(t, err)
-
-	// Verify the approval
-	retrieved, found, err := sts.GetSuspendedTransaction(ctx, "approval-test-hash")
-	require.NoError(t, err)
-	assert.True(t, found)
-	assert.True(t, retrieved.Approved)
-	assert.Equal(t, "approver-123", retrieved.ApprovedBy)
-	assert.Equal(t, "signature-abc", retrieved.ApprovalSignature)
-	assert.Equal(t, "fingerprint-xyz", retrieved.ExpectedCertFingerprint)
-	assert.Equal(t, "pubkey-abc", retrieved.ApprovalPublicKey)
-	assert.Equal(t, "cred-id-1", retrieved.PasskeyCredentialID)
-	assert.Equal(t, "client-data", retrieved.PasskeyClientDataJSON)
-	assert.Equal(t, "auth-data", retrieved.PasskeyAuthenticatorData)
-	assert.Equal(t, "passkey-sig", retrieved.PasskeySignature)
-	assert.NotNil(t, retrieved.ApprovedAt)
 }
 
 func TestDeleteSuspendedTransaction_NilStore(t *testing.T) {
@@ -900,27 +775,6 @@ func TestGetExpiredSuspendedTransactions_Success(t *testing.T) {
 	}
 }
 
-func TestWait_NilStore(t *testing.T) {
-	t.Parallel()
-
-	var sts *SuspendedTransactionService
-
-	// Wait() on nil store will panic - this is expected behavior
-	// The test verifies this behavior is consistent
-	assert.Panics(t, func() {
-		sts.Wait()
-	})
-}
-
-func TestWait_Success(t *testing.T) {
-	t.Parallel()
-
-	sts := setupTestSuspendedTransactionStore(t)
-
-	// Should not panic
-	sts.Wait()
-}
-
 func TestSuspendedTransactionStore_FullWorkflow(t *testing.T) {
 	t.Parallel()
 
@@ -940,7 +794,6 @@ func TestSuspendedTransactionStore_FullWorkflow(t *testing.T) {
 		ToolArguments:     []byte(`{"arg": "value"}`),
 		UserID:            "workflow-user",
 		OperatorID:        "workflow-operator",
-		Approved:          false,
 	}
 
 	err := sts.StoreSuspendedTransaction(ctx, tx)
@@ -957,20 +810,17 @@ func TestSuspendedTransactionStore_FullWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, txs, 1)
 
-	// Step 4: Approve the transaction
-	err = sts.ApproveSuspendedTransaction(ctx, "workflow-hash", models.ApprovalProof{
-		ApprovedBy:      "workflow-approver",
-		CliSignature:    "workflow-sig",
-		CertFingerprint: "workflow-fingerprint",
-	})
-	require.NoError(t, err)
-
-	// Step 5: Verify approval
+	// Claim while the decision is being executed; a failed attempt releases it.
+	require.NoError(t, sts.ClaimSuspendedTransaction(ctx, "workflow-hash"))
 	retrieved, found, err = sts.GetSuspendedTransaction(ctx, "workflow-hash")
 	require.NoError(t, err)
-	assert.True(t, found)
-	assert.True(t, retrieved.Approved)
-	assert.Equal(t, "workflow-approver", retrieved.ApprovedBy)
+	require.True(t, found)
+	require.NotNil(t, retrieved.ClaimedAt)
+	require.NoError(t, sts.ReleaseSuspendedTransaction(ctx, "workflow-hash"))
+	retrieved, found, err = sts.GetSuspendedTransaction(ctx, "workflow-hash")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Nil(t, retrieved.ClaimedAt)
 
 	// Step 6: Delete the transaction
 	err = sts.DeleteSuspendedTransaction(ctx, "workflow-hash")

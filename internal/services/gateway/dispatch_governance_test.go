@@ -35,17 +35,17 @@ type stubL2Deliberator struct {
 	envelope []byte
 }
 
-func (s *stubL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
+func (s *stubL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
 	s.called = true
 	s.envelope = envelopeBytes
-	return envelopeBytes, nil
+	return &governance.ConsensusDeliberation{Envelope: envelopeBytes}, nil
 }
 
 // failingL2Deliberator always returns an error, proving the dispatch path
 // fails closed when L2 deliberation fails under a posture that requires it.
 type failingL2Deliberator struct{}
 
-func (failingL2Deliberator) Deliberate(_ context.Context, _ []byte) ([]byte, error) {
+func (failingL2Deliberator) Deliberate(_ context.Context, _ []byte) (*governance.ConsensusDeliberation, error) {
 	return nil, fmt.Errorf("l2 deliberation unavailable")
 }
 
@@ -208,7 +208,7 @@ func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testin
 			params := baseEnvelopeParams(constants.Event.Operator.Command.Requested, maliciousCommandPayload(t), posture, testDoctrine())
 			_, err := BuildGovernanceEnvelope(params)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
+			require.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
 			assert.NotErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
 		})
 	}
@@ -321,7 +321,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 
 			if tc.wantErr != nil {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, tc.wantErr)
+				require.ErrorIs(t, err, tc.wantErr)
 				assert.False(t, deliberator.called, "deliberator must not be called when the dispatch fails before L2")
 				return
 			}

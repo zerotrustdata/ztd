@@ -9,6 +9,7 @@ package gw
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,10 +38,12 @@ func setupGatewayTestEnv(t *testing.T) {
 	t.Helper()
 	tmpDir := cmdtest.ChdirTemp(t)
 
-	runtimeDir := filepath.Join(tmpDir, ".ztd")
-	require.NoError(t, os.MkdirAll(filepath.Join(runtimeDir, "pki"), constants.PermDirStandard))
-	require.NoError(t, os.MkdirAll(filepath.Join(runtimeDir, "secrets"), constants.PermDirPrivate))
-	require.NoError(t, os.MkdirAll(filepath.Join(runtimeDir, "pki", "trust"), constants.PermDirStandard))
+	fileSvc, err := fs.NewRuntimeFileService(tmpDir, nil)
+	require.NoError(t, err)
+	ctx := context.Background()
+	require.NoError(t, fileSvc.MkdirAll(ctx, constants.PkiDirname, constants.PermDirStandard))
+	require.NoError(t, fileSvc.MkdirAll(ctx, constants.SecretsDirname, constants.PermDirPrivate))
+	require.NoError(t, fileSvc.MkdirAll(ctx, filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust), constants.PermDirStandard))
 
 	protocolDir := filepath.Join(tmpDir, "protocol", "constants")
 	require.NoError(t, os.MkdirAll(protocolDir, constants.PermDirStandard))

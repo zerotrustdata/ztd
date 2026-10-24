@@ -65,7 +65,7 @@ async function installMirror(page: Page, records: unknown[]): Promise<string[]> 
           protocol_version: '1.0.0',
           snapshot,
           source_freshness: 'active',
-          recent_projections: [],
+          recent_projections: records.map((record, index) => ({ ...(record as object), sequence: index + 1 })).reverse(),
           proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
           generated_at: snapshot.generated_at,
         }),

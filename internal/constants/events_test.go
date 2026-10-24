@@ -140,7 +140,7 @@ func TestEventsJSONGoRegistryParity(t *testing.T) {
 			t.Errorf("Go constant %s missing from events.json", goConst)
 			continue
 		}
-		assert.Equal(t, goValue, jsonValue, "wire value mismatch for %s", goConst)
+		assert.Equal(t, goValue, jsonValue, "wire value mismatch for %s", goConst) //nolint:testifylint // exact bytes, not JSON equivalence
 	}
 
 	for goConst := range jsonByGoConst {
@@ -149,5 +149,5 @@ func TestEventsJSONGoRegistryParity(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, len(goEvents), len(jsonEvents), "Go and JSON event counts must match")
+	assert.Len(t, jsonEvents, len(goEvents), "Go and JSON event counts must match")
 }
