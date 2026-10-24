@@ -69,7 +69,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	template.Messages, template.ProviderAttemptId, template.ActingAppId = nil, "", ""
 	result, err := r.executor.inference.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{
 		Request:                 record.ArgumentsJSON,
-		Guidelines:              "The agent proposed this run_shell_command call. Use one executable and argv only; no shell operators, pipelines, redirects, globs, or substitutions.",
+		Guidelines:              "The agent proposed this run_shell_command call. Preserve its goal using one executable and argv; shell pipelines, redirects, glob expansion, and substitutions are unavailable. Preserve literal utility arguments, including regex patterns and find -exec terminators.",
 		WorkingDirectory:        r.workspace.OperatorWorkingDirectory,
 		TimeoutSeconds:          constants.DefaultShellCommandTimeout,
 		TargetOperatorSessionId: r.target.SessionID,

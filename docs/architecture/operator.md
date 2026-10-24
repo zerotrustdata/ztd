@@ -191,6 +191,8 @@ Witness constraints:
 - Adding `data` permits governed command execution in the same process.
 - Streamed inference progress is scrubbed at the source before publication. Text is released only at newline cuts that keep one non-blank line of lookahead, so a value a scrubber can match is complete before release. A PEM block is held from its BEGIN marker until its END line completes. Nothing is released on a timer or by size, so a stream that never emits a newline is held until its terminal event. The terminal `output_hash` is a SHA-256 over the deterministic protobuf encoding of the response parts and finish reason (`ComputeInferenceOutputHash`), and the terminal parts are exactly the concatenation of the released segments.
 
+Inference output is capped at 16,384 tokens per call (`constants.InferenceMaxOutputTokens`). An omitted or zero `max_tokens` sends Ollama `num_predict: 16384`; smaller explicit limits pass through, and requests above the ceiling are rejected before provider execution. This output limit is independent of Ollama's `num_ctx` context window.
+
 Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
 
 ### Multi-Operator Coexistence and Composite Fingerprinting

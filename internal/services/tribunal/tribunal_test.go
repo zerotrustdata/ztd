@@ -474,30 +474,30 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 	}{
 		{
 			name:    "revision back to the winner is not reassessed",
-			audit:   `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn"]}}`,
+			audit:   `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn"]},"rationale":"correct"}`,
 			outcome: OutcomeApproved, command: "ss -tlpn", subject: "ss -tlpn", riskLevel: RiskLow, marshalCalls: 1,
 		},
 		{
 			name:         "revision Marshal rates LOW is approved",
-			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn","-p"]}}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn","-p"]},"rationale":"correct"}`,
 			marshalFinal: lowRisk,
 			outcome:      OutcomeApproved, command: "ss -tlpn -p", subject: "ss -tlpn -p", riskLevel: RiskLow, marshalCalls: 2,
 		},
 		{
 			name:         "revision Marshal rates HIGH is blocked",
-			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["./build/file"]}}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["./build/file"]},"rationale":"cleanup"}`,
 			marshalFinal: highRisk,
 			outcome:      OutcomeBlocked, subject: "rm ./build/file", riskLevel: RiskHigh, marshalCalls: 2,
 		},
 		{
 			name:         "swap to another cluster Marshal rates HIGH is blocked",
-			audit:        `{"verdict": "SWAP", "swap_to_cluster": "cluster_b"}`,
+			audit:        `{"verdict": "SWAP", "swap_to_cluster": "cluster_b", "rationale":"alternative"}`,
 			marshalFinal: highRisk,
 			outcome:      OutcomeBlocked, subject: "netstat -tlpn", riskLevel: RiskHigh, marshalCalls: 2,
 		},
 		{
 			name:    "swap to another cluster Marshal rates LOW is approved",
-			audit:   `{"verdict": "SWAP", "swap_to_cluster": "cluster_b"}`,
+			audit:   `{"verdict": "SWAP", "swap_to_cluster": "cluster_b", "rationale":"alternative"}`,
 			outcome: OutcomeApproved, command: "netstat -tlpn", subject: "netstat -tlpn", riskLevel: RiskLow, marshalCalls: 2,
 		},
 	}
@@ -586,7 +586,7 @@ func TestGatewayOwnedContextIsComposedBeforeReview(t *testing.T) {
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  lowRisk,
-		audit:    []string{`{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-l","-p"]}}`},
+		audit:    []string{`{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-l","-p"]},"rationale":"correct"}`},
 	}
 	req := Request{Request: testRequest, WorkingDirectory: "/srv/work", TimeoutSeconds: 23}
 	result, err := Run(context.Background(), testConfig(inferer), req, 0)

@@ -34,11 +34,13 @@ import (
 // Only tools with no such effect (ReportFindings, TaskStop, ToolSearch, which is
 // needed to reach deferred MCP tools) stay enabled. Verified against the
 // Claude Code 2.1.293 session init tool list; re-check it on Claude Code upgrades.
+// REPL and MultiEdit are unavailable in Claude Code 2.1.310 and must not be
+// emitted as deny rules, which would produce unmatched-tool warnings.
 var nativeToolsToDisable = []string{
 	// Shell and code execution.
-	"Bash", "PowerShell", "REPL", "Monitor",
+	"Bash", "PowerShell", "Monitor",
 	// Filesystem reads and writes.
-	"Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob", "Grep",
+	"Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep",
 	"EnterWorktree", "ExitWorktree",
 	// Network and external egress.
 	"WebSearch", "WebFetch", "PushNotification", "RemoteTrigger",

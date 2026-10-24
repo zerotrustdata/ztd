@@ -624,7 +624,7 @@ func TestOllamaBackend_GenerateOutputLimitIsStatedValueOrPlatformCeiling(t *test
 		requested int32
 		want      int32
 	}{
-		{name: "unset runs under the ceiling", requested: 0, want: constants.InferenceMaxOutputTokens},
+		{name: "unset limits output to 16k tokens", requested: 0, want: 16_384},
 		{name: "stated value passes through", requested: 512, want: 512},
 		{name: "ceiling passes through", requested: constants.InferenceMaxOutputTokens, want: constants.InferenceMaxOutputTokens},
 	} {

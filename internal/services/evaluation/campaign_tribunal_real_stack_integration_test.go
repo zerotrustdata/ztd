@@ -47,7 +47,7 @@ const (
 	tribunalRealCommand    = `{"command":"echo","args":["HEALTHY"]}`
 	tribunalRealLowRisk    = `{"risk": "LOW", "rationale": "read-only file read", "feedback": ""}`
 	tribunalRealHighRisk   = `{"risk": "HIGH", "rationale": "deletes the workspace", "feedback": "read the file instead"}`
-	tribunalRealApprove    = `{"verdict": "APPROVE", "swap_to_cluster": "", "rationale": "correct"}`
+	tribunalRealApprove    = `{"verdict": "APPROVE", "rationale": "correct"}`
 )
 
 // tribunalTurn is one scripted provider reply with plain text.
@@ -423,6 +423,43 @@ func TestCampaignTribunalIntegration_L1RepairsCandidatesBeforeVote(t *testing.T)
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }
 
+func TestCampaignTribunalIntegration_RepairsMalformedAnswersWithGovernedReceipts(t *testing.T) {
+	env := tribunalRun(t, "answer-repair",
+		tribunalIntent("call-1"),
+		tribunalPanel(
+			`{"command":"echo","args":[null]}`, " \n"+tribunalRealCommand+"\n", // Axiom repairs its invalid argv.
+			tribunalRealCommand, tribunalRealCommand, tribunalRealCommand, tribunalRealDissent,
+		),
+		tribunalTurn("\n"+tribunalRealLowRisk+"\n"),
+		tribunalTurn(`{"verdict":"APPROVE","revised_arguments":null,"rationale":"correct"}`),
+		tribunalTurn("\n"+tribunalRealApprove+"\n"),
+		tribunalTurn("HEALTHY"),
+	)
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	tool := trace.ToolCalls[0]
+	require.True(t, tool.Success, "tool error: %s", tool.Error)
+	assert.Equal(t, tribunalExpectedApprovedArguments(trace), tool.ApprovedArgumentsJSON)
+	require.NotNil(t, tool.Receipt)
+	tribunalVerifyLocalReceipt(t, env, tool.Receipt.ActionReceipt)
+
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 11, "two turns, six generation calls, Marshal, and two Auditor calls")
+	assert.Contains(t, bodies[2].Messages[len(bodies[2].Messages)-1].Content, "/args/0")
+	assert.Contains(t, bodies[9].Messages[len(bodies[9].Messages)-1].Content, "previous Auditor answer was rejected")
+	require.Len(t, trace.ModelCalls, 11)
+	for _, call := range trace.ModelCalls[1:10] {
+		require.NotNil(t, call.Receipt, "every repair keeps its governed inference receipt")
+		assert.Equal(t, tool.CallID, call.ToolCallID)
+		assert.True(t, call.Completed())
+	}
+	require.Len(t, trace.Steps, 8)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	require.NoError(t, evaluation.ValidateAgentTraceDigest(trace))
+}
+
 func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture)+"-approval", func(t *testing.T) {
@@ -516,8 +553,8 @@ func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConfli
 func TestCampaignTribunalIntegration_NoConsensusFailsCallWithoutDispatch(t *testing.T) {
 	env := tribunalRun(t, "no-consensus",
 		tribunalIntent("call-1"),
-		tribunalPanel("cat a", "cat b", "cat c", "cat d", "cat e"),
-		tribunalPanel("cat f", "cat g", "cat h", "cat i", "cat j"),
+		tribunalPanel(`{"command":"cat","args":["a"]}`, `{"command":"cat","args":["b"]}`, `{"command":"cat","args":["c"]}`, `{"command":"cat","args":["d"]}`, `{"command":"cat","args":["e"]}`),
+		tribunalPanel(`{"command":"cat","args":["f"]}`, `{"command":"cat","args":["g"]}`, `{"command":"cat","args":["h"]}`, `{"command":"cat","args":["i"]}`, `{"command":"cat","args":["j"]}`),
 		tribunalTurn("No command was agreed."),
 	)
 
@@ -557,7 +594,8 @@ func TestCampaignTribunalIntegration_AuditFailureFailsCallWithoutDispatch(t *tes
 	tool := trace.ToolCalls[0]
 	assert.False(t, tool.Success)
 	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, tool.ErrorType)
-	assert.Equal(t, fmt.Sprintf(evaluation.ExportedTribunalAuditFailedError, `unknown verdict "MAYBE"`), tool.Error)
+	assert.Contains(t, tool.Error, "the Auditor could not review the Tribunal's command")
+	assert.Contains(t, tool.Error, "oneOf", "the verdict violates the response schema")
 	assert.Empty(t, tool.TransactionID, "an unreviewed command never dispatches")
 	require.Len(t, trace.ModelCalls, 10, "the turn, five candidates, the risk check, two Auditor answers, and the closing turn")
 	assert.Equal(t, "tribunal_audit", trace.ModelCalls[7].Purpose)

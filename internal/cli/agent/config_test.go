@@ -168,8 +168,8 @@ func TestLaunchArgs(t *testing.T) {
 
 func TestNativeToolsToDisable_CoversEveryExecutionAndEgressTool(t *testing.T) {
 	required := []string{
-		"Bash", "PowerShell", "REPL", "Monitor",
-		"Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob", "Grep",
+		"Bash", "PowerShell", "Monitor",
+		"Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep",
 		"EnterWorktree", "ExitWorktree",
 		"WebSearch", "WebFetch", "PushNotification", "RemoteTrigger",
 		"Artifact", "ArtifactComments", "ArtifactData", "DesignSync",
@@ -178,6 +178,21 @@ func TestNativeToolsToDisable_CoversEveryExecutionAndEgressTool(t *testing.T) {
 	}
 	assert.ElementsMatch(t, required, nativeToolsToDisable,
 		"every built-in that can execute, touch files, reach the network, spawn agents, or schedule work must be disallowed")
+}
+
+func TestLaunchArgs_ClaudeOmitsUnavailableToolRules(t *testing.T) {
+	args, err := mustLookup(t, constants.AgentBinaryClaude).LaunchArgs("/tmp/cfg.json", "/fake/ztd", "claude")
+	require.NoError(t, err)
+	for index, arg := range args {
+		if arg == "--disallowed-tools" {
+			require.Less(t, index+1, len(args))
+			denied := strings.Split(args[index+1], ",")
+			assert.NotContains(t, denied, "REPL", "Claude warns when a deny rule matches no tool")
+			assert.NotContains(t, denied, "MultiEdit", "Claude warns when a deny rule matches no tool")
+			return
+		}
+	}
+	t.Fatal("Claude launch args must disable native tools")
 }
 
 func TestLaunchArgs_UnknownStrategyFailsClosed(t *testing.T) {
