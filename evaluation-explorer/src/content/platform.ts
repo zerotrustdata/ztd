@@ -17,14 +17,7 @@ export const PLATFORM_CONTACT_CALENDLY = 'https://calendly.com/danny-lateralusla
 export const PLATFORM_CONTACT_LINKEDIN = 'https://www.linkedin.com/in/dannybarbour/';
 
 export const SPONSORSHIP_LEDE =
-  'OpenDevOps.ai is a fully independent, verifiable LLM benchmarking project. I am completely self-funded and refuse to take venture capital. If this data helps you, please help me keep the servers running and the pipeline unbiased.';
-
-export const SPONSORSHIP_USES = [
-  'Keep the public mirror, Cloudflare tunnel, and evaluation pipeline online',
-  'Fund GPU time and campaign runs on the home workstation that produces these scores',
-  'Preserve editorial independence — no venture capital and no vendor-sponsored benchmarks',
-  'Cover immediate living and operating runway so solo development does not go cold',
-] as const;
+  'I build OpenDevOps.ai and ztd solo, on my own hardware, with no VC money. If the benchmarks are useful to you, chipping in keeps the servers and GPUs running.';
 
 export type SponsorTier = 'founding' | 'principal' | 'supporter' | 'community';
 
@@ -71,18 +64,19 @@ export const SPONSORS_MANIFEST: SponsorsDataManifest = {
 
 export const TOP_SPONSORS: readonly SponsorEntry[] = SPONSORS_MANIFEST.sponsors;
 
-export const SPONSORS_HERO_TITLE = 'Keep independent, verifiable AI evaluations online.';
+export const SPONSORS_HERO_TITLE = 'Help keep the evals running.';
 
-export const SPONSORS_URGENCY_HEADING = 'Why I need sponsors right now';
+export const SPONSORS_URGENCY_HEADING = 'Why I need help right now';
 
 export const SPONSORS_URGENCY_PARAGRAPHS = [
-  'I built and operate ztd and OpenDevOps.ai solo on my own hardware in Portland, Oregon — completely self-funded and without venture capital. Being candid: I am completely out of personal runway. I have been on the job market for months while building this platform in the open, and without immediate income I will soon have to take whatever day job I can get — even working behind a convenience store counter — just to cover basic bills.',
-  'There is no shame in honest work, and I will do whatever it takes to pay the bills. But if I have to step away from the keyboard for full-time shifts elsewhere, this evaluation pipeline and ztd development are in real jeopardy of going cold.',
-  'I set this page up quickly as a straightforward static page to bring in any support I can right now without overcomplicating things with backend automation. If these benchmarks, the verifiable evidence model, or the ztd architecture are valuable to you, your sponsorship directly buys time to keep the hardware running and the work moving forward.',
+  "I'm out of personal runway. I've been job hunting for months, and soon I may have to take any day job I can get, even behind a convenience store counter. That would pull me off this work and the evals would go cold. Sponsorship buys me time to keep it going.",
 ] as const;
 
 export const SPONSORS_AUTOMATION_NOTE =
-  'This leaderboard is intentionally static right now so I could get the page live and accepting payments immediately without spending days on webhook automation. The underlying data model is structured so automated Stripe updates can be plugged in later. For now, I manually update this board within 24 hours of every contribution — email danny@lateraluslabs.com after checkout with how you would like your name, link, or message listed.';
+  'I update this board by hand within 24 hours of each contribution. After checkout, email me with how you want to be listed.';
+
+export const SPONSORS_ABOUT_PARAGRAPH =
+  "I'm Danny Barbour, founder of Lateralus Labs and a principal engineer in Portland. I built ztd solo, from architecture through production ops. I'm open to ztd licensing, consulting, contract work, or a full-time role.";
 
 export const PLATFORM_SOLO_NOTE = 'Solo operator · home-PC hardware · live pipeline';
 

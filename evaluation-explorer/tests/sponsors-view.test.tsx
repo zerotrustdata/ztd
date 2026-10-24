@@ -22,7 +22,7 @@ describe('SponsorsView', () => {
     evalStore.setStreamConnection('connected');
   });
 
-  it('renders the urgency note, first-sponsor CTA, static Top Sponsors leaderboard, and condensed About sections', () => {
+  it('renders the hero, urgency note, first-sponsor CTA, open leaderboard, and about section', () => {
     render(
       <MemoryRouter>
         <SponsorsView />
@@ -31,38 +31,34 @@ describe('SponsorsView', () => {
 
     const view = within(screen.getByRole('region', { name: 'Sponsors and project sustainability' }));
     expect(view.getByRole('heading', { level: 1, name: SPONSORS_HERO_TITLE })).toBeInTheDocument();
-    expect(view.getByRole('heading', { name: 'Why I need sponsors right now' })).toBeInTheDocument();
-    expect(view.getByText(/completely out of personal runway/i)).toBeInTheDocument();
-    expect(view.getByText(/going cold/i)).toBeInTheDocument();
-    expect(view.getByText(/convenience store/i)).toBeInTheDocument();
+    expect(view.getByRole('heading', { name: 'Why I need help right now' })).toBeInTheDocument();
+    expect(view.getByText(/out of personal runway/i)).toBeInTheDocument();
+    expect(view.getByText(/convenience store counter/i)).toBeInTheDocument();
 
     // First-sponsor CTA
     const firstCta = within(view.getByRole('region', { name: 'First sponsor call to action' }));
-    expect(firstCta.getByRole('heading', { name: /Be the very first sponsor on the leaderboard/i })).toBeInTheDocument();
-    expect(firstCta.getByRole('link', { name: /Claim the #1 Sponsor Spot/i })).toHaveAttribute('href', SPONSOR_URL);
+    expect(firstCta.getByRole('heading', { name: 'Be the first sponsor on the board' })).toBeInTheDocument();
+    expect(firstCta.getByRole('link', { name: 'Claim #1 →' })).toHaveAttribute('href', SPONSOR_URL);
 
-    // Top Sponsors Leaderboard table (open podium state)
+    // Leaderboard (open podium state)
     const table = view.getByRole('table', { name: 'Top sponsors leaderboard' });
-    expect(table).toBeInTheDocument();
     expect(within(table).getByText('1st')).toBeInTheDocument();
-    expect(within(table).getByText(/Unclaimed — Be the very first sponsor/i)).toBeInTheDocument();
-    expect(within(table).getByRole('link', { name: /Sponsor via Stripe/i })).toHaveAttribute('href', SPONSOR_URL);
+    expect(within(table).getByText('Nobody’s here yet.')).toBeInTheDocument();
 
-    // Static-now / automation-ready note
-    expect(view.getByText(/Static today, structured for automation later:/i)).toBeInTheDocument();
-    expect(view.getByText(/automated Stripe updates can be plugged in later/i)).toBeInTheDocument();
+    // Manual-update note
+    expect(view.getByText(/I update this board by hand within 24 hours/i)).toBeInTheDocument();
 
-    // Condensed About & builder sections
-    expect(view.getByRole('heading', { name: 'About the project (condensed)' })).toBeInTheDocument();
-    expect(view.getByRole('heading', { name: 'About the builder & hiring availability' })).toBeInTheDocument();
+    // About
+    expect(view.getByRole('heading', { name: 'About me' })).toBeInTheDocument();
     expect(view.getByText(/Danny Barbour/i)).toBeInTheDocument();
 
     // Payment & contact links
-    expect(view.getByRole('link', { name: /Become the First Sponsor via Stripe/i })).toHaveAttribute('href', SPONSOR_URL);
-    expect(view.getByRole('link', { name: 'Book a call with Calendly' })).toHaveAttribute('href', PLATFORM_CONTACT_CALENDLY);
-    expect(view.getByRole('link', { name: 'Connect on LinkedIn' })).toHaveAttribute('href', PLATFORM_CONTACT_LINKEDIN);
+    expect(view.getByRole('link', { name: 'Sponsor via Stripe →' })).toHaveAttribute('href', SPONSOR_URL);
+    expect(view.getByRole('link', { name: 'Email me' })).toHaveAttribute('href', expect.stringMatching(/^mailto:/));
+    expect(view.getByRole('link', { name: 'Book a call' })).toHaveAttribute('href', PLATFORM_CONTACT_CALENDLY);
+    expect(view.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute('href', PLATFORM_CONTACT_LINKEDIN);
     expect(view.getByRole('link', { name: PLATFORM_CONTACT_EMAIL })).toHaveAttribute('href', `mailto:${PLATFORM_CONTACT_EMAIL}`);
-    expect(view.getByRole('link', { name: 'Explore the ztd Codebase on GitHub' })).toHaveAttribute('href', ZTD_REPO_URL);
+    expect(view.getByRole('link', { name: 'ztd on GitHub' })).toHaveAttribute('href', ZTD_REPO_URL);
   });
 
   it('renders populated sponsor rows sorted by rank when sponsors are present', () => {
@@ -111,4 +107,3 @@ describe('SponsorsView', () => {
     expect(within(rows[2]!).getByText('Principal Sponsor')).toBeInTheDocument();
   });
 });
-

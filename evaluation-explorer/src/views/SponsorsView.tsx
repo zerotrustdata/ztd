@@ -3,26 +3,17 @@
 
 import { Link } from 'react-router-dom';
 import {
-  ABOUT_AVAILABILITY,
-  ABOUT_AVAILABILITY_DETAIL,
-  ABOUT_BACKGROUND,
-  ABOUT_EXPERIENCE,
-  ABOUT_OPENING_AFTER,
-  ABOUT_OPENING_BEFORE,
-  ABOUT_PURPOSE,
   PLATFORM_CONTACT_CALENDLY,
   PLATFORM_CONTACT_EMAIL,
   PLATFORM_CONTACT_LINKEDIN,
   SPONSOR_URL,
+  SPONSORS_ABOUT_PARAGRAPH,
   SPONSORS_AUTOMATION_NOTE,
   SPONSORS_HERO_TITLE,
-  SPONSORS_MANIFEST,
   SPONSORS_URGENCY_HEADING,
   SPONSORS_URGENCY_PARAGRAPHS,
   SPONSORSHIP_LEDE,
-  SPONSORSHIP_USES,
   TOP_SPONSORS,
-  WORKSTATION_SPECS,
   ZTD_REPO_URL,
   type SponsorEntry,
   type SponsorTier,
@@ -47,31 +38,27 @@ function rankBadgeClass(rank: number): string {
 
 const OPEN_PODIUM_SLOTS: ReadonlyArray<{
   rank: number;
-  title: string;
   tier: SponsorTier;
   support: string;
   note: string;
 }> = [
   {
     rank: 1,
-    title: 'Unclaimed — Be the very first sponsor',
     tier: 'founding',
     support: 'Any amount',
-    note: 'Claim the #1 Founding Sponsor spot on this leaderboard and help keep the evaluation pipeline online.',
+    note: 'Nobody’s here yet.',
   },
   {
     rank: 2,
-    title: 'Open slot — #2 Sponsor',
     tier: 'principal',
     support: '—',
-    note: 'Reserved for our second supporter.',
+    note: 'Reserved for #2.',
   },
   {
     rank: 3,
-    title: 'Open slot — #3 Sponsor',
     tier: 'supporter',
     support: '—',
-    note: 'Reserved for our third supporter.',
+    note: 'Reserved for #3.',
   },
 ];
 
@@ -90,14 +77,13 @@ export function SponsorsView({
   return (
     <section className="sponsors-view about" aria-label="Sponsors and project sustainability">
       <PageHero
-        kicker="Sponsors & project sustainability"
+        kicker="Sponsors"
         title={SPONSORS_HERO_TITLE}
         tone="warn"
         meta={
           <>
             <span>Solo builder · Portland, OR</span>
-            <span>Runway status: Out of runway</span>
-            <span>Leaderboard mode: {SPONSORS_MANIFEST.mode === 'static_manual' ? 'Static (manual updates)' : 'Automated'}</span>
+            <span>Runway: basically empty</span>
           </>
         }
         verdict={
@@ -115,13 +101,13 @@ export function SponsorsView({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Become the First Sponsor via Stripe →
+            Sponsor via Stripe →
           </a>
           <a
             className="sponsors-cta-secondary"
             href={`mailto:${PLATFORM_CONTACT_EMAIL}?subject=Sponsoring%20or%20Working%20Together%20(OpenDevOps.ai%20%2F%20ztd)`}
           >
-            Email {PLATFORM_CONTACT_EMAIL}
+            Email me
           </a>
           <a
             className="sponsors-cta-secondary"
@@ -129,7 +115,7 @@ export function SponsorsView({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Book a call on Calendly
+            Book a call
           </a>
         </div>
       </PageHero>
@@ -145,13 +131,9 @@ export function SponsorsView({
         ))}
         <div className="sponsors-first-cta-box" role="region" aria-label="First sponsor call to action">
           <div className="sponsors-first-cta-copy">
-            <span className="sponsors-first-cta-kicker">Rank #1 Available · Founding Sponsor</span>
-            <h3>Be the very first sponsor on the leaderboard</h3>
-            <p>
-              No one has claimed the #1 spot yet. Whether it is a small one-time contribution or ongoing support,
-              the first sponsor on the board sets the foundation to keep these evaluations running while I work
-              through this runway gap.
-            </p>
+            <span className="sponsors-first-cta-kicker">#1 spot is open</span>
+            <h3>Be the first sponsor on the board</h3>
+            <p>Nobody’s claimed #1 yet. Any amount helps, one-time or monthly.</p>
           </div>
           <div className="sponsors-first-cta-action">
             <a
@@ -160,16 +142,13 @@ export function SponsorsView({
               target="_blank"
               rel="noopener noreferrer"
             >
-              Claim the #1 Sponsor Spot →
+              Claim #1 →
             </a>
           </div>
         </div>
       </PanelSection>
 
-      <PanelSection
-        title="Top Sponsors Leaderboard"
-        note="Ranked by cumulative support. Every contribution directly funds hardware uptime, evaluation runs, and solo engineering runway."
-      >
+      <PanelSection title="Sponsors" note="Ranked by total support.">
         <div className="data-table-wrap">
           <table className="data-table lab-table sponsors-leaderboard-table" aria-label="Top sponsors leaderboard">
             <thead>
@@ -226,7 +205,7 @@ export function SponsorsView({
                       <span className={rankBadgeClass(slot.rank)}>{formatRank(slot.rank)}</span>
                     </td>
                     <td>
-                      <span className="role-leader-name">{slot.title}</span>
+                      <span className="role-leader-name">Open</span>
                     </td>
                     <td>
                       <span className={`sponsor-tier-badge sponsor-tier-${slot.tier}`}>
@@ -235,114 +214,32 @@ export function SponsorsView({
                     </td>
                     <td className="role-leader-score">{slot.support}</td>
                     <td>Open now</td>
-                    <td>
-                      {slot.rank === 1 ? (
-                        <>
-                          {slot.note}{' '}
-                          <a
-                            href={SPONSOR_URL}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="sponsors-inline-claim-link"
-                          >
-                            Sponsor via Stripe →
-                          </a>
-                        </>
-                      ) : (
-                        slot.note
-                      )}
-                    </td>
+                    <td>{slot.note}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-        <p className="docs-section-note sponsors-automation-note">
-          <strong>Static today, structured for automation later:</strong> {SPONSORS_AUTOMATION_NOTE}
-        </p>
+        <p className="docs-section-note sponsors-automation-note">{SPONSORS_AUTOMATION_NOTE}</p>
       </PanelSection>
 
-      <div className="about-grid">
-        <PanelSection title="About the project (condensed)">
-          <p className="sys-platform-lede">{ABOUT_PURPOSE}</p>
-          <p className="sys-platform-lede">
-            Unlike synthetic benchmarks that call a model API in isolation, this Explorer scores models through the
-            full governed <strong>ztd</strong> execution path on local workstation hardware (
-            {WORKSTATION_SPECS.map((spec) => spec.value).join(' · ')}).
-          </p>
-          <ul className="about-highlights" aria-label="What sponsorship supports">
-            {SPONSORSHIP_USES.map((use) => (
-              <li key={use}>{use}</li>
-            ))}
-          </ul>
-          <p className="sys-platform-lede">
-            Read the full <Link to="/about">About page</Link>, explore the{' '}
-            <Link to="/leaderboard">Model Leaderboard</Link>, or inspect the{' '}
-            <Link to="/methodology">Evaluation Methodology</Link>.
-          </p>
-        </PanelSection>
-
-        <PanelSection title="About the builder & hiring availability">
-          <p className="sys-platform-lede">
-            {ABOUT_OPENING_BEFORE}
-            <strong>Danny Barbour</strong>
-            {ABOUT_OPENING_AFTER}
-          </p>
-          <p className="sys-platform-lede">{ABOUT_BACKGROUND}</p>
-          <ul className="about-highlights" aria-label="Builder background">
-            {ABOUT_EXPERIENCE.slice(0, 3).map((item) => (
-              <li key={item.company}>
-                <strong>{item.company}</strong> — {item.text}
-              </li>
-            ))}
-          </ul>
-          <p className="sys-platform-lede about-availability">{ABOUT_AVAILABILITY}</p>
-          <p className="sys-platform-lede">{ABOUT_AVAILABILITY_DETAIL}</p>
-          <p className="sys-platform-lede">
-            If your team is hiring or needs contract engineering help, reach me directly at{' '}
-            <a href={`mailto:${PLATFORM_CONTACT_EMAIL}`}>{PLATFORM_CONTACT_EMAIL}</a>.
-          </p>
-        </PanelSection>
-      </div>
-
-      <div className="sys-platform-cta about-actions">
-        <div className="sys-platform-links">
-          <a
-            className="sponsors-cta-primary"
-            href={SPONSOR_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Sponsor via Stripe
+      <PanelSection title="About me">
+        <p className="sys-platform-lede">{SPONSORS_ABOUT_PARAGRAPH}</p>
+        <p className="sys-platform-lede">
+          <a href={`mailto:${PLATFORM_CONTACT_EMAIL}`}>{PLATFORM_CONTACT_EMAIL}</a>
+          {' · '}
+          <a href={PLATFORM_CONTACT_LINKEDIN} target="_blank" rel="noopener noreferrer">
+            LinkedIn
           </a>
-          <a
-            className="sys-platform-cta-architecture"
-            href={PLATFORM_CONTACT_CALENDLY}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Book a call with Calendly
+          {' · '}
+          <a href={ZTD_REPO_URL} target="_blank" rel="noopener noreferrer">
+            ztd on GitHub
           </a>
-          <a
-            className="sys-platform-cta-architecture"
-            href={PLATFORM_CONTACT_LINKEDIN}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Connect on LinkedIn
-          </a>
-          <a
-            className="sys-platform-cta-architecture"
-            href={ZTD_REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Explore the ztd Codebase on GitHub
-          </a>
-        </div>
-      </div>
+          {' · '}
+          <Link to="/about">Full About page</Link>
+        </p>
+      </PanelSection>
     </section>
   );
 }
-
