@@ -237,19 +237,17 @@ help:
 		'  bsl-headers-check         Verify first-party BSL 1.1 headers' \
 		'  version-sync-check        Check version declarations against VERSION' \
 		'  doctrines-validate        Validate doctrine JSON syntax' \
+		'  constants-check           Check generated constants for drift' \
+		'  explorer-catalog-check    Check the explorer scenario catalog and wire enums for drift' \
+		'  third-party-notices-check Check THIRD_PARTY_NOTICES.md for drift' \
 		'' \
 		'Generated artifacts' \
+		'  generate                  Regenerate protobufs, constants, explorer catalog, notices, and OpenAPI' \
 		'  proto-generate            Generate Go and Node protobuf artifacts' \
 		'  constants-generate        Generate constants from the event registry' \
-		'  constants-check           Check generated constants for drift' \
 		'  explorer-catalog-generate Generate the explorer scenario catalog and wire enums from Go' \
-		'  explorer-catalog-check    Check the explorer scenario catalog and wire enums for drift' \
 		'  third-party-notices       Regenerate THIRD_PARTY_NOTICES.md' \
-		'  third-party-notices-check Check THIRD_PARTY_NOTICES.md for drift' \
 		'  swagger-generate          Generate the Gateway OpenAPI specification' \
-		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
-		'  website-test              Test the website generator and Worker' \
-		'  website-bundle-check      Validate the Cloudflare Worker bundle (wrangler dry run)' \
 		'' \
 		'Components' \
 		'  console-build             Build the console SPA' \
@@ -262,6 +260,9 @@ help:
 		'  explorer-test             Run evaluation explorer tests' \
 		'  explorer-lint             Typecheck and lint the evaluation explorer' \
 		'  claude-plugin-test        Test, shellcheck, and validate the Claude Code plugin' \
+		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
+		'  website-test              Test the website generator and Worker' \
+		'  website-bundle-check      Validate the Cloudflare Worker bundle (wrangler dry run)' \
 		'' \
 		'Run locally' \
 		'  quickstart                Start a Gateway, sign in, and run a first governed action (QUICKSTART_ARGS)' \
@@ -279,6 +280,20 @@ help:
 		'  clean                     Remove build artifacts and Go caches' \
 		'  harness-clean             Remove stale test harness directories' \
 		'  buf-install               Install Buf when it is unavailable'
+
+# =============================================================================
+# ARTIFACT GENERATION
+# =============================================================================
+# Keep stages sequential under make -j: Go-based generators consume the fresh
+# protobuf bindings. Component builds and validation have separate targets.
+.PHONY: generate
+generate:
+	@$(MAKE) proto-generate
+	@$(MAKE) constants-generate
+	@$(MAKE) explorer-catalog-generate
+	@$(MAKE) third-party-notices
+	@$(MAKE) swagger-generate
+	@echo "Artifact generation complete."
 
 .PHONY: constants-generate constants-check
 constants-generate:

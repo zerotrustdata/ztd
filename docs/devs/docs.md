@@ -396,6 +396,8 @@ To optimize LLM inference performance and maximize prompt/context cache utilizat
 
 Execute owning targets whenever underlying source code, schemas, or dependencies change:
 
+`make generate` runs protobuf generation, constants generation, Explorer catalog and wire enum generation, third-party notices, and Gateway OpenAPI generation in sequence, including under `make -j`. Run drift checks, component builds (including website and frontend embeds), and observe frontend contract pack generation separately with the owning commands below.
+
 ```bash
 # Protobuf bindings and reference documentation
 make proto-generate
