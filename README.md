@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.3.0-green.svg)](docs/release_notes/v1.3.x/v1.3.0.md)
+[![Version](https://img.shields.io/badge/version-v1.4.0-green.svg)](docs/release_notes/v1.4.x/v1.4.0.md)
 
 ## Verify, then execute.
 
@@ -251,7 +251,7 @@ make proto-generate      # Regenerate Go and TypeScript protobuf bindings
 make doctrines-validate  # Verify JSON doctrine rule definitions
 ```
 
-The full suite requires the development toolchain, workspace dependencies, Playwright Chromium, and Docker. Tests against your current Gateway are explicit targets; `make test-e2e-reset` warns and uses the existing CLI confirmation before resetting it. See the [Testing Guide](docs/devs/tests.md#run-the-full-suite) for categories and setup.
+The full suite requires a Linux host capable of running the pinned FIPS binary, the development toolchain, workspace dependencies, Python 3, Playwright Chromium with its system dependencies, and Docker. Tests against your current Gateway are explicit targets; `make test-e2e-reset` warns and uses the existing CLI confirmation before resetting it. See the [Testing Guide](docs/devs/tests.md#run-the-full-suite) for categories and setup.
 
 ---
 

@@ -11,6 +11,12 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.4.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.4.0 | 2026-10-24 | EventReceipt contracts across MCP, protocol and compliance evidence; stricter Tribunal authoring with guided retries; standalone leaderboard and sponsorship pages; Zero Trust Paper Company demo; public spectator listener and onboarding fixes; expanded test orchestration. | [v1.4.0](docs/release_notes/v1.4.x/v1.4.0.md) |
+
 ## v1.3.x
 
 | Version | Date | Description | Notes |

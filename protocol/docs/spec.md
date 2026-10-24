@@ -1,7 +1,7 @@
 # ztd Protocol Specification
 
 Last Updated: 2026-10-23
-Version: v1.3.0
+Version: v1.4.0
 
 The **ztd Protocol** is a zero-trust execution and evidence platform for autonomous AI agents, human operators, and distributed target runtimes. It establishes a cryptographically enforced, typed wire contract that binds identity, intent, state, and governance proofs into an immutable transaction envelope (`GovernanceEnvelope`). Every mutation passing through the platform is subjected to an uncompromising 5-layer interlock sequence before execution.
 

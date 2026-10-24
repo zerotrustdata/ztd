@@ -3,7 +3,7 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
+version: v1.4.0
 last_updated: 2026-10-24
 owners:
   - docs/
@@ -145,9 +145,9 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Observe frontend contract pack | `ztd-adapter/contract-pack/`, `ztd-adapter/generator/gen-contract-pack.mjs` | `npm run gen:contract-pack` and `npm run gen:contract-pack:check` from `ztd-adapter/` |
 | Third-party license notices | `THIRD_PARTY_NOTICES.md` | `make third-party-notices-check` |
 | Claude Code plugin | `claude-plugin/` | `make claude-plugin-test` |
-| FedRAMP KSI catalog and COSAiS overlays | `docs/reference/ksi-catalog.json`, `docs/reference/cosais-overlays.json` | `./ztd compliance overlay` loads overlays and verifies KSI reference resolution |
+| FedRAMP KSI catalog and COSAiS overlays | `docs/reference/ksi-catalog.json`, `docs/reference/cosais-overlays.json` | `./ztd compliance overlay` loads both catalogs and reports dangling references |
 | Static website | `README.md`, `website/` | `make website-build`, `make website-test` |
-| Compliance evidence projections | `docs/release_notes/vX.Y.x/` | `./ztd compliance release-prepare`, `./ztd compliance report verify` |
+| Compliance evidence projections | `docs/release_notes/vX.Y.x/` | `./ztd compliance release-prepare`, `./ztd compliance release-evidence <bundle> --out <dir> --trust-policy <path>` |
 
 ### Documentation catalog
 
@@ -312,6 +312,9 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.3.0 Release Notes](../release_notes/v1.3.x/v1.3.0.md): Tribunal consensus, the single shell execution contract, event receipts, and evidence compatibility changes.
 - [v1.3.0 Compliance Evidence](../release_notes/v1.3.x/v1.3.0-compliance-evidence.md): Generated compliance evidence projection for v1.3.0.
 - [v1.3.0 Compliance Evidence CSV](../release_notes/v1.3.x/v1.3.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.3.0.
+- [v1.4.0 Release Notes](../release_notes/v1.4.x/v1.4.0.md): Event receipt contracts, public evaluation, and expanded onboarding and demo coverage.
+- [v1.4.0 Compliance Evidence](../release_notes/v1.4.x/v1.4.0-compliance-evidence.md): Generated compliance evidence projection for v1.4.0.
+- [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 
 ## Procedures
 
@@ -343,7 +346,7 @@ Execute these steps in order when updating maintained documentation:
 | Wire messages and gRPC services | Protobuf schemas in `protocol/proto/ztd/`, model schemas in `protocol/models/`, and canonicalization implementations | Generated bindings, vectors, contract tests, and cross-language conformance tests |
 | Protocol identifiers and registries | Registry-specific source declaration in `protocol/constants/` or `internal/constants/` | Mirrors, consumers, package loaders, and contract tests; verify owning generator and check target |
 | Gateway OpenAPI | Router/controller behavior and Go Swagger annotations in `cmd/ztd`, `internal/services/gateway/`, `internal/models/`, `internal/constants/` | Generated `swagger.json` and `swagger.yaml`, route registration, and authentication behavior |
-| Third-party dependencies and notices | Committed dependencies in `go.mod`, `vendor/modules.txt`, and npm `package.json` | `THIRD_PARTY_NOTICES.md` generated via `make third-party-notices` |
+| Third-party dependencies and notices | Committed dependencies in `go.mod`, `vendor/modules.txt`, and production npm `package-lock.json` files | `THIRD_PARTY_NOTICES.md` generated via `make third-party-notices` |
 | Deployment and ports | Host lifecycle targets in `Makefile` (`up`, `gw`, `operator`, `status`, `down`), `ztd gw start` and `ztd operator start` flags, and `internal/constants/ports.go` | Listener defaults, identity enrollment, network exposure, and documented commands |
 | Tests and CI | `internal/cli/cmd/test/`, root and component Makefiles, package test configuration, and `.github/workflows/` | Actual target dependencies, build tags, exclusions, timeouts, race settings, and external-service gates |
 | Compliance, cryptographic, and measured claims | Exact signed artifact, verifier, catalog, schema, or evidence graph named by the claim | Version, scope, environment, trust inputs, evidence cutoff, failure cases, and explicit limitations |
