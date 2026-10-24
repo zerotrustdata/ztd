@@ -267,6 +267,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Going public, and finding out onboarding only worked on Linux](../../website/content/posts/going-public-onboarding-beyond-linux.md): Build in Public field notes on the public repo, the unshipped 1.0.1–1.0.3 tags, and Windows and macOS onboarding.
 - [The day my evals deleted the repo](../../website/content/posts/the-day-my-evals-deleted-the-repo.md): Build in Public field notes on an eval bug that wiped the repo root, evals bypassing L1–L5, and demo-driven v1.1.0 testing.
 - [Ugly evals, pprof, and the bugs in L2–L5](../../website/content/posts/ugly-evals-pprof-and-the-bugs-in-l2-l5.md): Build in Public field notes on bolted-on evaluations, pprof profiling, and the bugs they exposed across L2–L5.
+- [Action receipts grew legs](../../website/content/posts/action-receipts-grew-legs.md): Build in Public field notes on removing the duplicate receipt store, correcting event-driven terminology, evaluation fairness, and Tribunal consensus.
 - [Commercial License and Services Terms](../../website/content/terms.md): Commercial license plans, production limits, and services terms for purchases on zerotrustdata.io, published at `/terms/`.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
