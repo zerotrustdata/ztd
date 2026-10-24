@@ -23,7 +23,66 @@ export const SPONSORSHIP_USES = [
   'Keep the public mirror, Cloudflare tunnel, and evaluation pipeline online',
   'Fund GPU time and campaign runs on the home workstation that produces these scores',
   'Preserve editorial independence — no venture capital and no vendor-sponsored benchmarks',
+  'Cover immediate living and operating runway so solo development does not go cold',
 ] as const;
+
+export type SponsorTier = 'founding' | 'principal' | 'supporter' | 'community';
+
+export interface SponsorEntry {
+  /** Stable identifier (manual slug today; Stripe checkout/subscription ID when automated later). */
+  id: string;
+  /** 1-based leaderboard rank. */
+  rank: number;
+  /** Public display name (individual, handle, or organization). */
+  name: string;
+  /** Optional external link for the sponsor's name. */
+  url?: string;
+  /** Recognition tier shown on the leaderboard. */
+  tier: SponsorTier;
+  /** Publicly formatted contribution amount (e.g. "$100 / mo" or "$250"). */
+  contributionDisplay: string;
+  /** Cumulative contribution in USD cents, used for deterministic sorting when automated later. */
+  totalCents: number;
+  /** Contribution cadence. */
+  cadence: 'monthly' | 'one-time';
+  /** Date or month joined (ISO YYYY-MM-DD or YYYY-MM). */
+  joinedAt: string;
+  /** Optional short public message or attribution note. */
+  note?: string;
+}
+
+export interface SponsorsDataManifest {
+  /** Static manual updates today; structured for drop-in Stripe/webhook automation later. */
+  mode: 'static_manual' | 'automated_sync';
+  lastUpdated: string;
+  sponsors: readonly SponsorEntry[];
+}
+
+/**
+ * Canonical sponsor leaderboard data.
+ * Updated manually for now so the page can take payments immediately without webhook complexity;
+ * structured as a typed manifest so automated Stripe synchronization can populate it later.
+ */
+export const SPONSORS_MANIFEST: SponsorsDataManifest = {
+  mode: 'static_manual',
+  lastUpdated: '2026-10-24',
+  sponsors: [],
+};
+
+export const TOP_SPONSORS: readonly SponsorEntry[] = SPONSORS_MANIFEST.sponsors;
+
+export const SPONSORS_HERO_TITLE = 'Keep independent, verifiable AI evaluations online.';
+
+export const SPONSORS_URGENCY_HEADING = 'Why I need sponsors right now';
+
+export const SPONSORS_URGENCY_PARAGRAPHS = [
+  'I built and operate ztd and OpenDevOps.ai solo on my own hardware in Portland, Oregon — completely self-funded and without venture capital. Being candid: I am completely out of personal runway. I have been on the job market for months while building this platform in the open, and without immediate income I will soon have to take whatever day job I can get — even working behind a convenience store counter — just to cover basic bills.',
+  'There is no shame in honest work, and I will do whatever it takes to pay the bills. But if I have to step away from the keyboard for full-time shifts elsewhere, this evaluation pipeline and ztd development are in real jeopardy of going cold.',
+  'I set this page up quickly as a straightforward static page to bring in any support I can right now without overcomplicating things with backend automation. If these benchmarks, the verifiable evidence model, or the ztd architecture are valuable to you, your sponsorship directly buys time to keep the hardware running and the work moving forward.',
+] as const;
+
+export const SPONSORS_AUTOMATION_NOTE =
+  'This leaderboard is intentionally static right now so I could get the page live and accepting payments immediately without spending days on webhook automation. The underlying data model is structured so automated Stripe updates can be plugged in later. For now, I manually update this board within 24 hours of every contribution — email danny@lateraluslabs.com after checkout with how you would like your name, link, or message listed.';
 
 export const PLATFORM_SOLO_NOTE = 'Solo operator · home-PC hardware · live pipeline';
 

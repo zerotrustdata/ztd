@@ -20,6 +20,7 @@ describe('AppFooter', () => {
     expect(screen.getByRole('link', { name: /Bootstrap/ })).toHaveAttribute('href', 'https://mirror.example/bootstrap');
     expect(screen.getByRole('link', { name: /Schema/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Methodology' })).toHaveAttribute('href', '/methodology');
+    expect(screen.getByRole('link', { name: 'Sponsors' })).toHaveAttribute('href', '/sponsors');
     expect(screen.queryByRole('link', { name: /Proof manifest/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Proof catalog/ })).not.toBeInTheDocument();
   });

@@ -8,6 +8,7 @@ import { startFeed, stopFeed } from './state/startup';
 import { ActiveCampaignBar } from './components/ActiveCampaignBar';
 import { ErrorBanner, FreshnessBadge } from './components/shared';
 import { AboutView } from './views/AboutView';
+import { SponsorsView } from './views/SponsorsView';
 import { OverviewView } from './views/OverviewView';
 import { LeaderboardView } from './views/LeaderboardView';
 import { ModelsView } from './views/ModelsView';
@@ -93,6 +94,7 @@ function Shell() {
           <Route path="/evaluations/:datasetId?/:runId/assignments/:assignmentId" element={<AssignmentDetailView />} />
           <Route path="/failures" element={<Navigate to="/evaluations" replace />} />
           <Route path="/about" element={<AboutView />} />
+          <Route path="/sponsors" element={<SponsorsView />} />
           <Route path="/tasks" element={<TasksView />} />
           <Route path="/tasks/:taskId" element={<TasksView />} />
           <Route path="/methodology" element={<MethodologyView />} />

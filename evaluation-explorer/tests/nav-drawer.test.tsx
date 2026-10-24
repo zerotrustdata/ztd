@@ -18,8 +18,10 @@ describe('NavDrawer', () => {
     expect(toggleBtn).toBeInTheDocument();
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
 
-    // Initially drawer is not visible
+    // Initially drawer is not visible and no inline navigation links are rendered
     expect(screen.queryByRole('menu', { name: /Primary navigation drawer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
 
     // Click to open
     fireEvent.click(toggleBtn);
@@ -28,7 +30,7 @@ describe('NavDrawer', () => {
     const drawer = screen.getByRole('menu', { name: /Primary navigation drawer/i });
     expect(drawer).toBeInTheDocument();
 
-    // Verify all 7 navigation links are present
+    // Verify all 8 navigation links are present
     expect(screen.getByRole('menuitem', { name: /Live/i })).toHaveAttribute('href', '/');
     expect(screen.getByRole('menuitem', { name: /Leaderboard/i })).toHaveAttribute('href', '/leaderboard');
     expect(screen.getByRole('menuitem', { name: /Evals/i })).toHaveAttribute('href', '/evaluations');
@@ -36,6 +38,7 @@ describe('NavDrawer', () => {
     expect(screen.getByRole('menuitem', { name: /Models/i })).toHaveAttribute('href', '/models');
     expect(screen.getByRole('menuitem', { name: /Docs/i })).toHaveAttribute('href', '/methodology');
     expect(screen.getByRole('menuitem', { name: /About/i })).toHaveAttribute('href', '/about');
+    expect(screen.getByRole('menuitem', { name: /Sponsors/i })).toHaveAttribute('href', '/sponsors');
 
     // Click link closes drawer
     fireEvent.click(screen.getByRole('menuitem', { name: /Tasks/i }));
