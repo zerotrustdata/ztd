@@ -33,13 +33,13 @@ func TestNewHistoryService(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
-	auditStore := storagetest.NewTestAuditStore(t)
-	handler := newTestHistoryHandler(t, logger, auditStore)
+	eventsStore := storagetest.NewTestEventsStore(t)
+	handler := newTestHistoryHandler(t, logger, eventsStore)
 	scrubber := mustNewScrubbingSvc(t, logger)
 
 	t.Run("binds every dependency", func(t *testing.T) {
 		t.Parallel()
-		svc, err := NewHistoryService(cfg, logger, client, handler, scrubber, auditStore)
+		svc, err := NewHistoryService(cfg, logger, client, handler, scrubber, eventsStore)
 		require.NoError(t, err)
 		require.NotNil(t, svc)
 		assert.Equal(t, cfg, svc.config)
@@ -47,27 +47,27 @@ func TestNewHistoryService(t *testing.T) {
 		assert.Equal(t, client, svc.client)
 		assert.Same(t, handler, svc.historyHandler)
 		assert.Same(t, scrubber, svc.scrubbing)
-		assert.Same(t, auditStore, svc.auditStore)
+		assert.Same(t, eventsStore, svc.eventsStore)
 	})
 
 	tests := []struct {
-		name       string
-		cfg        *config.Config
-		handler    *storage.HistoryHandler
-		scrubber   *scrubbing.ScrubbingService
-		auditStore *storage.SQLAuditStore
-		wantErr    error
+		name        string
+		cfg         *config.Config
+		handler     *storage.HistoryHandler
+		scrubber    *scrubbing.ScrubbingService
+		eventsStore *storage.LocalFirstEventsStore
+		wantErr     error
 	}{
-		{name: "nil config", handler: handler, scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrMissingRequiredField},
-		{name: "nil history handler", cfg: cfg, scrubber: scrubber, auditStore: auditStore, wantErr: constants.ErrHistoryHandlerRequired},
-		{name: "nil scrubber", cfg: cfg, handler: handler, auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "disabled scrubber", cfg: cfg, handler: handler, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
-		{name: "nil audit store", cfg: cfg, handler: handler, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
+		{name: "nil config", handler: handler, scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrMissingRequiredField},
+		{name: "nil history handler", cfg: cfg, scrubber: scrubber, eventsStore: eventsStore, wantErr: constants.ErrHistoryHandlerRequired},
+		{name: "nil scrubber", cfg: cfg, handler: handler, eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "disabled scrubber", cfg: cfg, handler: handler, scrubber: newEgressScrubber(t, false), eventsStore: eventsStore, wantErr: constants.ErrEgressScrubberUnavailable},
+		{name: "nil local-first events store", cfg: cfg, handler: handler, scrubber: scrubber, wantErr: constants.ErrLocalFirstEventsStoreRequired},
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc, err := NewHistoryService(tt.cfg, logger, client, tt.handler, tt.scrubber, tt.auditStore)
+			svc, err := NewHistoryService(tt.cfg, logger, client, tt.handler, tt.scrubber, tt.eventsStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})
@@ -123,7 +123,7 @@ func TestHistoryService_HandleFetchLogsRequest_ReadsExecutionEvent(t *testing.T)
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	svc := newTestHistoryService(t, cfg, logger, client)
 	const sessionID = "session-fetch-logs"
-	require.NoError(t, svc.auditStore.CreateSession(sessionID, constants.SessionTypeOperator, "Operator Session", "operator-1"))
+	require.NoError(t, svc.eventsStore.CreateSession(sessionID, constants.SessionTypeOperator, "Operator Session", "operator-1"))
 
 	fetch := func(executionID string) {
 		payload, err := proto.Marshal(&operatorv1.FetchLogsRequested{ExecutionId: executionID})
@@ -140,7 +140,7 @@ func TestHistoryService_HandleFetchLogsRequest_ReadsExecutionEvent(t *testing.T)
 	require.NotNil(t, missing)
 	assert.Contains(t, string(missing.Data), "failed to retrieve execution")
 
-	_, err := svc.auditStore.RecordEvent(&storage.Event{
+	_, err := svc.eventsStore.RecordEvent(&storage.Event{
 		OperatorSessionID: sessionID,
 		Timestamp:         time.Now().UTC(),
 		Type:              constants.Event.Operator.Audit.Command,
@@ -239,7 +239,7 @@ func TestHistoryService_HandleRestoreFileRequest_RecordsFailedRestore(t *testing
 		Payload:           payload,
 	})
 
-	event, err := svc.auditStore.GetEventByExecutionID("exec-restore-no-commit")
+	event, err := svc.eventsStore.GetEventByExecutionID("exec-restore-no-commit")
 	require.NoError(t, err)
 	assert.Equal(t, constants.Event.Operator.RestoreFile.Failed, event.Type)
 	assert.Equal(t, 1, event.CommandExitCode)

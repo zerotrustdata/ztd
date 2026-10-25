@@ -639,7 +639,7 @@ message ReceiptPersistenceAttestation {
   string signature = 6;
 }
 
-// ReceiptFailureCode is the typed classification of a FAILED ActionReceipt.
+// ReceiptFailureCode is the typed classification of a FAILED EventReceipt.
 // The L5 actuator stamps it at finalization so verifiers can distinguish
 // governance rejections, client faults, and provider failures without
 // string-matching the result_summary. It is bound into the receipt signature.
@@ -729,15 +729,15 @@ enum GovernanceRejectionCode {
   GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH = 25;
 }
 
-// ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
-message ActionReceipt {
+// EventReceipt is the signed evidence for a governed request event, including reads, mutations, and governance rejections. L5 signs and persists an EXECUTING receipt before dispatch and a final receipt afterward; a rejection produces a FAILED receipt without dispatch.
+message EventReceipt {
   // Original GovernanceEnvelope ID
   string transaction_id = 1;
 
   // Original GovernanceEnvelope hash
   string transaction_hash = 2;
 
-  // Final execution status
+  // Execution status for this receipt stage
   ExecutionStatus status = 3;
 
   // Concise summary of the result (e.g. "exit code 0", "file written")
@@ -752,7 +752,7 @@ message ActionReceipt {
   // Timestamp when execution finished
   int64 executed_at_unix_ms = 7;
 
-  // ID of the Warden's signing key
+  // ID of the L5 Actuator's signing key
   string signer_key_id = 8;
 
   // ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.
@@ -795,9 +795,9 @@ message ConsensusVoteInference {
   string provider_attempt_id = 4;
   string transaction_id = 5;
   InferenceResult result = 6;
-  ActionReceipt receipt = 7;
+  EventReceipt receipt = 7;
   InferenceDispatchFailure failure = 8;
-  repeated ActionReceipt observation_receipts = 9;
+  repeated EventReceipt observation_receipts = 9;
 }
 
 // GovernanceRejection is the client-facing body every governed ingress
@@ -809,7 +809,7 @@ message ConsensusVoteInference {
 // display only.
 message GovernanceRejection {
   string error = 1;
-  ActionReceipt receipt = 2;
+  EventReceipt receipt = 2;
   repeated ConsensusVoteInference consensus_inferences = 3;
 }
 
@@ -849,7 +849,7 @@ message IngressRefusal {
 }
 
 // GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
-// receipt is the executing Operator's signed final ActionReceipt. Failures are
+// receipt is the executing Operator's signed final EventReceipt. Failures are
 // GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 message GovernedDispatchResult {
   string transaction_id = 1;
@@ -859,7 +859,7 @@ message GovernedDispatchResult {
   // (for example FsReadResult), the same bytes the dispatch response carries today.
   bytes result_payload = 4;
   InferenceResult inference_result = 5;
-  ActionReceipt receipt = 6;
+  EventReceipt receipt = 6;
   repeated ConsensusVoteInference consensus_inferences = 7;
 }
 
@@ -1750,7 +1750,7 @@ message InferenceResult {
   // Canonical digest of the complete result: lowercase hex SHA-256 over the
   // deterministic protobuf serialization of this message with result_digest
   // cleared. The Inference Node computes it at execution time; the signed
-  // ActionReceipt's result_summary binds it, and the User Gateway verifies
+  // EventReceipt's result_summary binds it, and the User Gateway verifies
   // digest equality before returning success to the caller.
   string result_digest = 7;
 
@@ -1811,13 +1811,13 @@ message InferenceProgressEvent {
 // InferenceCompletion is the protocol-owned completion publication for a
 // governed inference request. The Inference Node publishes it to the
 // results channel only after the L5 Actuator has finalized and signed the
-// ActionReceipt, so the complete result and its verified receipt are a
+// EventReceipt, so the complete result and its verified receipt are a
 // single correlated outcome. A failed execution carries the FAILED receipt
 // and no result, which terminates the Gateway's dispatch wait immediately
 // instead of at the dispatch deadline.
 message InferenceCompletion {
-  // The signed final ActionReceipt for the inference transaction.
-  ActionReceipt receipt = 1;
+  // The signed final EventReceipt for the inference transaction.
+  EventReceipt receipt = 1;
 
   // The complete inference result. Absent when the receipt status is not
   // EXECUTION_STATUS_COMPLETED.
@@ -1974,8 +1974,8 @@ enum InferenceDispatchFailureCode {
 message InferenceDispatchFailure {
   string error = 1;
   InferenceDispatchFailureCode code = 2;
-  ActionReceipt receipt = 3;
-  repeated ActionReceipt observation_receipts = 4;
+  EventReceipt receipt = 3;
+  repeated EventReceipt observation_receipts = 4;
 }
 
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
@@ -2014,14 +2014,14 @@ message InferenceDispatchResponse {
   // signed receipt.
   InferenceResult result = 2;
 
-  // The verified final signed ActionReceipt for the transaction.
-  ActionReceipt receipt = 3;
+  // The verified final signed EventReceipt for the transaction.
+  EventReceipt receipt = 3;
 
   // The observers' verified final signed receipts for this attempt's
   // provider-boundary and model provenance BEGIN and FINALIZE commands, in
   // dispatch order. Each was signed before the response was returned, so a
   // trace bracket closing after the dispatch can claim its commitment.
-  repeated ActionReceipt observation_receipts = 4;
+  repeated EventReceipt observation_receipts = 4;
 }
 
 // Included in result_digest and therefore bound by the Operator's signed L5 receipt.

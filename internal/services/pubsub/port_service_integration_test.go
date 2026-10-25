@@ -166,7 +166,7 @@ func TestPortService_RecordsObservedStateEvidence(t *testing.T) {
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	svc := newTestPortService(t, cfg, logger, client)
 	const sessionID = "session-port-evidence"
-	require.NoError(t, svc.auditStore.CreateSession(sessionID, constants.SessionTypeOperator, "Operator Session", "operator-1"))
+	require.NoError(t, svc.eventsStore.CreateSession(sessionID, constants.SessionTypeOperator, "Operator Session", "operator-1"))
 
 	payload, err := proto.Marshal(&operatorv1.CheckPortRequested{Port: 0})
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestPortService_RecordsObservedStateEvidence(t *testing.T) {
 		Payload:           payload,
 	})
 
-	events, err := svc.auditStore.ListEvents(sessionID, 10, 0)
+	events, err := svc.eventsStore.ListEvents(sessionID, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, constants.Event.Operator.PortCheck.Failed, events[0].Type)

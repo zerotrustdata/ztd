@@ -66,7 +66,7 @@ For single-origin local development, the `./ztd gw connect <frontend-origin>` wo
 | INV-FE-WA-01 | WebAuthn challenges are base64url-encoded by the Gateway; the frontend MUST decode them to `ArrayBuffer` before calling browser credential APIs. Responses MUST be re-encoded before sending to Gateway verify endpoints. |
 | INV-FE-WA-02 | The RP ID MUST be the hostname of the frontend page's origin or a registrable parent domain of it that is not a public suffix, or browser ceremonies fail. Loopback origins use `localhost`. Derivation and validation live in `internal/cli/browserorigin/origin.go`. |
 | INV-FE-WA-03 | The console registration route permits only the first credential per user. Subsequent credentials MUST be added via the CLI token-gated enrollment flow (`ztd auth enroll user`). |
-| INV-FE-WA-04 | Approval WebAuthn ceremonies (for suspended transactions) do NOT create a new WebSession; they issue an `ActionReceipt` that resumes execution. |
+| INV-FE-WA-04 | Approval WebAuthn ceremonies (for suspended transactions) do NOT create a new WebSession; they issue an `EventReceipt` that resumes execution. |
 
 ## Owned surfaces
 
@@ -188,7 +188,7 @@ Fetch pending transactions via `GET /api/v1/approvals`. To approve:
 1. GET `/api/v1/approvals/{txHash}/challenge` with credentials.
 2. Decode `publicKey` and call `navigator.credentials.get({ publicKey })`.
 3. POST `/api/v1/approvals/{txHash}/verify` with flat assertion as the entire JSON body.
-4. Response 200 contains the executed `ActionReceipt`.
+4. Response 200 contains the executed `EventReceipt`.
 
 ## Anti-patterns
 

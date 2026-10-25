@@ -34,7 +34,7 @@ type DispatchApprovalCoordinator struct {
 }
 
 type approvalOutcome struct {
-	receipt *operatorv1.ActionReceipt
+	receipt *operatorv1.EventReceipt
 	err     error
 }
 type pendingDispatchApproval struct {
@@ -93,7 +93,7 @@ func (c *DispatchApprovalCoordinator) await(ctx context.Context, env *commonv1.G
 // request disappeared, including after cancellation or a Gateway restart.
 // handedOff reports that the original request took the decision; from then on
 // that request owns the outcome, so the decision can never be retried.
-func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (receipt *operatorv1.ActionReceipt, handedOff bool, err error) {
+func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (receipt *operatorv1.EventReceipt, handedOff bool, err error) {
 	c.mu.Lock()
 	p := c.pending[env.GetId()]
 	c.mu.Unlock()
@@ -124,7 +124,7 @@ func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context,
 	}
 }
 
-func (c *DispatchApprovalCoordinator) finish(txHash string, p *pendingDispatchApproval, receipt *operatorv1.ActionReceipt, err error) {
+func (c *DispatchApprovalCoordinator) finish(txHash string, p *pendingDispatchApproval, receipt *operatorv1.EventReceipt, err error) {
 	c.mu.Lock()
 	if c.pending[txHash] != p {
 		c.mu.Unlock()

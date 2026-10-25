@@ -128,7 +128,7 @@ func ExportOperationalEvidence(ctx context.Context, snapshot *storage.Operationa
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		artifact, err := writeOperationalArtifact(request.OutputDir, constants.ComplianceOperationalReceiptsDirname, ArtifactTypeActionReceipt, receipt.TransactionID, 0, receipt.ExecutedAt, receipt.Body)
+		artifact, err := writeOperationalArtifact(request.OutputDir, constants.ComplianceOperationalReceiptsDirname, ArtifactTypeEventReceipt, receipt.TransactionID, 0, receipt.ExecutedAt, receipt.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +137,7 @@ func ExportOperationalEvidence(ctx context.Context, snapshot *storage.Operationa
 			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("receipt %s has no canonical body", receipt.TransactionID))
 			continue
 		}
-		receiptMessage := &operatorv1.ActionReceipt{}
+		receiptMessage := &operatorv1.EventReceipt{}
 		if err := compliancev1.UnmarshalCanonical(receipt.Body, receiptMessage); err != nil {
 			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("receipt %s could not yield persistence evidence: %v", receipt.TransactionID, err))
 			continue

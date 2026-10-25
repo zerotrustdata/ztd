@@ -29,7 +29,7 @@ func HeartbeatChannel(operatorID, operatorSessionID string) string {
 }
 
 // ReceiptsChannel returns the receipts channel for an operator session.
-// The operator publishes signed ActionReceipt envelopes to this channel
+// The operator publishes signed EventReceipt envelopes to this channel
 // after execution; the gateway intercepts, verifies, records, and fans out.
 func ReceiptsChannel(operatorID, operatorSessionID string) string {
 	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixReceipts, operatorID, operatorSessionID)
@@ -52,7 +52,7 @@ func SSEWebChannel(webSessionID string) string {
 	return fmt.Sprintf("%s:%s", constants.ChannelPrefixSSEWeb, webSessionID)
 }
 
-// AuditChannel returns the LFAA audit ingest channel for an operator session.
+// AuditChannel returns the LFEA audit ingest channel for an operator session.
 func AuditChannel(operatorID, operatorSessionID string) string {
 	return fmt.Sprintf("%s:%s:%s", constants.ChannelPrefixAudit, operatorID, operatorSessionID)
 }

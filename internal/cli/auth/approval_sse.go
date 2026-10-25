@@ -195,11 +195,11 @@ func (s *ApprovalSubscription) recordCompleted(raw json.RawMessage) {
 // is bound to the CLI's mTLS identity, so the stream carries only that user's events.
 //
 // Wait refuses an empty txHash with constants.ErrMissingRequiredField. It returns
-// constants.ErrActionReceiptMissing when the receipt is missing or belongs to another
+// constants.ErrEventReceiptMissing when the receipt is missing or belongs to another
 // transaction, and constants.ErrSSEStreamClosed (or the stream error) when the stream
 // ends before the approval arrives. It returns constants.ErrApprovalSSETimeout when ctx
 // or ApprovalSSETimeout ends first.
-func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) (*operatorv1.EventReceipt, error) {
 	if txHash == "" {
 		return nil, fmt.Errorf("L3 approval: transaction hash: %w", constants.ErrMissingRequiredField)
 	}
@@ -289,16 +289,16 @@ func (s *ApprovalSubscription) lookupLocked(txHash, userID string) (models.Appro
 
 // approvalReceipt decodes the resumed, signed receipt carried by an approval.completed
 // event and checks that it belongs to txHash.
-func approvalReceipt(event models.ApprovalCompletedEvent, txHash string) (*operatorv1.ActionReceipt, error) {
+func approvalReceipt(event models.ApprovalCompletedEvent, txHash string) (*operatorv1.EventReceipt, error) {
 	if !event.HasReceipt() {
-		return nil, fmt.Errorf("L3 approval: %w", constants.ErrActionReceiptMissing)
+		return nil, fmt.Errorf("L3 approval: %w", constants.ErrEventReceiptMissing)
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := protojson.Unmarshal(event.Receipt, receipt); err != nil {
 		return nil, fmt.Errorf("L3 approval: decode resumed receipt: %w", err)
 	}
 	if receipt.GetTransactionHash() != txHash {
-		return nil, fmt.Errorf("L3 approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), txHash, constants.ErrActionReceiptMissing)
+		return nil, fmt.Errorf("L3 approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), txHash, constants.ErrEventReceiptMissing)
 	}
 	return receipt, nil
 }

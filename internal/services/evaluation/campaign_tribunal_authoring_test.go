@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -94,7 +95,7 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 }
 
 func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-denied",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -125,7 +126,7 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 		assert.Equal(t, modelCallGovernanceRejected, run.trace.ModelCalls[0].Error)
 		assert.Equal(t, "tx-denied", run.trace.ModelCalls[0].TransactionID)
 		require.NotNil(t, run.trace.ModelCalls[0].Receipt)
-		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.ActionReceipt)
+		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.EventReceipt)
 	})
 
 	t.Run("missing receipt remains an internal failure", func(t *testing.T) {
@@ -138,6 +139,46 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 		assert.Empty(t, run.trace.ProviderFailureClass)
 		assert.Empty(t, run.trace.ModelCalls)
 	})
+}
+
+func TestRecordMemberCallsPreservesProviderToolCallsInTranscript(t *testing.T) {
+	for _, count := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("%d tool calls", count), func(t *testing.T) {
+			run := newTribunalAuthoringRun(t, true, &tribunalAuthoringInference{}, &tribunalAuthoringTools{})
+			result := &operatorv1.InferenceResult{
+				ProviderAttemptId: "attempt-member", RequestedModel: "model:tag",
+				Parts: []*operatorv1.InferenceResponsePart{
+					{Part: &operatorv1.InferenceResponsePart_Text{Text: " answer "}},
+					{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "reasoning"}},
+				},
+			}
+			for i := 0; i < count; i++ {
+				result.Parts = append(result.Parts, &operatorv1.InferenceResponsePart{
+					Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+						CallId: fmt.Sprintf("call-%d", i), Name: constants.MCPToolRunShellCommand,
+						ArgumentsJson: `{"command":"echo","args":["hello"]}`,
+					}},
+				})
+			}
+			digest, err := models.ComputeInferenceResultDigest(result)
+			require.NoError(t, err)
+			result.ResultDigest = digest
+			member := &tribunalv1.TribunalMemberCall{
+				ProviderAttemptId: result.GetProviderAttemptId(), Result: result,
+				Receipt: &operatorv1.EventReceipt{ResultSummary: digest},
+			}
+
+			failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{member})
+
+			require.Empty(t, failure)
+			require.Len(t, run.trace.ModelCalls, 1)
+			call := run.trace.ModelCalls[0]
+			assert.Equal(t, "answer", call.Text)
+			assert.Equal(t, "reasoning", call.Thinking)
+			assert.Equal(t, count, call.ToolCallCount)
+			assert.NoError(t, verifyV7ModelCallTranscript(call, call.InferenceResult.InferenceResult))
+		})
+	}
 }
 
 func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
@@ -231,7 +272,7 @@ func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *test
 }
 
 func shellToolOutcome(summary string) *client.GovernedOutcome {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
+	receipt := &operatorv1.EventReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
 	return &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: receipt},
 		Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: "txn-1", Receipt: receipt},
@@ -239,7 +280,7 @@ func shellToolOutcome(summary string) *client.GovernedOutcome {
 }
 
 func approvedDispatchResult(argumentsJSON, summary string) *tribunalv1.TribunalIntentResult {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
+	receipt := &operatorv1.EventReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
 	return &tribunalv1.TribunalIntentResult{
 		Outcome:        tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED,
 		ArgumentsJson:  argumentsJSON,

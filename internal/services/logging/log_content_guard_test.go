@@ -78,9 +78,9 @@ var forbiddenLogKeys = map[string]bool{
 // keys it may log, with the reason. The keys here describe runtime
 // infrastructure, not execution content. A stale entry (no remaining hit) fails.
 var logContentAllowlist = map[string]map[string]string{
-	"internal/services/governance/actuator_pub_export.go": {"path": "location of the exported Actuator public key under the runtime root"},
-	"internal/services/storage/audit_store.go":            {"path": "runtime data directory write probe"},
-	"internal/services/mcp/gateway.go":                    {"target": "configured downstream MCP target of the circuit breaker"},
+	"internal/services/governance/actuator_pub_export.go":   {"path": "location of the exported Actuator public key under the runtime root"},
+	"internal/services/storage/local_first_events_store.go": {"path": "runtime data directory write probe"},
+	"internal/services/mcp/gateway.go":                      {"target": "configured downstream MCP target of the circuit breaker"},
 }
 
 // loggerMethods are the leveled logging methods. The context forms take a

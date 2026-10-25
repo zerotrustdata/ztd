@@ -52,7 +52,7 @@ type consensusMemberPolicies interface {
 }
 
 // consensusVoteRecorder appends member vote records to the Gateway audit
-// chain. *storage.SQLAuditStore satisfies it.
+// chain. *storage.LocalFirstEventsStore satisfies it.
 type consensusVoteRecorder interface {
 	RecordEvent(event *storage.Event) (int64, error)
 }

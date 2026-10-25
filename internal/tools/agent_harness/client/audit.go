@@ -23,7 +23,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, persona ...Persona) (*operatorv1.ActionReceipt, []byte, error) {
+func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, persona ...Persona) (*operatorv1.EventReceipt, []byte, error) {
 	p := c.auditorPersona()
 	if len(persona) > 0 {
 		p = persona[0]
@@ -39,9 +39,9 @@ func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, pers
 	if status >= 400 {
 		return nil, body, fmt.Errorf("gateway returned status %d for transaction %s: %s", status, transactionID, string(body))
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(body, receipt); err != nil {
-		return nil, body, fmt.Errorf("decode canonical action receipt: %w", err)
+		return nil, body, fmt.Errorf("decode canonical event receipt: %w", err)
 	}
 	return receipt, body, nil
 }

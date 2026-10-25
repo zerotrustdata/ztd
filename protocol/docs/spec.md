@@ -1,7 +1,7 @@
 # ztd Protocol Specification
 
 Last Updated: 2026-10-23
-Version: v1.3.0
+Version: v1.4.0
 
 The **ztd Protocol** is a zero-trust execution and evidence platform for autonomous AI agents, human operators, and distributed target runtimes. It establishes a cryptographically enforced, typed wire contract that binds identity, intent, state, and governance proofs into an immutable transaction envelope (`GovernanceEnvelope`). Every mutation passing through the platform is subjected to an uncompromising 5-layer interlock sequence before execution.
 
@@ -201,12 +201,12 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Layer 5: Actuator Boundary (Sole Execution Target)                  │
 │ • Deterministic stage evidence assembly & hash commitment           │
-│ • Initial ActionReceipt signed & persisted to SQLAuditStore         │
+│ • Initial EventReceipt signed & persisted to LocalFirstEventsStore          │
 │ • Atomic append of CommitmentAttestation to SQLite ledger           │
 │ • JIT scoped capability minted (dissolved immediately post-call)    │
 │ • Native handler execution (shell, file, tool dispatch)             │
 │ • Output scrubbing (token redaction) at sovereign boundary          │
-│ • Final ActionReceipt signed (COMPLETED/FAILED) with post-state root│
+│ • Final EventReceipt signed (COMPLETED/FAILED) with post-state root │
 │ • Signed ReceiptPersistenceAttestation attached & published         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -242,7 +242,7 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 #### L5 Actuator: Sovereign Execution & Evidence Boundary
 - The sole subsystem authorized to perform mutations on the host runtime.
 - **Evidence Binding**: Compiles `DeterministicStageEvidence` across all previous gates.
-- **Initial Receipt**: Signs an `EXECUTING` receipt and records it to `SQLAuditStore`.
+- **Initial Receipt**: Signs an `EXECUTING` receipt and records it to `LocalFirstEventsStore`.
 - **Ledger Commitment**: Atomically appends a `CommitmentAttestation` to the local commitment chain.
 - **JIT Capability**: Mints an ephemeral execution token restricted strictly to the verified `action_type` and `target_resource`, revoked immediately upon handler return.
 - **Sovereign Scrubbing**: When a scrubber is active, redacts secrets, tokens, and PII from execution outputs before they are signed into the receipt. Without a scrubber, the signed summary is fixed text.
@@ -261,13 +261,13 @@ Posture is configured at Gateway startup via `--posture <mode>` and is immutable
 
 ---
 
-## 5. ActionReceipt & Attestation Ledger Model
+## 5. EventReceipt & Attestation Ledger Model
 
-Execution produces an immutable cryptographic receipt defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+The [Event Receipt](../../docs/reference/glossary.md#event-receipt), `ztd.operator.v1.EventReceipt`, is signed evidence for a governed request event, including reads, observations, mutations, and governance rejections. Its schema is defined in `protocol/proto/ztd/operator/v1/operator.proto`.
 
-Each receipt stage is stored as a `ztd.v1.operator.receipt.recorded` row on the `events` chain. The current stage is the row whose `event_receipt_status` is not null; recording a new stage clears that column on the previous one. No separate `receipts` table is used. The event name is defined in `protocol/constants/events.json`.
+Each receipt stage is stored as a `ztd.v1.operator.receipt.recorded` row on the `events` chain. The current stage is the row whose `event_receipt_status` is not null; recording a stage that advances the current projection clears that column on the previous one. A non-terminal stage cannot replace a terminal receipt. No separate `receipts` table is used. The event name is defined in `protocol/constants/events.json`.
 
-### 5.1 ActionReceipt Schema
+### 5.1 EventReceipt Schema
 
 | Field Name | Type | Description |
 |:---|:---|:---|
@@ -291,7 +291,7 @@ Each receipt stage is stored as a `ztd.v1.operator.receipt.recorded` row on the 
 
 ### 5.2 Deterministic Receipt Signing
 
-The receipt signature is generated over a canonical JSON serialization of the receipt fields (`CanonicalizeActionReceipt`):
+The receipt signature is generated over a canonical JSON serialization of the receipt fields (`CanonicalizeEventReceipt`):
 
 ```json
 {
@@ -451,7 +451,7 @@ The values below are illustrative. `id` and `transactionHash` are not recomputed
 }
 ```
 
-### 9.2 Corresponding Completed ActionReceipt
+### 9.2 Corresponding Completed EventReceipt
 
 ```json
 {

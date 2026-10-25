@@ -66,7 +66,7 @@ flowchart TD
     G --> H["Deterministic Renderers\n(OSCAL 1.1.2, JSON, Markdown, CSV, HTML, CLI)"]
 ```
 
-1. **Read-Only Ingestion**: Dedicated importers in `internal/services/compliance/evidence/` decode action receipts, persistence attestations, SQLite audit records, commitment ledgers, ledger commit and state records, KSI history snapshots, build and configuration attestations, and operational export packages without modifying assessed runtime state. Evaluation runs are read from the eval run directories named by `--eval-run`.
+1. **Read-Only Ingestion**: Dedicated importers in `internal/services/compliance/evidence/` decode event receipts, persistence attestations, SQLite event records, commitment ledgers, ledger commit and state records, KSI history snapshots, build and configuration attestations, and operational export packages without modifying assessed runtime state. Evaluation runs are read from the eval run directories named by `--eval-run`.
 2. **Evidence Graph Construction**: The evidence graph validates content-addressed hashes, resolves cross-references, rejects cyclic dependencies, and verifies that all artifacts bind to the declared `AssessmentScope`.
 3. **Atomic Assertion Grading**: Registered, versioned graders evaluate evidence against the 13 catalog assertions, assigning achieved evidence levels based on reproducible cryptographic checks.
 4. **Crosswalk Projection**: The engine maps assertion outcomes through the reviewed crosswalk, preserving mapping classifications (`supporting`, `partial`, `full`) without altering underlying assertion grades.
@@ -158,7 +158,7 @@ Catalog validation accepts five responsibility values: `platform`, `customer`, `
 - [FIPS 140-3 Module Linkage and Scope](fips140-3.md): Cryptographic module boundary, pure-Go linkage, and runtime verification.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework and posture policies.
 - [Authentication Architecture](../architecture/auth.md): Identity enrollment, mTLS, and passkey authentication.
-- [Storage Architecture](../architecture/storage.md): Local-First Audit Architecture, audit stores, and commitment ledgers.
+- [Storage Architecture](../architecture/storage.md): Local-First Events Architecture, the Local-First Events Store, and commitment ledgers.
 - [Protocol Specification](../../protocol/docs/spec.md): Canonical wire contracts and protobuf schemas.
 - [Evaluation Architecture](../architecture/evals.md): Evaluation campaigns, scoring engines, and telemetry capture.
 - [Release Process](../devs/release_process.md): Release preparation, smoke tests, and compliance artifact publishing.

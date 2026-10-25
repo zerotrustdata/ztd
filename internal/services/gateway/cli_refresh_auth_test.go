@@ -220,7 +220,7 @@ func TestHandleCLIRefreshAuth_UserDisabled_Rejected(t *testing.T) {
 func TestHandleCLIAuth_ExpiredSessionOnNonRefreshEndpoint_FailClosed(t *testing.T) {
 	_, middleware, userID, cliSessionID := setupRefreshAuthTestInfra(t, "refresh-auth-nonrefresh-expired", true, "cert-fp")
 
-	// Target a non-refresh mTLS endpoint (e.g., the audit receipts list).
+	// Target a non-refresh mTLS endpoint (e.g., the event receipts list).
 	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditEventReceipts, cliSessionID, userID)
 	rr := httptest.NewRecorder()
 	middleware.ServeHTTP(rr, req)

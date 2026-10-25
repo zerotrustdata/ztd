@@ -298,10 +298,10 @@ func newBareMTLSRequest(ctx context.Context, reqURL string) (*http.Request, erro
 	return req, nil
 }
 
-// GetAuditReceipts fetches the authenticated audit receipts list and returns
+// GetEventReceipts fetches the authenticated event receipts list and returns
 // the typed response up to the server default limit. Use GetEventReceipt for
 // the canonical protobuf response selected by transaction ID.
-func (c *E2EClient) GetAuditReceipts(ctx context.Context) (models.AuditEventReceiptsResponse, error) {
+func (c *E2EClient) GetEventReceipts(ctx context.Context) (models.AuditEventReceiptsResponse, error) {
 	path := constants.APIPaths.AuditEventReceipts
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -309,14 +309,14 @@ func (c *E2EClient) GetAuditReceipts(ctx context.Context) (models.AuditEventRece
 	}
 	body, _, err := doRequest(c.mtlsClient, req, http.StatusOK)
 	if err != nil {
-		return models.AuditEventReceiptsResponse{}, fmt.Errorf("fetch audit receipts: %w", err)
+		return models.AuditEventReceiptsResponse{}, fmt.Errorf("fetch event receipts: %w", err)
 	}
-	return decodeJSON[models.AuditEventReceiptsResponse](body, "audit receipts")
+	return decodeJSON[models.AuditEventReceiptsResponse](body, "event receipts")
 }
 
 // GetEventReceipt reads the bare canonical protobuf response selected by tx_id.
 // The list endpoint returns an AuditEventReceiptsResponse wrapper instead.
-func (c *E2EClient) GetEventReceipt(ctx context.Context, txID string) (*operatorv1.ActionReceipt, error) {
+func (c *E2EClient) GetEventReceipt(ctx context.Context, txID string) (*operatorv1.EventReceipt, error) {
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, constants.APIPaths.AuditEventReceipts+"?tx_id="+txID, nil)
 	if err != nil {
 		return nil, err
@@ -325,7 +325,7 @@ func (c *E2EClient) GetEventReceipt(ctx context.Context, txID string) (*operator
 	if err != nil {
 		return nil, fmt.Errorf("fetch canonical receipt: %w", err)
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := protojson.Unmarshal(body, receipt); err != nil {
 		return nil, fmt.Errorf("decode canonical receipt: %w", err)
 	}
@@ -363,7 +363,7 @@ func (c *E2EClient) VerifyAuditChain(ctx context.Context, fromSeq int64) (models
 	return decodeJSON[models.AuditVerifyResponse](body, "audit verify")
 }
 
-// IngestAuditRecord posts an LFAA audit record to POST /api/v1/audit/records
+// IngestAuditRecord posts an LFEA audit record to POST /api/v1/audit/records
 // and returns the operator chain acknowledgement.
 func (c *E2EClient) IngestAuditRecord(ctx context.Context, req models.AuditRecordIngestRequest) (models.AuditRecordIngestResponse, error) {
 	bodyBytes, err := json.Marshal(req)
@@ -415,7 +415,7 @@ func (c *E2EClient) GetAuditEvents(ctx context.Context) (models.AuditEventsRespo
 // dispatchFsRead discovers the live active remote operator, dispatches an
 // FS_READ command for /etc/hostname once, and returns the dispatch response. It
 // is the shared action used by tests that need a governed command to have
-// executed before asserting on its consequences (audit receipts, compliance
+// executed before asserting on its consequences (event receipts, compliance
 // state). An operator the registry lists as active has established its command
 // subscription, so the dispatch is not retried: a failed dispatch fails the
 // test. A caller that has just enrolled the operator must first wait for its

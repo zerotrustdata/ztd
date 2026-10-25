@@ -370,8 +370,8 @@ func TestCampaignAgentExecutorIntegration_BracketsToolLoopWithSentinelReadsInOrd
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 	trace := executorLoadTrace(t, env, res)
 	require.NotNil(t, trace.Bracket, "the trace holds the sentinel receipts read before and after the loop")
-	before := trace.Bracket.Before.ActionReceipt
-	after := trace.Bracket.After.ActionReceipt
+	before := trace.Bracket.Before.EventReceipt
+	after := trace.Bracket.After.EventReceipt
 	require.NotNil(t, before)
 	require.NotNil(t, after)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, before.GetStatus())
@@ -499,7 +499,7 @@ func TestCampaignAgentExecutorIntegration_VerifiedToolCallCarriesReceiptReferenc
 	assert.Equal(t, trace.Data.OperatorID, actions[1].GetOperatorId())
 	receiptRef := actions[1].GetReceiptRef()
 	assert.Equal(t, res.GetEvidenceRefs()[0].GetArtifactId(), receiptRef.GetArtifactId(), "the receipt lives inside the sealed trace")
-	assert.Equal(t, "ztd.operator.v1.ActionReceipt", receiptRef.GetSchemaRef())
+	assert.Equal(t, "ztd.operator.v1.EventReceipt", receiptRef.GetSchemaRef())
 	assert.Equal(t, trace.ToolCalls[0].TransactionID, receiptRef.GetTransactionId())
 	assert.Equal(t, trace.RunID, receiptRef.GetRunId())
 	assert.Len(t, receiptRef.GetSha256(), 64)
@@ -517,7 +517,7 @@ func TestCampaignAgentExecutorIntegration_TamperedReceiptImportsAsInvalidEvidenc
 
 	// Tamper the stored receipt's signature, then re-seal so the trace digest
 	// matches: the failure must come from the signed evidence, not the digest.
-	receipt := trace.ToolCalls[0].Receipt.ActionReceipt
+	receipt := trace.ToolCalls[0].Receipt.EventReceipt
 	receipt.Signature = flipHexDigit(receipt.Signature)
 	body, err := evaluation.SealAgentTrace(trace)
 	require.NoError(t, err)

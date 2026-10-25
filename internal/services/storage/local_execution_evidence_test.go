@@ -20,8 +20,8 @@ import (
 )
 
 // newLocalEvidenceFixture builds the runtime file service, unlocked vault, and
-// audit store that OpenLocalExecutionEvidence needs, all under an isolated root.
-func newLocalEvidenceFixture(t *testing.T) (fs.RuntimeFileService, *vault.Vault, *SQLAuditStore) {
+// events store that OpenLocalExecutionEvidence needs, all under an isolated root.
+func newLocalEvidenceFixture(t *testing.T) (fs.RuntimeFileService, *vault.Vault, *LocalFirstEventsStore) {
 	t.Helper()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 
@@ -33,37 +33,37 @@ func newLocalEvidenceFixture(t *testing.T) (fs.RuntimeFileService, *vault.Vault,
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	auditConfig := DefaultAuditStoreConfig()
+	auditConfig := DefaultLocalFirstEventsStoreConfig()
 	auditConfig.EncryptionVault = testVault
-	auditStore, err := NewSQLAuditStore(auditConfig, db, testutil.NewTestLogger(), fileSvc)
+	eventsStore, err := NewLocalFirstEventsStore(auditConfig, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, auditStore.Close()) })
+	t.Cleanup(func() { require.NoError(t, eventsStore.Close()) })
 
-	return fileSvc, testVault, auditStore
+	return fileSvc, testVault, eventsStore
 }
 
-func localEvidenceConfig(t *testing.T, fileSvc fs.RuntimeFileService, v *vault.Vault, auditStore *SQLAuditStore) LocalExecutionEvidenceConfig {
+func localEvidenceConfig(t *testing.T, fileSvc fs.RuntimeFileService, v *vault.Vault, eventsStore *LocalFirstEventsStore) LocalExecutionEvidenceConfig {
 	t.Helper()
 	return LocalExecutionEvidenceConfig{
-		FileSvc:    fileSvc,
-		Vault:      v,
-		AuditStore: auditStore,
-		WorkDir:    testutil.TempDir(t),
-		Logger:     testutil.NewTestLogger(),
+		FileSvc:     fileSvc,
+		Vault:       v,
+		EventsStore: eventsStore,
+		WorkDir:     testutil.TempDir(t),
+		Logger:      testutil.NewTestLogger(),
 	}
 }
 
 func TestOpenLocalExecutionEvidence_OpensLedgerAndHistory(t *testing.T) {
-	fileSvc, v, auditStore := newLocalEvidenceFixture(t)
+	fileSvc, v, eventsStore := newLocalEvidenceFixture(t)
 
-	evidence, err := OpenLocalExecutionEvidence(localEvidenceConfig(t, fileSvc, v, auditStore))
+	evidence, err := OpenLocalExecutionEvidence(localEvidenceConfig(t, fileSvc, v, eventsStore))
 	require.NoError(t, err)
 	require.NotNil(t, evidence.Ledger)
 	require.NotNil(t, evidence.HistoryHandler)
 }
 
 func TestOpenLocalExecutionEvidence_RequiresDependencies(t *testing.T) {
-	fileSvc, v, auditStore := newLocalEvidenceFixture(t)
+	fileSvc, v, eventsStore := newLocalEvidenceFixture(t)
 
 	tests := []struct {
 		name    string
@@ -71,13 +71,13 @@ func TestOpenLocalExecutionEvidence_RequiresDependencies(t *testing.T) {
 		wantErr error
 	}{
 		{"missing vault", func(c *LocalExecutionEvidenceConfig) { c.Vault = nil }, constants.ErrLedgerVaultRequired},
-		{"missing audit store", func(c *LocalExecutionEvidenceConfig) { c.AuditStore = nil }, constants.ErrAuditStoreRequired},
+		{"missing events store", func(c *LocalExecutionEvidenceConfig) { c.EventsStore = nil }, constants.ErrLocalFirstEventsStoreRequired},
 		{"missing file service", func(c *LocalExecutionEvidenceConfig) { c.FileSvc = nil }, constants.ErrMissingRequiredField},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := localEvidenceConfig(t, fileSvc, v, auditStore)
+			cfg := localEvidenceConfig(t, fileSvc, v, eventsStore)
 			tc.mutate(&cfg)
 			evidence, err := OpenLocalExecutionEvidence(cfg)
 			require.Nil(t, evidence)

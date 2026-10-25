@@ -78,23 +78,23 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionIsRecordedUnderEmbeddedSessi
 	w := submitForeignOperatorEnvelope(t, svc, env)
 
 	require.Equal(t, http.StatusForbidden, w.Code)
-	require.NotContains(t, w.Body.String(), "AUDIT_SESSION_UNKNOWN", "the response carries the typed code, not the audit store error")
+	require.NotContains(t, w.Body.String(), "AUDIT_SESSION_UNKNOWN", "the response carries the typed code, not the local-first events store error")
 	rejection := &operatorv1.GovernanceRejection{}
 	require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), rejection))
 	require.Equal(t, constants.ErrTxTargetOperatorMismatch.Error(), rejection.GetError(), "the error text is the sentinel only, never the chain")
 	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, rejection.GetReceipt().GetRejectionCode())
 
-	record, err := svc.GetAuditStore().GetEventReceipt(env.Id)
+	record, err := svc.GetLocalFirstEventsStore().GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, record, "the rejection evidence must be persisted")
-	require.Equal(t, record.ActionReceipt.GetSignature(), rejection.GetReceipt().GetSignature(), "the response carries the persisted signed receipt")
+	require.Equal(t, record.EventReceipt.GetSignature(), rejection.GetReceipt().GetSignature(), "the response carries the persisted signed receipt")
 	require.Equal(t, embeddedSessionID, record.OperatorSessionID, "the audit row belongs to the embedded Operator's session")
 	require.Equal(t, string(constants.DocIDEmbeddedOperator), record.OperatorID)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, record.Status)
-	require.NotNil(t, record.ActionReceipt)
-	require.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, record.ActionReceipt.FailureCode)
+	require.NotNil(t, record.EventReceipt)
+	require.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, record.EventReceipt.FailureCode)
 	var claimed bool
-	for _, stage := range record.ActionReceipt.DeterministicStageEvidence {
+	for _, stage := range record.EventReceipt.DeterministicStageEvidence {
 		if stage.OperatorId == "foreign-outbound-operator" && stage.OperatorSessionId == "session-1" {
 			claimed = true
 		}
@@ -115,7 +115,7 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionBeforeEmbeddedClaim(t *testi
 	require.Contains(t, w.Body.String(), "TX_TARGET_OPERATOR_MISMATCH")
 	require.NotContains(t, w.Body.String(), "L5Actuator")
 	require.NotContains(t, w.Body.String(), "rejection receipt")
-	record, err := svc.GetAuditStore().GetEventReceipt(env.Id)
+	record, err := svc.GetLocalFirstEventsStore().GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, record)
 	require.Equal(t, constants.EmbeddedOperatorBootstrapSessionID, record.OperatorSessionID)

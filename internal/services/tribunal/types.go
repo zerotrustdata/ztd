@@ -93,7 +93,7 @@ func ConsensusMemberAppIDs() []string {
 // generationRounds is the sealed round plus the one anonymized regeneration.
 const generationRounds = 2
 
-// candidateMaxAttempts bounds each member's generation and L1 repair calls
+// candidateMaxAttempts bounds each member's generation, validation and L1 repair calls
 // within a voting round. An exhausted member abstains.
 const candidateMaxAttempts = 3
 
@@ -103,7 +103,7 @@ const candidateMaxAttempts = 3
 const MaxAdmissionReviews = 2
 
 // MaxMemberCalls bounds the member inferences of one intent: both rounds
-// including L1 repairs, Marshal on the winner and an Auditor change, each
+// including validation and L1 repairs, Marshal on the winner and an Auditor change, each
 // Auditor attempt, and every contextual review's Auditor attempts and Marshal
 // assessment of its revision.
 var MaxMemberCalls = generationRounds*len(AllMembers)*candidateMaxAttempts + 2 + auditorMaxAttempts + MaxAdmissionReviews*(auditorMaxAttempts+1)

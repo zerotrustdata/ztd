@@ -402,7 +402,7 @@ async function approveTransaction(txHash) {
     { method: 'POST', body: JSON.stringify(body) },
   );
   if (!vRes.ok) {
-    // 403 may still contain ActionReceipt
+    // 403 may still contain EventReceipt
     const msg = verifyData?.error || (vRes.status === 404 ? 'Transaction missing or expired' : `approval verify ${vRes.status}`);
     if (vRes.status === 403 && verifyData) {
       console.warn('Approval receipt (rejected):', verifyData);

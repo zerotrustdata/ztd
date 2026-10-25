@@ -27,7 +27,7 @@ import (
 )
 
 // TestHandleFsListRequest_RecordsExecutionEvent verifies that an fs list writes its
-// execution event to the real audit store, keyed by execution_id, with the output.
+// execution event to the real local-first events store, keyed by execution_id, with the output.
 func TestHandleFsListRequest_RecordsExecutionEvent(t *testing.T) {
 	tmpDir := testutil.OperatorDir(t)
 
@@ -35,8 +35,8 @@ func TestHandleFsListRequest_RecordsExecutionEvent(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	fileEditSvc := newFileEditTestService(t, cfg, logger)
-	store := storagetest.NewTestAuditStore(t, "sess-fs-list")
-	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{AuditStore: store})
+	store := storagetest.NewTestEventsStore(t, "sess-fs-list")
+	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{EventsStore: store})
 
 	req := &operatorv1.FsListRequested{Path: tmpDir, ExecutionId: "exec-fs-list-1"}
 	payload, err := proto.Marshal(req)
@@ -65,8 +65,8 @@ func TestHandleFsListRequest_PublishesEntryPath(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	results := &mockResultsPublisher{}
-	store := storagetest.NewTestAuditStore(t, "sess-fs-entries")
-	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, newFileEditTestService(t, cfg, logger), client, fileOpsTestDeps{Results: results, AuditStore: store})
+	store := storagetest.NewTestEventsStore(t, "sess-fs-entries")
+	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, newFileEditTestService(t, cfg, logger), client, fileOpsTestDeps{Results: results, EventsStore: store})
 
 	payload, err := proto.Marshal(&operatorv1.FsListRequested{Path: tmpDir, MaxDepth: 1, MaxEntries: 10})
 	require.NoError(t, err)
@@ -103,8 +103,8 @@ func TestHandleFsReadRequest_RecordsExecutionEvent(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	fileEditSvc := newFileEditTestService(t, cfg, logger)
-	store := storagetest.NewTestAuditStore(t, "sess-fs-read")
-	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{AuditStore: store})
+	store := storagetest.NewTestEventsStore(t, "sess-fs-read")
+	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{EventsStore: store})
 
 	readPath := filepath.Join(cfg.WorkDir, "notes.txt")
 	require.NoError(t, os.WriteFile(readPath, []byte("ordinary content"), 0o600))
@@ -148,8 +148,8 @@ func TestHandleFsReadRequest_UnrecordedReadIsFailed(t *testing.T) {
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	fileEditSvc := newFileEditTestService(t, cfg, logger)
 	// The message session is never created, so the real store rejects the event.
-	store := storagetest.NewTestAuditStore(t)
-	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{AuditStore: store})
+	store := storagetest.NewTestEventsStore(t)
+	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{EventsStore: store})
 
 	readPath := filepath.Join(cfg.WorkDir, "notes.txt")
 	require.NoError(t, os.WriteFile(readPath, []byte("ordinary content"), 0o600))
@@ -182,7 +182,7 @@ func TestHandleRestoreFileRequest_RecordsFileMutation(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
-	store := storagetest.NewTestAuditStore(t, sessionID)
+	store := storagetest.NewTestEventsStore(t, sessionID)
 	ledger := storagetest.NewTestLedger(t)
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.OperatorDir(t))
 	handler, err := storage.NewHistoryHandler(store, ledger, logger, fileSvc, workDir)

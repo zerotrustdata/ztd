@@ -106,7 +106,7 @@ func TestPasskeyOrchestrator_GetSuspendedTransaction(t *testing.T) {
 
 func TestPasskeyOrchestrator_ResumeWithL3Proof(t *testing.T) {
 	t.Run("delegates to MCPServiceProvider", func(t *testing.T) {
-		expectedReceipt := &operatorv1.ActionReceipt{TransactionHash: "tx-123"}
+		expectedReceipt := &operatorv1.EventReceipt{TransactionHash: "tx-123"}
 		mock := &mockMCPServiceProvider{receipt: expectedReceipt}
 		sseStore, pubsub := newTestOrchestratorDeps(t)
 		o, err := NewPasskeyOrchestrator(mock, nil, sseStore, pubsub, testutil.NewTestLogger())

@@ -398,8 +398,8 @@ ConformanceCaseEvidence is the raw evidence for one case. It holds no verdict.
 | target_path | [string](#string) |  | relative to the canary root |
 | marker | [string](#string) |  |  |
 | observations | [ConformanceObservation](#ztd-eval-v1-ConformanceObservation) | repeated | two for the replay case, else one |
-| sentinel_before | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
-| sentinel_after | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| sentinel_before | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| sentinel_after | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 | canary_before | [CanaryManifest](#ztd-eval-v1-CanaryManifest) |  |  |
 | canary_after | [CanaryManifest](#ztd-eval-v1-CanaryManifest) |  |  |
 | a2a_calls | [ConformanceA2ACall](#ztd-eval-v1-ConformanceA2ACall) | repeated | calls the stub received during this case |
@@ -441,7 +441,7 @@ set, matching kind. NOT_RUN kinds carry no outcome fields.
 | ----- | ---- | ----- | ----------- |
 | kind | [ConformanceObservationKind](#ztd-eval-v1-ConformanceObservationKind) |  |  |
 | http_status | [int32](#int32) |  |  |
-| receipt | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 | rejection | [ztd.operator.v1.GovernanceRejection](#ztd-operator-v1-GovernanceRejection) |  |  |
 | refusal | [ztd.operator.v1.IngressRefusal](#ztd-operator-v1-IngressRefusal) |  |  |
 | suspended_tx_hash | [string](#string) |  |  |
@@ -462,8 +462,8 @@ executor whose commitment links must be adjacent.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | executor | [string](#string) |  |  |
-| first | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
-| second | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| first | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| second | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 
 
 

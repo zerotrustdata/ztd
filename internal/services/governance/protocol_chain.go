@@ -46,7 +46,7 @@ type DeterministicProtocolChain struct {
 	ContentReference string
 }
 
-func ValidateDeterministicProtocolChain(receipt *operatorv1.ActionReceipt) (*DeterministicProtocolChain, error) {
+func ValidateDeterministicProtocolChain(receipt *operatorv1.EventReceipt) (*DeterministicProtocolChain, error) {
 	stages, err := NormalizeDeterministicStages(receipt)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func ValidateDeterministicProtocolChain(receipt *operatorv1.ActionReceipt) (*Det
 	return &DeterministicProtocolChain{Stages: stages, StagesByKind: stagesByKind, L4: l4, ContentReference: contentReference}, nil
 }
 
-func NormalizeDeterministicStages(receipt *operatorv1.ActionReceipt) ([]*operatorv1.DeterministicStageEvidence, error) {
+func NormalizeDeterministicStages(receipt *operatorv1.EventReceipt) ([]*operatorv1.DeterministicStageEvidence, error) {
 	if receipt == nil {
 		return nil, fmt.Errorf("%w: receipt is nil", constants.ErrInvalidEvidenceGraph)
 	}
@@ -155,7 +155,7 @@ func deterministicStageKindIndex(kind operatorv1.DeterministicStageKind) int {
 	return -1
 }
 
-func validateVerifiedDeterministicChain(receipt *operatorv1.ActionReceipt, stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence) string {
+func validateVerifiedDeterministicChain(receipt *operatorv1.EventReceipt, stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence) string {
 	for _, kind := range deterministicStageOrder {
 		if stagesByKind[kind] == nil {
 			return "verified protocol chain is missing required stages"
@@ -205,7 +205,7 @@ func validateVerifiedDeterministicChain(receipt *operatorv1.ActionReceipt, stage
 	return ""
 }
 
-func validateRejectedDeterministicChain(receipt *operatorv1.ActionReceipt, stages []*operatorv1.DeterministicStageEvidence) string {
+func validateRejectedDeterministicChain(receipt *operatorv1.EventReceipt, stages []*operatorv1.DeterministicStageEvidence) string {
 	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
 		return "rejected protocol chain does not have a failed receipt status"
 	}
@@ -282,7 +282,7 @@ func validateDeterministicIdentityConsistency(stages []*operatorv1.Deterministic
 	return ""
 }
 
-func validateDeterministicPostureStageOutcomes(stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, receipt *operatorv1.ActionReceipt) string {
+func validateDeterministicPostureStageOutcomes(stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, receipt *operatorv1.EventReceipt) string {
 	if stage := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2]; stage != nil && stage.GetOutcome() != deterministicL2StatusOutcome[receipt.GetL2Status()] {
 		return "L2 stage outcome does not match the signed receipt status"
 	}

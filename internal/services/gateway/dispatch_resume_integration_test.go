@@ -54,7 +54,7 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	gateway, err := mcp.NewGatewayService(mcp.Dependencies{
 		Logger: infra.Logger, Responder: infra.Responder, SuspendedStore: infra.SuspendedStore,
 		ScrubbingService: infra.Scrubber, ThreatScanner: govsvc.NewL1Doctrine(),
-		Posture: constants.PostureRatify, AuditStore: infra.AuditStore,
+		Posture: constants.PostureRatify, EventsStore: infra.EventsStore,
 		EmbeddedSession: infra.Embedded, OutboundEnvProc: dispatcher,
 	})
 	require.NoError(t, err)
@@ -84,13 +84,13 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	require.Equal(t, env.Id, receipt.GetTransactionId())
 	require.Equal(t, env.TransactionHash, receipt.GetTransactionHash())
 	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
-	require.NoError(t, govsvc.VerifyActionReceiptSignature(receipt, publicKey))
+	require.NoError(t, govsvc.VerifyEventReceiptSignature(receipt, publicKey))
 	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(receipt, publicKey))
-	persisted, err := infra.AuditStore.GetEventReceipt(env.Id)
+	persisted, err := infra.EventsStore.GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, sessionID, persisted.OperatorSessionID)
-	require.Equal(t, receipt.Signature, persisted.ActionReceipt.Signature)
+	require.Equal(t, receipt.Signature, persisted.EventReceipt.Signature)
 	_, pending, err := gateway.GetSuspendedTransaction(t.Context(), env.Id)
 	require.NoError(t, err)
 	require.False(t, pending)
@@ -120,7 +120,7 @@ type recordingPendingDispatchResumer struct {
 	last  *commonv1.GovernanceEnvelope
 }
 
-func (r *recordingPendingDispatchResumer) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, bool, error) {
+func (r *recordingPendingDispatchResumer) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (*operatorv1.EventReceipt, bool, error) {
 	r.mu.Lock()
 	r.last = proto.Clone(env).(*commonv1.GovernanceEnvelope)
 	r.mu.Unlock()
@@ -185,7 +185,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			require.NoError(t, err)
 			preparer, err := NewOutboundApprovalService(govsvc.NewGatewayL3Notary(NewCLISessionVerifier(infra.DocStore, infra.PKI, infra.Logger, infra.UserSvc, infra.CLISessionSvc), passkeyService, infra.Logger), passkeyService)
 			require.NoError(t, err)
-			suspender, err := mcp.NewEnvelopeSuspender(infra.SuspendedStore, infra.AuditStore, posture, "")
+			suspender, err := mcp.NewEnvelopeSuspender(infra.SuspendedStore, infra.EventsStore, posture, "")
 			require.NoError(t, err)
 			coordinator, err := NewDispatchApprovalCoordinator(suspender)
 			require.NoError(t, err)
@@ -193,7 +193,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			dispatcher := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, posture, govsvc.NewL1Doctrine(), deliberator, infra.SignerStore, nil, coordinator)
 			gateway, err := mcp.NewGatewayService(mcp.Dependencies{
 				Logger: infra.Logger, Responder: infra.Responder, SuspendedStore: infra.SuspendedStore, ScrubbingService: infra.Scrubber,
-				ThreatScanner: govsvc.NewL1Doctrine(), Posture: posture, AuditStore: infra.AuditStore, EmbeddedSession: infra.Embedded,
+				ThreatScanner: govsvc.NewL1Doctrine(), Posture: posture, EventsStore: infra.EventsStore, EmbeddedSession: infra.Embedded,
 				OutboundEnvProc: dispatcher, OutboundProofPreparer: preparer, PendingDispatchResumer: resumer,
 			})
 			require.NoError(t, err)
@@ -281,7 +281,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			require.True(t, pendingL3.GetPendingDispatch())
 			require.Nil(t, pendingL3.GetProof(), "no L3 proof exists before the human acts")
 			require.False(t, pendingL3.GetDenied())
-			var receipt *operatorv1.ActionReceipt
+			var receipt *operatorv1.EventReceipt
 			var proof *commonv1.L3Proof
 			if mechanism == "deny" {
 				receipt, err = gateway.DenySuspendedTransaction(ctx, suspended.TransactionHash, userID)
@@ -341,7 +341,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 				return
 			}
 			require.NoError(t, err)
-			require.NoError(t, govsvc.VerifyActionReceiptSignature(receipt, publicKey))
+			require.NoError(t, govsvc.VerifyEventReceiptSignature(receipt, publicKey))
 			require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(receipt, publicKey))
 			var original outcome
 			select {
@@ -386,7 +386,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 					require.Equal(t, 1, calls)
 				}
 			}
-			persisted, err := infra.AuditStore.GetEventReceipt(suspended.TransactionHash)
+			persisted, err := infra.EventsStore.GetEventReceipt(suspended.TransactionHash)
 			require.NoError(t, err)
 			require.NotNil(t, persisted)
 			require.Equal(t, sessionID, persisted.OperatorSessionID)
@@ -449,7 +449,7 @@ func (o operatorTarget) content(t *testing.T) string {
 // revised command's fresh envelope.
 func assertRevisedAdmissionNeedsFreshApproval(t *testing.T, ctx context.Context, r revisedAdmission) {
 	t.Helper()
-	persisted, err := r.infra.AuditStore.GetEventReceipt(r.suspended.TransactionHash)
+	persisted, err := r.infra.EventsStore.GetEventReceipt(r.suspended.TransactionHash)
 	require.NoError(t, err)
 	require.Nil(t, persisted, "the refused envelope never reached the Operator")
 	_, err = r.gateway.ResumeWithL3Proof(ctx, r.suspended.TransactionHash, r.userID, r.proof)

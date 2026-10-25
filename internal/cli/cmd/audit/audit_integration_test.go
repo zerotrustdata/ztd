@@ -166,23 +166,23 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-		receipt := &operatorv1.ActionReceipt{}
+		receipt := &operatorv1.EventReceipt{}
 		require.NoError(t, protojson.Unmarshal(body, receipt))
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 		secretManager, err := svc.GetSecretManager()
 		require.NoError(t, err)
 		signingKey, _, err := secretManager.GetActuatorKey()
 		require.NoError(t, err)
-		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, signingKey.Public().(ed25519.PublicKey)))
+		require.NoError(t, governance.VerifyEventReceiptSignature(receipt, signingKey.Public().(ed25519.PublicKey)))
 		require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, signingKey.Public().(ed25519.PublicKey)))
-		persisted, err := svc.GetAuditStore().GetEventReceipt(env.Id)
+		persisted, err := svc.GetLocalFirstEventsStore().GetEventReceipt(env.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
 		// The receipt is filed under the executing runtime's own audit session (the
 		// Gateway's embedded Operator), never under the envelope's claim.
 		require.Equal(t, bootstrap.OperatorSessionID, persisted.OperatorSessionID)
 		require.Equal(t, "test-app", persisted.ActingAppID)
-		require.True(t, proto.Equal(receipt, persisted.ActionReceipt))
+		require.True(t, proto.Equal(receipt, persisted.EventReceipt))
 		transactionIDs = append(transactionIDs, env.Id)
 	}
 	readClient, err := api.NewClientWithURL(files, cliConfig, server.URL)
@@ -297,13 +297,13 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.Contains(t, out.String(), transactionIDs[0])
 	})
 	t.Run("event pagination and local report include runtime-session records", func(t *testing.T) {
-		events, err := svc.GetAuditStore().ListEvents("", 100, 0)
+		events, err := svc.GetLocalFirstEventsStore().ListEvents("", 100, 0)
 		require.NoError(t, err)
 		// One receipt.recorded event per stage write: EXECUTING and the final receipt, for each of two transactions.
 		require.Len(t, events, 4)
-		first, err := svc.GetAuditStore().GetEvents(models.AuditScope{ActingAppID: "test-app"}, 1, 0)
+		first, err := svc.GetLocalFirstEventsStore().GetEvents(models.EventsScope{ActingAppID: "test-app"}, 1, 0)
 		require.NoError(t, err)
-		second, err := svc.GetAuditStore().GetEvents(models.AuditScope{ActingAppID: "test-app"}, 1, 1)
+		second, err := svc.GetLocalFirstEventsStore().GetEvents(models.EventsScope{ActingAppID: "test-app"}, 1, 1)
 		require.NoError(t, err)
 		require.Len(t, first, 1)
 		require.Len(t, second, 1)
@@ -312,5 +312,5 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.Contains(t, first[0].ContentText, first[0].TransactionID)
 		require.Equal(t, bootstrap.OperatorSessionID, first[0].OperatorSessionID)
 	})
-	require.NoError(t, svc.GetAuditStore().VerifyChain(ctx, 0))
+	require.NoError(t, svc.GetLocalFirstEventsStore().VerifyChain(ctx, 0))
 }

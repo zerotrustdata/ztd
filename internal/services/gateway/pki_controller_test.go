@@ -88,7 +88,7 @@ func setupTestPKIController(t *testing.T) (*PKIController, *CanonicalDBService) 
 	// Create minimal registration service for tests that need it
 	userSvc := NewUserService(db.GetDocStore(), logger)
 	cliSessionSvc := NewCLISessionService(db.GetDocStore(), logger)
-	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetAuditStore(), logger)
+	operatorSessionSvc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 	reg := NewRegistrationService(db.GetDocStore(), db.GetKVStore(), pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
 
 	controller := newPKIController(PKIControllerDeps{Cfg: cfg, Logger: logger, PKI: pki, Registration: reg, Responder: resp})

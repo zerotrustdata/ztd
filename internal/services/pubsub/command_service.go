@@ -31,23 +31,23 @@ const StatusUpdateInterval = 10 * time.Second
 
 // CommandService owns command execution and cancellation handling.
 type CommandService struct {
-	config     *config.Config
-	logger     *slog.Logger
-	execution  *execution.ExecutionService
-	results    ResultsPublisher
-	auditStore *storage.SQLAuditStore
+	config      *config.Config
+	logger      *slog.Logger
+	execution   *execution.ExecutionService
+	results     ResultsPublisher
+	eventsStore *storage.LocalFirstEventsStore
 }
 
 // NewCommandService creates a new CommandService. Every dependency is required and a nil one
 // fails closed at construction. The results publisher carries every result and egresses it
-// through the scrubber (constants.ErrPubSubResultsPublisher). The audit store holds the raw
-// execution event of every command (constants.ErrAuditStoreRequired).
+// through the scrubber (constants.ErrPubSubResultsPublisher). The local-first events store holds the raw
+// execution event of every command (constants.ErrLocalFirstEventsStoreRequired).
 func NewCommandService(
 	cfg *config.Config,
 	logger *slog.Logger,
 	execSvc *execution.ExecutionService,
 	results ResultsPublisher,
-	auditStore *storage.SQLAuditStore,
+	eventsStore *storage.LocalFirstEventsStore,
 ) (*CommandService, error) {
 	if cfg == nil || logger == nil || execSvc == nil {
 		return nil, fmt.Errorf("command service: %w", constants.ErrMissingRequiredField)
@@ -55,15 +55,15 @@ func NewCommandService(
 	if results == nil {
 		return nil, fmt.Errorf("command service: %w", constants.ErrPubSubResultsPublisher)
 	}
-	if err := requireAuditStore("command service", auditStore); err != nil {
+	if err := requireEventsStore("command service", eventsStore); err != nil {
 		return nil, err
 	}
 	return &CommandService{
-		config:     cfg,
-		logger:     logger,
-		execution:  execSvc,
-		results:    results,
-		auditStore: auditStore,
+		config:      cfg,
+		logger:      logger,
+		execution:   execSvc,
+		results:     results,
+		eventsStore: eventsStore,
 	}, nil
 }
 
@@ -222,10 +222,10 @@ func (cs *CommandService) recordCommandExecution(msg *PubSubCommandMessage, resu
 		ExecutionDurationMs: int64(result.DurationSeconds * 1000),
 		ExecutionID:         result.ExecutionID,
 	}
-	if _, err := cs.auditStore.RecordEvent(event); err != nil {
+	if _, err := cs.eventsStore.RecordEvent(event); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrExecutionRecordFailed, err)
 	}
-	cs.logger.Info("Command execution event recorded in audit store (LFAA)",
+	cs.logger.Info("Command execution event recorded in local-first events store (LFEA)",
 		"execution_id", result.ExecutionID,
 		"operator_session_id", msg.OperatorSessionID)
 	return nil

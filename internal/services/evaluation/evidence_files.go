@@ -23,7 +23,7 @@ import (
 
 // EvidenceVault is the runtime vault surface evaluation records need. The
 // runtime vault (*vault.Vault) satisfies it, so evaluation records use the
-// same key hierarchy as the audit store and the file ledger.
+// same key hierarchy as the local-first events store and the file ledger.
 type EvidenceVault interface {
 	EncryptWithAAD(plaintext, aad []byte) ([]byte, error)
 	DecryptWithAAD(ciphertext, aad []byte) ([]byte, error)

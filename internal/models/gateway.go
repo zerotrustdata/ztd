@@ -178,6 +178,8 @@ type PubSubPublishResponse struct {
 	Receivers int `json:"receivers"`
 }
 
+// EventReceiptRecord is the searchable projection of a transaction's current
+// signed EventReceipt, with runtime identity and query metadata.
 type EventReceiptRecord struct {
 	TransactionID     string                     `json:"transaction_id"`
 	TransactionHash   string                     `json:"transaction_hash"`
@@ -199,7 +201,7 @@ type EventReceiptRecord struct {
 	L2Valid           bool                       `json:"l2_valid"`
 	L3Valid           bool                       `json:"l3_valid"`
 	Timestamp         time.Time                  `json:"timestamp"`
-	ActionReceipt     *operatorv1.ActionReceipt  `json:"action_receipt,omitempty"`
+	EventReceipt      *operatorv1.EventReceipt   `json:"event_receipt,omitempty"`
 }
 
 // BlobMetaResponse is the typed response for GET /blob/{namespace}/{id}/meta.

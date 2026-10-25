@@ -599,7 +599,7 @@ const (
 )
 
 var evidenceVerificationRoutes = map[evidence.ArtifactType]evidenceVerificationRoute{
-	evidence.ArtifactTypeActionReceipt:                    evidenceVerificationRouteShared,
+	evidence.ArtifactTypeEventReceipt:                     evidenceVerificationRouteShared,
 	evidence.ArtifactTypeReceiptPersistence:               evidenceVerificationRouteShared,
 	evidence.ArtifactTypeStateObservation:                 evidenceVerificationRouteShared,
 	evidence.ArtifactTypeProtocolChain:                    evidenceVerificationRouteShared,

@@ -61,7 +61,7 @@ func oscalTestAnalysis() *compliancev1.ComplianceAnalysis {
 		receiptDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		metricDigest  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	)
-	receiptID := "action-receipt:sha256:" + receiptDigest
+	receiptID := "event-receipt:sha256:" + receiptDigest
 	metricID := "eval-metric:sha256:" + metricDigest
 	generatedAt := time.Date(2026, time.September, 7, 12, 0, 0, 0, time.UTC)
 	firstAssessmentID := "assertion-assessment:sha256:" + receiptDigest
@@ -86,7 +86,7 @@ func oscalTestAnalysis() *compliancev1.ComplianceAnalysis {
 			{AssessmentId: "framework-assessment:sha256:" + metricDigest, ScopeId: "scope-1", FrameworkRef: &compliancev1.VersionedReference{Id: "fedramp-20x", Version: "CR26-2026-06-24"}, ControlId: "KSI-MLA-07", Status: "not_satisfied", Responsibility: "shared", AssertionAssessmentRefs: []string{secondAssessmentID}, EvidenceLevel: "L2"},
 		},
 		EvidenceResources: []*compliancev1.ComplianceEvidenceReference{
-			{ArtifactId: receiptID, ArtifactType: "action-receipt", Sha256: receiptDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ActionReceipt", ProducerIdentity: "gateway", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ReceiptEvidenceVerifierID, VerifierVersion: constants.ReceiptEvidenceVerifierVersion, BundlePath: oscalTestRecordBundlePath},
+			{ArtifactId: receiptID, ArtifactType: "event-receipt", Sha256: receiptDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.EventReceipt", ProducerIdentity: "gateway", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ReceiptEvidenceVerifierID, VerifierVersion: constants.ReceiptEvidenceVerifierVersion, BundlePath: oscalTestRecordBundlePath},
 			{ArtifactId: metricID, ArtifactType: "eval-metric", Sha256: metricDigest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.eval.v1.EvaluationMetric", ProducerIdentity: "policy_outcome@1.0.0", ScopeId: "scope-1", VerificationStatus: "verified", VerifierId: constants.ConformanceVerifierID, VerifierVersion: constants.ConformanceVerifierVersion, BundlePath: oscalTestRecordBundlePath},
 		},
 		EvidenceGraphValid: true,
@@ -276,7 +276,7 @@ func TestGenerateUUID_DeterministicV5(t *testing.T) {
 
 func TestOSCALExporter_GenerateAssessmentResultsFromCanonicalAnalysis_ResolvesEvidenceResources(t *testing.T) {
 	const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	artifactID := "action-receipt:sha256:" + digest
+	artifactID := "event-receipt:sha256:" + digest
 	generatedAt := time.Date(2026, time.September, 7, 12, 0, 0, 0, time.UTC)
 	analysis := &compliancev1.ComplianceAnalysis{
 		AnalysisId:            "compliance-analysis:sha256:" + digest,
@@ -308,10 +308,10 @@ func TestOSCALExporter_GenerateAssessmentResultsFromCanonicalAnalysis_ResolvesEv
 		}},
 		EvidenceResources: []*compliancev1.ComplianceEvidenceReference{{
 			ArtifactId:         artifactID,
-			ArtifactType:       "action-receipt",
+			ArtifactType:       "event-receipt",
 			Sha256:             digest,
 			MediaType:          constants.MediaTypeJSON,
-			SchemaRef:          "ztd.operator.v1.ActionReceipt",
+			SchemaRef:          "ztd.operator.v1.EventReceipt",
 			ProducerIdentity:   "gateway",
 			ScopeId:            "scope-1",
 			VerificationStatus: "verified",

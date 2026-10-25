@@ -63,14 +63,14 @@ func newTestCLI(t *testing.T, poster operator.CommandPoster) *CLI {
 // text. RunOnce's own decoding is covered in internal/cli/operator; this checks the
 // CLI's mapping of those results to observation kinds.
 func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1"}
-	rejection := &operatorv1.GovernanceRejection{Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-2"}}
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-1"}
+	rejection := &operatorv1.GovernanceRejection{Receipt: &operatorv1.EventReceipt{TransactionId: "tx-2"}}
 	refusal := &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST}
 	tests := []struct {
 		name         string
 		result       operator.RunResult
 		want         evalv1.ConformanceObservationKind
-		wantReceipt  *operatorv1.ActionReceipt
+		wantReceipt  *operatorv1.EventReceipt
 		wantRejected *operatorv1.GovernanceRejection
 		wantRefusal  *operatorv1.IngressRefusal
 		wantBody     string

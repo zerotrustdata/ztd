@@ -29,7 +29,7 @@ func marshalIngressFailure(t *testing.T, msg proto.Message) []byte {
 func TestDecodeIngressFailure(t *testing.T) {
 	signedRejection := &operatorv1.GovernanceRejection{
 		Error: "rejected",
-		Receipt: &operatorv1.ActionReceipt{
+		Receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,

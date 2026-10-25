@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.4.0
+last_updated: 2026-10-24
 owners:
   - docs/
   - protocol/docs/
@@ -145,9 +145,9 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Observe frontend contract pack | `ztd-adapter/contract-pack/`, `ztd-adapter/generator/gen-contract-pack.mjs` | `npm run gen:contract-pack` and `npm run gen:contract-pack:check` from `ztd-adapter/` |
 | Third-party license notices | `THIRD_PARTY_NOTICES.md` | `make third-party-notices-check` |
 | Claude Code plugin | `claude-plugin/` | `make claude-plugin-test` |
-| FedRAMP KSI catalog and COSAiS overlays | `docs/reference/ksi-catalog.json`, `docs/reference/cosais-overlays.json` | `./ztd compliance overlay` loads overlays and verifies KSI reference resolution |
+| FedRAMP KSI catalog and COSAiS overlays | `docs/reference/ksi-catalog.json`, `docs/reference/cosais-overlays.json` | `./ztd compliance overlay` loads both catalogs and reports dangling references |
 | Static website | `README.md`, `website/` | `make website-build`, `make website-test` |
-| Compliance evidence projections | `docs/release_notes/vX.Y.x/` | `./ztd compliance release-prepare`, `./ztd compliance report verify` |
+| Compliance evidence projections | `docs/release_notes/vX.Y.x/` | `./ztd compliance release-prepare`, `./ztd compliance release-evidence <bundle> --out <dir> --trust-policy <path>` |
 
 ### Documentation catalog
 
@@ -267,6 +267,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Going public, and finding out onboarding only worked on Linux](../../website/content/posts/going-public-onboarding-beyond-linux.md): Build in Public field notes on the public repo, the unshipped 1.0.1–1.0.3 tags, and Windows and macOS onboarding.
 - [The day my evals deleted the repo](../../website/content/posts/the-day-my-evals-deleted-the-repo.md): Build in Public field notes on an eval bug that wiped the repo root, evals bypassing L1–L5, and demo-driven v1.1.0 testing.
 - [Ugly evals, pprof, and the bugs in L2–L5](../../website/content/posts/ugly-evals-pprof-and-the-bugs-in-l2-l5.md): Build in Public field notes on bolted-on evaluations, pprof profiling, and the bugs they exposed across L2–L5.
+- [Action receipts grew legs](../../website/content/posts/action-receipts-grew-legs.md): Build in Public field notes on removing the duplicate receipt store, correcting event-driven terminology, evaluation fairness, and Tribunal consensus.
 - [Commercial License and Services Terms](../../website/content/terms.md): Commercial license plans, production limits, and services terms for purchases on zerotrustdata.io, published at `/terms/`.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
@@ -277,6 +278,9 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Public Proof Offline Verification](../../ztd-adapter/contract-pack/public/offline-verifier.md): Cryptographic and manifest offline verification runbook for public proofs and feed fixtures.
 - [Examples README](../../examples/README.md): Platform example applications index and runnable samples.
 - [External Console Example](../../examples/external-console/README.md): External standalone console sample application.
+- [Fictional Organizations](../../demos/README.md): Maintained business sandbox index and conventions for adding organizations.
+- [Zero Trust Paper Company](../../demos/zero-trust-paper-company/README.md): Python/SQLite business services, demo identities, retrieval, lifecycle and ztd invocation boundary.
+- [Paper Company Scenarios](../../demos/zero-trust-paper-company/SCENARIOS.md): Repeatable cross-system operational exercises and expected outcomes.
 
 #### Release notes and evidence projections (`docs/release_notes/`)
 
@@ -308,6 +312,9 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.3.0 Release Notes](../release_notes/v1.3.x/v1.3.0.md): Tribunal consensus, the single shell execution contract, event receipts, and evidence compatibility changes.
 - [v1.3.0 Compliance Evidence](../release_notes/v1.3.x/v1.3.0-compliance-evidence.md): Generated compliance evidence projection for v1.3.0.
 - [v1.3.0 Compliance Evidence CSV](../release_notes/v1.3.x/v1.3.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.3.0.
+- [v1.4.0 Release Notes](../release_notes/v1.4.x/v1.4.0.md): Event receipt contracts, public evaluation, and expanded onboarding and demo coverage.
+- [v1.4.0 Compliance Evidence](../release_notes/v1.4.x/v1.4.0-compliance-evidence.md): Generated compliance evidence projection for v1.4.0.
+- [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 
 ## Procedures
 
@@ -339,7 +346,7 @@ Execute these steps in order when updating maintained documentation:
 | Wire messages and gRPC services | Protobuf schemas in `protocol/proto/ztd/`, model schemas in `protocol/models/`, and canonicalization implementations | Generated bindings, vectors, contract tests, and cross-language conformance tests |
 | Protocol identifiers and registries | Registry-specific source declaration in `protocol/constants/` or `internal/constants/` | Mirrors, consumers, package loaders, and contract tests; verify owning generator and check target |
 | Gateway OpenAPI | Router/controller behavior and Go Swagger annotations in `cmd/ztd`, `internal/services/gateway/`, `internal/models/`, `internal/constants/` | Generated `swagger.json` and `swagger.yaml`, route registration, and authentication behavior |
-| Third-party dependencies and notices | Committed dependencies in `go.mod`, `vendor/modules.txt`, and npm `package.json` | `THIRD_PARTY_NOTICES.md` generated via `make third-party-notices` |
+| Third-party dependencies and notices | Committed dependencies in `go.mod`, `vendor/modules.txt`, and production npm `package-lock.json` files | `THIRD_PARTY_NOTICES.md` generated via `make third-party-notices` |
 | Deployment and ports | Host lifecycle targets in `Makefile` (`up`, `gw`, `operator`, `status`, `down`), `ztd gw start` and `ztd operator start` flags, and `internal/constants/ports.go` | Listener defaults, identity enrollment, network exposure, and documented commands |
 | Tests and CI | `internal/cli/cmd/test/`, root and component Makefiles, package test configuration, and `.github/workflows/` | Actual target dependencies, build tags, exclusions, timeouts, race settings, and external-service gates |
 | Compliance, cryptographic, and measured claims | Exact signed artifact, verifier, catalog, schema, or evidence graph named by the claim | Version, scope, environment, trust inputs, evidence cutoff, failure cases, and explicit limitations |
@@ -392,6 +399,8 @@ To optimize LLM inference performance and maximize prompt/context cache utilizat
 ### Refresh Generated Documentation
 
 Execute owning targets whenever underlying source code, schemas, or dependencies change:
+
+`make generate` runs protobuf generation, constants generation, Explorer catalog and wire enum generation, third-party notices, and Gateway OpenAPI generation in sequence, including under `make -j`. Run drift checks, component builds (including website and frontend embeds), and observe frontend contract pack generation separately with the owning commands below.
 
 ```bash
 # Protobuf bindings and reference documentation

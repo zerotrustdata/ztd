@@ -40,18 +40,18 @@ type ExecutionHandler interface {
 	ExecuteVerifiedTransaction(ctx context.Context, eventType constants.EventType, cmdMsg CommandMessage) (string, error)
 }
 
-// ReceiptPublisher publishes a signed ActionReceipt (wrapped in a
+// ReceiptPublisher publishes a signed EventReceipt (wrapped in a
 // GovernanceEnvelope carrying the original command's identity fields) to the
 // gateway's receipts: channel after execution. The gateway intercepts the
 // publish, verifies the receipt signature against the operator's actuator
-// public key, records the receipt in its SQLAuditStore, and fans it out to
+// public key, records the receipt in its LocalFirstEventsStore, and fans it out to
 // subscribers. Implemented by pubsub.PubSubResultsService on the operator
 // side; nil on the gateway in-process operator path (in-process receipts are
-// already recorded in the gateway's SQLAuditStore directly by L5Actuator).
+// already recorded in the gateway's LocalFirstEventsStore directly by L5Actuator).
 // Publish errors are best-effort: the receipt is already recorded locally
 // and the result already published, so the gateway-side mirror is not a gate.
 type ReceiptPublisher interface {
-	PublishActionReceipt(ctx context.Context, env *govtypes.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error
+	PublishEventReceipt(ctx context.Context, env *govtypes.GovernanceEnvelope, receipt *operatorv1.EventReceipt) error
 }
 
 // CommandMessage is the typed command message passed through the L5 execution
@@ -73,20 +73,20 @@ type CommandMessage interface {
 // Defense-in-depth note: L5Actuator does NOT re-verify L2 or L3 proofs. By design,
 // L4Warden performs all pre-dispatch verification (L1 doctrine, L2 consensus, L3 notary)
 // and embeds the results in VerifiedTransaction. L5 trusts that VerifiedTransaction,
-// records the L2/L3 status in the ActionReceipt for audit, and focuses on execution
+// records the L2/L3 status in the EventReceipt for audit, and focuses on execution
 // safety: fail-closed receipt signing, JIT capability minting, and audit logging.
 // The separation between L4 (verification) and L5 (execution) is the defense-in-depth
 // boundary — two independent components with distinct responsibilities.
 type L5Actuator struct {
-	Logger            *slog.Logger
-	SQLAuditStore     *storage.SQLAuditStore
-	StateRootProvider StateRootProvider
-	ExecutionHandler  ExecutionHandler
-	Scrubbing         *scrubbing.ScrubbingService
+	Logger                *slog.Logger
+	LocalFirstEventsStore *storage.LocalFirstEventsStore
+	StateRootProvider     StateRootProvider
+	ExecutionHandler      ExecutionHandler
+	Scrubbing             *scrubbing.ScrubbingService
 
-	// ReceiptPublisher publishes the signed ActionReceipt to the gateway's
+	// ReceiptPublisher publishes the signed EventReceipt to the gateway's
 	// receipts: channel after execution so the gateway can record it in its
-	// SQLAuditStore. Nil on the gateway in-process operator path (receipts
+	// LocalFirstEventsStore. Nil on the gateway in-process operator path (receipts
 	// are already recorded locally). Best-effort: publish errors are logged
 	// and do not fail the execution.
 	ReceiptPublisher ReceiptPublisher
@@ -97,7 +97,7 @@ type L5Actuator struct {
 	// It is the runtime's ExecutionTarget, which the pubsub constructor requires.
 	Identity RuntimeIdentityProvider
 
-	// L5Actuator's own signing identity for ActionReceipts
+	// L5Actuator's own signing identity for EventReceipts
 	SigningKey        ed25519.PrivateKey
 	KeyID             string
 	AuditorSigningKey ed25519.PrivateKey
@@ -107,12 +107,12 @@ type L5Actuator struct {
 }
 
 // Execute is the single execution boundary for all verified transactions.
-// It dispatches to the registered handler, captures status, signs and persists an ActionReceipt, and returns it.
+// It dispatches to the registered handler, captures status, signs and persists an EventReceipt, and returns it.
 //
 // Fail-closed: if receipt signing or initial audit logging fails, the handler is NOT executed.
 // If the payload cannot be rehydrated, the handler is NOT executed either, and the receipt
 // finalizes FAILED with the rehydration error as its cause.
-func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) (*operatorv1.ActionReceipt, error) {
+func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) (*operatorv1.EventReceipt, error) {
 	w.wg.Add(1)
 	defer w.wg.Done()
 
@@ -122,7 +122,7 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 	if len(w.SigningKey) == 0 {
 		return nil, constants.ErrL5ActuatorSigningKeyMissing
 	}
-	if err := w.requireAuditStore(); err != nil {
+	if err := w.requireEventsStore(); err != nil {
 		return nil, err
 	}
 
@@ -243,21 +243,21 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 	}
 	receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, executionStage)
 
-	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), w.auditReceiptListSummary(vt, cmdMsg, summary), execErr)
+	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), w.eventReceiptListSummary(vt, cmdMsg, summary), execErr)
 	executionStage.StateRootAfter = receipt.StateRootAfter
 
 	if err := w.signAndLogFinalReceipt(context.WithoutCancel(ctx), signed, audit, receipt); err != nil {
 		return receipt, err
 	}
 
-	// Publish the signed ActionReceipt to the gateway's receipts: channel
-	// so the gateway can record it in its SQLAuditStore. Best-effort: the
+	// Publish the signed EventReceipt to the gateway's receipts: channel
+	// so the gateway can record it in its LocalFirstEventsStore. Best-effort: the
 	// receipt is already recorded locally and the result already published;
 	// the gateway-side mirror is not a gate. Only attempted when a
 	// ReceiptPublisher is wired (outbound operator path).
 	if w.ReceiptPublisher != nil {
-		if pubErr := w.ReceiptPublisher.PublishActionReceipt(ctx, signed.Envelope, receipt); pubErr != nil {
-			w.Logger.Warn("Failed to publish ActionReceipt to gateway receipts channel",
+		if pubErr := w.ReceiptPublisher.PublishEventReceipt(ctx, signed.Envelope, receipt); pubErr != nil {
+			w.Logger.Warn("Failed to publish EventReceipt to gateway receipts channel",
 				string(constants.ConnectionStateError), pubErr,
 				"message_id", vt.Envelope.Id)
 		}
@@ -266,7 +266,7 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 	return receipt, execErr
 }
 
-func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *VerifiedTransaction, rejection error) (*operatorv1.ActionReceipt, error) {
+func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *VerifiedTransaction, rejection error) (*operatorv1.EventReceipt, error) {
 	if vt == nil || vt.Envelope == nil {
 		return nil, constants.ErrTxInvalidEnvelope
 	}
@@ -276,7 +276,7 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	if len(w.SigningKey) == 0 {
 		return nil, constants.ErrL5ActuatorSigningKeyMissing
 	}
-	if err := w.requireAuditStore(); err != nil {
+	if err := w.requireEventsStore(); err != nil {
 		return nil, err
 	}
 
@@ -303,8 +303,8 @@ func (w *L5Actuator) RecordRejectedTransaction(ctx context.Context, vt *Verified
 	if w.ReceiptPublisher != nil {
 		// The Gateway accepts a receipt only on the publishing runtime's own
 		// receipts channel, so the publication names the runtime's identity.
-		if err := w.ReceiptPublisher.PublishActionReceipt(ctx, publicationEnvelope(signed.Envelope, identity), receipt); err != nil {
-			w.Logger.Warn("Failed to publish rejected ActionReceipt to gateway receipts channel",
+		if err := w.ReceiptPublisher.PublishEventReceipt(ctx, publicationEnvelope(signed.Envelope, identity), receipt); err != nil {
+			w.Logger.Warn("Failed to publish rejected EventReceipt to gateway receipts channel",
 				string(constants.ConnectionStateError), err,
 				"message_id", vt.Envelope.Id)
 		}
@@ -330,7 +330,7 @@ func requireDecidedLayers(vt *VerifiedTransaction) error {
 // them from posture. Execute refuses an undecided transaction before this runs.
 // Receipt evidence does not depend on the caller staying connected, so the
 // state root read ignores ctx cancellation, as the receipt writes do.
-func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransaction) *operatorv1.ActionReceipt {
+func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransaction) *operatorv1.EventReceipt {
 	stateBefore := ""
 	if w.StateRootProvider != nil {
 		var err error
@@ -349,7 +349,7 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 		proto.Merge(stages[index], stage)
 	}
 
-	return &operatorv1.ActionReceipt{
+	return &operatorv1.EventReceipt{
 		TransactionId:              vt.Envelope.Id,
 		TransactionHash:            vt.Envelope.TransactionHash,
 		EventType:                  vt.Envelope.EventType,
@@ -368,10 +368,10 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 // signAndLogReceipt signs the initial receipt and persists it. With an audit
 // store, the receipt and its commitment attestation commit in one transaction
 // and the attestation is returned. Fail-closed: returns error if any step fails.
-func (w *L5Actuator) signAndLogReceipt(vt *VerifiedTransaction, audit govtypes.RuntimeIdentity, receipt *operatorv1.ActionReceipt) (*operatorv1.CommitmentAttestation, error) {
+func (w *L5Actuator) signAndLogReceipt(vt *VerifiedTransaction, audit govtypes.RuntimeIdentity, receipt *operatorv1.EventReceipt) (*operatorv1.CommitmentAttestation, error) {
 	sig, err := w.signReceipt(receipt)
 	if err != nil {
-		w.Logger.Error("Fail-closed: Failed to sign initial action receipt", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
+		w.Logger.Error("Fail-closed: Failed to sign initial event receipt", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
 		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorSignReceipt, err)
 	}
 	receipt.Signature = sig
@@ -380,7 +380,7 @@ func (w *L5Actuator) signAndLogReceipt(vt *VerifiedTransaction, audit govtypes.R
 		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCommitmentPersist, err)
 	}
 	var attestation *operatorv1.CommitmentAttestation
-	err = w.SQLAuditStore.RecordEventReceiptWithCommitment(BuildEventReceiptRecord(vt.Envelope, audit, receipt), func(priorHash string) (*operatorv1.CommitmentAttestation, error) {
+	err = w.LocalFirstEventsStore.RecordEventReceiptWithCommitment(BuildEventReceiptRecord(vt.Envelope, audit, receipt), func(priorHash string) (*operatorv1.CommitmentAttestation, error) {
 		built, err := w.buildCommitment(vt, receipt, priorHash)
 		if err != nil {
 			return nil, err
@@ -389,7 +389,7 @@ func (w *L5Actuator) signAndLogReceipt(vt *VerifiedTransaction, audit govtypes.R
 		return built, nil
 	})
 	if err != nil {
-		w.Logger.Error("Fail-closed: Failed to persist initial action receipt and commitment", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
+		w.Logger.Error("Fail-closed: Failed to persist initial event receipt and commitment", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
 		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCommitmentPersist, err)
 	}
 	return attestation, nil
@@ -440,7 +440,7 @@ func (w *L5Actuator) verifyAuditorKey() error {
 
 // buildCommitment signs the receipt's commitment attestation over the given
 // chain head. Storage owns its canonical JSON encoding.
-func (w *L5Actuator) buildCommitment(vt *VerifiedTransaction, receipt *operatorv1.ActionReceipt, priorHash string) (*operatorv1.CommitmentAttestation, error) {
+func (w *L5Actuator) buildCommitment(vt *VerifiedTransaction, receipt *operatorv1.EventReceipt, priorHash string) (*operatorv1.CommitmentAttestation, error) {
 	attestation := &operatorv1.CommitmentAttestation{
 		TransactionId:               vt.Envelope.Id,
 		TransactionHash:             vt.Envelope.TransactionHash,
@@ -545,13 +545,13 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 // finalizeReceipt updates the receipt with execution result, state root after, and timestamp.
 // The mutation has already run, so the summary tokenization and the state root read ignore ctx
 // cancellation.
-func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, summary, inferenceDigest, auditReceiptListSummary string, execErr error) {
+func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.EventReceipt, summary, inferenceDigest, eventReceiptListSummary string, execErr error) {
 	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	if execErr != nil {
 		status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), "failed", classifyReceiptFailure(execErr), execErr)
 	} else {
-		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest, auditReceiptListSummary)
+		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest, eventReceiptListSummary)
 	}
 
 	stateAfter := ""
@@ -591,12 +591,12 @@ func (w *L5Actuator) inferenceResultDigest(vt *VerifiedTransaction, cmdMsg Comma
 // signed as is. Every other handler text is content: it is scrubbed when a scrubber is active
 // and replaced by fixed text otherwise. The text is never inspected for a digest shape, so a
 // hex-encoded secret returned by a tool is scrubbed like any other output.
-func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest, auditReceiptListSummary string) string {
+func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest, eventReceiptListSummary string) string {
 	switch {
 	case inferenceDigest != "":
 		return inferenceDigest
-	case auditReceiptListSummary != "":
-		return auditReceiptListSummary
+	case eventReceiptListSummary != "":
+		return eventReceiptListSummary
 	case summary == "":
 		return "completed"
 	case !w.scrubberActive():
@@ -606,26 +606,26 @@ func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, infer
 	}
 }
 
-// auditReceiptListSummary preserves only the allowlisted typed result for a
-// verified MCP_CALL(audit_receipt_list). That result contains canonical signed
+// eventReceiptListSummary preserves only the allowlisted typed result for a
+// verified MCP_CALL(event_receipt_list). That result contains canonical signed
 // receipts, already scrubbed before their original L5 signature, plus scope
 // metadata. Arbitrary text summaries continue through completedReceiptSummary's
 // normal scrub path.
-func (w *L5Actuator) auditReceiptListSummary(vt *VerifiedTransaction, cmdMsg CommandMessage, summary string) string {
+func (w *L5Actuator) eventReceiptListSummary(vt *VerifiedTransaction, cmdMsg CommandMessage, summary string) string {
 	if vt == nil || vt.ActionType != constants.ActionTypeMcpCall || cmdMsg == nil || summary == "" {
 		return ""
 	}
 	request := &operatorv1.McpCallRequested{}
-	if err := proto.Unmarshal(vt.Envelope.GetPayload(), request); err != nil || request.GetToolName() != constants.MCPToolAuditReceiptList {
+	if err := proto.Unmarshal(vt.Envelope.GetPayload(), request); err != nil || request.GetToolName() != constants.MCPToolEventReceiptList {
 		return ""
 	}
 	provider, ok := cmdMsg.(interface {
-		AuditReceiptListSummary() *models.OperatorAuditReceiptListResult
+		EventReceiptListSummary() *models.OperatorEventReceiptListResult
 	})
 	if !ok {
 		return ""
 	}
-	result := provider.AuditReceiptListSummary()
+	result := provider.EventReceiptListSummary()
 	if result == nil || result.OperatorID != vt.Envelope.GetOperatorId() || result.Authority != "operator_local_ledger" ||
 		result.InvestigationID == "" || result.InvestigationID != vt.Envelope.GetInvestigationId() ||
 		result.Count != len(result.Receipts) {
@@ -742,10 +742,10 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 // signFinalReceipt signs the final receipt and its persistence attestation. The
 // attestation stays on the receipt until the caller's write succeeds, so an
 // attestation always describes a stored receipt.
-func (w *L5Actuator) signFinalReceipt(receipt *operatorv1.ActionReceipt, messageID string) error {
+func (w *L5Actuator) signFinalReceipt(receipt *operatorv1.EventReceipt, messageID string) error {
 	finalSig, err := w.signReceipt(receipt)
 	if err != nil {
-		w.Logger.Error("Failed to sign final action receipt", string(constants.ConnectionStateError), err, "message_id", messageID)
+		w.Logger.Error("Failed to sign final event receipt", string(constants.ConnectionStateError), err, "message_id", messageID)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorSignReceipt, err)
 	}
 	receipt.Signature = finalSig
@@ -761,13 +761,13 @@ func (w *L5Actuator) signFinalReceipt(receipt *operatorv1.ActionReceipt, message
 // signAndLogFinalReceipt signs the final receipt of an executed transaction and
 // persists it with its attestation in one write. Best-effort: returns error but
 // the receipt is still returned by caller, because the mutation already ran.
-func (w *L5Actuator) signAndLogFinalReceipt(ctx context.Context, vt *VerifiedTransaction, audit govtypes.RuntimeIdentity, receipt *operatorv1.ActionReceipt) error {
+func (w *L5Actuator) signAndLogFinalReceipt(ctx context.Context, vt *VerifiedTransaction, audit govtypes.RuntimeIdentity, receipt *operatorv1.EventReceipt) error {
 	if err := w.signFinalReceipt(receipt, vt.Envelope.Id); err != nil {
 		return err
 	}
 	if logErr := w.LogEventReceipt(ctx, vt.Envelope, audit, receipt); logErr != nil {
 		receipt.FinalPersistenceAttestation = nil
-		w.Logger.Error("Failed to log final action receipt - mutation already executed", string(constants.ConnectionStateError), logErr, "message_id", vt.Envelope.Id)
+		w.Logger.Error("Failed to log final event receipt - mutation already executed", string(constants.ConnectionStateError), logErr, "message_id", vt.Envelope.Id)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorLogReceipt, logErr)
 	}
 	return nil
@@ -776,7 +776,7 @@ func (w *L5Actuator) signAndLogFinalReceipt(ctx context.Context, vt *VerifiedTra
 // signAndLogRejectionReceipt signs and persists the receipt of a rejected
 // transaction. Nothing executed, so a persistence failure means the rejection
 // evidence was lost, not that a mutation went unrecorded.
-func (w *L5Actuator) signAndLogRejectionReceipt(ctx context.Context, vt *VerifiedTransaction, audit govtypes.RuntimeIdentity, receipt *operatorv1.ActionReceipt) error {
+func (w *L5Actuator) signAndLogRejectionReceipt(ctx context.Context, vt *VerifiedTransaction, audit govtypes.RuntimeIdentity, receipt *operatorv1.EventReceipt) error {
 	if err := w.signFinalReceipt(receipt, vt.Envelope.Id); err != nil {
 		return err
 	}
@@ -838,7 +838,7 @@ func CanonicalizeReceiptPersistenceAttestation(attestation *operatorv1.ReceiptPe
 	return payload.Bytes(), nil
 }
 
-func (w *L5Actuator) signReceiptPersistenceAttestation(receipt *operatorv1.ActionReceipt) (*operatorv1.ReceiptPersistenceAttestation, error) {
+func (w *L5Actuator) signReceiptPersistenceAttestation(receipt *operatorv1.EventReceipt) (*operatorv1.ReceiptPersistenceAttestation, error) {
 	attestation := &operatorv1.ReceiptPersistenceAttestation{
 		TransactionId:          receipt.TransactionId,
 		ReceiptSignatureDigest: SignatureDigest([]string{receipt.Signature}),
@@ -862,9 +862,9 @@ func SignerPublicKey(keyID string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(decoded), nil
 }
 
-func DeterministicStageActionType(receipt *operatorv1.ActionReceipt) (string, error) {
+func DeterministicStageActionType(receipt *operatorv1.EventReceipt) (string, error) {
 	if receipt == nil {
-		return "", fmt.Errorf("%w: action receipt is nil", constants.ErrEvidenceArtifactMalformed)
+		return "", fmt.Errorf("%w: event receipt is nil", constants.ErrEvidenceArtifactMalformed)
 	}
 	actionType := ""
 	for _, stage := range receipt.GetDeterministicStageEvidence() {
@@ -882,28 +882,28 @@ func DeterministicStageActionType(receipt *operatorv1.ActionReceipt) (string, er
 	return actionType, nil
 }
 
-func VerifyActionReceiptSignature(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
+func VerifyEventReceiptSignature(receipt *operatorv1.EventReceipt, publicKey ed25519.PublicKey) error {
 	if receipt == nil {
-		return constants.ErrActionReceiptMissing
+		return constants.ErrEventReceiptMissing
 	}
 	if receipt.Signature == "" || len(publicKey) != ed25519.PublicKeySize {
-		return constants.ErrActionReceiptSignatureInvalid
+		return constants.ErrEventReceiptSignatureInvalid
 	}
 	signature, err := hex.DecodeString(receipt.Signature)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrActionReceiptSignatureInvalid, err)
+		return fmt.Errorf("%w: %w", constants.ErrEventReceiptSignatureInvalid, err)
 	}
-	payload, err := CanonicalizeActionReceipt(receipt)
+	payload, err := CanonicalizeEventReceipt(receipt)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrActionReceiptSignatureInvalid, err)
+		return fmt.Errorf("%w: %w", constants.ErrEventReceiptSignatureInvalid, err)
 	}
 	if !ed25519.Verify(publicKey, payload, signature) {
-		return constants.ErrActionReceiptSignatureInvalid
+		return constants.ErrEventReceiptSignatureInvalid
 	}
 	return nil
 }
 
-func VerifyReceiptPersistenceAttestation(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
+func VerifyReceiptPersistenceAttestation(receipt *operatorv1.EventReceipt, publicKey ed25519.PublicKey) error {
 	if receipt == nil || receipt.FinalPersistenceAttestation == nil {
 		return constants.ErrReceiptPersistenceAttestationMissing
 	}
@@ -933,16 +933,16 @@ func VerifyReceiptPersistenceAttestation(receipt *operatorv1.ActionReceipt, publ
 	return nil
 }
 
-// VerifyActionReceipt verifies a receipt's signature and its final-persistence
+// VerifyEventReceipt verifies a receipt's signature and its final-persistence
 // attestation against the executing runtime's actuator public key.
-func VerifyActionReceipt(receipt *operatorv1.ActionReceipt, publicKey ed25519.PublicKey) error {
-	if err := VerifyActionReceiptSignature(receipt, publicKey); err != nil {
+func VerifyEventReceipt(receipt *operatorv1.EventReceipt, publicKey ed25519.PublicKey) error {
+	if err := VerifyEventReceiptSignature(receipt, publicKey); err != nil {
 		return err
 	}
 	return VerifyReceiptPersistenceAttestation(receipt, publicKey)
 }
 
-// canonicalReceipt is the typed representation for ActionReceipt canonicalization.
+// canonicalReceipt is the typed representation for EventReceipt canonicalization.
 // This ensures strict typing and deterministic JSON marshaling for signing/verification.
 type canonicalReceipt struct {
 	TransactionID                  string `json:"transaction_id"`
@@ -981,12 +981,12 @@ func deterministicStageEvidenceHash(stages []*operatorv1.DeterministicStageEvide
 	return hex.EncodeToString(digest[:]), nil
 }
 
-// CanonicalizeActionReceipt produces a deterministic byte representation for signing/verification.
+// CanonicalizeEventReceipt produces a deterministic byte representation for signing/verification.
 // This function must be used by both signing and verification to ensure consistency.
 // Field order: transaction_id, transaction_hash, event_type, action_type (v2 receipts),
 // status, result_summary, state_root_before, state_root_after, executed_at_unix_ms,
 // signer_key_id, l2_status, l3_status, and the deterministic stage evidence hash when present.
-func CanonicalizeActionReceipt(r *operatorv1.ActionReceipt) ([]byte, error) {
+func CanonicalizeEventReceipt(r *operatorv1.EventReceipt) ([]byte, error) {
 	stageEvidenceHash, err := deterministicStageEvidenceHash(r.DeterministicStageEvidence)
 	if err != nil {
 		return nil, fmt.Errorf("%w: deterministic stage evidence: %w", constants.ErrL5ActuatorCanonicalizeReceipt, err)
@@ -1015,13 +1015,13 @@ func CanonicalizeActionReceipt(r *operatorv1.ActionReceipt) ([]byte, error) {
 	return payload, nil
 }
 
-func (w *L5Actuator) signReceipt(r *operatorv1.ActionReceipt) (string, error) {
+func (w *L5Actuator) signReceipt(r *operatorv1.EventReceipt) (string, error) {
 	if len(w.SigningKey) == 0 {
 		return "", constants.ErrL5ActuatorSigningKeyMissing
 	}
 
 	// Use canonical serialization for signing - shared with verification
-	payload, err := CanonicalizeActionReceipt(r)
+	payload, err := CanonicalizeEventReceipt(r)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", constants.ErrL5ActuatorCanonicalizeReceipt, err)
 	}
@@ -1030,13 +1030,13 @@ func (w *L5Actuator) signReceipt(r *operatorv1.ActionReceipt) (string, error) {
 	return hex.EncodeToString(sig), nil
 }
 
-// requireAuditStore fails closed unless the actuator owns an audit store able
+// requireEventsStore fails closed unless the actuator owns a local-first events store able
 // to persist receipts together with their commitment attestations. The
-// SQLAuditStore is the single owner of receipt records; there is no
+// LocalFirstEventsStore is the single owner of receipt records; there is no
 // receipt-less execution path.
-func (w *L5Actuator) requireAuditStore() error {
-	if w.SQLAuditStore == nil {
-		return constants.ErrL5ActuatorAuditStoreMissing
+func (w *L5Actuator) requireEventsStore() error {
+	if w.LocalFirstEventsStore == nil {
+		return constants.ErrL5ActuatorEventsStoreMissing
 	}
 	if len(w.AuditorSigningKey) == 0 {
 		return constants.ErrL5ActuatorAuditorKeyMissing
@@ -1044,7 +1044,7 @@ func (w *L5Actuator) requireAuditStore() error {
 	if w.AuditorKeyID == "" {
 		return constants.ErrL5ActuatorAuditorKeyIDMissing
 	}
-	if w.SQLAuditStore.CommitmentLedger() == nil {
+	if w.LocalFirstEventsStore.CommitmentLedger() == nil {
 		return constants.ErrL5ActuatorCommitmentLedger
 	}
 	return nil
@@ -1052,28 +1052,28 @@ func (w *L5Actuator) requireAuditStore() error {
 
 // LogEventReceipt records the signed event receipt on its chain event.
 // The row is filed under audit, the operator and session the runtime owns.
-func (w *L5Actuator) LogEventReceipt(_ context.Context, env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.ActionReceipt) error {
-	if w.SQLAuditStore == nil {
-		return constants.ErrL5ActuatorAuditStoreMissing
+func (w *L5Actuator) LogEventReceipt(_ context.Context, env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.EventReceipt) error {
+	if w.LocalFirstEventsStore == nil {
+		return constants.ErrL5ActuatorEventsStoreMissing
 	}
 	if env == nil {
 		return constants.ErrTxInvalidEnvelope
 	}
-	if err := w.SQLAuditStore.RecordEventReceipt(BuildEventReceiptRecord(env, audit, r)); err != nil {
+	if err := w.LocalFirstEventsStore.RecordEventReceipt(BuildEventReceiptRecord(env, audit, r)); err != nil {
 		if w.Logger != nil {
-			w.Logger.Error("Failed to record ActionReceipt in audit store", string(constants.ConnectionStateError), err)
+			w.Logger.Error("Failed to record EventReceipt in local-first events store", string(constants.ConnectionStateError), err)
 		}
-		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorAuditStore, err)
+		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorEventsStore, err)
 	}
 	return nil
 }
 
-// buildReceiptRecord constructs an EventReceiptRecord from a GovernanceEnvelope and ActionReceipt.
+// buildReceiptRecord constructs an EventReceiptRecord from a GovernanceEnvelope and EventReceipt.
 // This is the single source of truth for record construction, used by LogEventReceipt and the commitment-bound initial receipt write.
 // audit is the operator and session the audit row is filed under. It is passed explicitly because the
 // envelope's operator_id and operator_session_id are claims and are not the audit identity of a rejected
 // transaction; the signed receipt keeps the claims in its stage evidence.
-func BuildEventReceiptRecord(env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.ActionReceipt) *models.EventReceiptRecord {
+func BuildEventReceiptRecord(env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.EventReceipt) *models.EventReceiptRecord {
 	eventType := constants.EventType(env.EventType)
 	if eventType == "" && r.EventType != "" {
 		eventType = constants.EventType(r.EventType)
@@ -1100,7 +1100,7 @@ func BuildEventReceiptRecord(env *govtypes.GovernanceEnvelope, audit govtypes.Ru
 		L2Valid:           r.L2Status == operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,
 		L3Valid:           r.L3Status == operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
 		Timestamp:         time.Now().UTC(),
-		ActionReceipt:     proto.Clone(r).(*operatorv1.ActionReceipt),
+		EventReceipt:      proto.Clone(r).(*operatorv1.EventReceipt),
 	}
 }
 

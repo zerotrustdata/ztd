@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.3.0-green.svg)](docs/release_notes/v1.3.x/v1.3.0.md)
+[![Version](https://img.shields.io/badge/version-v1.4.0-green.svg)](docs/release_notes/v1.4.x/v1.4.0.md)
 
 ## Verify, then execute.
 
@@ -58,7 +58,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
                      │  - L4 Warden: Re-verifies hash & root  │
                      │  - L5 Actuator: Mint ephemeral cap     │
                      │  - Executes locally on target host     │
-                     │  - Appends signed ActionReceipt to     │
+                     │  - Appends signed EventReceipt to     │
                      │    local SQLite ledger & Git history   │
                      └────────────────────────────────────────┘
 ```
@@ -67,13 +67,13 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
 The Gateway is the front door and protocol coordinator. It ingests intent via MCP (`POST /mcp` or stdio), Agent-to-Agent (A2A), HTTP dispatch, or CLI. It checks technical bedrock rules, coordinates multi-agent consensus or human passkey authorizations, and packages admitted intent into a canonical, signed `GovernanceEnvelope`. It also serves the embedded browser console and hosts an in-process Operator substrate strictly for Gateway-local operations.
 
 ### The Policy Execution Point: Operator (`ztdo`)
-The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own local SQLite audit database and git file ledger.
+The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own Local-First Events Store (`data/ztd.db`) and git file ledger.
 
 Even if the Gateway is compromised, an Operator refuses to execute any envelope whose canonical transaction hash, state Merkle root, or cryptographic proofs fail its independent verification. Delivery from the Gateway does not equal authorization.
 
 The Operator logs below trace a model provenance observation from envelope verification through capability minting, execution, capability dissolution, and the completed receipt.
 
-![Operator logs showing an end-to-end model provenance observation, including transaction verification, ledger commitment, JIT capability lifecycle, and execution receipts.](docs/media/end-to-end-transaction-operator-logs.png)
+![Operator logs showing an end-to-end model provenance observation, including transaction verification, ledger commitment, JIT capability lifecycle, and event receipts.](docs/media/end-to-end-transaction-operator-logs.png)
 
 ---
 
@@ -102,12 +102,12 @@ Universal integrity checks (L1, L4, and L5) are mandatory in every posture. Fail
 
 ---
 
-## Local-First Audit Architecture (LFAA)
+## Local-First Events Architecture (LFEA)
 
 Most cloud-managed agent tools ship logs back to a vendor bucket. If the vendor goes down or credentials leak, your audit trail goes with it.
 
-ztd uses a **Local-First Audit Architecture**:
-- **Authoritative local store:** Each Operator maintains its own encrypted SQLite audit records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
+ztd uses a **Local-First Events Architecture**:
+- **Authoritative Local-First Events Store:** Each Operator maintains its own encrypted SQLite event records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
 - **Projections, not truth:** The Gateway mirrors receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
 - **Incremental Merkle commitment:** State roots are computed incrementally across 65,536 buckets in a 16-ary tree. Proofs don't degrade into full-table scans as your audit history grows.
 - **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_<owner>_N}}`) and rehydrated by the L5 Actuator inside the memory of the host that minted them, immediately before execution.
@@ -227,6 +227,7 @@ internal/
 protocol/             Canonical Protobuf schemas (proto/ztd/) and generated Go/TS bindings
 console/              React + TypeScript (Vite) web console (embedded into the Go binary)
 eval/                 Model evaluation fixtures, model catalogs, and rollout intake data
+demos/                Fictional organizations and runnable business infrastructure sandboxes
 docs/                 Complete platform architecture, developer invariants, and user guides
 ```
 
@@ -237,15 +238,20 @@ docs/                 Complete platform architecture, developer invariants, and 
 Always run test suites through `./ztd test <suite>` or the root `Makefile` (they configure mandatory FIPS tags, race detectors, and environment isolation):
 
 ```bash
+make test                # Full suite and quality gates, including a 100-Operator fleet smoke
+
 ./ztd test unit          # Fast, in-memory, parallel-safe unit tests
 ./ztd test integration   # Real SQLite/PKI/mTLS integration tests (-race enabled)
 ./ztd test lint          # Go lint; make lint adds vulnerability and doctrine checks
 ./ztd test chaos         # In-process synthetic governance fault injection
 
 make console-test        # Vitest suite for the browser console
+make demos-test          # Python/SQLite fictional business simulation checks
 make proto-generate      # Regenerate Go and TypeScript protobuf bindings
 make doctrines-validate  # Verify JSON doctrine rule definitions
 ```
+
+The full suite requires a Linux host capable of running the pinned FIPS binary, the development toolchain, workspace dependencies, Python 3, Playwright Chromium with its system dependencies, and Docker. Tests against your current Gateway are explicit targets; `make test-e2e-reset` warns and uses the existing CLI confirmation before resetting it. See the [Testing Guide](docs/devs/tests.md#run-the-full-suite) for categories and setup.
 
 ---
 
@@ -260,6 +266,7 @@ We document the architectural rationale, breaking changes, and operational scars
 - **Core Philosophy:** [docs/core/about.md](docs/core/about.md) and [docs/core/position_paper.md](docs/core/position_paper.md)
 - **Architecture Specs:** [docs/architecture/overview.md](docs/architecture/overview.md) and [docs/architecture/governance.md](docs/architecture/governance.md)
 - **Guides:** [docs/guides/getting_started.md](docs/guides/getting_started.md) and [docs/guides/unified_stack.md](docs/guides/unified_stack.md)
+- **Hands-on sandboxes:** [Fictional organizations](demos/README.md), starting with [Zero Trust Paper Company](demos/zero-trust-paper-company/README.md).
 
 ---
 

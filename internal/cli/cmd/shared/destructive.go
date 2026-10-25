@@ -126,7 +126,9 @@ func DefaultEvalBackupDir(cfg *config.Config) string {
 
 // EvalEvidenceBackup returns the standard pre-clean backup: a snapshot of host
 // evaluation evidence in the default backup directory, skipped when the
-// evidence is identical to the newest existing snapshot.
+// evidence is identical to the newest existing snapshot. fileSvcFactory must
+// provide an evidence file service so the backup can authenticate sealed records
+// under the runtime vault before committing a snapshot.
 func EvalEvidenceBackup(
 	configLoader func(string) (*config.Config, error),
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),

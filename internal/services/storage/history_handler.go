@@ -21,11 +21,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// auditStoreInterface defines the methods HistoryHandler needs from the audit store.
+// eventsStoreInterface defines the methods HistoryHandler needs from the events store.
 // This allows for dependency injection and unit testing with mocks.
-type auditStoreInterface interface {
+type eventsStoreInterface interface {
 	GetOperatorSession(sessionID string) (*OperatorSession, error)
-	GetEvents(scope models.AuditScope, limit, offset int) ([]*Event, error)
+	GetEvents(scope models.EventsScope, limit, offset int) ([]*Event, error)
 	GetFileMutations(eventID int64) ([]*FileMutationLog, error)
 	GetEventByExecutionID(executionID string) (*Event, error)
 	GetFileMutationByID(id int64) (*FileMutationLog, error)
@@ -53,26 +53,26 @@ type loggerInterface interface {
 }
 
 type HistoryHandler struct {
-	auditStore auditStoreInterface
-	ledger     ledgerInterface
-	logger     loggerInterface
-	fileSvc    fs.RuntimeFileService
-	workDir    string
+	eventsStore eventsStoreInterface
+	ledger      ledgerInterface
+	logger      loggerInterface
+	fileSvc     fs.RuntimeFileService
+	workDir     string
 }
 
 // NewHistoryHandler wires the history handler. fileSvc and workDir apply the
 // governed FILE_EDIT path policy to RESTORE_FILE destinations. The ledger is
 // required: file history, diff, and restore are served only from it.
-func NewHistoryHandler(auditStore auditStoreInterface, ledger ledgerInterface, logger loggerInterface, fileSvc fs.RuntimeFileService, workDir string) (*HistoryHandler, error) {
+func NewHistoryHandler(eventsStore eventsStoreInterface, ledger ledgerInterface, logger loggerInterface, fileSvc fs.RuntimeFileService, workDir string) (*HistoryHandler, error) {
 	if ledger == nil {
 		return nil, fmt.Errorf("history handler: %w", constants.ErrLedgerRequired)
 	}
 	return &HistoryHandler{
-		auditStore: auditStore,
-		ledger:     ledger,
-		logger:     logger,
-		fileSvc:    fileSvc,
-		workDir:    workDir,
+		eventsStore: eventsStore,
+		ledger:      ledger,
+		logger:      logger,
+		fileSvc:     fileSvc,
+		workDir:     workDir,
 	}, nil
 }
 
@@ -98,12 +98,12 @@ func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.Fe
 		"limit", limit,
 		"offset", offset)
 
-	session, err := hh.auditStore.GetOperatorSession(request.OperatorSessionId)
+	session, err := hh.eventsStore.GetOperatorSession(request.OperatorSessionId)
 	if err != nil {
 		return hh.fetchHistoryError(fmt.Errorf("failed to get session: %w", err))
 	}
 
-	events, err := hh.auditStore.GetEvents(models.AuditScope{OperatorSessionID: request.OperatorSessionId}, limit, offset)
+	events, err := hh.eventsStore.GetEvents(models.EventsScope{OperatorSessionID: request.OperatorSessionId}, limit, offset)
 	if err != nil {
 		return hh.fetchHistoryError(fmt.Errorf("failed to get events: %w", err))
 	}
@@ -145,7 +145,7 @@ func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.Fe
 		}
 
 		if event.Type == constants.Event.Operator.FileEdit.Completed {
-			mutations, err := hh.auditStore.GetFileMutations(event.ID)
+			mutations, err := hh.eventsStore.GetFileMutations(event.ID)
 			if err != nil {
 				hh.logger.Warn("Failed to get file mutations", "event_id", event.ID, string(constants.ConnectionStateError), err)
 			} else {
@@ -266,7 +266,7 @@ func (hh *HistoryHandler) GetFileAtCommit(filePath, commitHash, operatorSessionI
 // FetchExecutionLogs returns the execution event recorded for an execution ID, raw and
 // decrypted. events is the sole execution record. The results publisher scrubs it on egress.
 func (hh *HistoryHandler) FetchExecutionLogs(executionID string) (*operatorv1.FetchLogsResult, error) {
-	event, err := hh.auditStore.GetEventByExecutionID(executionID)
+	event, err := hh.eventsStore.GetEventByExecutionID(executionID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch logs: %w", err)
 	}
@@ -290,7 +290,7 @@ func (hh *HistoryHandler) FetchExecutionLogs(executionID string) (*operatorv1.Fe
 // FetchFileDiff resolves one file mutation row and computes its diff from the session
 // ledger, in memory. The diff is returned raw; the results publisher scrubs it on egress.
 func (hh *HistoryHandler) FetchFileDiff(mutationID int64) (*operatorv1.FileDiffEntry, error) {
-	mutation, err := hh.auditStore.GetFileMutationByID(mutationID)
+	mutation, err := hh.eventsStore.GetFileMutationByID(mutationID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch file diff: %w", err)
 	}
@@ -300,7 +300,7 @@ func (hh *HistoryHandler) FetchFileDiff(mutationID int64) (*operatorv1.FileDiffE
 // ListFileDiffs returns the newest file mutations of an operator session, optionally
 // filtered to one file path. The entries carry the diff size but not the diff content.
 func (hh *HistoryHandler) ListFileDiffs(operatorSessionID, filePath string, limit int) ([]*operatorv1.FileDiffEntry, error) {
-	mutations, err := hh.auditStore.ListFileMutationsBySession(operatorSessionID, limit)
+	mutations, err := hh.eventsStore.ListFileMutationsBySession(operatorSessionID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list file diffs: %w", err)
 	}

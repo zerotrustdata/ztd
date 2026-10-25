@@ -62,7 +62,7 @@ func judgmentResponse(req *operatorv1.InferenceDispatchRequest, text string) *op
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: "tx-" + req.GetProviderAttemptId(),
 		Result:        result,
-		Receipt:       &operatorv1.ActionReceipt{ResultSummary: result.GetResultDigest()},
+		Receipt:       &operatorv1.EventReceipt{ResultSummary: result.GetResultDigest()},
 	}
 }
 
@@ -150,7 +150,7 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 		JudgeModelTag:    judgeModelTag,
 		JudgeModelDigest: strings.Repeat("d", 64),
 		TransactionID:    "tx-judge-final_reply",
-		Receipt:          &operatorv1.ActionReceipt{ResultSummary: "digest"},
+		Receipt:          &operatorv1.EventReceipt{ResultSummary: "digest"},
 		Result:           scores[0].Result,
 		RubricVersion:    RubricVersion,
 	}, scores[0])

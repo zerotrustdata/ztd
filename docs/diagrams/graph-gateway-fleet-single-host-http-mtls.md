@@ -36,8 +36,8 @@ graph TD
     subgraph Fleet ["Sovereign Hosts — Outbound-Only PEP"]
         O1["Governed Operator · data<br/>cmd:&lt;operator-id&gt;:&lt;session-id&gt;"]
         O2["Governed Operator · inference"]
-        D1[("Per-Operator Local Store<br/>SQLite audit DB · Commitment Ledger")]
-        D2[("Per-Operator Local Store<br/>SQLite audit DB · Commitment Ledger")]
+        D1[("Per-Operator Local Store<br/>SQLite events DB · Commitment Ledger")]
+        D2[("Per-Operator Local Store<br/>SQLite events DB · Commitment Ledger")]
         O1 --- D1
         O2 --- D2
     end
@@ -66,4 +66,4 @@ graph TD
 - **Unified Binary, Distinct Modes**: A single static binary (`ztd`) runs as Gateway (`ztd gw start`) or Operator (`ztd operator start`). Gateway mode embeds an in-process Operator substrate for local execution.
 - **Listener Isolation**: Remote Operators establish outbound WebSocket connections to the Gateway pub/sub broker (`/api/v1/pubsub/stream`). Operators expose no inbound listeners; `ztd operator start` has no listen flags.
 - **Gateway Auxiliary Listeners**: Defaults from `ztd gw start --help`: `--listen-host` 127.0.0.1; public spectator private listener 127.0.0.1:8081 and public listener 127.0.0.1:8082; eval explorer 127.0.0.1:5173; pprof disabled unless `--pprof-listen` is set.
-- **Sovereign Audit Storage (LFAA)**: Each Operator strictly owns its local SQLite audit database and Commitment Ledger under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.
+- **Sovereign Audit Storage (LFEA)**: Each Operator strictly owns its local SQLite events database and Commitment Ledger under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.

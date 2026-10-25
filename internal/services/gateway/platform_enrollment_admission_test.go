@@ -29,7 +29,7 @@ type cancelAfterCreateProcessor struct {
 	afterCreate func()
 }
 
-func (p *cancelAfterCreateProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (p *cancelAfterCreateProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	receipt, err := p.inner.ProcessEnvelope(ctx, payload)
 	if err == nil && decodeActionTypeFromWire(payload) == string(constants.PlatformEnrollmentActionCreate) {
 		p.afterCreate()
@@ -42,7 +42,7 @@ type cancelDuringIssueProcessor struct {
 	cancel context.CancelFunc
 }
 
-func (p *cancelDuringIssueProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (p *cancelDuringIssueProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	receipt, err := p.inner.ProcessEnvelope(ctx, payload)
 	if err == nil && decodeActionTypeFromWire(payload) == string(constants.PlatformEnrollmentActionIssue) {
 		p.cancel()

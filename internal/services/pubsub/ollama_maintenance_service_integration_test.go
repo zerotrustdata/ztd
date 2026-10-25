@@ -142,7 +142,7 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_RecordsObservedStateEvi
 
 		env.svc.HandleInventoryRequest(t.Context(), ollamaInventoryMessage(t, "exec-1"))
 
-		events, err := env.audit.ListEvents(ollamaTestSessionID, 10, 0)
+		events, err := env.eventsStore.ListEvents(ollamaTestSessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.OllamaModelInventory.Completed, events[0].Type)
@@ -156,7 +156,7 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_RecordsObservedStateEvi
 
 		env.svc.HandleInventoryRequest(t.Context(), ollamaInventoryMessage(t, "exec-1"))
 
-		events, err := env.audit.ListEvents(ollamaTestSessionID, 10, 0)
+		events, err := env.eventsStore.ListEvents(ollamaTestSessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.OllamaModelInventory.Failed, events[0].Type)
@@ -164,7 +164,7 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_RecordsObservedStateEvi
 
 	t.Run("evidence failure never blocks the published result", func(t *testing.T) {
 		// The session is never created, so the real store rejects the evidence event.
-		env := newOllamaMaintenanceEnvWithAudit(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestAuditStore(t))
+		env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t))
 
 		env.svc.HandleInventoryRequest(t.Context(), ollamaInventoryMessage(t, "exec-1"))
 

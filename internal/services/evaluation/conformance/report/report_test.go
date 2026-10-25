@@ -31,7 +31,7 @@ var allPostures = []evalv1.EvaluationGovernancePosture{
 func l1Observation(bundleHash string) *evalv1.ConformanceObservation {
 	return &evalv1.ConformanceObservation{
 		Rejection: &operatorv1.GovernanceRejection{
-			Receipt: &operatorv1.ActionReceipt{
+			Receipt: &operatorv1.EventReceipt{
 				DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{
 					Kind:               operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
 					DoctrineBundleHash: bundleHash,

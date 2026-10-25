@@ -41,7 +41,7 @@ type mockAuditReader struct {
 	mutationsErr error
 }
 
-func (m *mockAuditReader) ListEventReceipts(_ models.AuditScope, _, _ int) ([]*models.EventReceiptRecord, error) {
+func (m *mockAuditReader) ListEventReceipts(_ models.EventsScope, _, _ int) ([]*models.EventReceiptRecord, error) {
 	if m.receiptsErr != nil {
 		return nil, m.receiptsErr
 	}
@@ -169,8 +169,8 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 	t.Helper()
 	privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 	signerKeyID := hex.EncodeToString(privateKey.Public().(ed25519.PublicKey))
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-1", StateRootBefore: "state-before", StateRootAfter: "state-after", ExecutedAtUnixMs: 1_700_000_001_000, SignerKeyId: signerKeyID}
-	payload, err := governance.CanonicalizeActionReceipt(receipt)
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-1", StateRootBefore: "state-before", StateRootAfter: "state-after", ExecutedAtUnixMs: 1_700_000_001_000, SignerKeyId: signerKeyID}
+	payload, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: receipt.TransactionId, ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}), PersistedAtUnixMs: 1_700_000_002_000, AuditRecordId: receipt.TransactionId, SignerKeyId: signerKeyID}
@@ -193,7 +193,7 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 			receipts: []*models.EventReceiptRecord{{
 				TransactionID: receipt.TransactionId, TransactionHash: receipt.TransactionHash,
 				StateRootBefore: receipt.StateRootBefore, StateRootAfter: receipt.StateRootAfter,
-				ExecutedAt: now, Signature: receipt.Signature, SignerKeyID: receipt.SignerKeyId, ActionReceipt: receipt,
+				ExecutedAt: now, Signature: receipt.Signature, SignerKeyID: receipt.SignerKeyId, EventReceipt: receipt,
 			}},
 			events:    []*storage.Event{{ID: 1, OperatorSessionID: "sess-1"}},
 			mutations: []*storage.FileMutationLog{{ID: 1, Filepath: "/etc/config"}},
@@ -223,7 +223,7 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 }
 
 func testKSIMethod(name string, property KSIMeasuredProperty, evaluate ksiMethodEvaluator) KSIMethod {
-	return newKSIMethod(name, KSIArtifactActionReceipts, KSICollectionAuditStore, KSIVerifierStructural, property, evaluate)
+	return newKSIMethod(name, KSIArtifactEventReceipts, KSICollectionEventsStore, KSIVerifierStructural, property, evaluate)
 }
 
 // testBinding returns a valid EvaluationBinding for evaluator tests.
@@ -962,25 +962,25 @@ func TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification(t *testin
 		want   bool
 	}{
 		{name: "valid receipt and persistence", want: true},
-		{name: "missing canonical receipt", mutate: func(audit *mockAuditReader) { audit.receipts[0].ActionReceipt = nil }},
+		{name: "missing canonical receipt", mutate: func(audit *mockAuditReader) { audit.receipts[0].EventReceipt = nil }},
 		{name: "record signature binding mismatch", mutate: func(audit *mockAuditReader) { audit.receipts[0].Signature = "different" }},
 		{name: "malformed receipt signature", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.Signature = "not-hex"
+			audit.receipts[0].EventReceipt.Signature = "not-hex"
 			audit.receipts[0].Signature = "not-hex"
 		}},
 		{name: "missing final persistence attestation", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.FinalPersistenceAttestation = nil
+			audit.receipts[0].EventReceipt.FinalPersistenceAttestation = nil
 		}},
 		{name: "mutated persistence signature", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.FinalPersistenceAttestation.Signature = "not-hex"
+			audit.receipts[0].EventReceipt.FinalPersistenceAttestation.Signature = "not-hex"
 		}},
 		{name: "mutated receipt signature digest", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.FinalPersistenceAttestation.ReceiptSignatureDigest = "wrong-digest"
+			audit.receipts[0].EventReceipt.FinalPersistenceAttestation.ReceiptSignatureDigest = "wrong-digest"
 		}},
 		{name: "one invalid receipt among valid receipts", mutate: func(audit *mockAuditReader) {
 			invalid := *audit.receipts[0]
 			invalid.TransactionID = "tx-2"
-			invalid.ActionReceipt = nil
+			invalid.EventReceipt = nil
 			audit.receipts = append(audit.receipts, &invalid)
 		}},
 	}

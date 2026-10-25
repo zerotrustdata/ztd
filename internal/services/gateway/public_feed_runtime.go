@@ -101,9 +101,6 @@ func ValidatePublicMirrorOrigin(origin string) error {
 // mirror listeners with distinct addresses. When allowContainerBind is true,
 // 0.0.0.0 is also accepted so a container network can reach the listener.
 func ValidatePublicMirrorListenAddresses(privateAddress, publicAddress string, allowContainerBind bool) error {
-	if privateAddress == publicAddress {
-		return fmt.Errorf("%w: duplicate address %q", constants.ErrPublicFeedListenAddress, privateAddress)
-	}
 	for _, address := range []string{privateAddress, publicAddress} {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil {
@@ -112,6 +109,9 @@ func ValidatePublicMirrorListenAddresses(privateAddress, publicAddress string, a
 		if !isAllowedPublicMirrorListenHost(host, allowContainerBind) {
 			return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, address)
 		}
+	}
+	if _, port, err := net.SplitHostPort(privateAddress); err == nil && port != "0" && sameListenAddress(privateAddress, publicAddress) {
+		return fmt.Errorf("%w: duplicate address %q", constants.ErrPublicFeedListenAddress, privateAddress)
 	}
 	return nil
 }

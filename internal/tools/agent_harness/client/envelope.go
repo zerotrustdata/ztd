@@ -45,5 +45,5 @@ func (c *Client) SubmitEnvelopeBody(ctx context.Context, p Persona, body []byte)
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: submit governance envelope: %w", err)
 	}
-	return decodeHTTPOutcome(status, raw, &operatorv1.ActionReceipt{}), nil
+	return decodeHTTPOutcome(status, raw, &operatorv1.EventReceipt{}), nil
 }

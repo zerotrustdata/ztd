@@ -334,8 +334,8 @@ func TestApproveFlow(t *testing.T) {
 		assert.Contains(t, m.ledger[0].message, "No pending approvals")
 	})
 
-	completedReceipt := func(txHash string) *operatorv1.ActionReceipt {
-		return &operatorv1.ActionReceipt{
+	completedReceipt := func(txHash string) *operatorv1.EventReceipt {
+		return &operatorv1.EventReceipt{
 			TransactionHash: txHash,
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
@@ -364,7 +364,7 @@ func TestApproveFlow(t *testing.T) {
 		m := NewModel(Options{Session: &testSession{}})
 		m.awaitingApproval["tx-1"] = struct{}{}
 
-		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: &operatorv1.ActionReceipt{
+		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: &operatorv1.EventReceipt{
 			TransactionHash: "tx-1",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -383,17 +383,17 @@ func TestApproveFlow(t *testing.T) {
 
 	failures := []struct {
 		name    string
-		receipt *operatorv1.ActionReceipt
+		receipt *operatorv1.EventReceipt
 		want    string
 	}{
 		{name: "missing receipt", receipt: nil, want: "receipt"},
 		{name: "receipt for another transaction", receipt: completedReceipt("tx-other"), want: "does not match"},
-		{name: "failed execution", receipt: &operatorv1.ActionReceipt{
+		{name: "failed execution", receipt: &operatorv1.EventReceipt{
 			TransactionHash: "tx-1",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
 		}, want: "did not complete"},
-		{name: "completed without L3 proof", receipt: &operatorv1.ActionReceipt{
+		{name: "completed without L3 proof", receipt: &operatorv1.EventReceipt{
 			TransactionHash: "tx-1",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			L3Status:        operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,

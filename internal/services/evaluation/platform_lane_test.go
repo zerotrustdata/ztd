@@ -81,8 +81,8 @@ func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotAComple
 		{name: "refusal", outcome: laneRefusalOutcome(t, http.StatusBadRequest, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, Error: "malformed"})},
 		{name: "untyped answer", outcome: laneUntypedOutcome(), typed: constants.ErrIngressResponseUntyped},
 		{name: "suspended for approval", outcome: laneSuspendedOutcome("tx-suspended")},
-		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
-		{name: "receipt without a status", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1"}})},
+		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
+		{name: "receipt without a status", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-1"}})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -175,7 +175,7 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 		{name: "transport error", err: errors.New("transport unavailable")},
 		{name: "dispatch rejected", outcome: laneRejectionOutcome(t)},
 		{name: "untyped answer", outcome: laneUntypedOutcome()},
-		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
+		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
 		{name: "no result payload", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: completed})},
 		{name: "operator read failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: failed, Receipt: completed})},
 	}
@@ -298,8 +298,8 @@ func laneCanonicalBody(t *testing.T, msg proto.Message) []byte {
 }
 
 // laneCompletedReceipt is the receipt of a completed execution of transaction tx-1.
-func laneCompletedReceipt() *operatorv1.ActionReceipt {
-	return &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+func laneCompletedReceipt() *operatorv1.EventReceipt {
+	return &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 }
 
 // laneReceiptOutcome is the typed outcome of a 200 dispatch the Operator answered with a receipt.
@@ -348,5 +348,5 @@ func laneSuspendedOutcome(txHash string) *client.GovernedOutcome {
 
 // laneRejection is the governance rejection the Operator signs for a refused dispatch.
 func laneRejection() *operatorv1.GovernanceRejection {
-	return &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-rejected"}}
+	return &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-rejected"}}
 }

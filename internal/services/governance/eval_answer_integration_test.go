@@ -119,8 +119,8 @@ func TestEvalAnswerVerification(t *testing.T) {
 
 	// 4. Execute through L5Actuator
 	keyID := "test-key-id"
-	actuator, auditStore := newCommitmentTestActuator(t)
-	require.NoError(t, auditStore.CreateSession("operator-session-1", constants.SessionTypeOperator, "eval fixture", "test-user"))
+	actuator, eventsStore := newCommitmentTestActuator(t)
+	require.NoError(t, eventsStore.CreateSession("operator-session-1", constants.SessionTypeOperator, "eval fixture", "test-user"))
 	actuator.StateRootProvider = testutil.NewMockStateRootProvider("test-state-root-v1")
 	actuator.ExecutionHandler = &mockExecutionHandler{
 		ExecuteVerifiedTransactionFunc: func(ctx context.Context, eventType constants.EventType, cmdMsg CommandMessage) (string, error) {

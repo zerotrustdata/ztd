@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// ValidateAuditRecordRequest ensures the event is a registered LFAA audit ingest request
+// ValidateAuditRecordRequest ensures the event is a registered LFEA audit ingest request
 // and returns the recorded fact event that must be persisted.
 func ValidateAuditRecordRequest(event EventType) (EventType, error) {
 	entry, ok := Registry.Lookup(event)

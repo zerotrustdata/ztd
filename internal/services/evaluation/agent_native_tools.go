@@ -87,9 +87,9 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 			for k, v := range schema.Properties {
 				props[k] = v
 			}
-			// For audit_receipt_list, operator_session_id is only required in Gateway mode.
+			// For event_receipt_list, operator_session_id is only required in Gateway mode.
 			// Operator-local execution requires only investigation_id, which the executor defaults.
-			if name != constants.MCPToolAuditReceiptList {
+			if name != constants.MCPToolEventReceiptList {
 				required = append([]string(nil), schema.Required...)
 			}
 		}

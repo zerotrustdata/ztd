@@ -64,7 +64,7 @@ type Config struct {
 	// load, or building the harness client fails.
 	CLIAuth Auth `json:"cli_auth"`
 
-	// OperatorSessionID scopes audit receipt queries to the real Operator that
+	// OperatorSessionID scopes event receipt queries to the real Operator that
 	// executed the work. If empty, Agent Harness tries to discover it from /api/operators.
 	OperatorSessionID string `json:"operator_session_id"`
 

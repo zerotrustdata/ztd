@@ -218,38 +218,59 @@ help:
 		'  release-rehearse          Run the release workflow on main without publishing' \
 		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
 		'' \
-		'Test and quality' \
-		'  test                      Run unit and in-process integration tests' \
+		'Full test suite' \
+		'  test                      Run every local test and quality gate (100-Operator smoke)' \
+		'  test-quality              Format, lint, typecheck, and check generated artifacts' \
+		'  test-platform             Unit, integration, eval-stack, coverage, and burst tests' \
+		'  test-components           Console, explorer, adapter, protocol, website, and demo tests' \
+		'  test-scripts              Release, commit hygiene, and onboarding tests' \
+		'  test-process              Cross-process eval, conformance, release smoke, and deployment' \
+		'' \
+		'Platform tests' \
 		'  test-unit                 Run Tier 1 unit tests' \
 		'  test-integration          Run Tier 2 in-process integration tests' \
+		'  test-eval-stack           Run real eval-stack integration tests' \
+		'  test-fips                 Run unit and integration tests with the pinned FIPS module' \
 		'  test-enrollment-burst     Run the enrollment timing contract without instrumentation' \
-		'  test-operator-burst       Run the 2000-Operator transport burst without instrumentation' \
+		'  test-operator-burst       Run the 100-Operator transport smoke without instrumentation' \
 		'  test-coverage             Run tests and enforce $(COVERAGE_THRESHOLD)% coverage (PKG=..., VERBOSE=true)' \
-		'  test-cross-enrollment     Run Tier 3 cross-enrollment E2E tests' \
-		'  test-scale                Operator fleet scale qualification (SCALE_COUNT=100, SCALE_ARGS=...)' \
+		'  test-scale                Operator fleet smoke (SCALE_COUNT=100, SCALE_ARGS=...)' \
+		'  test-eval-loop            Cross-process eval qualification under ratify and notary' \
+		'  test-conformance-loop     Cross-process conformance qualification under every posture' \
+		'  test-release-smoke        Isolated governed execution and evidence smoke' \
+		'  test-operator-deploy      Isolated Linux Operator deployment lifecycle' \
 		'  test-airgap               Verify the vendored air-gap build' \
 		'  test-go-import            Build a fresh module that imports ztd via a replace directive' \
 		'  test-onboarding           Hermetic tests for the setup and quickstart scripts' \
 		'  test-onboarding-docker    Fresh-host onboarding in clean Linux containers (DISTROS=..., SCENARIOS=...)' \
+		'  test-release-scripts      Release workflow regression tests' \
+		'  test-commit-hygiene       Commit hygiene regression tests' \
+		'' \
+		'Explicit environment tests (excluded from make test)' \
+		'  test-e2e                  Run against the current Gateway (E2E_RUN=..., E2E_ARGS=...)' \
+		'  test-e2e-reset            Confirm a local Gateway reset, then run E2E (E2E_POSTURE=...)' \
+		'  test-cross-enrollment     Run against a prepared cross-enrollment topology' \
+		'  test-eval-live            Tier 4 live-provider gate (LIVE_OLLAMA_ENDPOINT, LIVE_MODEL)' \
+		'  test-onboarding-smoke     Contributor setup and release smoke in a fresh checkout' \
+		'' \
+		'Quality checks' \
 		'  lint                      Run all lint and quality checks' \
 		'  fmt                       Format all Go source files' \
 		'  vulncheck                 Check Go dependencies for vulnerabilities' \
 		'  bsl-headers-check         Verify first-party BSL 1.1 headers' \
 		'  version-sync-check        Check version declarations against VERSION' \
 		'  doctrines-validate        Validate doctrine JSON syntax' \
+		'  constants-check           Check generated constants for drift' \
+		'  explorer-catalog-check    Check the explorer scenario catalog and wire enums for drift' \
+		'  third-party-notices-check Check THIRD_PARTY_NOTICES.md for drift' \
 		'' \
 		'Generated artifacts' \
+		'  generate                  Regenerate protobufs, constants, explorer catalog, notices, and OpenAPI' \
 		'  proto-generate            Generate Go and Node protobuf artifacts' \
 		'  constants-generate        Generate constants from the event registry' \
-		'  constants-check           Check generated constants for drift' \
 		'  explorer-catalog-generate Generate the explorer scenario catalog and wire enums from Go' \
-		'  explorer-catalog-check    Check the explorer scenario catalog and wire enums for drift' \
 		'  third-party-notices       Regenerate THIRD_PARTY_NOTICES.md' \
-		'  third-party-notices-check Check THIRD_PARTY_NOTICES.md for drift' \
 		'  swagger-generate          Generate the Gateway OpenAPI specification' \
-		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
-		'  website-test              Test the website generator and Worker' \
-		'  website-bundle-check      Validate the Cloudflare Worker bundle (wrangler dry run)' \
 		'' \
 		'Components' \
 		'  console-build             Build the console SPA' \
@@ -260,25 +281,72 @@ help:
 		'  explorer-embed            Build and embed the evaluation explorer' \
 		'  explorer-embed-check      Check the committed explorer embed for drift' \
 		'  explorer-test             Run evaluation explorer tests' \
+		'  explorer-e2e              Run explorer browser tests against the development bundle' \
+		'  explorer-e2e-production   Run explorer browser tests against the production bundle' \
 		'  explorer-lint             Typecheck and lint the evaluation explorer' \
+		'  adapter-test              Run audited browser adapter tests' \
+		'  adapter-lint              Typecheck the adapter and reference frontends' \
+		'  adapter-contract-check    Check the generated observe frontend contract pack' \
+		'  protocol-test             Run Node protocol tests and Go hash-parity vectors' \
+		'  protocol-lint             Typecheck the Node protocol bindings' \
+		'  demos-test                Test the fictional business simulation' \
 		'  claude-plugin-test        Test, shellcheck, and validate the Claude Code plugin' \
+		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
+		'  website-test              Test the website generator and Worker' \
+		'  website-bundle-check      Validate the Cloudflare Worker bundle (wrangler dry run)' \
 		'' \
 		'Run locally' \
-		'  quickstart                Start a Gateway, sign in, and run a first governed action (QUICKSTART_ARGS)' \
-		'  up                        Build and start the Gateway on this host (GW_ARGS)' \
+		'  quickstart                Start a Gateway, sign in, and run a first governed action' \
+		'  up                        Build and start the Gateway on this host' \
 		'  up-public                 Like up, listening on all interfaces for Operators on other hosts' \
-		'  gw                        Start the Gateway with every embedded Operator capability (GW_CAPABILITIES, MODEL_STORAGE_ROOT, GW_ARGS)' \
+		'  gw                        Start the Gateway with every embedded Operator capability' \
 		'  gw-public                 Like gw, listening on all interfaces for Operators on other hosts' \
-		'  operator                  Run an outbound Operator in the foreground (OPERATOR_ARGS)' \
+		'  operator                  Run an outbound Operator in the foreground' \
 		'  status                    Show Gateway status, Operators, and pending enrollments' \
 		'  down                      Stop local Operators, then the host Gateway' \
 		'  stop                      Alias for down' \
-		'  ZTD_ARGS                  Global CLI flags shared by up, gw, operator, status, and down' \
+		'  env                       Show optional settings and examples for local commands' \
 		'' \
 		'Maintenance' \
 		'  clean                     Remove build artifacts and Go caches' \
 		'  harness-clean             Remove stale test harness directories' \
 		'  buf-install               Install Buf when it is unavailable'
+
+.PHONY: env
+env:
+	@printf '%s\n' \
+		'Optional settings for local commands' \
+		'' \
+		'For normal use, just run make quickstart, make up, make status, or make down.' \
+		'Override a setting only when needed: make <target> NAME="value"' \
+		'' \
+		'  ZTD_ARGS            Global CLI flags for up, gw, operator, status, and down (default: none)' \
+		'  GW_ARGS             Extra gw start flags for up and gw (default: none)' \
+		'  OPERATOR_ARGS       Extra operator start flags (default: none)' \
+		'  QUICKSTART_ARGS     Options for the quickstart script (default: none)' \
+		'  GW_CAPABILITIES     Embedded Operator capabilities for gw (default: data,inference,observer)' \
+		'  MODEL_STORAGE_ROOT  Local model store; enables provenance for gw (default: unset)' \
+		'' \
+		'Examples:' \
+		'  make status ZTD_ARGS="--json"' \
+		'  make gw MODEL_STORAGE_ROOT=~/.ollama/models' \
+		'' \
+		'See ./ztd --help, ./ztd gw start --help, ./ztd operator start --help,' \
+		'or bash scripts/quickstart.sh --help for available flags.'
+
+# =============================================================================
+# ARTIFACT GENERATION
+# =============================================================================
+# Keep stages sequential under make -j: Go-based generators consume the fresh
+# protobuf bindings. Component builds and validation have separate targets.
+.PHONY: generate
+generate:
+	@$(MAKE) proto-generate
+	@$(MAKE) constants-generate
+	@$(MAKE) explorer-catalog-generate
+	@$(MAKE) third-party-notices
+	@$(MAKE) swagger-generate
+	@echo "Artifact generation complete."
 
 .PHONY: constants-generate constants-check
 constants-generate:
@@ -411,6 +479,11 @@ test-commit-hygiene:
 test-onboarding:
 	@bash scripts/test-onboarding.sh
 
+.PHONY: test-onboarding-smoke
+test-onboarding-smoke:
+	@echo 'WARNING: This runs contributor setup and requires a fresh checkout without runtime state or .env.'
+	@bash scripts/ci/onboarding-smoke.sh
+
 DISTROS ?= ubuntu debian fedora arch
 SCENARIOS ?= build-only rerun quickstart
 test-onboarding-docker:
@@ -448,8 +521,8 @@ dev-tools-if-needed:
 
 .PHONY: dev-node
 dev-node:
-	@echo "Installing Node dependencies (protocol/node, console, ztd-adapter, website)..."
-	@set -e; source scripts/lib/dev-setup-common.sh; for dir in protocol/node console ztd-adapter website; do \
+	@echo "Installing Node dependencies (protocol/node, console, evaluation-explorer, ztd-adapter, website)..."
+	@set -e; source scripts/lib/dev-setup-common.sh; for dir in protocol/node console evaluation-explorer ztd-adapter website; do \
 		if ! ztd_node_deps_current "$$dir"; then \
 			echo "  installing dependencies in $$dir..."; \
 			npm ci --prefix "$$dir"; \
@@ -677,8 +750,7 @@ verify-static:
 		{ echo "ERROR: $(STATIC_BINARY) has dynamic dependencies"; ldd "$(STATIC_BINARY)"; exit 1; }
 	@echo "$(STATIC_BINARY) is statically linked."
 
-# Format all Go source files. Build targets no longer format the working tree;
-# run this explicitly or wire it into a pre-commit hook.
+# Format before the full test suite so checks and builds see the same sources.
 .PHONY: fmt
 fmt:
 	@gofmt -w .
@@ -687,10 +759,61 @@ fmt:
 # =============================================================================
 # TEST
 # =============================================================================
-# Core test targets
+# The full gate deliberately sequences groups, even under make -j. Formatting
+# must finish before checks/builds, and process/scale suites must not compete
+# for host resources or the same Gateway ports. Leaf targets remain available
+# for focused runs. Live-provider qualification needs an explicitly chosen
+# endpoint/model and has its own test-eval-live target.
 .PHONY: test
-test: test-unit test-integration
+test:
+	@$(MAKE) test-quality
+	@$(MAKE) test-platform
+	@$(MAKE) test-components
+	@$(MAKE) test-scripts
+	@$(MAKE) test-process
+	@$(MAKE) test-scale SCALE_COUNT=$(SCALE_COUNT)
+	@$(MAKE) test-onboarding-docker SCENARIOS='build-only rerun quickstart contributor release-smoke'
 	@echo "All tests completed successfully."
+
+.PHONY: test-quality test-platform test-components test-scripts test-process
+test-quality:
+	@$(MAKE) fmt
+	@$(MAKE) lint bsl-headers-check version-sync-check constants-check explorer-catalog-check third-party-notices-check
+	@$(MAKE) console-lint explorer-lint adapter-lint protocol-lint
+	@$(MAKE) adapter-contract-check console-embed-check explorer-embed-check website-bundle-check
+
+test-platform:
+	@$(MAKE) test-unit
+	@$(MAKE) test-integration
+	@$(MAKE) test-fips
+	@$(MAKE) test-eval-stack
+	@$(MAKE) test-coverage
+	@$(MAKE) test-enrollment-burst
+	@$(MAKE) test-operator-burst
+	@$(MAKE) test-airgap
+	@$(MAKE) test-go-import
+
+test-components:
+	@$(MAKE) console-test
+	@$(MAKE) explorer-test
+	@$(MAKE) explorer-e2e
+	@$(MAKE) explorer-e2e-production
+	@$(MAKE) adapter-test
+	@$(MAKE) protocol-test
+	@$(MAKE) website-test
+	@$(MAKE) demos-test
+	@$(MAKE) claude-plugin-test
+
+test-scripts:
+	@$(MAKE) test-release-scripts
+	@$(MAKE) test-commit-hygiene
+	@$(MAKE) test-onboarding
+
+test-process:
+	@$(MAKE) test-eval-loop
+	@$(MAKE) test-conformance-loop
+	@$(MAKE) test-release-smoke
+	@$(MAKE) test-operator-deploy
 
 # Unit Tests: no build tags, so integration and e2e files are excluded.
 .PHONY: test-unit
@@ -704,6 +827,12 @@ test-unit: constants-check
 test-integration:
 	@echo "Running Tier 2 (In-Process Integration) tests..."
 	@go test $(if $(TEST_P),-p=$(TEST_P),) -tags=integration $(TEST_RACE) $(TEST_COUNT) -timeout $(TEST_TIMEOUT) $(TEST_PKGS)
+
+.PHONY: test-fips
+test-fips:
+	@$(MAKE) fips-verify
+	@GOFIPS140=$(GOFIPS140_VERSION) $(MAKE) test-unit
+	@GOFIPS140=$(GOFIPS140_VERSION) $(MAKE) test-integration
 
 # Real eval stack tests (fixtures.NewEvalStack: Gateway plus outbound Data and
 # Inference Operators) skip without the evalstack tag, so they never run in CI.
@@ -723,13 +852,13 @@ test-eval-stack:
 test-enrollment-burst:
 	@echo "Running the uninstrumented enrollment burst timing contract..."
 	@go test -tags=integration $(TEST_COUNT) -timeout $(TEST_TIMEOUT) \
-		-run '^TestPlatformEnrollmentBurst$$' ./internal/services/gateway
+		-run '^TestPlatformEnrollmentBurst' ./internal/services/gateway
 
-# The Operator transport burst enrolls 2000 in-process Operators, a size only
-# an uninstrumented build carries; the race build runs the same contract small.
+# The Operator transport smoke enrolls 100 in-process Operators without
+# instrumentation; the race build runs the same contract with a smaller cohort.
 .PHONY: test-operator-burst
 test-operator-burst:
-	@echo "Running the uninstrumented 2000-Operator transport burst..."
+	@echo "Running the uninstrumented 100-Operator transport smoke..."
 	@go test -tags=integration $(TEST_COUNT) -timeout 15m \
 		-run '^TestOperatorTransportBoundary_BurstDeliversEveryCommittedIdentity$$' ./test
 
@@ -738,17 +867,52 @@ test-operator-burst:
 # started in operator mode against it, with the owner bootstrapped.
 .PHONY: test-cross-enrollment
 test-cross-enrollment:
-	@echo "Running Tier 3 cross-enrollment E2E tests..."
-	@./ztd test e2e --run 'TestCrossEnrollment'
+	@$(MAKE) test-e2e E2E_RUN='TestCrossEnrollment'
 
 # Operator fleet scale qualification: starts an isolated Gateway in a fresh
 # scratch root, deploys SCALE_COUNT real Operators, runs the fleet soak/fan-out
 # and Gateway restart scenarios, and always tears down its own processes.
-# Never part of `make test`. Extra flags: SCALE_ARGS='--soak 10m --root DIR'.
+# The default smoke uses 100 Operators. SCALE_COUNT selects larger cohorts.
+# Extra flags: SCALE_ARGS='--soak 10m --root DIR'.
 SCALE_COUNT ?= 100
 .PHONY: test-scale
 test-scale: build
 	@./ztd test scale --count $(SCALE_COUNT) $(SCALE_ARGS)
+
+.PHONY: test-eval-loop test-conformance-loop test-release-smoke test-operator-deploy test-eval-live test-e2e
+test-eval-loop: build
+	@./ztd test eval-loop
+
+test-conformance-loop: build
+	@./ztd test conformance-loop
+
+test-release-smoke: build
+	@./ztd test release-smoke
+
+test-operator-deploy: build
+	@bash scripts/ci/operator-deploy-lifecycle.sh --count 3
+
+# Explicit targets for tests against the user's local Gateway. Reset goes
+# through the existing CLI confirmation and evidence-backup flow.
+E2E_RUN ?=
+E2E_ARGS ?=
+E2E_POSTURE ?= doctrine
+.PHONY: test-e2e-reset
+test-e2e:
+	@echo 'WARNING: E2E tests use and mutate the current Gateway. Prepare the topology selected by E2E_RUN.'
+	@./ztd test e2e $(if $(E2E_RUN),--run '$(E2E_RUN)',) $(E2E_ARGS)
+
+test-e2e-reset: E2E_RUN = ^(TestGateway_|TestAuth_)
+test-e2e-reset:
+	@echo 'WARNING: This resets the local Gateway and starts it with posture $(E2E_POSTURE).'
+	@./ztd gw clean
+	@./ztd gw start --posture $(E2E_POSTURE)
+	@./ztd login
+	@$(MAKE) test-e2e E2E_RUN='$(E2E_RUN)'
+
+test-eval-live: build
+	@test -n "$(LIVE_OLLAMA_ENDPOINT)" -a -n "$(LIVE_MODEL)" || { echo 'Set LIVE_OLLAMA_ENDPOINT and LIVE_MODEL for Tier 4 qualification'; exit 1; }
+	@./ztd test eval-loop --live-ollama-endpoint "$(LIVE_OLLAMA_ENDPOINT)" --live-model "$(LIVE_MODEL)"
 
 # Air-Gap Verification: verify vendored build works without network access
 .PHONY: test-airgap
@@ -791,6 +955,10 @@ console-test:
 	@echo "Running the console vitest suite..."
 	@cd console && npm test
 
+.PHONY: demos-test
+demos-test:
+	@python3 -B -m unittest discover -s demos/zero-trust-paper-company/tests -v
+
 .PHONY: explorer-lint
 explorer-lint:
 	@echo "Typechecking and linting the evaluation explorer..."
@@ -800,6 +968,29 @@ explorer-lint:
 explorer-test:
 	@echo "Running the evaluation explorer vitest suite..."
 	@cd evaluation-explorer && npm test
+
+.PHONY: explorer-e2e explorer-e2e-production adapter-test adapter-lint adapter-contract-check protocol-test protocol-lint
+explorer-e2e:
+	@npm run test:e2e --prefix evaluation-explorer
+
+explorer-e2e-production:
+	@npm run test:e2e:production --prefix evaluation-explorer
+
+adapter-test:
+	@npm test --prefix ztd-adapter
+
+adapter-lint:
+	@npm run lint --prefix ztd-adapter
+
+adapter-contract-check:
+	@npm run gen:contract-pack:check --prefix ztd-adapter
+
+protocol-test:
+	@go test $(TEST_UNIT_COUNT) -timeout $(TEST_SHORT_TIMEOUT) -run TestHashParity ./internal/governance
+	@npm test --prefix protocol/node
+
+protocol-lint:
+	@npm run typecheck --prefix protocol/node
 
 # The Claude Code plugin (claude-plugin/) and its marketplace (.claude-plugin/).
 # Manifest validation needs the claude CLI and is skipped without it.
@@ -958,6 +1149,7 @@ stop: down
 # refreshes local artifacts; GitHub Actions separately enforces committed freshness.
 .PHONY: ci
 ci: dev-check
+	@$(MAKE) demos-test
 	@$(MAKE) ci-console
 	@$(MAKE) ci-explorer
 	@$(MAKE) ci-platform
@@ -989,9 +1181,9 @@ ci-console: dev-check
 	@$(MAKE) console-lint
 	@$(MAKE) console-test
 	@$(MAKE) console-embed
-	@npm run lint --prefix ztd-adapter
-	@npm test --prefix ztd-adapter
-	@npm run gen:contract-pack:check --prefix ztd-adapter
+	@$(MAKE) adapter-lint
+	@$(MAKE) adapter-test
+	@$(MAKE) adapter-contract-check
 	@echo "Console and adapter CI complete."
 
 .PHONY: ci-explorer
@@ -1003,9 +1195,8 @@ ci-explorer: dev-check
 
 .PHONY: ci-protocol
 ci-protocol: dev-check
-	@go test $(TEST_UNIT_COUNT) -timeout $(TEST_SHORT_TIMEOUT) -run TestHashParity ./internal/governance
-	@npm run typecheck --prefix protocol/node
-	@npm test --prefix protocol/node
+	@$(MAKE) protocol-lint
+	@$(MAKE) protocol-test
 	@echo "Protocol CI complete."
 
 .PHONY: ci-website

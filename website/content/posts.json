@@ -1,5 +1,13 @@
 [
   {
+    "slug": "action-receipts-grew-legs",
+    "title": "Action receipts grew legs",
+    "date": "2026-10-24",
+    "description": "One sloppy noun became a second receipt store. v1.3.0 deletes it, cuts the observed eval databases roughly in half, and sharpens how ztd names events, scores models, and tests Tribunal consensus.",
+    "author": "Danny",
+    "tags": ["Engineering", "Evaluations", "Releases"]
+  },
+  {
     "slug": "ugly-evals-pprof-and-the-bugs-in-l2-l5",
     "title": "Ugly evals, pprof, and the bugs in L2–L5",
     "date": "2026-10-20",

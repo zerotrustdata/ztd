@@ -72,7 +72,7 @@ type GatewayModeService struct {
 	docStore                 *DocumentStoreService
 	consensusStore           *ConsensusStoreService
 	signerStore              *SignerStoreService
-	auditStore               *storage.SQLAuditStore
+	eventsStore              *storage.LocalFirstEventsStore
 	stateRootSvc             *StateRootService
 	kvStore                  *KVStoreService
 	replayStore              *storage.ReplayStore
@@ -189,7 +189,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	kvStore := db.GetKVStore()
 	sseStore := db.GetSSEStore()
 	blobStore := db.GetBlobStore()
-	auditStore := db.GetAuditStore()
+	eventsStore := db.GetLocalFirstEventsStore()
 
 	wsHandler := NewGatewayWebSocketHandler(logger)
 
@@ -240,18 +240,18 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	userSvc.SetAuthService(auth)
 
 	// Wire the pubsub receipt relay dependencies: the gateway intercepts
-	// operator-published signed ActionReceipts on receipts: channels,
+	// operator-published signed EventReceipts on receipts: channels,
 	// verifies the receipt signature against the operator's actuator public
 	// key (via the SignerStore), records the receipt in the gateway's
-	// SQLAuditStore, and fans out the envelope to subscribers.
-	wsHandler.SetReceiptRelayDeps(signerStore, auditStore)
+	// LocalFirstEventsStore, and fans out the envelope to subscribers.
+	wsHandler.SetReceiptRelayDeps(signerStore, eventsStore)
 
 	// Outbound Operators renew their leaf, and refresh their L2 trust, over
 	// their own renewal: channel.
 	wsHandler.SetCertRenewalService(NewOperatorCertRenewalService(pki, auth, consensusStore, logger))
 
 	cliSessionSvc := NewCLISessionService(docStore, logger)
-	operatorSessionSvc, err := NewOperatorSessionService(docStore, auditStore, logger)
+	operatorSessionSvc, err := NewOperatorSessionService(docStore, eventsStore, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	// The embedded Operator executes before it is claimed, so the Gateway starts
 	// the audit session it owns up front; the claim later supersedes it with the
 	// minted operator session.
-	if err := auditStore.StartSession(constants.EmbeddedOperatorBootstrapSessionID, constants.SessionTypeOperator, "Embedded Operator Bootstrap Session", string(constants.DocIDEmbeddedOperator)); err != nil {
+	if err := eventsStore.StartSession(constants.EmbeddedOperatorBootstrapSessionID, constants.SessionTypeOperator, "Embedded Operator Bootstrap Session", string(constants.DocIDEmbeddedOperator)); err != nil {
 		return nil, fmt.Errorf("gateway: start embedded operator bootstrap audit session: %w", err)
 	}
 
@@ -387,14 +387,14 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gateway: create file edit service: %w", err)
 		}
-		// The Gateway always holds an audit store once its canonical DB is open,
+		// The Gateway always holds an local-first events store once its canonical DB is open,
 		// so the embedded Operator's evidence is required, not optional.
 		localEvidence, err = storage.OpenLocalExecutionEvidence(storage.LocalExecutionEvidenceConfig{
-			FileSvc:    b.fileSvc,
-			Vault:      db.GetVault(),
-			AuditStore: auditStore,
-			WorkDir:    cfg.WorkDir,
-			Logger:     embeddedOperatorLogger,
+			FileSvc:     b.fileSvc,
+			Vault:       db.GetVault(),
+			EventsStore: eventsStore,
+			WorkDir:     cfg.WorkDir,
+			Logger:      embeddedOperatorLogger,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("gateway: open embedded operator evidence: %w", err)
@@ -430,7 +430,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 				Execution:                execSvc,
 				FileEdit:                 fileEditSvc,
 				PubSubClient:             loopbackClient,
-				AuditStore:               auditStore,
+				EventsStore:              eventsStore,
 				RuntimeVault:             db.GetVault(),
 				Ledger:                   localEvidence.Ledger,
 				HistoryHandler:           localEvidence.HistoryHandler,
@@ -449,7 +449,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 
 	// Construct dispatch before MCP so outbound suspension resume can reuse its
 	// verified delivery loop without importing gateway from the mcp package.
-	suspender, err := mcp.NewEnvelopeSuspender(newNotifyingSuspendedStore(suspendedTxService, approvalsPublisher), auditStore, cfg.Gateway.Posture, publicBaseURL)
+	suspender, err := mcp.NewEnvelopeSuspender(newNotifyingSuspendedStore(suspendedTxService, approvalsPublisher), eventsStore, cfg.Gateway.Posture, publicBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: dispatch suspender: %w", err)
 	}
@@ -461,8 +461,8 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 
 	// --- MCP gateway (C2: concrete cmdSvc, auditLogger, l2Deliberator injected) ---
 	var auditLogger mcp.AuditLogger
-	if auditStore != nil {
-		auditLogger = pubsub.NewAuditLogger(auditStore, logger)
+	if eventsStore != nil {
+		auditLogger = pubsub.NewAuditLogger(eventsStore, logger)
 	}
 	fsGrep, err := execution.NewFsGrepService(cfg.WorkDir, logger)
 	if err != nil {
@@ -479,8 +479,8 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		Posture:                cfg.Gateway.Posture,
 		A2ADownstreamURL:       cfg.Gateway.A2ADownstreamURL,
 		PublicBaseURL:          publicBaseURL,
-		AuditStore:             auditStore,
-		AuditReceiptQuery:      auditStore,
+		EventsStore:            eventsStore,
+		EventReceiptQuery:      eventsStore,
 		FsGrep:                 fsGrep,
 		EnvProc:                cmdSvc,
 		OutboundEnvProc:        dispatchSvc,
@@ -542,7 +542,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		&gatewayOperatorListerAdapter{svc: reg},
 		logger,
 	)
-	tribunalConsensus, err := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, auditStore, nil, logger)
+	tribunalConsensus, err := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, eventsStore, nil, logger)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: tribunal consensus deliberator: %w", err)
 	}
@@ -573,7 +573,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		docStore:                 docStore,
 		consensusStore:           consensusStore,
 		signerStore:              signerStore,
-		auditStore:               auditStore,
+		eventsStore:              eventsStore,
 		stateRootSvc:             stateRootSvc,
 		kvStore:                  kvStore,
 		replayStore:              replayStore,
@@ -811,7 +811,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		AuditControllerDeps: AuditControllerDeps{
 			Cfg:            cfg,
 			Logger:         logger,
-			AuditStore:     ls.auditStore,
+			EventsStore:    ls.eventsStore,
 			AuditIngestSvc: NewAuditIngestService(auth, pubsub, logger),
 			Responder:      ls.responder,
 			Scrubber:       ls.scrubbingService,
@@ -1137,9 +1137,9 @@ func (ls *GatewayModeService) GetSignerStore() *SignerStoreService {
 	return ls.signerStore
 }
 
-// GetAuditStore returns the audit store service.
-func (ls *GatewayModeService) GetAuditStore() *storage.SQLAuditStore {
-	return ls.auditStore
+// GetLocalFirstEventsStore returns the local-first events store service.
+func (ls *GatewayModeService) GetLocalFirstEventsStore() *storage.LocalFirstEventsStore {
+	return ls.eventsStore
 }
 
 // GetStateRootSvc returns the state root service.
@@ -1325,6 +1325,9 @@ func (ls *GatewayModeService) Start(ctx context.Context) error {
 		if err := ls.publicSpectator.Start(ctx); err != nil {
 			return fmt.Errorf("gateway: start public spectator: %w", err)
 		}
+		ls.cfg.Gateway.PublicSpectatorPrivateAddr = ls.publicSpectator.cfg.PrivateListenAddress
+		ls.cfg.Gateway.PublicSpectatorPublicAddr = ls.publicSpectator.cfg.PublicListenAddress
+		ls.cfg.Gateway.EvalExplorerAddr = ls.publicSpectator.cfg.ExplorerListenAddress
 		ls.logger.Info("Public spectator stack started",
 			"mirror_private", ls.publicSpectator.cfg.PrivateListenAddress,
 			"mirror_public", ls.publicSpectator.cfg.PublicListenAddress,

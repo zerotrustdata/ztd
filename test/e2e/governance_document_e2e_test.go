@@ -106,10 +106,10 @@ func submitEnvelope(ctx context.Context, t *testing.T, env *governance.Governanc
 // TestGovernance_DocumentUpdateAndDelete verifies the governed document lifecycle
 // end to end against the running platform without requiring an LLM:
 //  1. Submits DOCUMENT_UPDATE (create with merge=false) via POST /api/v1/governance/envelopes.
-//  2. Correlates signed ActionReceipt with COMPLETED status, valid signature, and identity binding.
+//  2. Correlates signed EventReceipt with COMPLETED status, valid signature, and identity binding.
 //  3. Reads back the created document via GET /api/v1/data/{collection}/{id} and verifies fields.
 //  4. Submits DOCUMENT_UPDATE (merge=true) with partial update and verifies untouched fields survive.
-//  5. Submits DOCUMENT_DELETE, correlates signed ActionReceipt, and verifies the document returns 404.
+//  5. Submits DOCUMENT_DELETE, correlates signed EventReceipt, and verifies the document returns 404.
 func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -295,7 +295,7 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	t.Logf("verified document %s returns 404 after deletion", targetResource)
 }
 
-// recordedReceipt is the part of an audit receipt the governance document tests
+// recordedReceipt is the part of an event receipt the governance document tests
 // assert on.
 type recordedReceipt struct {
 	TransactionID   string
@@ -304,15 +304,15 @@ type recordedReceipt struct {
 	ActingAppID     string
 }
 
-// requireRecordedReceipt reads the audit receipts once and returns the
+// requireRecordedReceipt reads the event receipts once and returns the
 // completed, signed receipt of actionType for targetResource executed at or
 // after notBefore. The embedded Operator executes the envelope in-process and
 // the gateway returns only after the signed receipt is recorded, so the receipt
 // is listed when the submit has been answered; a missing receipt is a failure.
 func requireRecordedReceipt(ctx context.Context, t *testing.T, actionType constants.ActionType, targetResource string, notBefore time.Time) *recordedReceipt {
 	t.Helper()
-	receiptsResp, err := e2eClient.GetAuditReceipts(ctx)
-	require.NoError(t, err, "audit receipts must be readable")
+	receiptsResp, err := e2eClient.GetEventReceipts(ctx)
+	require.NoError(t, err, "event receipts must be readable")
 	for _, r := range receiptsResp.EventReceipts {
 		if r.ActionType != actionType || r.TargetResource != targetResource {
 			continue

@@ -38,7 +38,7 @@ type Link struct{ Prior, Hash, TransactionID string }
 
 // Classify reads what a verified receipt says happened. Call it only on a
 // receipt VerifyReceipt accepted.
-func Classify(receipt *operatorv1.ActionReceipt) (Outcome, error) {
+func Classify(receipt *operatorv1.EventReceipt) (Outcome, error) {
 	if receipt == nil {
 		return Outcome{}, unclassifiable("receipt is nil")
 	}
@@ -100,7 +100,7 @@ func Classify(receipt *operatorv1.ActionReceipt) (Outcome, error) {
 }
 
 // stagesByKind indexes a receipt's stages by kind and rejects a duplicate kind.
-func stagesByKind(receipt *operatorv1.ActionReceipt) (map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, error) {
+func stagesByKind(receipt *operatorv1.EventReceipt) (map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, error) {
 	stages := make(map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, len(receipt.GetDeterministicStageEvidence()))
 	for _, stage := range receipt.GetDeterministicStageEvidence() {
 		if _, exists := stages[stage.GetKind()]; exists {
@@ -116,7 +116,7 @@ func stagesByKind(receipt *operatorv1.ActionReceipt) (map[operatorv1.Determinist
 // stage or hash is unclassifiable. An empty prior hash is the runtime's first
 // commitment (the ledger's genesis rule); VerifyBracket rejects it anywhere a
 // prior link is expected.
-func commitmentLink(receipt *operatorv1.ActionReceipt, commit *operatorv1.DeterministicStageEvidence) (*Link, error) {
+func commitmentLink(receipt *operatorv1.EventReceipt, commit *operatorv1.DeterministicStageEvidence) (*Link, error) {
 	if commit == nil {
 		return nil, unclassifiable("executed receipt has no commitment-append stage")
 	}

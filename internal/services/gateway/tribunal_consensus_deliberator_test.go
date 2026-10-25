@@ -710,7 +710,7 @@ func TestTribunalConsensusUnrecordedVoteDoesNotCount(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newRecordingTribunalTestDeliberator(t, binding, inferer, signer, &fakeVoteRecorder{err: constants.ErrAuditStoreDisabled})
+	d := newRecordingTribunalTestDeliberator(t, binding, inferer, signer, &fakeVoteRecorder{err: constants.ErrLocalFirstEventsStoreDisabled})
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -991,24 +991,24 @@ func TestConsensusDeliberatorRouterFailsClosedWithoutBindingOrTribunal(t *testin
 func TestTribunalConsensusRetainsEveryVoteInferenceReceipt(t *testing.T) {
 	binding := tribunalTestBinding()
 	env, _ := tribunalTestEnvelope(t)
-	receipt := &operatorv1.ActionReceipt{TransactionId: "vote-tx", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
-	observed := &operatorv1.ActionReceipt{TransactionId: "observer-tx"}
+	receipt := &operatorv1.EventReceipt{TransactionId: "vote-tx", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	observed := &operatorv1.EventReceipt{TransactionId: "observer-tx"}
 	replies := repliesForAll(inferReply{text: tribunalApproveAnswer})
-	replies[binding.MemberAppIDs[0]] = inferReply{result: &dispatch.DispatchInferenceResult{TransactionID: "vote-tx", Result: &operatorv1.InferenceResult{}, Receipt: receipt, ObservationReceipts: []*operatorv1.ActionReceipt{observed}}}
-	failed := &operatorv1.ActionReceipt{TransactionId: "failed-vote-tx", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
-	replies[binding.MemberAppIDs[1]] = inferReply{err: dispatch.WithObservationReceipts([]*operatorv1.ActionReceipt{observed}, governance.WithFailedReceipt(failed, constants.ErrInferenceGenerateFailed))}
+	replies[binding.MemberAppIDs[0]] = inferReply{result: &dispatch.DispatchInferenceResult{TransactionID: "vote-tx", Result: &operatorv1.InferenceResult{}, Receipt: receipt, ObservationReceipts: []*operatorv1.EventReceipt{observed}}}
+	failed := &operatorv1.EventReceipt{TransactionId: "failed-vote-tx", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	replies[binding.MemberAppIDs[1]] = inferReply{err: dispatch.WithObservationReceipts([]*operatorv1.EventReceipt{observed}, governance.WithFailedReceipt(failed, constants.ErrInferenceGenerateFailed))}
 	d := newTribunalTestDeliberator(t, binding, &fakeInferer{replies: replies}, newFakeSigner(t, binding.MemberAppIDs...))
 	result, err := d.Deliberate(t.Context(), marshalTestEnvelope(t, env))
 	require.NoError(t, err)
 	require.Len(t, result.Inferences, len(binding.MemberAppIDs))
 	completed, failure := result.Inferences[0], result.Inferences[1]
 	assert.Same(t, receipt, completed.GetReceipt())
-	assert.Equal(t, []*operatorv1.ActionReceipt{observed}, completed.GetObservationReceipts())
+	assert.Equal(t, []*operatorv1.EventReceipt{observed}, completed.GetObservationReceipts())
 	assert.Equal(t, env.GetId(), completed.GetSubjectTransactionId())
 	assert.Equal(t, env.GetTransactionHash(), completed.GetSubjectTransactionHash())
 	assert.Equal(t, governance.ConsensusVoteAttemptID(env.GetTransactionHash(), binding.MemberAppIDs[0]), completed.GetProviderAttemptId())
 	assert.Same(t, failed, failure.GetReceipt())
 	assert.Equal(t, failed.GetTransactionId(), failure.GetTransactionId())
 	require.NotNil(t, failure.GetFailure())
-	assert.Equal(t, []*operatorv1.ActionReceipt{observed}, failure.GetObservationReceipts())
+	assert.Equal(t, []*operatorv1.EventReceipt{observed}, failure.GetObservationReceipts())
 }

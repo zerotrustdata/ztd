@@ -27,7 +27,7 @@ import (
 func TestExportOperationalEvidence_PreservesReceiptsPersistenceAndCommitments(t *testing.T) {
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1", PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), SignerKeyId: "signer-1"}
-	receiptBody, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: "tx-1", ExecutedAtUnixMs: executedAt.UnixMilli(), FinalPersistenceAttestation: attestation})
+	receiptBody, err := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{TransactionId: "tx-1", ExecutedAtUnixMs: executedAt.UnixMilli(), FinalPersistenceAttestation: attestation})
 	require.NoError(t, err)
 	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
@@ -93,5 +93,5 @@ func TestExportOperationalEvidence_RecordsUnavailablePersistenceWithoutInventing
 }
 
 func exportDigestHex(body []byte) string {
-	return ContentAddress(ArtifactTypeActionReceipt, body)[len(string(ArtifactTypeActionReceipt))+len(":sha256:"):]
+	return ContentAddress(ArtifactTypeEventReceipt, body)[len(string(ArtifactTypeEventReceipt))+len(":sha256:"):]
 }

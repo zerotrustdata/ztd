@@ -47,7 +47,7 @@ const (
 	tribunalRealCommand    = `{"command":"echo","args":["HEALTHY"]}`
 	tribunalRealLowRisk    = `{"risk": "LOW", "rationale": "read-only file read", "feedback": ""}`
 	tribunalRealHighRisk   = `{"risk": "HIGH", "rationale": "deletes the workspace", "feedback": "read the file instead"}`
-	tribunalRealApprove    = `{"verdict": "APPROVE", "swap_to_cluster": "", "rationale": "correct"}`
+	tribunalRealApprove    = `{"verdict": "APPROVE", "rationale": "correct"}`
 )
 
 // tribunalTurn is one scripted provider reply with plain text.
@@ -127,30 +127,30 @@ func tribunalWireModels(t *testing.T, env *realStackAgentRun) []string {
 
 // tribunalLocalReceipts reads the Data Operator's authoritative local receipt
 // list for this investigation, excluding the list query itself.
-func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID string) []*operatorv1.ActionReceipt {
+func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID string) []*operatorv1.EventReceipt {
 	t.Helper()
-	args, err := json.Marshal(mcp.AuditReceiptListRequest{
-		OperatorSessionID: env.dataSessionID,
-		InvestigationID:   investigationID,
-		ExcludeAuditReads: true,
-		Limit:             100,
+	args, err := json.Marshal(mcp.EventReceiptListRequest{
+		OperatorSessionID:        env.dataSessionID,
+		InvestigationID:          investigationID,
+		ExcludeEventReceiptReads: true,
+		Limit:                    100,
 	})
 	require.NoError(t, err)
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
-		ToolName:      constants.MCPToolAuditReceiptList,
+		ToolName:      constants.MCPToolEventReceiptList,
 		ArgumentsJson: string(args),
 	})
 	require.NoError(t, err)
 	out, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
 		t.Context(), evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
 		"tribunal-ledger-read", investigationID, "tribunal-ledger-read",
-		constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList, payload,
+		constants.ActionTypeMcpCall, constants.MCPToolEventReceiptList, payload,
 	)
 	require.NoError(t, err)
 	queryReceipt := out.Outcome.Observation.GetReceipt()
 	require.NotNil(t, queryReceipt)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, queryReceipt.GetStatus())
-	var result models.OperatorAuditReceiptListResult
+	var result models.OperatorEventReceiptListResult
 	require.NoError(t, json.Unmarshal([]byte(queryReceipt.GetResultSummary()), &result))
 	assert.Equal(t, env.dataOperatorID, result.OperatorID)
 	assert.Equal(t, "operator_local_ledger", result.Authority)
@@ -159,20 +159,20 @@ func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID
 	return result.Receipts
 }
 
-func tribunalVerifyLocalReceipt(t *testing.T, env *realStackAgentRun, receipt *operatorv1.ActionReceipt) *models.EventReceiptRecord {
+func tribunalVerifyLocalReceipt(t *testing.T, env *realStackAgentRun, receipt *operatorv1.EventReceipt) *models.EventReceiptRecord {
 	t.Helper()
 	operator, err := env.stack.Gateway.Service.GetRegistrationService().GetOperator(t.Context(), env.dataOperatorID)
 	require.NoError(t, err)
 	publicKey, err := models.DecodeActuatorPublicKey(operator.GetActuatorPublicKey())
 	require.NoError(t, err)
-	require.NoError(t, governance.VerifyActionReceiptSignature(receipt, publicKey))
+	require.NoError(t, governance.VerifyEventReceiptSignature(receipt, publicKey))
 	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, publicKey))
 	files, err := fs.NewRuntimeFileService(env.stack.DataHost.WorkingDir, testutil.NewTestLogger())
 	require.NoError(t, err)
 	local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
 	require.NoError(t, err)
 	require.NotNil(t, local)
-	assert.True(t, proto.Equal(receipt, local.ActionReceipt), "receipt is present in the Data Operator's authoritative local store")
+	assert.True(t, proto.Equal(receipt, local.EventReceipt), "receipt is present in the Data Operator's authoritative local store")
 	return local
 }
 
@@ -286,7 +286,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	assert.Equal(t, tool.ApprovedArgumentsJSON, dispatched.GetArgumentsJson(), "the exact approved bytes reach the Operator")
 
 	localReceipts := tribunalLocalReceipts(t, env, trace.InvestigationID)
-	var shellReceipts []*operatorv1.ActionReceipt
+	var shellReceipts []*operatorv1.EventReceipt
 	for _, receipt := range localReceipts {
 		if receipt.GetActionType() == string(constants.ActionTypeMcpCall) {
 			shellReceipts = append(shellReceipts, receipt)
@@ -423,6 +423,43 @@ func TestCampaignTribunalIntegration_L1RepairsCandidatesBeforeVote(t *testing.T)
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }
 
+func TestCampaignTribunalIntegration_RepairsMalformedAnswersWithGovernedReceipts(t *testing.T) {
+	env := tribunalRun(t, "answer-repair",
+		tribunalIntent("call-1"),
+		tribunalPanel(
+			`{"command":"echo","args":[null]}`, " \n"+tribunalRealCommand+"\n", // Axiom repairs its invalid argv.
+			tribunalRealCommand, tribunalRealCommand, tribunalRealCommand, tribunalRealDissent,
+		),
+		tribunalTurn("\n"+tribunalRealLowRisk+"\n"),
+		tribunalTurn(`{"verdict":"APPROVE","revised_arguments":null,"rationale":"correct"}`),
+		tribunalTurn("\n"+tribunalRealApprove+"\n"),
+		tribunalTurn("HEALTHY"),
+	)
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	tool := trace.ToolCalls[0]
+	require.True(t, tool.Success, "tool error: %s", tool.Error)
+	assert.Equal(t, tribunalExpectedApprovedArguments(trace), tool.ApprovedArgumentsJSON)
+	require.NotNil(t, tool.Receipt)
+	tribunalVerifyLocalReceipt(t, env, tool.Receipt.EventReceipt)
+
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 11, "two turns, six generation calls, Marshal, and two Auditor calls")
+	assert.Contains(t, bodies[2].Messages[len(bodies[2].Messages)-1].Content, "/args/0")
+	assert.Contains(t, bodies[9].Messages[len(bodies[9].Messages)-1].Content, "previous Auditor answer was rejected")
+	require.Len(t, trace.ModelCalls, 11)
+	for _, call := range trace.ModelCalls[1:10] {
+		require.NotNil(t, call.Receipt, "every repair keeps its governed inference receipt")
+		assert.Equal(t, tool.CallID, call.ToolCallID)
+		assert.True(t, call.Completed())
+	}
+	require.Len(t, trace.Steps, 8)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	require.NoError(t, evaluation.ValidateAgentTraceDigest(trace))
+}
+
 func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture)+"-approval", func(t *testing.T) {
@@ -467,7 +504,7 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 			assert.False(t, call.Success)
 			assert.Equal(t, evaluation.ExportedAgentPolicyDecisionDeny, call.PolicyDecision)
 			require.NotNil(t, call.Receipt)
-			assert.True(t, governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt))
+			assert.True(t, governance.IsGovernanceRejectionReceipt(call.Receipt.EventReceipt))
 			assert.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 		})
 	}
@@ -516,8 +553,8 @@ func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConfli
 func TestCampaignTribunalIntegration_NoConsensusFailsCallWithoutDispatch(t *testing.T) {
 	env := tribunalRun(t, "no-consensus",
 		tribunalIntent("call-1"),
-		tribunalPanel("cat a", "cat b", "cat c", "cat d", "cat e"),
-		tribunalPanel("cat f", "cat g", "cat h", "cat i", "cat j"),
+		tribunalPanel(`{"command":"cat","args":["a"]}`, `{"command":"cat","args":["b"]}`, `{"command":"cat","args":["c"]}`, `{"command":"cat","args":["d"]}`, `{"command":"cat","args":["e"]}`),
+		tribunalPanel(`{"command":"cat","args":["f"]}`, `{"command":"cat","args":["g"]}`, `{"command":"cat","args":["h"]}`, `{"command":"cat","args":["i"]}`, `{"command":"cat","args":["j"]}`),
 		tribunalTurn("No command was agreed."),
 	)
 
@@ -557,7 +594,8 @@ func TestCampaignTribunalIntegration_AuditFailureFailsCallWithoutDispatch(t *tes
 	tool := trace.ToolCalls[0]
 	assert.False(t, tool.Success)
 	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, tool.ErrorType)
-	assert.Equal(t, fmt.Sprintf(evaluation.ExportedTribunalAuditFailedError, `unknown verdict "MAYBE"`), tool.Error)
+	assert.Contains(t, tool.Error, "the Auditor could not review the Tribunal's command")
+	assert.Contains(t, tool.Error, "oneOf", "the verdict violates the response schema")
 	assert.Empty(t, tool.TransactionID, "an unreviewed command never dispatches")
 	require.Len(t, trace.ModelCalls, 10, "the turn, five candidates, the risk check, two Auditor answers, and the closing turn")
 	assert.Equal(t, "tribunal_audit", trace.ModelCalls[7].Purpose)

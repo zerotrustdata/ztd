@@ -2664,7 +2664,7 @@
         "type": "integer"
       },
       "has_receipts": {
-        "description": "Whether the run has at least one governance receipt",
+        "description": "Whether the run has at least one event receipt",
         "required": true,
         "type": "boolean"
       },

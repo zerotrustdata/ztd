@@ -237,7 +237,7 @@ Mode dependency types reside in `internal/services/pubsub/mode_deps.go`. Wiring 
 | `pubsub.GatewayModeDeps` | Governed document store, consensus policy store, field reader, platform enrollment, and posture. |
 | `pubsub.OutboundModeDeps` | Consensus policy store only. `ZtdoService` passes one in-memory `governance.L2TrustStore`, built from enrollment bundle and replaced at each certificate renewal, as both signer store and consensus policy store. |
 
-Outbound groups owned by `ZtdoService`: enrollment-bundle L2 trust (`governance.L2TrustStore`, required at construction) and mTLS pub/sub; `ExecutionService` and `FileEditService`; `CanonicalDBService` plus vault, suspended transactions, replay, SQL audit, and required Git ledger; local L1 doctrine, outbound L3 notary, L4, and L5; enabled inference, provider-boundary observer, and model-provenance capability handlers from `pubsub.NewCapabilityHandlers`.
+Outbound groups owned by `ZtdoService`: enrollment-bundle L2 trust (`governance.L2TrustStore`, required at construction) and mTLS pub/sub; `ExecutionService` and `FileEditService`; `CanonicalDBService` plus vault, suspended transactions, replay, local-first audit, and required Git ledger; local L1 doctrine, outbound L3 notary, L4, and L5; enabled inference, provider-boundary observer, and model-provenance capability handlers from `pubsub.NewCapabilityHandlers`.
 
 ### Governance flow
 
@@ -306,9 +306,9 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `GetKVStore` | `KVStoreService` |
 | `GetSSEStore` | `SSEEventService` |
 | `GetBlobStore` | `BlobStoreService` |
-| `GetAuditStore` | `storage.SQLAuditStore` |
+| `GetLocalFirstEventsStore` | `storage.LocalFirstEventsStore` |
 
-`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalEventReceipt` (`local_receipt.go`) reads one runtime's signed event receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
+`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalEventReceipt` (`local_receipt.go`) reads one runtime's signed event receipt from its own Local-First Events Store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
 
 ### Internal services
 
@@ -344,7 +344,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/system/` | Host metrics, OS details, and network interface sampling. |
 | `internal/services/vault/` | Encryption vault lifecycle. |
 
-Test doubles reside in `internal/services/pubsub/pubsubtest/`, `internal/services/governance/governancetest/`, and `internal/services/keystore/keystoretest/`. `internal/services/storage/storagetest/` holds test helpers (vaults, file services, token store) and chaos test's `chaos.db` event store; audit store is always production `storage.SQLAuditStore`. `internal/tools/chaos` imports `storagetest` for `ztd test chaos`. Gateway and Operator production service code does not import these test packages.
+Test doubles reside in `internal/services/pubsub/pubsubtest/`, `internal/services/governance/governancetest/`, and `internal/services/keystore/keystoretest/`. `internal/services/storage/storagetest/` holds test helpers (vaults, file services, token store) and chaos test's `chaos.db` event store; the Local-First Events Store is always production `storage.LocalFirstEventsStore`. `internal/tools/chaos` imports `storagetest` for `ztd test chaos`. Gateway and Operator production service code does not import these test packages.
 
 ### Protocol packages
 

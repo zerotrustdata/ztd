@@ -70,7 +70,7 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  infra.Cfg.Gateway.MaxPayloadBytes,
 		Posture:          infra.Cfg.Gateway.Posture,
-		AuditStore:       noopAuditEventRecorder{},
+		EventsStore:      noopAuditEventRecorder{},
 		EmbeddedSession:  fixedEmbeddedSession{},
 	})
 	require.NoError(t, err, "failed to create MCP gateway")
@@ -90,11 +90,11 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 			Responder:    infra.Responder,
 		},
 		AuditControllerDeps: AuditControllerDeps{
-			Cfg:        infra.Cfg,
-			Logger:     infra.Logger,
-			AuditStore: infra.AuditStore,
-			Responder:  infra.Responder,
-			Scrubber:   infra.Scrubber,
+			Cfg:         infra.Cfg,
+			Logger:      infra.Logger,
+			EventsStore: infra.EventsStore,
+			Responder:   infra.Responder,
+			Scrubber:    infra.Scrubber,
 		},
 		DataControllerDeps: DataControllerDeps{
 			Cfg:       infra.Cfg,

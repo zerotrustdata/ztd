@@ -90,12 +90,12 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 		},
 		{
 			name:      "explicit investigation query selects embedded Operator ledger",
-			args:      `{"investigation_id":"investigation-1","exclude_audit_reads":true}`,
+			args:      `{"investigation_id":"investigation-1","exclude_event_receipt_reads":true}`,
 			wantLocal: true,
 		},
 		{
 			name:      "missing local exclusion remains on public Gateway policy",
-			args:      `{"investigation_id":"investigation-1","exclude_audit_reads":false}`,
+			args:      `{"investigation_id":"investigation-1","exclude_event_receipt_reads":false}`,
 			wantLocal: false,
 		},
 		{
@@ -108,7 +108,7 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 		t.Run(tt.name, func(t *testing.T) {
 			tool := tt.tool
 			if tool == "" {
-				tool = "audit_receipt_list"
+				tool = "event_receipt_list"
 			}
 			useLocal := gateway.useLocalNativeToolRoute(tool, json.RawMessage(tt.args))
 			assert.Equal(t, tt.wantLocal, useLocal)
@@ -117,30 +117,30 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 	}
 }
 
-// unreachableAuditReceiptQuery satisfies the Operator native tool host's
+// unreachableEventReceiptQuery satisfies the Operator native tool host's
 // required store; the witness gate refuses or passes before any query runs.
-type unreachableAuditReceiptQuery struct{}
+type unreachableEventReceiptQuery struct{}
 
-func (unreachableAuditReceiptQuery) ListEventReceipts(models.AuditScope, int, int) ([]*models.EventReceiptRecord, error) {
+func (unreachableEventReceiptQuery) ListEventReceipts(models.EventsScope, int, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditReceiptQuery) ListEventReceiptsSince(time.Time, int) ([]*models.EventReceiptRecord, error) {
+func (unreachableEventReceiptQuery) ListEventReceiptsSince(time.Time, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditReceiptQuery) GetEventReceipt(string) (*models.EventReceiptRecord, error) {
+func (unreachableEventReceiptQuery) GetEventReceipt(string) (*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
 // The executing Operator is the PEP for witness-only capability: a provenance
 // or observer Operator refuses generic native tools at its own boundary, even
 // when the Gateway pre-check was skipped, but still serves reads of its own
-// signed audit store.
+// signed local-first events store.
 func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
 	grep, err := execution.NewFsGrepService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
-	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{}, grep)
+	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableEventReceiptQuery{}, grep)
 	require.NoError(t, err)
 	tests := []struct {
 		name         string
@@ -150,8 +150,8 @@ func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
 	}{
 		{name: "observer refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
 		{name: "provenance refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
-		{name: "observer serves its own audit_receipt_get", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolAuditReceiptGet},
-		{name: "provenance serves its own audit_receipt_list", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolAuditReceiptList},
+		{name: "observer serves its own event_receipt_get", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolEventReceiptGet},
+		{name: "provenance serves its own event_receipt_list", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolEventReceiptList},
 		{name: "data runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}, tool: constants.MCPToolRunShellCommand},
 		{name: "provenance with inference runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance, constants.OperatorCapabilityInference}, tool: constants.MCPToolRunShellCommand},
 	}
@@ -484,7 +484,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope_AcceptsPDPBoundRootDespi
 		SigningKey: priv,
 		KeyID:      "actuator-key",
 	}
-	newTestAuditBackend(t, "session-1").Attach(actuator)
+	newTestEventsBackend(t, "session-1").Attach(actuator)
 	svc.SetActuator(actuator)
 
 	env := buildGatewayDispatchedDoctrineEnvelope(t, gatewayRoot, "nonce-handle-governance-root")
@@ -589,7 +589,7 @@ func newL4RejectionPubsubService(t *testing.T) (*OperatorPubSubService, *mockExe
 		SigningKey:       priv,
 		KeyID:            "actuator-key",
 	}
-	newTestAuditBackend(t, "session-1").Attach(actuator)
+	newTestEventsBackend(t, "session-1").Attach(actuator)
 	svc.SetActuator(actuator)
 	return svc, handler
 }
@@ -1022,7 +1022,7 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) {
 		require.ErrorIs(t, err, proto.Error)
 	})
 
-	t.Run("rejects LFAA recorded facts on the command map", func(t *testing.T) {
+	t.Run("rejects LFEA recorded facts on the command map", func(t *testing.T) {
 		t.Parallel()
 		msg := &PubSubCommandMessage{
 			EventType: constants.Event.Operator.Audit.UserMsg,
@@ -1737,9 +1737,9 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 
 func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 	// §4.5: Observed-evidence tests - test that publish helpers record
-	// events with scrubbed content to the audit store, including the error path
+	// events with scrubbed content to the local-first events store, including the error path
 	// and non-fatal store errors.
-	// Uses the real SQLAuditStore with an encrypted canonical DB (LFAA invariant).
+	// Uses the real LocalFirstEventsStore with an encrypted canonical DB (LFEA invariant).
 	t.Run("publish helpers record scrubbed content evidence", func(t *testing.T) {
 		t.Parallel()
 
@@ -1750,15 +1750,15 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 		t.Run("FS_LIST records content evidence", func(t *testing.T) {
 			t.Parallel()
 
-			// Set up a real SQLAuditStore with encryption at rest for this subtest
+			// Set up a real LocalFirstEventsStore with encryption at rest for this subtest
 			logger := testutil.NewTestLogger()
-			auditStore := storagetest.NewTestAuditStore(t)
+			eventsStore := storagetest.NewTestEventsStore(t)
 
 			scrubbingSvc := mustNewScrubbingSvc(t, logger)
 
 			// Create a session for this test
 			sessionID := "session-fslist-" + hex.EncodeToString([]byte{1, 2, 3, 4})
-			err := auditStore.CreateSession(sessionID, "operator", "FS_LIST Test", "test@example.com")
+			err := eventsStore.CreateSession(sessionID, "operator", "FS_LIST Test", "test@example.com")
 			require.NoError(t, err)
 
 			msg := &PubSubCommandMessage{
@@ -1774,10 +1774,10 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 				},
 			}
 
-			publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg,
-				constants.Event.Operator.FsList.Completed, payload, auditStore, scrubbingSvc)
+			publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg,
+				constants.Event.Operator.FsList.Completed, payload, eventsStore, scrubbingSvc)
 
-			events, err := auditStore.ListEvents(sessionID, 10, 0)
+			events, err := eventsStore.ListEvents(sessionID, 10, 0)
 			require.NoError(t, err)
 			require.Len(t, events, 1)
 			assert.Equal(t, constants.Event.Operator.FsList.Completed, events[0].Type)
@@ -1788,15 +1788,15 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 		t.Run("PORT_CHECK records content evidence", func(t *testing.T) {
 			t.Parallel()
 
-			// Set up a real SQLAuditStore with encryption at rest for this subtest
+			// Set up a real LocalFirstEventsStore with encryption at rest for this subtest
 			logger := testutil.NewTestLogger()
-			auditStore := storagetest.NewTestAuditStore(t)
+			eventsStore := storagetest.NewTestEventsStore(t)
 
 			scrubbingSvc := mustNewScrubbingSvc(t, logger)
 
 			// Create a session for this test
 			sessionID := "session-port-" + hex.EncodeToString([]byte{5, 6, 7, 8})
-			err := auditStore.CreateSession(sessionID, "operator", "PORT_CHECK Test", "test@example.com")
+			err := eventsStore.CreateSession(sessionID, "operator", "PORT_CHECK Test", "test@example.com")
 			require.NoError(t, err)
 
 			msg := &PubSubCommandMessage{
@@ -1811,10 +1811,10 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 				},
 			}
 
-			publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg,
-				constants.Event.Operator.PortCheck.Completed, payload, auditStore, scrubbingSvc)
+			publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg,
+				constants.Event.Operator.PortCheck.Completed, payload, eventsStore, scrubbingSvc)
 
-			events, err := auditStore.ListEvents(sessionID, 10, 0)
+			events, err := eventsStore.ListEvents(sessionID, 10, 0)
 			require.NoError(t, err)
 			require.Len(t, events, 1)
 			assert.Equal(t, constants.Event.Operator.PortCheck.Completed, events[0].Type)
@@ -1825,15 +1825,15 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 		t.Run("error path records evidence", func(t *testing.T) {
 			t.Parallel()
 
-			// Set up a real SQLAuditStore with encryption at rest for this subtest
+			// Set up a real LocalFirstEventsStore with encryption at rest for this subtest
 			logger := testutil.NewTestLogger()
-			auditStore := storagetest.NewTestAuditStore(t)
+			eventsStore := storagetest.NewTestEventsStore(t)
 
 			scrubbingSvc := mustNewScrubbingSvc(t, logger)
 
 			// Create a session for this test
 			sessionID := "session-error-" + hex.EncodeToString([]byte{9, 10, 11, 12})
-			err := auditStore.CreateSession(sessionID, "operator", "Error Path Test", "test@example.com")
+			err := eventsStore.CreateSession(sessionID, "operator", "Error Path Test", "test@example.com")
 			require.NoError(t, err)
 
 			msg := &PubSubCommandMessage{
@@ -1842,10 +1842,10 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 				OperatorSessionID: sessionID,
 			}
 
-			publishLFAAErrorTo(context.Background(), client, cfg, logger, msg,
-				constants.Event.Operator.FsList.Failed, "directory not found", auditStore, scrubbingSvc)
+			publishLFEAErrorTo(context.Background(), client, cfg, logger, msg,
+				constants.Event.Operator.FsList.Failed, "directory not found", eventsStore, scrubbingSvc)
 
-			events, err := auditStore.ListEvents(sessionID, 10, 0)
+			events, err := eventsStore.ListEvents(sessionID, 10, 0)
 			require.NoError(t, err)
 			require.Len(t, events, 1)
 			assert.Equal(t, constants.Event.Operator.FsList.Failed, events[0].Type)
@@ -1859,8 +1859,8 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 		logger := testutil.NewTestLogger()
 		client := pubsubtest.NewMockOperatorPubSubClient()
 
-		// The session is never created, so the real audit store rejects the evidence event.
-		auditStore := storagetest.NewTestAuditStore(t)
+		// The session is never created, so the real local-first events store rejects the evidence event.
+		eventsStore := storagetest.NewTestEventsStore(t)
 
 		scrubbingSvc := mustNewScrubbingSvc(t, logger)
 
@@ -1874,21 +1874,21 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 			Entries: []*operatorv1.FsEntry{{Name: "file1.txt", Size: 100}},
 		}
 
-		// This should not panic even though audit store fails
-		publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg,
-			constants.Event.Operator.FsList.Completed, payload, auditStore, scrubbingSvc)
+		// This should not panic even though local-first events store fails
+		publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg,
+			constants.Event.Operator.FsList.Completed, payload, eventsStore, scrubbingSvc)
 
 		// Verify response was still published
 		published := client.LastPublished()
-		require.NotNil(t, published, "response should still be published despite audit store error")
+		require.NotNil(t, published, "response should still be published despite local-first events store error")
 	})
 
 	t.Run("scrubbing test - seeded secret is redacted", func(t *testing.T) {
 		t.Parallel()
 
-		// Set up a real SQLAuditStore with encryption at rest for this subtest
+		// Set up a real LocalFirstEventsStore with encryption at rest for this subtest
 		logger := testutil.NewTestLogger()
-		auditStore := storagetest.NewTestAuditStore(t)
+		eventsStore := storagetest.NewTestEventsStore(t)
 
 		// Use default scrubbing config which has built-in patterns for common secrets
 		scrubbingSvc := mustNewScrubbingSvc(t, logger)
@@ -1898,7 +1898,7 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 
 		// Create a session for this test
 		sessionID := "session-scrub-" + hex.EncodeToString([]byte{13, 14, 15, 16})
-		err := auditStore.CreateSession(sessionID, "operator", "Scrubbing Test", "test@example.com")
+		err := eventsStore.CreateSession(sessionID, "operator", "Scrubbing Test", "test@example.com")
 		require.NoError(t, err)
 
 		msg := &PubSubCommandMessage{
@@ -1912,10 +1912,10 @@ func TestOperatorPubSubService_ObservedStateEvidence(t *testing.T) {
 			Entries: []*operatorv1.FsEntry{{Name: "password=secret123 api_key=ghp_test_token"}},
 		}
 
-		publishLFAATypedResponseTo(context.Background(), client, cfg, logger, msg,
-			constants.Event.Operator.FsList.Completed, payload, auditStore, scrubbingSvc)
+		publishLFEATypedResponseTo(context.Background(), client, cfg, logger, msg,
+			constants.Event.Operator.FsList.Completed, payload, eventsStore, scrubbingSvc)
 
-		events, err := auditStore.ListEvents(sessionID, 10, 0)
+		events, err := eventsStore.ListEvents(sessionID, 10, 0)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, constants.Event.Operator.FsList.Completed, events[0].Type)
@@ -1997,10 +1997,10 @@ func TestOperatorPubSubService_handleEvalAnswerRequest(t *testing.T) {
 }
 
 func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
-	t.Run("records field read event in audit store", func(t *testing.T) {
+	t.Run("records field read event in local-first events store", func(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
-		store := storagetest.NewTestAuditStore(t, "session-1")
+		store := storagetest.NewTestEventsStore(t, "session-1")
 		auditLogger := &pubsubAuditLogger{
 			store:  store,
 			logger: logger,
@@ -2023,7 +2023,7 @@ func TestPubsubAuditLogger_LogFieldRead(t *testing.T) {
 		t.Parallel()
 		logger := testutil.NewTestLogger()
 		// The session is never created, so the real store rejects the event.
-		store := storagetest.NewTestAuditStore(t)
+		store := storagetest.NewTestEventsStore(t)
 		auditLogger := &pubsubAuditLogger{
 			store:  store,
 			logger: logger,

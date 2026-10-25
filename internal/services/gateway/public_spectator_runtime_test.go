@@ -128,7 +128,8 @@ func TestEnsureLocalPublicFeed_RejectsOrphanedProofGeneration(t *testing.T) {
 
 func TestValidatePublicMirrorListenAddresses_RejectsDuplicate(t *testing.T) {
 	err := ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "127.0.0.1:8081", false)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
+	require.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
+	assert.NoError(t, ValidatePublicMirrorListenAddresses("127.0.0.1:0", "127.0.0.1:0", false))
 }
 
 func TestValidatePublicMirrorListenAddresses_AllowsContainerBind(t *testing.T) {

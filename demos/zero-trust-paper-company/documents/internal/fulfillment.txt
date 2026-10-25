@@ -1,0 +1,9 @@
+INTERNAL — FICTIONAL WAREHOUSE FULFILLMENT PROCEDURE
+
+Review the confirmed order and check SKU, selling unit and bin. Available stock equals on-hand stock minus reserved stock. An order reserves stock; loading a route reduces both on-hand and reserved quantities. Do not record an additional manual stock deduction for the same shipment.
+
+Route capacity in this simulation counts selling units. Paper Plane (TRK-01) holds 120 units; Ream Machine (TRK-02) holds 80 units. Real weight, pallet dimensions and driving constraints are outside this fixture. Each truck and driver can take one route per day.
+
+Only operations staff load an order. Drivers mark only their own shipments delivered. For Beacon Community School, verify the before-15:00 reception window with support. The dispatch board supplies delivery addresses; the public product catalog must not include them.
+
+When stock is low, purchasing creates a purchase order from the supplier catalog. Receiving the purchase order adds stock once and records a movement. A manual adjustment requires a count discrepancy reason and must leave enough stock for existing reservations.

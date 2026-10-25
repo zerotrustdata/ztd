@@ -35,15 +35,15 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func newCommitmentTestActuator(t *testing.T) (*L5Actuator, *storage.SQLAuditStore) {
+func newCommitmentTestActuator(t *testing.T) (*L5Actuator, *storage.LocalFirstEventsStore) {
 	t.Helper()
-	actuator, auditStore, _ := newPersistingActuator(t)
-	return actuator, auditStore
+	actuator, eventsStore, _ := newPersistingActuator(t)
+	return actuator, eventsStore
 }
 
-// newPersistingActuator builds an actuator over a real SQLAuditStore and
+// newPersistingActuator builds an actuator over a real LocalFirstEventsStore and
 // returns the database handle so tests can inject write failures.
-func newPersistingActuator(t *testing.T) (*L5Actuator, *storage.SQLAuditStore, *sqliteutil.DB) {
+func newPersistingActuator(t *testing.T) (*L5Actuator, *storage.LocalFirstEventsStore, *sqliteutil.DB) {
 	t.Helper()
 	actuator, _ := newTestActuator(t)
 	_, auditorPriv, err := ed25519.GenerateKey(nil)
@@ -67,22 +67,22 @@ func newPersistingActuator(t *testing.T) (*L5Actuator, *storage.SQLAuditStore, *
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	auditStore, err := storage.NewSQLAuditStore(&storage.AuditStoreConfig{
+	eventsStore, err := storage.NewLocalFirstEventsStore(&storage.LocalFirstEventsStoreConfig{
 		RetentionDays:   1,
 		EncryptionVault: testVault,
 	}, db, slog.Default(), fileSvc)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, auditStore.Close()) })
-	actuator.SQLAuditStore = auditStore
-	require.NoError(t, auditStore.CreateSession("test-operator-session", "operator", "Test Session", "test-user"))
+	t.Cleanup(func() { require.NoError(t, eventsStore.Close()) })
+	actuator.LocalFirstEventsStore = eventsStore
+	require.NoError(t, eventsStore.CreateSession("test-operator-session", "operator", "Test Session", "test-user"))
 	// The runtime's own identity: the Operator it executes for and the audit
 	// session it started. Rejection receipts are filed under it.
 	actuator.Identity = &testutil.MockExecutionTarget{OperatorIDs: []string{"test-operator"}, SessionID: "test-operator-session"}
-	return actuator, auditStore, db
+	return actuator, eventsStore, db
 }
 
 func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
-	actuator, auditStore := newCommitmentTestActuator(t)
+	actuator, eventsStore := newCommitmentTestActuator(t)
 
 	envelope := &govtypes.GovernanceEnvelope{
 		Id:                mustUUID(t),
@@ -107,10 +107,10 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, receipt)
 
-	// Verify RecordEventReceipt was called by querying the audit store
-	persistedReceipt, err := auditStore.GetEventReceipt(envelope.Id)
+	// Verify RecordEventReceipt was called by querying the local-first events store
+	persistedReceipt, err := eventsStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
-	require.NotNil(t, persistedReceipt, "Receipt should be persisted in audit store")
+	require.NotNil(t, persistedReceipt, "Receipt should be persisted in local-first events store")
 
 	// Verify persisted receipt matches the returned receipt
 	require.Equal(t, envelope.Id, persistedReceipt.TransactionID)
@@ -118,20 +118,20 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persistedReceipt.Status)
 	require.Equal(t, "completed", persistedReceipt.ResultSummary)
 	require.NotEmpty(t, persistedReceipt.Signature, "Persisted receipt should have signature")
-	require.NotNil(t, persistedReceipt.ActionReceipt)
-	require.NotNil(t, persistedReceipt.ActionReceipt.FinalPersistenceAttestation)
-	require.NoError(t, VerifyReceiptPersistenceAttestation(persistedReceipt.ActionReceipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
-	require.Len(t, persistedReceipt.ActionReceipt.DeterministicStageEvidence, 3)
-	receiptPersistenceEvidence := persistedReceipt.ActionReceipt.DeterministicStageEvidence[0]
-	commitmentEvidence := persistedReceipt.ActionReceipt.DeterministicStageEvidence[1]
-	executionEvidence := persistedReceipt.ActionReceipt.DeterministicStageEvidence[2]
+	require.NotNil(t, persistedReceipt.EventReceipt)
+	require.NotNil(t, persistedReceipt.EventReceipt.FinalPersistenceAttestation)
+	require.NoError(t, VerifyReceiptPersistenceAttestation(persistedReceipt.EventReceipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+	require.Len(t, persistedReceipt.EventReceipt.DeterministicStageEvidence, 3)
+	receiptPersistenceEvidence := persistedReceipt.EventReceipt.DeterministicStageEvidence[0]
+	commitmentEvidence := persistedReceipt.EventReceipt.DeterministicStageEvidence[1]
+	executionEvidence := persistedReceipt.EventReceipt.DeterministicStageEvidence[2]
 	require.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND, commitmentEvidence.Kind)
 	require.Equal(t, executionEvidence.StageId, receiptPersistenceEvidence.ParentStageId)
 	require.Equal(t, executionEvidence.StageId, commitmentEvidence.ParentStageId)
 	require.NotEmpty(t, commitmentEvidence.CommitmentHash)
 	require.Equal(t, actuator.AuditorKeyID, commitmentEvidence.SignerKeyId)
 
-	commitments, err := auditStore.CommitmentLedger().ListCommitments()
+	commitments, err := eventsStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	require.Len(t, commitments, 1)
 	require.Equal(t, envelope.Id, commitments[0].TransactionID)
@@ -155,17 +155,17 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ed25519.Verify(actuator.AuditorSigningKey.Public().(ed25519.PublicKey), canonicalSigningBytes, commitmentSignature))
 
-	listedReceipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
+	listedReceipts, err := eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, listedReceipts, 1)
-	require.True(t, proto.Equal(receipt, listedReceipts[0].ActionReceipt),
-		"ListEventReceipts must return the same canonical ActionReceipt persisted by L5")
+	require.True(t, proto.Equal(receipt, listedReceipts[0].EventReceipt),
+		"ListEventReceipts must return the same canonical EventReceipt persisted by L5")
 
-	exportedReceipts, err := auditStore.ListEventReceiptsSince(startedAt, 10)
+	exportedReceipts, err := eventsStore.ListEventReceiptsSince(startedAt, 10)
 	require.NoError(t, err)
 	require.Len(t, exportedReceipts, 1)
-	require.True(t, proto.Equal(receipt, exportedReceipts[0].ActionReceipt),
-		"ListEventReceiptsSince must return the same canonical ActionReceipt persisted by L5")
+	require.True(t, proto.Equal(receipt, exportedReceipts[0].EventReceipt),
+		"ListEventReceiptsSince must return the same canonical EventReceipt persisted by L5")
 }
 
 // divergentMirrorPublisher models a Gateway receipt mirror that diverges from
@@ -173,21 +173,21 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 // what the local store already holds, then tampers with the handed receipt and
 // reports a publish failure.
 type divergentMirrorPublisher struct {
-	auditStore *storage.SQLAuditStore
+	eventsStore *storage.LocalFirstEventsStore
 
 	calls                int
-	publishedCopy        *operatorv1.ActionReceipt
+	publishedCopy        *operatorv1.EventReceipt
 	localAtPublish       *models.EventReceiptRecord
 	localLookupErr       error
 	commitmentsAtPublish []*storage.CommitmentRow
 	commitmentLookupErr  error
 }
 
-func (p *divergentMirrorPublisher) PublishActionReceipt(_ context.Context, _ *govtypes.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error {
+func (p *divergentMirrorPublisher) PublishEventReceipt(_ context.Context, _ *govtypes.GovernanceEnvelope, receipt *operatorv1.EventReceipt) error {
 	p.calls++
-	p.publishedCopy = proto.Clone(receipt).(*operatorv1.ActionReceipt)
-	p.localAtPublish, p.localLookupErr = p.auditStore.GetEventReceipt(receipt.TransactionId)
-	p.commitmentsAtPublish, p.commitmentLookupErr = p.auditStore.CommitmentLedger().ListCommitments()
+	p.publishedCopy = proto.Clone(receipt).(*operatorv1.EventReceipt)
+	p.localAtPublish, p.localLookupErr = p.eventsStore.GetEventReceipt(receipt.TransactionId)
+	p.commitmentsAtPublish, p.commitmentLookupErr = p.eventsStore.CommitmentLedger().ListCommitments()
 
 	receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 	receipt.ResultSummary = "forged by gateway mirror"
@@ -200,8 +200,8 @@ func (p *divergentMirrorPublisher) PublishActionReceipt(_ context.Context, _ *go
 // handed exactly the locally persisted receipt, and its tampering affects only
 // its own copy.
 func TestL5ActuatorDivergentGatewayMirrorLeavesLocalRecordsIntact(t *testing.T) {
-	actuator, auditStore := newCommitmentTestActuator(t)
-	publisher := &divergentMirrorPublisher{auditStore: auditStore}
+	actuator, eventsStore := newCommitmentTestActuator(t)
+	publisher := &divergentMirrorPublisher{eventsStore: eventsStore}
 	actuator.ReceiptPublisher = publisher
 
 	envelope := &govtypes.GovernanceEnvelope{
@@ -229,31 +229,31 @@ func TestL5ActuatorDivergentGatewayMirrorLeavesLocalRecordsIntact(t *testing.T) 
 	require.NoError(t, publisher.localLookupErr)
 	require.NoError(t, publisher.commitmentLookupErr)
 	require.NotNil(t, publisher.localAtPublish)
-	require.True(t, proto.Equal(publisher.publishedCopy, publisher.localAtPublish.ActionReceipt),
+	require.True(t, proto.Equal(publisher.publishedCopy, publisher.localAtPublish.EventReceipt),
 		"publisher must be handed the receipt already persisted locally")
 
 	// The mirror's tampering must not reach the local record.
-	persisted, err := auditStore.GetEventReceipt(envelope.Id)
+	persisted, err := eventsStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.Status)
 	require.Equal(t, "completed", persisted.ResultSummary)
 	require.Equal(t, envelope.TransactionHash, persisted.TransactionHash)
 	require.Equal(t, publisher.localAtPublish.Signature, persisted.Signature)
-	require.True(t, proto.Equal(publisher.localAtPublish.ActionReceipt, persisted.ActionReceipt),
+	require.True(t, proto.Equal(publisher.localAtPublish.EventReceipt, persisted.EventReceipt),
 		"local receipt must be unchanged by the mirror")
-	require.NoError(t, VerifyReceiptPersistenceAttestation(persisted.ActionReceipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+	require.NoError(t, VerifyReceiptPersistenceAttestation(persisted.EventReceipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
 
-	listedReceipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
+	listedReceipts, err := eventsStore.ListEventReceipts(models.EventsScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, listedReceipts, 1)
-	require.True(t, proto.Equal(publisher.publishedCopy, listedReceipts[0].ActionReceipt),
+	require.True(t, proto.Equal(publisher.publishedCopy, listedReceipts[0].EventReceipt),
 		"ListEventReceipts must still return the locally persisted receipt")
-	require.Equal(t, 2, receiptFactCount(t, auditStore, envelope.OperatorSessionId),
+	require.Equal(t, 2, receiptFactCount(t, eventsStore, envelope.OperatorSessionId),
 		"mirror divergence must not append receipt audit facts")
 
 	// The commitment ledger (and therefore its head, the commitment root) is unchanged.
-	commitments, err := auditStore.CommitmentLedger().ListCommitments()
+	commitments, err := eventsStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	require.Len(t, commitments, 1)
 	require.Equal(t, publisher.commitmentsAtPublish, commitments,
@@ -263,7 +263,7 @@ func TestL5ActuatorDivergentGatewayMirrorLeavesLocalRecordsIntact(t *testing.T) 
 }
 
 func TestL5ActuatorExecuteCommitmentFailureStopsBeforeHandler(t *testing.T) {
-	actuator, auditStore := newCommitmentTestActuator(t)
+	actuator, eventsStore := newCommitmentTestActuator(t)
 	handler := actuator.ExecutionHandler.(*mockExecutionHandler)
 	actuator.AuditorKeyID = strings.Repeat("0", ed25519.PublicKeySize*2)
 	vt := &VerifiedTransaction{
@@ -286,12 +286,12 @@ func TestL5ActuatorExecuteCommitmentFailureStopsBeforeHandler(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrL5ActuatorCommitmentPersist)
 	assert.Nil(t, receipt)
 	assert.False(t, handler.executed)
-	commitments, listErr := auditStore.CommitmentLedger().ListCommitments()
+	commitments, listErr := eventsStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, listErr)
 	assert.Empty(t, commitments)
 }
 
-func receiptFactCount(t *testing.T, store *storage.SQLAuditStore, sessionID string) int {
+func receiptFactCount(t *testing.T, store *storage.LocalFirstEventsStore, sessionID string) int {
 	t.Helper()
 	events, err := store.ListEvents(sessionID, 100, 0)
 	require.NoError(t, err)
@@ -326,20 +326,20 @@ func executeSampleTransaction(t *testing.T, actuator *L5Actuator) *govtypes.Gove
 }
 
 // Each stage (EXECUTING, then COMPLETED) must produce exactly one audit fact:
-// the SQLAuditStore is the single owner of receipt records.
+// the LocalFirstEventsStore is the single owner of receipt records.
 func TestL5ActuatorRecordsEachStageOnce(t *testing.T) {
-	actuator, auditStore := newCommitmentTestActuator(t)
+	actuator, eventsStore := newCommitmentTestActuator(t)
 	envelope := executeSampleTransaction(t, actuator)
 
-	require.Equal(t, 2, receiptFactCount(t, auditStore, envelope.OperatorSessionId),
+	require.Equal(t, 2, receiptFactCount(t, eventsStore, envelope.OperatorSessionId),
 		"one receipt fact per stage")
 
-	persisted, err := auditStore.GetEventReceipt(envelope.Id)
+	persisted, err := eventsStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.Status)
-	require.NotNil(t, persisted.ActionReceipt.FinalPersistenceAttestation)
+	require.NotNil(t, persisted.EventReceipt.FinalPersistenceAttestation)
 
-	commitments, err := auditStore.CommitmentLedger().ListCommitments()
+	commitments, err := eventsStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	require.Len(t, commitments, 1)
 }

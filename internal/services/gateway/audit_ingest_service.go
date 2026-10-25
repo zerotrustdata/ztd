@@ -27,7 +27,7 @@ type AuditIngestPublisher interface {
 	RegisterHandler(channel string, handler func(string, []byte)) func()
 }
 
-// AuditIngestService forwards LFAA audit records to operators over audit: channels.
+// AuditIngestService forwards LFEA audit records to operators over audit: channels.
 type AuditIngestService struct {
 	auth   *AuthService
 	pubsub AuditIngestPublisher
@@ -128,7 +128,7 @@ func validateAuditRecordIngestRequest(req *models.AuditRecordIngestRequest) erro
 		return constants.ErrTxUnknownEventType
 	}
 	if req.OperatorID == "" || req.OperatorSessionID == "" {
-		return constants.ErrAuditSessionMissing
+		return constants.ErrEventsStoreSessionMissing
 	}
 	if req.IdempotencyKey == "" {
 		return fmt.Errorf("%w: idempotency_key required", constants.ErrAuditIngestInvalidRequest)

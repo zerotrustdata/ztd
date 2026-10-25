@@ -72,7 +72,25 @@
     "lfm2-350m",
     "smollm2-135m",
     "tinyllama-1.1b",
-    "randomblock1-nemotron-nano-8b"
+    "randomblock1-nemotron-nano-8b",
+    "lfm2-5-thinking-1-2b",
+    "lfm2-5-8b",
+    "rnj-1-8b",
+    "olmo-3-7b-instruct",
+    "olmo-3-7b-think",
+    "functiongemma-270m",
+    "granite4-350m",
+    "granite4-1b-h",
+    "granite4-3b-h",
+    "granite4-7b-a1b-h",
+    "qwen3-4b-instruct-2507-q4-k-m",
+    "qwen3-4b-thinking-2507-q4-k-m",
+    "deepseek-r1-1-5b",
+    "deepseek-r1-8b",
+    "hf-co-xhtoken-spark-x2-6-4b-gguf-q4-k-m",
+    "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+    "hf-co-nvidia-nvidia-nemotron-3-5-bolt-e4b-4gb-q4-k-m",
+    "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m"
   ],
   "models": [
     {
@@ -1105,6 +1123,283 @@
         "method": "ollama_library_pull",
         "status": "ready",
         "ollama_pull": "Randomblock1/nemotron-nano:8b"
+      }
+    },
+    {
+      "variant_id": "lfm2-5-thinking-1-2b",
+      "served_model_tag": "lfm2.5-thinking:1.2b",
+      "model_family": "lfm2",
+      "parameter_count": "1200000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 32768,
+      "notes": "LiquidAI hybrid reasoning and tool-calling model; 32,768-token trained context from the publisher card, despite the larger Ollama advertised window. Metadata checked 2026-10-24: https://ollama.com/library/lfm2.5-thinking:1.2b. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "lfm2.5-thinking:1.2b",
+        "hf_repo": "LiquidAI/LFM2.5-1.2B-Thinking"
+      }
+    },
+    {
+      "variant_id": "lfm2-5-8b",
+      "served_model_tag": "lfm2.5:8b",
+      "model_family": "lfm2moe",
+      "parameter_count": "8500000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 128000,
+      "notes": "LiquidAI 8B-A1B tool-calling MoE. Registry reports 8.5B total parameters; 1B active does not make this a sub-8B total-parameter model. Metadata checked 2026-10-24: https://ollama.com/library/lfm2.5:8b. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "lfm2.5:8b",
+        "hf_repo": "LiquidAI/LFM2.5-8B-A1B"
+      }
+    },
+    {
+      "variant_id": "rnj-1-8b",
+      "served_model_tag": "rnj-1:8b",
+      "model_family": "gemma3",
+      "parameter_count": "8300000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 32768,
+      "notes": "Essential AI code/STEM and tool-calling instruct model. Registry reports 8.3B parameters; the 8B tag is a rounded size class. Metadata checked 2026-10-24: https://ollama.com/library/rnj-1:8b. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "rnj-1:8b",
+        "hf_repo": "EssentialAI/rnj-1-instruct"
+      }
+    },
+    {
+      "variant_id": "olmo-3-7b-instruct",
+      "served_model_tag": "olmo-3:7b-instruct",
+      "model_family": "olmo3",
+      "parameter_count": "7300000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 65536,
+      "notes": "Distinct small instruction-following variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/olmo-3:7b-instruct. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "olmo-3:7b-instruct",
+        "hf_repo": "allenai/Olmo-3-7B-Instruct"
+      }
+    },
+    {
+      "variant_id": "olmo-3-7b-think",
+      "served_model_tag": "olmo-3:7b-think",
+      "model_family": "olmo3",
+      "parameter_count": "7300000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 65536,
+      "notes": "Distinct small reasoning variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/olmo-3:7b-think. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "olmo-3:7b-think",
+        "hf_repo": "allenai/Olmo-3-7B-Think"
+      }
+    },
+    {
+      "variant_id": "functiongemma-270m",
+      "served_model_tag": "functiongemma:270m",
+      "model_family": "gemma3",
+      "parameter_count": "268100000",
+      "quantization": "Q8_0",
+      "context_limit": 32768,
+      "notes": "Google function-calling specialist based on Gemma 3 270M. Intended for task-specific fine-tuning; not a general dialogue model. Metadata checked 2026-10-24: https://ollama.com/library/functiongemma:270m. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "functiongemma:270m",
+        "hf_repo": "google/functiongemma-270m-it"
+      }
+    },
+    {
+      "variant_id": "granite4-350m",
+      "served_model_tag": "granite4:350m",
+      "model_family": "granite",
+      "parameter_count": "352380000",
+      "quantization": "BF16",
+      "context_limit": 32768,
+      "notes": "Distinct small instruction-following variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/granite4:350m. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "granite4:350m",
+        "hf_repo": "ibm-granite/granite-4.0-350m"
+      }
+    },
+    {
+      "variant_id": "granite4-1b-h",
+      "served_model_tag": "granite4:1b-h",
+      "model_family": "granitehybrid",
+      "parameter_count": "1500000000",
+      "quantization": "Q8_0",
+      "context_limit": 131072,
+      "notes": "Distinct small instruction-following variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/granite4:1b-h. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "granite4:1b-h",
+        "hf_repo": "ibm-granite/granite-4.0-h-1b"
+      }
+    },
+    {
+      "variant_id": "granite4-3b-h",
+      "served_model_tag": "granite4:3b-h",
+      "model_family": "granitehybrid",
+      "parameter_count": "3200000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 131072,
+      "notes": "Distinct small instruction-following variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/granite4:3b-h. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "granite4:3b-h",
+        "hf_repo": "ibm-granite/granite-4.0-h-micro"
+      }
+    },
+    {
+      "variant_id": "granite4-7b-a1b-h",
+      "served_model_tag": "granite4:7b-a1b-h",
+      "model_family": "granitehybrid",
+      "parameter_count": "6900000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 131072,
+      "notes": "IBM hybrid MoE with about 6.9B total parameters and 1B active; store total parameters for memory and size filtering. Metadata checked 2026-10-24: https://ollama.com/library/granite4:7b-a1b-h. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "granite4:7b-a1b-h",
+        "hf_repo": "ibm-granite/granite-4.0-h-tiny"
+      }
+    },
+    {
+      "variant_id": "qwen3-4b-instruct-2507-q4-k-m",
+      "served_model_tag": "qwen3:4b-instruct-2507-q4_K_M",
+      "model_family": "qwen3",
+      "parameter_count": "4000000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 262144,
+      "notes": "Distinct small instruction-following variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/qwen3:4b-instruct-2507-q4_K_M. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "qwen3:4b-instruct-2507-q4_K_M",
+        "hf_repo": "Qwen/Qwen3-4B-Instruct-2507"
+      }
+    },
+    {
+      "variant_id": "qwen3-4b-thinking-2507-q4-k-m",
+      "served_model_tag": "qwen3:4b-thinking-2507-q4_K_M",
+      "model_family": "qwen3",
+      "parameter_count": "4000000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 262144,
+      "notes": "Distinct small reasoning variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/qwen3:4b-thinking-2507-q4_K_M. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "qwen3:4b-thinking-2507-q4_K_M",
+        "hf_repo": "Qwen/Qwen3-4B-Thinking-2507"
+      }
+    },
+    {
+      "variant_id": "deepseek-r1-1-5b",
+      "served_model_tag": "deepseek-r1:1.5b",
+      "model_family": "qwen2",
+      "parameter_count": "1800000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 131072,
+      "notes": "Distinct small instruction-following variant; published tag and quantization verified against the Ollama registry. Metadata checked 2026-10-24: https://ollama.com/library/deepseek-r1:1.5b. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "deepseek-r1:1.5b",
+        "hf_repo": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+      }
+    },
+    {
+      "variant_id": "deepseek-r1-8b",
+      "served_model_tag": "deepseek-r1:8b",
+      "model_family": "qwen3",
+      "parameter_count": "8200000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 131072,
+      "notes": "DeepSeek-R1-0528-Qwen3-8B reasoning distillation, distinct from the existing 7B Qwen2 distillation. Registry reports 8.2B parameters. Metadata checked 2026-10-24: https://ollama.com/library/deepseek-r1:8b. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_library_pull",
+        "status": "ready",
+        "ollama_pull": "deepseek-r1:8b",
+        "hf_repo": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
+      }
+    },
+    {
+      "variant_id": "hf-co-xhtoken-spark-x2-6-4b-gguf-q4-k-m",
+      "served_model_tag": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
+      "model_family": "spark2_5",
+      "parameter_count": "4450000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 1048576,
+      "notes": "Current Hugging Face text-generation trend candidate for on-device agents. Publisher requires Ollama v0.34.1+ (llama.cpp b10828+); GGUF registry reports 4.45B parameters, versus 4.11B in the upstream BF16 checkpoint. Metadata checked 2026-10-24: https://huggingface.co/XHToken/Spark-X2.6-4B. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_hf_pull",
+        "status": "ready",
+        "ollama_pull": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
+        "hf_gguf_repo": "XHToken/Spark-X2.6-4B-GGUF",
+        "hf_repo": "XHToken/Spark-X2.6-4B",
+        "hf_gguf_file": "Spark-X2.6-4B-Q4_K_M.gguf"
+      }
+    },
+    {
+      "variant_id": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+      "served_model_tag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+      "model_family": "lfm2",
+      "parameter_count": "1170000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 32768,
+      "notes": "LiquidAI small hybrid instruct and function-calling model; publisher-owned single-file Q4_K_M GGUF. Trained context is 32,768 tokens. Metadata checked 2026-10-24: https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_hf_pull",
+        "status": "ready",
+        "ollama_pull": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "hf_gguf_repo": "LiquidAI/LFM2.5-1.2B-Instruct-GGUF",
+        "hf_repo": "LiquidAI/LFM2.5-1.2B-Instruct",
+        "hf_gguf_file": "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+      }
+    },
+    {
+      "variant_id": "hf-co-nvidia-nvidia-nemotron-3-5-bolt-e4b-4gb-q4-k-m",
+      "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M",
+      "model_family": "gemma4",
+      "parameter_count": "7520000000",
+      "quantization": "Q4_K_M",
+      "context_limit": 65536,
+      "notes": "Current Hugging Face text-generation trend candidate: NVIDIA post-training of Gemma 4 E4B for multi-turn tool use. About 8B total / 4B effective; quantized GGUF registry reports 7.52B. Text-only evaluation; use the publisher Q4_K_M artifact. Metadata checked 2026-10-24: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
+      "staging": {
+        "method": "ollama_hf_pull",
+        "status": "ready",
+        "ollama_pull": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M",
+        "hf_gguf_repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB",
+        "hf_repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
+        "hf_gguf_file": "Nemotron-3.5-Bolt-E4B-Q4_K_M.gguf"
+      }
+    },
+    {
+      "variant_id": "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m",
+      "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
+      "model_family": "dory",
+      "parameter_count": "3975229440",
+      "quantization": "Q5_K_M",
+      "context_limit": 262144,
+      "notes": "Current Hugging Face text-generation trend candidate, checked 2026-10-24: https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16. Looped latent-recurrent reasoning model, not the existing Nemotron-H family. Publisher GGUF exists, but inference requires the Dory-specific llama.cpp branch (ggml-org/llama.cpp#30306); stock Ollama support is unverified. Pending provider support; do not auto-pull or import as an executable model.",
+      "staging": {
+        "method": "pending",
+        "status": "awaiting_provider_adapter",
+        "hf_repo": "nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16",
+        "hf_gguf_repo": "nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF",
+        "hf_gguf_file": "NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf"
       }
     }
   ]

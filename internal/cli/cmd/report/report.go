@@ -110,7 +110,7 @@ func reportAllCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "all",
 		Short: "Export all stores to CSV and run verification",
-		Long: `Export all persistent stores (audit store, receipts, ledger, secrets) to
+		Long: `Export persisted runtime events, event receipts, ledger evidence, and secrets to
 deterministic CSV files and run verification checks. Output files are written
 to the reports directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {

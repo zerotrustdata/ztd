@@ -51,47 +51,47 @@ func mustNewScrubbingSvc(t *testing.T, logger *slog.Logger) *scrubbing.Scrubbing
 	return svc
 }
 
-// newTestCommandService builds a CommandService over a real audit store. results is the
+// newTestCommandService builds a CommandService over a real local-first events store. results is the
 // publisher the service reports to.
 func newTestCommandService(t *testing.T, cfg *config.Config, logger *slog.Logger, results ResultsPublisher) *CommandService {
 	t.Helper()
-	svc, err := NewCommandService(cfg, logger, execution.NewExecutionService(cfg, logger), results, storagetest.NewTestAuditStore(t))
+	svc, err := NewCommandService(cfg, logger, execution.NewExecutionService(cfg, logger), results, storagetest.NewTestEventsStore(t))
 	require.NoError(t, err)
 	return svc
 }
 
-// newTestHistoryHandler builds a HistoryHandler over a real file ledger and the given real audit store.
-func newTestHistoryHandler(t *testing.T, logger *slog.Logger, auditStore *storage.SQLAuditStore) *storage.HistoryHandler {
+// newTestHistoryHandler builds a HistoryHandler over a real file ledger and the given real local-first events store.
+func newTestHistoryHandler(t *testing.T, logger *slog.Logger, eventsStore *storage.LocalFirstEventsStore) *storage.HistoryHandler {
 	t.Helper()
-	handler, err := storage.NewHistoryHandler(auditStore, storagetest.NewTestLedger(t), logger, nil, "")
+	handler, err := storage.NewHistoryHandler(eventsStore, storagetest.NewTestLedger(t), logger, nil, "")
 	require.NoError(t, err)
 	return handler
 }
 
 // newTestHistoryService builds a HistoryService over a real history handler, an active scrubber and a
-// real audit store.
+// real local-first events store.
 // testOperatorSessionID is the audit session the default file-ops and history fixtures create, so
 // handlers that record their own execution event can write it.
 const testOperatorSessionID = "session-pubsub-test"
 
 func newTestHistoryService(t *testing.T, cfg *config.Config, logger *slog.Logger, client PubSubClient) *HistoryService {
 	t.Helper()
-	auditStore := storagetest.NewTestAuditStore(t, testOperatorSessionID)
-	svc, err := NewHistoryService(cfg, logger, client, newTestHistoryHandler(t, logger, auditStore), mustNewScrubbingSvc(t, logger), auditStore)
+	eventsStore := storagetest.NewTestEventsStore(t, testOperatorSessionID)
+	svc, err := NewHistoryService(cfg, logger, client, newTestHistoryHandler(t, logger, eventsStore), mustNewScrubbingSvc(t, logger), eventsStore)
 	require.NoError(t, err)
 	return svc
 }
 
-// newTestPortService builds a PortService over an active scrubber and a real audit store.
+// newTestPortService builds a PortService over an active scrubber and a real local-first events store.
 func newTestPortService(t *testing.T, cfg *config.Config, logger *slog.Logger, client PubSubClient) *PortService {
 	t.Helper()
-	svc, err := NewPortService(cfg, logger, client, mustNewScrubbingSvc(t, logger), storagetest.NewTestAuditStore(t))
+	svc, err := NewPortService(cfg, logger, client, mustNewScrubbingSvc(t, logger), storagetest.NewTestEventsStore(t))
 	require.NoError(t, err)
 	return svc
 }
 
 // withTestDeps fills every required collaborator c leaves unset with a real one: the execution and
-// file edit services, a real audit store with the history handler over it, a real file ledger, an
+// file edit services, a real local-first events store with the history handler over it, a real file ledger, an
 // active scrubber, an unlocked runtime vault and a mock results publisher. A field the test sets
 // explicitly is kept, so a test overrides only the collaborator it exercises.
 func withTestDeps(t *testing.T, c CommandServiceConfig) CommandServiceConfig {
@@ -105,14 +105,14 @@ func withTestDeps(t *testing.T, c CommandServiceConfig) CommandServiceConfig {
 	if c.ResultsService == nil {
 		c.ResultsService = &mockResultsPublisher{}
 	}
-	if c.AuditStore == nil {
-		c.AuditStore = storagetest.NewTestAuditStore(t)
+	if c.EventsStore == nil {
+		c.EventsStore = storagetest.NewTestEventsStore(t)
 	}
 	if c.Ledger == nil {
 		c.Ledger = storagetest.NewTestLedger(t)
 	}
 	if c.HistoryHandler == nil {
-		c.HistoryHandler = newTestHistoryHandler(t, c.Logger, c.AuditStore)
+		c.HistoryHandler = newTestHistoryHandler(t, c.Logger, c.EventsStore)
 	}
 	if c.Scrubbing == nil {
 		c.Scrubbing = mustNewScrubbingSvc(t, c.Logger)

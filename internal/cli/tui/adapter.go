@@ -307,7 +307,7 @@ func translateEvent(ev sse.Event) []tea.Msg {
 		}
 		msg := ApprovalCompletedMsg{TxHash: p.TxHash}
 		if p.HasReceipt() {
-			msg.Receipt = &operatorv1.ActionReceipt{}
+			msg.Receipt = &operatorv1.EventReceipt{}
 			if err := protojson.Unmarshal(p.Receipt, msg.Receipt); err != nil {
 				return []tea.Msg{decodeFailure(innerType, err)}
 			}

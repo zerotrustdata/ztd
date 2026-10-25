@@ -96,6 +96,14 @@ scenario_build_only() {
     expect "PATH marker written once" test "$(marker_count)" = 1
     expect_log build-only.log 'ztd is ready'
     expect_log build-only.log 'make quickstart'
+    # The archive has no Git metadata. Once setup has installed Git, commit
+    # this disposable snapshot so release evidence can name its source revision.
+    expect "source snapshot has a Git revision" bash -c '
+        git init -q &&
+        git add --all &&
+        git -c user.name="Onboarding Test" -c user.email="onboarding@example.invalid" \
+            commit -qm "Onboarding source snapshot"
+    '
 }
 
 scenario_rerun() {

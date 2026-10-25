@@ -31,10 +31,10 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// completedApprovalReceipt is the resumed execution receipt of an approved
+// completedApprovalReceipt is the resumed event receipt of an approved
 // transaction: completed, with the required L3 proof valid.
-func completedApprovalReceipt(txHash string) *operatorv1.ActionReceipt {
-	return &operatorv1.ActionReceipt{
+func completedApprovalReceipt(txHash string) *operatorv1.EventReceipt {
+	return &operatorv1.EventReceipt{
 		TransactionId:   "transaction-approve-test",
 		TransactionHash: txHash,
 		SignerKeyId:     "warden-key-approve-test",
@@ -46,7 +46,7 @@ func completedApprovalReceipt(txHash string) *operatorv1.ActionReceipt {
 
 // sseDecisionServer serves one approval.completed event for txHash carrying
 // receipt. A nil receipt sends the event without one.
-func sseDecisionServer(t *testing.T, txHash string, receipt *operatorv1.ActionReceipt) *httptest.Server {
+func sseDecisionServer(t *testing.T, txHash string, receipt *operatorv1.EventReceipt) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -139,7 +139,7 @@ func TestApproveCmd_SSE_HappyPath(t *testing.T) {
 }
 
 func TestApproveCmd_SSE_DenyIsNeverReportedApproved(t *testing.T) {
-	srv := sseDecisionServer(t, "txhash123", &operatorv1.ActionReceipt{
+	srv := sseDecisionServer(t, "txhash123", &operatorv1.EventReceipt{
 		TransactionHash: "txhash123",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -165,11 +165,11 @@ func TestApproveCmd_SSE_ReceiptRejected(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		receipt *operatorv1.ActionReceipt
+		receipt *operatorv1.EventReceipt
 		want    error
 	}{
-		{name: "missing receipt", receipt: nil, want: constants.ErrActionReceiptMissing},
-		{name: "receipt for another transaction", receipt: completedApprovalReceipt("txhash-other"), want: constants.ErrActionReceiptMissing},
+		{name: "missing receipt", receipt: nil, want: constants.ErrEventReceiptMissing},
+		{name: "receipt for another transaction", receipt: completedApprovalReceipt("txhash-other"), want: constants.ErrEventReceiptMissing},
 		{name: "failed execution", receipt: failed, want: constants.ErrActionExecutionFailed},
 		{name: "governance rejection", receipt: rejected, want: constants.ErrActionExecutionFailed},
 		{name: "completed without required L3 proof", receipt: unproven, want: constants.ErrTxL3ProofInvalid},

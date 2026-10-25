@@ -42,7 +42,7 @@ func TestDispatchService_ProcessEnvelope_PreservesAdmittedEnvelope(t *testing.T)
 	svc.stateRootProvider = &stubStateRootProvider{err: constants.ErrIngressStateRootUnavailable}
 	deliberator := &stubL2Deliberator{}
 	svc.l2Deliberator = deliberator
-	svc.embeddedProcessor = embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.ActionReceipt, error) {
+	svc.embeddedProcessor = embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.EventReceipt, error) {
 		t.Fatal("outbound resume reached the embedded processor")
 		return nil, nil
 	})
@@ -66,7 +66,7 @@ func TestDispatchService_ProcessEnvelope_PreservesAdmittedEnvelope(t *testing.T)
 	require.Equal(t, env.Id, receipt.GetTransactionId())
 	require.False(t, deliberator.called, "resume must retain the original L2 proofs")
 	pub, _, _ := dispatchTestActuator()
-	require.NoError(t, governance.VerifyActionReceiptSignature(receipt, pub))
+	require.NoError(t, governance.VerifyEventReceiptSignature(receipt, pub))
 	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, pub))
 }
 
@@ -77,7 +77,7 @@ func TestDispatchService_ProcessEnvelope_ReturnsSignedDenialWithoutResult(t *tes
 	env := resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t))
 	env.Governance.L3 = &commonv1.L3Metadata{Denied: true}
 	pub, key, keyID := dispatchTestActuator()
-	rejection := &operatorv1.ActionReceipt{
+	rejection := &operatorv1.EventReceipt{
 		TransactionId: env.Id, TransactionHash: env.TransactionHash,
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -100,7 +100,7 @@ func TestDispatchService_ProcessEnvelope_ReturnsSignedDenialWithoutResult(t *tes
 	require.ErrorIs(t, err, constants.ErrDispatchGovernanceRejected)
 	require.True(t, proto.Equal(rejection, receipt))
 	require.True(t, proto.Equal(receipt, governance.FailedReceipt(err)))
-	require.NoError(t, governance.VerifyActionReceiptSignature(receipt, pub))
+	require.NoError(t, governance.VerifyEventReceiptSignature(receipt, pub))
 	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, pub))
 }
 
@@ -170,7 +170,7 @@ func TestDispatchService_ProcessEnvelope_InferenceCompletionIsVerified(t *testin
 			env := resumeTestEnvelope(t, constants.Event.Operator.Inference.Requested, payload)
 			result := inferenceTestResult(t)
 			_, key, keyID := dispatchTestActuator()
-			receipt := &operatorv1.ActionReceipt{
+			receipt := &operatorv1.EventReceipt{
 				TransactionId: env.Id, TransactionHash: env.TransactionHash,
 				Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: result.ResultDigest,
 			}

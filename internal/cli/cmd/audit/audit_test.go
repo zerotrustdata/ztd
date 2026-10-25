@@ -51,7 +51,7 @@ func TestAuditCmd(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd(t *testing.T) {
+func TestEventReceiptsCmd(t *testing.T) {
 	t.Run("receipts command has correct use and description", func(t *testing.T) {
 		cmd := auditEventReceiptsCmd()
 		assert.Equal(t, "event-receipts", cmd.Use)
@@ -173,7 +173,7 @@ func TestAuditCommandFlags(t *testing.T) {
 
 // Test helper functions for audit response parsing
 
-func TestAuditReceiptsResponseParsing(t *testing.T) {
+func TestEventReceiptsResponseParsing(t *testing.T) {
 	t.Run("parses valid receipts response", func(t *testing.T) {
 		jsonResp := `{
 			"success": true,
@@ -343,7 +343,7 @@ func TestAuditReportResponseParsing(t *testing.T) {
 
 // Error handling tests
 
-func TestAuditReceiptsCmd_ConfigLoadFailure(t *testing.T) {
+func TestEventReceiptsCmd_ConfigLoadFailure(t *testing.T) {
 	t.Run("receipts fails when config load fails", func(t *testing.T) {
 		originalLoad := shared.ConfigLoad
 		shared.ConfigLoad = func(string) (*config.Config, error) {
@@ -363,7 +363,7 @@ func TestAuditReceiptsCmd_ConfigLoadFailure(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd_APIClientFailure(t *testing.T) {
+func TestEventReceiptsCmd_APIClientFailure(t *testing.T) {
 	t.Run("receipts fails when API client creation fails", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
@@ -383,7 +383,7 @@ func TestAuditReceiptsCmd_APIClientFailure(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd_CredentialsLoadFailure(t *testing.T) {
+func TestEventReceiptsCmd_CredentialsLoadFailure(t *testing.T) {
 	t.Run("receipts fails when credentials file is corrupted", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
@@ -403,7 +403,7 @@ func TestAuditReceiptsCmd_CredentialsLoadFailure(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd_NoCredentials(t *testing.T) {
+func TestEventReceiptsCmd_NoCredentials(t *testing.T) {
 	t.Run("receipts fails when no credentials exist", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
@@ -451,7 +451,7 @@ func TestAuditEventsCmd_LimitValidation(t *testing.T) {
 
 // Table-driven tests for various scenarios
 
-func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
+func TestEventReceiptsCmd_TableDriven(t *testing.T) {
 	tests := []struct {
 		name          string
 		flags         map[string]string
@@ -517,7 +517,7 @@ func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
 
 // Output formatting tests
 
-func TestAuditReceiptsCmd_TableFormatting(t *testing.T) {
+func TestEventReceiptsCmd_TableFormatting(t *testing.T) {
 	t.Run("receipts truncates long transaction hash", func(t *testing.T) {
 		txHash := strings.Repeat("a", 20)
 		assert.Len(t, txHash[:12], 12)

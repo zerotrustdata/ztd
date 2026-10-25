@@ -32,7 +32,7 @@ func TestInvestigationCatalog_LoadsAndValidatesAllPlantedFaultScenarios(t *testi
 	for i, expectedID := range expectedIDs {
 		scenario := catalog.GetScenarios()[i]
 		assert.Equal(t, expectedID, scenario.GetScenarioId())
-		assert.Equal(t, "1.1.0", scenario.GetScenarioVersion())
+		assert.Equal(t, "1.2.0", scenario.GetScenarioVersion())
 		assert.NotEmpty(t, scenario.GetPublicDescription())
 		assert.Equal(t, evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS, scenario.GetCategory())
 

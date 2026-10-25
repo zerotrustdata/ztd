@@ -532,7 +532,7 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if record == nil {
 		return fmt.Errorf("local receipt %s: %w", tx, constants.ErrNotFound)
 	}
-	receipt := record.ActionReceipt
+	receipt := record.EventReceipt
 	if receipt == nil {
 		return fmt.Errorf("local receipt %s has no signed canonical body: %w", tx, constants.ErrMissingRequiredField)
 	}
@@ -549,7 +549,7 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if err != nil {
 		return err
 	}
-	if err := govservice.VerifyActionReceiptSignature(receipt, pub); err != nil {
+	if err := govservice.VerifyEventReceiptSignature(receipt, pub); err != nil {
 		return err
 	}
 	if err := govservice.VerifyReceiptPersistenceAttestation(receipt, pub); err != nil {

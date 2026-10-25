@@ -39,7 +39,7 @@ func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTra
 		receipt := call.GetReceipt()
 		if receipt == nil {
 			if call.GetFailure() == nil || call.GetResult() != nil {
-				return nil, constants.ErrActionReceiptMissing
+				return nil, constants.ErrEventReceiptMissing
 			}
 		} else {
 			if receipt.GetActionType() != string(constants.ActionTypeInference) || receipt.GetTransactionId() == "" || receipt.GetTransactionId() != call.GetTransactionId() {
@@ -86,7 +86,7 @@ func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTra
 		}
 		observed := AgentModelCall{}
 		for _, receipt := range call.GetObservationReceipts() {
-			observed.ObservationReceipts = append(observed.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
+			observed.ObservationReceipts = append(observed.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 		}
 		observations, err := verifyObservationEvidence(anchors, trace.Data, observed)
 		if err != nil {

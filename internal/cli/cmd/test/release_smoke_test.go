@@ -56,8 +56,8 @@ func completeSmokeFixture() smokeFixture {
 		verificationRows: []string{
 			"commitment_chain,commitment_ledger,all,PASS,ok",
 			"git_merkle_root,ledger,HEAD,PASS,ok",
-			"file_mutation_linkage,audit_store,all,PASS,ok",
-			"receipt_commitment_crosslink,audit_store+commitment_ledger,all,PASS,ok",
+			"file_mutation_linkage,events_store,all,PASS,ok",
+			"receipt_commitment_crosslink,events_store+commitment_ledger,all,PASS,ok",
 		},
 	}
 }
@@ -291,7 +291,7 @@ func TestVerifyEvidenceFailsRunOnUnverifiedWorkerExport(t *testing.T) {
 	r.fileTx = testSmokeTxFile
 	good := completeSmokeFixture()
 	bad := completeSmokeFixture()
-	bad.verificationRows[2] = "file_mutation_linkage,audit_store,all,SKIPPED,audit store not configured"
+	bad.verificationRows[2] = "file_mutation_linkage,events_store,all,SKIPPED,local-first events store not configured"
 	writeSmokeReport(t, filepath.Join(r.reportsDir, "worker"), bad)
 	writeSmokeReport(t, filepath.Join(r.reportsDir, "gateway"), good)
 	r.summary.Scenarios = []releaseSmokeScenario{{Name: "document-merge", TransactionIDs: []string{testSmokeTxDoc}}}

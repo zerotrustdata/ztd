@@ -58,7 +58,7 @@ Accept the run only when the command exits with code 0 and `evidence/smoke-summa
 The runner verifies each receipt's actuator signature and persistence attestation against keys anchored to the Gateway's local export and the enrolled Operator's bound public key. The summary records:
 - Binary SHA-256 (`source.ztd_binary_sha256`), Git revision and dirty state (`source`), and platform (`platform`).
 - Operating posture (`posture`, `doctrine`) and ingress paths (`ingress`).
-- Signed receipt and persistence-attestation verification across both Gateway and Operator audit stores (`local_receipts`).
+- Signed receipt and persistence-attestation verification across both Gateway and Operator Local-First Events Stores (`local_receipts`).
 
 The verdict also requires these report and scenario checks:
 - Report evidence: `reports/gateway/` and `reports/worker/` each contain nonempty `event_receipts.csv`, `commitments.csv`, and `file_mutations.csv`. Every row of `verification_summary.csv` MUST be `PASS`; any `FAIL`, `SKIPPED`, or unrecognized result rejects the run. The checks `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST each appear with `PASS`.

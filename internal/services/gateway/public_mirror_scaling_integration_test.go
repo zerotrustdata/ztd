@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func p95Duration(durations []time.Duration) time.Duration {
@@ -63,12 +64,12 @@ func sendProofIngestToHandler(t *testing.T, handler http.Handler, req models.Pub
 	return recorder.Code, resp
 }
 
-func getStoreDiskBytes(ctx context.Context, fileSvc fs.RuntimeFileService) int64 {
+func getStoreDiskBytes(t *testing.T, ctx context.Context, fileSvc fs.RuntimeFileService) int64 {
+	t.Helper()
 	var total int64
-	if info, err := fileSvc.Stat(ctx, constants.PublicMirrorDBPath); err == nil {
-		total += info.Size()
-	}
-	if info, err := fileSvc.Stat(ctx, constants.PublicMirrorDBPath+"-wal"); err == nil {
+	for _, path := range []string{constants.PublicMirrorDBPath, constants.PublicMirrorDBPath + "-wal"} {
+		info, err := fileSvc.Stat(ctx, path)
+		require.NoError(t, err)
 		total += info.Size()
 	}
 	return total
@@ -76,7 +77,7 @@ func getStoreDiskBytes(ctx context.Context, fileSvc fs.RuntimeFileService) int64
 
 func populateScalingMirror(t *testing.T, env *mirrorTestEnv, batchCount, artifactCount int) (int64, string, int64, string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := testutil.ContextWithTimeout(t, 3*time.Minute)
 
 	// 1. Populate initial batches
 	prevBatchHash := constants.PublicFeedZeroHashHex
@@ -123,8 +124,42 @@ func populateScalingMirror(t *testing.T, env *mirrorTestEnv, batchCount, artifac
 	return int64(batchCount), prevBatchHash, segIndex, prevProofRoot
 }
 
-func checkpointStore(ctx context.Context, env *mirrorTestEnv) {
-	_, _ = env.store.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+func checkpointStore(t *testing.T, ctx context.Context, env *mirrorTestEnv) {
+	t.Helper()
+	var busy, logFrames, checkpointedFrames int
+	require.NoError(t, env.store.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointedFrames))
+	require.Zero(t, busy, "disk growth measurements require a completed checkpoint")
+}
+
+type mirrorScalingCost struct {
+	allocatedBytes uint64
+	changedRows    int64
+}
+
+// total_changes() is connection-local. The scaling fixture uses a single
+// persistent connection so the counter includes every ingest transaction.
+func readMirrorScalingCost(t *testing.T, ctx context.Context, env *mirrorTestEnv) mirrorScalingCost {
+	t.Helper()
+	var changedRows int64
+	require.NoError(t, env.store.db.QueryRowContext(ctx, "SELECT total_changes()").Scan(&changedRows))
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	return mirrorScalingCost{allocatedBytes: stats.TotalAlloc, changedRows: changedRows}
+}
+
+func assertMirrorScalingCost(t *testing.T, operation string, smallBefore, smallAfter, largeBefore, largeAfter mirrorScalingCost, requests int) {
+	t.Helper()
+	smallAlloc := smallAfter.allocatedBytes - smallBefore.allocatedBytes
+	largeAlloc := largeAfter.allocatedBytes - largeBefore.allocatedBytes
+	smallRows := smallAfter.changedRows - smallBefore.changedRows
+	largeRows := largeAfter.changedRows - largeBefore.changedRows
+	t.Logf("%s per request: small alloc=%d B, large alloc=%d B, small changed rows=%d, large changed rows=%d",
+		operation, smallAlloc/uint64(requests), largeAlloc/uint64(requests), smallRows/int64(requests), largeRows/int64(requests))
+	assert.Positive(t, smallAlloc)
+	assert.Less(t, largeAlloc, 2*smallAlloc, "%s allocation must not grow with retained history", operation)
+	assert.Positive(t, smallRows)
+	assert.Equal(t, smallRows, largeRows, "%s row mutations must not grow with retained history", operation)
+	assert.LessOrEqual(t, largeRows, int64(requests)*64, "%s must change a bounded number of rows per request", operation)
 }
 
 func TestPublicMirror_SegmentCatalogGrowsBeyondOneSegmentLimit(t *testing.T) {
@@ -162,24 +197,27 @@ func TestPublicMirror_SegmentCatalogGrowsBeyondOneSegmentLimit(t *testing.T) {
 }
 
 func TestPublicMirror_ScalingIntegration(t *testing.T) {
-	ctx := context.Background()
+	ctx := testutil.ContextWithTimeout(t, 3*time.Minute)
 
 	// Build two mirrors: small (500 batches & artifacts) and large (5,000 batches & artifacts)
 	smallEnv := newMirrorTestEnv(t)
+	smallEnv.store.db.SetMaxOpenConns(1)
 	smallLastSeq, smallPrevBatchHash, smallSegIndex, smallPrevProofRoot := populateScalingMirror(t, smallEnv, 500, 500)
 
 	largeEnv := newMirrorTestEnv(t)
+	largeEnv.store.db.SetMaxOpenConns(1)
 	largeLastSeq, largePrevBatchHash, largeSegIndex, largePrevProofRoot := populateScalingMirror(t, largeEnv, 5000, 5000)
 
 	const timedBatches = 50
 	const timedProofPushes = 10
 
 	// Benchmark Batch Ingest on Small Mirror
-	checkpointStore(ctx, smallEnv)
+	checkpointStore(t, ctx, smallEnv)
 	runtime.GC()
-	smallStoreBytesBefore := getStoreDiskBytes(ctx, smallEnv.fileSvc)
+	smallStoreBytesBefore := getStoreDiskBytes(t, ctx, smallEnv.fileSvc)
 	smallBatchDurations := make([]time.Duration, timedBatches)
 	var sampleBatchLen int
+	smallBatchBefore := readMirrorScalingCost(t, ctx, smallEnv)
 	for i := range timedBatches {
 		smallLastSeq++
 		rec := smallEnv.makeRecord(smallLastSeq, models.NewPublicFeedObject(map[string]string{
@@ -200,14 +238,16 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
 	}
-	checkpointStore(ctx, smallEnv)
-	smallStoreBytesAfter := getStoreDiskBytes(ctx, smallEnv.fileSvc)
+	smallBatchAfter := readMirrorScalingCost(t, ctx, smallEnv)
+	checkpointStore(t, ctx, smallEnv)
+	smallStoreBytesAfter := getStoreDiskBytes(t, ctx, smallEnv.fileSvc)
 
 	// Benchmark Batch Ingest on Large Mirror
-	checkpointStore(ctx, largeEnv)
+	checkpointStore(t, ctx, largeEnv)
 	runtime.GC()
-	largeStoreBytesBefore := getStoreDiskBytes(ctx, largeEnv.fileSvc)
+	largeStoreBytesBefore := getStoreDiskBytes(t, ctx, largeEnv.fileSvc)
 	largeBatchDurations := make([]time.Duration, timedBatches)
+	largeBatchBefore := readMirrorScalingCost(t, ctx, largeEnv)
 	for i := range timedBatches {
 		largeLastSeq++
 		rec := largeEnv.makeRecord(largeLastSeq, models.NewPublicFeedObject(map[string]string{
@@ -224,12 +264,14 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
 	}
-	checkpointStore(ctx, largeEnv)
-	largeStoreBytesAfter := getStoreDiskBytes(ctx, largeEnv.fileSvc)
+	largeBatchAfter := readMirrorScalingCost(t, ctx, largeEnv)
+	checkpointStore(t, ctx, largeEnv)
+	largeStoreBytesAfter := getStoreDiskBytes(t, ctx, largeEnv.fileSvc)
 
 	// Benchmark Proof Ingest on Small Mirror
 	runtime.GC()
 	smallProofDurations := make([]time.Duration, timedProofPushes)
+	smallProofBefore := readMirrorScalingCost(t, ctx, smallEnv)
 	for i := range timedProofPushes {
 		smallSegIndex++
 		content := []byte(fmt.Sprintf(`{"bench_proof_small":%d,"data":"proof-content"}`, i))
@@ -248,10 +290,12 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
 	}
+	smallProofAfter := readMirrorScalingCost(t, ctx, smallEnv)
 
 	// Benchmark Proof Ingest on Large Mirror
 	runtime.GC()
 	largeProofDurations := make([]time.Duration, timedProofPushes)
+	largeProofBefore := readMirrorScalingCost(t, ctx, largeEnv)
 	for i := range timedProofPushes {
 		largeSegIndex++
 		content := []byte(fmt.Sprintf(`{"bench_proof_large":%d,"data":"proof-content"}`, i))
@@ -270,8 +314,11 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
 	}
+	largeProofAfter := readMirrorScalingCost(t, ctx, largeEnv)
 
-	// 1. Assert p95 ratio < 2
+	// Wall-clock samples include filesystem sync, scheduling, and race detector
+	// overhead. Keep them diagnostic, as in the publisher scaling test; enforce
+	// bounded allocation and row mutations instead of a noisy latency ratio.
 	smallBatchP95 := p95Duration(smallBatchDurations)
 	largeBatchP95 := p95Duration(largeBatchDurations)
 	batchRatio := float64(largeBatchP95) / float64(smallBatchP95)
@@ -283,8 +330,8 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 	t.Logf("Batch Ingest p95: small=%v, large=%v, ratio=%.2f", smallBatchP95, largeBatchP95, batchRatio)
 	t.Logf("Proof Push p95: small=%v, large=%v, ratio=%.2f", smallProofP95, largeProofP95, proofRatio)
 
-	assert.Less(t, batchRatio, 2.0, "batch ingest p95 ratio (large/small) must be < 2")
-	assert.Less(t, proofRatio, 2.0, "proof push p95 ratio (large/small) must be < 2")
+	assertMirrorScalingCost(t, "batch ingest", smallBatchBefore, smallBatchAfter, largeBatchBefore, largeBatchAfter, timedBatches)
+	assertMirrorScalingCost(t, "proof push", smallProofBefore, smallProofAfter, largeProofBefore, largeProofAfter, timedProofPushes)
 
 	// 2. Assert bytes written per batch ingest are bounded by a small multiple of the batch size
 	smallDelta := smallStoreBytesAfter - smallStoreBytesBefore

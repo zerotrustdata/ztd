@@ -106,7 +106,7 @@ graph TD
     MCPGW -- "Outbound (dispatch)" --> Dispatch
     Dispatch -- "Embedded operator (direct)" --> Warden_Entry
     WSSHandler -- "Loopback publish" --> LoopbackBridge
-    Actuator -- "ActionReceipt" --> AuditDB
+    Actuator -- "EventReceipt" --> AuditDB
 ```
 
 ## Service Stack Composition

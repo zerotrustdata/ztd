@@ -109,7 +109,7 @@ Configure downstream MCP servers when starting the Gateway:
   --mcp-downstream-url http://localhost:3000
 ```
 
-`--mcp-downstream-cmd` and `--mcp-downstream-url` are mutually exclusive. Downstream tool output is scrubbed before it leaves the Gateway, and each downstream call is recorded in the Gateway audit store.
+`--mcp-downstream-cmd` and `--mcp-downstream-url` are mutually exclusive. Downstream tool output is scrubbed before it leaves the Gateway, and each downstream call is recorded in the Gateway's Local-First Events Store.
 
 ---
 
@@ -220,11 +220,13 @@ In `ratify` and `notary` postures, operations requiring human authorization with
 2. Gateway returns an approval URL built from its public base URL and `/api/v1/approve/{tx_hash}`. Opening it redirects to the console at `/console/#approve=<tx_hash>`.
 3. User completes WebAuthn passkey assertion.
 4. Gateway attaches L3 proof and resumes execution.
-5. The approval response carries the resulting signed `ActionReceipt`.
+5. The approval response carries the resulting signed `EventReceipt`.
 
 ---
 
-## Audit Receipts
+## Event Receipts
+
+An [Event Receipt](../reference/glossary.md#event-receipt) is the signed evidence for a governed request event. Audit events include receipt stages and other recorded facts; the event-receipt queries select the current signed receipt for each transaction.
 
 List audit events for an operator session with `./ztd gw data audit list --operator-session-id <session-id>`, or aggregate them by type with `./ztd gw data audit summary`. Query one application's records with `--app`, which matches the exact `acting_app_id`, the application's SPIFFE URI (`spiffe://ztd.local/app/<name>`):
 

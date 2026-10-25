@@ -14,7 +14,7 @@ npm run build
 
 The homepage markup and CSS live in `src/index.html`; its behavior lives in `src/site.js`, kept separate so a markup redesign cannot silently replace it. The build extracts the inline CSS into `dist/styles.css` and copies `src/site.js` to `dist/site.js`, so the deployed page keeps a strict Content Security Policy. The build fails if `src/index.html` contains an inline script. `test/site.test.js` runs `site.js` against a stub DOM to check that reduced motion slows the hero grid rather than freezing it, and that Windows visitors land on the Windows install tab. The build also copies the install scripts and search metadata into `dist/`; the repository root `README.md` becomes `dist/llms-full.txt`.
 
-The homepage includes a Contact section (`#contact`), linked from the closing call-to-action paragraph. It publishes Danny's email, `danny@zerotrustdata.io`, as a clickable email link in both the Contact section and the footer.
+The homepage's “Watch it LIVE” button links to `https://opendevops.ai`. The homepage includes a Contact section (`#contact`), linked from the closing call-to-action paragraph. It publishes Danny's email, `danny@zerotrustdata.io`, as a clickable email link in both the Contact section and the footer.
 
 ## Payments
 

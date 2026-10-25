@@ -109,9 +109,9 @@ func TestVerifyDigest_RejectsIncorrectDigest(t *testing.T) {
 
 func TestContentReferenceForBody_FormatAndDeterminism(t *testing.T) {
 	body := []byte(`{"ref":"test"}`)
-	ref := ContentReferenceForBody("action-receipt", body)
+	ref := ContentReferenceForBody("event-receipt", body)
 	digest := sha256.Sum256(body)
-	expected := "action-receipt:sha256:" + hex.EncodeToString(digest[:])
+	expected := "event-receipt:sha256:" + hex.EncodeToString(digest[:])
 	assert.Equal(t, expected, ref)
 }
 
@@ -147,16 +147,16 @@ func TestParseContentReference_InvalidReferences(t *testing.T) {
 
 func TestParseExpectedContentReference_MatchesPrefix(t *testing.T) {
 	body := []byte(`{}`)
-	ref := ContentReferenceForBody("action-receipt", body)
-	prefix, digest, ok := ParseExpectedContentReference(ref, "action-receipt")
+	ref := ContentReferenceForBody("event-receipt", body)
+	prefix, digest, ok := ParseExpectedContentReference(ref, "event-receipt")
 	require.True(t, ok)
-	assert.Equal(t, "action-receipt", prefix)
+	assert.Equal(t, "event-receipt", prefix)
 	assert.Len(t, digest, 64)
 }
 
 func TestParseExpectedContentReference_RejectsWrongPrefix(t *testing.T) {
 	body := []byte(`{}`)
-	ref := ContentReferenceForBody("action-receipt", body)
+	ref := ContentReferenceForBody("event-receipt", body)
 	_, _, ok := ParseExpectedContentReference(ref, "demo-manifest")
 	assert.False(t, ok)
 }
@@ -307,7 +307,7 @@ func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *test
 		SignerKeyID:       "signer-1",
 		Signature:         "receipt-signature",
 	}
-	newReceipt := func() *operatorv1.ActionReceipt {
+	newReceipt := func() *operatorv1.EventReceipt {
 		receipt := newEvalVerifiedChainReceipt(projection.SignerKeyID)
 		receipt.Signature = projection.Signature
 		receipt.FinalPersistenceAttestation = &operatorv1.ReceiptPersistenceAttestation{
@@ -332,14 +332,14 @@ func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *test
 
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.ActionReceipt)
+		mutate func(*operatorv1.EventReceipt)
 	}{
-		{name: "target session mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "target session mismatch", mutate: func(receipt *operatorv1.EventReceipt) {
 			for _, stage := range receipt.DeterministicStageEvidence {
 				stage.OperatorSessionId = "session-other"
 			}
 		}},
-		{name: "attempt mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "attempt mismatch", mutate: func(receipt *operatorv1.EventReceipt) {
 			for _, stage := range receipt.DeterministicStageEvidence {
 				stage.TaskId = "attempt-other"
 			}

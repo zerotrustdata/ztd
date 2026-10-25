@@ -58,7 +58,7 @@ func suspendedCallResponse(txHash string) JSONRPCResponse {
 // receipt reports receiptTxHash as the resumed transaction's hash.
 func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) string {
 	t.Helper()
-	return approvalReceiptFrame(t, userID, txHash, &operatorv1.ActionReceipt{
+	return approvalReceiptFrame(t, userID, txHash, &operatorv1.EventReceipt{
 		TransactionId:   "transaction-" + receiptTxHash,
 		TransactionHash: receiptTxHash,
 		SignerKeyId:     "warden-key-bridge",
@@ -69,7 +69,7 @@ func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) 
 }
 
 // approvalReceiptFrame is an approval.completed SSE frame for txHash carrying receipt.
-func approvalReceiptFrame(t *testing.T, userID, txHash string, signed *operatorv1.ActionReceipt) string {
+func approvalReceiptFrame(t *testing.T, userID, txHash string, signed *operatorv1.EventReceipt) string {
 	t.Helper()
 	receipt, err := response.MarshalProtoJSONCanonical(signed)
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		result, ok := resp.Result.(mcp.CallToolResult)
 		require.True(t, ok, "the approved call must return a CallToolResult")
 		assert.Nil(t, result.Suspension)
-		var receipt operatorv1.ActionReceipt
+		var receipt operatorv1.EventReceipt
 		require.NoError(t, protojson.Unmarshal(result.Receipt, &receipt))
 		assert.Equal(t, "tx-sse-success", receipt.GetTransactionHash())
 		assert.Equal(t, "resumed result", result.Content[0].Text)
@@ -178,7 +178,7 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		frames := make(chan string)
 		written := make(chan struct{}, 1)
 		sseServer := approvalStreamServer(t, frames, written, &connections)
-		frame := approvalReceiptFrame(t, "user-sse-deny", "tx-sse-deny", &operatorv1.ActionReceipt{
+		frame := approvalReceiptFrame(t, "user-sse-deny", "tx-sse-deny", &operatorv1.EventReceipt{
 			TransactionId:   "transaction-tx-sse-deny",
 			TransactionHash: "tx-sse-deny",
 			SignerKeyId:     "warden-key-bridge",
@@ -249,7 +249,7 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 
 		_, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}, nil)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrActionReceiptMissing)
+		assert.ErrorIs(t, err, constants.ErrEventReceiptMissing)
 	})
 
 	t.Run("suspension without a transaction hash fails closed", func(t *testing.T) {

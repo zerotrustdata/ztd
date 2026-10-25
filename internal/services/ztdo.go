@@ -199,28 +199,27 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	vs.tokenStore = gateway.NewEncryptedKVAdapter(vs.gatewayDB.GetKVStore(), encryptionVault)
 	vs.logger.Info("Token store initialized (canonical KV store)")
 
-	vs.logger.Info("Initializing Local-First Audit Architecture (LFAA)...")
+	vs.logger.Info("Initializing Local-First Audit Architecture (LFEA)...")
 
-	// Reuse the SQLAuditStore from CanonicalDBService — both the standalone
-	// and canonical instances open the same ztd.db file, so a separate connection
-	// pool and pruner are redundant. CanonicalDBService.Close() handles lifecycle.
-	auditStore := vs.gatewayDB.GetAuditStore()
+	// Reuse the runtime's LocalFirstEventsStore and canonical database pool.
+	// CanonicalDBService.Close() owns the store and pruner lifecycle.
+	eventsStore := vs.gatewayDB.GetLocalFirstEventsStore()
 
 	if vs.config.OperatorSessionId == "" {
-		return fmt.Errorf("%w: operator session ID required before audit store can accept events", constants.ErrGatewayOperatorSessionIDRequired)
+		return fmt.Errorf("%w: operator session ID required before local-first events store can accept events", constants.ErrGatewayOperatorSessionIDRequired)
 	}
 	// StartSession is the single, atomic start path: it creates the row on first
 	// start and marks it live again when a restarted Operator reuses its session.
-	if err := auditStore.StartSession(vs.config.OperatorSessionId, constants.SessionTypeOperator, "Operator Session", vs.config.OperatorID); err != nil {
+	if err := eventsStore.StartSession(vs.config.OperatorSessionId, constants.SessionTypeOperator, "Operator Session", vs.config.OperatorID); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrAuditRecordUserMsg, err)
 	}
 
 	evidence, err := storage.OpenLocalExecutionEvidence(storage.LocalExecutionEvidenceConfig{
-		FileSvc:    vs.fileSvc,
-		Vault:      encryptionVault,
-		AuditStore: auditStore,
-		WorkDir:    vs.config.WorkDir,
-		Logger:     vs.logger,
+		FileSvc:     vs.fileSvc,
+		Vault:       encryptionVault,
+		EventsStore: eventsStore,
+		WorkDir:     vs.config.WorkDir,
+		Logger:      vs.logger,
 	})
 	if err != nil {
 		return fmt.Errorf("ztdo: open local execution evidence: %w", err)
@@ -253,7 +252,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	// bound into the envelope. The provider captures this runtime's local
 	// state for L5 receipt evidence; execution never queries Gateway state.
 	stateRootProvider := vs.gatewayDB.GetStateRootSvc()
-	transactionAudit := auditStore
+	transactionAudit := eventsStore
 	// Human proofs are independently verified against the same pinned CA pool
 	// used for the authenticated Gateway connection, never a local approval row.
 	tlsConfig, err := vs.tlsConfig.GetTLSConfig()
@@ -300,7 +299,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		FileEdit:                 vs.fileEdit,
 		PubSubClient:             vs.pubSubClient,
 		ResultsService:           vs.pubSubResults,
-		AuditStore:               auditStore,
+		EventsStore:              eventsStore,
 		RuntimeVault:             encryptionVault,
 		Ledger:                   vs.evidence.Ledger,
 		HistoryHandler:           vs.evidence.HistoryHandler,
@@ -414,10 +413,10 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 		vs.execution.Stop()
 	}
 
-	// Drain audit store writes (CanonicalDBService.Close() handles final close)
-	if vs.gatewayDB != nil && vs.gatewayDB.GetAuditStore() != nil {
+	// Drain local-first events store writes (CanonicalDBService.Close() handles final close)
+	if vs.gatewayDB != nil && vs.gatewayDB.GetLocalFirstEventsStore() != nil {
 		vs.logger.Info("Waiting for audit writes to drain...")
-		vs.gatewayDB.GetAuditStore().Wait()
+		vs.gatewayDB.GetLocalFirstEventsStore().Wait()
 	}
 
 	// Wait for shutdown handler goroutine to complete
@@ -425,8 +424,8 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 
 	// The runtime session is over: mark its audit session ended so retention may
 	// prune it. A failure is logged; the row then stays live and is never pruned.
-	if vs.gatewayDB != nil && vs.gatewayDB.GetAuditStore() != nil && vs.config.OperatorSessionId != "" {
-		if err := vs.gatewayDB.GetAuditStore().EndSession(vs.config.OperatorSessionId); err != nil {
+	if vs.gatewayDB != nil && vs.gatewayDB.GetLocalFirstEventsStore() != nil && vs.config.OperatorSessionId != "" {
+		if err := vs.gatewayDB.GetLocalFirstEventsStore().EndSession(vs.config.OperatorSessionId); err != nil {
 			vs.logger.Error("ztdo: failed to end audit session", "operator_session_id", vs.config.OperatorSessionId, "error", err)
 		}
 	}

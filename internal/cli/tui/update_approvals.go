@@ -105,7 +105,7 @@ func (m Model) applyApprovalOpenedMsg(msg ApprovalOpenedMsg) Model {
 }
 
 // applyApprovalCompletedMsg reports the outcome of a completed L3 decision
-// from the execution receipt approval.completed carries, as 'ztd auth
+// from the event receipt approval.completed carries, as 'ztd auth
 // approve' does. An executed transaction has already left the pending store,
 // so the receipt is the only record of its outcome. Pending approvals are
 // re-listed.

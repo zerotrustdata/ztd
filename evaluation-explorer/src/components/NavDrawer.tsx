@@ -12,11 +12,13 @@ interface NavItemConfig {
 
 const NAV_ITEMS: NavItemConfig[] = [
   { to: '/', label: 'Live', description: 'Real-time campaign feed & telemetry' },
+  { to: '/leaderboard', label: 'Leaderboard', description: 'Role leaders & composite rankings' },
   { to: '/evaluations', label: 'Evals', description: 'Campaign runs & assignment outcomes' },
   { to: '/tasks', label: 'Tasks', description: 'Benchmark scenarios & task suite' },
   { to: '/models', label: 'Models', description: 'Evaluated models & scorecards' },
   { to: '/methodology', label: 'Docs', description: 'Methodology & governance specifications' },
   { to: '/about', label: 'About', description: 'Evaluation goals, project & builder' },
+  { to: '/sponsors', label: 'Sponsors', description: 'Top sponsors & project sustainability' },
 ];
 
 export function NavDrawer() {
@@ -58,19 +60,6 @@ export function NavDrawer() {
 
   return (
     <div className="nav-drawer-wrapper" ref={menuRef}>
-      <nav className="nav-inline" aria-label="Primary navigation">
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) => `nav-inline-item${isActive ? ' active' : ''}`}
-            title={item.description}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
       <button
         ref={buttonRef}
         type="button"

@@ -412,11 +412,11 @@ func TestValidator_EmptyObservationSubjects_FailsSemantic(t *testing.T) {
 
 func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 	contentAddressProps := `"props": [
-            {"name": "artifact-id", "value": "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-            {"name": "artifact-type", "value": "action-receipt"},
+            {"name": "artifact-id", "value": "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            {"name": "artifact-type", "value": "event-receipt"},
             {"name": "sha256", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             {"name": "media-type", "value": "application/json"},
-            {"name": "schema-ref", "value": "ztd.operator.v1.ActionReceipt"},
+            {"name": "schema-ref", "value": "ztd.operator.v1.EventReceipt"},
             {"name": "producer-identity", "value": "gateway"},
             {"name": "verification-status", "value": "verified"},
             {"name": "verifier-id", "value": "receipt-verifier"},
@@ -474,7 +474,7 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 		},
 		{
 			name:     "artifact type does not match content address",
-			document: replaceInJSON(t, withContentAddress, `"name": "artifact-type", "value": "action-receipt"`, `"name": "artifact-type", "value": "eval-metric"`),
+			document: replaceInJSON(t, withContentAddress, `"name": "artifact-type", "value": "event-receipt"`, `"name": "artifact-type", "value": "eval-metric"`),
 			reason:   SemanticContentAddressInvalid,
 		},
 		{
@@ -484,7 +484,7 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 		},
 		{
 			name:     "duplicate evidence property",
-			document: replaceInJSON(t, withContentAddress, `{"name": "artifact-type", "value": "action-receipt"}`, `{"name": "artifact-type", "value": "action-receipt"}, {"name": "artifact-type", "value": "action-receipt"}`),
+			document: replaceInJSON(t, withContentAddress, `{"name": "artifact-type", "value": "event-receipt"}`, `{"name": "artifact-type", "value": "event-receipt"}, {"name": "artifact-type", "value": "event-receipt"}`),
 			reason:   SemanticContentAddressInvalid,
 		},
 		{
@@ -542,11 +542,11 @@ func TestValidator_FindingTargetPassesWhenReviewedControlsIncludesAll(t *testing
 
 func TestValidator_ContentAddressedEvidenceWithMatchingScopePasses(t *testing.T) {
 	contentAddressProps := `"props": [
-            {"name": "artifact-id", "value": "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-            {"name": "artifact-type", "value": "action-receipt"},
+            {"name": "artifact-id", "value": "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            {"name": "artifact-type", "value": "event-receipt"},
             {"name": "sha256", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             {"name": "media-type", "value": "application/json"},
-            {"name": "schema-ref", "value": "ztd.operator.v1.ActionReceipt"},
+            {"name": "schema-ref", "value": "ztd.operator.v1.EventReceipt"},
             {"name": "producer-identity", "value": "gateway"},
             {"name": "verification-status", "value": "verified"},
             {"name": "verifier-id", "value": "receipt-verifier"},

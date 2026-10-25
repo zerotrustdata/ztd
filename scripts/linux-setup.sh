@@ -153,13 +153,13 @@ ztd_linux_install_node() {
 }
 
 ztd_linux_install_missing() {
-    local item
+    local item index
     local -a pkgs
     pkgs=()
 
     for item in "$@"; do
         case "$item" in
-            git|make|curl|rg|bc|cc) pkgs+=("$(ztd_linux_pkg_name "$item")") ;;
+            git|make|curl|rg|bc|cc) pkgs+=("$item") ;;
         esac
     done
 
@@ -167,11 +167,16 @@ ztd_linux_install_missing() {
         if ! ztd_linux_detect_pkg_manager; then
             echo "No supported package manager (apt, dnf, pacman, zypper) found."
             echo "Install manually: ${pkgs[*]}"
-        elif ! ztd_linux_init_sudo; then
-            echo "Need root to install packages but 'sudo' is not available."
-            echo "As root, run: ${ZTD_PKG} install ${pkgs[*]}"
-        elif ztd_setup_confirm "Install ${pkgs[*]} with ${ZTD_PKG} now? [y/N] "; then
-            ztd_linux_pkg_install "${pkgs[@]}" || echo "  package install failed; install ${pkgs[*]} manually"
+        else
+            for index in "${!pkgs[@]}"; do
+                pkgs[index]="$(ztd_linux_pkg_name "${pkgs[index]}")"
+            done
+            if ! ztd_linux_init_sudo; then
+                echo "Need root to install packages but 'sudo' is not available."
+                echo "As root, run: ${ZTD_PKG} install ${pkgs[*]}"
+            elif ztd_setup_confirm "Install ${pkgs[*]} with ${ZTD_PKG} now? [y/N] "; then
+                ztd_linux_pkg_install "${pkgs[@]}" || echo "  package install failed; install ${pkgs[*]} manually"
+            fi
         fi
     fi
 

@@ -21,16 +21,16 @@ import (
 // Gateway's embedded Operator both build their stores through it, so they
 // record the same evidence into their own runtime root.
 type LocalExecutionEvidenceConfig struct {
-	FileSvc    fs.RuntimeFileService
-	Vault      *vault.Vault
-	AuditStore *SQLAuditStore
-	WorkDir    string
-	Logger     *slog.Logger
+	FileSvc     fs.RuntimeFileService
+	Vault       *vault.Vault
+	EventsStore *LocalFirstEventsStore
+	WorkDir     string
+	Logger      *slog.Logger
 }
 
 // LocalExecutionEvidence is the git file ledger and history handler of one
-// executing runtime. Execution records live in the audit store (events). The
-// audit store is owned by the caller and is not closed here.
+// executing runtime. Execution records live in the events store (events). The
+// events store is owned by the caller and is not closed here.
 type LocalExecutionEvidence struct {
 	Ledger         *GitLedgerService
 	HistoryHandler *HistoryHandler
@@ -46,8 +46,8 @@ func OpenLocalExecutionEvidence(cfg LocalExecutionEvidenceConfig) (*LocalExecuti
 	if cfg.Vault == nil {
 		return nil, fmt.Errorf("local execution evidence: %w", constants.ErrLedgerVaultRequired)
 	}
-	if cfg.AuditStore == nil {
-		return nil, fmt.Errorf("local execution evidence: %w", constants.ErrAuditStoreRequired)
+	if cfg.EventsStore == nil {
+		return nil, fmt.Errorf("local execution evidence: %w", constants.ErrLocalFirstEventsStoreRequired)
 	}
 
 	ledger, err := NewGitLedgerService(&LedgerConfig{EncryptionVault: cfg.Vault}, cfg.Logger, cfg.FileSvc)
@@ -55,7 +55,7 @@ func OpenLocalExecutionEvidence(cfg LocalExecutionEvidenceConfig) (*LocalExecuti
 		return nil, fmt.Errorf("local execution evidence: %w", err)
 	}
 	cfg.Logger.Info("Ledger initialized")
-	historyHandler, err := NewHistoryHandler(cfg.AuditStore, ledger, cfg.Logger, cfg.FileSvc, cfg.WorkDir)
+	historyHandler, err := NewHistoryHandler(cfg.EventsStore, ledger, cfg.Logger, cfg.FileSvc, cfg.WorkDir)
 	if err != nil {
 		return nil, fmt.Errorf("local execution evidence: %w", err)
 	}

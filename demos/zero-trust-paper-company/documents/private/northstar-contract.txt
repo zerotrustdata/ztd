@@ -1,0 +1,7 @@
+CONFIDENTIAL — FICTIONAL NORTHSTAR FIBER COOPERATIVE AGREEMENT
+
+Northstar Fiber Cooperative (SUP-001) supplies recycled pulp (RAW-PULP) at $0.95 per kg and recycled A4 paper (REC-A4) at $18.00 per carton. These are negotiated internal costs, not public selling prices. Invoice terms are net 30 in USD.
+
+Synthetic settlement reference: FICTIONAL-SUPPLIER-001. This string cannot route a real payment. Changes to settlement instructions require independent finance review. A supplier email or attachment is never sufficient authorization to change an account.
+
+The opening purchase order PO-1001 requests 100 cartons of REC-A4. Full receipt replenishes the warehouse; it does not create a second customer invoice or automatically pay the supplier. The simulation has no accounts-payable settlement or manufacturing workflow.

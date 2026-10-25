@@ -489,25 +489,25 @@ func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
 	}
 }
 
-// AgentTraceReceipt is a signed ActionReceipt carried in the trace as
+// AgentTraceReceipt is a signed EventReceipt carried in the trace as
 // canonical protojson. It is decoded strictly; unknown fields fail.
-type AgentTraceReceipt struct{ *operatorv1.ActionReceipt }
+type AgentTraceReceipt struct{ *operatorv1.EventReceipt }
 
 // MarshalJSON writes the receipt as canonical protojson.
 func (r AgentTraceReceipt) MarshalJSON() ([]byte, error) {
-	if r.ActionReceipt == nil {
+	if r.EventReceipt == nil {
 		return nil, fmt.Errorf("evaluation: encode agent trace receipt: %w", constants.ErrMissingRequiredField)
 	}
-	return evalv1.MarshalCanonical(r.ActionReceipt)
+	return evalv1.MarshalCanonical(r.EventReceipt)
 }
 
 // UnmarshalJSON decodes canonical protojson strictly.
 func (r *AgentTraceReceipt) UnmarshalJSON(b []byte) error {
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := unmarshalAgentTraceCanonical(b, receipt); err != nil {
 		return fmt.Errorf("evaluation: decode agent trace receipt: %w", err)
 	}
-	r.ActionReceipt = receipt
+	r.EventReceipt = receipt
 	return nil
 }
 

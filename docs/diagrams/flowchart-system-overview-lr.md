@@ -31,17 +31,17 @@ flowchart LR
     Operator["Executing Operator (ztdo)<br/>Embedded or Outbound"]
     L4Warden["L4 Warden<br/>Nonce · Hash · Expiry · State Root<br/>Local L1 · Posture-required L2/L3"]
     L5Actuator["L5 Actuator<br/>EXECUTING receipt · Commitment<br/>JIT capability · Dispatch · Final receipt"]
-    AuditStore["Local Audit Store (events) · Commitment Ledger"]
+    EventsStore["Local-First Events Store (events) · Commitment Ledger"]
     Target["Target Runtime<br/>(Host OS · Downstream MCP/A2A)"]
 
     Client --> Gateway
     Gateway -->|"cmd:* channel"| Operator
     Operator --> L4Warden
     L4Warden --> L5Actuator
-    L5Actuator --> AuditStore
+    L5Actuator --> EventsStore
     L5Actuator --> Target
     Target --> L5Actuator
-    L5Actuator --> AuditStore
+    L5Actuator --> EventsStore
     L5Actuator -.->|"Signed receipt mirror (best-effort)"| Gateway
     Gateway -.-> Client
 ```
@@ -64,11 +64,11 @@ The Gateway receives governed work through distinct authenticated ingress paths:
    - Verifies the state Merkle root against the local current state root, or against a state root carried in the verification context when one is present.
    - Validates required L2 Consensus quorum signatures (state-change actions only, `governance.L2Enforced`) and L3 Notary WebAuthn assertions according to the active posture.
 2. **L5 Actuator Execution Boundary**:
-   - Signs and persists the initial `EXECUTING` `ActionReceipt`.
+   - Signs and persists the initial `EXECUTING` `EventReceipt`.
    - Appends a signed `CommitmentAttestation` to the local SQLite commitment ledger.
    - Rehydrates its own scrubbed `{{UEI_<owner>_N}}` tokens in place via `ScrubbingService`.
    - Mints a JIT capability bound to the transaction hash and to the verified envelope expiry.
    - Dispatches the command to the registered execution handler.
    - Dissolves the capability after the handler returns.
-   - Scrubs handler output into the signed result summary (fixed text when no scrubber is active) and signs the final `COMPLETED` or `FAILED` `ActionReceipt`.
+   - Scrubs handler output into the signed result summary (fixed text when no scrubber is active) and signs the final `COMPLETED` or `FAILED` `EventReceipt`.
    - Persists the final receipt as the current event receipt on the local `events` chain, then publishes it to `receipts:<operator-id>:<operator-session-id>` as a best-effort mirror. Local storage remains strictly authoritative.

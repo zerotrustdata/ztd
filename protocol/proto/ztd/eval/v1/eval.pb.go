@@ -11153,7 +11153,7 @@ type ConformanceObservation struct {
 	state           protoimpl.MessageState     `protogen:"open.v1"`
 	Kind            ConformanceObservationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=ztd.eval.v1.ConformanceObservationKind" json:"kind,omitempty"`
 	HttpStatus      int32                      `protobuf:"varint,2,opt,name=http_status,json=httpStatus,proto3" json:"http_status,omitempty"`
-	Receipt         *v11.ActionReceipt         `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Receipt         *v11.EventReceipt          `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	Rejection       *v11.GovernanceRejection   `protobuf:"bytes,4,opt,name=rejection,proto3" json:"rejection,omitempty"`
 	Refusal         *v11.IngressRefusal        `protobuf:"bytes,5,opt,name=refusal,proto3" json:"refusal,omitempty"`
 	SuspendedTxHash string                     `protobuf:"bytes,6,opt,name=suspended_tx_hash,json=suspendedTxHash,proto3" json:"suspended_tx_hash,omitempty"`
@@ -11206,7 +11206,7 @@ func (x *ConformanceObservation) GetHttpStatus() int32 {
 	return 0
 }
 
-func (x *ConformanceObservation) GetReceipt() *v11.ActionReceipt {
+func (x *ConformanceObservation) GetReceipt() *v11.EventReceipt {
 	if x != nil {
 		return x.Receipt
 	}
@@ -11379,8 +11379,8 @@ type ConformanceCaseEvidence struct {
 	TargetPath     string                    `protobuf:"bytes,4,opt,name=target_path,json=targetPath,proto3" json:"target_path,omitempty"` // relative to the canary root
 	Marker         string                    `protobuf:"bytes,5,opt,name=marker,proto3" json:"marker,omitempty"`
 	Observations   []*ConformanceObservation `protobuf:"bytes,6,rep,name=observations,proto3" json:"observations,omitempty"` // two for the replay case, else one
-	SentinelBefore *v11.ActionReceipt        `protobuf:"bytes,7,opt,name=sentinel_before,json=sentinelBefore,proto3" json:"sentinel_before,omitempty"`
-	SentinelAfter  *v11.ActionReceipt        `protobuf:"bytes,8,opt,name=sentinel_after,json=sentinelAfter,proto3" json:"sentinel_after,omitempty"`
+	SentinelBefore *v11.EventReceipt         `protobuf:"bytes,7,opt,name=sentinel_before,json=sentinelBefore,proto3" json:"sentinel_before,omitempty"`
+	SentinelAfter  *v11.EventReceipt         `protobuf:"bytes,8,opt,name=sentinel_after,json=sentinelAfter,proto3" json:"sentinel_after,omitempty"`
 	CanaryBefore   *CanaryManifest           `protobuf:"bytes,9,opt,name=canary_before,json=canaryBefore,proto3" json:"canary_before,omitempty"`
 	CanaryAfter    *CanaryManifest           `protobuf:"bytes,10,opt,name=canary_after,json=canaryAfter,proto3" json:"canary_after,omitempty"`
 	A2ACalls       []*ConformanceA2ACall     `protobuf:"bytes,11,rep,name=a2a_calls,json=a2aCalls,proto3" json:"a2a_calls,omitempty"` // calls the stub received during this case
@@ -11461,14 +11461,14 @@ func (x *ConformanceCaseEvidence) GetObservations() []*ConformanceObservation {
 	return nil
 }
 
-func (x *ConformanceCaseEvidence) GetSentinelBefore() *v11.ActionReceipt {
+func (x *ConformanceCaseEvidence) GetSentinelBefore() *v11.EventReceipt {
 	if x != nil {
 		return x.SentinelBefore
 	}
 	return nil
 }
 
-func (x *ConformanceCaseEvidence) GetSentinelAfter() *v11.ActionReceipt {
+func (x *ConformanceCaseEvidence) GetSentinelAfter() *v11.EventReceipt {
 	if x != nil {
 		return x.SentinelAfter
 	}
@@ -11508,8 +11508,8 @@ func (x *ConformanceCaseEvidence) GetExchanges() []*ConformanceExchange {
 type ConformanceQuiescence struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Executor      string                 `protobuf:"bytes,1,opt,name=executor,proto3" json:"executor,omitempty"`
-	First         *v11.ActionReceipt     `protobuf:"bytes,2,opt,name=first,proto3" json:"first,omitempty"`
-	Second        *v11.ActionReceipt     `protobuf:"bytes,3,opt,name=second,proto3" json:"second,omitempty"`
+	First         *v11.EventReceipt      `protobuf:"bytes,2,opt,name=first,proto3" json:"first,omitempty"`
+	Second        *v11.EventReceipt      `protobuf:"bytes,3,opt,name=second,proto3" json:"second,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11551,14 +11551,14 @@ func (x *ConformanceQuiescence) GetExecutor() string {
 	return ""
 }
 
-func (x *ConformanceQuiescence) GetFirst() *v11.ActionReceipt {
+func (x *ConformanceQuiescence) GetFirst() *v11.EventReceipt {
 	if x != nil {
 		return x.First
 	}
 	return nil
 }
 
-func (x *ConformanceQuiescence) GetSecond() *v11.ActionReceipt {
+func (x *ConformanceQuiescence) GetSecond() *v11.EventReceipt {
 	if x != nil {
 		return x.Second
 	}
@@ -13757,12 +13757,12 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\"D\n" +
 	"\x0eCanaryManifest\x122\n" +
-	"\aentries\x18\x01 \x03(\v2\x18.ztd.eval.v1.CanaryEntryR\aentries\"\xfe\x02\n" +
+	"\aentries\x18\x01 \x03(\v2\x18.ztd.eval.v1.CanaryEntryR\aentries\"\xfd\x02\n" +
 	"\x16ConformanceObservation\x12;\n" +
 	"\x04kind\x18\x01 \x01(\x0e2'.ztd.eval.v1.ConformanceObservationKindR\x04kind\x12\x1f\n" +
 	"\vhttp_status\x18\x02 \x01(\x05R\n" +
-	"httpStatus\x128\n" +
-	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12B\n" +
+	"httpStatus\x127\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12B\n" +
 	"\trejection\x18\x04 \x01(\v2$.ztd.operator.v1.GovernanceRejectionR\trejection\x129\n" +
 	"\arefusal\x18\x05 \x01(\v2\x1f.ztd.operator.v1.IngressRefusalR\arefusal\x12*\n" +
 	"\x11suspended_tx_hash\x18\x06 \x01(\tR\x0fsuspendedTxHash\x12!\n" +
@@ -13776,7 +13776,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\x05R\x06status\x12!\n" +
 	"\frequest_body\x18\x04 \x01(\fR\vrequestBody\x12#\n" +
-	"\rresponse_body\x18\x05 \x01(\fR\fresponseBody\"\xff\x04\n" +
+	"\rresponse_body\x18\x05 \x01(\fR\fresponseBody\"\xfd\x04\n" +
 	"\x17ConformanceCaseEvidence\x12\x17\n" +
 	"\acase_id\x18\x01 \x01(\tR\x06caseId\x12\x1d\n" +
 	"\n" +
@@ -13785,18 +13785,18 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\vtarget_path\x18\x04 \x01(\tR\n" +
 	"targetPath\x12\x16\n" +
 	"\x06marker\x18\x05 \x01(\tR\x06marker\x12G\n" +
-	"\fobservations\x18\x06 \x03(\v2#.ztd.eval.v1.ConformanceObservationR\fobservations\x12G\n" +
-	"\x0fsentinel_before\x18\a \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x0esentinelBefore\x12E\n" +
-	"\x0esentinel_after\x18\b \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\rsentinelAfter\x12@\n" +
+	"\fobservations\x18\x06 \x03(\v2#.ztd.eval.v1.ConformanceObservationR\fobservations\x12F\n" +
+	"\x0fsentinel_before\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x0esentinelBefore\x12D\n" +
+	"\x0esentinel_after\x18\b \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\rsentinelAfter\x12@\n" +
 	"\rcanary_before\x18\t \x01(\v2\x1b.ztd.eval.v1.CanaryManifestR\fcanaryBefore\x12>\n" +
 	"\fcanary_after\x18\n" +
 	" \x01(\v2\x1b.ztd.eval.v1.CanaryManifestR\vcanaryAfter\x12<\n" +
 	"\ta2a_calls\x18\v \x03(\v2\x1f.ztd.eval.v1.ConformanceA2ACallR\ba2aCalls\x12>\n" +
-	"\texchanges\x18\f \x03(\v2 .ztd.eval.v1.ConformanceExchangeR\texchanges\"\xa1\x01\n" +
+	"\texchanges\x18\f \x03(\v2 .ztd.eval.v1.ConformanceExchangeR\texchanges\"\x9f\x01\n" +
 	"\x15ConformanceQuiescence\x12\x1a\n" +
-	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x124\n" +
-	"\x05first\x18\x02 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x05first\x126\n" +
-	"\x06second\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x06second\"\xad\x05\n" +
+	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x123\n" +
+	"\x05first\x18\x02 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x05first\x125\n" +
+	"\x06second\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x06second\"\xad\x05\n" +
 	"\x14ConformanceRunRecord\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bsuite_id\x18\x02 \x01(\tR\asuiteId\x12#\n" +
@@ -14417,7 +14417,7 @@ var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(*v1.ComplianceEvidenceReference)(nil),        // 155: ztd.compliance.v1.ComplianceEvidenceReference
 	(*timestamppb.Timestamp)(nil),                 // 156: google.protobuf.Timestamp
 	(v11.ParameterCountSource)(0),                 // 157: ztd.operator.v1.ParameterCountSource
-	(*v11.ActionReceipt)(nil),                     // 158: ztd.operator.v1.ActionReceipt
+	(*v11.EventReceipt)(nil),                      // 158: ztd.operator.v1.EventReceipt
 	(*v11.GovernanceRejection)(nil),               // 159: ztd.operator.v1.GovernanceRejection
 	(*v11.IngressRefusal)(nil),                    // 160: ztd.operator.v1.IngressRefusal
 	(*v11.RunShellCommandArguments)(nil),          // 161: ztd.operator.v1.RunShellCommandArguments
@@ -14661,18 +14661,18 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	153, // 235: ztd.eval.v1.PublicLiveEvent.metric_delta:type_name -> ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
 	129, // 236: ztd.eval.v1.CanaryManifest.entries:type_name -> ztd.eval.v1.CanaryEntry
 	42,  // 237: ztd.eval.v1.ConformanceObservation.kind:type_name -> ztd.eval.v1.ConformanceObservationKind
-	158, // 238: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	158, // 238: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.EventReceipt
 	159, // 239: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
 	160, // 240: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
 	131, // 241: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
-	158, // 242: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.ActionReceipt
-	158, // 243: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.ActionReceipt
+	158, // 242: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.EventReceipt
+	158, // 243: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.EventReceipt
 	130, // 244: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
 	130, // 245: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
 	132, // 246: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
 	133, // 247: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
-	158, // 248: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.ActionReceipt
-	158, // 249: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.ActionReceipt
+	158, // 248: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.EventReceipt
+	158, // 249: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.EventReceipt
 	23,  // 250: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
 	128, // 251: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
 	135, // 252: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence

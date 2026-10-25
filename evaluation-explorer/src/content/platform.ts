@@ -6,7 +6,7 @@
 
 export const ZTD_REPO_URL = 'https://github.com/zerotrustdata/ztd';
 
-export const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/Badoot';
+export const SPONSOR_URL = 'https://buy.stripe.com/5kQ14p0iA7NZ7fK1wg7EQ07';
 
 export const PLATFORM_SITE_URL = 'https://opendevops.ai';
 
@@ -17,13 +17,66 @@ export const PLATFORM_CONTACT_CALENDLY = 'https://calendly.com/danny-lateralusla
 export const PLATFORM_CONTACT_LINKEDIN = 'https://www.linkedin.com/in/dannybarbour/';
 
 export const SPONSORSHIP_LEDE =
-  'OpenDevOps.ai is a fully independent, verifiable LLM benchmarking project. I am completely self-funded and refuse to take venture capital. If this data helps you, please help me keep the servers running and the pipeline unbiased.';
+  'I build OpenDevOps.ai and ztd solo, on my own hardware, with no VC money. If the benchmarks are useful to you, chipping in keeps the servers and GPUs running.';
 
-export const SPONSORSHIP_USES = [
-  'Keep the public mirror, Cloudflare tunnel, and evaluation pipeline online',
-  'Fund GPU time and campaign runs on the home workstation that produces these scores',
-  'Preserve editorial independence — no venture capital and no vendor-sponsored benchmarks',
+export type SponsorTier = 'founding' | 'principal' | 'supporter' | 'community';
+
+export interface SponsorEntry {
+  /** Stable identifier (manual slug today; Stripe checkout/subscription ID when automated later). */
+  id: string;
+  /** 1-based leaderboard rank. */
+  rank: number;
+  /** Public display name (individual, handle, or organization). */
+  name: string;
+  /** Optional external link for the sponsor's name. */
+  url?: string;
+  /** Recognition tier shown on the leaderboard. */
+  tier: SponsorTier;
+  /** Publicly formatted contribution amount (e.g. "$100 / mo" or "$250"). */
+  contributionDisplay: string;
+  /** Cumulative contribution in USD cents, used for deterministic sorting when automated later. */
+  totalCents: number;
+  /** Contribution cadence. */
+  cadence: 'monthly' | 'one-time';
+  /** Date or month joined (ISO YYYY-MM-DD or YYYY-MM). */
+  joinedAt: string;
+  /** Optional short public message or attribution note. */
+  note?: string;
+}
+
+export interface SponsorsDataManifest {
+  /** Static manual updates today; structured for drop-in Stripe/webhook automation later. */
+  mode: 'static_manual' | 'automated_sync';
+  lastUpdated: string;
+  sponsors: readonly SponsorEntry[];
+}
+
+/**
+ * Canonical sponsor leaderboard data.
+ * Updated manually for now so the page can take payments immediately without webhook complexity;
+ * structured as a typed manifest so automated Stripe synchronization can populate it later.
+ */
+export const SPONSORS_MANIFEST: SponsorsDataManifest = {
+  mode: 'static_manual',
+  lastUpdated: '2026-10-24',
+  sponsors: [],
+};
+
+export const TOP_SPONSORS: readonly SponsorEntry[] = SPONSORS_MANIFEST.sponsors;
+
+export const SPONSORS_HERO_TITLE = 'Help keep the evals running.';
+
+export const SPONSORS_URGENCY_HEADING = 'Why I need help right now';
+
+export const SPONSORS_URGENCY_PARAGRAPHS = [
+  "I'm out of personal runway. I've been job hunting for months, and soon I may have to take any day job I can get, even behind a convenience store counter. That would pull me off this work and the evals would go cold. Sponsorship buys me time to keep it going.",
 ] as const;
+
+export const SPONSORS_AUTOMATION_NOTE =
+  'I update this board by hand within 24 hours of each contribution. After checkout, email me with how you want to be listed.';
+
+export const SPONSORS_ABOUT_PARAGRAPH =
+  "I'm Danny Barbour, founder of Lateralus Labs and a principal engineer in Portland. I built ztd solo, from architecture through production ops. I'm open to ztd licensing, consulting, contract work, or a full-time role.";
 
 export const PLATFORM_SOLO_NOTE = 'Solo operator · home-PC hardware · live pipeline';
 

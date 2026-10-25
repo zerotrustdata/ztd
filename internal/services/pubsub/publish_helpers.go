@@ -63,7 +63,7 @@ func setExecutionIDOnPayload(payload proto.Message, executionID string) {
 }
 
 // AuditEventRecorder defines the interface for recording audit events. It is the dependency of
-// NewAuditLogger; the publishing services hold the concrete *storage.SQLAuditStore.
+// NewAuditLogger; the publishing services hold the concrete *storage.LocalFirstEventsStore.
 type AuditEventRecorder interface {
 	RecordEvent(event *storage.Event) (int64, error)
 }
@@ -78,18 +78,18 @@ func requireActiveScrubber(service string, scrubbingSvc *scrubbing.ScrubbingServ
 	return nil
 }
 
-// requireAuditStore is the shared constructor check for every service that records execution or
-// observed-state evidence. A nil store fails closed with constants.ErrAuditStoreRequired.
-func requireAuditStore(service string, auditStore *storage.SQLAuditStore) error {
-	if auditStore == nil {
-		return fmt.Errorf("%s: %w", service, constants.ErrAuditStoreRequired)
+// requireEventsStore is the shared constructor check for every service that records execution or
+// observed-state evidence. A nil store fails closed with constants.ErrLocalFirstEventsStoreRequired.
+func requireEventsStore(service string, eventsStore *storage.LocalFirstEventsStore) error {
+	if eventsStore == nil {
+		return fmt.Errorf("%s: %w", service, constants.ErrLocalFirstEventsStoreRequired)
 	}
 	return nil
 }
 
-// publishLFAATypedResponseTo builds a GovernanceEnvelope from a typed payload and publishes it to the
+// publishLFEATypedResponseTo builds a GovernanceEnvelope from a typed payload and publishes it to the
 // results channel. Used by services that hold a PubSubClient directly.
-func publishLFAATypedResponseTo(
+func publishLFEATypedResponseTo(
 	ctx context.Context,
 	client PubSubClient,
 	cfg *config.Config,
@@ -97,7 +97,7 @@ func publishLFAATypedResponseTo(
 	msg *PubSubCommandMessage,
 	eventType constants.EventType,
 	payload proto.Message,
-	auditStore *storage.SQLAuditStore, // records observed-state content evidence
+	eventsStore *storage.LocalFirstEventsStore, // records observed-state content evidence
 	scrubbingService *scrubbing.ScrubbingService, // egress scrubber, also scrubs the recorded evidence
 ) error {
 	executionID := executionIDFromMessage(msg)
@@ -105,7 +105,7 @@ func publishLFAATypedResponseTo(
 
 	originatingAction, err := constants.Registry.ActionFor(msg.EventType)
 	if err != nil {
-		logger.Error("Failed to resolve originating action for LFAA response", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to resolve originating action for LFEA response", string(constants.ConnectionStateError), err)
 		return err
 	}
 	operatorID := cfg.OperatorID
@@ -117,38 +117,38 @@ func publishLFAATypedResponseTo(
 	env, err := BuildUniversalResultEnvelope(ctx, cfg, msg.EventType, eventType, originatingAction, payload, scrubbingService, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
 	if err != nil {
 		if isEgressWithheld(err) {
-			logger.Error("Withholding LFAA typed response: egress withheld", string(constants.ConnectionStateError), err)
+			logger.Error("Withholding LFEA typed response: egress withheld", string(constants.ConnectionStateError), err)
 			if failure := egressFailureEvent(eventType, payload); failure != "" {
-				return errors.Join(err, publishLFAAErrorTo(ctx, client, cfg, logger, msg, failure, egressWithheldText(err), auditStore, scrubbingService))
+				return errors.Join(err, publishLFEAErrorTo(ctx, client, cfg, logger, msg, failure, egressWithheldText(err), eventsStore, scrubbingService))
 			}
 			return err
 		}
-		logger.Error("Failed to build LFAA typed response Governance Envelope", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to build LFEA typed response Governance Envelope", string(constants.ConnectionStateError), err)
 		return err
 	}
 
 	env.OperatorSessionId = msg.OperatorSessionID
 	data, err := protojson.Marshal(env)
 	if err != nil {
-		logger.Error("Failed to marshal LFAA typed response Governance Envelope", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to marshal LFEA typed response Governance Envelope", string(constants.ConnectionStateError), err)
 		return err
 	}
 
 	channelName := ResultsChannel(operatorID, msg.OperatorSessionID)
 	if err := client.Publish(ctx, channelName, data); err != nil {
-		logger.Error("Failed to publish LFAA typed response Universal", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to publish LFEA typed response Universal", string(constants.ConnectionStateError), err)
 		return err
 	}
 
-	logger.Info("LFAA typed response published (Universal)", "event_type", eventType)
+	logger.Info("LFEA typed response published (Universal)", "event_type", eventType)
 
 	// §3: observed-state content evidence (best-effort, non-fatal)
-	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, auditStore, scrubbingService)
+	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, eventsStore, scrubbingService)
 	return nil
 }
 
-// publishLFAAErrorTo builds an error GovernanceEnvelope and publishes it to the results channel.
-func publishLFAAErrorTo(
+// publishLFEAErrorTo builds an error GovernanceEnvelope and publishes it to the results channel.
+func publishLFEAErrorTo(
 	ctx context.Context,
 	client PubSubClient,
 	cfg *config.Config,
@@ -156,7 +156,7 @@ func publishLFAAErrorTo(
 	msg *PubSubCommandMessage,
 	eventType constants.EventType,
 	errorMsg string,
-	auditStore *storage.SQLAuditStore, // records observed-state content evidence
+	eventsStore *storage.LocalFirstEventsStore, // records observed-state content evidence
 	scrubbingService *scrubbing.ScrubbingService, // egress scrubber, also scrubs the recorded evidence
 ) error {
 	executionID := executionIDFromMessage(msg)
@@ -178,7 +178,7 @@ func publishLFAAErrorTo(
 
 	originatingAction, err := constants.Registry.ActionFor(msg.EventType)
 	if err != nil {
-		logger.Error("Failed to resolve originating action for LFAA response", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to resolve originating action for LFEA response", string(constants.ConnectionStateError), err)
 		return err
 	}
 	operatorID := cfg.OperatorID
@@ -187,32 +187,32 @@ func publishLFAAErrorTo(
 	}
 	env, err := buildResultEnvelope(cfg, msg.EventType, eventType, originatingAction, payload, msg.ID, operatorID, msg.CaseID, msg.InvestigationID, msg.TaskID, msg.WebSessionID, msg.CLISessionID)
 	if err != nil {
-		logger.Error("Failed to build LFAA error Governance Envelope", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to build LFEA error Governance Envelope", string(constants.ConnectionStateError), err)
 		return err
 	}
 
 	env.OperatorSessionId = msg.OperatorSessionID
 	data, err := protojson.Marshal(env)
 	if err != nil {
-		logger.Error("Failed to marshal LFAA error Governance Envelope", string(constants.ConnectionStateError), err)
+		logger.Error("Failed to marshal LFEA error Governance Envelope", string(constants.ConnectionStateError), err)
 		return err
 	}
 
 	channelName := ResultsChannel(operatorID, msg.OperatorSessionID)
 	if err := client.Publish(ctx, channelName, data); err != nil {
-		logger.Error("Failed to publish LFAA error Universal", string(constants.ConnectionStateError), err)
-		return fmt.Errorf("publish LFAA failure: %w", err)
+		logger.Error("Failed to publish LFEA error Universal", string(constants.ConnectionStateError), err)
+		return fmt.Errorf("publish LFEA failure: %w", err)
 	}
 
 	// §3: observed-state content evidence (best-effort, non-fatal)
-	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, auditStore, scrubbingService)
+	publishObservedStateEvidence(ctx, logger, msg, eventType, payload, eventsStore, scrubbingService)
 	return nil
 }
 
-// publishObservedStateEvidence persists observed-state content evidence to the audit store.
+// publishObservedStateEvidence persists observed-state content evidence to the local-first events store.
 // A failed write is logged and non-fatal, and the evidence applies only to observe handlers
 // (not commands). Commands already capture stdout/stderr via their own RecordEvent calls.
-// The audit store and an active scrubber are required: the publishing services take both at
+// The local-first events store and an active scrubber are required: the publishing services take both at
 // construction, so neither is checked here.
 func publishObservedStateEvidence(
 	ctx context.Context,
@@ -220,7 +220,7 @@ func publishObservedStateEvidence(
 	msg *PubSubCommandMessage,
 	eventType constants.EventType,
 	payload proto.Message,
-	auditStore *storage.SQLAuditStore,
+	eventsStore *storage.LocalFirstEventsStore,
 	scrubbingService *scrubbing.ScrubbingService,
 ) {
 	// Handlers that record their own raw execution event are not recorded twice.
@@ -247,7 +247,7 @@ func publishObservedStateEvidence(
 	}
 
 	// Best-effort: log warning but don't fail the publish
-	if _, err := auditStore.RecordEvent(event); err != nil {
+	if _, err := eventsStore.RecordEvent(event); err != nil {
 		logger.Warn("Failed to record observed-state content evidence (non-fatal)",
 			"event_type", eventType,
 			"error", err)

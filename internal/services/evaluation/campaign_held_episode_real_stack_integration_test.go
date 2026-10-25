@@ -225,7 +225,7 @@ func TestRealStackEpisode_HumanDenialIsPolicyDenial(t *testing.T) {
 	assert.False(t, call.Success, "a denied command never executes")
 	assert.Equal(t, evaluation.ExportedAgentPolicyDecisionDeny, call.PolicyDecision)
 	require.NotNil(t, call.Receipt, "the governance rejection is recorded with its signed receipt")
-	assert.True(t, governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt), "the receipt is a signed governance rejection")
+	assert.True(t, governance.IsGovernanceRejectionReceipt(call.Receipt.EventReceipt), "the receipt is a signed governance rejection")
 	assert.Equal(t, evaluation.AgentTerminalClassificationPolicyDenial, trace.TerminalClassification)
 	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "the model receives the denial and answers")
 }

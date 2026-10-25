@@ -59,7 +59,7 @@ func toolsList(t *testing.T, names ...string) json.RawMessage {
 }
 
 func TestMCPStdioHandshakeThenToolsCall(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{TransactionHash: "tx-read", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	receipt := &operatorv1.EventReceipt{TransactionHash: "tx-read", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	require.NoError(t, err)
 	callResult, err := json.Marshal(mcp.CallToolResult{Content: []mcp.TextContent{}, Receipt: receiptJSON})
@@ -97,7 +97,7 @@ func TestMCPStdioHandshakeThenToolsCall(t *testing.T) {
 // TestMCPStdioDenyIsRejection checks that the typed rejection the bridge returns
 // for a denied approval is observed as a REJECTION.
 func TestMCPStdioDenyIsRejection(t *testing.T) {
-	denied := &operatorv1.ActionReceipt{
+	denied := &operatorv1.EventReceipt{
 		TransactionHash: "tx-deny",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -148,9 +148,9 @@ func TestMCPStdioCallToolReturnsTypedResult(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := m.CallTool(context.Background(), mcp.CallToolRequest{Name: constants.MCPToolAuditReceiptList, Arguments: json.RawMessage(`{"operator_session_id":"s1"}`)})
+	result, err := m.CallTool(context.Background(), mcp.CallToolRequest{Name: constants.MCPToolEventReceiptList, Arguments: json.RawMessage(`{"operator_session_id":"s1"}`)})
 	require.NoError(t, err)
-	assert.Equal(t, constants.MCPToolAuditReceiptList, call.Name)
+	assert.Equal(t, constants.MCPToolEventReceiptList, call.Name)
 	assert.JSONEq(t, `{"operator_session_id":"s1"}`, string(call.Arguments))
 	require.Len(t, result.Content, 1)
 	assert.Equal(t, `{"count":2}`, result.Content[0].Text)

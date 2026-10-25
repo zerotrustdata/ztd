@@ -19,14 +19,14 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func newRecordingAuditService(t *testing.T) (*AuditService, *storage.SQLAuditStore, string) {
+func newRecordingAuditService(t *testing.T) (*AuditService, *storage.LocalFirstEventsStore, string) {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
-	store := storagetest.NewTestAuditStore(t, cfg.OperatorSessionId)
+	store := storagetest.NewTestEventsStore(t, cfg.OperatorSessionId)
 	return NewAuditService(cfg, testutil.NewTestLogger(), store), store, cfg.OperatorSessionId
 }
 
-func listSessionEvents(t *testing.T, store *storage.SQLAuditStore, sessionID string) []*storage.Event {
+func listSessionEvents(t *testing.T, store *storage.LocalFirstEventsStore, sessionID string) []*storage.Event {
 	t.Helper()
 	events, err := store.ListEvents(sessionID, 20, 0)
 	require.NoError(t, err)
@@ -75,11 +75,11 @@ func TestHandleUserMsgRequest_UninitializedStoreFailsClosed(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		store *storage.SQLAuditStore
+		store *storage.LocalFirstEventsStore
 		want  error
 	}{
-		{name: "nil store", store: nil, want: constants.ErrAuditStoreDisabled},
-		{name: "nil database", store: &storage.SQLAuditStore{}, want: constants.ErrAuditStoreDBNotInitialized},
+		{name: "nil store", store: nil, want: constants.ErrLocalFirstEventsStoreDisabled},
+		{name: "nil database", store: &storage.LocalFirstEventsStore{}, want: constants.ErrLocalFirstEventsStoreDBNotInitialized},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

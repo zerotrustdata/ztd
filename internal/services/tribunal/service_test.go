@@ -45,7 +45,7 @@ type fakeMemberDispatcher struct {
 func (f *fakeMemberDispatcher) DispatchMember(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, *operatorv1.InferenceDispatchFailure) {
 	f.requests = append(f.requests, req)
 	txn := fmt.Sprintf("txn-%d", len(f.requests))
-	receipt := &operatorv1.ActionReceipt{TransactionId: txn}
+	receipt := &operatorv1.EventReceipt{TransactionId: txn}
 	stage, answer := f.answer(req)
 	if f.fail != "" && stage == f.fail {
 		return nil, &operatorv1.InferenceDispatchFailure{Error: testFailureMessage, Receipt: receipt}

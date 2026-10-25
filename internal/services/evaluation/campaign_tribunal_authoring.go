@@ -69,7 +69,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	template.Messages, template.ProviderAttemptId, template.ActingAppId = nil, "", ""
 	result, err := r.executor.inference.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{
 		Request:                 record.ArgumentsJSON,
-		Guidelines:              "The agent proposed this run_shell_command call. Use one executable and argv only; no shell operators, pipelines, redirects, globs, or substitutions.",
+		Guidelines:              "The agent proposed this run_shell_command call. Preserve its goal using one executable and argv; shell pipelines, redirects, glob expansion, and substitutions are unavailable. Preserve literal utility arguments, including regex patterns and find -exec terminators.",
 		WorkingDirectory:        r.workspace.OperatorWorkingDirectory,
 		TimeoutSeconds:          constants.DefaultShellCommandTimeout,
 		TargetOperatorSessionId: r.target.SessionID,
@@ -137,7 +137,7 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(constants.MCPToolRunShellCommand, dispatched)})
 	}
 	summary := "{}"
-	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetResultSummary() != "" {
+	if record.Receipt != nil && record.Receipt.EventReceipt != nil && record.Receipt.GetResultSummary() != "" {
 		summary = record.Receipt.GetResultSummary()
 	}
 	failure, err := shellCommandFailure(summary)
@@ -195,7 +195,7 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 		if err != nil {
 			if call.Receipt == nil && member.GetReceipt() != nil {
 				call.TransactionID = member.GetReceipt().GetTransactionId()
-				call.Receipt = &AgentTraceReceipt{ActionReceipt: member.GetReceipt()}
+				call.Receipt = &AgentTraceReceipt{EventReceipt: member.GetReceipt()}
 			}
 			if isL2GovernanceDenial(member.GetReceipt(), err) {
 				call.Error = modelCallGovernanceRejected
@@ -212,7 +212,8 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 			}
 			return r.trace.ProviderFailure
 		}
-		call.Text, call.Thinking, _ = agentResponseParts(member.GetResult())
+		text, thinking, toolCalls := agentResponseParts(member.GetResult())
+		call.Text, call.Thinking, call.ToolCallCount = text, thinking, len(toolCalls)
 		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 	}
 	return ""
@@ -225,7 +226,7 @@ const tribunalGovernanceRejected = "governance_rejected"
 // failure, whether the inference was a Tribunal member call or a scored agent
 // turn. Receipt authenticity is verified by canonical trace evidence
 // verification before the outcome is accepted.
-func isL2GovernanceDenial(receipt *operatorv1.ActionReceipt, err error) bool {
+func isL2GovernanceDenial(receipt *operatorv1.EventReceipt, err error) bool {
 	if !errors.Is(err, constants.ErrInferenceGovernanceRejected) {
 		return false
 	}

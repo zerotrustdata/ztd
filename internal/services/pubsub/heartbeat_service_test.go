@@ -105,7 +105,7 @@ func (m *mockResultsPublisher) PublishHeartbeat(ctx context.Context, heartbeat p
 	return m.publishHeartbeatError
 }
 
-func (m *mockResultsPublisher) PublishActionReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error {
+func (m *mockResultsPublisher) PublishEventReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, receipt *operatorv1.EventReceipt) error {
 	return nil
 }
 

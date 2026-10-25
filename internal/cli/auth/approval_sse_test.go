@@ -34,7 +34,7 @@ import (
 // transaction, as the Gateway embeds it in approval.completed.
 func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 	t.Helper()
-	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "transaction-" + txHash,
 		TransactionHash: txHash,
 		SignerKeyId:     "warden-key-sse",
@@ -47,9 +47,9 @@ func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 }
 
 // expectedReceipt decodes the receipt that resumedReceiptJSON encodes for txHash.
-func expectedReceipt(t *testing.T, txHash string) *operatorv1.ActionReceipt {
+func expectedReceipt(t *testing.T, txHash string) *operatorv1.EventReceipt {
 	t.Helper()
-	want := &operatorv1.ActionReceipt{}
+	want := &operatorv1.EventReceipt{}
 	require.NoError(t, protojson.Unmarshal(resumedReceiptJSON(t, txHash), want))
 	return want
 }
@@ -240,7 +240,7 @@ func TestSubscribeApprovals_WaitFailsClosedWhenReceiptIsMissing(t *testing.T) {
 	defer sub.Close()
 
 	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
+	require.ErrorIs(t, err, constants.ErrEventReceiptMissing)
 	assert.Nil(t, receipt)
 }
 
@@ -278,7 +278,7 @@ func TestSubscribeApprovals_WaitFailsClosedWhenReceiptBelongsToAnotherTransactio
 	defer sub.Close()
 
 	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
+	require.ErrorIs(t, err, constants.ErrEventReceiptMissing)
 	assert.Nil(t, receipt)
 }
 

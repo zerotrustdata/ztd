@@ -1,11 +1,11 @@
 # Model Context Protocol (MCP) Integration
 
 Last Updated: 2026-10-23
-Version: v1.3.0
+Version: v1.4.0
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
 
-**Core Principle**: Unmonitored, direct tool execution is prohibited. All model actions must be governed, cryptographically signed, and recorded in the executing runtime's local audit store.
+**Core Principle**: Unmonitored, direct tool execution is prohibited. All model actions must be governed, cryptographically signed, and recorded in the executing runtime's Local-First Events Store.
 
 ---
 
@@ -39,8 +39,8 @@ The Gateway exposes a unified MCP interface at `/mcp`:
                             │ Output Scrubbing & Signing
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│ SQLAuditStore & Commitment Ledger                      │
-│ • Signed ActionReceipt emitted to client               │
+│ LocalFirstEventsStore & Commitment Ledger                      │
+│ • Signed EventReceipt emitted to client               │
 │ • Attestation appended to local SQLite ledger          │
 └────────────────────────────────────────────────────────┘
 ```
@@ -136,7 +136,7 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
 │ • Mints scoped JIT execution capability                │
 │ • Invokes native handler OR forwards to downstream     │
 │ • Scrubs secrets & tokens from tool results            │
-│ • Signs ActionReceipt & appends to ledger              │
+│ • Signs EventReceipt & appends to ledger              │
 └────────────────────────────────────────────────────────┘
 ```
 

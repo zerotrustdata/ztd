@@ -66,7 +66,7 @@ func reviewedCampaignAssertionMappings() []campaignAssertionMapping {
 				{Id: "ZTD-GOV-BLOCK-001", Version: "2.0.0"},
 			},
 			RequiredEvidenceTypes: []complianceevidence.ArtifactType{
-				complianceevidence.ArtifactTypeActionReceipt,
+				complianceevidence.ArtifactTypeEventReceipt,
 				complianceevidence.ArtifactTypeReceiptPersistence,
 				complianceevidence.ArtifactTypeProtocolChain,
 				complianceevidence.ArtifactTypeStateObservation,

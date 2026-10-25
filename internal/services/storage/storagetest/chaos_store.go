@@ -22,7 +22,7 @@ import (
 
 // ChaosEvent is one generated payload outcome recorded by a chaos run. Only
 // classifications and identifiers are stored: executed payloads are recorded as
-// real audit events by the runtime's audit store, and rejected payloads are
+// real audit events by the runtime's events store, and rejected payloads are
 // classified by Category and Outcome.
 type ChaosEvent struct {
 	OperatorSessionID string
@@ -62,11 +62,11 @@ func OpenChaosEventStore(fileSvc fs.RuntimeFileService, logger *slog.Logger) (*C
 	}
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.ChaosDBRelPath)), logger)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreOpenDBFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreOpenDBFailed, err)
 	}
 	if _, err := db.ExecWithRetry(ctx, chaosEventSchema); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreInitSchemaFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreInitSchemaFailed, err)
 	}
 	return &ChaosEventStore{db: db}, nil
 }
@@ -84,7 +84,7 @@ func (s *ChaosEventStore) RecordChaosEvents(events []*ChaosEvent) error {
 		) VALUES (?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrAuditStorePrepareBatchFailed, err)
+			return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStorePrepareBatchFailed, err)
 		}
 		defer stmt.Close()
 

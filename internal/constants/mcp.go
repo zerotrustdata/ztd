@@ -65,13 +65,13 @@ const (
 	// MCPToolRunShellCommand executes a command line; L1 screens it as one.
 	MCPToolRunShellCommand = "run_shell_command"
 
-	// MCPToolAuditReceiptList lists signed receipts from the executing
-	// runtime's own audit store.
-	MCPToolAuditReceiptList = "audit_receipt_list"
+	// MCPToolEventReceiptList lists signed receipts from the executing
+	// runtime's own local-first events store.
+	MCPToolEventReceiptList = "event_receipt_list"
 
-	// MCPToolAuditReceiptGet reads one signed receipt from the executing
-	// runtime's own audit store.
-	MCPToolAuditReceiptGet = "audit_receipt_get"
+	// MCPToolEventReceiptGet reads one signed receipt from the executing
+	// runtime's own local-first events store.
+	MCPToolEventReceiptGet = "event_receipt_get"
 
 	// MCPToolReadFile reads one file's contents.
 	MCPToolReadFile = "read_file"

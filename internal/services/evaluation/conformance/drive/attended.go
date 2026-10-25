@@ -24,7 +24,7 @@ import (
 type approvalStream interface {
 	// Wait asks the human for decision on txHash, blocks until the human decides, and
 	// returns the signed receipt: resumed on approve, L3_DENIED rejection on deny.
-	Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error)
+	Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.EventReceipt, error)
 	// Close ends the subscription.
 	Close()
 }
@@ -64,7 +64,7 @@ type bannerStream struct {
 }
 
 // Wait prints the banner for txHash and waits for the human decision.
-func (s bannerStream) Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+func (s bannerStream) Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.EventReceipt, error) {
 	return s.c.WaitForApproval(ctx, s.sub, txHash, userID, decision)
 }
 
@@ -209,7 +209,7 @@ func blocksUntilDecision(ingress cases.Ingress) bool {
 // decisionObservation records the signed receipt of a human decision. A governance
 // rejection (the L3_DENIED deny) is a REJECTION, as every ingress reports one; any
 // other receipt is a RECEIPT.
-func decisionObservation(receipt *operatorv1.ActionReceipt) *evalv1.ConformanceObservation {
+func decisionObservation(receipt *operatorv1.EventReceipt) *evalv1.ConformanceObservation {
 	if rejection := governance.ReceiptRejection(receipt); rejection != nil {
 		return &evalv1.ConformanceObservation{
 			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,

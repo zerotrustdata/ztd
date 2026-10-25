@@ -21,7 +21,7 @@ func TestValidateWitnessDispatch(t *testing.T) {
 	require.NoError(t, err)
 	shellTool, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: `{"command":"pwd"}`, ExecutionId: "exec-2"})
 	require.NoError(t, err)
-	ledgerRead, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolAuditReceiptGet, ArgumentsJson: `{"transaction_id":"tx-1"}`, ExecutionId: "exec-3"})
+	ledgerRead, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolEventReceiptGet, ArgumentsJson: `{"transaction_id":"tx-1"}`, ExecutionId: "exec-3"})
 	require.NoError(t, err)
 
 	operatorWith := func(capabilities ...constants.OperatorCapability) *operatorv1.OperatorDocument {
@@ -71,7 +71,7 @@ func TestValidateWitnessDispatch(t *testing.T) {
 				}
 			}
 			require.NoError(t, validateWitnessDispatch(tt.op, string(constants.ActionTypeMcpCall), ledgerRead),
-				"every Operator serves reads of its own signed audit store")
+				"every Operator serves reads of its own signed local-first events store")
 		})
 	}
 

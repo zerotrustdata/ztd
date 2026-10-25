@@ -175,7 +175,7 @@ func (f *releasePrepareFixture) seedRuntimeDatabase(t *testing.T, receiptSigner,
 	require.NoError(t, err)
 	for index, executedAt := range receiptsAt {
 		transactionID := fmt.Sprintf("tx-%d", index)
-		body, marshalErr := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: transactionID, SignerKeyId: receiptSigner})
+		body, marshalErr := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{TransactionId: transactionID, SignerKeyId: receiptSigner})
 		require.NoError(t, marshalErr)
 		seq := int64(index + 1)
 		sealed := storagetest.EncryptEventContent(t, encryptionVault, seq, body)

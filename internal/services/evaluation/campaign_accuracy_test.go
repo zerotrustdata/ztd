@@ -35,8 +35,8 @@ func accuracyGrade(t *testing.T, blueprint ScenarioBlueprint, output string, cal
 }
 
 func TestAccuracy_HistoryRequiresRetrievedEvidence(t *testing.T) {
-	failed := AgentToolCall{ToolName: constants.MCPToolAuditReceiptList, ArgumentsJSON: `{}`, IsOperatorTool: true, TransactionID: "history", PolicyDecision: agentPolicyDecisionAllow,
-		Receipt: &AgentTraceReceipt{ActionReceipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}}, ErrorType: agentToolErrorExecution}
+	failed := AgentToolCall{ToolName: constants.MCPToolEventReceiptList, ArgumentsJSON: `{}`, IsOperatorTool: true, TransactionID: "history", PolicyDecision: agentPolicyDecisionAllow,
+		Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}}, ErrorType: agentToolErrorExecution}
 	for _, output := range []string{"Unable to retrieve history or provide a receipt ID.", "Unable to inspect actions due to a configuration error."} {
 		result := accuracyGrade(t, toolSelectInvestigation(), output, []AgentToolCall{failed})
 		require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE, verdictFromGrades(result.DeterministicGrades))
@@ -57,7 +57,7 @@ func TestAccuracy_HistoryRequiresRetrievedEvidence(t *testing.T) {
 
 func TestAccuracy_FailedCleanupDoesNotProveMutation(t *testing.T) {
 	call := AgentToolCall{ToolName: constants.MCPToolRunShellCommand, IsOperatorTool: true, TransactionID: "cleanup", PolicyDecision: agentPolicyDecisionAllow,
-		Receipt: &AgentTraceReceipt{ActionReceipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, StateRootBefore: "same", StateRootAfter: "same"}}, ErrorType: agentToolErrorExecution, Error: "permission denied"}
+		Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, StateRootBefore: "same", StateRootAfter: "same"}}, ErrorType: agentToolErrorExecution, Error: "permission denied"}
 	result := accuracyGrade(t, securityDenialMemory(), "The cleanup failed due to permission issues.", []AgentToolCall{call})
 	require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades))
 	for _, g := range result.DeterministicGrades {
@@ -92,9 +92,9 @@ func TestAccuracy_UnavailableObservationNeverBecomesPass(t *testing.T) {
 }
 
 func TestAccuracy_HistoryCitationMustMatchReturnedReceipt(t *testing.T) {
-	body, err := json.Marshal(models.OperatorAuditReceiptListResult{Receipts: []*operatorv1.ActionReceipt{{TransactionId: "returned-tx", ActionType: "FILE_EDIT"}}, Count: 1})
+	body, err := json.Marshal(models.OperatorEventReceiptListResult{Receipts: []*operatorv1.EventReceipt{{TransactionId: "returned-tx", ActionType: "FILE_EDIT"}}, Count: 1})
 	require.NoError(t, err)
-	call := AgentToolCall{ToolName: constants.MCPToolAuditReceiptList, Success: true, ResultJSON: string(body), Retrieval: &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "returned-tx"}}}}
+	call := AgentToolCall{ToolName: constants.MCPToolEventReceiptList, Success: true, ResultJSON: string(body), Retrieval: &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "returned-tx"}}}}
 	for _, tc := range []struct {
 		output string
 		want   evalv1.EvaluationVerdictStatus

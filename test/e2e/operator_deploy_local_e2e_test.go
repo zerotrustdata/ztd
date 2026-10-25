@@ -370,11 +370,11 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		fileSvc, err := fs.NewRuntimeFileService(op.Operator.LocalDir, testutil.NewTestLogger())
 		require.NoError(t, err)
 		// The Operator's local receipt is authoritative; its content columns are
-		// sealed with the Operator's vault key, so read through the audit store.
+		// sealed with the Operator's vault key, so read through the local-first events store.
 		record, err := storage.ReadLocalEventReceipt(fileSvc, testutil.NewTestLogger(), keystore.Options{}, result.TransactionID)
 		require.NoError(t, err)
 		require.NotNil(t, record, "the Operator must hold its own local receipt")
-		receipt := record.ActionReceipt
+		receipt := record.EventReceipt
 		require.NotNil(t, receipt, "the local receipt must carry its signed canonical body")
 		require.Equal(t, result.TransactionID, receipt.TransactionId)
 		require.Equal(t, result.OperatorID, record.OperatorID)
@@ -382,7 +382,7 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 		key, err := governance.SignerPublicKey(receipt.SignerKeyId)
 		require.NoError(t, err)
-		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, key))
+		require.NoError(t, governance.VerifyEventReceiptSignature(receipt, key))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		require.Eventually(t, func() bool {
 			projected, err := e2eClient.GetEventReceipt(ctx, result.TransactionID)

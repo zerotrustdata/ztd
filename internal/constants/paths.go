@@ -651,7 +651,7 @@ const (
 	FrameworkGraderVersion                        = "1.0.0"
 	ReceiptEvidenceVerifierID                     = "ztd-receipt-evidence-importer"
 	ReceiptEvidenceVerifierVersion                = "1.0.0"
-	ActionReceiptReferencePrefix                  = "action-receipt"
+	EventReceiptReferencePrefix                   = "event-receipt"
 	ReceiptPersistenceReferencePrefix             = "receipt-persistence"
 	DeterministicStagesReferencePrefix            = "deterministic-stages"
 	AuditRecordReferencePrefix                    = "audit-record"

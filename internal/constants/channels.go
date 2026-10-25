@@ -13,7 +13,7 @@ package constants
 //	results:{operator_id}:{operator_session_id}    Operator -> Agent
 //	heartbeat:{operator_id}:{operator_session_id}  Operator -> Agent
 //	receipts:{operator_id}:{operator_session_id}   Operator -> Gateway (intercepted)
-//	audit:{operator_id}:{operator_session_id}      Gateway -> Operator (LFAA ingest)
+//	audit:{operator_id}:{operator_session_id}      Gateway -> Operator (LFEA ingest)
 //	renewal:{operator_id}:{operator_session_id}    Operator <-> Gateway (cert renewal; requests intercepted)
 //
 // Constructors live in internal/services/pubsub.

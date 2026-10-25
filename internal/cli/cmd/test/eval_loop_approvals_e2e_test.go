@@ -223,13 +223,20 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 			return
 		case <-ready:
 		}
-		responder.reconcile(ctx)
+		responder.Reconcile()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-wake:
-				responder.reconcile(ctx)
+				// Approving a command can suspend its Tribunal review's
+				// governed inference. Keep the stream responsive so that
+				// nested transaction can receive its own CLI approval.
+				workers.Add(1)
+				go func() {
+					defer workers.Done()
+					responder.reconcile(ctx)
+				}()
 			}
 		}
 	}()

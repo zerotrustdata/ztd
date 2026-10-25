@@ -562,7 +562,7 @@ func nodeMatchesEvidenceType(node *EvidenceNode, required string) bool {
 		return true
 	}
 	switch normalized {
-	case "action_receipt":
+	case "event_receipt":
 		return node.ArtifactType == ArtifactTypeEvalReceipt
 	case "final_persistence_attestation":
 		return node.ArtifactType == ArtifactTypeReceiptPersistence
@@ -583,7 +583,7 @@ func nodeMatchesVerifier(node *EvidenceNode, required *compliancev1.VersionedRef
 	}
 	switch required.GetId() {
 	case "receipt_integrity":
-		return node.ArtifactType == ArtifactTypeActionReceipt || node.ArtifactType == ArtifactTypeEvalReceipt
+		return node.ArtifactType == ArtifactTypeEventReceipt || node.ArtifactType == ArtifactTypeEvalReceipt
 	case "receipt_persistence":
 		return node.ArtifactType == ArtifactTypeReceiptPersistence
 	case "deterministic_stage_chain":

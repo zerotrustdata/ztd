@@ -82,7 +82,7 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 		LoadState:         operatorLoadStateToEvaluation(result.GetLoadState()).String(),
 		Text:              "answer",
 		Thinking:          "reasoning",
-		Receipt:           &AgentTraceReceipt{ActionReceipt: receipt},
+		Receipt:           &AgentTraceReceipt{EventReceipt: receipt},
 		InferenceResult:   &AgentTraceInferenceResult{InferenceResult: result},
 	}}
 	return trace, inference.signer
@@ -145,7 +145,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				result.ResultDigest = digest
 				call.ResultDigest = digest
 				call.Receipt.ResultSummary = digest
-				signer.Resign(t, call.Receipt.ActionReceipt)
+				signer.Resign(t, call.Receipt.EventReceipt)
 			},
 		},
 		{
@@ -162,7 +162,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				require.NoError(t, err)
 				result.ResultDigest = digest
 				call.Receipt.ResultSummary = digest
-				signer.Resign(t, call.Receipt.ActionReceipt)
+				signer.Resign(t, call.Receipt.EventReceipt)
 			},
 		},
 		{
@@ -201,7 +201,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				result.ResultDigest = digest
 				call.ResultDigest = digest
 				call.Receipt.ResultSummary = digest
-				signer.Resign(t, call.Receipt.ActionReceipt)
+				signer.Resign(t, call.Receipt.EventReceipt)
 			},
 		},
 		{

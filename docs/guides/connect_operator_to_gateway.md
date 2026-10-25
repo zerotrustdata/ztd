@@ -285,6 +285,6 @@ Keep `--working-dir` outside `--model-storage-root`. Startup refuses a runtime `
 ## Next Steps
 
 - [Build Operator](build_operator.md) — Build binaries, review `.ztd/` storage, and configure capabilities.
-- [Operator Architecture](../architecture/operator.md) — Operator lifecycle, execution boundary, and audit stores.
+- [Operator Architecture](../architecture/operator.md) — Operator lifecycle, execution boundary, and Local-First Events Store.
 - [Build Gateway](build_gateway.md) — Gateway configuration, PKI, and management.
 - [Connect Applications to Gateway](connect_apps_to_gateway.md) — Connect client SDKs and agent tools.

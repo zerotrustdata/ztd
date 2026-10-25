@@ -144,13 +144,13 @@ type ConnStatusMsg struct {
 }
 
 // ApprovalCompletedMsg reports an approval.completed event for a suspended
-// L3 transaction with the resumed execution receipt it carries. The event
+// L3 transaction with the resumed event receipt it carries. The event
 // alone is not proof: the model reports the transaction approved only when
 // auth.ValidateApprovalReceipt accepts Receipt, as 'ztd auth approve' does.
 // Receipt is nil when the event carried none.
 type ApprovalCompletedMsg struct {
 	TxHash  string
-	Receipt *operatorv1.ActionReceipt
+	Receipt *operatorv1.EventReceipt
 }
 
 // ApprovalOpenedMsg reports that the browser WebAuthn approval page for a

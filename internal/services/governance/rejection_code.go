@@ -103,7 +103,7 @@ func GovernanceRejectionSentinel(rejection error) (operatorv1.GovernanceRejectio
 // handler failed and still appended its ledger commitment. It unwraps to the
 // error.
 type ReceiptError struct {
-	Receipt *operatorv1.ActionReceipt
+	Receipt *operatorv1.EventReceipt
 	Err     error
 }
 
@@ -112,7 +112,7 @@ func (e *ReceiptError) Unwrap() error { return e.Err }
 
 // WithRejectionReceipt wraps err in a *ReceiptError when receipt is a
 // GOVERNANCE_REJECTED receipt; otherwise it returns err unchanged.
-func WithRejectionReceipt(receipt *operatorv1.ActionReceipt, err error) error {
+func WithRejectionReceipt(receipt *operatorv1.EventReceipt, err error) error {
 	if err == nil || !IsGovernanceRejectionReceipt(receipt) {
 		return err
 	}
@@ -122,7 +122,7 @@ func WithRejectionReceipt(receipt *operatorv1.ActionReceipt, err error) error {
 // WithFailedReceipt wraps err in a *ReceiptError when receipt is any signed
 // FAILED receipt — a governance rejection or a failed execution; otherwise it
 // returns err unchanged.
-func WithFailedReceipt(receipt *operatorv1.ActionReceipt, err error) error {
+func WithFailedReceipt(receipt *operatorv1.EventReceipt, err error) error {
 	if err == nil || receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
 		return err
 	}
@@ -130,7 +130,7 @@ func WithFailedReceipt(receipt *operatorv1.ActionReceipt, err error) error {
 }
 
 // FailedReceipt returns the signed FAILED receipt err carries, or nil.
-func FailedReceipt(err error) *operatorv1.ActionReceipt {
+func FailedReceipt(err error) *operatorv1.EventReceipt {
 	var carried *ReceiptError
 	if !errors.As(err, &carried) {
 		return nil
@@ -140,7 +140,7 @@ func FailedReceipt(err error) *operatorv1.ActionReceipt {
 
 // IsGovernanceRejectionReceipt reports whether receipt records an L4
 // governance rejection.
-func IsGovernanceRejectionReceipt(receipt *operatorv1.ActionReceipt) bool {
+func IsGovernanceRejectionReceipt(receipt *operatorv1.EventReceipt) bool {
 	return receipt != nil &&
 		receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED &&
 		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
@@ -165,7 +165,7 @@ func RejectionResponse(err error) *operatorv1.GovernanceRejection {
 // ReceiptRejection returns the typed client body for a signed rejection receipt
 // that arrives without its error, such as the L3_DENIED receipt of an approval
 // decision, and nil for any other receipt. error renders the rejection code.
-func ReceiptRejection(receipt *operatorv1.ActionReceipt) *operatorv1.GovernanceRejection {
+func ReceiptRejection(receipt *operatorv1.EventReceipt) *operatorv1.GovernanceRejection {
 	if !IsGovernanceRejectionReceipt(receipt) {
 		return nil
 	}

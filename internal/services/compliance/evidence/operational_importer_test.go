@@ -195,15 +195,15 @@ func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.ActionReceipt)
+		mutate func(*operatorv1.EventReceipt)
 	}{
-		{name: "receipt transaction hash", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "receipt transaction hash", mutate: func(receipt *operatorv1.EventReceipt) {
 			receipt.TransactionHash = "substituted-transaction-hash"
 			for _, stage := range receipt.DeterministicStageEvidence {
 				stage.TransactionHash = receipt.TransactionHash
 			}
 		}},
-		{name: "commitment stage signer", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "commitment stage signer", mutate: func(receipt *operatorv1.EventReceipt) {
 			for _, stage := range receipt.DeterministicStageEvidence {
 				if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND {
 					stage.SignerKeyId = "substituted-auditor"
@@ -229,7 +229,7 @@ func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t
 				}
 			}
 			test.mutate(receipt)
-			receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
+			receiptPayload, err := governance.CanonicalizeEventReceipt(receipt)
 			require.NoError(t, err)
 			receipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, receiptPayload))
 			receiptBody, err := compliancev1.MarshalCanonical(receipt)
@@ -255,7 +255,7 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	signerKeyID := hex.EncodeToString(publicKey)
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    "tx-1",
 		TransactionHash:  "hash-tx-1",
 		SignerKeyId:      signerKeyID,
@@ -268,7 +268,7 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 			{StageId: "tx-1:L4", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, TransactionId: "tx-1", TransactionHash: "hash-tx-1", InvestigationId: "investigation-1", ActionType: "FILE_EDIT"},
 		},
 	}
-	receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
+	receiptPayload, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, receiptPayload))
 	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1", ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}), PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), AuditRecordId: "tx-1", SignerKeyId: signerKeyID}
@@ -315,7 +315,7 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 	nodes, err := importer.Import(context.Background())
 	require.NoError(t, err)
 	require.Len(t, nodes, 3)
-	assert.Equal(t, ArtifactTypeActionReceipt, nodes[0].ArtifactType)
+	assert.Equal(t, ArtifactTypeEventReceipt, nodes[0].ArtifactType)
 	assert.Equal(t, ArtifactTypeProtocolChain, nodes[1].ArtifactType)
 	assert.Equal(t, ArtifactTypeReceiptPersistence, nodes[2].ArtifactType)
 	assert.Equal(t, VerificationStatusVerified, nodes[0].VerificationStatus)
@@ -349,7 +349,7 @@ func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksReceipts(t *te
 			stage.L3SignatureDigest = commitment.GetHumanSignatureDigest()
 		}
 	}
-	receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
+	receiptPayload, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, receiptPayload))
 	receiptBody, err := compliancev1.MarshalCanonical(receipt)
@@ -392,7 +392,7 @@ func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksReceipts(t *te
 	var receiptNode, chainNode, commitmentNode *EvidenceNode
 	for index := range nodes {
 		switch nodes[index].ArtifactType {
-		case ArtifactTypeActionReceipt:
+		case ArtifactTypeEventReceipt:
 			receiptNode = &nodes[index]
 		case ArtifactTypeAuditChainEntry:
 			chainNode = &nodes[index]

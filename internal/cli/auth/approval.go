@@ -26,9 +26,9 @@ func ApprovalPageURL(cfg *config.Config, txHash string) string {
 // ValidateApprovalReceipt checks the execution outcome received over an
 // authenticated Gateway response or approval stream. The Gateway owns receipt
 // signature verification at its execution-result boundary.
-func ValidateApprovalReceipt(txHash string, receipt *operatorv1.ActionReceipt) error {
+func ValidateApprovalReceipt(txHash string, receipt *operatorv1.EventReceipt) error {
 	if receipt == nil || txHash == "" {
-		return fmt.Errorf("L3 approval: %w", constants.ErrActionReceiptMissing)
+		return fmt.Errorf("L3 approval: %w", constants.ErrEventReceiptMissing)
 	}
 	if receipt.GetTransactionHash() != txHash {
 		return fmt.Errorf("L3 approval: receipt transaction hash does not match %s: %w", txHash, constants.ErrTxTransactionHashMismatch)

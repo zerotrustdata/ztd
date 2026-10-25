@@ -44,7 +44,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2}, {Purpose: agentModelCallPurposeTribunalPrefix + "generate", LoopTurn: 2}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "audit_receipt_list",
+				ToolName: "event_receipt_list",
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -107,7 +107,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "audit_receipt_list",
+				ToolName: "event_receipt_list",
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -142,7 +142,7 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName:   "audit_receipt_list",
+				ToolName:   "event_receipt_list",
 				Retrieval:  &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "rcpt-1"}}},
 				ResultJSON: `{"receipts": [{"command": "df -h"}]}`,
 			},
@@ -198,10 +198,10 @@ func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
 	refs := []ScenarioGoldEvidenceReference{{
 		ReferenceID:    "ref-history-trail-query",
 		ActionType:     "MCP_CALL",
-		TargetResource: constants.MCPToolAuditReceiptList,
+		TargetResource: constants.MCPToolEventReceiptList,
 	}}
 	call := AgentToolCall{
-		ToolName:   constants.MCPToolAuditReceiptList,
+		ToolName:   constants.MCPToolEventReceiptList,
 		ActionType: "MCP_CALL",
 		Success:    true,
 		Retrieval:  &AgentContextRetrieval{},

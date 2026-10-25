@@ -40,6 +40,7 @@ export function AppFooter() {
         <Link to="/methodology">Methodology</Link>
         <Link to="/tasks">Tasks</Link>
         <Link to="/about">About</Link>
+        <Link to="/sponsors">Sponsors</Link>
         <a href={ZTD_REPO_URL} {...external}>Source</a>
       </nav>
     </footer>

@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical L3 approval wire shapes. ApprovalCompletedEvent is the SSE event payload emitted when an L3 decision resumes a suspended transaction; it carries the executing Operator's signed ActionReceipt, which is the only proof of the outcome. SuspendedTransaction is a transaction awaiting L3 human approval; it holds no approval or proof material, which lives only in the governance envelope and the receipt. Serialized from ApprovalCompletedEvent (internal/models/approval.go) and SuspendedTransaction (internal/models/suspended.go).",
+  "_comment": "Canonical L3 approval wire shapes. ApprovalCompletedEvent is the SSE event payload emitted when an L3 decision resumes a suspended transaction; it carries the executing Operator's signed EventReceipt, which is the only proof of the outcome. SuspendedTransaction is a transaction awaiting L3 human approval; it holds no approval or proof material, which lives only in the governance envelope and the receipt. Serialized from ApprovalCompletedEvent (internal/models/approval.go) and SuspendedTransaction (internal/models/suspended.go).",
 
   "_authority": "client (gateway)",
   "_consumers": ["cli", "agent"],
@@ -24,7 +24,7 @@
     "receipt": {
       "type": "object",
       "required": true,
-      "description": "Canonical protojson ztd.operator.v1.ActionReceipt of the resumed transaction, signed by the executing Operator. A denial carries a receipt with rejection code L3_DENIED."
+      "description": "Canonical protojson ztd.operator.v1.EventReceipt of the resumed transaction, signed by the executing Operator. A denial carries a receipt with rejection code L3_DENIED."
     }
   },
 

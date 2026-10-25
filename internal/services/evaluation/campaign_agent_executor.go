@@ -139,7 +139,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read closing ledger sentinel", err)
 	}
-	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{ActionReceipt: before}, After: AgentTraceReceipt{ActionReceipt: after}}
+	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{EventReceipt: before}, After: AgentTraceReceipt{EventReceipt: after}}
 	persistCtx := assignmentPersistContext(ctx)
 	body, err := SealAgentTrace(run.trace)
 	if err != nil {
@@ -306,7 +306,7 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 			if receiptErr == nil {
 				graderCallRef = &compliancev1.ComplianceEvidenceReference{
 					ArtifactId:         "receipt:" + sc.TransactionID,
-					ArtifactType:       "action_receipt",
+					ArtifactType:       "event_receipt",
 					ProducerIdentity:   "ztd-eval-judge",
 					ProducedAt:         timestamppb.New(now),
 					ScopeId:            req.Assignment.GetCampaignId(),
@@ -758,7 +758,7 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // for a Tribunal call its tool call and persona); dispatch fills the rest.
 func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
 	result, call, err := r.dispatchInference(ctx, call, messages, tools)
-	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.ActionReceipt, err) {
+	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.EventReceipt, err) {
 		// Required L2 refused the turn and the Inference runtime signed that
 		// rejection: a governance outcome, not a provider failure.
 		call.Error = modelCallGovernanceRejected
@@ -802,7 +802,7 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 	if err != nil {
 		if receipt := governance.FailedReceipt(err); receipt != nil {
 			call.TransactionID = receipt.GetTransactionId()
-			call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+			call.Receipt = &AgentTraceReceipt{EventReceipt: receipt}
 		}
 		recordObservationReceipts(&call, inferencedispatch.ObservationReceipts(err))
 		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
@@ -864,9 +864,9 @@ func (r *agentRun) inferenceDispatchRequest(probe InferenceProbeRequest) (*opera
 
 // recordObservationReceipts records the observers' signed receipts a dispatch
 // returned, on success or failure, so the bracket claims their commitments.
-func recordObservationReceipts(call *AgentModelCall, receipts []*operatorv1.ActionReceipt) {
+func recordObservationReceipts(call *AgentModelCall, receipts []*operatorv1.EventReceipt) {
 	for _, receipt := range receipts {
-		call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
+		call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 	}
 }
 
@@ -877,7 +877,7 @@ func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, 
 	result := response.GetResult()
 	call.TransactionID = response.GetTransactionId()
 	if receipt := response.GetReceipt(); receipt != nil {
-		call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+		call.Receipt = &AgentTraceReceipt{EventReceipt: receipt}
 	}
 	recordObservationReceipts(call, response.GetObservationReceipts())
 	call.ResultDigest = result.GetResultDigest()
@@ -959,8 +959,8 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 // runNativeMCPTool maps one native MCP tool onto its governed MCP_CALL action.
 func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, request agentToolRequest) (AgentToolCall, error) {
 	tool, args := record.ToolName, request.Arguments
-	if tool == constants.MCPToolAuditReceiptList {
-		r.injectAuditReceiptListDefaults(args)
+	if tool == constants.MCPToolEventReceiptList {
+		r.injectEventReceiptListDefaults(args)
 	}
 	var argsJSON []byte
 	if request.Shell != nil {
@@ -988,19 +988,19 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(tool, dispatched)})
 	}
-	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+	if record.Receipt != nil && record.Receipt.EventReceipt != nil && record.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
 		message := record.Receipt.GetResultSummary()
 		if message == "" {
 			message = "tool execution failed"
 		}
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: message})
 	}
-	if tool == constants.MCPToolAuditReceiptList {
+	if tool == constants.MCPToolEventReceiptList {
 		limit := args.Int("limit", agentToolDefaultHistoryLimit)
-		query := mcp.AuditReceiptListRequest{
-			InvestigationID:   args.String("investigation_id"),
-			Limit:             limit,
-			ExcludeAuditReads: args.Bool("exclude_audit_reads"),
+		query := mcp.EventReceiptListRequest{
+			InvestigationID:          args.String("investigation_id"),
+			Limit:                    limit,
+			ExcludeEventReceiptReads: args.Bool("exclude_event_receipt_reads"),
 		}
 		result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
 		if err != nil {
@@ -1010,7 +1010,7 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		return r.succeed(record, result)
 	}
 	summary := ""
-	if record.Receipt != nil && record.Receipt.ActionReceipt != nil {
+	if record.Receipt != nil && record.Receipt.EventReceipt != nil {
 		summary = record.Receipt.GetResultSummary()
 	}
 	if summary == "" {
@@ -1039,13 +1039,13 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 	return r.succeed(record, map[string]any{"result": summary})
 }
 
-func (r *agentRun) injectAuditReceiptListDefaults(args agentToolArguments) {
+func (r *agentRun) injectEventReceiptListDefaults(args agentToolArguments) {
 	if args.String("investigation_id") == "" {
 		args.Set("investigation_id", r.trace.InvestigationID)
 	}
 	// The model cannot turn the audit-read exclusion off: a context query must
 	// never return the earlier audit reads of its own investigation.
-	args.Set("exclude_audit_reads", true)
+	args.Set("exclude_event_receipt_reads", true)
 	if args.Int("limit", 0) <= 0 {
 		args.Set("limit", json.Number(strconv.Itoa(agentToolDefaultHistoryLimit)))
 	}
@@ -1070,7 +1070,7 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedToolDispatch) (bool, error) {
 	record.ConsensusInferences = governance.WrapConsensusInferences(dispatched.Outcome.ConsensusInferences)
 	if receipt := answerReceipt(dispatched.Outcome); receipt != nil {
-		record.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+		record.Receipt = &AgentTraceReceipt{EventReceipt: receipt}
 	}
 	record.TransactionID = dispatched.TransactionID
 	switch answerKind(dispatched.Outcome) {
@@ -1105,7 +1105,7 @@ func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedTool
 
 // answerReceipt is the signed receipt a governed answer carries: the executed
 // receipt, or the receipt of a governance rejection. A refusal carries none.
-func answerReceipt(outcome *client.GovernedOutcome) *operatorv1.ActionReceipt {
+func answerReceipt(outcome *client.GovernedOutcome) *operatorv1.EventReceipt {
 	switch answerKind(outcome) {
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
 		return outcome.Observation.GetReceipt()
@@ -1455,7 +1455,7 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 		// A governance-rejected inference never reached the provider, so it has
 		// no provider attempt and no observation or provenance window.
 		attemptID := call.ProviderAttemptID
-		if call.Receipt != nil && governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt) {
+		if call.Receipt != nil && governance.IsGovernanceRejectionReceipt(call.Receipt.EventReceipt) {
 			attemptID = ""
 		}
 		record := &evalv1.ModelInferenceRecord{

@@ -39,7 +39,7 @@ func assertionGraderCatalog(missingPolicy string) *compliancev1.ControlAssertion
 			Responsibility:          "platform",
 			ApplicableActionClasses: []string{"governed_mutation"},
 			ApplicableArms:          []string{"governed"},
-			RequiredEvidenceTypes:   []string{"action_receipt"},
+			RequiredEvidenceTypes:   []string{"event_receipt"},
 			RequiredGraderRefs:      []*compliancev1.VersionedReference{{Id: "policy_outcome", Version: "1.0.0"}},
 			RequiredVerifierRefs:    []*compliancev1.VersionedReference{{Id: "receipt_integrity", Version: "1.0.0"}},
 			MinimumEvidenceLevel:    "L2",
@@ -74,7 +74,7 @@ func assertionGraderNode(artifactType evidence.ArtifactType, producer string, bo
 func assertionGraderGraph(t *testing.T, now time.Time, metricValue int) *evidence.EvidenceGraph {
 	t.Helper()
 	graph := evidence.NewEvidenceGraph(0, nil)
-	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":`+strconv.Itoa(metricValue)+`,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
 	require.NoError(t, graph.AddNode(receipt))
 	require.NoError(t, graph.AddNode(metric))
@@ -158,7 +158,7 @@ func TestGradeControlAssertions_UnverifiableWhenMetricBodyIsMalformed(t *testing
 func TestGradeControlAssertions_DoesNotTreatVerifiedReceiptAsPolicyOutcome(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := evidence.NewEvidenceGraph(0, nil)
-	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 	require.NoError(t, graph.AddNode(receipt))
 	assessment := gradeAssertionTestGraph(t, graph, assertionGraderCatalog("unverifiable"), now)
 
@@ -170,10 +170,10 @@ func TestGradeControlAssertions_DoesNotTreatVerifiedReceiptAsPolicyOutcome(t *te
 func TestGradeControlAssertions_DerivesDemonstratedLevelFromBoundIndependentObservation(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	assertions := assertionGraderCatalog("unverifiable")
-	assertions.Assertions[0].RequiredEvidenceTypes = []string{"action_receipt", "state_observation"}
+	assertions.Assertions[0].RequiredEvidenceTypes = []string{"event_receipt", "state_observation"}
 	assertions.Assertions[0].MinimumEvidenceLevel = "L3"
 	graph := evidence.NewEvidenceGraph(0, nil)
-	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 	receipt.ScenarioID = "scenario-1"
 	receipt.TransactionID = "transaction-1"
 	observation := assertionGraderNode(evidence.ArtifactTypeStateObservation, "collector", []byte(`{"effect":"absent"}`), now.Add(-time.Hour))
@@ -205,7 +205,7 @@ func TestGradeControlAssertions_DoesNotCombineRequirementsAcrossSubjects(t *test
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			graph := evidence.NewEvidenceGraph(0, nil)
-			receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+			receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 			metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
 			tt.mutateReceipt(&receipt)
 			tt.mutateMetric(&metric)
@@ -238,7 +238,7 @@ func TestGradeControlAssertions_DoesNotTreatReceiptAsNotaryProof(t *testing.T) {
 	assertions := assertionGraderCatalog("unverifiable")
 	assertions.Assertions[0].RequiredVerifierRefs = []*compliancev1.VersionedReference{{Id: "notary_proof", Version: "1.0.0"}}
 	graph := evidence.NewEvidenceGraph(0, nil)
-	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
 	require.NoError(t, graph.AddNode(receipt))
 	require.NoError(t, graph.AddNode(metric))
@@ -278,7 +278,7 @@ func TestGradeControlAssertions_IgnoresUnverifiedEvidence(t *testing.T) {
 func TestGradeControlAssertions_IgnoresEvidenceFromAnotherScope(t *testing.T) {
 	now := time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC)
 	graph := evidence.NewEvidenceGraph(0, nil)
-	receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
+	receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"verified"}`), now.Add(-time.Hour))
 	metric := assertionGraderNode(evidence.ArtifactTypeEvalMetric, "policy_outcome@1.0.0", []byte(`{"metric_id":"policy_outcome","metric_version":"1.0.0","value":1,"eligible":true,"verification_status":"verified"}`), now.Add(-time.Hour))
 	receipt.ScopeID = "scope-2"
 	metric.ScopeID = "scope-2"
@@ -386,7 +386,7 @@ func assertionPopulationGraph(t *testing.T, now time.Time, values map[string]*in
 	t.Helper()
 	graph := evidence.NewEvidenceGraph(0, nil)
 	for scenarioID, value := range values {
-		receipt := assertionGraderNode(evidence.ArtifactTypeActionReceipt, "gateway", []byte(`{"receipt":"`+scenarioID+`"}`), now.Add(-time.Hour))
+		receipt := assertionGraderNode(evidence.ArtifactTypeEventReceipt, "gateway", []byte(`{"receipt":"`+scenarioID+`"}`), now.Add(-time.Hour))
 		receipt.SourceAdmissionID = "source-1"
 		receipt.ScenarioID = scenarioID
 		require.NoError(t, graph.AddNode(receipt))

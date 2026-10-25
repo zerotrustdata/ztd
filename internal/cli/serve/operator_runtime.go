@@ -334,7 +334,7 @@ func (rt *OperatorRuntime) Stop(ctx context.Context) error {
 }
 
 // refuseGatewayRuntime keeps an outbound Operator out of a Gateway's runtime
-// tree. Each executing runtime owns its own audit store and state root, so an
+// tree. Each executing runtime owns its own local-first events store and state root, so an
 // Operator launched from the Gateway directory without --working-dir would
 // otherwise open the Gateway's databases and vault.
 func refuseGatewayRuntime(ctx context.Context, fileSvc fs.RuntimeFileService, workDir string) error {

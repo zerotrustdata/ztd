@@ -96,7 +96,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Vault core & AES-GCM/KW crypto | `internal/services/vault/` | `./ztd test unit --pkg ./internal/services/vault` |
 | Platform Keystore & Keyrings | `internal/services/keystore/` | `./ztd test unit --pkg ./internal/services/keystore` |
 | Secret Manager | `internal/services/gateway/secret_manager.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestSecretManager` |
-| Execution Record (`events`) | `internal/services/storage/audit_store.go` | `./ztd test unit --pkg ./internal/services/storage` |
+| Execution Record (`events`) | `internal/services/storage/local_first_events_store.go` | `./ztd test unit --pkg ./internal/services/storage` |
 | Sovereign Execution Scrubber | `internal/services/scrubbing/` | `./ztd test unit --pkg ./internal/services/scrubbing` |
 | Encrypted KV Adapter (UEI) | `internal/services/gateway/encrypted_kv_adapter.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestEncryptedKVAdapter` |
 | PKI Authority & TLS | `internal/services/gateway/gateway_certs.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestPKIAuthority` |
@@ -157,9 +157,9 @@ Data fields are encrypted using AES-256-GCM (`crypto/cipher.NewGCM`) with a fres
 
 Vault encryption protects high-sensitivity fields across platform services:
 
-- **Execution record** (`events`, `internal/services/storage/audit_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, `operator_session_id`, hashes) stays plaintext for indexing. Per-file diff statistics are stored encrypted in `file_mutation_log.diff_stat` (see the list below).
-- **Canonical Audit Store** (`internal/services/storage/audit_store.go`, `commitment_ledger.go`): Encrypted content columns of `ztd.db`. Every write encrypts through the runtime vault and fails with `ErrAuditStoreVaultLocked` when the vault is locked or absent. There is no plaintext branch and no "encrypted" flag column. Reads decrypt on the owning runtime; a locked vault fails the read. Each ciphertext is bound to its column and row identity as AES-GCM associated data (`Vault.EncryptWithAAD`), and keyed digests use `Vault.HMACSHA256`, which derives a purpose-bound subkey from the DEK with HKDF-SHA256 so the DEK itself is never a MAC key.
-  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary` (BLOB). The canonical protojson ActionReceipt is `content_text` on the `ztd.v1.operator.receipt.recorded` event. The signature stays plaintext and is verified over the stable canonical signing payload, not over these columns.
+- **Execution record** (`events`, `internal/services/storage/local_first_events_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, `operator_session_id`, hashes) stays plaintext for indexing. Per-file diff statistics are stored encrypted in `file_mutation_log.diff_stat` (see the list below).
+- **Local-First Events Store** (`internal/services/storage/local_first_events_store.go`, `commitment_ledger.go`): Encrypted content columns of `ztd.db`. Every write encrypts through the runtime vault and fails with `ErrLocalFirstEventsStoreVaultLocked` when the vault is locked or absent. There is no plaintext branch and no "encrypted" flag column. Reads decrypt on the owning runtime; a locked vault fails the read. Each ciphertext is bound to its column and row identity as AES-GCM associated data (`Vault.EncryptWithAAD`), and keyed digests use `Vault.HMACSHA256`, which derives a purpose-bound subkey from the DEK with HKDF-SHA256 so the DEK itself is never a MAC key.
+  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary` (BLOB). The canonical protojson EventReceipt is `content_text` on the `ztd.v1.operator.receipt.recorded` event. The signature stays plaintext and is verified over the stable canonical signing payload, not over these columns.
   - `commitment_ledger`: `target_resource`, `attestation_json` (BLOB). Commitment hash and signature checks run over decrypted values.
   - `file_mutation_log`: `filepath`, `diff_stat` (BLOB).
   - `sessions`: `title`, `user_identity` (BLOB).
@@ -173,7 +173,7 @@ Vault encryption protects high-sensitivity fields across platform services:
 
 Gateway startup reads `--vault-dir` (default: `.ztd/vault`). Headless or container hosts without a usable OS keyring use the ssh-agent seal described under [Master Key and Keyring Providers](#master-key-and-keyring-providers).
 
-If no vault header exists on startup, Gateway automatically initializes a new vault header and generates the sealed vault key in the platform keystore. If an existing key cannot be read, decrypted, or matched to the header fingerprint, Gateway startup fails closed. When locked, audit, execution-record, suspended-transaction, file-ledger, and UEI writes fail closed, and reads that need decrypted content fail with `ErrAuditStoreVaultLocked`. The runtime never returns ciphertext in place of content. A runtime tree whose sealed vault key cannot be unsealed must be recreated with `ztd gw clean`, which recreates platform secrets and vault state.
+If no vault header exists on startup, Gateway automatically initializes a new vault header and generates the sealed vault key in the platform keystore. If an existing key cannot be read, decrypted, or matched to the header fingerprint, Gateway startup fails closed. When locked, audit, execution-record, suspended-transaction, file-ledger, and UEI writes fail closed, and reads that need decrypted content fail with `ErrLocalFirstEventsStoreVaultLocked`. The runtime never returns ciphertext in place of content. A runtime tree whose sealed vault key cannot be unsealed must be recreated with `ztd gw clean`, which recreates platform secrets and vault state.
 
 ## Platform Keystore Architecture
 
@@ -239,7 +239,7 @@ ztd combines tokenizing output scrubbing with reversible execution-site rehydrat
 |        skipped, receipt FAILED. INFERENCE keeps foreign tokens opaque           |
 |     2. Capability minting and command execution with rehydrated parameters      |
 |     3. Outbound receipt generation: Scrubber active check enforced;             |
-|        scrubs target_resource and result_summary before signing ActionReceipt   |
+|        scrubs target_resource and result_summary before signing EventReceipt   |
 +---------------------------------------------------------------------------------+
 ```
 

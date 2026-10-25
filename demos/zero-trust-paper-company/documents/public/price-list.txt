@@ -1,0 +1,5 @@
+ZERO TRUST PAPER COMPANY — FICTIONAL PUBLISHED PRICES
+
+All prices are USD per selling unit. COPY-A4: $24.99 per carton. REC-A4: $29.99 per carton. PREM-A4: $39.99 per carton. KRAFT-ROLL: $18.99 per roll. ENV-DL: $21.99 per box. CARD-A3: $34.99 per pack.
+
+This foundation simulation uses no tax, shipping charge, currency conversion or discounts. Order lines preserve the price at order placement. The storefront product API provides current availability; this document does not promise stock.

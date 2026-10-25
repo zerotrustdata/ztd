@@ -90,27 +90,27 @@ type pubsubFixture struct {
 	SignerPub  ed25519.PublicKey
 }
 
-// testAuditBackend is the real SQLAuditStore and auditor identity an L5Actuator commits receipts
+// testEventsBackend is the real LocalFirstEventsStore and auditor identity an L5Actuator commits receipts
 // through. The actuator fails closed without it, so every test that executes through the actuator
 // attaches one over a fresh runtime root.
-type testAuditBackend struct {
-	Store        *storage.SQLAuditStore
+type testEventsBackend struct {
+	EventsStore  *storage.LocalFirstEventsStore
 	AuditorKey   ed25519.PrivateKey
 	AuditorKeyID string
 	// SessionID is the first pre-created session: the runtime's own audit session.
 	SessionID string
 }
 
-// newTestAuditBackend opens the audit store and pre-creates the operator sessions the executed
+// newTestEventsBackend opens the local-first events store and pre-creates the operator sessions the executed
 // envelopes reference; the store rejects receipts for unknown sessions.
-func newTestAuditBackend(t *testing.T, sessionIDs ...string) testAuditBackend {
+func newTestEventsBackend(t *testing.T, sessionIDs ...string) testEventsBackend {
 	t.Helper()
-	store := storagetest.NewTestAuditStore(t, sessionIDs...)
+	store := storagetest.NewTestEventsStore(t, sessionIDs...)
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("failed to generate auditor key: %v", err)
 	}
-	backend := testAuditBackend{Store: store, AuditorKey: priv, AuditorKeyID: hex.EncodeToString(pub)}
+	backend := testEventsBackend{EventsStore: store, AuditorKey: priv, AuditorKeyID: hex.EncodeToString(pub)}
 	if len(sessionIDs) > 0 {
 		backend.SessionID = sessionIDs[0]
 	}
@@ -118,8 +118,8 @@ func newTestAuditBackend(t *testing.T, sessionIDs ...string) testAuditBackend {
 }
 
 // Attach wires the backend into an actuator.
-func (b testAuditBackend) Attach(a *governance.L5Actuator) {
-	a.SQLAuditStore = b.Store
+func (b testEventsBackend) Attach(a *governance.L5Actuator) {
+	a.LocalFirstEventsStore = b.EventsStore
 	a.AuditorSigningKey = b.AuditorKey
 	a.AuditorKeyID = b.AuditorKeyID
 	a.Identity = &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: b.SessionID}
@@ -178,7 +178,7 @@ func newPubsubFixture(t *testing.T) *pubsubFixture {
 		SigningKey:       priv,
 		KeyID:            "Actuator-key",
 	}
-	newTestAuditBackend(t, "session-1").Attach(mockActuator)
+	newTestEventsBackend(t, "session-1").Attach(mockActuator)
 	svc.SetActuator(mockActuator)
 
 	// Default governed document store is a no-op mock; tests that exercise

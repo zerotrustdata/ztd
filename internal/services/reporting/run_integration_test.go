@@ -57,19 +57,19 @@ func setupReportingEnv(t *testing.T, seed bool) Options {
 	require.NoError(t, v.Unlock(vaultKey))
 	t.Cleanup(func() { v.Close() })
 
-	// Open ztd.db once; the audit store and its commitment ledger share the pool.
+	// Open ztd.db once; the local-first events store and its commitment ledger share the pool.
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirStandard))
 	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(filepath.Join(dataDir, constants.DbFilename)), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { mainDB.Close() })
 
-	// Audit store.
-	auditCfg := &storage.AuditStoreConfig{
+	// local-first events store.
+	auditCfg := &storage.LocalFirstEventsStoreConfig{
 		RetentionDays:        7,
 		PruneIntervalMinutes: 60,
 		EncryptionVault:      v,
 	}
-	store, err := storage.NewSQLAuditStore(auditCfg, mainDB, testutil.NewTestLogger(), fileSvc)
+	store, err := storage.NewLocalFirstEventsStore(auditCfg, mainDB, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
 
@@ -93,7 +93,7 @@ func setupReportingEnv(t *testing.T, seed bool) Options {
 	return opts
 }
 
-func seedReportingData(t *testing.T, store *storage.SQLAuditStore, rs *storage.ReplayStore, sts *storage.SuspendedTransactionService) {
+func seedReportingData(t *testing.T, store *storage.LocalFirstEventsStore, rs *storage.ReplayStore, sts *storage.SuspendedTransactionService) {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()

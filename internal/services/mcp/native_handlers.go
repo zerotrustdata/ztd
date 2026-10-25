@@ -45,10 +45,10 @@ func isValidIdentifier(name string) bool {
 type NativeToolHandler struct {
 	registry          *ToolRegistry
 	logger            *slog.Logger
-	auditReceiptQuery AuditReceiptQuery
+	eventReceiptQuery EventReceiptQuery
 	// operatorAuthority is set only on an executing Operator's handler. It
-	// scopes audit_receipt_list to the Operator's own authoritative ledger.
-	operatorAuthority *auditReceiptListAuthority
+	// scopes event_receipt_list to the Operator's own authoritative ledger.
+	operatorAuthority *eventReceiptListAuthority
 	// fsGrep runs search_file and search_directory against the executing
 	// runtime's WorkDir.
 	fsGrep *execution.FsGrepService
@@ -70,18 +70,18 @@ func NewNativeToolHandler(logger *slog.Logger) (*NativeToolHandler, error) {
 
 // NewOperatorNativeToolHandler constructs the native tool host for an
 // executing Operator's Actuator. It serves the same registry as the Gateway
-// against the Operator's own local audit store, and audit_receipt_list runs
+// against the Operator's own local-first events store, and event_receipt_list runs
 // under the Operator-local ledger authority: investigation_id is mandatory and
 // the query is scoped to operatorID across that Operator's sessions. The
 // identity and local store are required because a missing one cannot
 // establish authoritative evidence; grep is required so the search tools run
 // against the Operator's own WorkDir.
-func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query AuditReceiptQuery, grep *execution.FsGrepService) (*NativeToolHandler, error) {
+func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query EventReceiptQuery, grep *execution.FsGrepService) (*NativeToolHandler, error) {
 	if operatorID == "" {
 		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrOperatorIDMissing)
 	}
 	if query == nil {
-		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrMCPAuditReceiptQueryNotConfigured)
+		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrMCPEventReceiptQueryNotConfigured)
 	}
 	if grep == nil {
 		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrMCPFsGrepNotConfigured)
@@ -90,18 +90,18 @@ func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query 
 	if err != nil {
 		return nil, fmt.Errorf("operator native tool handler: %w", err)
 	}
-	h.auditReceiptQuery = query
-	h.operatorAuthority = &auditReceiptListAuthority{operatorID: operatorID, name: "operator_local_ledger"}
+	h.eventReceiptQuery = query
+	h.operatorAuthority = &eventReceiptListAuthority{operatorID: operatorID, name: "operator_local_ledger"}
 	h.fsGrep = grep
 	return h, nil
 }
 
-// SetAuditReceiptQuery wires the configured local audit-store read interface into the
-// handler so the audit_receipt_list and audit_receipt_get native tools can
-// query signed ActionReceipt records under governed dispatch. Called after
-// construction once the Gateway's local audit store is available.
-func (h *NativeToolHandler) SetAuditReceiptQuery(q AuditReceiptQuery) {
-	h.auditReceiptQuery = q
+// SetEventReceiptQuery wires the configured local audit-store read interface into the
+// handler so the event_receipt_list and event_receipt_get native tools can
+// query signed EventReceipt records under governed dispatch. Called after
+// construction once the Gateway's local-first events store is available.
+func (h *NativeToolHandler) SetEventReceiptQuery(q EventReceiptQuery) {
+	h.eventReceiptQuery = q
 }
 
 // SetFsGrepService wires the runtime's FsGrepService into the handler so the
@@ -129,11 +129,11 @@ func (h *NativeToolHandler) HandleTool(ctx context.Context, toolName string, arg
 		}
 		return CallToolResult{}, fmt.Errorf("%w: %s (available tools: %s)", constants.ErrMCPNativeToolUnknown, toolName, strings.Join(toolNames, ", "))
 	}
-	if h.auditReceiptQuery != nil {
-		ctx = withAuditReceiptQuery(ctx, h.auditReceiptQuery)
+	if h.eventReceiptQuery != nil {
+		ctx = withEventReceiptQuery(ctx, h.eventReceiptQuery)
 	}
 	if h.operatorAuthority != nil {
-		ctx = withAuditReceiptListAuthority(ctx, *h.operatorAuthority)
+		ctx = withEventReceiptListAuthority(ctx, *h.operatorAuthority)
 	}
 	if h.fsGrep != nil {
 		ctx = withFsGrepService(ctx, h.fsGrep)

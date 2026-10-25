@@ -22,7 +22,7 @@ import (
 // IsDenied reports a governance rejection carried by the call's signed receipt.
 // Trace evidence verification authenticates that receipt before grading.
 func (c AgentToolCall) IsDenied() bool {
-	return c.Receipt != nil && governance.IsGovernanceRejectionReceipt(c.Receipt.ActionReceipt)
+	return c.Receipt != nil && governance.IsGovernanceRejectionReceipt(c.Receipt.EventReceipt)
 }
 
 // agentGradingView is the typed trace content deterministic grading reads:

@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// Package oracletest builds signed action receipts that pass oracle.VerifyReceipt,
+// Package oracletest builds signed event receipts that pass oracle.VerifyReceipt,
 // and the complete inference results they bind, as inputs to verifier tests in
 // the oracle and its callers. It is imported only from _test.go files.
 //
@@ -66,7 +66,7 @@ func (s Signer) Anchor(runtimeID string) *evalv1.ConformanceAnchor {
 }
 
 // Executed returns a COMPLETED receipt whose commitment link is prior -> hash.
-func (s Signer) Executed(tb testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
+func (s Signer) Executed(tb testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.EventReceipt {
 	tb.Helper()
 	receipt := s.newReceipt(tb, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	receipt.StateRootBefore = rootBefore
@@ -80,7 +80,7 @@ func (s Signer) Executed(tb testing.TB, opts ReceiptOpts, prior, hash string) *o
 // ExecutionFailed returns a FAILED receipt whose handler ran and failed: it
 // carries a failed L5 execution stage and still appends the commitment link
 // prior -> hash.
-func (s Signer) ExecutionFailed(tb testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
+func (s Signer) ExecutionFailed(tb testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.EventReceipt {
 	tb.Helper()
 	receipt := s.newReceipt(tb, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
@@ -93,7 +93,7 @@ func (s Signer) ExecutionFailed(tb testing.TB, opts ReceiptOpts, prior, hash str
 }
 
 // Rejected returns a signed GOVERNANCE_REJECTED receipt with code and no commitment.
-func (s Signer) Rejected(tb testing.TB, opts ReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.ActionReceipt {
+func (s Signer) Rejected(tb testing.TB, opts ReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.EventReceipt {
 	tb.Helper()
 	receipt := s.newReceipt(tb, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
@@ -106,10 +106,10 @@ func (s Signer) Rejected(tb testing.TB, opts ReceiptOpts, code operatorv1.Govern
 }
 
 // Resign re-signs a receipt after a test mutates it (signature and attestation).
-func (s Signer) Resign(tb testing.TB, receipt *operatorv1.ActionReceipt) {
+func (s Signer) Resign(tb testing.TB, receipt *operatorv1.EventReceipt) {
 	tb.Helper()
 	receipt.FinalPersistenceAttestation = nil
-	payload, err := governance.CanonicalizeActionReceipt(receipt)
+	payload, err := governance.CanonicalizeEventReceipt(receipt)
 	if err != nil {
 		tb.Fatalf("canonicalize receipt: %v", err)
 	}
@@ -161,12 +161,12 @@ func InferenceResult(tb testing.TB, req *operatorv1.InferenceDispatchRequest, pa
 	return result
 }
 
-func (s Signer) newReceipt(tb testing.TB, opts ReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.ActionReceipt {
+func (s Signer) newReceipt(tb testing.TB, opts ReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.EventReceipt {
 	tb.Helper()
 	if opts.TransactionID == "" || opts.OperatorID == "" || opts.ActionType == "" {
 		tb.Fatalf("receipt opts need transaction, operator and action type")
 	}
-	return &operatorv1.ActionReceipt{
+	return &operatorv1.EventReceipt{
 		TransactionId:    opts.TransactionID,
 		TransactionHash:  transactionHash(opts.TransactionID),
 		Status:           status,

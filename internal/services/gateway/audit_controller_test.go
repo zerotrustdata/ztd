@@ -30,11 +30,11 @@ func setupTestAuditController(t *testing.T) *AuditController {
 	infra := setupTestInfrastructure(t, false)
 
 	controller, err := newAuditController(AuditControllerDeps{
-		Cfg:        infra.Cfg,
-		Logger:     infra.Logger,
-		AuditStore: infra.AuditStore,
-		Responder:  infra.Responder,
-		Scrubber:   infra.Scrubber,
+		Cfg:         infra.Cfg,
+		Logger:      infra.Logger,
+		EventsStore: infra.EventsStore,
+		Responder:   infra.Responder,
+		Scrubber:    infra.Scrubber,
 	})
 	require.NoError(t, err)
 	return controller
@@ -44,28 +44,28 @@ func TestNewAuditController_AllDepsProvidedNoNilFields(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 
 	controller, err := newAuditController(AuditControllerDeps{
-		Cfg:        infra.Cfg,
-		Logger:     infra.Logger,
-		AuditStore: infra.AuditStore,
-		Responder:  infra.Responder,
-		Scrubber:   infra.Scrubber,
+		Cfg:         infra.Cfg,
+		Logger:      infra.Logger,
+		EventsStore: infra.EventsStore,
+		Responder:   infra.Responder,
+		Scrubber:    infra.Scrubber,
 	})
 	require.NoError(t, err)
 
 	assert.NotNil(t, controller.cfg)
 	assert.NotNil(t, controller.logger)
-	assert.NotNil(t, controller.auditStore)
+	assert.NotNil(t, controller.eventsStore)
 	assert.NotNil(t, controller.responder)
 
 	assert.Equal(t, infra.Cfg, controller.cfg)
 	assert.Equal(t, infra.Logger, controller.logger)
-	assert.Equal(t, infra.AuditStore, controller.auditStore)
+	assert.Equal(t, infra.EventsStore, controller.eventsStore)
 	assert.Equal(t, infra.Responder, controller.responder)
 }
 
-func TestAuditControllerHandleAuditReceipts(t *testing.T) {
+func TestAuditControllerHandleEventReceipts(t *testing.T) {
 	auditController := setupTestAuditController(t)
-	require.NoError(t, auditController.auditStore.CreateSession("receipt-session", constants.SessionTypeOperator, "Receipt Session", "operator-1"))
+	require.NoError(t, auditController.eventsStore.CreateSession("receipt-session", constants.SessionTypeOperator, "Receipt Session", "operator-1"))
 
 	t.Run("Method Not Allowed", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/audit/event-receipts", nil)
@@ -81,8 +81,8 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 	})
 
-	t.Run("GET by tx_id returns canonical action receipt", func(t *testing.T) {
-		receipt := &operatorv1.ActionReceipt{
+	t.Run("GET by tx_id returns canonical event receipt", func(t *testing.T) {
+		receipt := &operatorv1.EventReceipt{
 			TransactionId:   "tx-evidence",
 			TransactionHash: "hash-evidence",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -96,7 +96,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 				TransactionHash: "hash-evidence",
 			}},
 		}
-		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+		err := auditController.eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     receipt.TransactionId,
 			TransactionHash:   receipt.TransactionHash,
 			InvestigationID:   "investigation-evidence",
@@ -108,7 +108,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 			SignerKeyID:       receipt.SignerKeyId,
 			Signature:         receipt.Signature,
 			Timestamp:         time.Now(),
-			ActionReceipt:     receipt,
+			EventReceipt:      receipt,
 		})
 		require.NoError(t, err)
 
@@ -121,22 +121,22 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		assert.Equal(t, constants.HeaderValueNoSniff, rr.Header().Get(constants.HeaderXContentTypeOptions))
 		assert.Equal(t, constants.HeaderValueDeny, rr.Header().Get(constants.HeaderXFrameOptions))
 		assert.Equal(t, constants.HeaderValueCSPNone, rr.Header().Get(constants.HeaderContentSecurityPolicy))
-		parsed := &operatorv1.ActionReceipt{}
+		parsed := &operatorv1.EventReceipt{}
 		require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), parsed))
 		assert.Equal(t, receipt.TransactionId, parsed.TransactionId)
 		require.Len(t, parsed.DeterministicStageEvidence, 1)
 		assert.Equal(t, receipt.DeterministicStageEvidence[0], parsed.DeterministicStageEvidence[0])
 	})
 
-	t.Run("GET by investigation_id and action_type returns canonical action receipt", func(t *testing.T) {
-		documentReceipt := &operatorv1.ActionReceipt{
+	t.Run("GET by investigation_id and action_type returns canonical event receipt", func(t *testing.T) {
+		documentReceipt := &operatorv1.EventReceipt{
 			TransactionId:   "tx-document-update",
 			TransactionHash: "hash-document-update",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId:     "warden-key",
 			Signature:       "signature",
 		}
-		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+		err := auditController.eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     documentReceipt.TransactionId,
 			TransactionHash:   documentReceipt.TransactionHash,
 			InvestigationID:   "investigation-evidence",
@@ -148,7 +148,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 			SignerKeyID:       documentReceipt.SignerKeyId,
 			Signature:         documentReceipt.Signature,
 			Timestamp:         time.Now(),
-			ActionReceipt:     documentReceipt,
+			EventReceipt:      documentReceipt,
 		})
 		require.NoError(t, err)
 
@@ -157,20 +157,20 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		auditController.handleAuditEventReceipts(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		parsed := &operatorv1.ActionReceipt{}
+		parsed := &operatorv1.EventReceipt{}
 		require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), parsed))
 		assert.Equal(t, "tx-evidence", parsed.TransactionId)
 	})
 
 	t.Run("GET by investigation_id rejects duplicate correlation", func(t *testing.T) {
-		receipt := &operatorv1.ActionReceipt{
+		receipt := &operatorv1.EventReceipt{
 			TransactionId:   "tx-evidence-duplicate",
 			TransactionHash: "hash-evidence-duplicate",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId:     "warden-key",
 			Signature:       "signature",
 		}
-		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+		err := auditController.eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     receipt.TransactionId,
 			TransactionHash:   receipt.TransactionHash,
 			InvestigationID:   "investigation-evidence",
@@ -182,7 +182,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 			SignerKeyID:       receipt.SignerKeyId,
 			Signature:         receipt.Signature,
 			Timestamp:         time.Now(),
-			ActionReceipt:     receipt,
+			EventReceipt:      receipt,
 		})
 		require.NoError(t, err)
 
@@ -191,7 +191,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		auditController.handleAuditEventReceipts(rr, req)
 
 		assert.Equal(t, http.StatusConflict, rr.Code)
-		assert.Contains(t, rr.Body.String(), constants.ErrAuditStoreReceiptCorrelationDuplicate.Error())
+		assert.Contains(t, rr.Body.String(), constants.ErrLocalFirstEventsStoreReceiptCorrelationDuplicate.Error())
 	})
 
 	t.Run("GET with multiple correlation fields is rejected", func(t *testing.T) {
@@ -231,7 +231,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 	})
 }
 
-func TestAuditControllerHandleAuditReceiptsExport(t *testing.T) {
+func TestAuditControllerHandleEventReceiptsExport(t *testing.T) {
 	auditController := setupTestAuditController(t)
 
 	t.Run("Method Not Allowed", func(t *testing.T) {
@@ -422,8 +422,8 @@ func TestAuditControllerHandleAuditVerify(t *testing.T) {
 	})
 
 	t.Run("Success - receipt stage appends verify", func(t *testing.T) {
-		require.NoError(t, auditController.auditStore.CreateSession("verify-session", constants.SessionTypeOperator, "Verify Session", "operator-1"))
-		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
+		require.NoError(t, auditController.eventsStore.CreateSession("verify-session", constants.SessionTypeOperator, "Verify Session", "operator-1"))
+		err := auditController.eventsStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     "tx-verify-1",
 			TransactionHash:   "hash-verify",
 			OperatorID:        "operator-1",

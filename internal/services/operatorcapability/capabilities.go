@@ -72,14 +72,14 @@ func runsGenericWork(capabilities constants.OperatorCapabilities) bool {
 }
 
 // ValidateWitnessNativeTool rejects governed native MCP tools on witness-only
-// Operators, except reads of the executing runtime's own signed audit store,
+// Operators, except reads of the executing runtime's own signed local-first events store,
 // which every Operator serves for its own evidence.
 func ValidateWitnessNativeTool(capabilities constants.OperatorCapabilities, toolName string) error {
 	if runsGenericWork(capabilities) {
 		return nil
 	}
 	switch toolName {
-	case constants.MCPToolAuditReceiptList, constants.MCPToolAuditReceiptGet:
+	case constants.MCPToolEventReceiptList, constants.MCPToolEventReceiptGet:
 		return nil
 	}
 	return fmt.Errorf("%w: native tool %q", constants.ErrWitnessCommandNotCapable, toolName)

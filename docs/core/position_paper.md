@@ -99,7 +99,7 @@ NIST SP 800-207 defines Zero Trust Architecture around dynamic, least-privilege 
 ztd implements a clean separation between Policy Decision Points (PDP) and Policy Execution Points (PEP) [7]:
 
 - **Governance Gateway (`ztdg`) — Policy Decision Point (PDP)**: Authenticates callers, constructs canonical envelopes, evaluates L1 Doctrine, coordinates L2 Consensus and L3 Notary workflows, and routes transactions. The Gateway cannot bypass downstream verification and hosts an in-process Operator substrate strictly for Gateway-local actions.
-- **Governed Operator (`ztdo`) — Policy Execution Point (PEP)**: Runs directly on managed target hosts. It initiates an outbound-only mTLS connection to the Gateway, pulls work from session-bound channels, performs independent L4 Warden verification, executes through L5 Actuator, and retains host-authoritative audit stores. The Operator exposes no inbound network ports.
+- **Governed Operator (`ztdo`) — Policy Execution Point (PEP)**: Runs directly on managed target hosts. It initiates an outbound-only mTLS connection to the Gateway, pulls work from session-bound channels, performs independent L4 Warden verification, executes through L5 Actuator, and retains a host-authoritative Local-First Events Store. The Operator exposes no inbound network ports.
 - **Reasoning Applications**: External agents, MCP clients, and client applications that analyze telemetry and formulate proposals. These operate entirely outside the trusted execution boundary.
 - **Human Authorizers**: Supply transaction-bound cryptographic signatures (via WebAuthn passkeys or signed CLI proofs) when the active posture requires explicit human oversight.
 
@@ -152,7 +152,7 @@ L3 Notary binds human approval to the specific transaction hash rather than gran
 
 ### 5.6 Receipts, Commitments, and Forensic Memory
 
-L5 Actuator signs and persists an initial `EXECUTING` receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `ActionReceipt` along with a `ReceiptPersistenceAttestation`. The SQLite `commitment_ledger` is created with the audit schema on every store and appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
+L5 Actuator signs and persists an initial `EXECUTING` receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `EventReceipt` along with a `ReceiptPersistenceAttestation`. The SQLite `commitment_ledger` is created with the audit schema on every store and appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
 
 These artifacts provide signed, hash-chained evidence of what was proposed, verified, and executed on the governed path. Autonomous workflows and human operators can query signed receipts to establish exactly what was proposed, verified, and executed.
 

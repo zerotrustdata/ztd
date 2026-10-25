@@ -88,13 +88,13 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-EVT-PERS-01 | Every event MUST declare persistence ownership from the closed vocabulary: `operator.audit_log`, `gateway.audit_log`, `gateway.sse_store`, `gateway.operator_docs`, `gateway.docstore`, or `ephemeral`. Parallel persistence schemes outside this vocabulary are prohibited. |
-| INV-EVT-PERS-02 | Server-Sent Events (SSE) is transient delivery telemetry. SSE delivery MUST NOT be treated as durable governance state or authoritative execution evidence. Authoritative execution evidence resides exclusively in the executing Operator's local SQLite database under LFAA. |
+| INV-EVT-PERS-02 | Server-Sent Events (SSE) is transient delivery telemetry. SSE delivery MUST NOT be treated as durable governance state or authoritative execution evidence. Authoritative execution evidence resides exclusively in the executing Operator's local SQLite database under LFEA. |
 
 ### Hash-Chained Audit Trails (`INV-EVT-CHAIN`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-EVT-CHAIN-01 | Every event appended to the SQL audit store `events` table MUST be appended to a cryptographic hash chain recording: monotonic sequence number (`seq`), previous hash (`prev_hash`), keyed content digest (`content_digest`), and entry hash (`hash`). |
+| INV-EVT-CHAIN-01 | Every event appended to the Local-First Events Store `events` table MUST be appended to a cryptographic hash chain recording: monotonic sequence number (`seq`), previous hash (`prev_hash`), keyed content digest (`content_digest`), and entry hash (`hash`). |
 | INV-EVT-CHAIN-02 | Pruning chained audit events MUST append a checkpoint fact recording `pruned_through_seq`, `pruned_through_hash`, and `pruned_count` before deleting rows, to preserve chain verifiability. The checkpoint is hash-chained; the runtime does not sign it. |
 
 ## Owned surfaces
@@ -177,8 +177,8 @@ The registry declares transports per event. The runtime enforces only the `gover
 ### Storage Ownership Matrix
 
 Persistence ownership is assigned per event in the registry:
-- **`operator.audit_log`**: Append-only local SQLite audit store on the host where the Operator executes. Under LFAA, this is the authoritative execution record.
-- **`gateway.audit_log`**: Gateway SQL audit store, hash-chained like `operator.audit_log`. The registry assigns it to the `ztd.v1.public.feed.*` outcomes and to `ztd.v1.consensus.vote.recorded`.
+- **`operator.audit_log`**: Append-only Local-First Events Store on the host where the Operator executes. Under LFEA, this is the authoritative execution record.
+- **`gateway.audit_log`**: Gateway's Local-First Events Store, hash-chained like `operator.audit_log`. The registry assigns it to the `ztd.v1.public.feed.*` outcomes and to `ztd.v1.consensus.vote.recorded`.
 - **`gateway.sse_store`**: `sse_events` table backing historical SSE replay (`GET /api/v1/sse/events`). Rows are pruned by age.
 - **`gateway.operator_docs`**: Gateway `operators` document collection tracking registered Operators, their status, and heartbeat state.
 - **`gateway.docstore`**: Authoritative Gateway document store for collections such as `users`, `app_policies`, `trusted_signers`, `cases`, `investigations`, and `platform_enrollments`.
@@ -186,7 +186,7 @@ Persistence ownership is assigned per event in the registry:
 
 ### Hash-Chained Audit Ledger Mechanics
 
-Events appended to the `events` table of the SQL audit store form an append-only cryptographic hash chain. Each row records:
+Events appended to the `events` table of the Local-First Events Store form an append-only cryptographic hash chain. Each row records:
 1. `seq`: Unique integer sequence number (`events.seq`, `UNIQUE`) scoped to the host database. An empty chain starts from an all-zero genesis hash, or from the latest checkpoint hash after pruning.
 2. `prev_hash`: The `hash` of the immediately preceding row.
 3. `content_digest`: HMAC-SHA256 over the JSON encoding of the content fields (`content_text`, `command_raw`, `command_exit_code`, `command_stdout`, `command_stderr`, `execution_duration_ms`, `execution_id`) under a subkey the runtime vault derives (see [Storage Architecture](./storage.md)). A locked vault fails the append closed.
@@ -209,7 +209,7 @@ Event wire values follow `ztd.v1.<domain>.<entity>[.<qualifier>...].<terminal>`.
 ## Anti-patterns
 
 - **Hand-Editing Generated Constants**: Modifying `events_gen.go` or `events.ts` manually instead of editing `protocol/constants/events.json` and running `make constants-generate` (INV-EVT-REG-01).
-- **Treating SSE as Durable Governance State**: Relying on SSE event delivery as authoritative execution proof instead of querying the local SQLite audit ledger under LFAA (INV-EVT-PERS-02).
+- **Treating SSE as Durable Governance State**: Relying on SSE event delivery as authoritative execution proof instead of querying the local SQLite audit ledger under LFEA (INV-EVT-PERS-02).
 - **Publishing Events Over Undeclared Transports**: Sending events across channels not explicitly permitted in the registry's `transport` array (INV-EVT-XPORT-01).
 - **Client-Supplied Action Types**: Permitting clients to specify `action_type` directly instead of letting the Gateway derive it from the event registry (INV-EVT-GOV-02).
 - **Using Prohibited Terminals**: Introducing wire values ending in generic nouns (`.event`, `.info`, `.result`) rejected by `constgen`.

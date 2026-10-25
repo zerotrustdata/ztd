@@ -25,7 +25,7 @@ func TestReceiptSignerKey_EmbeddedOperatorResolvesToGatewayActuatorKey(t *testin
 	svc := NewSignerStoreService(nil, nil, nil, pub, keyID)
 
 	got, err := svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
-		&operatorv1.ActionReceipt{SignerKeyId: keyID})
+		&operatorv1.EventReceipt{SignerKeyId: keyID})
 	require.NoError(t, err)
 	assert.Equal(t, pub, got)
 }
@@ -38,7 +38,7 @@ func TestReceiptSignerKey_EmbeddedOperatorRejectsMismatchedSignerKeyID(t *testin
 	svc := NewSignerStoreService(nil, nil, nil, pub, hex.EncodeToString(pub))
 
 	_, err = svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
-		&operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(other)})
+		&operatorv1.EventReceipt{SignerKeyId: hex.EncodeToString(other)})
 	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
 }
 
@@ -46,6 +46,6 @@ func TestReceiptSignerKey_EmbeddedOperatorWithoutGatewayKeyIsNotBound(t *testing
 	svc := NewSignerStoreService(nil, nil, nil, nil, "")
 
 	_, err := svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
-		&operatorv1.ActionReceipt{SignerKeyId: ""})
+		&operatorv1.EventReceipt{SignerKeyId: ""})
 	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
 }

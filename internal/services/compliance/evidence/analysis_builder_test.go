@@ -45,7 +45,7 @@ func analysisTestAssertion(id, category, responsibility string) *compliancev1.Co
 		Responsibility:          responsibility,
 		ApplicableActionClasses: []string{"governed_mutation"},
 		ApplicableArms:          []string{"governed"},
-		RequiredEvidenceTypes:   []string{"action_receipt"},
+		RequiredEvidenceTypes:   []string{"event_receipt"},
 		RequiredGraderRefs:      []*compliancev1.VersionedReference{{Id: "policy_outcome", Version: "1.0.0"}},
 		RequiredVerifierRefs:    []*compliancev1.VersionedReference{{Id: "receipt_integrity", Version: "1.0.0"}},
 		MinimumEvidenceLevel:    "L3",
@@ -182,13 +182,13 @@ func analysisTestGraph(t *testing.T) *evidence.EvidenceGraph {
 	graph := evidence.NewEvidenceGraph(0, nil)
 	receiptBody := []byte(`{"receipt":"verified"}`)
 	receiptDigest := sha256.Sum256(receiptBody)
-	receiptID := evidence.ContentAddress(evidence.ArtifactTypeActionReceipt, receiptBody)
+	receiptID := evidence.ContentAddress(evidence.ArtifactTypeEventReceipt, receiptBody)
 	require.NoError(t, graph.AddNode(evidence.EvidenceNode{
 		ArtifactID:         receiptID,
-		ArtifactType:       evidence.ArtifactTypeActionReceipt,
+		ArtifactType:       evidence.ArtifactTypeEventReceipt,
 		SHA256:             hex.EncodeToString(receiptDigest[:]),
 		MediaType:          constants.MediaTypeJSON,
-		SchemaRef:          "ztd.operator.v1.ActionReceipt",
+		SchemaRef:          "ztd.operator.v1.EventReceipt",
 		ProducerIdentity:   "gateway",
 		ProducedAt:         analysisTestEvaluatedAt.Add(-time.Hour),
 		ScopeID:            "scope-1",
@@ -534,8 +534,8 @@ func TestBuildComplianceAnalysis_PropagatesGraphFailuresAndValidity(t *testing.T
 	request := analysisBaseRequest(t)
 	request.Graph = evidence.NewEvidenceGraph(0, nil)
 	require.NoError(t, request.Graph.AddNode(evidence.EvidenceNode{
-		ArtifactID:         evidence.ContentAddress(evidence.ArtifactTypeActionReceipt, []byte(`{}`)),
-		ArtifactType:       evidence.ArtifactTypeActionReceipt,
+		ArtifactID:         evidence.ContentAddress(evidence.ArtifactTypeEventReceipt, []byte(`{}`)),
+		ArtifactType:       evidence.ArtifactTypeEventReceipt,
 		SHA256:             "0000000000000000000000000000000000000000000000000000000000000000",
 		MediaType:          constants.MediaTypeJSON,
 		ProducerIdentity:   "gateway",
@@ -599,8 +599,8 @@ func TestBuildComplianceAnalysis_CanonicalVectorIsPinned(t *testing.T) {
 	canonical, err := compliancev1.MarshalCanonical(analysis)
 	require.NoError(t, err)
 	digest := sha256.Sum256(canonical)
-	assert.Equal(t, "compliance-analysis:sha256:73066d9dd08b42562d12cb0d5f97f4a50ccd3378ec415c5e696777963e959cbc", analysis.GetAnalysisId())
-	assert.Equal(t, "fdc1187ada70f4b8cba4ef02fc2748e01ac2562f838d2e68dd2de28efe12877b", hex.EncodeToString(digest[:]))
+	assert.Equal(t, "compliance-analysis:sha256:b57678575eddb6256d93f2ab1fe07f4e5442b3716f84185101e6d21ded091407", analysis.GetAnalysisId())
+	assert.Equal(t, "fcf3629fe7ad9cf9723a7bb6573c91badbcf09c724b0e26a5f0e273fc9c214b1", hex.EncodeToString(digest[:]))
 }
 
 func TestBuildComplianceAnalysis_CanonicalBytesIgnoreInputOrdering(t *testing.T) {
@@ -930,10 +930,10 @@ func TestBuildComplianceAnalysis_EvidenceLinksOnlyForScopeNodes(t *testing.T) {
 	request := analysisBaseRequest(t)
 	otherBody := []byte(`{"other":"scope"}`)
 	otherDigest := sha256.Sum256(otherBody)
-	otherID := evidence.ContentAddress(evidence.ArtifactTypeActionReceipt, otherBody)
+	otherID := evidence.ContentAddress(evidence.ArtifactTypeEventReceipt, otherBody)
 	require.NoError(t, request.Graph.AddNode(evidence.EvidenceNode{
 		ArtifactID:         otherID,
-		ArtifactType:       evidence.ArtifactTypeActionReceipt,
+		ArtifactType:       evidence.ArtifactTypeEventReceipt,
 		SHA256:             hex.EncodeToString(otherDigest[:]),
 		MediaType:          constants.MediaTypeJSON,
 		ProducerIdentity:   "gateway",

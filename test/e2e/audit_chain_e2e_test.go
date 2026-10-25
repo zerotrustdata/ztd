@@ -66,9 +66,9 @@ func TestDispatch_UnknownEventRejected(t *testing.T) {
 	assert.Equal(t, 400, status, "unknown event must be rejected at gateway ingress: %s", string(body))
 }
 
-// TestLFAA_AuditIngestAckAndVerify proves LFAA ingest returns chain metadata
+// TestLFEA_AuditIngestAckAndVerify proves LFEA ingest returns chain metadata
 // and the Gateway audit chain still verifies afterwards.
-func TestLFAA_AuditIngestAckAndVerify(t *testing.T) {
+func TestLFEA_AuditIngestAckAndVerify(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -83,14 +83,14 @@ func TestLFAA_AuditIngestAckAndVerify(t *testing.T) {
 		EventType:         string(constants.EventOperatorAuditDirectCommandRecordRequested),
 		OperatorID:        target.Id,
 		OperatorSessionID: target.OperatorSessionId,
-		IdempotencyKey:    fmt.Sprintf("e2e-lfaa-%d", time.Now().UnixNano()),
-		Payload:           []byte(`{"command":"e2e-lfaa-proof"}`),
+		IdempotencyKey:    fmt.Sprintf("e2e-lfea-%d", time.Now().UnixNano()),
+		Payload:           []byte(`{"command":"e2e-lfea-proof"}`),
 	})
-	require.NoError(t, err, "LFAA ingest must be acknowledged")
+	require.NoError(t, err, "LFEA ingest must be acknowledged")
 	assert.Greater(t, ack.Seq, int64(0), "ingest ack must include chain seq")
 	assert.NotEmpty(t, ack.Hash, "ingest ack must include chain hash")
 
 	resp, err := e2eClient.VerifyAuditChain(ctx, 0)
-	require.NoError(t, err, "audit verify after LFAA ingest must succeed")
-	assert.True(t, resp.OK, "audit chain must verify after LFAA ingest: %s", resp.Error)
+	require.NoError(t, err, "audit verify after LFEA ingest must succeed")
+	assert.True(t, resp.OK, "audit chain must verify after LFEA ingest: %s", resp.Error)
 }

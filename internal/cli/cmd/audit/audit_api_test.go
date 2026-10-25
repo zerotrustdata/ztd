@@ -44,7 +44,7 @@ func setupAuditAPITestEnv(t *testing.T) *config.Config {
 
 // --- Receipts ---
 
-func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
+func TestEventReceiptsCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[{"transaction_hash":"abc123","action_type":"file_edit","target_resource":"/path/to/file","status":2,"executed_at":"2026-01-01T00:00:00Z","l2_valid":true,"l3_valid":false}]}`)}
@@ -65,7 +65,7 @@ func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
 	assert.Contains(t, buf.String(), "L2 valid: 1")
 }
 
-func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
+func TestEventReceiptsCmd_API_JSONOutput(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	rawJSON := `{"event_receipts":[]}`
@@ -87,7 +87,7 @@ func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
 	assert.Contains(t, buf.String(), `[]`)
 }
 
-func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
+func TestEventReceiptsCmd_API_EmptyReceipts(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[]}`)}
@@ -106,7 +106,7 @@ func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
 	assert.Contains(t, buf.String(), "No event receipts found")
 }
 
-func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
+func TestEventReceiptsCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetErr: errMockNetwork}
@@ -125,7 +125,7 @@ func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
 	assert.ErrorIs(t, err, errMockNetwork)
 }
 
-func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) {
+func TestEventReceiptsCmd_API_InvalidJSON(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`not json {{{`)}
@@ -144,7 +144,7 @@ func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestAuditReceiptsCmd_API_ClientFactoryError(t *testing.T) {
+func TestEventReceiptsCmd_API_ClientFactoryError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }

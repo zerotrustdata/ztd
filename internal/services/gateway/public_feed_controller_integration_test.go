@@ -28,15 +28,13 @@ import (
 )
 
 func TestPublicFeedControllerHandlePublicFeedBatches_AcceptsBatch(t *testing.T) {
-	privatePort := mustFreePort(t)
-	publicPort := mustFreePort(t)
 	fileSvc := newProducerFileSvc(t)
 	logger := testutil.NewTestLogger()
 	ks := newTestKeystore(t, fileSvc, logger)
 	runtime, err := NewPublicSpectatorRuntime(PublicSpectatorConfig{
 		Enabled:              true,
-		PrivateListenAddress: "127.0.0.1:" + privatePort,
-		PublicListenAddress:  "127.0.0.1:" + publicPort,
+		PrivateListenAddress: "127.0.0.1:0",
+		PublicListenAddress:  "127.0.0.1:0",
 		SourceID:             "test-source",
 	}, fileSvc, ks, logger)
 	require.NoError(t, err)
@@ -73,15 +71,13 @@ func TestPublicFeedControllerHandlePublicFeedBatches_AcceptsBatch(t *testing.T) 
 }
 
 func TestPublicFeedControllerHandlePublicFeedBatches_RejectsUnknownEventKind(t *testing.T) {
-	privatePort := mustFreePort(t)
-	publicPort := mustFreePort(t)
 	fileSvc := newProducerFileSvc(t)
 	logger := testutil.NewTestLogger()
 	ks := newTestKeystore(t, fileSvc, logger)
 	runtime, err := NewPublicSpectatorRuntime(PublicSpectatorConfig{
 		Enabled:              true,
-		PrivateListenAddress: "127.0.0.1:" + privatePort,
-		PublicListenAddress:  "127.0.0.1:" + publicPort,
+		PrivateListenAddress: "127.0.0.1:0",
+		PublicListenAddress:  "127.0.0.1:0",
 		SourceID:             "test-source",
 	}, fileSvc, ks, logger)
 	require.NoError(t, err)
@@ -111,15 +107,13 @@ func TestPublicFeedControllerHandlePublicFeedBatches_RejectsUnknownEventKind(t *
 }
 
 func TestPublicFeedControllerHandlePublicFeedSnapshot_ReturnsHighWater(t *testing.T) {
-	privatePort := mustFreePort(t)
-	publicPort := mustFreePort(t)
 	fileSvc := newProducerFileSvc(t)
 	logger := testutil.NewTestLogger()
 	ks := newTestKeystore(t, fileSvc, logger)
 	runtime, err := NewPublicSpectatorRuntime(PublicSpectatorConfig{
 		Enabled:              true,
-		PrivateListenAddress: "127.0.0.1:" + privatePort,
-		PublicListenAddress:  "127.0.0.1:" + publicPort,
+		PrivateListenAddress: "127.0.0.1:0",
+		PublicListenAddress:  "127.0.0.1:0",
 		SourceID:             "test-source",
 	}, fileSvc, ks, logger)
 	require.NoError(t, err)

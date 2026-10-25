@@ -1,0 +1,5 @@
+INTERNAL — FICTIONAL TIME-OFF POLICY
+
+Staff can request their own leave and view their own requests. People Operations can view all requests and approve or deny a pending request. A reviewer cannot approve their own request. Denied requests do not block a new request for the same dates.
+
+Date ranges include both the first and last day. Overlapping pending or approved requests are rejected. A driver with an active route cannot have leave approved for that route date. Operations must resolve the schedule first. Dispatch also rejects route planning for a driver who is already on approved leave.

@@ -74,9 +74,9 @@ func mustUUID(t *testing.T) string {
 	return id
 }
 
-func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) {
+func TestVerifyEventReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) {
 	actuator, publicKey := newTestActuator(t)
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    "test-transaction",
 		TransactionHash:  "test-transaction-hash",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -92,34 +92,34 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 
 	tests := []struct {
 		name      string
-		receipt   *operatorv1.ActionReceipt
+		receipt   *operatorv1.EventReceipt
 		publicKey ed25519.PublicKey
 		wantErr   error
 	}{
 		{name: "valid signature", receipt: receipt, publicKey: publicKey},
-		{name: "missing receipt", publicKey: publicKey, wantErr: constants.ErrActionReceiptMissing},
-		{name: "missing signature", receipt: func() *operatorv1.ActionReceipt {
-			candidate := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		{name: "missing receipt", publicKey: publicKey, wantErr: constants.ErrEventReceiptMissing},
+		{name: "missing signature", receipt: func() *operatorv1.EventReceipt {
+			candidate := proto.Clone(receipt).(*operatorv1.EventReceipt)
 			candidate.Signature = ""
 			return candidate
-		}(), publicKey: publicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "malformed signature", receipt: func() *operatorv1.ActionReceipt {
-			candidate := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		}(), publicKey: publicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "malformed signature", receipt: func() *operatorv1.EventReceipt {
+			candidate := proto.Clone(receipt).(*operatorv1.EventReceipt)
 			candidate.Signature = "not-hex"
 			return candidate
-		}(), publicKey: publicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "tampered receipt", receipt: func() *operatorv1.ActionReceipt {
-			candidate := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		}(), publicKey: publicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "tampered receipt", receipt: func() *operatorv1.EventReceipt {
+			candidate := proto.Clone(receipt).(*operatorv1.EventReceipt)
 			candidate.ResultSummary = "tampered"
 			return candidate
-		}(), publicKey: publicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "wrong public key", receipt: receipt, publicKey: wrongPublicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "malformed public key", receipt: receipt, publicKey: ed25519.PublicKey("short"), wantErr: constants.ErrActionReceiptSignatureInvalid},
+		}(), publicKey: publicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "wrong public key", receipt: receipt, publicKey: wrongPublicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "malformed public key", receipt: receipt, publicKey: ed25519.PublicKey("short"), wantErr: constants.ErrEventReceiptSignatureInvalid},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyActionReceiptSignature(tt.receipt, tt.publicKey)
+			err := VerifyEventReceiptSignature(tt.receipt, tt.publicKey)
 			if tt.wantErr == nil {
 				assert.NoError(t, err)
 				return
@@ -130,13 +130,13 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 }
 
 type operatorAuditSummaryCommand struct {
-	result *models.OperatorAuditReceiptListResult
+	result *models.OperatorEventReceiptListResult
 }
 
 func (*operatorAuditSummaryCommand) GetPayload() []byte            { return nil }
 func (*operatorAuditSummaryCommand) SetPayload([]byte)             {}
 func (*operatorAuditSummaryCommand) InferenceResultDigest() string { return "" }
-func (c *operatorAuditSummaryCommand) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+func (c *operatorAuditSummaryCommand) EventReceiptListSummary() *models.OperatorEventReceiptListResult {
 	return c.result
 }
 
@@ -146,11 +146,11 @@ func (*operatorAuditSummaryCommandWithoutTypedResult) GetPayload() []byte       
 func (*operatorAuditSummaryCommandWithoutTypedResult) SetPayload([]byte)             {}
 func (*operatorAuditSummaryCommandWithoutTypedResult) InferenceResultDigest() string { return "" }
 
-func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
+func TestL5EventReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
 	actuator, publicKey := newTestActuator(t)
-	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_list"})
+	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "event_receipt_list"})
 	require.NoError(t, err)
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-command",
 		TransactionHash: "hash-command",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -158,9 +158,9 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 	}
 	receipt.Signature, err = actuator.signReceipt(receipt)
 	require.NoError(t, err)
-	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
-	result := &models.OperatorAuditReceiptListResult{
-		Receipts:        []*operatorv1.ActionReceipt{receipt},
+	require.NoError(t, VerifyEventReceiptSignature(receipt, publicKey))
+	result := &models.OperatorEventReceiptListResult{
+		Receipts:        []*operatorv1.EventReceipt{receipt},
 		Count:           1,
 		OperatorID:      "op-1",
 		Authority:       "operator_local_ledger",
@@ -179,48 +179,48 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 	}
 	command := &operatorAuditSummaryCommand{result: result}
 
-	assert.Equal(t, summary, actuator.auditReceiptListSummary(vt, command, summary))
+	assert.Equal(t, summary, actuator.eventReceiptListSummary(vt, command, summary))
 	assert.Contains(t, summary, receipt.GetSignature())
-	assert.Empty(t, actuator.auditReceiptListSummary(vt, command, `{"authority":"operator_local_ledger"}`))
-	assert.Empty(t, actuator.auditReceiptListSummary(vt, &operatorAuditSummaryCommandWithoutTypedResult{}, summary))
+	assert.Empty(t, actuator.eventReceiptListSummary(vt, command, `{"authority":"operator_local_ledger"}`))
+	assert.Empty(t, actuator.eventReceiptListSummary(vt, &operatorAuditSummaryCommandWithoutTypedResult{}, summary))
 
 	tests := []struct {
 		name   string
-		mutate func(*VerifiedTransaction, *models.OperatorAuditReceiptListResult)
+		mutate func(*VerifiedTransaction, *models.OperatorEventReceiptListResult)
 	}{
 		{
 			name: "wrong action",
-			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorEventReceiptListResult) {
 				v.ActionType = constants.ActionTypeExecuteBash
 			},
 		},
 		{
 			name: "wrong tool",
-			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
-				v.Envelope.Payload, _ = proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_get"})
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorEventReceiptListResult) {
+				v.Envelope.Payload, _ = proto.Marshal(&operatorv1.McpCallRequested{ToolName: "event_receipt_get"})
 			},
 		},
 		{
 			name: "wrong authority",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorEventReceiptListResult) {
 				r.Authority = "gateway_mirror"
 			},
 		},
 		{
 			name: "wrong operator",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorEventReceiptListResult) {
 				r.OperatorID = "op-2"
 			},
 		},
 		{
 			name: "wrong investigation",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorEventReceiptListResult) {
 				r.InvestigationID = "investigation-2"
 			},
 		},
 		{
 			name: "count mismatch",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorEventReceiptListResult) {
 				r.Count = 2
 			},
 		},
@@ -230,14 +230,14 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 			vtCopy := proto.Clone(vt.Envelope).(*govtypes.GovernanceEnvelope)
 			verified := *vt
 			verified.Envelope = vtCopy
-			resultCopy := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+			resultCopy := proto.Clone(receipt).(*operatorv1.EventReceipt)
 			copied := *result
-			copied.Receipts = []*operatorv1.ActionReceipt{resultCopy}
+			copied.Receipts = []*operatorv1.EventReceipt{resultCopy}
 			commandCopy := &operatorAuditSummaryCommand{result: &copied}
 			tt.mutate(&verified, &copied)
 			mutatedSummary, marshalErr := json.Marshal(&copied)
 			require.NoError(t, marshalErr)
-			assert.Empty(t, actuator.auditReceiptListSummary(&verified, commandCopy, string(mutatedSummary)))
+			assert.Empty(t, actuator.eventReceiptListSummary(&verified, commandCopy, string(mutatedSummary)))
 		})
 	}
 }
@@ -245,7 +245,7 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 func TestVerifyReceiptPersistenceAttestationRejectsSemanticallyUnboundFields(t *testing.T) {
 	t.Parallel()
 	actuator, publicKey := newTestActuator(t)
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId: "test-transaction",
 		SignerKeyId:   actuator.KeyID,
 		Signature:     "abcd",
@@ -439,9 +439,9 @@ func TestClassifyReceiptFailureRehydration(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeActionReceipt(t *testing.T) {
+func TestCanonicalizeEventReceipt(t *testing.T) {
 	t.Parallel()
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    "test-tx-id",
 		TransactionHash:  "test-hash",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -453,10 +453,10 @@ func TestCanonicalizeActionReceipt(t *testing.T) {
 	}
 
 	// Canonicalize twice and verify results are identical
-	bytes1, err := CanonicalizeActionReceipt(receipt)
+	bytes1, err := CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 
-	bytes2, err := CanonicalizeActionReceipt(receipt)
+	bytes2, err := CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 
 	require.Equal(t, bytes1, bytes2, "Canonicalization should be deterministic")
@@ -522,15 +522,15 @@ func TestSignatureDigest_ProtocolVectors(t *testing.T) {
 func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing.T) {
 	tests := []struct {
 		name       string
-		receipt    *operatorv1.ActionReceipt
+		receipt    *operatorv1.EventReceipt
 		expected   string
 		expectsErr bool
 	}{
-		{name: "consistent action type", receipt: &operatorv1.ActionReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {}, {ActionType: "FILE_EDIT"}}}, expected: "FILE_EDIT"},
+		{name: "consistent action type", receipt: &operatorv1.EventReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {}, {ActionType: "FILE_EDIT"}}}, expected: "FILE_EDIT"},
 		{name: "nil receipt", expectsErr: true},
-		{name: "missing stages", receipt: &operatorv1.ActionReceipt{}, expectsErr: true},
-		{name: "empty action types", receipt: &operatorv1.ActionReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{}, {}}}, expectsErr: true},
-		{name: "conflicting action types", receipt: &operatorv1.ActionReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {ActionType: "FILE_READ"}}}, expectsErr: true},
+		{name: "missing stages", receipt: &operatorv1.EventReceipt{}, expectsErr: true},
+		{name: "empty action types", receipt: &operatorv1.EventReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{}, {}}}, expectsErr: true},
+		{name: "conflicting action types", receipt: &operatorv1.EventReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {ActionType: "FILE_READ"}}}, expectsErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

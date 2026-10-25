@@ -18,7 +18,7 @@
 //	10%  File Mut.   – valid sig, FILE_EDIT with L3 proof      → EXECUTED
 //
 // This is a TEST-ONLY package for chaos testing of the governance stack.
-// It writes through the production audit store (storage.SQLAuditStore) over the
+// It writes through the production local-first events store (storage.LocalFirstEventsStore) over the
 // run's canonical ztd.db, and keeps its own classification counts in the run's
 // chaos.db. It should not be used in production code paths.
 package chaos
@@ -470,7 +470,7 @@ func Run(cfg Config) error {
 		return fmt.Errorf("%w: %v", constants.ErrVaultUnlockFailed, err)
 	}
 
-	// ── audit store ───────────────────────────────────────────────────────────
+	// ── local-first events store ───────────────────────────────────────────────────────────
 	// Constructed the way the Gateway constructs it: the canonical ztd.db is opened
 	// by the caller, and the store shares it. Defers run in reverse order, so the
 	// store closes before the database it writes through.
@@ -479,11 +479,11 @@ func Run(cfg Config) error {
 		return fmt.Errorf("failed to open audit database: %w", err)
 	}
 	defer auditDB.Close()
-	auditCfg := storage.DefaultAuditStoreConfig()
+	auditCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	auditCfg.EncryptionVault = encryptionVault
-	av, err := storage.NewSQLAuditStore(auditCfg, auditDB, logger, fileSvc)
+	av, err := storage.NewLocalFirstEventsStore(auditCfg, auditDB, logger, fileSvc)
 	if err != nil {
-		return fmt.Errorf("failed to initialize audit store: %w", err)
+		return fmt.Errorf("failed to initialize local-first events store: %w", err)
 	}
 	defer av.Close()
 
@@ -503,11 +503,11 @@ func Run(cfg Config) error {
 	}
 	chaosSession, err := av.GetOperatorSession(chaosSessionID)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrAuditStoreGetSessionFailed, err)
+		return fmt.Errorf("%w: %v", constants.ErrLocalFirstEventsStoreGetSessionFailed, err)
 	}
 	if chaosSession == nil {
 		if err := av.CreateSession(chaosSessionID, "operator", "Chaos Operator", "chaos@test.local"); err != nil {
-			return fmt.Errorf("%w: %v", constants.ErrAuditStoreCreateSessionFailed, err)
+			return fmt.Errorf("%w: %v", constants.ErrLocalFirstEventsStoreCreateSessionFailed, err)
 		}
 	}
 	chaosTarget := &testutil.MockExecutionTarget{OperatorIDs: []string{"chaos-operator"}, SessionID: chaosSessionID}
@@ -565,16 +565,16 @@ func Run(cfg Config) error {
 
 	// L5Actuator replaces Actuator - execution boundary with receipt signing
 	act := &governance.L5Actuator{
-		Logger:            logger,
-		SQLAuditStore:     av,
-		Identity:          chaosTarget,
-		AuditorSigningKey: auditorPriv,
-		AuditorKeyID:      hex.EncodeToString(auditorPub),
-		StateRootProvider: stateRootProvider,
-		ExecutionHandler:  &chaosExecutionHandler{ledger: ledger, fileSvc: fileSvc, workDir: baseDir, stateRoot: stateRootProvider},
-		Scrubbing:         chaosScrubber,
-		SigningKey:        privKey,
-		KeyID:             keyID,
+		Logger:                logger,
+		LocalFirstEventsStore: av,
+		Identity:              chaosTarget,
+		AuditorSigningKey:     auditorPriv,
+		AuditorKeyID:          hex.EncodeToString(auditorPub),
+		StateRootProvider:     stateRootProvider,
+		ExecutionHandler:      &chaosExecutionHandler{ledger: ledger, fileSvc: fileSvc, workDir: baseDir, stateRoot: stateRootProvider},
+		Scrubbing:             chaosScrubber,
+		SigningKey:            privKey,
+		KeyID:                 keyID,
 	}
 
 	// ── phase 1: generate and count payloads by category ───────────────────────

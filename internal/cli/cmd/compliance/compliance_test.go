@@ -318,7 +318,7 @@ func TestComplianceKSICmd_StoresUnavailable(t *testing.T) {
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 	catPath := writeTestKSICatalog(t, fileSvc)
 
-	// Block data directory with a plain file so SQLite / audit store cannot open.
+	// Block data directory with a plain file so SQLite / local-first events store cannot open.
 	dataDir := fileSvc.Resolve(constants.DataDirname)
 	require.NoError(t, os.RemoveAll(dataDir))
 	require.NoError(t, os.WriteFile(dataDir, []byte("blocking-file"), constants.PermFileReadOnly))

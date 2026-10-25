@@ -223,7 +223,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	assert.NotEmpty(t, resp.GetTransactionId(), "response must carry the transaction ID")
 	assert.Equal(t, string(constants.ActionTypeFsRead), resp.GetActionType(), "response action type must echo FS_READ")
 	require.NotNil(t, resp.GetReceipt(), "the 200 body must carry the executing Operator's final receipt")
-	assert.NoError(t, govsvc.VerifyActionReceiptSignature(resp.GetReceipt(), actuatorPub), "the receipt must verify against the operator's actuator key")
+	assert.NoError(t, govsvc.VerifyEventReceiptSignature(resp.GetReceipt(), actuatorPub), "the receipt must verify against the operator's actuator key")
 	assert.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(resp.GetReceipt(), actuatorPub))
 
 	// The simulated operator must have received the command.
@@ -274,12 +274,12 @@ func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancel
 		AuditorSigningKey:  privateKey,
 		AuditorKeyID:       keyID,
 		Scrubbing:          scrubbingSvc,
-		AuditStore:         infra.AuditStore,
+		EventsStore:        infra.EventsStore,
 	}), pubsub.OutboundModeDeps{GovernanceCoreDeps: pubsub.GovernanceCoreDeps{
 		ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{operatorID}, SessionID: sessionID},
 		ReplayStore:       infra.ReplayStore,
 		StateRootProvider: infra.StateRootSvc,
-		TransactionAudit:  infra.AuditStore,
+		TransactionAudit:  infra.EventsStore,
 		SignerStore:       infra.SignerStore,
 		Doctrine:          govsvc.NewL1Doctrine(),
 	}})
@@ -625,12 +625,12 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 		AuditorKeyID:       keyID,
 		Scrubbing:          scrubbingSvc,
 		Inference:          inferenceHandler,
-		AuditStore:         infra.AuditStore,
+		EventsStore:        infra.EventsStore,
 	}), pubsub.OutboundModeDeps{GovernanceCoreDeps: pubsub.GovernanceCoreDeps{
 		ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{operatorID}, SessionID: sessionID},
 		ReplayStore:       infra.ReplayStore,
 		StateRootProvider: stateRoots,
-		TransactionAudit:  infra.AuditStore,
+		TransactionAudit:  infra.EventsStore,
 		L3Notary:          notary,
 		SignerStore:       infra.SignerStore,
 		Doctrine:          govsvc.NewL1Doctrine(),
@@ -699,12 +699,12 @@ func startFileEditOperatorWithGovernance(t *testing.T, infra *TestInfrastructure
 		AuditorSigningKey:  privKey,
 		AuditorKeyID:       keyID,
 		Scrubbing:          scrubbingSvc,
-		AuditStore:         infra.AuditStore,
+		EventsStore:        infra.EventsStore,
 	}), pubsub.OutboundModeDeps{GovernanceCoreDeps: pubsub.GovernanceCoreDeps{
 		ExecutionTarget:   &testutil.MockExecutionTarget{OperatorIDs: []string{operatorID}, SessionID: sessionID},
 		ReplayStore:       infra.ReplayStore,
 		StateRootProvider: infra.StateRootSvc,
-		TransactionAudit:  infra.AuditStore,
+		TransactionAudit:  infra.EventsStore,
 		SignerStore:       infra.SignerStore,
 		Doctrine:          govsvc.NewL1Doctrine(),
 		L3Notary:          notary,
@@ -764,13 +764,13 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 	})
 	t.Cleanup(unregisterCommandCapture)
 
-	receipts := make(chan *operatorv1.ActionReceipt, 8)
+	receipts := make(chan *operatorv1.EventReceipt, 8)
 	unregisterReceiptCapture := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
 		envelope := &commonv1.GovernanceEnvelope{}
 		if err := protojson.Unmarshal(data, envelope); err != nil {
 			return
 		}
-		receipt := &operatorv1.ActionReceipt{}
+		receipt := &operatorv1.EventReceipt{}
 		if err := proto.Unmarshal(envelope.Payload, receipt); err == nil {
 			receipts <- receipt
 		}
@@ -814,7 +814,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 		t.Fatal("governed file mutation was not captured")
 	}
 
-	waitForReceipt := func(transactionID string) *operatorv1.ActionReceipt {
+	waitForReceipt := func(transactionID string) *operatorv1.EventReceipt {
 		t.Helper()
 		timer := time.NewTimer(time.Second)
 		defer timer.Stop()
@@ -833,7 +833,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 
 	completedReceipt := waitForReceipt(result.TransactionID)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, completedReceipt.Status)
-	require.NoError(t, govsvc.VerifyActionReceiptSignature(completedReceipt, pubKey))
+	require.NoError(t, govsvc.VerifyEventReceiptSignature(completedReceipt, pubKey))
 	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(completedReceipt, pubKey))
 	_, err = govsvc.ValidateDeterministicProtocolChain(completedReceipt)
 	require.NoError(t, err)
@@ -846,14 +846,14 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 		assert.Equal(t, string(constants.ActionTypeFileEdit), stage.ActionType)
 	}
 
-	persisted, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
+	persisted, err := infra.EventsStore.GetEventReceipt(result.TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
-	require.NotNil(t, persisted.ActionReceipt)
+	require.NotNil(t, persisted.EventReceipt)
 	assert.Equal(t, operatorID, persisted.OperatorID)
 	assert.Equal(t, sessionID, persisted.OperatorSessionID)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.ActionReceipt.Status)
-	commitments, err := infra.AuditStore.CommitmentLedger().ListCommitments()
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.EventReceipt.Status)
+	commitments, err := infra.EventsStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	matchingCommitments := 0
 	for _, commitment := range commitments {
@@ -869,7 +869,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 	rejectedReceipt := waitForReceipt(result.TransactionID)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, rejectedReceipt.Status)
 	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejectedReceipt.FailureCode)
-	require.NoError(t, govsvc.VerifyActionReceiptSignature(rejectedReceipt, pubKey))
+	require.NoError(t, govsvc.VerifyEventReceiptSignature(rejectedReceipt, pubKey))
 	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(rejectedReceipt, pubKey))
 
 	body, err = os.ReadFile(targetPath)
@@ -932,7 +932,7 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 	assert.Contains(t, fileResult.GetErrorMessage(), constants.ErrFileEditProtectedRuntimePath.Error())
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
 	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.Receipt.GetFailureCode())
-	require.NoError(t, govsvc.VerifyActionReceiptSignature(result.Receipt, pubKey))
+	require.NoError(t, govsvc.VerifyEventReceiptSignature(result.Receipt, pubKey))
 	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
 
 	body, err := os.ReadFile(protectedPath)
@@ -942,8 +942,8 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 
 // TestDispatch_EmbeddedFileEditRecordsLocalEvidence covers the Gateway's own
 // embedded Operator. A FILE_EDIT create dispatched in-process must complete
-// and record its file mutation in the Gateway audit store. That requires the
-// embedded command service to be wired to the Gateway's audit store and
+// and record its file mutation in the Gateway local-first events store. That requires the
+// embedded command service to be wired to the Gateway's local-first events store and
 // git file ledger, which the Gateway owns in its own runtime root.
 func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 	const (
@@ -1002,12 +1002,12 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 	var mutations []*storage.FileMutationLog
 	require.Eventually(t, func() bool {
 		var listErr error
-		mutations, listErr = svc.auditStore.ListFileMutations(10, 0)
+		mutations, listErr = svc.eventsStore.ListFileMutations(10, 0)
 		return listErr == nil && len(mutations) > 0
-	}, 5*time.Second, 20*time.Millisecond, "embedded FILE_EDIT must record a file_mutations row in the Gateway audit store")
+	}, 5*time.Second, 20*time.Millisecond, "embedded FILE_EDIT must record a file_mutations row in the Gateway local-first events store")
 	assert.Contains(t, mutations[0].Filepath, targetName)
 
-	events, err := svc.auditStore.ListEvents(sessionID, 50, 0)
+	events, err := svc.eventsStore.ListEvents(sessionID, 50, 0)
 	require.NoError(t, err)
 	var fileEditEvent *storage.Event
 	for _, event := range events {
@@ -1067,7 +1067,7 @@ func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
 			assert.Equal(t, string(test.failed), result.ResultEnvelope.GetEventType())
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
 			assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.Receipt.GetFailureCode())
-			require.NoError(t, govsvc.VerifyActionReceiptSignature(result.Receipt, pubKey))
+			require.NoError(t, govsvc.VerifyEventReceiptSignature(result.Receipt, pubKey))
 			require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
 		})
 	}
@@ -1169,13 +1169,13 @@ func TestInferenceDispatch_RealBrokerAndOutboundOperator_VerifiesReceiptAuditAnd
 	assert.Equal(t, "primary-boundary", request.Model)
 	assert.Equal(t, "boundary prompt", boundaryInferenceText(t, request.Messages))
 
-	receipt, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
+	receipt, err := infra.EventsStore.GetEventReceipt(result.TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, receipt)
 	assert.Equal(t, constants.ActionTypeInference, receipt.ActionType)
 	assert.Equal(t, result.Receipt.ResultSummary, receipt.ResultSummary)
 
-	commitments, err := infra.AuditStore.CommitmentLedger().ListCommitments()
+	commitments, err := infra.EventsStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	var inferenceCommitmentAction string
 	for _, commitment := range commitments {
@@ -1441,7 +1441,7 @@ func TestInferenceDispatch_CallerCancellationRemovesHandlerWhileRemoteExecutionC
 
 	close(release)
 	require.Eventually(t, func() bool {
-		receipt, err := infra.AuditStore.GetEventReceipt(transactionID)
+		receipt, err := infra.EventsStore.GetEventReceipt(transactionID)
 		return err == nil && receipt != nil && receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	}, time.Second, 10*time.Millisecond)
 	assert.Zero(t, resultHandlerCount(infra.Pubsub, &operatorv1.OperatorDocument{Id: operatorID, OperatorSessionId: sessionID}))
@@ -1641,7 +1641,7 @@ func TestInferenceDispatch_NotaryPostureRejectsMutationBeforeBackendInvocation(t
 
 // withRequiredOperatorDeps fills the collaborators every Operator pub/sub service requires and the
 // test does not exercise: the execution and file edit services over cfg.WorkDir, and a history
-// handler over the supplied audit store and ledger. A field the test sets is kept.
+// handler over the supplied local-first events store and ledger. A field the test sets is kept.
 func withRequiredOperatorDeps(t *testing.T, c pubsub.CommandServiceConfig) pubsub.CommandServiceConfig {
 	t.Helper()
 	if c.Execution == nil {
@@ -1656,7 +1656,7 @@ func withRequiredOperatorDeps(t *testing.T, c pubsub.CommandServiceConfig) pubsu
 	}
 	if c.HistoryHandler == nil {
 		var err error
-		c.HistoryHandler, err = storage.NewHistoryHandler(c.AuditStore, c.Ledger, c.Logger, nil, "")
+		c.HistoryHandler, err = storage.NewHistoryHandler(c.EventsStore, c.Ledger, c.Logger, nil, "")
 		require.NoError(t, err)
 	}
 	return c

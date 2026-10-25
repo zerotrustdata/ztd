@@ -174,9 +174,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval",
+                        "description": "Canonical protojson EventReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval",
                         "schema": {
-                            "$ref": "#/definitions/operatorv1.ActionReceipt"
+                            "$ref": "#/definitions/operatorv1.EventReceipt"
                         }
                     },
                     "400": {
@@ -295,9 +295,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Canonical protojson ActionReceipt",
+                        "description": "Canonical protojson EventReceipt",
                         "schema": {
-                            "$ref": "#/definitions/operatorv1.ActionReceipt"
+                            "$ref": "#/definitions/operatorv1.EventReceipt"
                         }
                     },
                     "403": {
@@ -376,7 +376,7 @@
         },
         "/api/v1/audit/event-receipts": {
             "get": {
-                "description": "Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate an event receipt. Without those selectors, returns searchable event receipt records with the complete ActionReceipt nested under action_receipt.",
+                "description": "Returns one canonical protojson EventReceipt when tx_id is set or when investigation_id and action_type uniquely correlate an event receipt. Without those selectors, returns searchable event receipt records with the complete EventReceipt nested under event_receipt.",
                 "produces": [
                     "application/json"
                 ],
@@ -387,7 +387,7 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Transaction ID for a single canonical ActionReceipt",
+                        "description": "Transaction ID for a single canonical EventReceipt",
                         "name": "tx_id",
                         "in": "query"
                     },
@@ -430,7 +430,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt",
+                        "description": "List wrapper; unique selectors instead return a bare operatorv1.EventReceipt",
                         "schema": {
                             "$ref": "#/definitions/models.AuditEventReceiptsResponse"
                         }
@@ -476,7 +476,7 @@
         },
         "/api/v1/audit/event-receipts/export": {
             "get": {
-                "description": "Returns an AuditEventReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under action_receipt.",
+                "description": "Returns an AuditEventReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under event_receipt.",
                 "produces": [
                     "application/json"
                 ],
@@ -895,7 +895,7 @@
         },
         "/api/v1/governance/envelopes": {
             "post": {
-                "description": "Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,\nL4 warden, L5 actuator), and returns the signed ActionReceipt. Transport-to-envelope\nidentity binding is enforced via mTLS certificate URI SAN matching.",
+                "description": "Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,\nL4 warden, L5 actuator), and returns the signed EventReceipt. Transport-to-envelope\nidentity binding is enforced via mTLS certificate URI SAN matching.",
                 "consumes": [
                     "application/json"
                 ],
@@ -922,9 +922,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Canonical protojson ActionReceipt",
+                        "description": "Canonical protojson EventReceipt",
                         "schema": {
-                            "$ref": "#/definitions/operatorv1.ActionReceipt"
+                            "$ref": "#/definitions/operatorv1.EventReceipt"
                         }
                     },
                     "400": {
@@ -1647,7 +1647,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Terminal result with the verified final ActionReceipt",
+                        "description": "Terminal result with the verified final EventReceipt",
                         "schema": {
                             "$ref": "#/definitions/operatorv1.GovernedDispatchResult"
                         }
@@ -3713,11 +3713,11 @@
                 "acting_app_id": {
                     "type": "string"
                 },
-                "action_receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
-                },
                 "action_type": {
                     "$ref": "#/definitions/constants.ActionType"
+                },
+                "event_receipt": {
+                    "$ref": "#/definitions/operatorv1.EventReceipt"
                 },
                 "event_type": {
                     "$ref": "#/definitions/constants.EventType"
@@ -5292,100 +5292,6 @@
                 }
             }
         },
-        "operatorv1.ActionReceipt": {
-            "type": "object",
-            "properties": {
-                "action_type": {
-                    "description": "The registry-derived governance class for the request event.",
-                    "type": "string"
-                },
-                "deterministic_stage_evidence": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/operatorv1.DeterministicStageEvidence"
-                    }
-                },
-                "event_type": {
-                    "description": "The semantic request event that produced this receipt.",
-                    "type": "string"
-                },
-                "executed_at_unix_ms": {
-                    "description": "Timestamp when execution finished",
-                    "type": "integer"
-                },
-                "failure_code": {
-                    "description": "Typed classification of a FAILED receipt. UNSPECIFIED on non-failed\nreceipts. Bound into the signature via canonicalization.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/operatorv1.ReceiptFailureCode"
-                        }
-                    ]
-                },
-                "final_persistence_attestation": {
-                    "$ref": "#/definitions/operatorv1.ReceiptPersistenceAttestation"
-                },
-                "l2_status": {
-                    "description": "Status of L2 (Consensus) signature verification.\nDistinguishes between \"not required\" vs \"required but failed\" for compliance.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/operatorv1.L2Status"
-                        }
-                    ]
-                },
-                "l3_status": {
-                    "description": "Status of L3 (Notary/Human) proof verification.\nDistinguishes between \"not required\" vs \"required but failed\" for compliance.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/operatorv1.L3Status"
-                        }
-                    ]
-                },
-                "rejection_code": {
-                    "description": "The verification check that rejected the transaction. Set exactly when\nfailure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the\nsignature via canonicalization.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/operatorv1.GovernanceRejectionCode"
-                        }
-                    ]
-                },
-                "result_summary": {
-                    "description": "Concise summary of the result (e.g. \"exit code 0\", \"file written\")",
-                    "type": "string"
-                },
-                "signature": {
-                    "description": "ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.",
-                    "type": "string"
-                },
-                "signer_key_id": {
-                    "description": "ID of the Warden's signing key",
-                    "type": "string"
-                },
-                "state_root_after": {
-                    "description": "State root after execution",
-                    "type": "string"
-                },
-                "state_root_before": {
-                    "description": "State root before execution",
-                    "type": "string"
-                },
-                "status": {
-                    "description": "Final execution status",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/operatorv1.ExecutionStatus"
-                        }
-                    ]
-                },
-                "transaction_hash": {
-                    "description": "Original GovernanceEnvelope hash",
-                    "type": "string"
-                },
-                "transaction_id": {
-                    "description": "Original GovernanceEnvelope ID",
-                    "type": "string"
-                }
-            }
-        },
         "operatorv1.ConsensusVoteInference": {
             "type": "object",
             "properties": {
@@ -5398,14 +5304,14 @@
                 "observation_receipts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                        "$ref": "#/definitions/operatorv1.EventReceipt"
                     }
                 },
                 "provider_attempt_id": {
                     "type": "string"
                 },
                 "receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    "$ref": "#/definitions/operatorv1.EventReceipt"
                 },
                 "result": {
                     "$ref": "#/definitions/operatorv1.InferenceResult"
@@ -5555,6 +5461,100 @@
                 "DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED"
             ]
         },
+        "operatorv1.EventReceipt": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "description": "The registry-derived governance class for the request event.",
+                    "type": "string"
+                },
+                "deterministic_stage_evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.DeterministicStageEvidence"
+                    }
+                },
+                "event_type": {
+                    "description": "The semantic request event that produced this receipt.",
+                    "type": "string"
+                },
+                "executed_at_unix_ms": {
+                    "description": "Timestamp when execution finished",
+                    "type": "integer"
+                },
+                "failure_code": {
+                    "description": "Typed classification of a FAILED receipt. UNSPECIFIED on non-failed\nreceipts. Bound into the signature via canonicalization.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.ReceiptFailureCode"
+                        }
+                    ]
+                },
+                "final_persistence_attestation": {
+                    "$ref": "#/definitions/operatorv1.ReceiptPersistenceAttestation"
+                },
+                "l2_status": {
+                    "description": "Status of L2 (Consensus) signature verification.\nDistinguishes between \"not required\" vs \"required but failed\" for compliance.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.L2Status"
+                        }
+                    ]
+                },
+                "l3_status": {
+                    "description": "Status of L3 (Notary/Human) proof verification.\nDistinguishes between \"not required\" vs \"required but failed\" for compliance.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.L3Status"
+                        }
+                    ]
+                },
+                "rejection_code": {
+                    "description": "The verification check that rejected the transaction. Set exactly when\nfailure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the\nsignature via canonicalization.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.GovernanceRejectionCode"
+                        }
+                    ]
+                },
+                "result_summary": {
+                    "description": "Concise summary of the result (e.g. \"exit code 0\", \"file written\")",
+                    "type": "string"
+                },
+                "signature": {
+                    "description": "ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.",
+                    "type": "string"
+                },
+                "signer_key_id": {
+                    "description": "ID of the L5 Actuator's signing key",
+                    "type": "string"
+                },
+                "state_root_after": {
+                    "description": "State root after execution",
+                    "type": "string"
+                },
+                "state_root_before": {
+                    "description": "State root before execution",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Execution status for this receipt stage",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.ExecutionStatus"
+                        }
+                    ]
+                },
+                "transaction_hash": {
+                    "description": "Original GovernanceEnvelope hash",
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "description": "Original GovernanceEnvelope ID",
+                    "type": "string"
+                }
+            }
+        },
         "operatorv1.ExecutionStatus": {
             "type": "integer",
             "format": "int32",
@@ -5588,7 +5588,7 @@
                     "type": "string"
                 },
                 "receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    "$ref": "#/definitions/operatorv1.EventReceipt"
                 }
             }
         },
@@ -5671,7 +5671,7 @@
                     "$ref": "#/definitions/operatorv1.InferenceResult"
                 },
                 "receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    "$ref": "#/definitions/operatorv1.EventReceipt"
                 },
                 "result_payload": {
                     "description": "result_payload is the proto-marshaled terminal operator result for event_type\n(for example FsReadResult), the same bytes the dispatch response carries today.",
@@ -5751,11 +5751,11 @@
                 "observation_receipts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                        "$ref": "#/definitions/operatorv1.EventReceipt"
                     }
                 },
                 "receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    "$ref": "#/definitions/operatorv1.EventReceipt"
                 }
             }
         },
@@ -6017,14 +6017,14 @@
                     "description": "The observers' verified final signed receipts for this attempt's\nprovider-boundary and model provenance BEGIN and FINALIZE commands, in\ndispatch order. Each was signed before the response was returned, so a\ntrace bracket closing after the dispatch can claim its commitment.",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                        "$ref": "#/definitions/operatorv1.EventReceipt"
                     }
                 },
                 "receipt": {
-                    "description": "The verified final signed ActionReceipt for the transaction.",
+                    "description": "The verified final signed EventReceipt for the transaction.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/operatorv1.ActionReceipt"
+                            "$ref": "#/definitions/operatorv1.EventReceipt"
                         }
                     ]
                 },
@@ -6228,7 +6228,7 @@
                     "type": "string"
                 },
                 "result_digest": {
-                    "description": "Canonical digest of the complete result: lowercase hex SHA-256 over the\ndeterministic protobuf serialization of this message with result_digest\ncleared. The Inference Node computes it at execution time; the signed\nActionReceipt's result_summary binds it, and the User Gateway verifies\ndigest equality before returning success to the caller.",
+                    "description": "Canonical digest of the complete result: lowercase hex SHA-256 over the\ndeterministic protobuf serialization of this message with result_digest\ncleared. The Inference Node computes it at execution time; the signed\nEventReceipt's result_summary binds it, and the User Gateway verifies\ndigest equality before returning success to the caller.",
                     "type": "string"
                 },
                 "retry_classification": {
@@ -7241,7 +7241,7 @@
                     "description": "observation_receipts are the observers' signed final receipts for the\ncall's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                        "$ref": "#/definitions/operatorv1.EventReceipt"
                     }
                 },
                 "persona": {
@@ -7251,10 +7251,10 @@
                     "type": "string"
                 },
                 "receipt": {
-                    "description": "receipt is the Inference Operator's signed final ActionReceipt.",
+                    "description": "receipt is the Inference Operator's signed final EventReceipt.",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/operatorv1.ActionReceipt"
+                            "$ref": "#/definitions/operatorv1.EventReceipt"
                         }
                     ]
                 },

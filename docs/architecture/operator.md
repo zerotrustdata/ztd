@@ -30,7 +30,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines the architecture of the Governed Operator (`ztd operator`). The Operator is the sovereign Policy Execution Point (PEP) for its target host runtime. Started via `ztd operator start`, the Operator establishes an outbound-only mTLS connection to the Governance Gateway (PDP), receives canonical `GovernanceEnvelope` transactions over dedicated session channels, independently evaluates transactions through the Layer 4 (L4) Warden, executes accepted actions through the Layer 5 (L5) Actuator under single-action just-in-time capabilities, and persists authoritative local execution evidence under the Local-First Audit Architecture (LFAA). Remote Operators expose no inbound listening ports and trust no incoming message without cryptographic verification.
+Defines the architecture of the Governed Operator (`ztd operator`). The Operator is the sovereign Policy Execution Point (PEP) for its target host runtime. Started via `ztd operator start`, the Operator establishes an outbound-only mTLS connection to the Governance Gateway (PDP), receives canonical `GovernanceEnvelope` transactions over dedicated session channels, independently evaluates transactions through the Layer 4 (L4) Warden, executes accepted actions through the Layer 5 (L5) Actuator under single-action just-in-time capabilities, and persists authoritative local execution evidence under the Local-First Events Architecture (LFEA). Remote Operators expose no inbound listening ports and trust no incoming message without cryptographic verification.
 
 ## Quick index
 
@@ -76,7 +76,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only Operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `audit_receipt_list` and `audit_receipt_get` over their own audit store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
+| INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only Operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `event_receipt_list` and `event_receipt_get` over their own Local-First Events Store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
 | INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
 
 ### Coexistence and Fingerprinting (`INV-OP-FPR`)
@@ -122,9 +122,9 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-STOR-01 | Under LFAA, the Operator's local SQLite database (`.ztd/data/ztd.db`) and Git file ledger (`.ztd/data/ledger/`) are the authoritative execution records. Gateway receipt mirrors are best-effort projections. |
+| INV-OP-STOR-01 | Under LFEA, the Operator's local SQLite database (`.ztd/data/ztd.db`) and Git file ledger (`.ztd/data/ledger/`) are the authoritative execution records. Gateway receipt mirrors are best-effort projections. |
 | INV-OP-STOR-02 | Operator private keys, CSRs, requester tokens, and issued certificates MUST be held in memory only during remote runtime execution; they MUST NOT be written to plaintext files in `.ztd/`. |
-| INV-OP-STOR-03 | An outbound Operator's runtime tree is `--working-dir/.ztd/`, or the launch directory's `.ztd/` when the flag is omitted. `operator start` MUST refuse a runtime tree that holds a Gateway root CA (`GatewayRuntimeMarker`, `pki/root/root_ca.crt`), so an Operator never opens a Gateway's audit store or vault. |
+| INV-OP-STOR-03 | An outbound Operator's runtime tree is `--working-dir/.ztd/`, or the launch directory's `.ztd/` when the flag is omitted. `operator start` MUST refuse a runtime tree that holds a Gateway root CA (`GatewayRuntimeMarker`, `pki/root/root_ca.crt`), so an Operator never opens a Gateway's Local-First Events Store or vault. |
 | INV-OP-STOR-04 | An Operator's runtime tree (`.ztd/`) MUST NOT reside inside the model storage root (`--model-storage-root`). `operator start` MUST refuse startup with `ErrOperatorModelStoreRuntime` if the resolved runtime tree is inside or equal to the model storage root, preserving the model store as a pure read-only witness and weight cache. |
 
 ## Owned surfaces
@@ -187,9 +187,11 @@ Each Operator process declares its functional roles through startup flags:
 ```
 
 Witness constraints:
-- Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the audit-receipt reads via `ValidateWitnessNativeTool`.
+- Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the event-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.
 - Streamed inference progress is scrubbed at the source before publication. Text is released only at newline cuts that keep one non-blank line of lookahead, so a value a scrubber can match is complete before release. A PEM block is held from its BEGIN marker until its END line completes. Nothing is released on a timer or by size, so a stream that never emits a newline is held until its terminal event. The terminal `output_hash` is a SHA-256 over the deterministic protobuf encoding of the response parts and finish reason (`ComputeInferenceOutputHash`), and the terminal parts are exactly the concatenation of the released segments.
+
+Inference output is capped at 16,384 tokens per call (`constants.InferenceMaxOutputTokens`). An omitted or zero `max_tokens` sends Ollama `num_predict: 16384`; smaller explicit limits pass through, and requests above the ceiling are rejected before provider execution. This output limit is independent of Ollama's `num_ctx` context window.
 
 Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
 
@@ -241,7 +243,7 @@ A failed attempt retries with backoff (starting at 1 second, doubling, capped at
 
 Communication between the Gateway and Operators uses dedicated, isolated WebSocket pub/sub channels:
 - **Command Ingress**: `cmd:<operator_id>:<operator_session_id>`: Receives canonical `GovernanceEnvelope` transactions dispatched from the Gateway.
-- **Receipt Egress**: `receipts:<operator_id>:<operator_session_id>`: Publishes signed `ActionReceipt` objects back to the Gateway.
+- **Receipt Egress**: `receipts:<operator_id>:<operator_session_id>`: Publishes signed `EventReceipt` objects back to the Gateway.
 - **Heartbeat Channel**: Publishes periodic telemetry frames containing process metrics and timestamp proofs.
 
 The native `sys_info` tool also reports host OS details. On Unix-like systems it reads the distribution name from `/etc/os-release` and kernel, uptime, and load averages from the host interfaces where available. On Windows it reads the product name and build from the registry (correcting Windows 10 labels for build 22000 and later), reports kernel version and uptime, and returns `unknown` for load average because Windows does not expose that metric through this collector. Unavailable or unreadable values are returned as `unknown`.
@@ -258,7 +260,7 @@ The Operator owns the final two layers of the governance interlock:
 5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. L2 is enforced only for actions the registry classifies as state-changing against the envelope's target (`governance.L2Enforced`); other envelopes have any L2 votes verified and recorded as audit evidence without gating execution. Missing or invalid proofs release the reserved nonce; an explicit human L3 denial keeps it spent.
 
 #### L5 Actuator Execution Boundary
-1. **Initial Receipt Logging**: Persists an `EXECUTING` status `ActionReceipt` signed by the Operator's Actuator key.
+1. **Initial Receipt Logging**: Persists an `EXECUTING` status `EventReceipt` signed by the Operator's Actuator key.
 2. **Commitment Append**: Appends a signed `CommitmentAttestation` to the hash-chained SQLite commitment ledger in the same `BEGIN IMMEDIATE` transaction as the `EXECUTING` receipt.
 3. **Secret Rehydration**: Rehydrates scrubbed tokens in memory via local vault keys.
 4. **JIT Capability Minting**: Mints a single-action capability bound to the transaction hash and attaches it to the execution context.
@@ -267,13 +269,13 @@ The Operator owns the final two layers of the governance interlock:
 7. **Final Attestation**: Captures the final state root, marks the receipt `COMPLETED` or `FAILED`, signs the receipt, and attaches a signed `ReceiptPersistenceAttestation`.
 8. **Best-Effort Gateway Relay**: Mirrors the receipt to the Gateway `receipts:` channel on a best-effort basis.
 
-A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`, and its signed `rejection_code` (`ActionReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`). Every ingress returns this receipt to the caller as `GovernanceRejection` (`INV-GOV-ACT-10`); `ztd operator run` prints its transaction ID and rejection code. When a governed inference execution reaches the Operator and the provider subsequently fails after L5 execution has started, the Operator marks the receipt `FAILED` with status `EXECUTION_STATUS_FAILED`, signs it, and appends the commitment to its local ledger. The Gateway returns this signed `FAILED` receipt to the caller in `InferenceDispatchFailure.receipt` so the caller holds cryptographic proof of the failed execution.
+A rejected transaction produces a rejection receipt instead of executing. The receipt is `FAILED` with `failure_code` `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`, and its signed `rejection_code` (`EventReceipt.rejection_code`, enum `GovernanceRejectionCode` in `protocol/proto/ztd/operator/v1/operator.proto`) names the verification check. Non-rejection receipts carry `GOVERNANCE_REJECTION_CODE_UNSPECIFIED`. Classification is defined in [Governance Architecture](governance.md) (`INV-GOV-ACT-09`). Every ingress returns this receipt to the caller as `GovernanceRejection` (`INV-GOV-ACT-10`); `ztd operator run` prints its transaction ID and rejection code. When a governed inference execution reaches the Operator and the provider subsequently fails after L5 execution has started, the Operator marks the receipt `FAILED` with status `EXECUTION_STATUS_FAILED`, signs it, and appends the commitment to its local ledger. The Gateway returns this signed `FAILED` receipt to the caller in `InferenceDispatchFailure.receipt` so the caller holds cryptographic proof of the failed execution.
 
 ### Local State, Native Tools, and Git File Ledger
 
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
 - **Git File Ledger**: A governed `FILE_EDIT` that mutates a file writes encrypted snapshots to the Git file ledger before and after the change. `RESTORE_FILE` restores a file from a ledger commit under the same path policy.
-- **Native Tools**: A verified `MCP_CALL` envelope runs a tool from the shared registry (`RegisterNativeTools`) on the Operator's own host, `mcp.NewOperatorNativeToolHandler`; the Operator never constructs `mcp.GatewayService`. `audit_receipt_list` and `audit_receipt_get` read the Operator's own audit store, so their answers are authoritative for its receipts. Every other tool's result is scrubbed before it enters the signed receipt, and a missing egress scrubber fails the call closed. Witness-only Operators run only the audit-receipt reads (INV-OP-CAP-01). L1 screens `run_shell_command` as the command line it executes, exactly as `EXECUTE_BASH`.
+- **Native Tools**: A verified `MCP_CALL` envelope runs a tool from the shared registry (`RegisterNativeTools`) on the Operator's own host, `mcp.NewOperatorNativeToolHandler`; the Operator never constructs `mcp.GatewayService`. `event_receipt_list` and `event_receipt_get` read the Operator's own Local-First Events Store, so their answers are authoritative for its receipts. Every other tool's result is scrubbed before it enters the signed receipt, and a missing egress scrubber fails the call closed. Witness-only Operators run only the event-receipt reads (INV-OP-CAP-01). L1 screens `run_shell_command` as the command line it executes, exactly as `EXECUTE_BASH`.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
 - **Unsupported Patches**: A file-edit request whose operation is outside the handled set (`read`, `write`, `replace`, `insert`, `delete`), including `patch`, fails with `ErrFileEditUnsupportedOperation`. The target is opened first, and for an existing file the pre-mutation ledger snapshot (`beginLedgerTwoPhaseCommit`) is taken before execution and never completed. The file is not modified and no backup is created. Protobuf field 12 (`patch_content`) remains in the wire contract and is not consumed by the file-edit handler.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
@@ -284,7 +286,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 `ztd autochthon` is a separate subsystem, not an Operator mode. It is an isolated, autonomous runtime observer and forecaster operating without Gateway dependencies:
 - **Operation**: Samples once per second: load, memory in use, the `TERM` environment variable, process count, and the UTC hour, weekday, and minute. The hour, weekday, and minute senses are inputs only. Breeds a population of 16 fixed-topology networks (8 hidden units, direct input-to-output connections) by selection and mutation, with no gradient training. Each network predicts the next value of load, memory, TERM, and process count as a change from the current sample; the zero genome is persistence. The champion is the fittest genome over the last 128 samples, re-selected at each 32-sample episode boundary. Children are mutated copies of the top four genomes, with no crossover.
 - **State Storage**: Persisted under `.ztd/autochthon/` (`run.lock`, `culture.bin`, and hash-chained `tally.jsonl`).
-- **Independence**: Accepts no governance envelopes, opens no network listeners, and produces no `ActionReceipt` records. `ztd autochthon status` verifies the tally hash chain from genesis without acquiring locks.
+- **Independence**: Accepts no governance envelopes, opens no network listeners, and produces no `EventReceipt` records. `ztd autochthon status` verifies the tally hash chain from genesis without acquiring locks.
 
 ### Evidence, Scope, and Trust Limitations
 

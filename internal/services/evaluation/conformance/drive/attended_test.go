@@ -21,7 +21,7 @@ import (
 // becomes: a signed L3_DENIED governance rejection is a REJECTION carrying the receipt, and an
 // executed receipt is a RECEIPT.
 func TestAttendedDecisionObservationMapsDenyToRejection(t *testing.T) {
-	denied := &operatorv1.ActionReceipt{
+	denied := &operatorv1.EventReceipt{
 		TransactionHash: "tx-deny",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -33,7 +33,7 @@ func TestAttendedDecisionObservationMapsDenyToRejection(t *testing.T) {
 	assert.Equal(t, denied, obs.GetRejection().GetReceipt())
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED.String(), obs.GetRejection().GetError())
 
-	executed := &operatorv1.ActionReceipt{TransactionHash: "tx-approve", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	executed := &operatorv1.EventReceipt{TransactionHash: "tx-approve", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	obs = decisionObservation(executed)
 	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind())
 	assert.Equal(t, executed, obs.GetReceipt())

@@ -17,12 +17,12 @@ import (
 
 // VerifyReceipt checks that receipt was signed and persisted by runtimeID's
 // pinned actuator key, and that its deterministic stage chain is valid.
-func VerifyReceipt(anchors *AnchorSet, runtimeID string, receipt *operatorv1.ActionReceipt) (*governance.DeterministicProtocolChain, error) {
+func VerifyReceipt(anchors *AnchorSet, runtimeID string, receipt *operatorv1.EventReceipt) (*governance.DeterministicProtocolChain, error) {
 	key, err := anchors.Key(receipt.GetSignerKeyId(), runtimeID)
 	if err != nil {
 		return nil, fmt.Errorf("oracle: verify receipt signer: %w", err)
 	}
-	if err := governance.VerifyActionReceipt(receipt, key); err != nil {
+	if err := governance.VerifyEventReceipt(receipt, key); err != nil {
 		return nil, fmt.Errorf("oracle: verify receipt signature and persistence: %w", err)
 	}
 	chain, err := governance.ValidateDeterministicProtocolChain(receipt)

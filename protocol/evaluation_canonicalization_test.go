@@ -411,8 +411,8 @@ func TestEvaluationAssignmentResultRetainsPrivateInferenceBindings(t *testing.T)
 
 func TestEvaluationValuePreservesTypedArtifactReference(t *testing.T) {
 	reference := &compliancev1.ComplianceEvidenceReference{
-		ArtifactId:   "action-receipt:sha256:abc",
-		ArtifactType: "action-receipt",
+		ArtifactId:   "event-receipt:sha256:abc",
+		ArtifactType: "event-receipt",
 		Sha256:       "abc",
 	}
 	value := &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_ArtifactReference{ArtifactReference: reference}}

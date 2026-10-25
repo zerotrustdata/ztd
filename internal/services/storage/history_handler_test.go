@@ -25,8 +25,8 @@ import (
 )
 
 // setupTestHistoryHandler creates a HistoryHandler with real infrastructure
-// (SQLite audit store, Git ledger service, encryption vault) for testing.
-func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *SQLAuditStore, *vault.Vault, string) {
+// (SQLite events store, Git ledger service, encryption vault) for testing.
+func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *LocalFirstEventsStore, *vault.Vault, string) {
 	t.Helper()
 	tempDir := testutil.OperatorDir(t)
 
@@ -45,7 +45,7 @@ func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *SQLAuditStore, *va
 	lms, err := NewGitLedgerService(ledgerConfig, logger, fileSvc)
 	require.NoError(t, err)
 
-	auditStoreConfig := &AuditStoreConfig{
+	eventsStoreConfig := &LocalFirstEventsStoreConfig{
 		RetentionDays:        7,
 		PruneIntervalMinutes: 60,
 		EncryptionVault:      testVault,
@@ -55,29 +55,29 @@ func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *SQLAuditStore, *va
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	auditStore, err := NewSQLAuditStore(auditStoreConfig, db, logger, fileSvc)
+	eventsStore, err := NewLocalFirstEventsStore(eventsStoreConfig, db, logger, fileSvc)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		auditStore.Close()
+		eventsStore.Close()
 	})
 
-	hh, err := NewHistoryHandler(auditStore, lms, logger, fileSvc, tempDir)
+	hh, err := NewHistoryHandler(eventsStore, lms, logger, fileSvc, tempDir)
 	require.NoError(t, err)
 
-	return hh, auditStore, testVault, tempDir
+	return hh, eventsStore, testVault, tempDir
 }
 
 // TestHistoryHandler_FetchHistory verifies that the HistoryHandler correctly
-// fetches and returns operator session history events from the SQLite audit store.
+// fetches and returns operator session history events from the SQLite events store.
 func TestHistoryHandler_FetchHistory(t *testing.T) {
 	t.Parallel()
-	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
+	hh, eventsStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
 	// Create test data
 	operatorSessionID := "test-session-history"
-	err := auditStore.CreateSession(operatorSessionID, "operator", "Test History OperatorSession", "user@test.com")
+	err := eventsStore.CreateSession(operatorSessionID, "operator", "Test History OperatorSession", "user@test.com")
 	require.NoError(t, err)
 
 	// Add some events
@@ -93,7 +93,7 @@ func TestHistoryHandler_FetchHistory(t *testing.T) {
 			CommandStdout:       "test output",
 			ExecutionDurationMs: 100,
 		}
-		_, err := auditStore.RecordEvent(event)
+		_, err := eventsStore.RecordEvent(event)
 		require.NoError(t, err)
 	}
 
@@ -149,12 +149,12 @@ func TestHistoryHandler_FetchHistoryInvalidRequest(t *testing.T) {
 // metadata is correctly included in the history response.
 func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 	t.Parallel()
-	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
+	hh, eventsStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
 	// Create test data
 	operatorSessionID := "test-session-mutations"
-	err := auditStore.CreateSession(operatorSessionID, "operator", "Mutation Test OperatorSession", "user@test.com")
+	err := eventsStore.CreateSession(operatorSessionID, "operator", "Mutation Test OperatorSession", "user@test.com")
 	require.NoError(t, err)
 
 	// Add file mutation event
@@ -168,7 +168,7 @@ func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 		CommandExitCode:     exitCode,
 		ExecutionDurationMs: 50,
 	}
-	eventID, err := auditStore.RecordEvent(event)
+	eventID, err := eventsStore.RecordEvent(event)
 	require.NoError(t, err)
 
 	// Record file mutation
@@ -180,7 +180,7 @@ func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 		LedgerHashAfter:  "hash2",
 		DiffStat:         "+10 lines",
 	}
-	err = auditStore.RecordFileMutation(mutation)
+	err = eventsStore.RecordFileMutation(mutation)
 	require.NoError(t, err)
 
 	// Fetch history
@@ -203,11 +203,11 @@ func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 // works correctly with limit and offset parameters.
 func TestHistoryHandler_FetchHistoryPagination(t *testing.T) {
 	t.Parallel()
-	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
+	hh, eventsStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
 	operatorSessionID := "test-pagination-session"
-	err := auditStore.CreateSession(operatorSessionID, "operator", "Pagination Test", "user@test.com")
+	err := eventsStore.CreateSession(operatorSessionID, "operator", "Pagination Test", "user@test.com")
 	require.NoError(t, err)
 
 	// Create 15 events
@@ -221,7 +221,7 @@ func TestHistoryHandler_FetchHistoryPagination(t *testing.T) {
 			CommandRaw:        "echo test",
 			CommandExitCode:   exitCode,
 		}
-		_, err := auditStore.RecordEvent(event)
+		_, err := eventsStore.RecordEvent(event)
 		require.NoError(t, err)
 	}
 
@@ -251,11 +251,11 @@ func TestHistoryHandler_FetchHistoryPagination(t *testing.T) {
 // the handler applies the default limit of 50 events.
 func TestHistoryHandler_FetchHistoryDefaultLimit(t *testing.T) {
 	t.Parallel()
-	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
+	hh, eventsStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
 	operatorSessionID := "test-default-limit"
-	err := auditStore.CreateSession(operatorSessionID, "operator", "Default Limit Test", "user@test.com")
+	err := eventsStore.CreateSession(operatorSessionID, "operator", "Default Limit Test", "user@test.com")
 	require.NoError(t, err)
 
 	// Create 5 events
@@ -265,7 +265,7 @@ func TestHistoryHandler_FetchHistoryDefaultLimit(t *testing.T) {
 			Timestamp:         time.Now().UTC(),
 			Type:              constants.Event.Operator.Audit.Command,
 		}
-		_, err := auditStore.RecordEvent(event)
+		_, err := eventsStore.RecordEvent(event)
 		require.NoError(t, err)
 	}
 
@@ -535,11 +535,11 @@ func TestHistoryHandler_GetFileAtCommit(t *testing.T) {
 // returns all supported event types in the history response.
 func TestHistoryHandler_AllEventTypes(t *testing.T) {
 	t.Parallel()
-	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
+	hh, eventsStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
 	operatorSessionID := "test-all-event-types"
-	err := auditStore.CreateSession(operatorSessionID, "operator", "All Event Types", "user@test.com")
+	err := eventsStore.CreateSession(operatorSessionID, "operator", "All Event Types", "user@test.com")
 	require.NoError(t, err)
 
 	// Create events of all types
@@ -559,7 +559,7 @@ func TestHistoryHandler_AllEventTypes(t *testing.T) {
 			ContentText:       string(et) + " content",
 			CommandExitCode:   exitCode,
 		}
-		_, err := auditStore.RecordEvent(event)
+		_, err := eventsStore.RecordEvent(event)
 		require.NoError(t, err)
 	}
 
@@ -586,11 +586,11 @@ func TestHistoryHandler_AllEventTypes(t *testing.T) {
 // correctly returns multiple file mutations associated with a single event.
 func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 	t.Parallel()
-	hh, auditStore, testVault, _ := setupTestHistoryHandler(t)
+	hh, eventsStore, testVault, _ := setupTestHistoryHandler(t)
 	defer testVault.Close()
 
 	operatorSessionID := "test-multi-mutations"
-	err := auditStore.CreateSession(operatorSessionID, "operator", "Multi Mutations", "user@test.com")
+	err := eventsStore.CreateSession(operatorSessionID, "operator", "Multi Mutations", "user@test.com")
 	require.NoError(t, err)
 
 	// Create file mutation event with multiple files
@@ -602,7 +602,7 @@ func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 		ContentText:       "Batch file update",
 		CommandExitCode:   exitCode,
 	}
-	eventID, err := auditStore.RecordEvent(event)
+	eventID, err := eventsStore.RecordEvent(event)
 	require.NoError(t, err)
 
 	// Record multiple file mutations
@@ -613,7 +613,7 @@ func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 			Filepath:  f,
 			Operation: FileMutationWrite,
 		}
-		err = auditStore.RecordFileMutation(mutation)
+		err = eventsStore.RecordFileMutation(mutation)
 		require.NoError(t, err)
 	}
 

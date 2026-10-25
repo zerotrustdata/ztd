@@ -225,14 +225,14 @@ type DispatchRequest struct {
 
 // DispatchResult is the output of a successful command dispatch. Receipt
 // always carries the executing Operator's verified final signed
-// ActionReceipt: its signature and persistence attestation were verified
+// EventReceipt: its signature and persistence attestation were verified
 // before Dispatch returned. For inference dispatches, InferenceResult carries
 // the verified complete result and its digest was verified too.
 type DispatchResult struct {
 	ConsensusInferences []*operatorv1.ConsensusVoteInference
 	TransactionID       string
 	ResultEnvelope      *commonv1.GovernanceEnvelope
-	Receipt             *operatorv1.ActionReceipt
+	Receipt             *operatorv1.EventReceipt
 	InferenceResult     *operatorv1.InferenceResult
 }
 
@@ -457,7 +457,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 // state snapshot, nonce, expiry, or proofs. It implements governance.EnvelopeProcessor
 // for outbound suspension routing; delivery and result verification use the same
 // wait loop as Dispatch. The executing Operator still performs L4/L5 verification.
-func (d *DispatchService) ProcessEnvelope(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
+func (d *DispatchService) ProcessEnvelope(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := protojson.Unmarshal(wire, env); err != nil {
 		return nil, fmt.Errorf("dispatch: decode resumed envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
@@ -562,16 +562,16 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	// completed below).
 	// Inference maps rejections and its final receipt from its own signed
 	// completion instead.
-	rejectedCh := make(chan *operatorv1.ActionReceipt, 1)
-	finalCh := make(chan *operatorv1.ActionReceipt, 1)
+	rejectedCh := make(chan *operatorv1.EventReceipt, 1)
+	finalCh := make(chan *operatorv1.EventReceipt, 1)
 	if actionType != constants.ActionTypeInference {
 		unregisterReceipts := d.pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, operatorSessionID), func(_ string, data []byte) {
-			receipt, kind := d.verifiedTransactionReceipt(timeoutCtx, receiptFromReceiptsMessage(data, operatorID, operatorSessionID), operatorID, txHash)
-			var out chan *operatorv1.ActionReceipt
+			receipt, kind := d.verifiedTransactionEventReceipt(timeoutCtx, receiptFromReceiptsMessage(data, operatorID, operatorSessionID), operatorID, txHash)
+			var out chan *operatorv1.EventReceipt
 			switch kind {
-			case transactionReceiptRejected:
+			case transactionEventReceiptRejected:
 				out = rejectedCh
-			case transactionReceiptFinal:
+			case transactionEventReceiptFinal:
 				out = finalCh
 			default:
 				return
@@ -593,7 +593,7 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	}
 	var delivered int
 	var embeddedDone chan embeddedOutcome
-	var finalReceipt *operatorv1.ActionReceipt
+	var finalReceipt *operatorv1.EventReceipt
 	if isEmbedded {
 		// The embedded Operator runs in-process and emits results while
 		// ProcessEnvelope is still executing, so it must run beside the wait
@@ -638,7 +638,7 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 			return fmt.Errorf("dispatch embedded operator: %w", outcome.err)
 		}
 		if actionType != constants.ActionTypeInference {
-			if receipt, kind := d.verifiedTransactionReceipt(timeoutCtx, outcome.receipt, operatorID, txHash); kind == transactionReceiptFinal {
+			if receipt, kind := d.verifiedTransactionEventReceipt(timeoutCtx, outcome.receipt, operatorID, txHash); kind == transactionEventReceiptFinal {
 				finalReceipt = receipt
 			}
 		}
@@ -752,7 +752,7 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 // embeddedOutcome is what the in-process ProcessEnvelope call hands back to the
 // dispatch wait loop: its final receipt and its processing error.
 type embeddedOutcome struct {
-	receipt *operatorv1.ActionReceipt
+	receipt *operatorv1.EventReceipt
 	err     error
 }
 
@@ -818,19 +818,19 @@ func (r *dispatchResultRouter) handle(_ string, data []byte) {
 	}
 }
 
-// transactionReceiptKind classifies a verified receipt for one transaction.
-type transactionReceiptKind int
+// transactionEventReceiptKind classifies a verified receipt for one transaction.
+type transactionEventReceiptKind int
 
 const (
-	// transactionReceiptNone is a receipt the dispatch does not wait on, or one
+	// transactionEventReceiptNone is a receipt the dispatch does not wait on, or one
 	// that failed verification. It never ends the wait.
-	transactionReceiptNone transactionReceiptKind = iota
-	// transactionReceiptRejected is the Operator's signed L4 GOVERNANCE_REJECTED
+	transactionEventReceiptNone transactionEventReceiptKind = iota
+	// transactionEventReceiptRejected is the Operator's signed L4 GOVERNANCE_REJECTED
 	// receipt. It ends the wait as a rejection.
-	transactionReceiptRejected
-	// transactionReceiptFinal is the Operator's signed final receipt: COMPLETED,
+	transactionEventReceiptRejected
+	// transactionEventReceiptFinal is the Operator's signed final receipt: COMPLETED,
 	// or FAILED at L5 execution. Success needs it alongside the terminal result.
-	transactionReceiptFinal
+	transactionEventReceiptFinal
 )
 
 // executionFailedReceipt reports whether a receipt is an executed handler's own
@@ -840,7 +840,7 @@ const (
 // as it does for an outbound Operator, instead of turning an ordinary execution
 // failure (a missing file, a non-zero exit) into a transport error. Every
 // refusal before execution still fails the dispatch.
-func executionFailedReceipt(receipt *operatorv1.ActionReceipt, txHash string) bool {
+func executionFailedReceipt(receipt *operatorv1.EventReceipt, txHash string) bool {
 	if receipt == nil || receipt.GetTransactionId() != txHash ||
 		receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED ||
 		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
@@ -855,58 +855,58 @@ func executionFailedReceipt(receipt *operatorv1.ActionReceipt, txHash string) bo
 }
 
 // receiptFromReceiptsMessage decodes a receipts-channel message into the
-// ActionReceipt it carries. A message that is not a receipt recorded by the
+// EventReceipt it carries. A message that is not a receipt recorded by the
 // target Operator session returns nil. Decoding alone never ends the wait:
-// verifiedTransactionReceipt must accept the receipt first.
-func receiptFromReceiptsMessage(data []byte, operatorID, operatorSessionID string) *operatorv1.ActionReceipt {
+// verifiedTransactionEventReceipt must accept the receipt first.
+func receiptFromReceiptsMessage(data []byte, operatorID, operatorSessionID string) *operatorv1.EventReceipt {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, env); err != nil ||
 		env.GetEventType() != string(constants.Event.Operator.Receipt.Recorded) ||
 		env.GetOperatorId() != operatorID || env.GetOperatorSessionId() != operatorSessionID {
 		return nil
 	}
-	receipt := &operatorv1.ActionReceipt{}
+	receipt := &operatorv1.EventReceipt{}
 	if err := proto.Unmarshal(env.GetPayload(), receipt); err != nil {
 		return nil
 	}
 	return receipt
 }
 
-// verifiedTransactionReceipt verifies a receipt the executing Operator signed
+// verifiedTransactionEventReceipt verifies a receipt the executing Operator signed
 // for txHash and classifies it. It is the one verifier for both the
 // receipts-channel and the embedded paths. The receipt must be for txHash, must
 // be a rejection or a final receipt, and must verify with the signer bound to
 // operatorID: ReceiptSignerKey, then the receipt signature, then the persistence
-// attestation. Anything else returns transactionReceiptNone, so an unverifiable
+// attestation. Anything else returns transactionEventReceiptNone, so an unverifiable
 // receipt never ends the wait.
-func (d *DispatchService) verifiedTransactionReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, operatorID, txHash string) (*operatorv1.ActionReceipt, transactionReceiptKind) {
+func (d *DispatchService) verifiedTransactionEventReceipt(ctx context.Context, receipt *operatorv1.EventReceipt, operatorID, txHash string) (*operatorv1.EventReceipt, transactionEventReceiptKind) {
 	if d.signerStore == nil || receipt == nil || receipt.GetTransactionId() != txHash || receipt.GetTransactionHash() != txHash {
-		return nil, transactionReceiptNone
+		return nil, transactionEventReceiptNone
 	}
-	var kind transactionReceiptKind
+	var kind transactionEventReceiptKind
 	switch {
 	case governance.IsGovernanceRejectionReceipt(receipt):
-		kind = transactionReceiptRejected
+		kind = transactionEventReceiptRejected
 	case receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED || executionFailedReceipt(receipt, txHash):
-		kind = transactionReceiptFinal
+		kind = transactionEventReceiptFinal
 	default:
-		return nil, transactionReceiptNone
+		return nil, transactionEventReceiptNone
 	}
 	if err := d.verifyBoundReceipt(ctx, operatorID, receipt); err != nil {
 		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), "error", err)
-		return nil, transactionReceiptNone
+		return nil, transactionEventReceiptNone
 	}
 	return receipt, kind
 }
 
 // verifyBoundReceipt verifies a receipt's signature and persistence attestation
 // against the Actuator key bound to the executing Operator (INV-GW-GOV-06).
-func (d *DispatchService) verifyBoundReceipt(ctx context.Context, operatorID string, receipt *operatorv1.ActionReceipt) error {
+func (d *DispatchService) verifyBoundReceipt(ctx context.Context, operatorID string, receipt *operatorv1.EventReceipt) error {
 	pubKey, err := d.signerStore.ReceiptSignerKey(ctx, operatorID, receipt)
 	if err != nil {
 		return fmt.Errorf("resolve signer: %w", err)
 	}
-	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
+	if err := governance.VerifyEventReceiptSignature(receipt, pubKey); err != nil {
 		return fmt.Errorf("signature: %w", err)
 	}
 	if err := governance.VerifyReceiptPersistenceAttestation(receipt, pubKey); err != nil {
@@ -1025,7 +1025,7 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 // without parsing the result_summary text. The receipt signature is verified
 // before this runs, so the code is authentic. An unspecified or unknown code
 // falls back to the generic execution-failure sentinel.
-func inferenceReceiptFailureError(receipt *operatorv1.ActionReceipt) error {
+func inferenceReceiptFailureError(receipt *operatorv1.EventReceipt) error {
 	switch receipt.FailureCode {
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID:
 		return constants.ErrInferenceDecisionRequestInvalid
@@ -1079,7 +1079,7 @@ func inferenceReceiptFailureError(receipt *operatorv1.ActionReceipt) error {
 }
 
 // GovernedDispatchResult builds the 200 body for a dispatch. The receipt is the
-// executing Operator's verified final ActionReceipt for every event type, and
+// executing Operator's verified final EventReceipt for every event type, and
 // result_payload is the terminal operator result (for example FsReadResult).
 func (r *DispatchResult) GovernedDispatchResult() *operatorv1.GovernedDispatchResult {
 	out := &operatorv1.GovernedDispatchResult{
@@ -1171,7 +1171,7 @@ func newDispatchController(d DispatchControllerDeps) *DispatchController {
 // HandleDispatch is the HTTP handler for POST /api/v1/operators/commands.
 //
 // A 200 is the GovernedDispatchResult: the terminal result and the executing
-// Operator's verified final ActionReceipt. Failures are a GovernanceRejection
+// Operator's verified final EventReceipt. Failures are a GovernanceRejection
 // carrying the signed L4 receipt, or an IngressRefusal before envelope
 // construction completes.
 //
@@ -1185,7 +1185,7 @@ func newDispatchController(d DispatchControllerDeps) *DispatchController {
 // @Accept			json
 // @Produce		json
 // @Param			request	body		models.OperatorCommandRequest	true	"Dispatch request (JSON)"
-// @Success		200		{object}	operatorv1.GovernedDispatchResult	"Terminal result with the verified final ActionReceipt"
+// @Success		200		{object}	operatorv1.GovernedDispatchResult	"Terminal result with the verified final EventReceipt"
 // @Failure		400		{object}	operatorv1.IngressRefusal	"Bad Request — malformed request or unknown event type"
 // @Failure		403		{object}	operatorv1.GovernanceRejection	"Forbidden — GovernanceRejection carrying the signed L4 receipt; IngressRefusal when refused before L4"
 // @Failure		404		{object}	operatorv1.IngressRefusal	"Not Found — target operator session does not resolve"

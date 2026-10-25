@@ -32,13 +32,13 @@ graph TD
 
     subgraph L5Actuator ["L5 Actuator: Sole Execution Boundary"]
         direction TB
-        PreReceipt["Sign EXECUTING ActionReceipt<br/>(fail-closed)"]
+        PreReceipt["Sign EXECUTING EventReceipt<br/>(fail-closed)"]
         Commit["Append CommitmentAttestation<br/>(SQL chain head)"]
         Rehydrate["Rehydrate Scrubbed Payload<br/>(ScrubbingService lookup)"]
         Cap["Mint JIT Capability<br/>(bound to transaction and target)"]
         Exec["Dispatch via ExecutionHandler<br/>(action-type handler, e.g. MCP call or A2A call)"]
         Dissolve["Dissolve Capability"]
-        Receipt["Sign Final ActionReceipt<br/>(COMPLETED or FAILED)"]
+        Receipt["Sign Final EventReceipt<br/>(COMPLETED or FAILED)"]
         AuditLog["Persist Event Receipt on events chain +<br/>ReceiptPersistenceAttestation"]
 
         PreReceipt --> Commit --> Rehydrate --> Cap --> Exec --> Dissolve --> Receipt --> AuditLog
@@ -46,7 +46,7 @@ graph TD
 
     Start --> Warden
     Warden -- "VerifiedTransaction" --> PreReceipt
-    Warden -- "Fail Closed<br/>(typed sentinel error)" --> BlockAudit["Signed FAILED rejection ActionReceipt<br/>persisted on events chain; handler never runs"]
+    Warden -- "Fail Closed<br/>(typed sentinel error)" --> BlockAudit["Signed FAILED rejection EventReceipt<br/>persisted on events chain; handler never runs"]
     AuditLog --> Publish["Best-effort publish to<br/>receipts:&lt;id&gt;:&lt;session&gt;"]
     BlockAudit --> Publish
     Publish --> Done["Recorded, Signed, Audited"]
@@ -81,11 +81,11 @@ Universal checks (hash integrity, replay nonce, expiry, Merkle state root, and p
 
 The L5 Actuator (`internal/services/governance/l5_actuator.go`) is the sole entity authorized to mutate system state:
 
-1. **Pre-Execution Signing**: Generates and signs the initial `EXECUTING` `ActionReceipt` using the local Actuator Ed25519 signing key.
+1. **Pre-Execution Signing**: Generates and signs the initial `EXECUTING` `EventReceipt` using the local Actuator Ed25519 signing key.
 2. **Commitment Attestation**: Appends a signed attestation to the SQLite chain head.
 3. **Payload Rehydration**: Resolves the runtime's own reversible `{{UEI_<owner>_N}}` tokens to unredacted plaintext through `ScrubbingService`. An `INFERENCE` payload keeps another runtime's tokens opaque. Fails closed: an own token that cannot be resolved, a foreign token in any other action, or any token when no `ScrubbingService` is configured, skips dispatch and finalizes a signed `FAILED` receipt.
 4. **Just-In-Time (JIT) Capability**: Mints an ephemeral capability (`MintCapability`) scoped to the transaction hash, action type, target resource, operator, and session.
 5. **Execution Dispatch**: Invokes the `ExecutionHandler`, which routes the verified action type to its registered handler (for example, MCP calls or A2A calls).
 6. **Capability Dissolution**: Dissolves the capability as soon as the handler returns.
-7. **Final Receipt Signing**: Scrubs the outbound result summary and signs the final `COMPLETED` or `FAILED` `ActionReceipt`.
+7. **Final Receipt Signing**: Scrubs the outbound result summary and signs the final `COMPLETED` or `FAILED` `EventReceipt`.
 8. **Persistence & Mirroring**: Persists the signed receipt and its `ReceiptPersistenceAttestation` as the current event receipt on the local `events` chain, then publishes a best-effort copy to `receipts:<operator-id>:<operator-session-id>`.

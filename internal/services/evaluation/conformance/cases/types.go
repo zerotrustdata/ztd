@@ -188,7 +188,7 @@ type Driver interface {
 // Sentinel executes one harness-owned FS_READ of readAbs (the canary read file,
 // absolute on ex) and returns its signed receipt.
 type Sentinel interface {
-	Read(ctx context.Context, ex Executor, readAbs string) (*operatorv1.ActionReceipt, error)
+	Read(ctx context.Context, ex Executor, readAbs string) (*operatorv1.EventReceipt, error)
 }
 
 // CommandSkillPayload is the payload for a skill that carries a shell command.

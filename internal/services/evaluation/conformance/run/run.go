@@ -230,7 +230,7 @@ func quiesce(ctx context.Context, cfg Config, anchors *oracle.AnchorSet, ex case
 
 // executedOutcome verifies a sentinel receipt and requires it to be an executed
 // outcome, which is the only shape a sentinel read may take.
-func executedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+func executedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
 	if _, err := oracle.VerifyReceipt(anchors, runtimeID, receipt); err != nil {
 		return oracle.Outcome{}, err
 	}

@@ -22,26 +22,26 @@ import (
 func TestParseAgentToolArguments_RejectsNullArguments(t *testing.T) {
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
-	spec, ok := catalog.Tool(constants.MCPToolAuditReceiptList)
+	spec, ok := catalog.Tool(constants.MCPToolEventReceiptList)
 	require.True(t, ok)
 
 	_, failure := parseAgentToolArguments(spec, "null")
 	require.NotNil(t, failure)
 	assert.Equal(t, agentToolErrorExecution, failure.ErrorType)
-	assert.Contains(t, failure.Error, constants.MCPToolAuditReceiptList)
+	assert.Contains(t, failure.Error, constants.MCPToolEventReceiptList)
 	assert.Contains(t, failure.Error, "null")
 }
 
 func TestParseAgentToolArguments_EmptyArgumentsAcceptInjectedDefaults(t *testing.T) {
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
-	spec, ok := catalog.Tool(constants.MCPToolAuditReceiptList)
+	spec, ok := catalog.Tool(constants.MCPToolEventReceiptList)
 	require.True(t, ok)
 
 	args, failure := parseAgentToolArguments(spec, "")
 	require.Nil(t, failure)
-	args.Set("exclude_audit_reads", true)
-	assert.Equal(t, true, args.Values()["exclude_audit_reads"])
+	args.Set("exclude_event_receipt_reads", true)
+	assert.Equal(t, true, args.Values()["exclude_event_receipt_reads"])
 }
 
 func TestDecodeAgentToolRequest_RecordsTypedShellForm(t *testing.T) {

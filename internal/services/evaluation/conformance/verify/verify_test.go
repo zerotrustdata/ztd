@@ -117,7 +117,7 @@ func receiptOpts(label, runtime, suffix string, l2 operatorv1.L2Status, l3 opera
 
 // executedReceipt builds the executed receipt of a case: its ledger link runs from
 // the case's before hash to its after hash, so the bracket holds exactly one claim.
-func (f *fixture) executedReceipt(c cases.Case, l2 operatorv1.L2Status, l3 operatorv1.L3Status) *operatorv1.ActionReceipt {
+func (f *fixture) executedReceipt(c cases.Case, l2 operatorv1.L2Status, l3 operatorv1.L3Status) *operatorv1.EventReceipt {
 	executor := c.Ingress.Executor()
 	return f.signerFor(executor).Executed(f.t,
 		receiptOpts(c.ID, runtimeFor(executor), "exec", l2, l3), "h0-"+c.ID, "h1-"+c.ID)

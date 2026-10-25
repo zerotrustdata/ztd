@@ -108,7 +108,7 @@ func (h *PasskeyHandler) handleApprovalChallenge(w http.ResponseWriter, r *http.
 // @Produce		json
 // @Param		txHash	path		string						true	"Transaction hash"
 // @Param		body	body		models.WebAuthnAssertionResponse	true	"WebAuthn assertion response"
-// @Success		200		{object}	operatorv1.ActionReceipt				"Canonical protojson ActionReceipt"
+// @Success		200		{object}	operatorv1.EventReceipt				"Canonical protojson EventReceipt"
 // @Failure		403		{string}	string						"Forbidden — verification failed"
 // @Failure		404		{string}	string						"Transaction not found or expired"
 // @Failure		503		{string}	string						"Service Unavailable — runtime vault locked; the proof can be resubmitted"
@@ -160,9 +160,9 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 		// A locked runtime vault is a Gateway availability fault, not a proof
 		// rejection. The suspension stays in place, so the same proof can be
 		// resubmitted once the vault is unlocked.
-		if errors.Is(err, constants.ErrAuditStoreVaultLocked) {
+		if errors.Is(err, constants.ErrLocalFirstEventsStoreVaultLocked) {
 			h.logger.Error("Approval resume blocked: runtime vault locked", "error", err, "txHash", txHash)
-			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
+			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrLocalFirstEventsStoreVaultLocked.Error())
 			return
 		}
 		if receipt != nil {
@@ -213,7 +213,7 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 // @Accept		json
 // @Produce		json
 // @Param		body	body		models.ApprovalRespondRequest	true	"Approval decision"
-// @Success		200		{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval"
+// @Success		200		{object}	operatorv1.EventReceipt	"Canonical protojson EventReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval"
 // @Failure		400		{string}	string	"Invalid request body"
 // @Failure		401		{string}	string	"Unauthorized"
 // @Failure		403		{string}	string	"Forbidden — approval requested, session not grounded for posture, or transaction belongs to another user"
@@ -284,9 +284,9 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 		switch {
 		case errors.Is(err, constants.ErrTransactionExpired):
 			h.responder.Error(w, http.StatusNotFound, "transaction not found or expired")
-		case errors.Is(err, constants.ErrAuditStoreVaultLocked):
+		case errors.Is(err, constants.ErrLocalFirstEventsStoreVaultLocked):
 			h.logger.Error("Deny blocked: runtime vault locked", "error", err, "txHash", req.ApprovalID)
-			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
+			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrLocalFirstEventsStoreVaultLocked.Error())
 		default:
 			h.logger.Error("Failed to deny suspended transaction", "error", err, "txHash", req.ApprovalID)
 			h.responder.Error(w, http.StatusInternalServerError, "failed to deny transaction")
@@ -353,7 +353,7 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 	h.clearApprovalWriteDeadline(w)
 	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), req.ApprovalID, userID, proof)
 	if err != nil {
-		if receipt != nil && !errors.Is(err, constants.ErrAuditStoreVaultLocked) {
+		if receipt != nil && !errors.Is(err, constants.ErrLocalFirstEventsStoreVaultLocked) {
 			h.responder.ProtoJSONCanonical(w, http.StatusForbidden, receipt)
 			return
 		}
@@ -383,8 +383,8 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 // other failure is a Gateway fault.
 func cliApprovalResumeFailure(err error) (int, error) {
 	switch {
-	case errors.Is(err, constants.ErrAuditStoreVaultLocked):
-		return http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked
+	case errors.Is(err, constants.ErrLocalFirstEventsStoreVaultLocked):
+		return http.StatusServiceUnavailable, constants.ErrLocalFirstEventsStoreVaultLocked
 	case errors.Is(err, constants.ErrTransactionExpired):
 		return http.StatusNotFound, constants.ErrTransactionExpired
 	}

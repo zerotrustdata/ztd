@@ -943,7 +943,7 @@ still runs unless --skip-backup is also given).`,
 				},
 				AssumeYes:  force,
 				SkipBackup: skipBackup,
-				Backup:     shared.EvalEvidenceBackup(shared.LoadConfig, shared.NewFileSvc),
+				Backup:     shared.EvalEvidenceBackup(shared.LoadConfig, shared.NewEvidenceFileSvc),
 			})
 			if err != nil || !proceed {
 				return err
@@ -990,7 +990,7 @@ still runs unless --skip-backup is also given).`,
 }
 
 func gatewayCleanCmd() *cobra.Command {
-	return gatewayCleanCmdWithConfig(shared.LoadConfig, shared.NewFileSvc, defaultTrustInstallerFactory)
+	return gatewayCleanCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc, defaultTrustInstallerFactory)
 }
 
 // systemTrustCleaner is the subset of platform.SystemTrustInstaller used by

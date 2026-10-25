@@ -36,7 +36,7 @@ const (
 
 // seedEgressAudit records an event and a receipt whose content-bearing fields carry planted
 // secrets, the way the raw local store holds them.
-func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
+func seedEgressAudit(t *testing.T, store *storage.LocalFirstEventsStore) {
 	t.Helper()
 	require.NoError(t, store.CreateSession(egressSessionID, constants.SessionTypeOperator, "Egress", "user@test.com"))
 	_, err := store.RecordEvent(&storage.Event{
@@ -67,7 +67,7 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 	})
 	require.NoError(t, err)
 
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-egress",
 		TransactionHash: "hash-egress",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -88,16 +88,16 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 		SignerKeyID:       receipt.SignerKeyId,
 		Signature:         receipt.Signature,
 		Timestamp:         time.Now(),
-		ActionReceipt:     receipt,
+		EventReceipt:      receipt,
 	}))
 }
 
 func newEgressController(t *testing.T, scrubber *scrubbing.ScrubbingService) *AuditController {
 	t.Helper()
 	infra := setupTestInfrastructure(t, false)
-	seedEgressAudit(t, infra.AuditStore)
+	seedEgressAudit(t, infra.EventsStore)
 	controller, err := newAuditController(AuditControllerDeps{
-		Cfg: infra.Cfg, Logger: infra.Logger, AuditStore: infra.AuditStore, Responder: infra.Responder, Scrubber: scrubber,
+		Cfg: infra.Cfg, Logger: infra.Logger, EventsStore: infra.EventsStore, Responder: infra.Responder, Scrubber: scrubber,
 	})
 	require.NoError(t, err)
 	return controller
@@ -111,7 +111,7 @@ func requireNoPlantedContent(t *testing.T, body string) {
 
 func TestNewAuditController_RequiresScrubber(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
-	controller, err := newAuditController(AuditControllerDeps{Cfg: infra.Cfg, Logger: infra.Logger, AuditStore: infra.AuditStore, Responder: infra.Responder})
+	controller, err := newAuditController(AuditControllerDeps{Cfg: infra.Cfg, Logger: infra.Logger, EventsStore: infra.EventsStore, Responder: infra.Responder})
 	require.ErrorIs(t, err, constants.ErrScrubbingServiceRequired)
 	assert.Nil(t, controller)
 }

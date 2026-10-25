@@ -368,6 +368,34 @@ test_linux_setup_rejects_unknown_option() {
 	grep -qF 'Unknown option' "$out" || { cat "$out" >&2; fail "linux-setup --bogus: no 'Unknown option' message"; }
 }
 
+test_linux_setup_maps_packages_after_detecting_manager() {
+	local repo="$SCRATCH/repo-linux-packages" manager expected got
+	mkdir -p "$repo/scripts/lib"
+	cp "$SCRIPT_DIR/linux-setup.sh" "$repo/scripts/"
+	cp "$SCRIPT_DIR/lib/scratch.sh" "$repo/scripts/lib/"
+	cat >"$repo/scripts/lib/dev-setup-common.sh" <<'EOF'
+ztd_setup_init() { :; }
+ztd_setup_confirm() { return 0; }
+ztd_setup_main() {
+    ztd_linux_detect_pkg_manager() { ZTD_PKG="$ONBOARDING_TEST_MANAGER"; }
+    ztd_linux_init_sudo() { SUDO=""; }
+    ztd_linux_pkg_install() { printf '%s\n' "$@" >"$ONBOARDING_TEST_PACKAGES"; }
+    "$2" rg bc cc
+}
+EOF
+	for manager in apt dnf pacman zypper; do
+		case "$manager" in
+		apt) expected=$'ripgrep\nbc\nbuild-essential' ;;
+		dnf|zypper) expected=$'ripgrep\nbc\ngcc' ;;
+		pacman) expected=$'ripgrep\nbc\nbase-devel' ;;
+		esac
+		ONBOARDING_TEST_MANAGER="$manager" ONBOARDING_TEST_PACKAGES="$repo/packages" \
+			bash "$repo/scripts/linux-setup.sh" || fail "Linux package installation failed for $manager"
+		got="$(cat "$repo/packages")"
+		[[ "$got" == "$expected" ]] || fail "$manager packages: want '$expected', got '$got'"
+	done
+}
+
 test_quickstart_help_and_unknown_option() {
 	local out="$SCRATCH/qs-help.out" rc=0
 	HOME="$SCRATCH/home-qs-help" bash "$SCRIPT_DIR/quickstart.sh" --help >"$out" 2>&1 || rc=$?
@@ -504,6 +532,7 @@ main() {
 	run_test test_create_env_file_owner_only_and_kept
 	run_test test_confirm_noninteractive_exits_2
 	run_test test_linux_setup_rejects_unknown_option
+	run_test test_linux_setup_maps_packages_after_detecting_manager
 	run_test test_quickstart_help_and_unknown_option
 	run_test test_quickstart_end_to_end_is_idempotent
 	run_test test_quickstart_surfaces_key_store_remedy

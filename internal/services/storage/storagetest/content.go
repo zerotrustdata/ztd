@@ -20,7 +20,7 @@ import (
 // rewrite raw rows use it so the row still decrypts.
 func EncryptCommitmentAttestation(tb testing.TB, v *vault.Vault, hash, payload string) []byte {
 	tb.Helper()
-	data, err := v.EncryptWithAAD([]byte(payload), storage.AuditContentAAD(storage.CommitmentColumnAttestationJSON, hash))
+	data, err := v.EncryptWithAAD([]byte(payload), storage.EventsContentAAD(storage.CommitmentColumnAttestationJSON, hash))
 	require.NoError(tb, err)
 	return data
 }
@@ -29,16 +29,16 @@ func EncryptCommitmentAttestation(tb testing.TB, v *vault.Vault, hash, payload s
 // the commitment hash of its row.
 func EncryptCommitmentTargetResource(tb testing.TB, v *vault.Vault, hash, payload string) []byte {
 	tb.Helper()
-	data, err := v.EncryptWithAAD([]byte(payload), storage.AuditContentAAD(storage.CommitmentColumnTargetResource, hash))
+	data, err := v.EncryptWithAAD([]byte(payload), storage.EventsContentAAD(storage.CommitmentColumnTargetResource, hash))
 	require.NoError(tb, err)
 	return data
 }
 
-// EncryptEventContent encrypts an events.content_text fixture the way the audit store stores it:
+// EncryptEventContent encrypts an events.content_text fixture the way the events store stores it:
 // bound to the chain sequence of its row.
 func EncryptEventContent(tb testing.TB, v *vault.Vault, seq int64, payload []byte) []byte {
 	tb.Helper()
-	data, err := v.EncryptWithAAD(payload, storage.AuditContentAAD("events.content_text", storage.EventContentRowID(seq)))
+	data, err := v.EncryptWithAAD(payload, storage.EventsContentAAD("events.content_text", storage.EventContentRowID(seq)))
 	require.NoError(tb, err)
 	return data
 }

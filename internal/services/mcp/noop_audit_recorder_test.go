@@ -11,7 +11,7 @@ import "github.com/zerotrustdata/ztd/internal/services/storage"
 
 // noopAuditEventRecorder satisfies mcp.AuditEventRecorder for tests that build a
 // GatewayService but do not exercise audit recording. Production code never
-// defaults to it: a nil AuditStore is a construction error.
+// defaults to it: a nil EventsStore is a construction error.
 type noopAuditEventRecorder struct{}
 
 func (noopAuditEventRecorder) RecordEvent(*storage.Event) (int64, error) { return 0, nil }

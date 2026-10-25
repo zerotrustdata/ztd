@@ -25,8 +25,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// mockAuditStore is a mock implementation of auditStoreInterface for unit testing
-type mockAuditStore struct {
+// mockEventsStore is a mock implementation of eventsStoreInterface for unit testing
+type mockEventsStore struct {
 	getOperatorSessionFunc   func(sessionID string) (*OperatorSession, error)
 	getEventsFunc            func(sessionID string, limit, offset int) ([]*Event, error)
 	getFileMutationsFunc     func(eventID int64) ([]*FileMutationLog, error)
@@ -37,7 +37,7 @@ type mockAuditStore struct {
 	lastEventID              int64
 }
 
-func (m *mockAuditStore) GetOperatorSession(sessionID string) (*OperatorSession, error) {
+func (m *mockEventsStore) GetOperatorSession(sessionID string) (*OperatorSession, error) {
 	m.getOperatorSessionCalled++
 	m.lastSessionID = sessionID
 	if m.getOperatorSessionFunc != nil {
@@ -46,7 +46,7 @@ func (m *mockAuditStore) GetOperatorSession(sessionID string) (*OperatorSession,
 	return nil, nil
 }
 
-func (m *mockAuditStore) GetEvents(scope models.AuditScope, limit, offset int) ([]*Event, error) {
+func (m *mockEventsStore) GetEvents(scope models.EventsScope, limit, offset int) ([]*Event, error) {
 	m.getEventsCalled++
 	m.lastSessionID = scope.OperatorSessionID
 	if m.getEventsFunc != nil {
@@ -55,7 +55,7 @@ func (m *mockAuditStore) GetEvents(scope models.AuditScope, limit, offset int) (
 	return nil, nil
 }
 
-func (m *mockAuditStore) GetFileMutations(eventID int64) ([]*FileMutationLog, error) {
+func (m *mockEventsStore) GetFileMutations(eventID int64) ([]*FileMutationLog, error) {
 	m.getFileMutationsCalled++
 	m.lastEventID = eventID
 	if m.getFileMutationsFunc != nil {
@@ -64,15 +64,15 @@ func (m *mockAuditStore) GetFileMutations(eventID int64) ([]*FileMutationLog, er
 	return nil, nil
 }
 
-func (m *mockAuditStore) GetEventByExecutionID(executionID string) (*Event, error) {
-	return nil, constants.ErrAuditExecutionNotFound
+func (m *mockEventsStore) GetEventByExecutionID(executionID string) (*Event, error) {
+	return nil, constants.ErrEventsStoreExecutionNotFound
 }
 
-func (m *mockAuditStore) GetFileMutationByID(id int64) (*FileMutationLog, error) {
-	return nil, constants.ErrAuditFileMutationNotFound
+func (m *mockEventsStore) GetFileMutationByID(id int64) (*FileMutationLog, error) {
+	return nil, constants.ErrEventsStoreFileMutationNotFound
 }
 
-func (m *mockAuditStore) ListFileMutationsBySession(operatorSessionID string, limit int) ([]*FileMutationLog, error) {
+func (m *mockEventsStore) ListFileMutationsBySession(operatorSessionID string, limit int) ([]*FileMutationLog, error) {
 	return nil, nil
 }
 
@@ -201,22 +201,22 @@ func (m *mockLogger) Warn(msg string, args ...interface{}) {
 // TestNewHistoryHandler verifies constructor behavior. The ledger is required.
 func TestNewHistoryHandler(t *testing.T) {
 	tests := []struct {
-		name       string
-		auditStore auditStoreInterface
-		ledger     ledgerInterface
-		logger     loggerInterface
-		wantErr    error
+		name        string
+		eventsStore eventsStoreInterface
+		ledger      ledgerInterface
+		logger      loggerInterface
+		wantErr     error
 	}{
-		{name: "valid dependencies", auditStore: &mockAuditStore{}, ledger: &mockLedger{}, logger: &mockLogger{}},
-		{name: "nil audit store", auditStore: nil, ledger: &mockLedger{}, logger: &mockLogger{}},
-		{name: "nil logger", auditStore: &mockAuditStore{}, ledger: &mockLedger{}, logger: nil},
-		{name: "nil ledger fails closed", auditStore: &mockAuditStore{}, ledger: nil, logger: &mockLogger{}, wantErr: constants.ErrLedgerRequired},
+		{name: "valid dependencies", eventsStore: &mockEventsStore{}, ledger: &mockLedger{}, logger: &mockLogger{}},
+		{name: "nil events store", eventsStore: nil, ledger: &mockLedger{}, logger: &mockLogger{}},
+		{name: "nil logger", eventsStore: &mockEventsStore{}, ledger: &mockLedger{}, logger: nil},
+		{name: "nil ledger fails closed", eventsStore: &mockEventsStore{}, ledger: nil, logger: &mockLogger{}, wantErr: constants.ErrLedgerRequired},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := testutil.OperatorDir(t)
-			hh, err := NewHistoryHandler(tt.auditStore, tt.ledger, tt.logger, newTestFileSvc(t, dir), dir)
+			hh, err := NewHistoryHandler(tt.eventsStore, tt.ledger, tt.logger, newTestFileSvc(t, dir), dir)
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -225,7 +225,7 @@ func TestNewHistoryHandler(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, hh)
-			assert.Equal(t, tt.auditStore, hh.auditStore)
+			assert.Equal(t, tt.eventsStore, hh.eventsStore)
 			assert.Equal(t, tt.ledger, hh.ledger)
 			assert.Equal(t, tt.logger, hh.logger)
 		})
@@ -234,7 +234,7 @@ func TestNewHistoryHandler(t *testing.T) {
 
 // TestHandleFetchHistory_InvalidProtobuf verifies protobuf unmarshaling error handling
 func TestHandleFetchHistory_InvalidProtobuf(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	invalidJSON := []byte("not a valid protobuf")
 
@@ -247,7 +247,7 @@ func TestHandleFetchHistory_InvalidProtobuf(t *testing.T) {
 
 // TestHandleFetchHistory_MissingSessionID verifies session ID validation
 func TestHandleFetchHistory_MissingSessionID(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "",
@@ -266,7 +266,7 @@ func TestHandleFetchHistory_MissingSessionID(t *testing.T) {
 
 // TestHandleFetchHistory_DefaultLimit verifies default limit is applied when limit <= 0
 func TestHandleFetchHistory_DefaultLimit(t *testing.T) {
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID, Title: "Test Session"}, nil
 		},
@@ -275,7 +275,7 @@ func TestHandleFetchHistory_DefaultLimit(t *testing.T) {
 			return []*Event{}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -294,12 +294,12 @@ func TestHandleFetchHistory_DefaultLimit(t *testing.T) {
 
 // TestHandleFetchHistory_GetSessionError verifies error handling when session lookup fails
 func TestHandleFetchHistory_GetSessionError(t *testing.T) {
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return nil, errors.New("database connection failed")
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -318,7 +318,7 @@ func TestHandleFetchHistory_GetSessionError(t *testing.T) {
 
 // TestHandleFetchHistory_GetEventsError verifies error handling when event lookup fails
 func TestHandleFetchHistory_GetEventsError(t *testing.T) {
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
 		},
@@ -326,7 +326,7 @@ func TestHandleFetchHistory_GetEventsError(t *testing.T) {
 			return nil, errors.New("query failed")
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -346,7 +346,7 @@ func TestHandleFetchHistory_GetEventsError(t *testing.T) {
 // TestHandleFetchHistory_Success verifies successful history fetch with session and events
 func TestHandleFetchHistory_Success(t *testing.T) {
 	exitCode := 0
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{
 				ID:           sessionID,
@@ -372,7 +372,7 @@ func TestHandleFetchHistory_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -397,7 +397,7 @@ func TestHandleFetchHistory_Success(t *testing.T) {
 
 // TestHandleFetchHistory_NilExitCode verifies handling of nil exit code
 func TestHandleFetchHistory_NilExitCode(t *testing.T) {
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
 		},
@@ -413,7 +413,7 @@ func TestHandleFetchHistory_NilExitCode(t *testing.T) {
 			}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -434,7 +434,7 @@ func TestHandleFetchHistory_NilExitCode(t *testing.T) {
 // TestHandleFetchHistory_WithFileMutations verifies file mutation inclusion for file edit events
 func TestHandleFetchHistory_WithFileMutations(t *testing.T) {
 	exitCode := 0
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
 		},
@@ -463,7 +463,7 @@ func TestHandleFetchHistory_WithFileMutations(t *testing.T) {
 			}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -486,7 +486,7 @@ func TestHandleFetchHistory_WithFileMutations(t *testing.T) {
 // TestHandleFetchHistory_FileMutationError verifies graceful handling of file mutation lookup errors
 func TestHandleFetchHistory_FileMutationError(t *testing.T) {
 	exitCode := 0
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
 		},
@@ -506,7 +506,7 @@ func TestHandleFetchHistory_FileMutationError(t *testing.T) {
 		},
 	}
 	mockLogger := &mockLogger{}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, mockLogger)
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, mockLogger)
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -528,7 +528,7 @@ func TestHandleFetchHistory_FileMutationError(t *testing.T) {
 // TestHandleFetchHistory_NonFileEditEvent verifies mutations are not fetched for non-file-edit events
 func TestHandleFetchHistory_NonFileEditEvent(t *testing.T) {
 	exitCode := 0
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
 		},
@@ -548,7 +548,7 @@ func TestHandleFetchHistory_NonFileEditEvent(t *testing.T) {
 			return nil, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -563,12 +563,12 @@ func TestHandleFetchHistory_NonFileEditEvent(t *testing.T) {
 
 	assert.True(t, result.Success)
 	assert.Len(t, result.Events, 1)
-	assert.Equal(t, 0, mockAudit.getFileMutationsCalled)
+	assert.Equal(t, 0, mockEvents.getFileMutationsCalled)
 }
 
 // TestHandleFetchFileHistory_InvalidProtobuf verifies protobuf unmarshaling error handling
 func TestHandleFetchFileHistory_InvalidProtobuf(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	invalidJSON := []byte("not a valid protobuf")
 
@@ -581,7 +581,7 @@ func TestHandleFetchFileHistory_InvalidProtobuf(t *testing.T) {
 
 // TestHandleFetchFileHistory_MissingFilePath verifies file path validation
 func TestHandleFetchFileHistory_MissingFilePath(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchFileHistoryRequested{
 		FilePath:          "",
@@ -606,7 +606,7 @@ func TestHandleFetchFileHistory_DefaultLimit(t *testing.T) {
 			return []FileHistoryEntry{}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, mockLedger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, mockLedger, &mockLogger{})
 
 	request := &operatorv1.FetchFileHistoryRequested{
 		FilePath:          "/test/file.txt",
@@ -629,7 +629,7 @@ func TestHandleFetchFileHistory_GetHistoryError(t *testing.T) {
 			return nil, errors.New("git operation failed")
 		},
 	}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, mockLedger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, mockLedger, &mockLogger{})
 
 	request := &operatorv1.FetchFileHistoryRequested{
 		FilePath:          "/test/file.txt",
@@ -666,7 +666,7 @@ func TestHandleFetchFileHistory_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, mockLedger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, mockLedger, &mockLogger{})
 
 	request := &operatorv1.FetchFileHistoryRequested{
 		FilePath:          "/test/file.txt",
@@ -691,7 +691,7 @@ const testRestoreSessionID = "test-session"
 
 // TestHandleRestoreFile_InvalidProtobuf verifies protobuf unmarshaling error handling
 func TestHandleRestoreFile_InvalidProtobuf(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	invalidJSON := []byte("not a valid protobuf")
 
@@ -704,7 +704,7 @@ func TestHandleRestoreFile_InvalidProtobuf(t *testing.T) {
 
 // TestHandleRestoreFile_MissingFilePath verifies file path validation
 func TestHandleRestoreFile_MissingFilePath(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.RestoreFileRequested{
 		FilePath:          "",
@@ -723,7 +723,7 @@ func TestHandleRestoreFile_MissingFilePath(t *testing.T) {
 
 // TestHandleRestoreFile_MissingCommitHash verifies commit hash validation
 func TestHandleRestoreFile_MissingCommitHash(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.RestoreFileRequested{
 		FilePath:          "/test/file.txt",
@@ -742,7 +742,7 @@ func TestHandleRestoreFile_MissingCommitHash(t *testing.T) {
 
 // TestHandleRestoreFile_MissingSessionID verifies session ID validation
 func TestHandleRestoreFile_MissingSessionID(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.RestoreFileRequested{
 		FilePath:          "/test/file.txt",
@@ -768,7 +768,7 @@ func TestHandleRestoreFile_RestoreError(t *testing.T) {
 	}
 	dir := testutil.OperatorDir(t)
 	restorePath := filepath.Join(dir, "file.txt")
-	hh, err := NewHistoryHandler(&mockAuditStore{}, mockLedger, &mockLogger{}, newTestFileSvc(t, dir), dir)
+	hh, err := NewHistoryHandler(&mockEventsStore{}, mockLedger, &mockLogger{}, newTestFileSvc(t, dir), dir)
 	require.NoError(t, err)
 
 	request := &operatorv1.RestoreFileRequested{
@@ -795,7 +795,7 @@ func TestHandleRestoreFile_Success(t *testing.T) {
 	}
 	dir := testutil.OperatorDir(t)
 	restorePath := filepath.Join(dir, "file.txt")
-	hh, err := NewHistoryHandler(&mockAuditStore{}, mockLedger, &mockLogger{}, newTestFileSvc(t, dir), dir)
+	hh, err := NewHistoryHandler(&mockEventsStore{}, mockLedger, &mockLogger{}, newTestFileSvc(t, dir), dir)
 	require.NoError(t, err)
 
 	request := &operatorv1.RestoreFileRequested{
@@ -822,7 +822,7 @@ func TestHandleRestoreFile_Success(t *testing.T) {
 // executing session fails closed before the ledger is touched.
 func TestHandleRestoreFile_MissingExecutingSession(t *testing.T) {
 	ledger := &mockLedger{}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, ledger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, ledger, &mockLogger{})
 
 	requestJSON, err := proto.Marshal(&operatorv1.RestoreFileRequested{
 		FilePath:          "/test/file.txt",
@@ -847,7 +847,7 @@ func TestGetFileAtCommit_Success(t *testing.T) {
 			return "file content at commit", nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, mockLedger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, mockLedger, &mockLogger{})
 
 	content, err := hh.GetFileAtCommit("/test/file.txt", "abc123", "test-session")
 	require.NoError(t, err)
@@ -866,7 +866,7 @@ func TestGetFileAtCommit_Error(t *testing.T) {
 			return "", errors.New("git show failed")
 		},
 	}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, mockLedger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, mockLedger, &mockLogger{})
 
 	content, err := hh.GetFileAtCommit("/test/file.txt", "abc123", "test-session")
 	require.Error(t, err)
@@ -882,7 +882,7 @@ func TestGetFileAtCommit_LedgerError(t *testing.T) {
 			return "", errors.New("ledger error")
 		},
 	}
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, mockLedger, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, mockLedger, &mockLogger{})
 
 	content, err := hh.GetFileAtCommit("/test/file.txt", "abc123", "test-session")
 	require.Error(t, err)
@@ -893,7 +893,7 @@ func TestGetFileAtCommit_LedgerError(t *testing.T) {
 
 // TestFetchHistoryError verifies error response construction
 func TestFetchHistoryError(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	result, failureErr := hh.fetchHistoryError(constants.ErrInternal)
 	require.ErrorIs(t, failureErr, constants.ErrInternal)
@@ -904,7 +904,7 @@ func TestFetchHistoryError(t *testing.T) {
 
 // TestFetchFileHistoryError verifies error response construction
 func TestFetchFileHistoryError(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	result, failureErr := hh.fetchFileHistoryError(constants.ErrInternal)
 	require.ErrorIs(t, failureErr, constants.ErrInternal)
@@ -915,7 +915,7 @@ func TestFetchFileHistoryError(t *testing.T) {
 
 // TestRestoreFileError verifies error response construction
 func TestRestoreFileError(t *testing.T) {
-	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, &mockEventsStore{}, &mockLedger{}, &mockLogger{})
 
 	result, _, restoreErr := hh.restoreFileError(constants.ErrInternal)
 	require.ErrorIs(t, restoreErr, constants.ErrInternal)
@@ -926,7 +926,7 @@ func TestRestoreFileError(t *testing.T) {
 
 // TestHandleFetchHistory_NilSession verifies handling when session is nil
 func TestHandleFetchHistory_NilSession(t *testing.T) {
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return nil, nil // session not found
 		},
@@ -934,7 +934,7 @@ func TestHandleFetchHistory_NilSession(t *testing.T) {
 			return []*Event{}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -953,7 +953,7 @@ func TestHandleFetchHistory_NilSession(t *testing.T) {
 
 // TestHandleFetchHistory_EmptyEvents verifies handling when no events exist
 func TestHandleFetchHistory_EmptyEvents(t *testing.T) {
-	mockAudit := &mockAuditStore{
+	mockEvents := &mockEventsStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
 		},
@@ -961,7 +961,7 @@ func TestHandleFetchHistory_EmptyEvents(t *testing.T) {
 			return []*Event{}, nil
 		},
 	}
-	hh := newUnitHistoryHandler(t, mockAudit, &mockLedger{}, &mockLogger{})
+	hh := newUnitHistoryHandler(t, mockEvents, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
 		OperatorSessionId: "test-session",
@@ -989,10 +989,10 @@ func targetPath(target *fs.FileEditTarget) string {
 
 // newUnitHistoryHandler wires a HistoryHandler whose runtime file service is rooted
 // in a per-test temp directory, so RESTORE_FILE policy checks run against real paths.
-func newUnitHistoryHandler(t *testing.T, auditStore auditStoreInterface, ledger ledgerInterface, logger loggerInterface) *HistoryHandler {
+func newUnitHistoryHandler(t *testing.T, eventsStore eventsStoreInterface, ledger ledgerInterface, logger loggerInterface) *HistoryHandler {
 	t.Helper()
 	dir := testutil.OperatorDir(t)
-	hh, err := NewHistoryHandler(auditStore, ledger, logger, newTestFileSvc(t, dir), dir)
+	hh, err := NewHistoryHandler(eventsStore, ledger, logger, newTestFileSvc(t, dir), dir)
 	require.NoError(t, err)
 	return hh
 }

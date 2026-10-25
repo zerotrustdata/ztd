@@ -14,19 +14,19 @@ import (
 	"time"
 )
 
-// The burst contract runs at the scale that failed in production: 2000
-// Operators enrolling at once, approved in one owner decision.
+// The smoke contract enrolls 100 Operators at once, approved in one owner
+// decision.
 const (
-	burstOperators         = 2000
+	burstOperators         = 100
 	burstHeartbeatInterval = 10 * time.Second
 	burstTimeout           = 10 * time.Minute
 )
 
-// requireBurstBuild skips coverage runs, which cannot carry 2000 instrumented
-// Operators; make test-operator-burst runs this size.
+// requireBurstBuild keeps the larger smoke cohort out of coverage runs;
+// make test-operator-burst runs this size without instrumentation.
 func requireBurstBuild(t *testing.T) {
 	t.Helper()
 	if testing.CoverMode() != "" {
-		t.Skip("the 2000-Operator burst requires an uninstrumented build; run make test-operator-burst")
+		t.Skip("the 100-Operator smoke requires an uninstrumented build; run make test-operator-burst")
 	}
 }

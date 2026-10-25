@@ -58,7 +58,7 @@ func (s *stubSignerStore) GetTrustedSigner(_ context.Context, keyID string) (ed2
 
 // ReceiptSignerKey resolves the receipt's signer key id against keys,
 // standing in for the Operator's bound Actuator key.
-func (s *stubSignerStore) ReceiptSignerKey(_ context.Context, _ string, receipt *operatorv1.ActionReceipt) (ed25519.PublicKey, error) {
+func (s *stubSignerStore) ReceiptSignerKey(_ context.Context, _ string, receipt *operatorv1.EventReceipt) (ed25519.PublicKey, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -110,12 +110,12 @@ func newReceiptRelayTestBroker(t *testing.T, keyID string, signerPub ed25519.Pub
 }
 
 // buildSignedReceiptEnvelope builds a GovernanceEnvelope wrapping a signed
-// ActionReceipt as its payload, mirroring what the operator's
-// PubSubResultsService.PublishActionReceipt publishes to the receipts:
-// channel. signerPriv signs the receipt via governance.CanonicalizeActionReceipt.
-func buildSignedReceiptEnvelope(t *testing.T, signerPriv ed25519.PrivateKey, keyID, operatorID, operatorSessionID, _, _ string, requestorUserID, actingAppID, transactionID string) ([]byte, *operatorv1.ActionReceipt) {
+// EventReceipt as its payload, mirroring what the operator's
+// PubSubResultsService.PublishEventReceipt publishes to the receipts:
+// channel. signerPriv signs the receipt via governance.CanonicalizeEventReceipt.
+func buildSignedReceiptEnvelope(t *testing.T, signerPriv ed25519.PrivateKey, keyID, operatorID, operatorSessionID, _, _ string, requestorUserID, actingAppID, transactionID string) ([]byte, *operatorv1.EventReceipt) {
 	t.Helper()
-	receipt := &operatorv1.ActionReceipt{
+	receipt := &operatorv1.EventReceipt{
 		TransactionId:    transactionID,
 		TransactionHash:  transactionID,
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -125,7 +125,7 @@ func buildSignedReceiptEnvelope(t *testing.T, signerPriv ed25519.PrivateKey, key
 		ExecutedAtUnixMs: 1700000000000,
 		SignerKeyId:      keyID,
 	}
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	canonical, err := governance.CanonicalizeEventReceipt(receipt)
 	require.NoError(t, err)
 	sig := ed25519.Sign(signerPriv, canonical)
 	receipt.Signature = hex.EncodeToString(sig)
@@ -168,9 +168,9 @@ func buildSignedReceiptEnvelope(t *testing.T, signerPriv ed25519.PrivateKey, key
 	return wire, receipt
 }
 
-// --- relayActionReceipt table-driven tests ---
+// --- relayEventReceipt table-driven tests ---
 
-func TestRelayActionReceipt_ValidReceiptRecordedAndFannedOut(t *testing.T) {
+func TestRelayEventReceipt_ValidReceiptRecordedAndFannedOut(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -197,9 +197,9 @@ func TestRelayActionReceipt_ValidReceiptRecordedAndFannedOut(t *testing.T) {
 		Data:    wire,
 	})
 
-	// Verify the receipt was recorded in the audit store.
+	// Verify the receipt was recorded in the local-first events store.
 	records := recorder.recorded()
-	require.Len(t, records, 1, "valid receipt must be recorded in the audit store")
+	require.Len(t, records, 1, "valid receipt must be recorded in the local-first events store")
 	rec := records[0]
 	assert.Equal(t, receipt.TransactionId, rec.TransactionID)
 	assert.Equal(t, operatorID, rec.OperatorID)
@@ -219,7 +219,7 @@ func TestRelayActionReceipt_ValidReceiptRecordedAndFannedOut(t *testing.T) {
 	// Signer store must have been consulted.
 }
 
-func TestRelayActionReceipt_InvalidSignatureRejected(t *testing.T) {
+func TestRelayEventReceipt_InvalidSignatureRejected(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -243,9 +243,9 @@ func TestRelayActionReceipt_InvalidSignatureRejected(t *testing.T) {
 	require.NoError(t, err)
 	env := &commonv1.GovernanceEnvelope{}
 	require.NoError(t, protojson.Unmarshal(wire, env))
-	rcpt := &operatorv1.ActionReceipt{}
+	rcpt := &operatorv1.EventReceipt{}
 	require.NoError(t, proto.Unmarshal(env.Payload, rcpt))
-	canonical, err := governance.CanonicalizeActionReceipt(rcpt)
+	canonical, err := governance.CanonicalizeEventReceipt(rcpt)
 	require.NoError(t, err)
 	badSig := ed25519.Sign(otherPriv, canonical)
 	rcpt.Signature = hex.EncodeToString(badSig)
@@ -265,7 +265,7 @@ func TestRelayActionReceipt_InvalidSignatureRejected(t *testing.T) {
 	assert.False(t, called, "invalid signature must not be fanned out")
 }
 
-func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *testing.T) {
+func TestRelayEventReceipt_MissingOrInvalidPersistenceAttestationRejected(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	const keyID = "actuator-key-persistence"
@@ -275,15 +275,15 @@ func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *te
 
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.ActionReceipt)
+		mutate func(*operatorv1.EventReceipt)
 	}{
-		{name: "missing attestation", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "missing attestation", mutate: func(receipt *operatorv1.EventReceipt) {
 			receipt.FinalPersistenceAttestation = nil
 		}},
-		{name: "invalid attestation signature", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "invalid attestation signature", mutate: func(receipt *operatorv1.EventReceipt) {
 			receipt.FinalPersistenceAttestation.Signature = "invalid"
 		}},
-		{name: "mismatched receipt digest", mutate: func(receipt *operatorv1.ActionReceipt) {
+		{name: "mismatched receipt digest", mutate: func(receipt *operatorv1.EventReceipt) {
 			receipt.FinalPersistenceAttestation.ReceiptSignatureDigest = "different-digest"
 		}},
 	}
@@ -299,7 +299,7 @@ func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *te
 				string(constants.ActionTypeFileEdit), "/tmp/test.txt", "user-persistence", "app-persistence", "tx-persistence")
 			envelope := &commonv1.GovernanceEnvelope{}
 			require.NoError(t, protojson.Unmarshal(wire, envelope))
-			receipt := &operatorv1.ActionReceipt{}
+			receipt := &operatorv1.EventReceipt{}
 			require.NoError(t, proto.Unmarshal(envelope.Payload, receipt))
 			tt.mutate(receipt)
 			envelope.Payload, err = proto.Marshal(receipt)
@@ -315,7 +315,7 @@ func TestRelayActionReceipt_MissingOrInvalidPersistenceAttestationRejected(t *te
 	}
 }
 
-func TestRelayActionReceipt_UnknownSignerKeyRejected(t *testing.T) {
+func TestRelayEventReceipt_UnknownSignerKeyRejected(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	// Register a different key than the one that signs the receipt.
@@ -344,7 +344,7 @@ func TestRelayActionReceipt_UnknownSignerKeyRejected(t *testing.T) {
 	assert.False(t, called, "unknown signer key must not be fanned out")
 }
 
-func TestRelayActionReceipt_ChannelEnvelopeIdentityMismatchRejected(t *testing.T) {
+func TestRelayEventReceipt_ChannelEnvelopeIdentityMismatchRejected(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -371,7 +371,7 @@ func TestRelayActionReceipt_ChannelEnvelopeIdentityMismatchRejected(t *testing.T
 	assert.False(t, called, "channel/envelope identity mismatch must not be fanned out")
 }
 
-func TestRelayActionReceipt_MalformedProtoJSONRejected(t *testing.T) {
+func TestRelayEventReceipt_MalformedProtoJSONRejected(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -394,7 +394,7 @@ func TestRelayActionReceipt_MalformedProtoJSONRejected(t *testing.T) {
 	assert.False(t, called, "malformed protojson must not be fanned out")
 }
 
-func TestRelayActionReceipt_MalformedPayloadRejected(t *testing.T) {
+func TestRelayEventReceipt_MalformedPayloadRejected(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -410,7 +410,7 @@ func TestRelayActionReceipt_MalformedPayloadRejected(t *testing.T) {
 	defer unregister()
 
 	// Build an envelope with a valid identity but a malformed payload
-	// (not a valid ActionReceipt proto).
+	// (not a valid EventReceipt proto).
 	env := &commonv1.GovernanceEnvelope{
 		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
 		SourceComponent:   commonv1.Component_COMPONENT_ZTDO,
@@ -433,7 +433,7 @@ func TestRelayActionReceipt_MalformedPayloadRejected(t *testing.T) {
 	assert.False(t, called, "malformed payload must not be fanned out")
 }
 
-func TestRelayActionReceipt_MissingPayloadRejected(t *testing.T) {
+func TestRelayEventReceipt_MissingPayloadRejected(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -470,7 +470,7 @@ func TestRelayActionReceipt_MissingPayloadRejected(t *testing.T) {
 	assert.False(t, called, "missing payload must not be fanned out")
 }
 
-func TestRelayActionReceipt_RelayDisabledWhenDepsNotConfigured(t *testing.T) {
+func TestRelayEventReceipt_RelayDisabledWhenDepsNotConfigured(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
 	// Do NOT call SetReceiptRelayDeps — relay is disabled.
@@ -498,7 +498,7 @@ func TestRelayActionReceipt_RelayDisabledWhenDepsNotConfigured(t *testing.T) {
 	assert.False(t, called, "receipts: relay must be dropped when deps are not configured")
 }
 
-func TestRelayActionReceipt_SignerStoreErrorRejected(t *testing.T) {
+func TestRelayEventReceipt_SignerStoreErrorRejected(t *testing.T) {
 	_, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -530,14 +530,14 @@ func TestRelayActionReceipt_SignerStoreErrorRejected(t *testing.T) {
 	assert.False(t, called, "signer store error must not fan out")
 }
 
-func TestRelayActionReceipt_RecorderErrorStillFansOut(t *testing.T) {
+func TestRelayEventReceipt_RecorderErrorStillFansOut(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	broker := NewGatewayWebSocketHandler(logger)
 	signerStore := &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}}
-	recorder := &stubReceiptRecorder{err: fmt.Errorf("audit store write failed")}
+	recorder := &stubReceiptRecorder{err: fmt.Errorf("local-first events store write failed")}
 	broker.SetReceiptRelayDeps(signerStore, recorder)
 	handler := newOperatorSessionHandler(broker, "op-001")
 
