@@ -163,7 +163,7 @@ func runAssignments(t *testing.T, run *realStackRun, runID string) []*evalv1.Eva
 // proof from the live event records it retains.
 func executeCampaign(t *testing.T, env *runEnv, campaignID string) string {
 	t.Helper()
-	out, err := env.run(t, "runs", "start", campaignID, "--no-backup")
+	out, err := env.run(t, "runs", "start", campaignID)
 	require.NoError(t, err, out)
 	return out
 }
@@ -334,7 +334,7 @@ func loadPublicationState(t *testing.T, run *realStackRun, runID string) *evalua
 func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-scheduled", 3)
-	out, err := env.run(t, "runs", "start", "pub-scheduled", "--prepare-only", "--no-backup")
+	out, err := env.run(t, "runs", "start", "pub-scheduled", "--prepare-only")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 	assignments := runAssignments(t, run, runID)
@@ -495,7 +495,7 @@ func TestPublicationRealStack_BoundVerificationSurvivesForcedCatchUp(t *testing.
 func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-stale", 3)
-	out, err := env.run(t, "runs", "start", "pub-stale", "--prepare-only", "--no-backup")
+	out, err := env.run(t, "runs", "start", "pub-stale", "--prepare-only")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 
@@ -520,7 +520,7 @@ func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun
 func TestPublicationRealStack_RunsPublishIgnoresStalePartialVerificationOnUnsettledRun(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-stale-publish", 3)
-	out, err := env.run(t, "runs", "start", "pub-stale-publish", "--prepare-only", "--no-backup")
+	out, err := env.run(t, "runs", "start", "pub-stale-publish", "--prepare-only")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 
@@ -545,7 +545,7 @@ func TestPublicationRealStack_RunsPublishIgnoresStalePartialVerificationOnUnsett
 func TestPublicationRealStack_DeferredPublishDeliversEventsBeforeAuditProof(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-deferred", 3)
-	out, err := env.run(t, "runs", "start", "pub-deferred", "--publish=false", "--no-backup")
+	out, err := env.run(t, "runs", "start", "pub-deferred", "--publish=false")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 
@@ -616,7 +616,7 @@ func TestPublicationRealStack_ProviderFailedAssignmentIsPublishedOnce(t *testing
 	createPublicationCampaign(t, run, "pub-failed", 1)
 	// The failed turn is the subject of this test, so the start command's exit
 	// status is not the assertion; the persisted result is.
-	_, _ = env.run(t, "runs", "start", "pub-failed", "--no-backup")
+	_, _ = env.run(t, "runs", "start", "pub-failed")
 	runID := onlyRunID(t, run)
 	assignments := runAssignments(t, run, runID)
 	require.Len(t, assignments, 1)
@@ -815,7 +815,7 @@ func TestPublicationRealStack_VerifiedRepublishBindsTheSameGatewayDigest(t *test
 func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-lease", 3)
-	out, err := env.run(t, "runs", "start", "pub-lease", "--prepare-only", "--no-backup")
+	out, err := env.run(t, "runs", "start", "pub-lease", "--prepare-only")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 	store := evaluation.NewStore(run.fileSvc)
@@ -998,7 +998,7 @@ func TestPublicationRealStack_MalformedReleaseTagFailsPublishClosed(t *testing.T
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaignOn(t, run, "pub-bad-tag", 3, testPlatform)
 	markCampaignPreRelease(t, run, "pub-bad-tag")
-	out, err := env.run(t, "runs", "start", "pub-bad-tag", "--prepare-only", "--no-backup")
+	out, err := env.run(t, "runs", "start", "pub-bad-tag", "--prepare-only")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 	before := mirrorHighWater(t)

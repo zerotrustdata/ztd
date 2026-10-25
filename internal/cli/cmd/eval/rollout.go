@@ -23,21 +23,35 @@ import (
 func rolloutEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollout",
-		Short: "Qualify registry models one at a time through the rollout queue",
-		Long: `The rollout queue orders registry models for unattended qualification. Each
-entry is created as a campaign, run with strict witness verification, and marked
+		Short: "Define and run named campaign sequences, or qualify queued models",
+		Long: `Named rollouts run existing campaigns sequentially in an explicit order.
+Create as many definitions as needed; each run by name starts a fresh execution
+and retains previous results. Campaigns may use any suite, lane, or condition.
+
+  create <name> <campaign...>  save a named sequence
+  update <name> <campaign...>  replace a sequence, retaining history
+  show <name>                 inspect definition and execution history
+  run <name>                  start a fresh execution
+  resume <name>               continue its latest execution
+
+With no name, run uses the model qualification queue. The queue orders registry
+models for unattended qualification. Each entry is created as a campaign,
+run with strict witness verification, and marked
 verified only when a full run passes.
 
   add      queue registry models
   remove   drop models from the queue
   retry    return models to pending
   skip     exclude models from rollout runs
-  list     show the queue
+  list     show named rollouts and the model queue
   next     show the next pending model
   run      qualify queued models
   resume   qualify pending campaigns`,
 	}
 	addLeaves(cmd,
+		rolloutDefineCmd(deps, false),
+		rolloutDefineCmd(deps, true),
+		rolloutShowCmd(deps),
 		rolloutListCmd(deps),
 		rolloutAddCmd(deps),
 		rolloutRemoveCmd(deps),
@@ -51,7 +65,8 @@ verified only when a full run passes.
 }
 
 type rolloutListJSON struct {
-	Models []evaluation.CampaignQueueModel `json:"models"`
+	Models   []evaluation.CampaignQueueModel `json:"models"`
+	Rollouts []evaluation.RolloutDefinition  `json:"rollouts"`
 }
 
 type rolloutAddJSON struct {
@@ -72,7 +87,7 @@ func rolloutListCmd(deps nativeEvalDeps) *cobra.Command {
 	var status string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List rollout queue entries",
+		Short: "List named rollouts and model qualification queue entries",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
@@ -84,8 +99,15 @@ func rolloutListCmd(deps nativeEvalDeps) *cobra.Command {
 				return fmt.Errorf("evaluation: rollout list: %w", err)
 			}
 			entries := queue.FilterByStatus(status)
+			definitions, err := evaluation.ListNamedRollouts(cmd.Context(), fileSvc)
+			if err != nil {
+				return err
+			}
 			if output.JSONEnabled(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), rolloutListJSON{Models: entries})
+				return output.WriteJSON(cmd.OutOrStdout(), rolloutListJSON{Models: entries, Rollouts: definitions})
+			}
+			for _, def := range definitions {
+				cmd.Printf("Rollout: %s  campaigns=%v  continue-on-failure=%t\n", def.Name, def.Campaigns, def.ContinueOnFailure)
 			}
 			if len(entries) == 0 {
 				cmd.Println("No queue entries found")
@@ -99,7 +121,7 @@ func rolloutListCmd(deps nativeEvalDeps) *cobra.Command {
 			return w.Flush()
 		},
 	}
-	cmd.Flags().StringVar(&status, "status", "all", "Filter by status: all, pending, verified, failed, skipped")
+	cmd.Flags().StringVar(&status, "status", "all", "Filter model queue status: all, pending, verified, failed, skipped")
 	return cmd
 }
 

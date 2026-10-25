@@ -79,14 +79,25 @@ func rolloutResumeCmd(deps nativeEvalDeps) *cobra.Command {
 
 func rolloutExecuteCmd(deps nativeEvalDeps, pendingOnly bool) *cobra.Command {
 	opts := rolloutRunOptions{SkipVerified: !pendingOnly, PendingOnly: pendingOnly}
+	named := namedRolloutOptions{Resume: pendingOnly, Repeat: 1}
+	var continueOnFailure bool
 	action := "run"
 	if pendingOnly {
 		action = "resume"
 	}
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Qualify queued models with strict-witness campaign runs",
-		Long: `Qualify each selected queue entry: freeze a single-model campaign over the
+		Use:   "run [name]",
+		Short: "Run a named campaign sequence, or qualify queued models",
+		Long: `With a name, start a fresh execution of that saved rollout in its defined
+campaign order. Each campaign runs to completion with strict witness verification
+before the next starts. Existing campaign suites, lanes, and conditions are
+preserved. --repeat repeats the entire sequence; --until limits the number of
+campaigns attempted in this invocation. Use rollout resume <name> to continue
+without repeating successful steps. --continue-on-failure overrides the saved
+failure policy for this execution. Every execution retains its own progress and
+run references. --dry-run validates and previews without writing or executing.
+
+Without a name, qualify each selected queue entry: freeze a single-model campaign over the
 built-in suite, run every model-role assignment through the governed Inference
 and Data Operators, and verify the run with provider observation and model
 provenance required. A verified run marks the entry verified; a failed entry is
@@ -104,11 +115,14 @@ pending. The batch holds the queue lock, so 'rollout add', 'remove', 'retry',
 --promote-on-pass to follow it with the full run.
 
 Examples:
+  ztd eval rollout run nightly
+  ztd eval rollout run compare --repeat 3 --continue-on-failure
+  ztd eval rollout run nightly --until 2
   ztd eval rollout run --until 1
   ztd eval rollout run --gate-smoke --promote-on-pass
   ztd eval rollout run --dry-run
   ztd eval rollout run --skip-verified=false`,
-		Args: cobra.NoArgs,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.Until < 0 {
 				return fmt.Errorf("evaluation: rollout %s: --until must not be negative: %w", action, constants.ErrEvaluationFlagsInvalid)
@@ -116,14 +130,47 @@ Examples:
 			if opts.PromoteOnPass && !opts.GateSmoke {
 				return fmt.Errorf("evaluation: rollout %s: --promote-on-pass requires --gate-smoke: %w", action, constants.ErrEvaluationFlagsInvalid)
 			}
+			if len(args) == 1 {
+				_, files, err := nativeEvalEnvironment(cmd, deps)
+				if err != nil {
+					return err
+				}
+				// Resume also accepts pending queue campaign IDs. A saved named
+				// definition takes precedence when the single argument names one.
+				_, lookupErr := evaluation.LoadNamedRollout(cmd.Context(), files, args[0])
+				if !pendingOnly || !errors.Is(lookupErr, constants.ErrNotFound) {
+					if lookupErr != nil {
+						return lookupErr
+					}
+					for _, flag := range []string{"gate-smoke", "promote-on-pass", "skip-verified", "mirror-bootstrap-url"} {
+						if cmd.Flags().Changed(flag) {
+							return fmt.Errorf("evaluation: --%s applies only to the model qualification queue: %w", flag, constants.ErrEvaluationFlagsInvalid)
+						}
+					}
+					named.DryRun, named.Until = opts.DryRun, opts.Until
+					if cmd.Flags().Changed("continue-on-failure") {
+						named.ContinueOnFailure = &continueOnFailure
+					}
+					return runNamedRollout(cmd, deps, files, args[0], named, productionNamedRolloutRunner(deps, files))
+				}
+			}
+			if cmd.Flags().Changed("repeat") || cmd.Flags().Changed("continue-on-failure") {
+				return fmt.Errorf("evaluation: --repeat and --continue-on-failure require a named rollout: %w", constants.ErrEvaluationFlagsInvalid)
+			}
 			opts.CampaignIDs = args
 			return runRollout(cmd, deps, opts)
 		},
 	}
 	if pendingOnly {
-		cmd.Use = "resume [campaign...]"
-		cmd.Short = "Resume pending campaigns in the rollout queue"
-		cmd.Long = `Continue qualification of pending campaigns in rollout queue order. With no
+		cmd.Use = "resume [name | campaign...]"
+		cmd.Short = "Resume a named rollout or pending queue campaigns"
+		cmd.Long = `With a saved rollout name, continue its latest execution in the original
+sequence order, skipping successful steps. Stopped steps resume their existing
+run; failed steps start a new run and retain earlier attempts. A definition
+update affects fresh executions only. --until limits campaigns attempted in this
+invocation; --continue-on-failure overrides this execution's failure policy.
+
+Otherwise continue qualification of pending campaigns in rollout queue order. With no
 arguments, select every pending campaign; otherwise select the named campaign
 IDs. Each selected campaign starts a fresh strict-witness run through the
 governed Inference and Data Operators. Existing run evidence is retained.
@@ -134,6 +181,7 @@ The batch holds the rollout queue lock and stops when interrupted, leaving
 the current entry pending. Smoke screening and promotion work as in rollout run.
 
 Examples:
+  ztd eval rollout resume nightly
   ztd eval rollout resume
   ztd eval rollout resume eval-init-qwen3-4b
   ztd eval rollout resume --until 1
@@ -143,7 +191,11 @@ Examples:
 	} else {
 		cmd.Flags().BoolVar(&opts.SkipVerified, "skip-verified", true, "Skip queue entries already verified on the current scenario catalog")
 	}
-	cmd.Flags().IntVar(&opts.Until, "until", 0, "Run at most this many models (0 runs every pending model)")
+	if !pendingOnly {
+		cmd.Flags().IntVar(&named.Repeat, "repeat", 1, "For a named rollout, repeat the entire campaign sequence this many times")
+	}
+	cmd.Flags().BoolVar(&continueOnFailure, "continue-on-failure", false, "For a named rollout, continue after a campaign failure (overrides the saved policy)")
+	cmd.Flags().IntVar(&opts.Until, "until", 0, "Attempt at most this many campaigns or queued models in this invocation (0 means all)")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Print the rollout plan without executing")
 	cmd.Flags().BoolVar(&opts.GateSmoke, "gate-smoke", false, "Screen each model with the fast smoke campaign before any full run")
 	cmd.Flags().BoolVar(&opts.PromoteOnPass, "promote-on-pass", false, "Run the full campaign for models that pass the smoke gate")

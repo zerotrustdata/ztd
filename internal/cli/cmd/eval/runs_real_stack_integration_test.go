@@ -281,7 +281,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
-			cmd.SetArgs([]string{"runs", "start", "real-stack-campaign", "--daemon=false", "--publish=false", "--no-backup", "--project-root", run.root})
+			cmd.SetArgs([]string{"runs", "start", "real-stack-campaign", "--daemon=false", "--publish=false", "--project-root", run.root})
 			cmdCtx, cancelCmd := context.WithTimeout(testVersionContext(), 2*time.Minute)
 			t.Cleanup(cancelCmd)
 			require.NoError(t, cmd.ExecuteContext(cmdCtx), out.String())

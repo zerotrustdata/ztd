@@ -417,7 +417,7 @@ func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
 	createPublicationCampaign(t, run, "eval-a", 3)
 	before := mirrorHighWater(t)
 
-	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--verify", "--no-backup")
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "Executed 1 assignment(s)")
 	assert.Contains(t, out, "verification: "+evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String())
@@ -428,6 +428,16 @@ func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
 	assertPopulationBoundReport(t, report, uint32(len(runAssignments(t, run, runID))), 1)
+}
+
+func TestRunsStart_VerificationCanBeDisabled(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 1)
+	out := env.mustRun(t, "runs", "start", "eval-a", "--publish=false", "--verify=false")
+	assert.Contains(t, out, "Executed 1 assignment(s)")
+	assert.NotContains(t, out, "verification:")
+	_, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, onlyRunID(t, run))
+	assert.True(t, isMissingRecord(err), "--verify=false does not save a verification report")
 }
 
 func TestRunsStart_ReleasesTheLeaseAndWritesNoLogFileAfterExecution(t *testing.T) {
@@ -457,6 +467,80 @@ func TestRunsStart_RejectsAnArchivedCampaign(t *testing.T) {
 	_, err := env.run(t, "runs", "start", "eval-a", "--dry-run")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvaluationArchived)
+}
+
+func TestRunsResume_Verification(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		args   []string
+		json   bool
+		verify bool
+	}{
+		{name: "default", verify: true},
+		{name: "JSON default", json: true, verify: true},
+		{name: "disabled", args: []string{"--verify=false"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			env, run := newPublicationEnv(t, readyReplies(1))
+			createPublicationCampaign(t, run, "eval-a", 3)
+			env.mustRun(t, "runs", "start", "eval-a", "--prepare-only", "--publish=false")
+			runID := onlyRunID(t, run)
+			before := mirrorHighWater(t)
+			args := append([]string{"runs", "resume", runID}, tt.args...)
+			if tt.json {
+				var payload runResumeJSON
+				require.NoError(t, env.runJSON(t, &payload, args...))
+				assert.True(t, payload.Verified)
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String(), payload.VerifyStatus)
+				assert.Equal(t, 1, payload.Executed)
+				assert.Equal(t, int64(2), payload.Remaining)
+			} else {
+				out := env.mustRun(t, args...)
+				assert.Contains(t, out, "Executed 1 assignment(s)")
+				if tt.verify {
+					assert.Contains(t, out, "verification: "+evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String())
+				} else {
+					assert.NotContains(t, out, "verification:")
+				}
+			}
+			report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
+			if tt.verify {
+				require.NoError(t, err)
+				assertPopulationBoundReport(t, report, 3, 1)
+			} else {
+				assert.True(t, isMissingRecord(err), "--verify=false does not save a verification report")
+			}
+			assert.Equal(t, before, mirrorHighWater(t), "verification respects publication being disabled")
+		})
+	}
+}
+
+func TestRunsResume_VerificationFailureReturnsAnError(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(2))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	env.mustRun(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--verify=false")
+	runID := onlyRunID(t, run)
+	store := evaluation.NewStore(run.fileSvc)
+	results, err := store.LoadAssignmentResults(run.ctx, runID, runAssignments(t, run, runID))
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	for _, result := range results {
+		result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+		result.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(result)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveAssignmentResult(run.ctx, result))
+	}
+
+	var payload runResumeJSON
+	err = env.runJSON(t, &payload, "runs", "resume", runID)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	assert.True(t, payload.Verified)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL.String(), payload.VerifyStatus)
+	assert.Positive(t, payload.FailureCount)
+	assert.NotEmpty(t, payload.FailureReasons)
+	report, err := store.LoadCampaignVerification(run.ctx, runID)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus())
 }
 
 func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
@@ -605,7 +689,7 @@ func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
 func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 3)
-	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--no-backup")
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 	before := len(mirrorSummaries(t))
@@ -648,7 +732,7 @@ func TestVerifyRun_RejectsMissingRun(t *testing.T) {
 func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 3)
-	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--no-backup")
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 

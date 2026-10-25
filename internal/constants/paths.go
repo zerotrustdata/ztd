@@ -692,6 +692,7 @@ const (
 	EvaluationCampaignsDirname                    = "campaigns"
 	EvaluationSuitesDirname                       = "suites"
 	EvaluationRunsDirname                         = "runs"
+	EvaluationRolloutsDirname                     = "rollouts"
 	EvaluationArchiveDirname                      = "archive"
 	EvaluationArchiveManifestSuffix               = ".archive.json"
 	EvaluationRunLeaseFilename                    = "lease.json"

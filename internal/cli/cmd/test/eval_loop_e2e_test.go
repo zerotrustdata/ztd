@@ -421,7 +421,7 @@ func (r *releaseSmokeRun) runEvalCampaign(ctx context.Context, store *evaluation
 	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", campaign.campaignID, campaign.model, "--suite", campaign.suite.ID, "--investigation", campaign.investigation, "--data-operator", r.workerOperatorID); err != nil {
 		return evalLoopRun{}, err
 	}
-	if _, err := r.ztdGateway(ctx, "prepare-eval-run", "eval", "runs", "start", campaign.campaignID, "--prepare-only", "--daemon=false", "--publish=false", "--no-backup"); err != nil {
+	if _, err := r.ztdGateway(ctx, "prepare-eval-run", "eval", "runs", "start", campaign.campaignID, "--prepare-only", "--daemon=false", "--publish=false"); err != nil {
 		return evalLoopRun{}, err
 	}
 	runIDs, err := store.ListCampaignRunIDs(ctx, campaign.campaignID)
@@ -432,7 +432,7 @@ func (r *releaseSmokeRun) runEvalCampaign(ctx context.Context, store *evaluation
 		return evalLoopRun{}, fmt.Errorf("eval campaign %s has %d runs: %w", campaign.campaignID, len(runIDs), constants.ErrValidationFailed)
 	}
 	runID := runIDs[0]
-	if _, err := r.ztdGateway(ctx, "execute-eval-run", "eval", "runs", "resume", runID, "--no-backup"); err != nil {
+	if _, err := r.ztdGateway(ctx, "execute-eval-run", "eval", "runs", "resume", runID); err != nil {
 		return evalLoopRun{}, err
 	}
 	assignments, err := store.ListAssignments(ctx, runID)
