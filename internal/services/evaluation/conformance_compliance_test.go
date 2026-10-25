@@ -9,7 +9,7 @@ package evaluation
 
 import (
 	"context"
-	"path/filepath"
+	"path"
 	"testing"
 	"time"
 
@@ -67,11 +67,11 @@ func saveConformanceRunForCompliance(t *testing.T, runID string) fs.RuntimeFileS
 }
 
 func conformanceRecordPath(runID string) string {
-	return filepath.Join(evaluationRunDir(runID), constants.ConformanceRecordFilename)
+	return path.Join(evaluationRunDir(runID), constants.ConformanceRecordFilename)
 }
 
 func conformanceDigestPath(runID string) string {
-	return filepath.Join(evaluationRunDir(runID), constants.ConformanceRecordDigestFilename)
+	return path.Join(evaluationRunDir(runID), constants.ConformanceRecordDigestFilename)
 }
 
 func TestConformanceComplianceAdmitsPassingRun(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 
@@ -23,11 +23,11 @@ import (
 // suitesRootDir is where custom suites persist. Suites are authored content,
 // not campaign evidence: they are neither campaign-scoped nor archived.
 func suitesRootDir() string {
-	return filepath.Join(evalRoot(), constants.EvaluationSuitesDirname)
+	return constants.EvaluationSuitesPath
 }
 
 func suitePath(id string) string {
-	return filepath.Join(suitesRootDir(), id+constants.FileExtJSON)
+	return path.Join(constants.EvaluationSuitesPath, id+constants.FileExtJSON)
 }
 
 // ResolveSuite returns the suite with the given ID: a built-in suite, or a
@@ -206,11 +206,11 @@ func (s *Store) writeSuite(ctx context.Context, def ScenarioSuite) error {
 	if err != nil {
 		return err
 	}
-	path := suitePath(def.ID)
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	targetPath := suitePath(def.ID)
+	if err := s.files.MkdirAll(ctx, path.Dir(targetPath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create suites directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, targetPath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write suite %q: %w", constants.ErrEvaluationReportPersistFailed, def.ID, err)
 	}
 	return nil

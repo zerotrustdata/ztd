@@ -10,6 +10,7 @@ package gw
 import (
 	"bytes"
 	"context"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -330,7 +331,7 @@ func TestGatewayCleanCmd_OffersBackupBeforeArchiving(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			keyring := keystoretest.NewMemoryKeyring()
 			fileSvc, cfg := cmdtest.NewEvidenceCmdTestEnvWithKeyring(t, keyring)
-			evidence := constants.EvaluationDataPath + "/" + constants.EvaluationRunsDirname + "/run-1/report.json"
+			evidence := path.Join(constants.EvaluationRunsPath, "run-1", "report.json")
 			require.NoError(t, fileSvc.WriteFile(context.Background(), evidence, []byte(`{"ok":true}`), constants.PermFilePrivate))
 			cmd := gatewayCleanCmdWithConfig(
 				cmdtest.ConfigLoaderFor(cfg),

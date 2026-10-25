@@ -11,7 +11,7 @@ package shared
 
 import (
 	"context"
-	"path/filepath"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,7 +31,7 @@ const evidenceFileSvcMarker = "ZTD-EVIDENCE-FILESVC-MARKER"
 // runtime vault, and fails closed when the root has no vault.
 func TestNewEvidenceFileSvc_SealsEvaluationRecordsWithTheRuntimeVault(t *testing.T) {
 	ctx := context.Background()
-	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
+	recordPath := path.Join(constants.EvaluationRunsPath, "run-1", constants.ConformanceRecordFilename)
 	opts := keystore.Options{Keyring: keystoretest.NewMemoryKeyring()}
 	newEvidenceFileSvc := EvidenceFileSvcFactory(opts)
 

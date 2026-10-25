@@ -699,6 +699,13 @@ const (
 	EvaluationAssignmentsDirname                  = "assignments"
 	EvaluationActiveRunFilename                   = "active-run.json"
 	EvaluationDataPath                            = DataDirname + "/" + EvaluationDirname
+	EvaluationCampaignsPath                       = EvaluationDataPath + "/" + EvaluationCampaignsDirname
+	EvaluationSuitesPath                          = EvaluationDataPath + "/" + EvaluationSuitesDirname
+	EvaluationRunsPath                            = EvaluationDataPath + "/" + EvaluationRunsDirname
+	EvaluationRolloutsPath                        = EvaluationDataPath + "/" + EvaluationRolloutsDirname
+	EvaluationArchivePath                         = EvaluationDataPath + "/" + EvaluationArchiveDirname
+	EvaluationArchiveCampaignsPath                = EvaluationArchivePath + "/" + EvaluationCampaignsDirname
+	EvaluationArchiveRunsPath                     = EvaluationArchivePath + "/" + EvaluationRunsDirname
 	EvaluationBackupManifestFilename              = "eval-backup.json"
 	EvaluationBackupDirPrefix                     = "eval-backup-"
 	EvaluationBackupTimestampLayout               = "20060102T150405Z"

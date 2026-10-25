@@ -576,7 +576,7 @@ func buildEvaluationReportSources(ctx context.Context, fileSvc fs.RuntimeFileSer
 		if admission.GetSourceKind() != constants.EvaluationSourceKindConformance || admission.GetSourceVersion() != constants.EvaluationSourceVersion || admission.GetVerifierRef().GetId() != constants.ConformanceVerifierID || admission.GetVerifierRef().GetVersion() != constants.ConformanceVerifierVersion {
 			return nil, nil, fmt.Errorf("%w: conformance eval run %s does not match protected source admission %s", constants.ErrEvidenceScopeMismatch, runID, admission.GetAdmissionId())
 		}
-		runtimeRoot := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
+		runtimeRoot := path.Join(constants.EvaluationRunsPath, runID)
 		bundleRoot := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID)
 		report, _, err := evaluation.VerifyConformanceSource(ctx, fileSvc, runID, verifiedAt)
 		if err != nil {
@@ -665,8 +665,8 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 	bundleRoot := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, admission.GetAdmissionId())
 	runtimeBundleRoot := path.Join(bundleRoot, constants.ComplianceBundleSourceRuntimeDirname)
 	roots := []string{
-		path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID),
-		path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationCampaignsDirname, campaignID),
+		path.Join(constants.EvaluationRunsPath, runID),
+		path.Join(constants.EvaluationCampaignsPath, campaignID),
 	}
 	artifacts := make([]compliancereport.SourceArtifact, 0)
 	bodies := make(map[string][]byte)

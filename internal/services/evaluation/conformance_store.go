@@ -12,7 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"path/filepath"
+	"path"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -33,8 +33,8 @@ func (s *Store) SaveConformanceRecord(ctx context.Context, record *evalv1.Confor
 	}
 	digest := sha256.Sum256(body)
 	runDir := evaluationRunDir(record.GetRunId())
-	recordPath := filepath.Join(runDir, constants.ConformanceRecordFilename)
-	digestPath := filepath.Join(runDir, constants.ConformanceRecordDigestFilename)
+	recordPath := path.Join(runDir, constants.ConformanceRecordFilename)
+	digestPath := path.Join(runDir, constants.ConformanceRecordDigestFilename)
 
 	for _, relPath := range []string{recordPath, digestPath} {
 		exists, err := s.files.FileExists(ctx, relPath)

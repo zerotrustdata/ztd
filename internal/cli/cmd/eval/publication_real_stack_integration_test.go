@@ -1006,7 +1006,7 @@ func TestPublicationRealStack_MalformedReleaseTagFailsPublishClosed(t *testing.T
 	runID := onlyRunID(t, run)
 	before := mirrorHighWater(t)
 
-	tagPath := path.Join(constants.EvaluationDataPath, constants.EvaluationCampaignsDirname, "pub-bad-tag", constants.EvaluationCampaignReleaseTagFilename)
+	tagPath := path.Join(constants.EvaluationCampaignsPath, "pub-bad-tag", constants.EvaluationCampaignReleaseTagFilename)
 	require.NoError(t, run.fileSvc.WriteFile(run.ctx, tagPath, []byte(`{"campaign_id":"another","release":"v2.2.7"}`), constants.PermFilePrivate))
 
 	out, err = env.run(t, "runs", "publish", runID)

@@ -9,7 +9,7 @@ package evaluation
 
 import (
 	"fmt"
-	"path/filepath"
+	"path"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
@@ -26,25 +26,17 @@ type evalLayout struct {
 	runsRoot      string
 }
 
-func evalRoot() string {
-	return filepath.Join(constants.DataDirname, constants.EvaluationDirname)
-}
-
-func archiveRoot() string {
-	return filepath.Join(evalRoot(), constants.EvaluationArchiveDirname)
-}
-
 func activeEvalLayout() evalLayout {
 	return evalLayout{
-		campaignsRoot: filepath.Join(evalRoot(), constants.EvaluationCampaignsDirname),
-		runsRoot:      filepath.Join(evalRoot(), constants.EvaluationRunsDirname),
+		campaignsRoot: constants.EvaluationCampaignsPath,
+		runsRoot:      constants.EvaluationRunsPath,
 	}
 }
 
 func archivedEvalLayout() evalLayout {
 	return evalLayout{
-		campaignsRoot: filepath.Join(archiveRoot(), constants.EvaluationCampaignsDirname),
-		runsRoot:      filepath.Join(archiveRoot(), constants.EvaluationRunsDirname),
+		campaignsRoot: constants.EvaluationArchiveCampaignsPath,
+		runsRoot:      constants.EvaluationArchiveRunsPath,
 	}
 }
 
@@ -61,7 +53,7 @@ func (l evalLayout) campaignsRootDir() string {
 }
 
 func (l evalLayout) campaignDir(campaignID string) string {
-	return filepath.Join(l.campaignsRootDir(), campaignID)
+	return path.Join(l.campaignsRootDir(), campaignID)
 }
 
 func (l evalLayout) runsRootDir() string {
@@ -69,13 +61,13 @@ func (l evalLayout) runsRootDir() string {
 }
 
 func (l evalLayout) runDir(runID string) string {
-	return filepath.Join(l.runsRootDir(), runID)
+	return path.Join(l.runsRootDir(), runID)
 }
 
 // evidenceDir is the run's sealed evidence directory. It follows the layout so
 // an archived run's evidence is read and written beside its archived records.
 func (l evalLayout) evidenceDir(runID string) string {
-	return filepath.Join(l.runDir(runID), constants.EvaluationEvidenceDirname)
+	return path.Join(l.runDir(runID), constants.EvaluationEvidenceDirname)
 }
 
 // providerWindowRefPath and providerAttemptRefPath address the keyed records
@@ -83,33 +75,33 @@ func (l evalLayout) evidenceDir(runID string) string {
 // provider attempt. Content-addressed bodies cannot be found by attempt ID, so
 // these records are the attempt-keyed lookup into the evidence directory.
 func (l evalLayout) providerWindowRefPath(runID, providerAttemptID string) string {
-	return filepath.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderWindowRefFilename)
+	return path.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderWindowRefFilename)
 }
 
 func (l evalLayout) providerAttemptRefPath(runID, providerAttemptID string) string {
-	return filepath.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderAttemptRefFilename)
+	return path.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderAttemptRefFilename)
 }
 
 // modelProvenanceWindowRefPath addresses the keyed record that names the sealed
 // model provenance attestation window of one provider attempt.
 func (l evalLayout) modelProvenanceWindowRefPath(runID, providerAttemptID string) string {
-	return filepath.Join(l.evidenceDir(runID), constants.EvaluationModelProvenanceDirname, providerAttemptID, constants.EvaluationModelProvenanceWindowRefFilename)
+	return path.Join(l.evidenceDir(runID), constants.EvaluationModelProvenanceDirname, providerAttemptID, constants.EvaluationModelProvenanceWindowRefFilename)
 }
 
 func (l evalLayout) campaignSpecPath(campaignID string) string {
-	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationCampaignSpecFilename)
+	return path.Join(l.campaignDir(campaignID), constants.EvaluationCampaignSpecFilename)
 }
 
 func (l evalLayout) campaignReleaseTagPath(campaignID string) string {
-	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationCampaignReleaseTagFilename)
+	return path.Join(l.campaignDir(campaignID), constants.EvaluationCampaignReleaseTagFilename)
 }
 
 func (l evalLayout) heterogeneousStackSetPath(campaignID string) string {
-	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationHeterogeneousStackSetFilename)
+	return path.Join(l.campaignDir(campaignID), constants.EvaluationHeterogeneousStackSetFilename)
 }
 
 func (l evalLayout) scenarioCatalogPath(campaignID string) string {
-	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationScenarioCatalogFilename)
+	return path.Join(l.campaignDir(campaignID), constants.EvaluationScenarioCatalogFilename)
 }
 
 func (l evalLayout) scenarioArtifactPath(campaignID string, reference *compliancev1.ComplianceEvidenceReference) (string, error) {
@@ -120,33 +112,33 @@ func (l evalLayout) scenarioArtifactPath(campaignID string, reference *complianc
 	if !ok || digest != reference.GetSha256() {
 		return "", fmt.Errorf("%w: frozen scenario artifact reference is invalid", constants.ErrEvidenceArtifactMalformed)
 	}
-	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationScenarioArtifactsDirname, digest+constants.FileExtJSON), nil
+	return path.Join(l.campaignDir(campaignID), constants.EvaluationScenarioArtifactsDirname, digest+constants.FileExtJSON), nil
 }
 
 func (l evalLayout) assignmentsDir(runID string) string {
-	return filepath.Join(l.runDir(runID), constants.EvaluationAssignmentsDirname)
+	return path.Join(l.runDir(runID), constants.EvaluationAssignmentsDirname)
 }
 
 func (l evalLayout) assignmentPath(runID, assignmentID string) string {
-	return filepath.Join(l.assignmentsDir(runID), assignmentID+constants.FileExtJSON)
+	return path.Join(l.assignmentsDir(runID), assignmentID+constants.FileExtJSON)
 }
 
 func (l evalLayout) assignmentResultPath(runID, assignmentID string) string {
-	return filepath.Join(l.assignmentsDir(runID), assignmentID+"-result"+constants.FileExtJSON)
+	return path.Join(l.assignmentsDir(runID), assignmentID+"-result"+constants.FileExtJSON)
 }
 
 func (l evalLayout) assignmentAgentTracePath(runID, assignmentID string) string {
-	return filepath.Join(l.assignmentsDir(runID), assignmentID+"-agent-trace"+constants.FileExtJSON)
+	return path.Join(l.assignmentsDir(runID), assignmentID+"-agent-trace"+constants.FileExtJSON)
 }
 
 func (l evalLayout) runStatePath(runID string) string {
-	return filepath.Join(l.runDir(runID), constants.EvaluationRunStateFilename)
+	return path.Join(l.runDir(runID), constants.EvaluationRunStateFilename)
 }
 
 func (l evalLayout) campaignVerificationPath(runID string) string {
-	return filepath.Join(l.runDir(runID), constants.CampaignVerificationFilename)
+	return path.Join(l.runDir(runID), constants.CampaignVerificationFilename)
 }
 
 func (l evalLayout) runLeasePath(runID string) string {
-	return filepath.Join(l.runDir(runID), constants.EvaluationRunLeaseFilename)
+	return path.Join(l.runDir(runID), constants.EvaluationRunLeaseFilename)
 }

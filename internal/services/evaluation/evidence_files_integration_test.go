@@ -141,7 +141,7 @@ func assertNoPlaintextInRuntime(t *testing.T, files rtfs.RuntimeFileService, roo
 func TestEvidenceFiles_EncryptEveryRecordUnderDataEval(t *testing.T) {
 	rt := newSealedRuntime(t)
 	ctx := context.Background()
-	sealedPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
+	sealedPath := path.Join(constants.EvaluationRunsPath, "run-1", constants.ConformanceRecordFilename)
 	plainPath := filepath.Join(constants.EvaluationDirname, "queue.json")
 	body := []byte(`{"prompt":"` + evidenceMarker + `"}`)
 
@@ -172,7 +172,7 @@ func TestEvidenceFiles_SealComplianceReportBundlesUnderTheirOwnDomain(t *testing
 	rt := newSealedRuntime(t)
 	ctx := context.Background()
 	reportPath := path.Join(constants.ComplianceBundlesDirname, "report-1", constants.ComplianceBundleManifestPath)
-	evalPath := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
+	evalPath := path.Join(constants.EvaluationRunsPath, "run-1", constants.ConformanceRecordFilename)
 	body := []byte(`{"source":"` + evidenceMarker + `"}`)
 
 	assert.True(t, SealsPath(rt.files, reportPath))
@@ -456,7 +456,7 @@ func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
 	keyring := keystoretest.NewMemoryKeyring()
 	rt := newSealedRuntimeWithKeyring(t, keyring)
 	ctx := context.Background()
-	recordPath := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
+	recordPath := path.Join(constants.EvaluationRunsPath, "run-1", constants.ConformanceRecordFilename)
 	require.NoError(t, rt.files.WriteFile(ctx, recordPath, []byte(`{"detail":"`+evidenceMarker+`"}`), constants.PermFilePrivate))
 
 	backupDir := filepath.Join(testutil.TempDir(t), "backups")

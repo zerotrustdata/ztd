@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 
@@ -43,11 +43,11 @@ func (s *Store) SaveCampaignSpec(ctx context.Context, spec *evalv1.EvaluationCam
 	if err != nil {
 		return fmt.Errorf("%w: canonicalize campaign spec: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	path := s.layout.campaignSpecPath(spec.GetCampaignId())
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	specPath := s.layout.campaignSpecPath(spec.GetCampaignId())
+	if err := s.files.MkdirAll(ctx, path.Dir(specPath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create campaign directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, specPath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write campaign spec: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil
@@ -93,11 +93,11 @@ func (s *Store) SaveScenarioCatalog(ctx context.Context, campaignID string, cata
 	if err != nil {
 		return fmt.Errorf("%w: canonicalize scenario catalog: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	path := s.layout.scenarioCatalogPath(campaignID)
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	catalogPath := s.layout.scenarioCatalogPath(campaignID)
+	if err := s.files.MkdirAll(ctx, path.Dir(catalogPath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create campaign directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, catalogPath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write scenario catalog: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil
@@ -275,11 +275,11 @@ func (s *Store) SaveRun(ctx context.Context, run *evalv1.EvaluationRun) error {
 	if err != nil {
 		return fmt.Errorf("%w: canonicalize run: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	path := s.layout.runStatePath(run.GetRunId())
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	statePath := s.layout.runStatePath(run.GetRunId())
+	if err := s.files.MkdirAll(ctx, path.Dir(statePath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create run directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, statePath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write run: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil
@@ -463,11 +463,11 @@ func (s *Store) SaveAssignment(ctx context.Context, assignment *evalv1.Evaluatio
 	if err != nil {
 		return fmt.Errorf("%w: canonicalize assignment: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	path := s.layout.assignmentPath(assignment.GetRunId(), assignment.GetAssignmentId())
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	assignPath := s.layout.assignmentPath(assignment.GetRunId(), assignment.GetAssignmentId())
+	if err := s.files.MkdirAll(ctx, path.Dir(assignPath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create assignment directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, assignPath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write assignment: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil
@@ -517,11 +517,11 @@ func (s *Store) SaveAssignmentResult(ctx context.Context, result *evalv1.Evaluat
 	if err != nil {
 		return fmt.Errorf("%w: canonicalize assignment result: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	path := s.layout.assignmentResultPath(result.GetRunId(), result.GetAssignmentId())
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	resultPath := s.layout.assignmentResultPath(result.GetRunId(), result.GetAssignmentId())
+	if err := s.files.MkdirAll(ctx, path.Dir(resultPath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create assignment result directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, resultPath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write assignment result: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil
@@ -570,7 +570,7 @@ func (s *Store) InspectRun(ctx context.Context, runID string) (RunInventoryEntry
 		return RunInventoryEntry{}, err
 	}
 	entry := RunInventoryEntry{RunID: runID}
-	conformanceMarker, err := s.files.FileExists(ctx, filepath.Join(s.layout.runDir(runID), constants.ConformanceRecordFilename))
+	conformanceMarker, err := s.files.FileExists(ctx, path.Join(s.layout.runDir(runID), constants.ConformanceRecordFilename))
 	if err != nil {
 		return RunInventoryEntry{}, fmt.Errorf("evaluation: inspect conformance run marker: %w", err)
 	}
@@ -765,11 +765,11 @@ func (s *Store) SaveHeterogeneousStackSet(ctx context.Context, campaignID string
 	if err != nil {
 		return fmt.Errorf("%w: canonicalize heterogeneous stack set: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	path := s.layout.heterogeneousStackSetPath(campaignID)
-	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+	setPath := s.layout.heterogeneousStackSetPath(campaignID)
+	if err := s.files.MkdirAll(ctx, path.Dir(setPath), constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: create campaign directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, setPath, body, constants.PermFileReadOnly); err != nil {
 		return fmt.Errorf("%w: write heterogeneous stack set: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil

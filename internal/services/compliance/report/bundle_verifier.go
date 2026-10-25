@@ -1773,7 +1773,7 @@ func campaignProvenancePolicy(policy evalv1.EvaluationWitnessPolicy) evaluation.
 }
 
 func (v *bundleVerifier) replayEvalSourceVerification(ctx context.Context, runID string, expected *compliancev1.ComplianceVerificationReport) {
-	runtimeRoot := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
+	runtimeRoot := path.Join(constants.EvaluationRunsPath, runID)
 	reader := &bundledRuntimeArtifactReader{bodies: v.bodies, runID: runID, sourceDir: constants.ComplianceBundleSourceEvalsDirname, runtimeRoot: runtimeRoot}
 	assessmentAsOf, err := v.protectedAssessmentTime()
 	bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID, constants.ComplianceBundleSourceVerificationFilename)

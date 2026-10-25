@@ -10,7 +10,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"path"
 
 	"google.golang.org/protobuf/proto"
 
@@ -88,7 +88,7 @@ func (s *Store) SaveJSONArtifact(ctx context.Context, scope EvidenceScope, artif
 	if err := s.files.MkdirAll(ctx, directory, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("%w: create evidence directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if err := s.files.WriteFile(ctx, filepath.Join(directory, digest+constants.FileExtJSON), body, constants.PermFileReadOnly); err != nil {
+	if err := s.files.WriteFile(ctx, path.Join(directory, digest+constants.FileExtJSON), body, constants.PermFileReadOnly); err != nil {
 		return nil, fmt.Errorf("%w: write evidence artifact: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return scopedReference(&compliancev1.ComplianceEvidenceReference{
@@ -181,7 +181,7 @@ func (s *Store) loadProtoArtifact(ctx context.Context, runID string, reference *
 	if !ok || string(artifactType) != reference.GetArtifactType() || digest != reference.GetSha256() || reference.GetRunId() != runID || !complianceevidence.ContainsArtifactType(complianceevidence.SupportedArtifactTypes(), artifactType) {
 		return fmt.Errorf("%w: evidence reference binding is invalid", constants.ErrEvidenceArtifactMalformed)
 	}
-	body, err := s.files.ReadFile(ctx, filepath.Join(s.layout.evidenceDir(runID), digest+constants.FileExtJSON))
+	body, err := s.files.ReadFile(ctx, path.Join(s.layout.evidenceDir(runID), digest+constants.FileExtJSON))
 	if err != nil {
 		return fmt.Errorf("evaluation: read evidence artifact %s: %w", reference.GetArtifactId(), err)
 	}
@@ -195,5 +195,5 @@ func (s *Store) loadProtoArtifact(ctx context.Context, runID string, reference *
 }
 
 func evaluationRunDir(runID string) string {
-	return filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
+	return path.Join(constants.EvaluationRunsPath, runID)
 }

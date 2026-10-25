@@ -35,7 +35,7 @@ func TestBackupRestore_RoundTripAfterWipe(t *testing.T) {
 	assert.Equal(t, len(created.Files), created.FileCount)
 	assert.Equal(t, backupRoot, filepath.Dir(created.SnapshotDir))
 
-	recordRel := filepath.ToSlash(filepath.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1", constants.ConformanceRecordFilename))
+	recordRel := path.Join(constants.EvaluationRunsPath, "run-a-1", constants.ConformanceRecordFilename)
 	want, err := fileSvc.ReadFile(ctx, recordRel)
 	if err != nil {
 		recordRel = created.Files[0].Path
@@ -96,8 +96,8 @@ func TestRestore_DefaultMergesEverySnapshotIncludingEvidenceOnlyAnOlderOneHolds(
 	require.NoError(t, env.runJSON(t, &first, "backup"))
 
 	env.prepareStoredRun(t, "eval-b", "run-b-1")
-	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationDataPath, constants.EvaluationCampaignsDirname, "eval-a")))
-	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1")))
+	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationCampaignsPath, "eval-a")))
+	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationRunsPath, "run-a-1")))
 	var second evalBackupJSON
 	require.NoError(t, env.runJSON(t, &second, "backup"))
 	require.NotEqual(t, first.SnapshotDir, second.SnapshotDir)

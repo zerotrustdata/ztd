@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -66,11 +66,11 @@ type RolloutAttempt struct {
 }
 
 func rolloutDefinitionsDir() string {
-	return filepath.Join(evalRoot(), constants.EvaluationRolloutsDirname)
+	return constants.EvaluationRolloutsPath
 }
 
 func rolloutDefinitionPath(name string) string {
-	return filepath.Join(rolloutDefinitionsDir(), name+constants.FileExtJSON)
+	return path.Join(constants.EvaluationRolloutsPath, name+constants.FileExtJSON)
 }
 
 func validateRolloutDefinition(def RolloutDefinition) error {

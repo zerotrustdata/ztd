@@ -302,7 +302,7 @@ func copyRuntimeTree(ctx context.Context, src, dst fs.RuntimeFileService, rel st
 func removeSealedWitnessBody(t *testing.T, files fs.RuntimeFileService, attemptID, witnessDirname, refFilename string) {
 	t.Helper()
 	ctx := t.Context()
-	evidenceDir := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, complianceRealRunID, constants.EvaluationEvidenceDirname)
+	evidenceDir := path.Join(constants.EvaluationRunsPath, complianceRealRunID, constants.EvaluationEvidenceDirname)
 	refBody, err := files.ReadFile(ctx, path.Join(evidenceDir, witnessDirname, attemptID, refFilename))
 	require.NoError(t, err)
 	reference := &compliancev1.ComplianceEvidenceReference{}
@@ -316,7 +316,7 @@ func removeSealedWitnessBody(t *testing.T, files fs.RuntimeFileService, attemptI
 func removeSealedWitnesses(t *testing.T, files fs.RuntimeFileService, attemptID string) {
 	t.Helper()
 	ctx := t.Context()
-	evidenceDir := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, complianceRealRunID, constants.EvaluationEvidenceDirname)
+	evidenceDir := path.Join(constants.EvaluationRunsPath, complianceRealRunID, constants.EvaluationEvidenceDirname)
 	for _, witness := range []struct{ dirname, refFilename string }{
 		{constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderAttemptRefFilename},
 		{constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderWindowRefFilename},
@@ -438,7 +438,7 @@ func bundleRuntimeFile(fixture campaignComplianceBundleFixture, runtimePath stri
 // digest.
 func sealedWitnessBundlePath(t *testing.T, fixture campaignComplianceBundleFixture, witnessDirname, refFilename string) string {
 	t.Helper()
-	evidenceDir := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, fixture.runID, constants.EvaluationEvidenceDirname)
+	evidenceDir := path.Join(constants.EvaluationRunsPath, fixture.runID, constants.EvaluationEvidenceDirname)
 	refBody, err := os.ReadFile(bundleRuntimeFile(fixture, path.Join(evidenceDir, witnessDirname, fixture.attemptID, refFilename)))
 	require.NoError(t, err)
 	reference := &compliancev1.ComplianceEvidenceReference{}

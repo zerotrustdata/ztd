@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -48,7 +49,7 @@ func TestGatewayDestructiveCommands_BackUpSealedEvidenceBeforeCleanup(t *testing
 				keyring := keystoretest.NewMemoryKeyring()
 				files, cfg := cmdtest.NewEvidenceCmdTestEnvWithKeyring(t, keyring)
 				raw := evaluation.SealedFiles(files)
-				record := filepath.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-1", constants.ConformanceRecordFilename)
+				record := path.Join(constants.EvaluationRunsPath, "run-1", constants.ConformanceRecordFilename)
 				body := []byte(`{"run":"pre-clean-backup"}`)
 				require.NoError(t, files.WriteFile(ctx, record, body, constants.PermFilePrivate))
 				stored, err := raw.ReadFile(ctx, record)

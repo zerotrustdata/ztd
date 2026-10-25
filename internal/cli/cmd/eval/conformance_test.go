@@ -11,7 +11,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
-	"path/filepath"
+	"path"
 	"strings"
 	"testing"
 
@@ -178,7 +178,7 @@ func unreadableStoredVault(t *testing.T, keyring keystore.Keyring) evaluation.Ev
 
 // conformanceRunDir is the run directory of conformanceTestRunID under the runtime.
 func conformanceRunDir() string {
-	return filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, conformanceTestRunID)
+	return path.Join(constants.EvaluationRunsPath, conformanceTestRunID)
 }
 
 // storedRunRig is a verify rig over one run that the production sealed store wrote.
@@ -203,14 +203,14 @@ func storedRunRig(t *testing.T, open storedVault, mutate func(context.Context, f
 // replaceStoredRunFile overwrites one stored file of the run with body.
 func replaceStoredRunFile(name string, body []byte) func(context.Context, fs.RuntimeFileService) error {
 	return func(ctx context.Context, raw fs.RuntimeFileService) error {
-		return raw.WriteFile(ctx, filepath.Join(conformanceRunDir(), name), body, constants.PermFilePrivate)
+		return raw.WriteFile(ctx, path.Join(conformanceRunDir(), name), body, constants.PermFilePrivate)
 	}
 }
 
 // removeStoredRunFile deletes one stored file of the run.
 func removeStoredRunFile(name string) func(context.Context, fs.RuntimeFileService) error {
 	return func(ctx context.Context, raw fs.RuntimeFileService) error {
-		return raw.Remove(ctx, filepath.Join(conformanceRunDir(), name))
+		return raw.Remove(ctx, path.Join(conformanceRunDir(), name))
 	}
 }
 
@@ -325,7 +325,7 @@ func TestConformanceVerify_UnchangedSealedRecordIsNotTheDigestMismatchVerdict(t 
 }
 
 func TestConformanceVerify_FlippedSealedByteIsDigestMismatchUnlessTheVaultIsLocked(t *testing.T) {
-	recordPath := filepath.Join(conformanceRunDir(), constants.ConformanceRecordFilename)
+	recordPath := path.Join(conformanceRunDir(), constants.ConformanceRecordFilename)
 	flipSealedRecord := func(ctx context.Context, raw fs.RuntimeFileService) error {
 		ciphertext, err := raw.ReadFile(ctx, recordPath)
 		if err != nil {

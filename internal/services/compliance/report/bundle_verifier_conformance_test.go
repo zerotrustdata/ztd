@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -296,7 +295,7 @@ func conformanceImportedNodes(t *testing.T, bodies map[string][]byte, runID stri
 		bodies:      bodies,
 		runID:       runID,
 		sourceDir:   constants.ComplianceBundleSourceEvalsDirname,
-		runtimeRoot: filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID),
+		runtimeRoot: path.Join(constants.EvaluationRunsPath, runID),
 	}
 	nodes, err := evaluation.NewEvidenceImporter(reader, runID, func() time.Time { return verifiedAt }).Import(context.Background())
 	require.NoError(t, err)
