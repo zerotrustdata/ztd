@@ -12,6 +12,7 @@ package gateway
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -125,7 +126,7 @@ func runPlatformEnrollmentBurst(t *testing.T, n int, scenario burstScenario) {
 				InstanceID:        fmt.Sprintf("burst-%04d", i),
 				Hostname:          "burst.local",
 				SystemFingerprint: fmt.Sprintf("burst-host-%04d", i),
-				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: testActuatorPublicKeyHex},
+				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: hex.EncodeToString(generateTestPublicKey(t))},
 			},
 			operatorKey: operatorKey,
 			cliKey:      cliKey,

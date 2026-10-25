@@ -54,13 +54,15 @@ stub() {
 	chmod 755 "$1/$2"
 }
 
-# Stubs for the build-only prerequisites (git make curl go), go at a given version.
+# Stubs for the build prerequisites, with Go at a given version.
 toolchain_stubs() {
 	local bin=$1 go_version=$2
 	stub "$bin" git "echo 'git version 2.43.0'"
 	stub "$bin" make "exit 0"
 	stub "$bin" curl "exit 0"
 	stub "$bin" go "echo 'go version go${go_version} linux/amd64'"
+	stub "$bin" node "echo 'v22.22.2'"
+	stub "$bin" npm "echo '10.9.7'"
 }
 
 # collect_missing <home-dir-name> <bindir> [ztd_setup_init args...]
@@ -107,18 +109,27 @@ test_extract_version() {
 	[[ "$got" == 22.23.3 ]] || fail "extract node banner: want 22.23.3, got '$got'"
 }
 
-test_build_only_does_not_require_node() {
+test_build_only_requires_frontend_toolchain() {
 	local bin="$SCRATCH/bin-build-only"
 	toolchain_stubs "$bin" "$GO_MIN"
 	local missing
 	missing="$(collect_missing home-build-only "$bin" --build-only)" ||
 		fail "collect_missing --build-only failed"
 	[[ -z "$missing" ]] || fail "--build-only: want no missing tools, got '$missing'"
+	local tool
+	for tool in node npm; do
+		mv "$bin/$tool" "$bin/$tool.disabled"
+		missing="$(collect_missing "home-build-only-no-$tool" "$bin" --build-only)" ||
+			fail "collect_missing --build-only without $tool failed"
+		[[ "$missing" == node ]] || fail "--build-only without $tool: want MISSING 'node', got '$missing'"
+		mv "$bin/$tool.disabled" "$bin/$tool"
+	done
 }
 
 test_full_mode_requires_node() {
 	local bin="$SCRATCH/bin-full"
 	toolchain_stubs "$bin" "$GO_MIN"
+	rm "$bin/node"
 	local missing
 	missing="$(collect_missing home-full "$bin")" || fail "collect_missing (full) failed"
 	case " $missing " in
@@ -517,7 +528,7 @@ run_test() {
 main() {
 	run_test test_version_ge
 	run_test test_extract_version
-	run_test test_build_only_does_not_require_node
+	run_test test_build_only_requires_frontend_toolchain
 	run_test test_full_mode_requires_node
 	run_test test_go_too_old_is_missing
 	run_test test_dev_tool_installs_with_go_mod_toolchain
