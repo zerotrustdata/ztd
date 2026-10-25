@@ -621,6 +621,14 @@ CONSOLE_DIST := console/dist
 CONSOLE_EMBED := internal/services/gateway/console/static
 CONSOLE_SOURCES := $(call source_files,-exclude node_modules$(comma)dist$(comma)tests console)
 
+console/node_modules/.package-lock.json: console/package-lock.json
+	@npm ci --prefix console
+
+$(CONSOLE_DIST)/index.html: console/node_modules/.package-lock.json $(CONSOLE_SOURCES)
+	@echo "Building the console SPA..."
+	@npm run build --prefix console
+	@touch $@
+
 $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 	@rm -rf $(CONSOLE_EMBED) && cp -r $(CONSOLE_DIST) $(CONSOLE_EMBED)
 	@echo "Embedded console updated from fresh console build."
@@ -628,10 +636,9 @@ $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 .PHONY: console-embed
 console-embed: $(CONSOLE_EMBED)/index.html
 
-# Source builds use committed frontend assets and require only Go. Refresh
-# changed frontend sources explicitly with console-embed / explorer-embed.
+# Builds the host binary including embedded frontend assets (console and evaluation explorer).
 .PHONY: build
-build:
+build: console-embed explorer-embed
 	@echo "Building ztd for the host platform..."
 	@mkdir -p $(BIN_DIR)
 	@rm -f $(BIN_DIR)/ztd-binaries.json
@@ -667,7 +674,7 @@ build-compressed: build
 	echo "Compressed binary: $$BINARY"
 
 .PHONY: build-target
-build-target:
+build-target: console-embed explorer-embed
 	@test -n "$(GOOS)" || { echo "ERROR: GOOS is required for build-target"; exit 1; }
 	@test -n "$(GOARCH)" || { echo "ERROR: GOARCH is required for build-target"; exit 1; }
 	@mkdir -p $(BIN_DIR)
@@ -675,13 +682,13 @@ build-target:
 	@set -e; GOOS=$(GOOS); GOARCH=$(GOARCH); $(BUILD_ONE)
 
 .PHONY: build-linux build-darwin build-windows
-build-linux build-darwin build-windows: build-%:
+build-linux build-darwin build-windows: build-%: console-embed explorer-embed
 	@mkdir -p $(BIN_DIR)
 	@rm -f $(BIN_DIR)/ztd-binaries.json
 	@set -e; GOOS=$*; for GOARCH in $(patsubst $*/%,%,$(filter $*/%,$(PLATFORMS))); do $(BUILD_ONE); done
 
 .PHONY: build-all
-build-all:
+build-all: console-embed explorer-embed
 	@echo "Building ztd for all platforms (FIPS 140-3 for linux)..."
 	@test -n "$(strip $(PLATFORMS))" || { echo "ERROR: ztdbinaries catalog lists no build targets"; exit 1; }
 	@mkdir -p $(BIN_DIR)
@@ -713,7 +720,7 @@ build-all:
 #   https://go.dev/doc/security/fips140
 # Verify the deployed binary with: ./ztd version --fips
 .PHONY: fips-build
-fips-build:
+fips-build: console-embed explorer-embed
 	@echo "Building ztd with FIPS 140-3 approved mode (GOFIPS140=$(GOFIPS140_VERSION), $(FIPS_GOOS)/$(FIPS_GOARCH))..."
 	@mkdir -p $(BIN_DIR)
 	@ZTD_BINARY=$(BIN_DIR)/ztd-fips-$(FIPS_GOOS)-$(FIPS_GOARCH); \
@@ -933,14 +940,6 @@ test-go-import:
 # =============================================================================
 # Requires node_modules installed first:
 #   cd console && npm ci
-
-console/node_modules/.package-lock.json: console/package-lock.json
-	@npm ci --prefix console
-
-$(CONSOLE_DIST)/index.html: console/node_modules/.package-lock.json $(CONSOLE_SOURCES)
-	@echo "Building the console SPA..."
-	@npm run build --prefix console
-	@touch $@
 
 .PHONY: console-build
 console-build: $(CONSOLE_DIST)/index.html

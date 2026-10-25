@@ -199,7 +199,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
-| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development only; `make build` and `--build-only` setup use committed Console and Evaluation Explorer embeds |
+| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development; required by `make build` to compile embedded frontends |
 
 ---
 

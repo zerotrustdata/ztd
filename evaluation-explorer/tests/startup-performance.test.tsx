@@ -17,13 +17,14 @@ const snapshot: FeedSnapshot = {
   generated_at: '2026-10-23T00:00:00Z', freshness: 'active',
 };
 function json(value: unknown) { return new Response(JSON.stringify(value), { status: 200 }); }
-function fetchMirror() {
+function fetchMirror(currentSnapshot: FeedSnapshot = snapshot) {
   return vi.fn(async (input: Parameters<typeof fetch>[0]) => {
     const path = new URL(String(input), origin).pathname;
     if (path === '/runtime.json') return json({ schema_version: '1.0.0', mirror_origin: origin });
-    if (path === '/bootstrap') return json({ protocol_version: '1.0.0', snapshot, source_freshness: 'active',
+    if (path === '/snapshot') return json(currentSnapshot);
+    if (path === '/bootstrap') return json({ protocol_version: '1.0.0', snapshot: currentSnapshot, source_freshness: 'active',
       recent_projections: [{ ...fixtureCatalogExploratory, sequence: 50 }],
-      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: snapshot.generated_at });
+      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: currentSnapshot.generated_at });
     throw new Error(`Unexpected startup request: ${path}`);
   });
 }
@@ -77,6 +78,45 @@ describe('current snapshot startup', () => {
     handlers.onTruncated();
     await vi.waitFor(() => expect(streamFactory).toHaveBeenCalledTimes(2));
     expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it('reuses the cached bootstrap on reload and verifies cursor freshness via snapshot without re-downloading bootstrap', async () => {
+    const fetchImpl = fetchMirror();
+    const streamFactory = vi.fn(() => ({ close() {} }));
+    await startFeed({ fetchImpl, streamFactory });
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // /runtime.json and /bootstrap
+    expect(evalStore.getState().observedSequence).toBe(100);
+
+    // Second startup simulates page refresh / reload with cached bootstrap
+    const reloadFetch = fetchMirror();
+    const reloadStreamFactory = vi.fn(() => ({ close() {} }));
+    await startFeed({ fetchImpl: reloadFetch, streamFactory: reloadStreamFactory });
+
+    // Should only query /runtime.json and /snapshot — NOT /bootstrap!
+    expect(reloadFetch).toHaveBeenCalledTimes(2);
+    const requestedPaths = reloadFetch.mock.calls.map(([req]) => new URL(String(req), origin).pathname);
+    expect(requestedPaths).toEqual(['/runtime.json', '/snapshot']);
+    expect(reloadStreamFactory).toHaveBeenCalledWith(origin, snapshot.source_id, 100, expect.any(Object));
+    expect(evalStore.getState().observedSequence).toBe(100);
+    expect(evalStore.getState().connection).toBe('live');
+
+    // Minor cursor advance (within SSE replay bound of 100): stream catches up without re-downloading bootstrap
+    const advancedSnapshot: FeedSnapshot = { ...snapshot, high_water_sequence: 105 };
+    const catchUpFetch = fetchMirror(advancedSnapshot);
+    const catchUpStreamFactory = vi.fn(() => ({ close() {} }));
+    await startFeed({ fetchImpl: catchUpFetch, streamFactory: catchUpStreamFactory });
+    expect(catchUpFetch).toHaveBeenCalledTimes(2);
+    expect(catchUpStreamFactory).toHaveBeenCalledWith(origin, snapshot.source_id, 100, expect.any(Object));
+
+    // Large cursor advance (>100): falls back to downloading bootstrap
+    const distantSnapshot: FeedSnapshot = { ...snapshot, high_water_sequence: 300 };
+    const distantFetch = fetchMirror(distantSnapshot);
+    const distantStreamFactory = vi.fn(() => ({ close() {} }));
+    await startFeed({ fetchImpl: distantFetch, streamFactory: distantStreamFactory });
+    expect(distantFetch).toHaveBeenCalledTimes(3);
+    const distantPaths = distantFetch.mock.calls.map(([req]) => new URL(String(req), origin).pathname);
+    expect(distantPaths).toEqual(['/runtime.json', '/snapshot', '/bootstrap']);
+    expect(evalStore.getState().observedSequence).toBe(300);
   });
 
   it('keeps accepted state visible when a new snapshot is unreachable', async () => {

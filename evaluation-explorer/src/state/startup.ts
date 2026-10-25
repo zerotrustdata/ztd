@@ -54,20 +54,22 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
       try {
         const remoteSnapshot = await fetchSnapshot(
           runtime.mirror_origin,
-          cachedRecord.bootstrap.snapshot.source_id,
+          '',
           fetchImpl,
         );
         if (gen !== generation) return;
-        const isUpToDate =
-          remoteSnapshot.source_id === cachedRecord.bootstrap.snapshot.source_id &&
-          remoteSnapshot.high_water_sequence === cachedRecord.bootstrap.snapshot.high_water_sequence &&
-          remoteSnapshot.feed_chain_hash === cachedRecord.bootstrap.snapshot.feed_chain_hash &&
-          remoteSnapshot.withdrawal_digest === cachedRecord.bootstrap.snapshot.withdrawal_digest;
+        const sameSource = remoteSnapshot.source_id === cachedRecord.bootstrap.snapshot.source_id;
+        const sameWithdrawal = remoteSnapshot.withdrawal_digest === cachedRecord.bootstrap.snapshot.withdrawal_digest;
+        const cachedHighWater = cachedRecord.bootstrap.snapshot.high_water_sequence;
+        const sequenceDelta = remoteSnapshot.high_water_sequence - cachedHighWater;
+        // The SSE stream replays up to 100 records directly without a multi-megabyte full bootstrap download.
+        const canCatchUp = sameSource && sameWithdrawal && sequenceDelta >= 0 && sequenceDelta <= 100;
 
-        if (isUpToDate) {
+        if (canCatchUp) {
           needsFullBootstrap = false;
+          evalStore.acceptSnapshot(remoteSnapshot);
           targetSourceId = remoteSnapshot.source_id;
-          targetHighWater = remoteSnapshot.high_water_sequence;
+          targetHighWater = cachedHighWater;
         }
       } catch {
         needsFullBootstrap = true;

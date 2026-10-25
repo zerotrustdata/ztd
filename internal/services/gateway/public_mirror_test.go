@@ -2564,3 +2564,38 @@ func TestPublicMirrorStore_AssignmentAuditIndexRejectsUndecodableEvent(t *testin
 		require.ErrorIs(t, err, constants.ErrPublicFeedRecordSchemaInvalid)
 	})
 }
+
+func TestMirror_Bootstrap_ETagAndConditional304(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	records := []models.PublicFeedRecord{
+		env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "eval-run-1"})),
+	}
+	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
+	status, ingestResp := env.sendIngest(batch)
+	require.Equal(t, http.StatusOK, status)
+	require.True(t, ingestResp.Accepted)
+
+	// First request: 200 OK with ETag
+	req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/bootstrap?source="+env.sourceID, nil)
+	require.NoError(t, err)
+	resp, err := env.publicServer.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	etag := resp.Header.Get("ETag")
+	assert.NotEmpty(t, etag)
+	assert.Equal(t, "public, max-age=0, must-revalidate", resp.Header.Get("Cache-Control"))
+	assert.Contains(t, resp.Header.Get("Access-Control-Expose-Headers"), "ETag")
+
+	// Second request with If-None-Match: 304 Not Modified
+	req2, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/bootstrap?source="+env.sourceID, nil)
+	require.NoError(t, err)
+	req2.Header.Set("If-None-Match", etag)
+	resp2, err := env.publicServer.Client().Do(req2)
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusNotModified, resp2.StatusCode)
+	body, err := io.ReadAll(resp2.Body)
+	require.NoError(t, err)
+	assert.Empty(t, body)
+}

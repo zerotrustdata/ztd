@@ -15,7 +15,7 @@ This file provides guidance and operational constraints for AI coding agents, au
 
 - **Go** (`cmd/ztd/`, `internal/`) — The single static `ztd` binary. Runs as Gateway (`ztd gw start`), Operator (`ztd operator start`), CLI, TUI, and evaluation/compliance tooling.
 - **`protocol/`** — Canonical Protobuf contracts (`protocol/proto/ztd/`) plus generated Go and TypeScript bindings and JSON constant registries. Shared wire contract for every service.
-- **`console/`** — Browser frontend: React + TypeScript (Vite) SPA, embedded in the Go binary and served by the Gateway at `/console/`. Handles passkey authentication, human approvals, and Operator inventory/binding. The browser communicates only with the Gateway.
+- **`console/`** — Browser frontend: React + TypeScript (Vite) SPA, embedded in the Go binary and served by the Gateway at `/console/`. Handles passkey authentication, human approvals, and Operator inventory/binding (its committed embed is compiled by `make build` and refreshed with `make console-embed`). The browser communicates only with the Gateway.
 - **`ztd-adapter/` and `evaluation-explorer/`** — Audited browser adapter + contract pack for generated observe frontends, and the evaluation explorer SPA (its committed embed is compiled by `make build` and refreshed with `make explorer-embed`).
 - **`eval/`** — Evaluation fixtures, campaign schemas, and benchmark datasets.
 
