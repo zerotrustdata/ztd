@@ -308,6 +308,8 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	if failure != nil {
 		record.Failure = failure
 		record.Receipt = failure.GetReceipt()
+		record.TransactionId = failure.GetReceipt().GetTransactionId()
+		record.ObservationReceipts = failure.GetObservationReceipts()
 		return "", fmt.Errorf("%w: %s %s: %s", constants.ErrTribunalInferenceFailed, call.Stage, call.Persona, failure.GetError())
 	}
 	record.TransactionId = response.GetTransactionId()

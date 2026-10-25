@@ -213,6 +213,17 @@ func TestDispatchInference_SingleCapableOperatorSelected(t *testing.T) {
 	assert.Equal(t, RequestDeadline, dispatcher.lastReq.Timeout, "inference dispatch must carry the single explicit request deadline")
 }
 
+func TestDispatchInferenceCarriesEvaluationAssignmentIdentity(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	_, err := svc.DispatchInference(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, req.RunID, dispatcher.lastReq.EvaluationRunID)
+	assert.Equal(t, req.AssignmentID, dispatcher.lastReq.EvaluationAssignmentID)
+}
+
 func TestDispatchInference_MultipleCapableOperatorsRejectedWithoutTarget(t *testing.T) {
 	dispatcher := &stubCommandDispatcher{}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{

@@ -57,7 +57,7 @@ const (
 // *CommandLane implements it.
 type AgentToolDispatcher interface {
 	WorkspaceFileWriter
-	DispatchAgentTool(ctx context.Context, target Target, runID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error)
+	DispatchAgentTool(ctx context.Context, target Target, runID, assignmentID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error)
 }
 
 // CampaignAgentExecutor runs model-role and formation assignments through the
@@ -1056,7 +1056,7 @@ func (r *agentRun) injectEventReceiptListDefaults(args agentToolArguments) {
 // rejection or an ingress refusal.
 func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, bool, error) {
 	assignment := r.req.Assignment
-	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), r.trace.InvestigationID, r.req.AttemptID, action, resource, payload)
+	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), assignment.GetAssignmentId(), r.trace.InvestigationID, r.req.AttemptID, action, resource, payload)
 	if err != nil {
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}

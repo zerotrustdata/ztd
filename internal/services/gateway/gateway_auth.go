@@ -169,6 +169,7 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	r.addExact(constants.APIPaths.OperatorsValidate, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsTarget, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsCommands, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.GovernanceDeliberations, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsIntents, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsStop, RouteAuthMTLS)
 	r.addPrefix(constants.APIPaths.OperatorsSession, RouteAuthMTLS)

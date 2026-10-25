@@ -25,5 +25,8 @@ func Observe(o *client.GovernedOutcome) *evalv1.ConformanceObservation {
 	if obs.GetReceipt() == nil && o.Dispatch.GetReceipt() != nil {
 		obs.Receipt = proto.Clone(o.Dispatch.GetReceipt()).(*operatorv1.EventReceipt)
 	}
+	for _, inference := range o.ConsensusInferences {
+		obs.ConsensusInferences = append(obs.ConsensusInferences, proto.Clone(inference).(*operatorv1.ConsensusVoteInference))
+	}
 	return obs
 }

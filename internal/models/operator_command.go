@@ -15,6 +15,8 @@ import (
 
 // OperatorCommandRequest is the typed JSON request for POST /api/v1/operators/commands.
 type OperatorCommandRequest struct {
+	EvaluationRunID         string `json:"evaluation_run_id,omitempty"`
+	EvaluationAssignmentID  string `json:"evaluation_assignment_id,omitempty"`
 	TargetOperatorSessionID string `json:"target_operator_session_id"`
 	EventType               string `json:"event_type"`
 	Payload                 []byte `json:"payload"`

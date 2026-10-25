@@ -8,14 +8,8 @@
 package evaluation
 
 import (
-	"fmt"
-	"slices"
-
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // verifyConsensusInferenceEvidence claims the L2 vote executions and their
@@ -24,43 +18,22 @@ import (
 func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, tool AgentToolCall) ([]oracle.Outcome, error) {
 	var claims []oracle.Outcome
 	seen := make(map[string]bool)
+	finalSubjectFound := tool.Receipt == nil || len(tool.ConsensusInferences) == 0
 	for _, evidence := range tool.ConsensusInferences {
 		call := evidence.ConsensusVoteInference
-		if call == nil || call.GetSubjectTransactionId() == "" || call.GetSubjectTransactionHash() == "" || !slices.Contains(constants.TribunalConsensusMemberAppIDs(), call.GetMemberAppId()) || seen[call.GetMemberAppId()] {
+		if err := oracle.ValidateConsensusInference(call); err != nil {
+			return nil, err
+		}
+		identity := call.GetSubjectTransactionHash() + "/" + call.GetMemberAppId()
+		if seen[identity] {
 			return nil, constants.ErrEvaluationEvidenceTraceMismatch
 		}
-		seen[call.GetMemberAppId()] = true
-		if tool.Receipt != nil && (call.GetSubjectTransactionId() != tool.Receipt.GetTransactionId() || call.GetSubjectTransactionHash() != tool.Receipt.GetTransactionHash()) {
-			return nil, constants.ErrEvaluationEvidenceTraceMismatch
-		}
-		if call.GetProviderAttemptId() != governance.ConsensusVoteAttemptID(call.GetSubjectTransactionHash(), call.GetMemberAppId()) {
-			return nil, constants.ErrEvaluationEvidenceTraceMismatch
+		seen[identity] = true
+		if tool.Receipt != nil && call.GetSubjectTransactionId() == tool.Receipt.GetTransactionId() && call.GetSubjectTransactionHash() == tool.Receipt.GetTransactionHash() {
+			finalSubjectFound = true
 		}
 		receipt := call.GetReceipt()
-		if receipt == nil {
-			if call.GetFailure() == nil || call.GetResult() != nil {
-				return nil, constants.ErrEventReceiptMissing
-			}
-		} else {
-			if receipt.GetActionType() != string(constants.ActionTypeInference) || receipt.GetTransactionId() == "" || receipt.GetTransactionId() != call.GetTransactionId() {
-				return nil, constants.ErrEvaluationEvidenceTraceMismatch
-			}
-			for _, stage := range receipt.GetDeterministicStageEvidence() {
-				if stage.GetActingAppId() != call.GetMemberAppId() {
-					return nil, constants.ErrEvaluationEvidenceTraceMismatch
-				}
-			}
-			if result := call.GetResult(); result != nil {
-				digest, err := models.ComputeInferenceResultDigest(result)
-				if err != nil {
-					return nil, fmt.Errorf("consensus result digest: %w", err)
-				}
-				if result.GetProviderAttemptId() != call.GetProviderAttemptId() || result.GetResultDigest() != digest || receipt.GetResultSummary() != digest || receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED || call.GetFailure() != nil {
-					return nil, constants.ErrEvaluationEvidenceTraceMismatch
-				}
-			} else if call.GetFailure() == nil || receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-				return nil, constants.ErrEvaluationEvidenceTraceMismatch
-			}
+		if receipt != nil {
 			// The trace pins its Inference and Data execution boundaries. A decision
 			// provider may be a third runtime; its receipts are retained, but its
 			// separate ledger is outside this bracket, just as remote observations are.
@@ -93,6 +66,9 @@ func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTra
 			return nil, err
 		}
 		claims = append(claims, observations...)
+	}
+	if !finalSubjectFound {
+		return nil, constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	return claims, nil
 }

@@ -51,6 +51,8 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 	env, _ := tribunalTestEnvelope(t)
 	env.Posture = string(constants.PostureConsensus)
 	env.InvestigationId = "run-live-vote"
+	env.EvaluationRunId = "campaign-live-vote"
+	env.EvaluationAssignmentId = "assignment-live-vote"
 	env, _ = hashTribunalTestEnvelope(t, env)
 	binding := tribunalTestBinding()
 	recorder := &fakeVoteRecorder{}
@@ -98,6 +100,9 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 			var event evalv1.PublicLiveEvent
 			require.NoError(t, evalv1.UnmarshalCanonical([]byte(strings.TrimPrefix(line, "data: ")), &event))
 			streamLabel = event.GetStageLabel()
+			require.Equal(t, "campaign-live-vote", event.GetRunId())
+			require.Equal(t, "ds-live-campaign-live-vote", event.GetDatasetId())
+			require.Equal(t, "assignment-live-vote", event.GetAssignmentId())
 			break
 		}
 	}

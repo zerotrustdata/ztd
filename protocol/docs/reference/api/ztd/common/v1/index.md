@@ -116,6 +116,8 @@ It binds identity, intent, state, and governance proofs into one transaction.
 | system_fingerprint | [string](#string) |  |  |
 | tenant_id | [string](#string) |  |  |
 | binding_persona | [string](#string) |  |  |
+| evaluation_run_id | [string](#string) |  | Optional evaluation display correlation, independent of investigation/task scope. Both fields are required to associate public activity with an assignment. Like other application context, these are not authorization. |
+| evaluation_assignment_id | [string](#string) |  |  |
 | posture | [string](#string) |  | Gateway governance posture at envelope construction time (doctrine, consensus, ratify, notary). Set by the gateway; the operator reads it here at L4 verification time instead of from out-of-band config. Not included in the transaction hash — it is policy metadata, not intent. |
 
 

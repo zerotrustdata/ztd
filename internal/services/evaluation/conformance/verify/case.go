@@ -93,6 +93,22 @@ func (r *recordCheck) verifyCase(c cases.Case, ev *evalv1.ConformanceCaseEvidenc
 		}
 	}
 
+	// Vote inferences may execute on the same runtime as the case, before
+	// admission or refusal. Verify their own evidence, then order concurrent
+	// commitments by signed ledger links.
+	consensus, err := r.consensusClaims(runtime, ev)
+	if err != nil {
+		return failed(c.ID, verifyErrorClass(err)), nil
+	}
+	claimed = append(claimed, consensus...)
+	if len(consensus) > 0 {
+		claimed, err = oracle.OrderLedger(before, after, claimed)
+		if err != nil {
+			//nolint:nilerr // a ledger ordering failure is an INVALID_EVIDENCE verdict, not a programming error
+			return failed(c.ID, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_LEDGER_GAP), nil
+		}
+	}
+
 	// 6. The ledger between the sentinels holds exactly the claimed executions.
 	if err := oracle.VerifyBracket(before, after, claimed); err != nil {
 		if errors.Is(err, constants.ErrConformanceUnclaimedExecution) {

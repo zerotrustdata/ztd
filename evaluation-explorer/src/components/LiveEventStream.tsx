@@ -67,24 +67,18 @@ function assignmentRowKey(event: LiveEvent): string {
   return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
 }
 
-/** Vote events carry no assignment identity, so a vote belongs to the assignment
- *  whose activity was most recent when it arrived. The next assignment's activity
- *  moves later votes to its own row. Within a row only the latest round shows,
- *  one vote per seat. */
+/** Only explicit dataset/run/assignment identities associate votes with rows.
+ *  Unassigned governance activity must never attach to a campaign assignment.
+ *  Within a row only the latest round shows, one vote per seat. */
 function tribunalVotesByAssignment(events: LiveEvent[]): Map<string, SeatVotes> {
   const byTime = (left: LiveEvent, right: LiveEvent) => left.observed_at.localeCompare(right.observed_at);
-  const activity = events.filter((event) => event.assignment_id && !isTribunalVoteEvent(event)).sort(byTime);
-  const votes = events.filter(isTribunalVoteEvent).sort(byTime);
+  const votes = events.filter((event) => event.assignment_id && isTribunalVoteEvent(event)).sort(byTime);
   const rounds = new Map<string, { transaction: string; seats: SeatVotes }>();
-  let cursor = -1;
   for (const vote of votes) {
     const record = tribunalVoteRecord(vote);
     const seat = record ? tribunalSeatId(record) : undefined;
     if (!record || !seat) continue;
-    while (cursor + 1 < activity.length && activity[cursor + 1]!.observed_at <= vote.observed_at) cursor++;
-    const current = activity[cursor];
-    if (!current) continue;
-    const key = assignmentRowKey(current);
+    const key = assignmentRowKey(vote);
     const transaction = typeof record.transaction_id === 'string' ? record.transaction_id : '';
     let round = rounds.get(key);
     if (!round || round.transaction !== transaction) {

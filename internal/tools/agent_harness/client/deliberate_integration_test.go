@@ -30,6 +30,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -269,7 +270,11 @@ func TestDeliberate_InvalidBindingDoesNotContactApplication(t *testing.T) {
 			c.http = srv.Client()
 			proof, err := c.Deliberate(context.Background(), Persona{}, deliberateEnvelope("tx-1"))
 			require.ErrorIs(t, err, constants.ErrIngressL2DeliberationFailed)
-			require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
+			if tt.binding.Enabled {
+				require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
+			} else {
+				require.ErrorIs(t, err, constants.ErrTxL2ConsensusNotConfigured)
+			}
 			assert.Nil(t, proof)
 		})
 	}
@@ -324,4 +329,30 @@ func TestDeliberate_ApplicationIdentityIsPinned(t *testing.T) {
 			assert.False(t, reached.Load(), "the envelope must not reach an unauthenticated application")
 		})
 	}
+}
+
+func TestDeliberateInternalTribunalUsesAuthenticatedGateway(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(models.ConsensusPolicy{Enabled: true, Provider: string(constants.ConsensusProviderTribunal), Quorum: 1})
+			return
+		}
+		assert.Equal(t, "/api/v1/governance/deliberations", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		var sent commonv1.GovernanceEnvelope
+		raw, err := io.ReadAll(r.Body)
+		if !assert.NoError(t, err) || !assert.NoError(t, protojson.Unmarshal(raw, &sent)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		assert.Equal(t, "tx-internal", sent.GetTransactionHash())
+		_, _ = w.Write([]byte(`{"envelope":{"id":"tx-internal","transactionHash":"tx-internal","governance":{"l2":{"consensusSetId":"set-1","votes":[{"signerKeyId":"set-1-member-0","consensusSignature":"ab12","decision":true}]}}}}`))
+	}))
+	defer srv.Close()
+	c, err := New(config.Config{MTLSBaseURL: srv.URL, PublicBaseURL: srv.URL})
+	require.NoError(t, err)
+	c.http = srv.Client()
+	proof, err := c.Deliberate(context.Background(), Persona{ID: "conformance"}, deliberateEnvelope("tx-internal"))
+	require.NoError(t, err)
+	assert.True(t, proto.Equal(deliberateProof(), proof))
 }

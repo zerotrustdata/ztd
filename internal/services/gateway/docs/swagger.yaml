@@ -1,4 +1,230 @@
 definitions:
+  commonv1.Component:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - Component_COMPONENT_UNSPECIFIED
+    - Component_COMPONENT_AGENT
+    - Component_COMPONENT_ZTDO
+    - Component_COMPONENT_CLIENT
+  commonv1.GovernanceEnvelope:
+    properties:
+      acting_app_id:
+        description: The app/tool acting on behalf of the user (delegate)
+        type: string
+      action_type:
+        description: |-
+          action_type is the UAP-compatible action classification (e.g., EXECUTE_BASH, FILE_EDIT).
+          Included in the transaction hash canonicalization.
+        type: string
+      binding_persona:
+        type: string
+      case_id:
+        description: Application Context
+        type: string
+      cli_session_id:
+        type: string
+      evaluation_assignment_id:
+        type: string
+      evaluation_run_id:
+        description: |-
+          Optional evaluation display correlation, independent of investigation/task
+          scope. Both fields are required to associate public activity with an
+          assignment. Like other application context, these are not authorization.
+        type: string
+      event_type:
+        description: |-
+          Intent & Payload
+          event_type is the canonical pub/sub routing key from protocol/constants/events.json
+          (e.g., "ztd.v1.operator.command.requested", "ztd.v1.operator.heartbeat.sent").
+          Distinct from action_type: event_type routes the message, action_type classifies the intent.
+        type: string
+      expires_at:
+        $ref: '#/definitions/timestamppb.Timestamp'
+      governance:
+        allOf:
+        - $ref: '#/definitions/commonv1.GovernanceMetadata'
+        description: Governance Proofs
+      id:
+        description: Identity & Metadata
+        type: string
+      intent_data:
+        allOf:
+        - $ref: '#/definitions/structpb.Struct'
+        description: Structured JSON-first view
+      investigation_id:
+        type: string
+      nonce:
+        type: string
+      operator_id:
+        type: string
+      operator_session_id:
+        type: string
+      payload:
+        description: Raw protobuf payload
+        items:
+          type: integer
+        type: array
+      posture:
+        description: |-
+          Gateway governance posture at envelope construction time (doctrine,
+          consensus, ratify, notary). Set by the gateway; the operator reads it here at
+          L4 verification time instead of from out-of-band config. Not included
+          in the transaction hash — it is policy metadata, not intent.
+        type: string
+      protocol_version:
+        description: UAP-compatible protocol version (e.g., "1.0")
+        type: string
+      requestor_user_id:
+        description: The human user who authorized the action (delegator)
+        type: string
+      source_component:
+        $ref: '#/definitions/commonv1.Component'
+      state_merkle_root:
+        description: State & Replay Protection
+        type: string
+      system_fingerprint:
+        type: string
+      target_resource:
+        description: UAP-compatible target resource
+        type: string
+      task_id:
+        type: string
+      tenant_id:
+        type: string
+      timestamp:
+        $ref: '#/definitions/timestamppb.Timestamp'
+      transaction_hash:
+        type: string
+      web_session_id:
+        type: string
+    type: object
+  commonv1.GovernanceMetadata:
+    properties:
+      l1:
+        $ref: '#/definitions/commonv1.L1Metadata'
+      l2:
+        $ref: '#/definitions/commonv1.L2Metadata'
+      l3:
+        $ref: '#/definitions/commonv1.L3Metadata'
+    type: object
+  commonv1.L1Metadata:
+    properties:
+      validated:
+        type: boolean
+      violations:
+        items:
+          type: string
+        type: array
+    type: object
+  commonv1.L2Metadata:
+    properties:
+      consensus_set_id:
+        description: ID of the consensus set that produced this vote set
+        type: string
+      votes:
+        description: independent member votes
+        items:
+          $ref: '#/definitions/commonv1.L2Vote'
+        type: array
+    type: object
+  commonv1.L2Vote:
+    properties:
+      consensus_signature:
+        description: ed25519 over "<transaction_hash>|<decision>"
+        type: string
+      decision:
+        description: member's safe (true) / unsafe (false) vote
+        type: boolean
+      signer_key_id:
+        description: member appID == TrustedSigner.ID
+        type: string
+    type: object
+  commonv1.L3Metadata:
+    properties:
+      denied:
+        description: |-
+          The human declined the suspended transaction. L4 rejects a denied
+          envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so
+          the deny is an Operator-signed rejection receipt. A deny can only stop
+          execution, so it needs no proof.
+        type: boolean
+      pending_dispatch:
+        description: |-
+          Gateway-owned suspension provenance. A waiting dispatch must receive the
+          decision in-process; after restart/cancellation it must never resume alone.
+        type: boolean
+      proof:
+        allOf:
+        - $ref: '#/definitions/commonv1.L3Proof'
+        description: WebAuthn or CLI/mTLS proof
+    type: object
+  commonv1.L3Proof:
+    properties:
+      authenticator_data:
+        description: 'WebAuthn: authenticator data bytes (base64)'
+        type: string
+      cli_certificate_der:
+        description: 'CLI approval: DER-encoded enrolled CLI leaf certificate (not
+          a trust chain)'
+        items:
+          type: integer
+        type: array
+      cli_intermediates_der:
+        description: Untrusted chain-building hints; only the Operator's pinned CA
+          pool is trusted.
+        items:
+          items:
+            format: int32
+            type: integer
+          type: array
+        type: array
+      cli_signature:
+        description: 'CLI approval: ECDSA P-256 signature over the domain-separated
+          transaction hash'
+        type: string
+      client_data_json:
+        description: 'WebAuthn: client data JSON from the authenticator assertion'
+        type: string
+      credential_id:
+        description: 'WebAuthn: credential ID used for the assertion'
+        type: string
+      mtls_cert_fingerprint:
+        description: 'CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for
+          authentication'
+        type: string
+      passkey_context:
+        allOf:
+        - $ref: '#/definitions/commonv1.PasskeyVerificationContext'
+        description: |-
+          Gateway-sourced registration context for independent outbound verification.
+          Context is trusted only on the authenticated Gateway command channel.
+      signature:
+        description: 'WebAuthn: signature over the authenticator assertion'
+        type: string
+    type: object
+  commonv1.PasskeyVerificationContext:
+    properties:
+      allowed_origins:
+        items:
+          type: string
+        type: array
+      credential_id:
+        type: string
+      public_key_cose:
+        items:
+          type: integer
+        type: array
+      rp_id:
+        type: string
+      user_id:
+        type: string
+    type: object
   constants.ActionType:
     enum:
     - A2A_CALL
@@ -1383,6 +1609,10 @@ definitions:
         type: string
       cli_session_id:
         type: string
+      evaluation_assignment_id:
+        type: string
+      evaluation_run_id:
+        type: string
       event_type:
         type: string
       investigation_id:
@@ -2279,6 +2509,15 @@ definitions:
     - ExecutionStatus_EXECUTION_STATUS_FAILED
     - ExecutionStatus_EXECUTION_STATUS_CANCELLED
     - ExecutionStatus_EXECUTION_STATUS_TIMEOUT
+  operatorv1.GovernanceDeliberationResult:
+    properties:
+      consensus_inferences:
+        items:
+          $ref: '#/definitions/operatorv1.ConsensusVoteInference'
+        type: array
+      envelope:
+        $ref: '#/definitions/commonv1.GovernanceEnvelope'
+    type: object
   operatorv1.GovernanceRejection:
     properties:
       consensus_inferences:
@@ -3485,6 +3724,37 @@ definitions:
     - VerificationRequired
     - VerificationPreferred
     - VerificationDiscouraged
+  structpb.Struct:
+    properties:
+      fields:
+        additionalProperties:
+          $ref: '#/definitions/structpb.Value'
+        description: Unordered map of dynamically typed values.
+        type: object
+    type: object
+  structpb.Value:
+    properties:
+      kind:
+        description: "The kind of value.\n\nTypes that are valid to be assigned to
+          Kind:\n\n\t*Value_NullValue\n\t*Value_NumberValue\n\t*Value_StringValue\n\t*Value_BoolValue\n\t*Value_StructValue\n\t*Value_ListValue"
+    type: object
+  timestamppb.Timestamp:
+    properties:
+      nanos:
+        description: |-
+          Non-negative fractions of a second at nanosecond resolution. This field is
+          the nanosecond portion of the duration, not an alternative to seconds.
+          Negative second values with fractions must still have non-negative nanos
+          values that count forward in time. Must be between 0 and 999,999,999
+          inclusive.
+        type: integer
+      seconds:
+        description: |-
+          Represents seconds of UTC time since Unix epoch 1970-01-01T00:00:00Z. Must
+          be between -62135596800 and 253402300799 inclusive (which corresponds to
+          0001-01-01T00:00:00Z to 9999-12-31T23:59:59Z).
+        type: integer
+    type: object
   tribunalv1.TribunalIntentRequest:
     properties:
       case_id:
@@ -3559,6 +3829,12 @@ definitions:
       commandOutcome:
         description: "The governed MCP_CALL outcome of an approved run_shell_command.\n\nTypes
           that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
+      consensus_inferences:
+        description: All command admission rounds, including revised or failed contextual
+          reviews.
+        items:
+          $ref: '#/definitions/operatorv1.ConsensusVoteInference'
+        type: array
       member_calls:
         description: member_calls are the governed member inferences, in order.
         items:
@@ -4276,6 +4552,47 @@ paths:
       summary: Sign an application reputation commitment
       tags:
       - gateway
+  /api/v1/governance/deliberations:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates an envelope and returns its Tribunal L2 votes and
+        signed vote inference evidence. Does not execute the subject or mint L3 proofs.
+      parameters:
+      - description: GovernanceEnvelope (protojson, without posture)
+        in: body
+        name: envelope
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/operatorv1.GovernanceDeliberationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+      summary: Deliberate with the internal Tribunal
+      tags:
+      - governance
   /api/v1/governance/envelopes:
     post:
       consumes:

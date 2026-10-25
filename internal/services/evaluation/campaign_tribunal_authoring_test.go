@@ -55,7 +55,7 @@ func (f *tribunalAuthoringTools) WriteWorkspaceFile(context.Context, Target, str
 	return nil
 }
 
-func (f *tribunalAuthoringTools) DispatchAgentTool(_ context.Context, _ Target, _, _, _ string, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, error) {
+func (f *tribunalAuthoringTools) DispatchAgentTool(_ context.Context, _ Target, _, _, _, _ string, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, error) {
 	f.dispatches++
 	f.action, f.resource, f.payload = action, resource, append([]byte(nil), payload...)
 	receipt := f.outcome.Observation.GetReceipt()
@@ -179,6 +179,29 @@ func TestRecordMemberCallsPreservesProviderToolCallsInTranscript(t *testing.T) {
 			assert.NoError(t, verifyV7ModelCallTranscript(call, call.InferenceResult.InferenceResult))
 		})
 	}
+}
+
+func TestRunTribunalRetainsVotesAndObservationsOnReviewFailure(t *testing.T) {
+	vote := &operatorv1.ConsensusVoteInference{SubjectTransactionId: "command", MemberAppId: "tribunal-axiom"}
+	observation := &operatorv1.EventReceipt{TransactionId: "observation"}
+	result := &tribunalv1.TribunalIntentResult{
+		Outcome:             tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED,
+		ConsensusInferences: []*operatorv1.ConsensusVoteInference{vote},
+		MemberCalls: []*tribunalv1.TribunalMemberCall{{
+			Stage: tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, ProviderAttemptId: "attempt-member",
+			Receipt:             &operatorv1.EventReceipt{TransactionId: "failed-auditor"},
+			Failure:             &operatorv1.InferenceDispatchFailure{Code: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED},
+			ObservationReceipts: []*operatorv1.EventReceipt{observation},
+		}},
+	}
+	run := newTribunalAuthoringRun(t, true, &tribunalAuthoringInference{result: result}, &tribunalAuthoringTools{})
+	call, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand}, models.RunShellCommandRequest{Command: "pwd"})
+	require.NoError(t, err)
+	require.Len(t, call.ConsensusInferences, 1)
+	assert.True(t, proto.Equal(vote, call.ConsensusInferences[0].ConsensusVoteInference))
+	require.Len(t, run.trace.ModelCalls, 1)
+	require.Len(t, run.trace.ModelCalls[0].ObservationReceipts, 1)
+	assert.True(t, proto.Equal(observation, run.trace.ModelCalls[0].ObservationReceipts[0].EventReceipt))
 }
 
 func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {

@@ -184,3 +184,13 @@ func validateAnchorKey(algorithm, keyID, publicKeyHex string) (ed25519.PublicKey
 	}
 	return ed25519.PublicKey(decoded), nil
 }
+
+// Runtime resolves a receipt signer to a runtime pinned in this record.
+func (s *AnchorSet) Runtime(keyID string) (string, error) {
+	if s != nil {
+		if pinned, ok := s.byKeyID[keyID]; ok {
+			return pinned.anchor.GetRuntimeId(), nil
+		}
+	}
+	return "", fmt.Errorf("oracle: resolve runtime for %s: %w", keyID, constants.ErrConformanceAnchorUnknown)
+}

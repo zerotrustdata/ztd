@@ -9,6 +9,7 @@ package tribunal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -103,12 +104,23 @@ func auditorPrompt(req Request, v Vote, clusters []Cluster) (string, error) {
 		}
 		fmt.Fprintf(&b, "<admitted_envelope>\n%s\n</admitted_envelope>\n", encoded)
 		for _, inference := range g.ConsensusInferences {
-			encoded, err := protojson.Marshal(inference)
+			// Review decision content, not duplicated transport telemetry. Full
+			// results, thinking, signatures and receipts remain in the evidence.
+			summary := struct {
+				MemberAppID  string `json:"member_app_id"`
+				SubjectHash  string `json:"subject_transaction_hash"`
+				AttemptID    string `json:"provider_attempt_id"`
+				ResultDigest string `json:"result_digest"`
+				Reason       string `json:"reason"`
+				Failure      string `json:"failure,omitempty"`
+			}{inference.GetMemberAppId(), inference.GetSubjectTransactionHash(), inference.GetProviderAttemptId(), inference.GetResult().GetResultDigest(), models.InferenceResultText(inference.GetResult()), inference.GetFailure().GetError()}
+			encoded, err := json.Marshal(summary)
 			if err != nil {
 				return "", fmt.Errorf("tribunal: encode Auditor L2 context: %w", err)
 			}
 			fmt.Fprintf(&b, "<recorded_l2_inference>\n%s\n</recorded_l2_inference>\n", encoded)
 		}
+
 		for _, step := range g.AuthoringSteps {
 			encoded, err := protojson.Marshal(step)
 			if err != nil {

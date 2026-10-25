@@ -143,7 +143,7 @@ func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID
 	require.NoError(t, err)
 	out, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
 		t.Context(), evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
-		"tribunal-ledger-read", investigationID, "tribunal-ledger-read",
+		"tribunal-ledger-read", "", investigationID, "tribunal-ledger-read",
 		constants.ActionTypeMcpCall, constants.MCPToolEventReceiptList, payload,
 	)
 	require.NoError(t, err)

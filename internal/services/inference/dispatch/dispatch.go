@@ -65,6 +65,8 @@ type CommandDispatcher interface {
 // by the CommandDispatcher interface. The gateway adapter converts this to
 // gateway.DispatchRequest before calling DispatchService.Dispatch.
 type CommandDispatchRequest struct {
+	EvaluationRunID         string
+	EvaluationAssignmentID  string
 	TargetOperatorSessionID string
 	EventType               string
 	Payload                 []byte
@@ -375,6 +377,8 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	attempt := attemptState{ctx: ctx}
 	var beginErr error
 	result, err := s.dispatcher.Dispatch(ctx, CommandDispatchRequest{
+		EvaluationRunID:         req.RunID,
+		EvaluationAssignmentID:  req.AssignmentID,
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.Inference.Requested),
 		Payload:                 payload,

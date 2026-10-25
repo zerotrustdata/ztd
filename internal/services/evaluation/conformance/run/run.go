@@ -74,7 +74,8 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 		}
 		anchors = append(anchors, anchor)
 	}
-	anchorSet, err := oracle.NewAnchorSet(anchors)
+	allAnchors := append(append([]*evalv1.ConformanceAnchor{}, anchors...), cfg.ConsensusAnchors...)
+	anchorSet, err := oracle.NewAnchorSet(allAnchors)
 	if err != nil {
 		return nil, fmt.Errorf("conformance run: anchor set: %w", err)
 	}
@@ -134,6 +135,7 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 		SuiteVersion:         cases.SuiteVersion,
 		Posture:              posture,
 		Anchors:              anchors,
+		ConsensusAnchors:     cfg.ConsensusAnchors,
 		CanaryRoot:           canaryRoot,
 		Quiescence:           quiescence,
 		Cases:                evidence,

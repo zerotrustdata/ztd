@@ -75,6 +75,7 @@
   "deploy_script_windows": "/ztd-deploy.ps1",
   "eval_campaign_publication_state_by_run": "/api/v1/eval/campaign/runs/",
   "gateway_reputation_sign": "/api/v1/gateway/reputation/sign",
+  "governance_deliberations": "/api/v1/governance/deliberations",
   "governance_envelopes": "/api/v1/governance/envelopes",
   "governance_signers": "/api/v1/governance/signers",
   "governance_signers_by_id": "/api/v1/governance/signers/",

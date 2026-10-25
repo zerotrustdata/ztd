@@ -33,7 +33,7 @@ const unknownSetID = "conformance-unknown-set"
 const nonMemberSignerID = "conformance-non-member"
 
 // Deliberator is an L2Source that gets a valid L2 proof for a final envelope
-// from the Gateway's bound consensus application's HTTPS protobuf endpoint.
+// from the Gateway's internal Tribunal or the bound application's HTTPS endpoint.
 type Deliberator struct {
 	client  *client.Client
 	persona client.Persona

@@ -1415,6 +1415,7 @@ message ConformanceObservation {
   ztd.operator.v1.IngressRefusal refusal = 5;
   string suspended_tx_hash = 6;
   bytes untyped_body = 7;
+  repeated ztd.operator.v1.ConsensusVoteInference consensus_inferences = 8;
 }
 
 // ConformanceA2ACall is one call received by the harness-owned A2A downstream stub.
@@ -1474,6 +1475,9 @@ message ConformanceRunRecord {
   // The selected Data Operator was the Gateway's embedded Operator, which also
   // executed this run's outbound dispatch and CLI cases.
   bool outbound_absent = 14;
+  // Enrollment-bound keys for Tribunal inference and observation runtimes.
+  // These runtimes provide supporting evidence, not conformance executor roles.
+  repeated ConformanceAnchor consensus_anchors = 15;
 }
 
 // ConformanceApprovalDecision is the human decision a suspending case asks for.

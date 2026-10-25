@@ -318,7 +318,14 @@ func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *com
 	if feed == nil {
 		return nil
 	}
-	runID := env.GetInvestigationId()
+	runID := env.GetEvaluationRunId()
+	assignmentID := env.GetEvaluationAssignmentId()
+	if runID == "" || assignmentID == "" {
+		// Non-campaign governance retains its own run identity, without an
+		// assignment. Consumers must never infer an assignment from event time.
+		assignmentID = ""
+		runID = env.GetInvestigationId()
+	}
 	if runID == "" {
 		runID = env.GetId()
 	}
@@ -331,6 +338,7 @@ func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *com
 		ObservedAt:      recordedAt.UTC().Format(time.RFC3339Nano),
 		EventId:         env.GetId() + ":" + memberAppID,
 		RunId:           runID,
+		AssignmentId:    assignmentID,
 		LifecycleStatus: "running",
 		Completed:       &completed,
 		Total:           &total,

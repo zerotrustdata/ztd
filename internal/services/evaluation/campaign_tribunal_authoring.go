@@ -84,6 +84,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	if err != nil {
 		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
+	record.ConsensusInferences = governance.WrapConsensusInferences(result.GetConsensusInferences())
 	if failure := r.recordMemberCalls(record, tier, result.GetMemberCalls()); failure != "" {
 		if failure == tribunalGovernanceRejected {
 			record.PolicyDecision = agentPolicyDecisionDeny
@@ -124,6 +125,9 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
 	denied, err := r.recordDispatch(&record, dispatched)
+	if len(result.GetConsensusInferences()) > 0 {
+		record.ConsensusInferences = governance.WrapConsensusInferences(result.GetConsensusInferences())
+	}
 	if err != nil {
 		return record, err
 	}
@@ -193,6 +197,9 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 			})
 		}
 		if err != nil {
+			if len(call.ObservationReceipts) == 0 {
+				recordObservationReceipts(&call, member.GetObservationReceipts())
+			}
 			if call.Receipt == nil && member.GetReceipt() != nil {
 				call.TransactionID = member.GetReceipt().GetTransactionId()
 				call.Receipt = &AgentTraceReceipt{EventReceipt: member.GetReceipt()}

@@ -48,6 +48,8 @@ func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.Co
 		}
 	}
 	result, err := a.svc.Dispatch(ctx, DispatchRequest{
+		EvaluationRunID:         req.EvaluationRunID,
+		EvaluationAssignmentID:  req.EvaluationAssignmentID,
 		TargetOperatorSessionID: req.TargetOperatorSessionID,
 		EventType:               req.EventType,
 		Payload:                 req.Payload,

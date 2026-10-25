@@ -446,6 +446,7 @@ set, matching kind. NOT_RUN kinds carry no outcome fields.
 | refusal | [ztd.operator.v1.IngressRefusal](#ztd-operator-v1-IngressRefusal) |  |  |
 | suspended_tx_hash | [string](#string) |  |  |
 | untyped_body | [bytes](#bytes) |  |  |
+| consensus_inferences | [ztd.operator.v1.ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
 
 
 
@@ -492,6 +493,7 @@ executor whose commitment links must be adjacent.
 | finished_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | a2a_ingress_absent | [bool](#bool) |  | Gateway health reported no A2A ingress (no downstream configured). A2A is opt-in, so its cases are not applicable to this run. |
 | outbound_absent | [bool](#bool) |  | The selected Data Operator was the Gateway&#39;s embedded Operator, which also executed this run&#39;s outbound dispatch and CLI cases. |
+| consensus_anchors | [ConformanceAnchor](#ztd-eval-v1-ConformanceAnchor) | repeated | Enrollment-bound keys for Tribunal inference and observation runtimes. These runtimes provide supporting evidence, not conformance executor roles. |
 
 
 

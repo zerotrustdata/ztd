@@ -59,6 +59,7 @@
     - [FsReadResult](#ztd-operator-v1-FsReadResult)
     - [GetRevocationBundleRequested](#ztd-operator-v1-GetRevocationBundleRequested)
     - [GetRevocationBundleResult](#ztd-operator-v1-GetRevocationBundleResult)
+    - [GovernanceDeliberationResult](#ztd-operator-v1-GovernanceDeliberationResult)
     - [GovernanceRejection](#ztd-operator-v1-GovernanceRejection)
     - [GovernedDispatchResult](#ztd-operator-v1-GovernedDispatchResult)
     - [HeartbeatRequested](#ztd-operator-v1-HeartbeatRequested)
@@ -1322,6 +1323,24 @@ EventReceipt is the signed evidence for a governed request event, including read
 | bundle_json | [string](#string) |  |  |
 | signature | [string](#string) |  |  |
 | error | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-GovernanceDeliberationResult"></a>
+
+### GovernanceDeliberationResult
+GovernanceDeliberationResult is the L2 decision for an authenticated envelope.
+Deliberation never executes the subject. Tribunal vote executions retain their
+independent signed receipts and observations for offline verification.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| envelope | [ztd.common.v1.GovernanceEnvelope](#ztd-common-v1-GovernanceEnvelope) |  |  |
+| consensus_inferences | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
 
 
 

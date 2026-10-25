@@ -10,6 +10,8 @@ package eval
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -130,4 +132,34 @@ func TestConformanceOperatorRoot_UsesEnrolledRuntimeAndExplicitOverride(t *testi
 	op.LocalDir, op.RuntimeConfig = "", nil
 	_, err = conformanceOperatorRoot("", op)
 	require.ErrorIs(t, err, constants.ErrEvaluationTargetUnavailable)
+}
+
+func TestConformanceConsensusAnchorsPinsSupportingEnrollmentKeys(t *testing.T) {
+	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	keyHex := hex.EncodeToString(key)
+	supporting := conformanceTestOutboundDocument()
+	supporting.Id = "inference-observer"
+	supporting.OperatorCapabilities = []string{string(constants.OperatorCapabilityInference)}
+	supporting.ActuatorKeyId, supporting.ActuatorPublicKey = keyHex, keyHex
+	executor := conformanceTestOutboundDocument()
+	embedded := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), Status: string(constants.OperatorStatusActive)}
+	inactive := &operatorv1.OperatorDocument{Id: "offline", Status: string(constants.OperatorStatusStopped), ActuatorKeyId: "invalid"}
+	unbound := &operatorv1.OperatorDocument{Id: "unbound", Status: string(constants.OperatorStatusActive)}
+	anchors, err := conformanceConsensusAnchors([]*operatorv1.OperatorDocument{nil, executor, embedded, inactive, unbound, supporting}, executor.Id)
+	require.NoError(t, err)
+	require.Len(t, anchors, 1)
+	assert.Equal(t, supporting.Id, anchors[0].GetRuntimeId())
+	assert.Equal(t, keyHex, anchors[0].GetKeyId())
+	assert.Equal(t, keyHex, anchors[0].GetPublicKeyHex())
+	assert.Empty(t, anchors[0].GetExportSha256())
+}
+
+func TestConformanceConsensusAnchorsRejectsInvalidEnrollmentKeys(t *testing.T) {
+	for _, fields := range [][2]string{{"invalid", ""}, {"", "invalid"}, {"invalid", "invalid"}} {
+		doc := conformanceTestOutboundDocument()
+		doc.Id = "supporting"
+		doc.ActuatorKeyId, doc.ActuatorPublicKey = fields[0], fields[1]
+		_, err := conformanceConsensusAnchors([]*operatorv1.OperatorDocument{doc}, conformanceTestOperatorID)
+		require.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
+	}
 }

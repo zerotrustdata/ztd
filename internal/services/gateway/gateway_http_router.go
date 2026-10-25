@@ -174,9 +174,11 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 
 	// Rate-limited governance envelope
 	govEnvMux := http.NewServeMux()
+	govEnvMux.HandleFunc(constants.APIPaths.GovernanceDeliberations, h.governanceController.handleGovernanceDeliberation)
 	govEnvMux.HandleFunc(constants.APIPaths.GovernanceEnvelopes, h.governanceController.handleGovernanceEnvelope)
 	govEnvHandler := h.rateLimitMiddleware(govEnvMux)
 	mux.Handle(constants.APIPaths.GovernanceEnvelopes, govEnvHandler)
+	mux.Handle(constants.APIPaths.GovernanceDeliberations, govEnvHandler)
 
 	mux.HandleFunc(constants.APIPaths.AuditEventReceipts, h.auditController.handleAuditEventReceipts)
 	mux.HandleFunc(constants.APIPaths.AuditEventReceiptsExport, h.auditController.handleAuditEventReceiptsExport)

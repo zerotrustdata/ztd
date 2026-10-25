@@ -151,6 +151,11 @@ message GovernanceEnvelope {
   string system_fingerprint = 18;
   string tenant_id = 23;
   string binding_persona = 24;
+  // Optional evaluation display correlation, independent of investigation/task
+  // scope. Both fields are required to associate public activity with an
+  // assignment. Like other application context, these are not authorization.
+  string evaluation_run_id = 28;
+  string evaluation_assignment_id = 29;
 
   // Gateway governance posture at envelope construction time (doctrine,
   // consensus, ratify, notary). Set by the gateway; the operator reads it here at

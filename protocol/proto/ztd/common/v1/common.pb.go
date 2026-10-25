@@ -719,6 +719,11 @@ type GovernanceEnvelope struct {
 	SystemFingerprint string `protobuf:"bytes,18,opt,name=system_fingerprint,json=systemFingerprint,proto3" json:"system_fingerprint,omitempty"`
 	TenantId          string `protobuf:"bytes,23,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	BindingPersona    string `protobuf:"bytes,24,opt,name=binding_persona,json=bindingPersona,proto3" json:"binding_persona,omitempty"`
+	// Optional evaluation display correlation, independent of investigation/task
+	// scope. Both fields are required to associate public activity with an
+	// assignment. Like other application context, these are not authorization.
+	EvaluationRunId        string `protobuf:"bytes,28,opt,name=evaluation_run_id,json=evaluationRunId,proto3" json:"evaluation_run_id,omitempty"`
+	EvaluationAssignmentId string `protobuf:"bytes,29,opt,name=evaluation_assignment_id,json=evaluationAssignmentId,proto3" json:"evaluation_assignment_id,omitempty"`
 	// Gateway governance posture at envelope construction time (doctrine,
 	// consensus, ratify, notary). Set by the gateway; the operator reads it here at
 	// L4 verification time instead of from out-of-band config. Not included
@@ -936,6 +941,20 @@ func (x *GovernanceEnvelope) GetTenantId() string {
 func (x *GovernanceEnvelope) GetBindingPersona() string {
 	if x != nil {
 		return x.BindingPersona
+	}
+	return ""
+}
+
+func (x *GovernanceEnvelope) GetEvaluationRunId() string {
+	if x != nil {
+		return x.EvaluationRunId
+	}
+	return ""
+}
+
+func (x *GovernanceEnvelope) GetEvaluationAssignmentId() string {
+	if x != nil {
+		return x.EvaluationAssignmentId
 	}
 	return ""
 }
@@ -1700,7 +1719,7 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x12GovernanceMetadata\x12)\n" +
 	"\x02l1\x18\x01 \x01(\v2\x19.ztd.common.v1.L1MetadataR\x02l1\x12)\n" +
 	"\x02l2\x18\x02 \x01(\v2\x19.ztd.common.v1.L2MetadataR\x02l2\x12)\n" +
-	"\x02l3\x18\x03 \x01(\v2\x19.ztd.common.v1.L3MetadataR\x02l3\"\xcf\b\n" +
+	"\x02l3\x18\x03 \x01(\v2\x19.ztd.common.v1.L3MetadataR\x02l3\"\xb5\t\n" +
 	"\x12GovernanceEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x129\n" +
@@ -1735,7 +1754,9 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\atask_id\x18\x11 \x01(\tR\x06taskId\x12-\n" +
 	"\x12system_fingerprint\x18\x12 \x01(\tR\x11systemFingerprint\x12\x1b\n" +
 	"\ttenant_id\x18\x17 \x01(\tR\btenantId\x12'\n" +
-	"\x0fbinding_persona\x18\x18 \x01(\tR\x0ebindingPersona\x12\x18\n" +
+	"\x0fbinding_persona\x18\x18 \x01(\tR\x0ebindingPersona\x12*\n" +
+	"\x11evaluation_run_id\x18\x1c \x01(\tR\x0fevaluationRunId\x128\n" +
+	"\x18evaluation_assignment_id\x18\x1d \x01(\tR\x16evaluationAssignmentId\x12\x18\n" +
 	"\aposture\x18\x1b \x01(\tR\aposture\"\x81\x01\n" +
 	"\x1ePlatformEnrollmentFingerprints\x12\x10\n" +
 	"\x03app\x18\x01 \x01(\tR\x03app\x12\x1a\n" +

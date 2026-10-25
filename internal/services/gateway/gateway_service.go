@@ -961,6 +961,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Logger:      logger,
 			Responder:   ls.responder,
 			EnvProc:     envProc,
+			Deliberator: ls.tribunalConsensus,
 			CLISessions: cliSessionSvc,
 		},
 		MCPControllerDeps: MCPControllerDeps{

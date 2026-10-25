@@ -300,6 +300,18 @@ func TestRunRecordsFilledHeaderAndAnchors(t *testing.T) {
 	assert.Len(t, record.GetDoctrineCorpusSha256(), 64)
 }
 
+func TestRunPinsSupportingConsensusRuntimeSeparatelyFromExecutors(t *testing.T) {
+	h := newHarness(t)
+	cfg := h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, false)
+	supporting := oracletest.NewSigner(t).Anchor("inference-operator")
+	cfg.ConsensusAnchors = []*evalv1.ConformanceAnchor{supporting}
+	record, err := Run(context.Background(), cfg)
+	require.NoError(t, err)
+	require.Len(t, record.GetAnchors(), 2)
+	require.Len(t, record.GetConsensusAnchors(), 1)
+	assert.Equal(t, supporting, record.GetConsensusAnchors()[0])
+}
+
 // actuatorExportPath is the actuator export under a runtime root.
 func actuatorExportPath() string {
 	return filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)

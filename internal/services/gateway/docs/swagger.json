@@ -893,6 +893,67 @@
                 }
             }
         },
+        "/api/v1/governance/deliberations": {
+            "post": {
+                "description": "Authenticates an envelope and returns its Tribunal L2 votes and signed vote inference evidence. Does not execute the subject or mint L3 proofs.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "governance"
+                ],
+                "summary": "Deliberate with the internal Tribunal",
+                "parameters": [
+                    {
+                        "description": "GovernanceEnvelope (protojson, without posture)",
+                        "name": "envelope",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.GovernanceDeliberationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/governance/envelopes": {
             "post": {
                 "description": "Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,\nL4 warden, L5 actuator), and returns the signed EventReceipt. Transport-to-envelope\nidentity binding is enforced via mTLS certificate URI SAN matching.",
@@ -2532,6 +2593,302 @@
         }
     },
     "definitions": {
+        "commonv1.Component": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "Component_COMPONENT_UNSPECIFIED",
+                "Component_COMPONENT_AGENT",
+                "Component_COMPONENT_ZTDO",
+                "Component_COMPONENT_CLIENT"
+            ]
+        },
+        "commonv1.GovernanceEnvelope": {
+            "type": "object",
+            "properties": {
+                "acting_app_id": {
+                    "description": "The app/tool acting on behalf of the user (delegate)",
+                    "type": "string"
+                },
+                "action_type": {
+                    "description": "action_type is the UAP-compatible action classification (e.g., EXECUTE_BASH, FILE_EDIT).\nIncluded in the transaction hash canonicalization.",
+                    "type": "string"
+                },
+                "binding_persona": {
+                    "type": "string"
+                },
+                "case_id": {
+                    "description": "Application Context",
+                    "type": "string"
+                },
+                "cli_session_id": {
+                    "type": "string"
+                },
+                "evaluation_assignment_id": {
+                    "type": "string"
+                },
+                "evaluation_run_id": {
+                    "description": "Optional evaluation display correlation, independent of investigation/task\nscope. Both fields are required to associate public activity with an\nassignment. Like other application context, these are not authorization.",
+                    "type": "string"
+                },
+                "event_type": {
+                    "description": "Intent \u0026 Payload\nevent_type is the canonical pub/sub routing key from protocol/constants/events.json\n(e.g., \"ztd.v1.operator.command.requested\", \"ztd.v1.operator.heartbeat.sent\").\nDistinct from action_type: event_type routes the message, action_type classifies the intent.",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "$ref": "#/definitions/timestamppb.Timestamp"
+                },
+                "governance": {
+                    "description": "Governance Proofs",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/commonv1.GovernanceMetadata"
+                        }
+                    ]
+                },
+                "id": {
+                    "description": "Identity \u0026 Metadata",
+                    "type": "string"
+                },
+                "intent_data": {
+                    "description": "Structured JSON-first view",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/structpb.Struct"
+                        }
+                    ]
+                },
+                "investigation_id": {
+                    "type": "string"
+                },
+                "nonce": {
+                    "type": "string"
+                },
+                "operator_id": {
+                    "type": "string"
+                },
+                "operator_session_id": {
+                    "type": "string"
+                },
+                "payload": {
+                    "description": "Raw protobuf payload",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "posture": {
+                    "description": "Gateway governance posture at envelope construction time (doctrine,\nconsensus, ratify, notary). Set by the gateway; the operator reads it here at\nL4 verification time instead of from out-of-band config. Not included\nin the transaction hash — it is policy metadata, not intent.",
+                    "type": "string"
+                },
+                "protocol_version": {
+                    "description": "UAP-compatible protocol version (e.g., \"1.0\")",
+                    "type": "string"
+                },
+                "requestor_user_id": {
+                    "description": "The human user who authorized the action (delegator)",
+                    "type": "string"
+                },
+                "source_component": {
+                    "$ref": "#/definitions/commonv1.Component"
+                },
+                "state_merkle_root": {
+                    "description": "State \u0026 Replay Protection",
+                    "type": "string"
+                },
+                "system_fingerprint": {
+                    "type": "string"
+                },
+                "target_resource": {
+                    "description": "UAP-compatible target resource",
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "$ref": "#/definitions/timestamppb.Timestamp"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "web_session_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "commonv1.GovernanceMetadata": {
+            "type": "object",
+            "properties": {
+                "l1": {
+                    "$ref": "#/definitions/commonv1.L1Metadata"
+                },
+                "l2": {
+                    "$ref": "#/definitions/commonv1.L2Metadata"
+                },
+                "l3": {
+                    "$ref": "#/definitions/commonv1.L3Metadata"
+                }
+            }
+        },
+        "commonv1.L1Metadata": {
+            "type": "object",
+            "properties": {
+                "validated": {
+                    "type": "boolean"
+                },
+                "violations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "commonv1.L2Metadata": {
+            "type": "object",
+            "properties": {
+                "consensus_set_id": {
+                    "description": "ID of the consensus set that produced this vote set",
+                    "type": "string"
+                },
+                "votes": {
+                    "description": "independent member votes",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/commonv1.L2Vote"
+                    }
+                }
+            }
+        },
+        "commonv1.L2Vote": {
+            "type": "object",
+            "properties": {
+                "consensus_signature": {
+                    "description": "ed25519 over \"\u003ctransaction_hash\u003e|\u003cdecision\u003e\"",
+                    "type": "string"
+                },
+                "decision": {
+                    "description": "member's safe (true) / unsafe (false) vote",
+                    "type": "boolean"
+                },
+                "signer_key_id": {
+                    "description": "member appID == TrustedSigner.ID",
+                    "type": "string"
+                }
+            }
+        },
+        "commonv1.L3Metadata": {
+            "type": "object",
+            "properties": {
+                "denied": {
+                    "description": "The human declined the suspended transaction. L4 rejects a denied\nenvelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so\nthe deny is an Operator-signed rejection receipt. A deny can only stop\nexecution, so it needs no proof.",
+                    "type": "boolean"
+                },
+                "pending_dispatch": {
+                    "description": "Gateway-owned suspension provenance. A waiting dispatch must receive the\ndecision in-process; after restart/cancellation it must never resume alone.",
+                    "type": "boolean"
+                },
+                "proof": {
+                    "description": "WebAuthn or CLI/mTLS proof",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/commonv1.L3Proof"
+                        }
+                    ]
+                }
+            }
+        },
+        "commonv1.L3Proof": {
+            "type": "object",
+            "properties": {
+                "authenticator_data": {
+                    "description": "WebAuthn: authenticator data bytes (base64)",
+                    "type": "string"
+                },
+                "cli_certificate_der": {
+                    "description": "CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain)",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "cli_intermediates_der": {
+                    "description": "Untrusted chain-building hints; only the Operator's pinned CA pool is trusted.",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    }
+                },
+                "cli_signature": {
+                    "description": "CLI approval: ECDSA P-256 signature over the domain-separated transaction hash",
+                    "type": "string"
+                },
+                "client_data_json": {
+                    "description": "WebAuthn: client data JSON from the authenticator assertion",
+                    "type": "string"
+                },
+                "credential_id": {
+                    "description": "WebAuthn: credential ID used for the assertion",
+                    "type": "string"
+                },
+                "mtls_cert_fingerprint": {
+                    "description": "CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication",
+                    "type": "string"
+                },
+                "passkey_context": {
+                    "description": "Gateway-sourced registration context for independent outbound verification.\nContext is trusted only on the authenticated Gateway command channel.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/commonv1.PasskeyVerificationContext"
+                        }
+                    ]
+                },
+                "signature": {
+                    "description": "WebAuthn: signature over the authenticator assertion",
+                    "type": "string"
+                }
+            }
+        },
+        "commonv1.PasskeyVerificationContext": {
+            "type": "object",
+            "properties": {
+                "allowed_origins": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "credential_id": {
+                    "type": "string"
+                },
+                "public_key_cose": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "rp_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "constants.ActionType": {
             "type": "string",
             "enum": [
@@ -4273,6 +4630,12 @@
                 "cli_session_id": {
                     "type": "string"
                 },
+                "evaluation_assignment_id": {
+                    "type": "string"
+                },
+                "evaluation_run_id": {
+                    "type": "string"
+                },
                 "event_type": {
                     "type": "string"
                 },
@@ -5574,6 +5937,20 @@
                 "ExecutionStatus_EXECUTION_STATUS_CANCELLED",
                 "ExecutionStatus_EXECUTION_STATUS_TIMEOUT"
             ]
+        },
+        "operatorv1.GovernanceDeliberationResult": {
+            "type": "object",
+            "properties": {
+                "consensus_inferences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ConsensusVoteInference"
+                    }
+                },
+                "envelope": {
+                    "$ref": "#/definitions/commonv1.GovernanceEnvelope"
+                }
+            }
         },
         "operatorv1.GovernanceRejection": {
             "type": "object",
@@ -7108,6 +7485,39 @@
                 "VerificationDiscouraged"
             ]
         },
+        "structpb.Struct": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "description": "Unordered map of dynamically typed values.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/structpb.Value"
+                    }
+                }
+            }
+        },
+        "structpb.Value": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "description": "The kind of value.\n\nTypes that are valid to be assigned to Kind:\n\n\t*Value_NullValue\n\t*Value_NumberValue\n\t*Value_StringValue\n\t*Value_BoolValue\n\t*Value_StructValue\n\t*Value_ListValue"
+                }
+            }
+        },
+        "timestamppb.Timestamp": {
+            "type": "object",
+            "properties": {
+                "nanos": {
+                    "description": "Non-negative fractions of a second at nanosecond resolution. This field is\nthe nanosecond portion of the duration, not an alternative to seconds.\nNegative second values with fractions must still have non-negative nanos\nvalues that count forward in time. Must be between 0 and 999,999,999\ninclusive.",
+                    "type": "integer"
+                },
+                "seconds": {
+                    "description": "Represents seconds of UTC time since Unix epoch 1970-01-01T00:00:00Z. Must\nbe between -62135596800 and 253402300799 inclusive (which corresponds to\n0001-01-01T00:00:00Z to 9999-12-31T23:59:59Z).",
+                    "type": "integer"
+                }
+            }
+        },
         "tribunalv1.TribunalIntentRequest": {
             "type": "object",
             "properties": {
@@ -7199,6 +7609,13 @@
                 },
                 "commandOutcome": {
                     "description": "The governed MCP_CALL outcome of an approved run_shell_command.\n\nTypes that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
+                },
+                "consensus_inferences": {
+                    "description": "All command admission rounds, including revised or failed contextual reviews.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ConsensusVoteInference"
+                    }
                 },
                 "member_calls": {
                     "description": "member_calls are the governed member inferences, in order.",

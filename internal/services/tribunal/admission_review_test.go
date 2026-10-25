@@ -10,6 +10,7 @@ package tribunal
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,4 +251,17 @@ func TestReviewAdmittedFailsClosed(t *testing.T) {
 			assert.Len(t, tc.dispatcher.requests, tc.requests)
 		})
 	}
+}
+
+func TestReviewAdmittedOmitsInferenceTelemetryFromAuditorPrompt(t *testing.T) {
+	dispatcher := &fakeMemberDispatcher{audit: []string{approve}}
+	votes := admittedVoteInference()
+	votes[0].Result.Parts = append(votes[0].Result.Parts, &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: strings.Repeat("private-reasoning-token", 20000)}})
+	original := proto.Clone(votes[0])
+	require.NoError(t, admittedService(t, dispatcher).ReviewAdmitted(context.Background(), admittedRequest(), admittedResult(), admittedEnvelope(admittedL3Approval(), admittedVote()), votes))
+	prompt := messageText(dispatcher.requests[0], operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER)
+	assert.Less(t, len(prompt), 256<<10, "transport telemetry must not overflow the inference message bound")
+	assert.Contains(t, prompt, admittedVoteReason)
+	assert.NotContains(t, prompt, "private-reasoning-token")
+	assert.True(t, proto.Equal(original, votes[0]), "recorded evidence remains complete")
 }
