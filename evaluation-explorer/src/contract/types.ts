@@ -541,6 +541,7 @@ export interface RunMetricValue {
 }
 
 export interface EvaluationHeadlineMetrics {
+  /** Run success: completed / all terminal outcomes, including provider errors. */
   pass_rate?: RunMetricValue | MetricValue<number>;
   latency_p50_ms?: RunMetricValue | MetricValue<number>;
   output_throughput_p50_tokens_per_second?: RunMetricValue;

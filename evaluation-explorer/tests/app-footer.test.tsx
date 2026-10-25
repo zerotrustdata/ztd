@@ -21,18 +21,20 @@ describe('AppFooter', () => {
     expect(screen.getByRole('link', { name: /Schema/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Methodology' })).toHaveAttribute('href', '/methodology');
     expect(screen.getByRole('link', { name: 'Sponsors' })).toHaveAttribute('href', '/sponsors');
-    expect(screen.queryByRole('link', { name: /Proof manifest/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Proof head/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Proof catalog/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Proof segments/ })).not.toBeInTheDocument();
   });
 
-  it('offers the proof manifest and full catalog as links once proofs are published', async () => {
+  it('offers the proof head, catalog, and signed segments as links once proofs are published', async () => {
     evalStore.initBootstrap({
       protocol_version: '1.0.0', source_id: 'source-a', high_water_sequence: 0, feed_chain_hash: '0'.repeat(64),
       withdrawal_digest: '0'.repeat(64), batch_count: 0, generated_at: '2026-09-20T00:00:00Z', freshness: 'active',
     }, [], 3);
     render(<MemoryRouter><AppFooter /></MemoryRouter>);
-    expect(await screen.findByRole('link', { name: /Proof catalog/ })).toHaveAttribute('href', 'https://mirror.example/proof-catalog');
-    expect(screen.getByRole('link', { name: /Proof manifest/ })).toHaveAttribute('href', 'https://mirror.example/proof-manifest');
+    expect(await screen.findByRole('link', { name: /Proof catalog/ })).toHaveAttribute('href', 'https://mirror.example/proof-catalog?source=source-a');
+    expect(screen.getByRole('link', { name: /Proof head/ })).toHaveAttribute('href', 'https://mirror.example/proof-head?source=source-a');
+    expect(screen.getByRole('link', { name: /Proof segments/ })).toHaveAttribute('href', 'https://mirror.example/proof-segments?source=source-a');
     evalStore.loadFixtures([], []);
   });
 });

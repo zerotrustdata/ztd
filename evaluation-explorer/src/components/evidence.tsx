@@ -93,8 +93,9 @@ export function PassRateBar({ interval }: { interval: ConfidenceInterval | undef
   </div>;
 }
 
-export function OutcomeBreakdown({ outcomes }: { outcomes: Partial<Record<TerminalStatus, number>> | undefined }) {
+export function OutcomeBreakdown({ outcomes, scope = 'model' }: { outcomes: Partial<Record<TerminalStatus, number>> | undefined; scope?: 'model' | 'run' }) {
   const breakdown = terminalOutcomeBreakdown(outcomes);
+  const note = scope === 'run' ? 'Included in the run pass-rate total; no model verdict.' : NON_VERDICT_NOTE;
   if (!breakdown) return <UnavailableValue reason="terminal outcomes not published" />;
   if (breakdown.total === 0) return <span>No terminal outcomes</span>;
   return <div className="outcome-breakdown" data-testid="outcome-breakdown">
@@ -104,6 +105,6 @@ export function OutcomeBreakdown({ outcomes }: { outcomes: Partial<Record<Termin
     <ul className="outcome-legend">
       {[...breakdown.verdicts, ...breakdown.nonVerdicts].map(({ status, count, tone }) => <li key={status}><ToneDot tone={tone} />{status.replace(/_/g, ' ')}: {formatNumber(count)}</li>)}
     </ul>
-    {breakdown.nonVerdictCount > 0 ? <p className="panel-note" title={NON_VERDICT_NOTE}>{formatNumber(breakdown.nonVerdictCount)} non-verdict · {NON_VERDICT_NOTE}</p> : null}
+    {breakdown.nonVerdictCount > 0 ? <p className="panel-note" title={note}>{formatNumber(breakdown.nonVerdictCount)} non-verdict · {note}</p> : null}
   </div>;
 }

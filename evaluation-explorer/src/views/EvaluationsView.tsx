@@ -44,6 +44,7 @@ import {
 } from './derived';
 import { OutcomeBreakdown, PanelSection, TonePill } from '../components/evidence';
 import { useSelectedRelease } from '../state/dataset';
+import { evaluationPassRate } from '../utils/run-metrics';
 
 type EvaluationsTab = 'runs' | 'campaigns' | 'formations';
 type FormationKindFilter = 'all' | 'curated' | 'heterogeneous';
@@ -194,7 +195,7 @@ export function EvaluationsView() {
               </p>
             </>
           ) : (
-            <OutcomeBreakdown outcomes={row.original.terminal_outcomes} />
+            <OutcomeBreakdown outcomes={row.original.terminal_outcomes} scope="run" />
           ),
       },
       {
@@ -213,11 +214,11 @@ export function EvaluationsView() {
       {
         id: 'pass_rate',
         header: 'Pass rate',
-        accessorFn: (row: EvaluationSummary) => row.headline_metrics.pass_rate?.value ?? -1,
-        cell: ({ row }) =>
-          row.original.headline_metrics.pass_rate?.value !== undefined
-            ? formatPercent(row.original.headline_metrics.pass_rate.value)
-            : '—',
+        accessorFn: (row: EvaluationSummary) => evaluationPassRate(row)?.value ?? -1,
+        cell: ({ row }) => {
+          const rate = evaluationPassRate(row.original)?.value;
+          return rate !== undefined ? formatPercent(rate) : '—';
+        },
       },
       {
         id: 'quality',

@@ -83,9 +83,9 @@ describe('EvaluationsView', () => {
   it('sorts campaign progress and numeric pass rates while preserving filtered run links', () => {
     evalStore.loadFixtures([
       { ...evaluation('ds-alpha', 'run-alpha', '2026-10-06T10:00:00Z'), campaign_id: 'Alpha', assignment_total: 100,
-        assignment_completed: 90, headline_metrics: { pass_rate: { value: 0.95 } } },
+        assignment_completed: 90, terminal_outcomes: { ...evaluation('', '', '').terminal_outcomes, completed: 90, model_failed: 5 }, headline_metrics: { pass_rate: { value: 0.95 } } },
       { ...evaluation('ds-beta', 'run-beta', '2026-10-06T12:00:00Z'), campaign_id: 'Beta', assignment_total: 10,
-        assignment_completed: 2, headline_metrics: { pass_rate: { value: 0.8 } } },
+        assignment_completed: 2, terminal_outcomes: { ...evaluation('', '', '').terminal_outcomes, completed: 2, model_failed: 1 }, headline_metrics: { pass_rate: { value: 0.8 } } },
     ] as EvaluationSummary[], []);
     render(<MemoryRouter initialEntries={['/?release=all&view=campaigns']}><EvaluationsView /></MemoryRouter>);
     const table = screen.getByRole('table', { name: 'Campaigns' });
@@ -109,6 +109,34 @@ describe('EvaluationsView', () => {
     const passRateSort = within(runs).getByRole('columnheader', { name: /Pass rate/ }).getAttribute('aria-sort');
     const runOrder = within(runs).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent);
     expect(runOrder).toEqual(passRateSort === 'ascending' ? ['run-beta', 'run-alpha'] : ['run-alpha', 'run-beta']);
+  });
+
+  it('includes provider and other non-verdict outcomes in run pass rates and sorting', () => {
+    const providerRun: EvaluationSummary = {
+      ...evaluation('ds-provider', 'run-provider', '2026-10-25T10:00:00Z'),
+      campaign_id: 'Provider failures', lifecycle_state: 'completed',
+      assignment_total: 41, assignment_completed: 17, assignment_failed: 24,
+      terminal_outcomes: { completed: 17, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 24, execution_failed: 0, escalated: 0 },
+      headline_metrics: { pass_rate: { value: 1 } },
+    };
+    const evidenceRun: EvaluationSummary = {
+      ...providerRun, dataset_id: 'ds-evidence', run_id: 'run-evidence', campaign_id: 'Evidence failures',
+      assignment_completed: 39, assignment_failed: 2,
+      terminal_outcomes: { ...providerRun.terminal_outcomes, completed: 39, provider_failed: 0, invalid_evidence: 2 },
+    };
+    evalStore.loadFixtures([providerRun, evidenceRun], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
+    const table = screen.getByRole('table', { name: 'Model campaigns' });
+    expect(screen.getByRole('link', { name: 'run-provider' }).closest('tr')).toHaveTextContent('41.5%');
+    expect(screen.getAllByText(/Included in the run pass-rate total/)).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'run-evidence' }).closest('tr')).toHaveTextContent('95.1%');
+    fireEvent.click(within(table).getByRole('button', { name: 'Sort by Pass rate' }));
+    const direction = within(table).getByRole('columnheader', { name: /Pass rate/ }).getAttribute('aria-sort');
+    expect(within(table).getAllByRole('row').slice(1).map((row) => within(row).getByRole('link').textContent))
+      .toEqual(direction === 'ascending' ? ['run-provider', 'run-evidence'] : ['run-evidence', 'run-provider']);
+    fireEvent.click(screen.getByRole('tab', { name: /Campaigns/ }));
+    expect(screen.getByRole('link', { name: 'Provider failures' }).closest('tr')).toHaveTextContent('41.5%');
+    expect(screen.getByRole('link', { name: 'Evidence failures' }).closest('tr')).toHaveTextContent('95.1%');
   });
 
   it('sorts formations by numeric VRAM, searches models, and keeps tables on mobile', () => {
@@ -244,5 +272,19 @@ describe('EvaluationsView', () => {
     expect(screen.queryByTestId('metric-correlated-failure-rate')).not.toBeInTheDocument();
     expect(screen.getAllByText('Not yet verified')).toHaveLength(2);
     expect(screen.queryByText('not_run')).not.toBeInTheDocument();
+  });
+
+  it('shows the total pass rate and coverage on historical run details', () => {
+    const summary = evaluation('ds-total', 'run-total', '2026-10-25T10:00:00Z');
+    summary.terminal_outcomes = { ...summary.terminal_outcomes, completed: 17, provider_failed: 24 };
+    summary.headline_metrics = { pass_rate: { value: 1 } };
+    evalStore.loadFixtures([summary], []);
+    render(
+      <MemoryRouter initialEntries={['/evaluations/ds-total/run-total']}>
+        <Routes><Route path="/evaluations/:datasetId/:runId" element={<EvaluationDetailView />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('metric-pass-rate')).toHaveTextContent('41.5%');
+    expect(screen.getByTestId('metric-pass-rate')).toHaveTextContent('41 observed / 41 eligible');
   });
 });

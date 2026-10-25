@@ -668,7 +668,7 @@ func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux.Handle("/history", m.withGzip(http.HandlerFunc(m.handleHistory)))
 	mux.HandleFunc("/stream", m.handleStream)
 	mux.Handle("/proof-catalog", m.withGzip(http.HandlerFunc(m.handleProofCatalog)))
-	mux.Handle("/proof-manifest", m.withGzip(http.HandlerFunc(m.handleProofManifest)))
+	mux.Handle("/proof-head", m.withGzip(http.HandlerFunc(m.handleProofHead)))
 	mux.Handle("/proof-segments", m.withGzip(http.HandlerFunc(m.handleProofSegments)))
 	mux.HandleFunc("/proofs/", m.handleProofDownload)
 	return mux
@@ -701,7 +701,7 @@ func (m *PublicMirrorServer) withGzip(next http.Handler) http.Handler {
 
 func publicMirrorAnonymousReadPath(requestPath string) bool {
 	switch requestPath {
-	case "/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-manifest", "/proof-segments":
+	case "/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-head", "/proof-segments":
 		return true
 	default:
 		return strings.HasPrefix(requestPath, "/proofs/")
@@ -1726,31 +1726,31 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-// handleProofManifest handles GET /proof-manifest — the proof root manifest.
-func (m *PublicMirrorServer) handleProofManifest(w http.ResponseWriter, r *http.Request) {
+// handleProofHead handles GET /proof-head without loading the artifact catalog.
+func (m *PublicMirrorServer) handleProofHead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	sourceID, ok, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: resolve proof manifest source", err)
+		m.writeStoreUnavailable(w, "mirror: resolve proof head source", err)
 		return
 	}
 	if !ok {
-		http.Error(w, "proof manifest not found", http.StatusNotFound)
+		http.Error(w, "proof head not found", http.StatusNotFound)
 		return
 	}
-	manifest, found, err := m.store.ProofManifest(r.Context(), sourceID)
+	head, found, err := m.store.ProofHead(r.Context(), sourceID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read proof manifest", err)
+		m.writeStoreUnavailable(w, "mirror: read proof head", err)
 		return
 	}
 	if !found {
-		http.Error(w, "proof manifest not found", http.StatusNotFound)
+		http.Error(w, "proof head not found", http.StatusNotFound)
 		return
 	}
-	m.writeJSON(w, http.StatusOK, manifest)
+	m.writeJSON(w, http.StatusOK, head)
 }
 
 // handleProofSegments handles GET /proof-segments — the list of chained proof manifest segments.

@@ -37,7 +37,7 @@ func TestCollectRunAggregateState_UnavailableObservationsDoNotLowerModelScores(t
 	assert.Equal(t, uint32(3), state.Terminal)
 	assert.Equal(t, uint32(2), state.Judged)
 	require.NotNil(t, state.Headline.PassRate.Value)
-	assert.InDelta(t, 0.5, *state.Headline.PassRate.Value, 0)
+	assert.InDelta(t, 1.0/3, *state.Headline.PassRate.Value, 0)
 	model := buildModelSummaryRecord("dataset", "2026-10-23T00:00:00Z", state.VariantRoles["model:primary"], CampaignRelease{})
 	require.NotNil(t, model.PassRate)
 	assert.Equal(t, uint32(2), model.PassRate.Denominator)
@@ -46,7 +46,10 @@ func TestCollectRunAggregateState_UnavailableObservationsDoNotLowerModelScores(t
 	state, err = CollectRunAggregateState(assignments[2:], results)
 	require.NoError(t, err)
 	assert.Zero(t, state.Judged)
-	assert.Nil(t, state.Headline.PassRate.Value, "missing evidence cannot become an observed zero score")
+	require.NotNil(t, state.Headline.PassRate.Value)
+	assert.Zero(t, *state.Headline.PassRate.Value, "invalid evidence is an unsuccessful run outcome")
+	model = buildModelSummaryRecord("dataset", "2026-10-23T00:00:00Z", state.VariantRoles["model:primary"], CampaignRelease{})
+	assert.Nil(t, model.PassRate, "missing evidence cannot become an observed model score")
 }
 
 func TestFinalResponseDiagnosis_GradesClaimsInsteadOfIncidentalWording(t *testing.T) {

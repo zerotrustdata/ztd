@@ -31,7 +31,7 @@ This guide covers the Gateway-owned anonymous public mirror and evaluation explo
 The Gateway-owned public spectator runs inside the Gateway process when started with `--public-spectator` (default). One in-process `PublicSpectatorRuntime` owns:
 
 - **Private ingest** (`--public-spectator-private-listen`, default `127.0.0.1:8081`): authenticated publisher ingest, proof ingest, replacement-key registration.
-- **Public read/SSE** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, SSE, proof catalog/manifest, content-addressed proof downloads.
+- **Public read/SSE** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, SSE, proof catalog, proof head, signed proof segments, and content-addressed proof downloads.
 - **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): dedicated explorer listener that reads the local public listener API. The public listener also serves the explorer assets (`GET` and `HEAD`), so the public origin hosts the explorer.
 
 Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. If generation state exists without publisher configuration, startup fails closed with `ErrPublicFeedOrphanedGeneration` instead of adopting that state. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
@@ -87,10 +87,11 @@ curl -fsS http://127.0.0.1:8082/bootstrap
 curl -fsS "http://127.0.0.1:8082/history?source=${SOURCE_ID}&cursor=0&limit=20&kind=catalog_snapshot"
 curl -fsS "http://127.0.0.1:8082/snapshot?source=${SOURCE_ID}"
 curl -fsS http://127.0.0.1:8082/proof-catalog
-curl -fsS http://127.0.0.1:8082/proof-manifest
+curl -fsS "http://127.0.0.1:8082/proof-head?source=${SOURCE_ID}"
+curl -fsS "http://127.0.0.1:8082/proof-segments?source=${SOURCE_ID}"
 ```
 
-Public clients omit credentials.
+Public clients omit credentials. `/proof-head` returns only the latest signing header; `/proof-catalog` lists active artifacts, and `/proof-segments` supplies their signed history. The Evaluation Explorer footer links to all three for the selected source. See the [offline verification procedure](../architecture/public_spectator.md#offline-proof-verification) for verifying downloaded evidence.
 
 ## Create the Cloudflare tunnel
 
@@ -105,7 +106,7 @@ Start the Gateway with `--public-base-url https://opendevops.ai` so the embedded
 
 ## External acceptance
 
-After starting the tunnel, verify HTTPS, CORS, bounded reads, rate limiting, replayable SSE, proof catalog, proof manifest, and content-addressed proof download from an external client.
+After starting the tunnel, verify HTTPS, CORS, bounded reads, rate limiting, replayable SSE, proof catalog, proof head, signed proof segments, and content-addressed proof download from an external client.
 
 Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. The public origin serves only the anonymous read allowlist and explorer assets. A `GET` to a path outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
 

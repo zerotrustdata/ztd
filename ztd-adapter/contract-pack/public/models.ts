@@ -84,6 +84,22 @@ export interface PublicProofManifest {
   signature: string;
 }
 
+export interface PublicProofHead {
+  schema_version: string;
+  source_id: string;
+  segment_index: number;
+  proof_root_sha256: string;
+  campaign_id: string;
+  campaign_revision: string;
+  verified_index_generation_hash: string;
+  verification_ok: boolean;
+  artifact_count: number;
+  verifier_instructions: string;
+  generated_at: string;
+  signing_key_id: string;
+  signature: string;
+}
+
 export interface PublicProofManifestSegment {
   schema_version: string;
   source_id: string;
@@ -211,6 +227,25 @@ export function isPublicProofManifest(value: unknown): value is PublicProofManif
   if (!(typeof v.verification_ok === 'boolean')) return false; /* verification_ok */
   if (!(typeof v.artifact_count === 'number' && Number.isInteger(v.artifact_count))) return false; /* artifact_count */
   if (!(Array.isArray(v.artifacts) && v.artifacts.every((x) => isPublicProofCatalogEntry(x)))) return false; /* artifacts */
+  if (!(typeof v.verifier_instructions === 'string')) return false; /* verifier_instructions */
+  if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
+  if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */
+  if (!(typeof v.signature === 'string')) return false; /* signature */
+  return true;
+}
+
+export function isPublicProofHead(value: unknown): value is PublicProofHead {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.schema_version === 'string')) return false; /* schema_version */
+  if (!(typeof v.source_id === 'string')) return false; /* source_id */
+  if (!(typeof v.segment_index === 'number' && Number.isInteger(v.segment_index))) return false; /* segment_index */
+  if (!(typeof v.proof_root_sha256 === 'string')) return false; /* proof_root_sha256 */
+  if (!(typeof v.campaign_id === 'string')) return false; /* campaign_id */
+  if (!(typeof v.campaign_revision === 'string')) return false; /* campaign_revision */
+  if (!(typeof v.verified_index_generation_hash === 'string')) return false; /* verified_index_generation_hash */
+  if (!(typeof v.verification_ok === 'boolean')) return false; /* verification_ok */
+  if (!(typeof v.artifact_count === 'number' && Number.isInteger(v.artifact_count))) return false; /* artifact_count */
   if (!(typeof v.verifier_instructions === 'string')) return false; /* verifier_instructions */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */

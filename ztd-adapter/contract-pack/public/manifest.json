@@ -34,19 +34,19 @@
     },
     {
       "path": "models.ts",
-      "sha256": "0235fb57be58544b1b20505d7aefec7b911116c5983594de4ba9ea5b8f8ad513"
+      "sha256": "994c200e7481f4335f2759a5278b6f45a8f3bbd0eb07c6115ac6e475a6da52e5"
     },
     {
       "path": "offline-verifier.md",
-      "sha256": "2b576f08da168c6375af7fcbe709994c825d73232a5ced1815b56921d04e8910"
+      "sha256": "3532ed7b2bfe5d188f2b5da150a441c5adf0e33cc553a5e165132d2df991a2c7"
     },
     {
       "path": "proof-schemas.json",
-      "sha256": "fcbdcd257df67f5a59a963785e6036239df5669df626e0403f5f93cd1b19064d"
+      "sha256": "847e9dd1fa174d437ccaebf7b7b7a9f0cbbf5ae81225971ddfa2b67c442cb9f5"
     },
     {
       "path": "public-read.openapi.json",
-      "sha256": "4f140acf144edd5170a1f9e76d54fc70256e67d471106ebbc271c2582f28068f"
+      "sha256": "451aed190446dcaa1ece5220932fbc1bd5be122aa8a48ed2c74237d636a7456c"
     },
     {
       "path": "README.md",

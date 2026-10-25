@@ -10,6 +10,8 @@ import descriptorUrl from '../contract/descriptor.json?url';
 /** Single-row footer: mirror transport endpoints, schema, and site links. */
 export function AppFooter() {
   const origin = useMirrorOrigin();
+  const sourceId = useStoreState((state) => state.sourceId);
+  const proofQuery = sourceId ? `?${new URLSearchParams({ source: sourceId })}` : '';
   const proofsPublished = useStoreState((state) => state.proofArtifactCount > 0);
   const external = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
@@ -25,8 +27,9 @@ export function AppFooter() {
             <a href={`${origin}/bootstrap`} {...external}>Bootstrap <code>JSON</code></a>
             {proofsPublished ? (
               <>
-                <a href={`${origin}/proof-manifest`} {...external}>Proof manifest <code>JSON</code></a>
-                <a href={`${origin}/proof-catalog`} {...external}>Proof catalog <code>JSON</code></a>
+                <a href={`${origin}/proof-head${proofQuery}`} {...external}>Proof head <code>JSON</code></a>
+                <a href={`${origin}/proof-catalog${proofQuery}`} {...external}>Proof catalog <code>JSON</code></a>
+                <a href={`${origin}/proof-segments${proofQuery}`} {...external}>Proof segments <code>JSON</code></a>
               </>
             ) : null}
             <a href={`${origin}/stream`} {...external}>Live updates <code>SSE</code></a>

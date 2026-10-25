@@ -53,6 +53,8 @@ describe('public spectator runtime boundary', () => {
     );
 
     await publicFetch('snapshot', '?source=deployment-a');
+    await publicFetch('proofHead', '?source=deployment-a');
+    expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/proof-head?source=deployment-a', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
     await publicFetch('proofSegments', '?source=deployment-a');
     expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/proof-segments?source=deployment-a', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
 

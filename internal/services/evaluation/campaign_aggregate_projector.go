@@ -176,9 +176,8 @@ type runAggregateState struct {
 	Scheduled  uint32
 	Terminal   uint32
 	// Judged counts terminal assignments that ended in a verdict on the model
-	// (completed or model_failed). It is the pass-rate denominator: a provider,
-	// harness, grader, escalation, policy, or stopped ending is terminal but
-	// says nothing about the model, so it never lowers the rate.
+	// (completed or model_failed). Model accuracy uses this denominator;
+	// run pass rates use Terminal so every unsuccessful outcome counts.
 	Judged uint32
 	Passed uint32
 	// Failed counts terminal assignments that ended in any failure outcome.
@@ -444,18 +443,18 @@ const (
 )
 
 // collectRunHeadlineMetrics derives typed pass-rate, latency p50, and output
-// throughput p50 aggregates from canonical persisted assignment results. Every
-// persisted terminal result containing scored model inference activity is an
-// eligible contributor; a contributor with missing or incomplete evidence
-// increments the unavailable count rather than being silently dropped.
+// throughput p50 aggregates from canonical persisted assignment results. Pass
+// rate counts every terminal assignment. Performance metrics use persisted
+// terminal results containing scored model inference activity; missing or
+// incomplete evidence increments their unavailable counts.
 func collectRunHeadlineMetrics(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, state *runAggregateState) (*runHeadlineMetrics, error) {
 	metrics := &runHeadlineMetrics{
-		PassRate:            runMetricValue{Unit: runMetricUnitRatio, Eligible: state.Judged, Observed: state.Judged},
+		PassRate:            runMetricValue{Unit: runMetricUnitRatio, Eligible: state.Terminal, Observed: state.Terminal},
 		LatencyP50MS:        runMetricValue{Unit: runMetricUnitMilliseconds},
 		OutputThroughputP50: runMetricValue{Unit: runMetricUnitTokensPerSecond},
 	}
-	if state.Judged > 0 {
-		value := float64(state.Passed) / float64(state.Judged)
+	if state.Terminal > 0 {
+		value := float64(state.Passed) / float64(state.Terminal)
 		metrics.PassRate.Value = &value
 	} else {
 		metrics.PassRate.UnavailableReason = evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE
@@ -1369,18 +1368,18 @@ func boundVerificationMetadataComplete(report *evalv1.EvaluationVerificationRepo
 }
 
 // headlineMetricsForState renders the collected run metrics; when the state
-// was not produced by CollectRunAggregateState the metric cards report
-// unavailable with zero eligible contributors rather than fabricating values.
+// was not produced by CollectRunAggregateState, pass rate uses the terminal
+// counters and performance metrics remain unavailable.
 func headlineMetricsForState(state *runAggregateState) evaluationHeadlineMetricsRecord {
 	headline := state.Headline
 	if headline == nil {
 		headline = &runHeadlineMetrics{
-			PassRate:            runMetricValue{Unit: runMetricUnitRatio, Eligible: state.Judged, Observed: state.Judged},
+			PassRate:            runMetricValue{Unit: runMetricUnitRatio, Eligible: state.Terminal, Observed: state.Terminal},
 			LatencyP50MS:        runMetricValue{Unit: runMetricUnitMilliseconds, UnavailableReason: evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS},
 			OutputThroughputP50: runMetricValue{Unit: runMetricUnitTokensPerSecond, UnavailableReason: evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS},
 		}
-		if state.Judged > 0 {
-			value := float64(state.Passed) / float64(state.Judged)
+		if state.Terminal > 0 {
+			value := float64(state.Passed) / float64(state.Terminal)
 			headline.PassRate.Value = &value
 		} else {
 			headline.PassRate.Observed = 0

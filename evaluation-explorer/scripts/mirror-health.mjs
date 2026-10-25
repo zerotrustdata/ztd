@@ -192,8 +192,8 @@ async function main() {
 
   const proofCatalog = await fetchJSON(`${PUBLIC_ORIGIN}/proof-catalog`, 3000);
   console.log(`  proof-catalog:  ${proofCatalog.ok ? 'OK' : `status ${proofCatalog.status}`}`);
-  const proofManifest = await fetchJSON(`${PUBLIC_ORIGIN}/proof-manifest`, 3000);
-  console.log(`  proof-manifest: ${proofManifest.ok ? 'OK' : `status ${proofManifest.status} (absent until proofs are published)`}`);
+  const proofHead = await fetchJSON(`${PUBLIC_ORIGIN}/proof-head`, 3000);
+  console.log(`  proof-head: ${proofHead.ok ? 'OK' : `status ${proofHead.status} (absent until proofs are published)`}`);
 
   const stream = await probeStream(`${PUBLIC_ORIGIN}/stream?source=${SOURCE_ID}&since_id=0`, 3000);
   console.log(`  stream:      ${stream.ok ? 'OK (text/event-stream)' : `FAILED (status ${stream.status})`}`);

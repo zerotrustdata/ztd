@@ -273,7 +273,7 @@ func (e *mirrorTestEnv) getJSON(path string, target any) int {
 func TestPublicMirror_IngestHandlerRejectsReadRoutes(t *testing.T) {
 	env := newMirrorTestEnv(t)
 
-	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-manifest", "/proof-segments", "/proofs/unknown-artifact-id"} {
+	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-head", "/proof-segments", "/proofs/unknown-artifact-id"} {
 		t.Run(path, func(t *testing.T) {
 			request, requestErr := http.NewRequest(http.MethodGet, env.server.URL+path, nil)
 			require.NoError(t, requestErr)
@@ -2158,28 +2158,46 @@ func TestMirror_ProofCatalog_EmptyReturnsEmptyArray(t *testing.T) {
 	assert.Empty(t, catalog.Entries)
 }
 
-// TestMirror_ProofManifest_ReturnsManifest verifies that the proof manifest
-// endpoint returns the stored manifest.
-func TestMirror_ProofManifest_ReturnsManifest(t *testing.T) {
+// TestMirror_ProofHead_ReturnsLegacyHeader verifies that a legacy source
+// exposes its signing header without duplicating the catalog.
+func TestMirror_ProofHead_ReturnsLegacyHeader(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	proofRequest := env.makeProofIngestRequest("proof.json", []byte(`{"proof":"test"}`))
 	require.NoError(t, env.mirror.storeProofPackage(context.Background(), proofRequest))
 
-	var result models.PublicProofManifest
-	status := env.getJSON("/proof-manifest?source="+env.sourceID, &result)
+	var result models.PublicProofHead
+	status := env.getJSON("/proof-head?source="+env.sourceID, &result)
 	assert.Equal(t, http.StatusOK, status)
 	assert.Equal(t, "c1", result.CampaignID)
+	assert.Equal(t, env.sourceID, result.SourceID)
+	assert.Zero(t, result.SegmentIndex)
+	assert.Equal(t, proofRequest.Manifest.Signature, result.Signature)
+	assert.Equal(t, proofRequest.Manifest.ArtifactCount, result.ArtifactCount)
 	assert.Equal(t, proofRequest.Manifest.ProofRootSHA256, result.ProofRootSHA256)
 }
 
-// TestMirror_ProofManifest_Returns404ForUnknown verifies that the proof
-// manifest endpoint returns 404 for an unknown source.
-func TestMirror_ProofManifest_Returns404ForUnknown(t *testing.T) {
+func TestMirror_ProofHead_ReadBoundary(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	resp, err := env.client.Get(env.publicServer.URL + "/proof-manifest?source=unknown")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+		status int
+	}{
+		{"no publications", http.MethodGet, "/proof-head", http.StatusNotFound},
+		{"unknown source", http.MethodGet, "/proof-head?source=unknown", http.StatusNotFound},
+		{"mutation rejected", http.MethodPost, "/proof-head", http.StatusMethodNotAllowed},
+		{"removed manifest route", http.MethodGet, "/proof-manifest", http.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request, err := http.NewRequest(tc.method, env.publicServer.URL+tc.path, nil)
+			require.NoError(t, err)
+			response, err := env.client.Do(request)
+			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+			assert.Equal(t, tc.status, response.StatusCode)
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
