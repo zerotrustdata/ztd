@@ -315,6 +315,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Release Notes](../release_notes/v1.4.x/v1.4.0.md): Event receipt contracts, public evaluation, and expanded onboarding and demo coverage.
 - [v1.4.0 Compliance Evidence](../release_notes/v1.4.x/v1.4.0-compliance-evidence.md): Generated compliance evidence projection for v1.4.0.
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
+- [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
 
 ## Procedures
 
