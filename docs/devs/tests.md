@@ -306,6 +306,8 @@ Isolate `HOME`, `USERPROFILE`, `APPDATA`, and `LOCALAPPDATA` with `t.Setenv` bef
 
 Use `-v` with `./ztd test integration` to stream individual test names and durations from `go test` while packages execute.
 
+`TestPublicMirror_ScalingIntegration` compares ingest into mirrors retaining 500 and 5,000 batches and proof artifacts. It enforces bounded allocation, equal row-mutation counts, and bounded database growth; p95 latency ratios are diagnostic because shared-runner scheduling, filesystem sync, and race instrumentation affect elapsed time. The fixture uses one persistent SQLite connection so `total_changes()` counts every ingest transaction, and requires successful WAL checkpoints before comparing disk sizes. Run it with `./ztd test integration -v --pkg ./internal/services/gateway --run '^TestPublicMirror_ScalingIntegration$'`.
+
 The enrollment burst deadline contract (`TestPlatformEnrollmentBurst`) runs only without race or coverage instrumentation; execute with `make test-enrollment-burst`. The Operator transport smoke (`TestOperatorTransportBoundary_BurstDeliversEveryCommittedIdentity`) enrolls 100 in-process Operators; run with `make test-operator-burst`.
 
 ### Qualify Operator Deployment

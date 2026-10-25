@@ -1,8 +1,8 @@
 {
   "campaign_id": "eval-genesis-homogeneous",
-  "model_registry_digest": "052dabb825722b04a9ea4ff361fb6550606bf8ec292d66deb28f44744bf3e2cc",
-  "model_count": 94,
-  "homogeneous_cell_count": 3854,
+  "model_registry_digest": "23a32458c09d4d04c166a8e3405b035f0a20f81f68b085c00497039222d0f46f",
+  "model_count": 111,
+  "homogeneous_cell_count": 4551,
   "variants": [
     {
       "variantId": "impulse2000-smollm3-3b-q4-k-m",
@@ -32,6 +32,16 @@
       "quantization": "Q4_K_M"
     },
     {
+      "variantId": "deepseek-r1-1-5b",
+      "providerClass": "ollama",
+      "servedModelTag": "deepseek-r1:1.5b",
+      "modelDigest": "e0979632db5a88d1a53884cb2a941772d10ff5d055aabaa6801c4e36f3a6c2d7",
+      "modelFamily": "qwen2",
+      "parameterCount": "1800000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072
+    },
+    {
       "variantId": "deepseek-r1-7b",
       "providerClass": "ollama",
       "servedModelTag": "deepseek-r1:7b",
@@ -39,6 +49,26 @@
       "modelFamily": "qwen2",
       "parameterCount": "7600000000",
       "quantization": "Q4_K_M"
+    },
+    {
+      "variantId": "deepseek-r1-8b",
+      "providerClass": "ollama",
+      "servedModelTag": "deepseek-r1:8b",
+      "modelDigest": "6995872bfe4c521a67b32da386cd21d5c6e819b6e0d62f79f64ec83be99f5763",
+      "modelFamily": "qwen3",
+      "parameterCount": "8200000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072
+    },
+    {
+      "variantId": "functiongemma-270m",
+      "providerClass": "ollama",
+      "servedModelTag": "functiongemma:270m",
+      "modelDigest": "7c19b650567acfb1bee50d12bb286370e8a54d8877f6a0ecfd01f8c8fdc223bb",
+      "modelFamily": "gemma3",
+      "parameterCount": "268100000",
+      "quantization": "Q8_0",
+      "contextLimit": 32768
     },
     {
       "variantId": "gemma2-2b-instruct-q4-k-m",
@@ -306,6 +336,46 @@
       "quantization": "Q4_K_M"
     },
     {
+      "variantId": "granite4-1b-h",
+      "providerClass": "ollama",
+      "servedModelTag": "granite4:1b-h",
+      "modelDigest": "7761ae79cab940d37672a871bf6473282ddd0ebbc3b039227eb8ccd90532699f",
+      "modelFamily": "granitehybrid",
+      "parameterCount": "1500000000",
+      "quantization": "Q8_0",
+      "contextLimit": 131072
+    },
+    {
+      "variantId": "granite4-350m",
+      "providerClass": "ollama",
+      "servedModelTag": "granite4:350m",
+      "modelDigest": "5eee845b49c4b72ef9e385463a1e2ea9f6f937e08b019f3bbecec12bc1927221",
+      "modelFamily": "granite",
+      "parameterCount": "352380000",
+      "quantization": "BF16",
+      "contextLimit": 32768
+    },
+    {
+      "variantId": "granite4-3b-h",
+      "providerClass": "ollama",
+      "servedModelTag": "granite4:3b-h",
+      "modelDigest": "076afb3855dc8bd36bc5abbdf5f743f02718c91aa3f30f4f29781480214f82b8",
+      "modelFamily": "granitehybrid",
+      "parameterCount": "3200000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072
+    },
+    {
+      "variantId": "granite4-7b-a1b-h",
+      "providerClass": "ollama",
+      "servedModelTag": "granite4:7b-a1b-h",
+      "modelDigest": "566b725534ea0e9824f844abe6a78e1ab6f7357f1efb549be94908cb681513bb",
+      "modelFamily": "granitehybrid",
+      "parameterCount": "6900000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072
+    },
+    {
       "variantId": "hermes3-8b",
       "providerClass": "ollama",
       "servedModelTag": "hermes3:8b",
@@ -426,6 +496,16 @@
       ]
     },
     {
+      "variantId": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+      "modelDigest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2",
+      "modelFamily": "lfm2",
+      "parameterCount": "1170000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768
+    },
+    {
       "variantId": "hf-co-nekuromento-toolace-8b-q8-0-gguf-latest",
       "providerClass": "ollama",
       "servedModelTag": "hf.co/Nekuromento/ToolACE-8B-Q8_0-GGUF:latest",
@@ -462,6 +542,16 @@
       "quantization": "Q4_K_M"
     },
     {
+      "variantId": "hf-co-xhtoken-spark-x2-6-4b-gguf-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
+      "modelDigest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a",
+      "modelFamily": "spark2_5",
+      "parameterCount": "4450000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 1048576
+    },
+    {
       "variantId": "hf-co-bartowski-llama-3-2-1b-instruct-gguf-q4-k-m",
       "providerClass": "ollama",
       "servedModelTag": "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M",
@@ -487,6 +577,16 @@
       "modelFamily": "granite",
       "parameterCount": "8790000000",
       "quantization": "Q4_K_M"
+    },
+    {
+      "variantId": "hf-co-nvidia-nvidia-nemotron-3-5-bolt-e4b-4gb-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M",
+      "modelDigest": "139e7d57c1c319f8a244800512f359394c7a4dd6ae52c90bf4c2ae5a4d56cff1",
+      "modelFamily": "gemma4",
+      "parameterCount": "7520000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 65536
     },
     {
       "variantId": "hf-co-unsloth-glm-4-9b-0414-gguf-q4-k-m",
@@ -614,6 +714,26 @@
       "modelFamily": "llama",
       "parameterCount": "8000000000",
       "quantization": "Q4_K_M"
+    },
+    {
+      "variantId": "lfm2-5-thinking-1-2b",
+      "providerClass": "ollama",
+      "servedModelTag": "lfm2.5-thinking:1.2b",
+      "modelDigest": "95bd9d45385f33bfe96d8b3651c8569e152f21f5bdb7c19894ffde650e9cf140",
+      "modelFamily": "lfm2",
+      "parameterCount": "1200000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768
+    },
+    {
+      "variantId": "lfm2-5-8b",
+      "providerClass": "ollama",
+      "servedModelTag": "lfm2.5:8b",
+      "modelDigest": "9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2",
+      "modelFamily": "lfm2moe",
+      "parameterCount": "8500000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 128000
     },
     {
       "variantId": "llama3-1-8b",
@@ -778,6 +898,26 @@
           "observationDetail": "provider advertised context_limit=500000"
         }
       ]
+    },
+    {
+      "variantId": "olmo-3-7b-instruct",
+      "providerClass": "ollama",
+      "servedModelTag": "olmo-3:7b-instruct",
+      "modelDigest": "ea72df8c85d75c6783ab0d00278803c53a634fc9d0fe38d3fd4ab6f35adbdbb2",
+      "modelFamily": "olmo3",
+      "parameterCount": "7300000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 65536
+    },
+    {
+      "variantId": "olmo-3-7b-think",
+      "providerClass": "ollama",
+      "servedModelTag": "olmo-3:7b-think",
+      "modelDigest": "b8d4c92ac9c103f858f4f09a418b62de8ca1abf1b20b4020006346535634dd35",
+      "modelFamily": "olmo3",
+      "parameterCount": "7300000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 65536
     },
     {
       "variantId": "ornith-1-5-9b",
@@ -1089,6 +1229,26 @@
       "quantization": "Q4_K_M"
     },
     {
+      "variantId": "qwen3-4b-instruct-2507-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen3:4b-instruct-2507-q4_K_M",
+      "modelDigest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+      "modelFamily": "qwen3",
+      "parameterCount": "4000000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 262144
+    },
+    {
+      "variantId": "qwen3-4b-thinking-2507-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen3:4b-thinking-2507-q4_K_M",
+      "modelDigest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "modelFamily": "qwen3",
+      "parameterCount": "4000000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 262144
+    },
+    {
       "variantId": "qwen3-8b",
       "providerClass": "ollama",
       "servedModelTag": "qwen3:8b",
@@ -1096,6 +1256,16 @@
       "modelFamily": "qwen3",
       "parameterCount": "8199999999",
       "quantization": "Q4_K_M"
+    },
+    {
+      "variantId": "rnj-1-8b",
+      "providerClass": "ollama",
+      "servedModelTag": "rnj-1:8b",
+      "modelDigest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f",
+      "modelFamily": "gemma3",
+      "parameterCount": "8300000000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768
     },
     {
       "variantId": "sam860-lfm2-2-6b",
@@ -1397,8 +1567,20 @@
       "digest": "470fceb39b4300f47cc3b35d6e0a31321757fbcc4afdb4177484ca745bf92f37"
     },
     {
+      "model": "deepseek-r1:1.5b",
+      "digest": "e0979632db5a88d1a53884cb2a941772d10ff5d055aabaa6801c4e36f3a6c2d7"
+    },
+    {
       "model": "deepseek-r1:7b",
       "digest": "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f"
+    },
+    {
+      "model": "deepseek-r1:8b",
+      "digest": "6995872bfe4c521a67b32da386cd21d5c6e819b6e0d62f79f64ec83be99f5763"
+    },
+    {
+      "model": "functiongemma:270m",
+      "digest": "7c19b650567acfb1bee50d12bb286370e8a54d8877f6a0ecfd01f8c8fdc223bb"
     },
     {
       "model": "gemma2:2b-instruct-q4_K_M",
@@ -1469,6 +1651,22 @@
       "digest": "f639313d874c2c678f017211be7a92e12cc0b1c5f3f1a1589d3460fc637def65"
     },
     {
+      "model": "granite4:1b-h",
+      "digest": "7761ae79cab940d37672a871bf6473282ddd0ebbc3b039227eb8ccd90532699f"
+    },
+    {
+      "model": "granite4:350m",
+      "digest": "5eee845b49c4b72ef9e385463a1e2ea9f6f937e08b019f3bbecec12bc1927221"
+    },
+    {
+      "model": "granite4:3b-h",
+      "digest": "076afb3855dc8bd36bc5abbdf5f743f02718c91aa3f30f4f29781480214f82b8"
+    },
+    {
+      "model": "granite4:7b-a1b-h",
+      "digest": "566b725534ea0e9824f844abe6a78e1ab6f7357f1efb549be94908cb681513bb"
+    },
+    {
       "model": "hermes3:8b",
       "digest": "4f6b83f30b62bc3d0cf9be09266db222805ee815c8fd7d8b38f863f655be78b7"
     },
@@ -1483,6 +1681,10 @@
     {
       "model": "hf.co/Jackrong/Qwopus3.5-4B-Coder-GGUF:Q4_K_M",
       "digest": "97b2cc41559b320c6ba24f5b9afb1fabc11a502b16a5b755fb2857a988bc6232"
+    },
+    {
+      "model": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+      "digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
     },
     {
       "model": "hf.co/Nekuromento/ToolACE-8B-Q8_0-GGUF:latest",
@@ -1501,6 +1703,10 @@
       "digest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53"
     },
     {
+      "model": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
+      "digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
+    },
+    {
       "model": "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M",
       "digest": "b317c92f977090cae847e3e6207d22ff3ddbaadba097d8731cade42db7fdbee5"
     },
@@ -1511,6 +1717,10 @@
     {
       "model": "hf.co/ibm-granite/granite-4.2-8b-GGUF:Q4_K_M",
       "digest": "f639313d874c2c678f017211be7a92e12cc0b1c5f3f1a1589d3460fc637def65"
+    },
+    {
+      "model": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M",
+      "digest": "139e7d57c1c319f8a244800512f359394c7a4dd6ae52c90bf4c2ae5a4d56cff1"
     },
     {
       "model": "hf.co/unsloth/GLM-4-9B-0414-GGUF:Q4_K_M",
@@ -1555,6 +1765,14 @@
     {
       "model": "kitsonk/watt-tool-8B:latest",
       "digest": "a588b16a11785acef4685d26967a390892e1464935ea94c56e018576725aa80e"
+    },
+    {
+      "model": "lfm2.5-thinking:1.2b",
+      "digest": "95bd9d45385f33bfe96d8b3651c8569e152f21f5bdb7c19894ffde650e9cf140"
+    },
+    {
+      "model": "lfm2.5:8b",
+      "digest": "9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2"
     },
     {
       "model": "llama3.1:8b",
@@ -1603,6 +1821,14 @@
     {
       "model": "north-mini-code-1.0:latest",
       "digest": "d8b269ad5c7c7144ce104b83ce93bc3efb85e0f74e01be6be5f5d6f7ca90b60f"
+    },
+    {
+      "model": "olmo-3:7b-instruct",
+      "digest": "ea72df8c85d75c6783ab0d00278803c53a634fc9d0fe38d3fd4ab6f35adbdbb2"
+    },
+    {
+      "model": "olmo-3:7b-think",
+      "digest": "b8d4c92ac9c103f858f4f09a418b62de8ca1abf1b20b4020006346535634dd35"
     },
     {
       "model": "ornith-1.5:9b",
@@ -1705,8 +1931,20 @@
       "digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7"
     },
     {
+      "model": "qwen3:4b-instruct-2507-q4_K_M",
+      "digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0"
+    },
+    {
+      "model": "qwen3:4b-thinking-2507-q4_K_M",
+      "digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7"
+    },
+    {
       "model": "qwen3:8b",
       "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+    },
+    {
+      "model": "rnj-1:8b",
+      "digest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f"
     },
     {
       "model": "sam860/LFM2:2.6b",
