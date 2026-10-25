@@ -241,11 +241,12 @@ func newPublicationRunEnv(t *testing.T) *runEnv {
 func newGatewayRunEnvWithOptions(t *testing.T, opts fixtures.EvalStackOptions) (*runEnv, *realStackRun) {
 	t.Helper()
 	control := newFakeProcessControl()
-	replies := make([]fixtures.OllamaReply, 16)
-	for i := range replies {
-		replies[i] = fixtures.OllamaReply{Content: "READY"}
+	if opts.Replies == nil {
+		opts.Replies = make([]fixtures.OllamaReply, 16)
+		for i := range opts.Replies {
+			opts.Replies[i] = fixtures.OllamaReply{Content: "READY"}
+		}
 	}
-	opts.Replies = replies
 	run := newRealStackEnvironment(t, opts, testRunControl(control))
 	cmd := &cobra.Command{}
 	cmd.SetContext(run.ctx)

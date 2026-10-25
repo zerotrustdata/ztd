@@ -18,7 +18,7 @@ func TestCampaignQueueBuildBatchPlan(t *testing.T) {
 		Models: []CampaignQueueModel{
 			{VariantID: "granite3-3-2b", Status: QueueStatusVerified},
 			{VariantID: "skipme", Status: QueueStatusSkipped},
-			{VariantID: "qwen3-4b", Status: "failed"},
+			{VariantID: "qwen3-4b", Status: QueueStatusFailed},
 			{VariantID: "gemma3-4b", Status: QueueStatusPending},
 			{VariantID: "llama3-8b", Status: QueueStatusPending},
 		},
@@ -29,10 +29,10 @@ func TestCampaignQueueBuildBatchPlan(t *testing.T) {
 		req  CampaignQueueBatchPlanRequest
 		want []string
 	}{
-		{name: "skip verified drops verified and skipped", req: CampaignQueueBatchPlanRequest{SkipVerified: true}, want: []string{"qwen3-4b", "gemma3-4b", "llama3-8b"}},
-		{name: "keep verified still drops skipped", req: CampaignQueueBatchPlanRequest{}, want: []string{"granite3-3-2b", "qwen3-4b", "gemma3-4b", "llama3-8b"}},
-		{name: "until bounds the batch", req: CampaignQueueBatchPlanRequest{SkipVerified: true, Until: 2}, want: []string{"qwen3-4b", "gemma3-4b"}},
-		{name: "until larger than the plan", req: CampaignQueueBatchPlanRequest{SkipVerified: true, Until: 10}, want: []string{"qwen3-4b", "gemma3-4b", "llama3-8b"}},
+		{name: "skip verified drops verified skipped and failed", req: CampaignQueueBatchPlanRequest{SkipVerified: true}, want: []string{"gemma3-4b", "llama3-8b"}},
+		{name: "keep verified still drops skipped and failed", req: CampaignQueueBatchPlanRequest{}, want: []string{"granite3-3-2b", "gemma3-4b", "llama3-8b"}},
+		{name: "until bounds the batch after failed entries are excluded", req: CampaignQueueBatchPlanRequest{SkipVerified: true, Until: 1}, want: []string{"gemma3-4b"}},
+		{name: "until larger than the plan", req: CampaignQueueBatchPlanRequest{SkipVerified: true, Until: 10}, want: []string{"gemma3-4b", "llama3-8b"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

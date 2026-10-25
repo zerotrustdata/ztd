@@ -41,6 +41,9 @@ type runStartFlowOptions struct {
 	NoAutoBind         bool
 	NoBackup           bool
 	JSONOutput         bool
+	// ProviderFailureLimit bounds consecutive generation failures in rollout
+	// runs. Zero keeps explicit campaign runs exhaustive.
+	ProviderFailureLimit int
 }
 
 type runStartFlowResult struct {
@@ -249,19 +252,20 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		defer autoBackupEval(cmd, deps, opts.JSONOutput)
 	}
 	executed, err := executeRun(cmd, deps, runExecuteOptions{
-		RunID:      runID,
-		Publish:    opts.Publish,
-		Daemon:     opts.Daemon,
-		NoAutoBind: opts.NoAutoBind,
-		JSONOutput: opts.JSONOutput,
+		RunID:                runID,
+		Publish:              opts.Publish,
+		Daemon:               opts.Daemon,
+		NoAutoBind:           opts.NoAutoBind,
+		JSONOutput:           opts.JSONOutput,
+		ProviderFailureLimit: opts.ProviderFailureLimit,
 	})
 	// A publication failure leaves every result persisted, so the run still
 	// verifies; the failure is returned once verification has run.
+	result.Executed = executed
 	publicationErr := err
-	if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
+	if err != nil && (errors.Is(err, constants.ErrInferenceGenerateFailed) || !errors.Is(err, constants.ErrEvaluationPublicationFailed)) {
 		return result, err
 	}
-	result.Executed = executed
 	if !opts.JSONOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
 	}

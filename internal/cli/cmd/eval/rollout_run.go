@@ -24,7 +24,10 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const rolloutSmokeCampaignSuffix = "-smoke"
+const (
+	rolloutSmokeCampaignSuffix  = "-smoke"
+	rolloutProviderFailureLimit = 3
+)
 
 type rolloutRunResult struct {
 	Planned   int                 `json:"planned"`
@@ -87,7 +90,10 @@ func rolloutExecuteCmd(deps nativeEvalDeps, pendingOnly bool) *cobra.Command {
 built-in suite, run every model-role assignment through the governed Inference
 and Data Operators, and verify the run with provider observation and model
 provenance required. A verified run marks the entry verified; a failed entry is
-marked failed and the batch continues. A run in which the provider failed every
+marked failed and the batch continues. Failed entries require 'rollout retry'
+before another run selects them. Three consecutive provider generation failures
+stop that model's run, preserving its evidence and leaving remaining assignments
+queued. A run in which the provider failed every
 assignment, as when it rejects tool declarations for the model, fails. Stopping
 a run (Ctrl-C or 'ztd eval runs cancel') ends the batch and leaves its entry
 pending. The batch holds the queue lock, so 'rollout add', 'remove', 'retry',
@@ -386,12 +392,13 @@ func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeF
 		campaignID = frozenID
 	}
 	result, err := runStartFlow(cmd, deps, runStartFlowOptions{
-		CampaignID:         campaignID,
-		Publish:            true,
-		Daemon:             true,
-		Verify:             true,
-		RequireObservation: true,
-		RequireProvenance:  true,
+		CampaignID:           campaignID,
+		Publish:              true,
+		Daemon:               true,
+		Verify:               true,
+		RequireObservation:   true,
+		RequireProvenance:    true,
+		ProviderFailureLimit: rolloutProviderFailureLimit,
 	})
 	var run *rolloutRunSuccess
 	if result != nil && result.RunID != "" {
@@ -493,6 +500,10 @@ func markRolloutFailure(ctx context.Context, fileSvc fs.RuntimeFileService, entr
 	var unserved *rolloutUnservedError
 	if errors.As(runErr, &unserved) && unserved.Class != "" {
 		class += " (" + unserved.Class + ")"
+	}
+	var providerFailure *runProviderFailureError
+	if errors.As(runErr, &providerFailure) {
+		class += " (" + string(evaluation.ProviderFailureClass(providerFailure)) + ")"
 	}
 	notes := "failed: " + class
 	runID := ""

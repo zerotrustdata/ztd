@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -46,7 +47,22 @@ type runExecuteOptions struct {
 	NoAutoBind   bool
 	JSONOutput   bool
 	ResultOutput func(*evalv1.EvaluationAssignmentResult)
+	// Zero disables the rollout generation-failure limit.
+	ProviderFailureLimit int
 }
+
+// runProviderFailureError stops repeated provider generation failures without
+// attributing them to model quality or marking unexecuted assignments complete.
+type runProviderFailureError struct {
+	RunID string
+	Count int
+}
+
+func (e *runProviderFailureError) Error() string {
+	return fmt.Sprintf("evaluation: run %s stopped after %d consecutive provider generation failures; remaining assignments stay queued: %v", e.RunID, e.Count, constants.ErrInferenceGenerateFailed)
+}
+
+func (e *runProviderFailureError) Unwrap() error { return constants.ErrInferenceGenerateFailed }
 
 // executeRun executes queued assignments of one run while holding the run's
 // lease. The lease is the durable handle that lets status, cancel, and archive
@@ -343,6 +359,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	}
 	iterations := int64(opts.Limit)
 	stopped := false
+	generationFailures := 0
 	for i := int64(0); i < iterations; i++ {
 		if watcher.Requested() {
 			stopped = true
@@ -372,6 +389,26 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 				return executed, fmt.Errorf("evaluation: run execute: load executed assignment: %w", err)
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), executedAssignmentLine(executedAssignment, result))
+		}
+		if opts.ProviderFailureLimit > 0 {
+			class := ""
+			if result.GetLifecycleStatus() == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED {
+				trace, err := store.LoadAssignmentAgentTrace(cmd.Context(), opts.RunID, result.GetAssignmentId())
+				if err != nil && !errors.Is(err, constants.ErrNotFound) {
+					return executed, fmt.Errorf("evaluation: run execute: read provider failure trace: %w", err)
+				}
+				if trace != nil {
+					class = trace.ProviderFailureClass
+				}
+			}
+			if class == string(inference.AttemptFailureGenerateFailed) {
+				generationFailures++
+			} else {
+				generationFailures = 0
+			}
+			if generationFailures >= opts.ProviderFailureLimit {
+				return executed, errors.Join(append(publicationErrs, &runProviderFailureError{RunID: opts.RunID, Count: generationFailures})...)
+			}
 		}
 	}
 
