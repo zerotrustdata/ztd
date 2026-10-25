@@ -171,6 +171,18 @@ func SaveNamedRollout(ctx context.Context, files fs.RuntimeFileService, rollout 
 	return nil
 }
 
+// DeleteNamedRollout removes the definition and execution references. Campaign
+// evidence is stored separately and retained. Callers hold LockRolloutQueue.
+func DeleteNamedRollout(ctx context.Context, files fs.RuntimeFileService, name string) error {
+	if _, err := LoadNamedRollout(ctx, files, name); err != nil {
+		return err
+	}
+	if err := files.Remove(ctx, rolloutDefinitionPath(name)); err != nil {
+		return fmt.Errorf("evaluation: delete rollout %q: %w", name, err)
+	}
+	return nil
+}
+
 func ListNamedRollouts(ctx context.Context, files fs.RuntimeFileService) ([]RolloutDefinition, error) {
 	if files == nil {
 		return nil, fmt.Errorf("evaluation: list named rollouts: %w", constants.ErrMissingRequiredField)

@@ -108,48 +108,108 @@ func (s *DocumentStoreService) SetOperatorRuntimeConfig(ctx context.Context, id 
 	})
 }
 
+const operatorActuatorKeyQuery = `SELECT json_set(data, '$.id', id) FROM documents
+ WHERE collection = ? AND json_extract(data, '$.actuator_key_id') = ?
+ AND id != ? AND COALESCE(json_extract(data, '$.status'), '') != ?`
+
+const operatorCapabilityClaimQuery = `SELECT json_set(data, '$.id', id) FROM documents
+ WHERE collection = ? AND id != ? AND COALESCE(json_extract(data, '$.status'), '') != ?
+ AND (
+     EXISTS (SELECT 1 FROM json_each(data, '$.operator_capabilities') WHERE value = ?)
+     OR EXISTS (SELECT 1 FROM json_each(data, '$.runtime_config.capabilities') WHERE value = ?)
+ )`
+
+func isOperatorExempt(candidate, other *operatorv1.OperatorDocument) bool {
+	if other.GetIsSlot() && !other.GetClaimed() {
+		return true
+	}
+	if other.GetOperatorType() != string(constants.OperatorTypeEmbedded) && other.GetOperatorSessionId() == "" {
+		return true
+	}
+	if candidate.GetOperatorType() == string(constants.OperatorTypeRemote) && other.GetOperatorType() == string(constants.OperatorTypeRemote) &&
+		candidate.GetSystemFingerprint() != "" && candidate.GetSystemFingerprint() == other.GetSystemFingerprint() && candidate.GetUserId() == other.GetUserId() {
+		return true
+	}
+	return false
+}
+
+func checkActuatorKeyClaim(ctx context.Context, conn *sql.Conn, collection string, candidate *operatorv1.OperatorDocument) error {
+	rows, err := conn.QueryContext(ctx, operatorActuatorKeyQuery,
+		collection, candidate.GetActuatorKeyId(), candidate.GetId(), constants.OperatorStatusTerminated)
+	if err != nil {
+		return fmt.Errorf("operator claims: query actuator key: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("operator claims: scan actuator key: %w", err)
+		}
+		other, err := models.UnmarshalOperatorDocument([]byte(raw))
+		if err != nil {
+			return fmt.Errorf("operator claims: decode actuator key: %w", err)
+		}
+		if isOperatorExempt(candidate, other) {
+			continue
+		}
+		if candidate.GetActuatorKeyId() == other.GetActuatorKeyId() {
+			return fmt.Errorf("%w: Operators %s and %s; use separate --working-dir roots or combine --capabilities in one Operator", constants.ErrOperatorActuatorKeyInUse, candidate.GetId(), other.GetId())
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("operator claims: read actuator key: %w", err)
+	}
+	return nil
+}
+
+func checkCapabilityClaim(ctx context.Context, conn *sql.Conn, collection string, candidate *operatorv1.OperatorDocument, capability constants.OperatorCapability) error {
+	rows, err := conn.QueryContext(ctx, operatorCapabilityClaimQuery,
+		collection, candidate.GetId(), constants.OperatorStatusTerminated, string(capability), string(capability))
+	if err != nil {
+		return fmt.Errorf("operator claims: query capability %s: %w", capability, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("operator claims: scan capability %s: %w", capability, err)
+		}
+		other, err := models.UnmarshalOperatorDocument([]byte(raw))
+		if err != nil {
+			return fmt.Errorf("operator claims: decode capability %s: %w", capability, err)
+		}
+		if isOperatorExempt(candidate, other) {
+			continue
+		}
+		occupied := operatorcapability.GetOperatorCapabilities(other)
+		if occupied.Has(capability) {
+			return fmt.Errorf("%w: %s belongs to Operator %s; terminate that Operator or remove the capability before assigning it to %s", constants.ErrOperatorCapabilityInUse, capability, other.GetId(), candidate.GetId())
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("operator claims: read capability %s: %w", capability, err)
+	}
+	return nil
+}
+
 // validateOperatorClaims runs only inside the registry owner's write transaction.
 // Claims cover the Gateway, regardless of approving user. Data is unrestricted;
 // every other capability belongs to exactly one non-terminated Operator.
 func validateOperatorClaims(ctx context.Context, conn *sql.Conn, candidate *operatorv1.OperatorDocument) error {
-	rows, err := conn.QueryContext(ctx, `SELECT json_set(data, '$.id', id) FROM documents WHERE collection = ? AND id != ? AND COALESCE(json_extract(data, '$.status'), '') != ? ORDER BY id`,
-		marshaler.CollectionName(constants.CollectionOperators), candidate.GetId(), constants.OperatorStatusTerminated)
-	if err != nil {
-		return fmt.Errorf("operator claims: query: %w", err)
+	collection := marshaler.CollectionName(constants.CollectionOperators)
+	if candidate.GetActuatorKeyId() != "" {
+		if err := checkActuatorKeyClaim(ctx, conn, collection, candidate); err != nil {
+			return err
+		}
 	}
-	defer rows.Close()
 	capabilities := operatorcapability.GetOperatorCapabilities(candidate)
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return fmt.Errorf("operator claims: scan: %w", err)
-		}
-		other, err := models.UnmarshalOperatorDocument([]byte(raw))
-		if err != nil {
-			return fmt.Errorf("operator claims: decode: %w", err)
-		}
-		if other.GetIsSlot() && !other.GetClaimed() {
+	for _, capability := range capabilities {
+		if capability == constants.OperatorCapabilityData {
 			continue
 		}
-		if other.GetOperatorType() != string(constants.OperatorTypeEmbedded) && other.GetOperatorSessionId() == "" {
-			continue
+		if err := checkCapabilityClaim(ctx, conn, collection, candidate, capability); err != nil {
+			return err
 		}
-		if candidate.GetOperatorType() == string(constants.OperatorTypeRemote) && other.GetOperatorType() == string(constants.OperatorTypeRemote) &&
-			candidate.GetSystemFingerprint() != "" && candidate.GetSystemFingerprint() == other.GetSystemFingerprint() && candidate.GetUserId() == other.GetUserId() {
-			continue
-		}
-		if candidate.GetActuatorKeyId() != "" && candidate.GetActuatorKeyId() == other.GetActuatorKeyId() {
-			return fmt.Errorf("%w: Operators %s and %s; use separate --working-dir roots or combine --capabilities in one Operator", constants.ErrOperatorActuatorKeyInUse, candidate.GetId(), other.GetId())
-		}
-		occupied := operatorcapability.GetOperatorCapabilities(other)
-		for _, capability := range capabilities {
-			if capability != constants.OperatorCapabilityData && occupied.Has(capability) {
-				return fmt.Errorf("%w: %s belongs to Operator %s; terminate that Operator or remove the capability before assigning it to %s", constants.ErrOperatorCapabilityInUse, capability, other.GetId(), candidate.GetId())
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("operator claims: read: %w", err)
 	}
 	return nil
 }

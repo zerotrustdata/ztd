@@ -148,16 +148,16 @@ scenario_release_smoke() {
 }
 
 scenario_contributor() {
-    expect "contributor setup exits 0" bash -c "bash scripts/linux-setup.sh -y >'$OUT/contributor.log' 2>&1"
+    expect "contributor setup exits 0" in_new_terminal contributor.log "bash scripts/linux-setup.sh -y"
     expect_log contributor.log 'dev-check passed'
-    expect "third-party notices match" bash -c "make third-party-notices-check >'$OUT/notices.log' 2>&1"
+    expect "third-party notices match" in_new_terminal notices.log "make third-party-notices-check"
     expect "env template preserved" cmp .env.example .env
     expect "env file is owner-only" test "$(stat -c %a .env)" = 600
 }
 
 scenario_operator_deploy() {
-    expect "real Operator deployment lifecycle passes" bash -c \
-        "bash scripts/ci/operator-deploy-lifecycle.sh --count 3 --root '$OUT/deployment-lifecycle' >'$OUT/operator-deploy.log' 2>&1"
+    expect "real Operator deployment lifecycle passes" in_new_terminal operator-deploy.log \
+        "bash scripts/ci/operator-deploy-lifecycle.sh --count 3 --root '$OUT/deployment-lifecycle'"
 }
 
 # --- main ------------------------------------------------------------------------

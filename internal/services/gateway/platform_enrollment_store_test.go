@@ -142,6 +142,8 @@ func TestEnrollmentQueriesUseIndexes(t *testing.T) {
 			marshaler.CollectionName(constants.CollectionOperators), "owner", "fingerprint", constants.OperatorTypeRemote, constants.OperatorStatusTerminated}},
 		{operatorSessionIdentityQuery, "idx_operator_session_identity", []any{
 			marshaler.CollectionName(constants.CollectionOperators), "session"}},
+		{operatorActuatorKeyQuery, "idx_operator_actuator_key", []any{
+			marshaler.CollectionName(constants.CollectionOperators), "key", "id", constants.OperatorStatusTerminated}},
 	} {
 		t.Run(tc.index, func(t *testing.T) {
 			rows, err := store.db.Query("EXPLAIN QUERY PLAN "+tc.query, tc.args...)

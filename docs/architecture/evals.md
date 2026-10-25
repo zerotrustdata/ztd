@@ -203,7 +203,7 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 - `ztd eval suites …`: Manage scenario suites: list, show, export, create, update, and delete.
 - `ztd eval campaigns …`: Freeze, inspect, tag platform release identity, archive, unarchive, and delete campaigns.
 - `ztd eval runs …`: Start, resume, cancel, verify, publish, export, repair, compare, archive, unarchive, and delete evaluation runs.
-- `ztd eval rollout …`: Define and run named campaign sequences with create, update, show, list, run, and resume. Also manages the model qualification queue with add, remove, next, retry, and skip.
+- `ztd eval rollout …`: Create, list, show, update, delete, and run named rollouts. Resume continues an interrupted execution. Also manages the model qualification queue with add, remove, next, retry, and skip.
 - `ztd eval formations …`: Manage the heterogeneous formation catalog: list, show, add, and remove. `formations add` needs only `--primary-tag`, `--assistant-tag`, and `--lite-tag`. Each role resolves family, quantization, parameter count, and digest from the model registry, then the model catalog. Sovereign VRAM is estimated from parameter count and quantization. `--max-vram` takes a size such as `8gb` or `8192mib`, and a bare number is GiB. The default is 12 GiB. A budget failure lists each role's estimate.
 - `ztd eval gates …`: Run pre-campaign acceptance gates (inference latency, capability probing).
 - `ztd eval backup`: Archive evaluation evidence to an external directory with a SHA-256 manifest.
@@ -211,20 +211,21 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 
 `ztd eval runs start` and `ztd eval runs resume` pause after the current assignment when the first interrupt or a matching stop request arrives. If assignments remain queued, they exit with `ErrEvaluationRunStopped`; the run projects as `waiting` and can be resumed. A second interrupt cancels the current assignment. Only `ztd eval runs cancel` cancels queued assignments: it requests a stop, waits for the active assignment to finish, then stops the remainder and projects `cancelled`. Unless `--publish=false`, it publishes the stopped assignments with the run summary, whose `lifecycle_state` is `stopped` once every assignment is terminal and any was stopped. `ztd eval rollout run --gate-smoke` screens each model with `smoke-suite` before the full run; `--promote-on-pass` follows a smoke pass with the full run in the same batch. The batch holds the rollout queue lock (INV-EVAL-CAMP-33), so queue edits and a second batch fail until it ends.
 
-Named rollouts sequence existing campaigns of any supported lane, suite, or condition. Define campaigns first, then save their IDs in execution order:
+Named rollouts sequence existing campaigns of any supported lane, suite, or condition. Define campaigns first, then save their IDs in execution order. In these examples, `campaign-1` and `campaign-2` are placeholders for existing campaign IDs from `ztd eval campaigns list`:
 
 ```bash
-ztd eval rollout create nightly smoke-campaign system-campaign longitudinal-campaign control-campaign
-ztd eval rollout create compare control-campaign longitudinal-campaign control-campaign
+ztd eval rollout create my-rollout campaign-1 campaign-2
 ztd eval rollout list
-ztd eval rollout run nightly --dry-run
-ztd eval rollout run nightly
-ztd eval rollout run compare --repeat 3
-ztd eval rollout run nightly --until 2
-ztd eval rollout resume nightly
-ztd eval rollout show nightly
-ztd eval rollout update nightly smoke-campaign longitudinal-campaign system-campaign
+ztd eval rollout show my-rollout
+ztd eval rollout update my-rollout campaign-2 campaign-1
+ztd eval rollout run my-rollout
+ztd eval rollout resume my-rollout
+ztd eval rollout delete my-rollout
 ```
+
+`rollout list` lists saved names, campaign counts, and failure policies. When no named rollouts exist, it shows how to create one. `rollout show <name>` displays the campaign order and execution history. `rollout list --queue` displays model qualification entries; its `--status` filter applies only with `--queue`.
+
+`rollout delete <name>` removes the saved rollout and its execution history. Campaign definitions and run evidence are retained. Deletion holds the same lock as rollout edits and execution, so it cannot delete a rollout during an active batch.
 
 `rollout run <name>` always starts a fresh execution, even if a previous execution succeeded. Campaign IDs may repeat; `--repeat` repeats the whole sequence in order. Each execution snapshots its definition, stores run references and step progress, and retains all earlier executions. `rollout update` replaces the campaign order for future executions without changing an interrupted execution. `--until` limits campaigns attempted in one invocation; resume continues the latest execution, skipping successful steps. A paused step resumes its existing run; a failed or canceled step starts a fresh run and retains the earlier attempt. The existing run-resume restrictions still apply to ambiguous running assignments, archived runs, or changed governance. By default a failure stops the sequence. `--continue-on-failure`, saved on create/update or overridden on run/resume, allows later campaigns to execute, with a nonzero exit status if any attempted campaign fails. A user stop always ends the sequence. Every campaign uses strict observation and provenance verification. Definitions and histories are encrypted under `.ztd/data/eval/rollouts/` and included by explicit evaluation backups. Definition edits and executing batches share the model qualification queue lock, so only one rollout batch executes at a time. `--dry-run` validates the remaining campaign sequence before applying the invocation limit and performs no execution or progress writes.
 

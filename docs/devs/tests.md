@@ -147,7 +147,7 @@ The full suite requires a Linux host capable of running the pinned FIPS binary, 
 | `test-scale` | Fleet fan-out/soak and Gateway restart recovery with 100 real Operators by default |
 | `test-onboarding-docker` | Fresh-host build/rerun/quickstart/contributor/release-smoke scenarios across the Docker distro matrix in the full suite |
 
-The fleet smoke defaults to 100 Operators. `SCALE_COUNT` overrides that cohort for both `make test` and `make test-scale`; for example, `make test-scale SCALE_COUNT=1000` selects a larger qualification run. The separate in-process Operator transport smoke also uses 100 Operators. `make test-enrollment-burst` selects the timing, session-validation, and deployment-event variants, including their 1000-request cohorts.
+The fleet smoke defaults to 100 Operators. `SCALE_COUNT` overrides that cohort for both `make test` and `make test-scale`; for example, `make test-scale SCALE_COUNT=1000` selects a larger qualification run. The separate in-process Operator transport smoke also uses 100 Operators. `make test-enrollment-burst` selects the timing, session-validation, and deployment-event variants, each using 1,000 enrollment requests against an isolated test Gateway.
 
 `make test-e2e` warns that it uses and mutates your current Gateway, then delegates to `./ztd test e2e`. Select a topology with `E2E_RUN` and additional test flags with `E2E_ARGS`. Prepare the required Operator/enrollment state before running the selection. `make test-cross-enrollment` selects the cross-enrollment tests against a prepared topology.
 

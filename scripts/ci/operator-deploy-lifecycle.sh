@@ -32,12 +32,14 @@ BIN="$(realpath "$BIN")"
 [[ -x "$BIN" ]] || { echo "Build ztd with make build first" >&2; exit 2; }
 # Probe before installing the cleanup trap: an occupied port belongs to someone
 # else, so refusing the run must never stop that Gateway.
-for port in 8080 8443; do
-    if [[ -n "$(ss -Hltn "sport = :$port")" ]]; then
-        echo "Port $port is occupied; lifecycle test requires an isolated Gateway" >&2
-        exit 1
-    fi
-done
+if command -v ss >/dev/null 2>&1; then
+    for port in 8080 8443; do
+        if [[ -n "$(ss -Hltn "sport = :$port" 2>/dev/null)" ]]; then
+            echo "Port $port is occupied; lifecycle test requires an isolated Gateway" >&2
+            exit 1
+        fi
+    done
+fi
 if [[ -z "$ROOT" ]]; then
     # shellcheck source=../lib/scratch.sh
     . "$REPO/scripts/lib/scratch.sh"

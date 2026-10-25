@@ -436,6 +436,7 @@ func TestPublicationRealStack_VerificationRevisionPublishesSummariesAndTranscrip
 	assert.Contains(t, out, "PASS")
 	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
+	assertPopulationBoundReport(t, report, 3, 3)
 
 	summary := latestSummary(t)
 	assert.Equal(t, "passed", summary.VerifierState)
@@ -480,6 +481,7 @@ func TestPublicationRealStack_BoundVerificationSurvivesForcedCatchUp(t *testing.
 	require.NoError(t, err, out)
 	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
+	assertPopulationBoundReport(t, report, 3, 3)
 
 	out, err = env.run(t, "runs", "publish", runID, "--force")
 	require.NoError(t, err, out)
@@ -881,6 +883,7 @@ func TestPublicationRealStack_VerificationBackfillRepublishesModelSummariesAfter
 	require.NoError(t, err, out)
 	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
+	assertPopulationBoundReport(t, report, 3, 3)
 	verifiedBefore := verifiedModelSummaries(t)
 	require.Positive(t, verifiedBefore, "verification publishes the verified model summaries")
 

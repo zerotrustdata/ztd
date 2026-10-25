@@ -23,36 +23,21 @@ import (
 func rolloutEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollout",
-		Short: "Define and run named campaign sequences, or qualify queued models",
-		Long: `Named rollouts run existing campaigns sequentially in an explicit order.
-Create as many definitions as needed; each run by name starts a fresh execution
-and retains previous results. Campaigns may use any suite, lane, or condition.
+		Short: "Create, list, show, update, delete, and run named rollouts",
+		Long: `A rollout is a named list of campaigns that run in order.
+Use create, list, show, update, and delete to manage rollouts.
+Use run <name> to run a saved rollout again, or resume <name> to continue it.
+Find existing campaign IDs with: ztd eval campaigns list
 
-  create <name> <campaign...>  save a named sequence
-  update <name> <campaign...>  replace a sequence, retaining history
-  show <name>                 inspect definition and execution history
-  run <name>                  start a fresh execution
-  resume <name>               continue its latest execution
-
-With no name, run uses the model qualification queue. The queue orders registry
-models for unattended qualification. Each entry is created as a campaign,
-run with strict witness verification, and marked
-verified only when a full run passes.
-
-  add      queue registry models
-  remove   drop models from the queue
-  retry    return models to pending
-  skip     exclude models from rollout runs
-  list     show named rollouts and the model queue
-  next     show the next pending model
-  run      qualify queued models
-  resume   qualify pending campaigns`,
+The model qualification queue is available through list --queue and the
+add, remove, next, retry, and skip commands. Run without a name uses that queue.`,
 	}
 	addLeaves(cmd,
 		rolloutDefineCmd(deps, false),
 		rolloutDefineCmd(deps, true),
 		rolloutShowCmd(deps),
 		rolloutListCmd(deps),
+		rolloutDeleteCmd(deps),
 		rolloutAddCmd(deps),
 		rolloutRemoveCmd(deps),
 		rolloutNextCmd(deps),
@@ -85,44 +70,69 @@ type rolloutChangeJSON struct {
 
 func rolloutListCmd(deps nativeEvalDeps) *cobra.Command {
 	var status string
+	var modelQueue bool
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List named rollouts and model qualification queue entries",
+		Short: "List saved named rollouts; use --queue for model qualification entries",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !modelQueue && cmd.Flags().Changed("status") {
+				return fmt.Errorf("evaluation: rollout list: --status requires --queue: %w", constants.ErrEvaluationFlagsInvalid)
+			}
 			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
-			queue, err := evaluation.LoadRolloutQueue(cmd.Context(), fileSvc)
-			if err != nil {
-				return fmt.Errorf("evaluation: rollout list: %w", err)
+			if modelQueue {
+				return writeRolloutQueueList(cmd, fileSvc, status)
 			}
-			entries := queue.FilterByStatus(status)
 			definitions, err := evaluation.ListNamedRollouts(cmd.Context(), fileSvc)
 			if err != nil {
 				return err
 			}
 			if output.JSONEnabled(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), rolloutListJSON{Models: entries, Rollouts: definitions})
+				return output.WriteJSON(cmd.OutOrStdout(), rolloutListJSON{Models: []evaluation.CampaignQueueModel{}, Rollouts: definitions})
 			}
-			for _, def := range definitions {
-				cmd.Printf("Rollout: %s  campaigns=%v  continue-on-failure=%t\n", def.Name, def.Campaigns, def.ContinueOnFailure)
-			}
-			if len(entries) == 0 {
-				cmd.Println("No queue entries found")
+			if len(definitions) == 0 {
+				cmd.Println("No named rollouts found. Create one with: ztd eval rollout create <name> <campaign...>")
 				return nil
 			}
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "MODEL\tCAMPAIGN\tSTATUS\tCELLS\tRUN")
-			for _, entry := range entries {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", entry.ServedModelTag, entry.CampaignID, entry.Status, entry.HomogeneousCellCount, entry.VerifiedRunID)
+			_, _ = fmt.Fprintln(w, "NAME\tCAMPAIGNS\tON FAILURE")
+			for _, def := range definitions {
+				policy := "stop"
+				if def.ContinueOnFailure {
+					policy = "continue"
+				}
+				_, _ = fmt.Fprintf(w, "%s\t%d\t%s\n", def.Name, len(def.Campaigns), policy)
 			}
 			return w.Flush()
 		},
 	}
+	cmd.Flags().BoolVar(&modelQueue, "queue", false, "List model qualification queue entries instead of named rollouts")
 	cmd.Flags().StringVar(&status, "status", "all", "Filter model queue status: all, pending, verified, failed, skipped")
 	return cmd
+}
+
+func writeRolloutQueueList(cmd *cobra.Command, files fs.RuntimeFileService, status string) error {
+	queue, err := evaluation.LoadRolloutQueue(cmd.Context(), files)
+	if err != nil {
+		return fmt.Errorf("evaluation: rollout list: %w", err)
+	}
+	entries := queue.FilterByStatus(status)
+	if output.JSONEnabled(cmd) {
+		return output.WriteJSON(cmd.OutOrStdout(), rolloutListJSON{Models: entries, Rollouts: []evaluation.RolloutDefinition{}})
+	}
+	if len(entries) == 0 {
+		cmd.Println("No queue entries found")
+		return nil
+	}
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "MODEL\tCAMPAIGN\tSTATUS\tCELLS\tRUN")
+	for _, entry := range entries {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", entry.ServedModelTag, entry.CampaignID, entry.Status, entry.HomogeneousCellCount, entry.VerifiedRunID)
+	}
+	return w.Flush()
 }
 
 func rolloutAddCmd(deps nativeEvalDeps) *cobra.Command {

@@ -54,6 +54,10 @@ CREATE INDEX IF NOT EXISTS idx_operator_lease_identity ON documents(
 CREATE INDEX IF NOT EXISTS idx_operator_session_identity ON documents(
     json_extract(data, '$.operator_session_id')) WHERE collection = 'operators';
 
+-- Actuator key registration ensures no two non-terminated Operators share a key.
+CREATE INDEX IF NOT EXISTS idx_operator_actuator_key ON documents(
+    json_extract(data, '$.actuator_key_id')) WHERE collection = 'operators';
+
 -- KV store with TTL
 CREATE TABLE IF NOT EXISTS kv_store (
     key TEXT PRIMARY KEY,

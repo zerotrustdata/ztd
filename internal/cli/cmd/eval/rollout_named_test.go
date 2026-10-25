@@ -66,6 +66,88 @@ func TestNamedRollout_DefineListShowAndUpdate(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrNotFound)
 }
 
+func TestNamedRollout_ListSeparatesDefinitionsFromModelQueue(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "rollout", "add", "qwen3:4b")
+	out := env.mustRun(t, "rollout", "list")
+	assert.Contains(t, out, "No named rollouts found")
+	assert.Contains(t, out, "rollout create <name> <campaign...>")
+	assert.NotContains(t, out, "qwen3:4b")
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal", "--continue-on-failure")
+	env.mustRun(t, "rollout", "create", "quick", "control")
+	out = env.mustRun(t, "rollout", "list")
+	assert.Contains(t, out, "NAME")
+	assert.Contains(t, out, "CAMPAIGNS")
+	assert.Contains(t, out, "nightly")
+	assert.Contains(t, out, "quick")
+	assert.Contains(t, out, "continue")
+	assert.Contains(t, out, "stop")
+	assert.NotContains(t, out, "qwen3:4b")
+	var definitions, queue rolloutListJSON
+	require.NoError(t, env.runJSON(t, &definitions, "rollout", "list"))
+	assert.Len(t, definitions.Rollouts, 2)
+	assert.Empty(t, definitions.Models)
+	require.NoError(t, env.runJSON(t, &queue, "rollout", "list", "--queue"))
+	assert.Len(t, queue.Models, 1)
+	assert.Empty(t, queue.Rollouts)
+	out = env.mustRun(t, "rollout", "list", "--queue")
+	assert.Contains(t, out, "qwen3:4b")
+	assert.NotContains(t, out, "nightly")
+	_, err := env.run(t, "rollout", "list", "--status", "pending")
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestNamedRollout_ListDoesNotRequireModelQueue(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "rollout", "create", "nightly", "control")
+	files := env.fileSvc(t)
+	require.NoError(t, files.WriteFile(context.Background(), evaluation.DefaultInitCampaignQueueRelPath, []byte("invalid queue"), 0o600))
+	out := env.mustRun(t, "rollout", "list")
+	assert.Contains(t, out, "nightly")
+	_, err := env.run(t, "rollout", "list", "--queue")
+	require.Error(t, err)
+}
+
+func TestNamedRollout_DeleteRetainsCampaignsAndOtherRollouts(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
+	env.mustRun(t, "rollout", "create", "quick", "control")
+	before, err := env.store(t).LoadCampaignSpec(context.Background(), "control")
+	require.NoError(t, err)
+	var deleted rolloutDeleteJSON
+	require.NoError(t, env.runJSON(t, &deleted, "rollout", "delete", "nightly"))
+	assert.Equal(t, rolloutDeleteJSON{Name: "nightly", Deleted: true}, deleted)
+	_, err = evaluation.LoadNamedRollout(context.Background(), env.fileSvc(t), "nightly")
+	require.ErrorIs(t, err, constants.ErrNotFound)
+	assert.Equal(t, []string{"control"}, loadTestRollout(t, env, "quick").Campaigns)
+	after, err := env.store(t).LoadCampaignSpec(context.Background(), "control")
+	require.NoError(t, err)
+	assert.Equal(t, before.GetCampaignDigest(), after.GetCampaignDigest())
+	_, err = env.run(t, "rollout", "delete", "nightly")
+	require.ErrorIs(t, err, constants.ErrNotFound)
+	_, err = env.run(t, "rollout", "delete", "../quick")
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	func() {
+		held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
+		require.NoError(t, err)
+		defer func() { _ = held.Close() }()
+		_, err = env.run(t, "rollout", "delete", "quick")
+		require.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+		assert.Equal(t, []string{"control"}, loadTestRollout(t, env, "quick").Campaigns)
+	}()
+	assert.Contains(t, env.mustRun(t, "rollout", "delete", "quick"), "Deleted rollout quick")
+}
+
+func TestNamedRollout_HelpLabelsCampaignPlaceholders(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	for _, verb := range []string{"create", "update"} {
+		out := env.mustRun(t, "rollout", verb, "--help")
+		assert.Contains(t, out, "campaign-1 and campaign-2 are placeholders")
+		assert.Contains(t, out, "my-rollout campaign-1 campaign-2")
+		assert.NotContains(t, out, "nightly smoke system")
+	}
+}
+
 func TestNamedRollout_ValidatesEveryCampaignBeforeSavingOrRunning(t *testing.T) {
 	env := newNamedRolloutEnv(t)
 	_, err := env.run(t, "rollout", "create", "bad", "control", "missing")

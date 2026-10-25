@@ -24,27 +24,26 @@ import (
 
 func rolloutDefineCmd(deps nativeEvalDeps, update bool) *cobra.Command {
 	verb := "create"
+	short := "Create a named rollout from existing campaign IDs in order"
 	if update {
 		verb = "update"
+		short = "Replace the campaign list of a named rollout"
 	}
 	var continueOnFailure bool
 	cmd := &cobra.Command{
-		Use:   verb + " <name> <campaign...>",
-		Short: "Save an ordered, named sequence of campaigns",
-		Long: `Save campaigns in the exact order given. Repeating a campaign ID schedules
-another run at that point. Any existing campaign can be used: model-role or
-formation, any suite, and fresh, longitudinal, or held-context conditions.
-Campaigns remain frozen; the rollout references them without recreating them.
+		Use:   verb + " <name> <campaign-id>...",
+		Short: short,
+		Long: short + `.
 
-Create requires a new name. Update replaces the definition while retaining
-execution history; an interrupted execution keeps its original sequence.
-By default a campaign failure stops the sequence. --continue-on-failure allows
-later campaigns to run, while the rollout still reports failure.
+The first argument is the rollout name. Every following argument is an existing
+campaign ID, in the order it should run. Find IDs with: ztd eval campaigns list
 
-Examples:
-  ztd eval rollout create nightly smoke system longitudinal control
-  ztd eval rollout create compare control longitudinal control
-  ztd eval rollout update nightly smoke longitudinal system`,
+Create requires a new name. Update replaces the saved list and keeps execution
+history. Repeating a campaign ID runs that campaign again at that position.
+--continue-on-failure allows the next campaign to run after a failure.
+
+Examples (campaign-1 and campaign-2 are placeholders for your campaign IDs):
+  ztd eval rollout ` + verb + ` my-rollout campaign-1 campaign-2`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, files, err := nativeEvalEnvironment(cmd, deps)
@@ -100,6 +99,39 @@ func rolloutShowCmd(deps nativeEvalDeps) *cobra.Command {
 				return err
 			}
 			return writeNamedRollout(cmd, rollout)
+		},
+	}
+}
+
+type rolloutDeleteJSON struct {
+	Name    string `json:"name"`
+	Deleted bool   `json:"deleted"`
+}
+
+func rolloutDeleteCmd(deps nativeEvalDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a named rollout",
+		Long:  "Delete the saved rollout and its execution history. Campaigns and their runs are retained.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, files, err := nativeEvalEnvironment(cmd, deps)
+			if err != nil {
+				return err
+			}
+			held, err := evaluation.LockRolloutQueue(cmd.Context(), files)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = held.Close() }()
+			if err := evaluation.DeleteNamedRollout(cmd.Context(), files, args[0]); err != nil {
+				return err
+			}
+			if output.JSONEnabled(cmd) {
+				return output.WriteJSON(cmd.OutOrStdout(), rolloutDeleteJSON{Name: args[0], Deleted: true})
+			}
+			cmd.Printf("Deleted rollout %s\n", args[0])
+			return nil
 		},
 	}
 }
