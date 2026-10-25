@@ -17,6 +17,7 @@
 #   quickstart     make quickstart twice: first run, then reuse of everything
 #   release-smoke  ./ztd test release-smoke (governed lifecycle + evidence)
 #   contributor    bash scripts/linux-setup.sh -y (full make ci toolchain)
+#   operator-deploy real three-Operator CLI lifecycle on an owned Gateway
 #
 # usage: in-container.sh <scenario>...
 
@@ -149,6 +150,14 @@ scenario_release_smoke() {
 scenario_contributor() {
     expect "contributor setup exits 0" bash -c "bash scripts/linux-setup.sh -y >'$OUT/contributor.log' 2>&1"
     expect_log contributor.log 'dev-check passed'
+    expect "third-party notices match" bash -c "make third-party-notices-check >'$OUT/notices.log' 2>&1"
+    expect "env template preserved" cmp .env.example .env
+    expect "env file is owner-only" test "$(stat -c %a .env)" = 600
+}
+
+scenario_operator_deploy() {
+    expect "real Operator deployment lifecycle passes" bash -c \
+        "bash scripts/ci/operator-deploy-lifecycle.sh --count 3 --root '$OUT/deployment-lifecycle' >'$OUT/operator-deploy.log' 2>&1"
 }
 
 # --- main ------------------------------------------------------------------------

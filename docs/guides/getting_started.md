@@ -75,7 +75,7 @@ Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe
 
 ### What setup does
 
-The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
+The setup script checks Git, Make, curl, Go (the version `go.mod` requires), Node.js 22.22.2+, 24.15+, or 26+, and npm, offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `make build` compiles and embeds the Console and Evaluation Explorer frontends, so both setup modes need Node.js and npm. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs. Rerunning setup reuses everything already installed.
 
 ### What `make quickstart` does
 

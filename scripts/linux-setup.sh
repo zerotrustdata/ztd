@@ -149,6 +149,7 @@ ztd_linux_install_node() {
     for bin in node npm npx corepack; do
         $SUDO ln -sf "${dest}/${tarball%.tar.gz}/bin/${bin}" "/usr/local/bin/${bin}"
     done
+    export PATH="/usr/local/bin:$PATH"
     hash -r
 }
 

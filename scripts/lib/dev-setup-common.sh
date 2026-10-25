@@ -669,6 +669,11 @@ ztd_configure_path_unix() {
     if [[ "$(command -v go 2>/dev/null)" == /usr/local/go/bin/go ]]; then
         ztd_plan_path_entry /usr/local/go/bin "# ztd: Go toolchain" prepend
     fi
+    # The Linux Node tarball links into /usr/local/bin, which a fresh shell's
+    # base PATH may omit. Preserve it in both setup modes, ahead of distro Node.
+    if [[ "$(command -v node 2>/dev/null)" == /usr/local/bin/node ]]; then
+        ztd_plan_path_entry /usr/local/bin "# ztd: Node.js toolchain" prepend
+    fi
 
     if [[ ${#ZTD_PATH_PLAN[@]} -eq 0 ]]; then
         ZTD_PATH_CONFIGURED=true

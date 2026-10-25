@@ -302,6 +302,30 @@ test_path_profile_idempotent() {
 	[[ "$count" == 1 ]] || fail "lines mentioning repo root: want 1, got $count"
 }
 
+test_path_profile_preserves_installed_node() {
+	local home="$SCRATCH/home-path-node" profile count
+	mkdir -p "$home"
+	profile="$home/.bashrc"
+	(
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		REPO_ROOT="$SOURCE_ROOT"
+		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
+		# Model the Linux tarball's command resolution without writing to /usr/local.
+		command() {
+			if [[ "$*" == '-v node' ]]; then
+				echo /usr/local/bin/node
+			else
+				builtin command "$@"
+			fi
+		}
+		ztd_ui_init
+		ztd_configure_path_unix >/dev/null
+		ztd_configure_path_unix >/dev/null
+	) || fail "Node PATH configuration failed"
+	count="$(grep -cxF 'export PATH="/usr/local/bin:$PATH"' "$profile" || true)"
+	[[ "$count" == 1 ]] || fail "Node PATH entries: want 1, got $count"
+}
+
 test_path_profile_respects_home_form() {
 	local home="$SCRATCH/home-path-form" profile before
 	mkdir -p "$home/src/ztd"
@@ -538,6 +562,7 @@ main() {
 	run_test test_ui_no_color_clears_palette
 	run_test test_ui_elapsed_format
 	run_test test_path_profile_idempotent
+	run_test test_path_profile_preserves_installed_node
 	run_test test_path_profile_respects_home_form
 	run_test test_path_profile_matches_whole_path
 	run_test test_create_env_file_owner_only_and_kept

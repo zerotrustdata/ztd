@@ -486,8 +486,9 @@ test-onboarding-smoke:
 
 DISTROS ?= ubuntu debian fedora arch
 SCENARIOS ?= build-only rerun quickstart
+ONBOARDING_OUT ?=
 test-onboarding-docker:
-	@bash scripts/onboarding/run-matrix.sh --distros "$(DISTROS)" --scenarios "$(SCENARIOS)"
+	@bash scripts/onboarding/run-matrix.sh --distros "$(DISTROS)" --scenarios "$(SCENARIOS)" $(if $(ONBOARDING_OUT),--out "$(ONBOARDING_OUT)")
 
 # Point git at the tracked hooks: pre-commit and pre-push run
 # scripts/check-commit-hygiene.sh (ignored paths, >5 MiB blobs, executables,
@@ -1152,6 +1153,7 @@ ci: dev-check
 	@$(MAKE) ci-console
 	@$(MAKE) ci-explorer
 	@$(MAKE) ci-platform
+	@$(MAKE) ci-onboarding
 	@$(MAKE) ci-protocol
 	@$(MAKE) ci-website
 	@echo "CI complete. Generated artifacts have been refreshed."
@@ -1165,6 +1167,9 @@ ci-platform: dev-check
 	@$(MAKE) lint
 	@$(MAKE) _ci-test
 	@$(MAKE) _ci-binaries
+ifeq ($(HOST_OS),linux)
+	@$(MAKE) test-fips
+endif
 	@$(MAKE) test-airgap
 	@$(MAKE) test-go-import
 	@$(MAKE) bsl-headers-check
@@ -1174,6 +1179,14 @@ ci-platform: dev-check
 	@$(MAKE) test-onboarding
 	@$(MAKE) version-sync-check
 	@echo "Platform CI complete."
+
+# Disposable hosts exercise setup and the real Operator lifecycle without
+# changing the contributor's toolchain, home directory, or running Gateway.
+.PHONY: ci-onboarding
+ci-onboarding:
+	@$(MAKE) test-onboarding-docker
+	@$(MAKE) test-onboarding-docker DISTROS=ubuntu SCENARIOS="build-only contributor release-smoke operator-deploy"
+	@echo "Onboarding CI complete."
 
 .PHONY: ci-console
 ci-console: dev-check
