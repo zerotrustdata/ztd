@@ -41,6 +41,15 @@ test('homepage uses only the ztd identity and canonical locations', async () => 
   assert.match(homepage.html, />ztd</);
 });
 
+test('homepage status chip displays the current platform version from VERSION', async () => {
+  const [homepage, version] = await Promise.all([
+    sourceHomepage(),
+    readFile(new URL('../../VERSION', import.meta.url), 'utf8')
+  ]);
+  const expected = version.trim();
+  assert.match(homepage.html, new RegExp(`<span class="chip"><span class="dot"></span>ztd <b>${expected.replace(/\\./g, '\\\\.')}</b></span>`));
+});
+
 test('validateHomepage rejects legacy branding in any generated asset', () => {
   assert.throws(() => validateHomepage({
     html: '<link rel="canonical" href="https://zerotrustdata.io/"><a href="https://github.com/zerotrustdata/ztd"></a><div class="wordmark" id="pipeline"><div id="start"></div></div><link rel="stylesheet" href="/styles.css"><script src="/site.js"></script>',

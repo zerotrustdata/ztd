@@ -35,41 +35,7 @@ type platformEnrollmentDecisionSpec struct {
 }
 
 func approvePlatformEnrollmentCmd() *cobra.Command {
-	return platformEnrollmentDecisionCmdWithConfig(
-		platformEnrollmentDecisionSpec{
-			verb:       "approve",
-			promptVerb: "Approve",
-			decision:   models.PlatformEnrollmentDecisionApprove,
-			short:      "Approve pending platform workload enrollment requests via mTLS",
-			long: `Approve one or more pending platform workload enrollment requests (dashboard,
-application, or operator) from the authenticated CLI identity (mTLS).
-
-Name requests with any mix of space-separated selectors, each matched against
-the pending list by request ID, instance ID, or hostname (case-insensitive). A
-selector that matches several requests (for example a hostname running both an
-data and an inference operator) approves all of them. Use --all to approve every
-pending request. Every selector must match a pending request or nothing is
-approved.
-
-The command fetches the pending list to display the component kind, hostname,
-instance ID, CSR fingerprints, creation time, and expiry of every matched
-request, then asks for a single confirmation before posting one atomic batch decision,
-unless --yes is supplied for non-interactive automation. The approver must hold
-a valid, non-revoked CLI certificate bound to the active first user (the
-persistent owner); the gateway enforces this server-side.
-
-Examples:
-  ztd auth enroll approve 4d669cdb-34b6-4977-b7f5-175ba2c762b7 29ed21d0-d495-471b-8126-000b5bd76146
-  ztd auth enroll approve web-01.example.com
-  ztd auth enroll approve i-0abc123def456 --yes
-  ztd auth enroll approve --all --yes
-
-Use --reason to attach an optional bounded approval note (max ` + fmt.Sprintf("%d", constants.PlatformEnrollmentMaxReasonBytes) + ` bytes).
-
-The request body binds the selected request IDs, displayed fingerprints, typed
-decision, and optional reason — never a user ID or requester token. The requester token is held only by
-the requesting workload and is never exposed through this command.`,
-		},
+	return approvePlatformEnrollmentCmdWithConfig(
 		shared.LoadConfig, DefaultAPIClientFactory, shared.NewFileSvc,
 	)
 }
@@ -169,16 +135,202 @@ func approvePlatformEnrollmentCmdWithConfig(
 	clientFactory APIClientFactory,
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 ) *cobra.Command {
-	return platformEnrollmentDecisionCmdWithConfig(
-		platformEnrollmentDecisionSpec{
-			verb:       "approve",
-			promptVerb: "Approve",
-			decision:   models.PlatformEnrollmentDecisionApprove,
-			short:      "Approve a pending platform workload enrollment request via mTLS",
-			long:       "Approve a pending platform workload enrollment request via mTLS.",
-		},
-		configLoader, clientFactory, fileSvcFactory,
+	var (
+		reason string
+		yes    bool
 	)
+	cmd := &cobra.Command{
+		Use:   "approve [request-id|instance-id|hostname]...",
+		Short: "Approve pending platform workload enrollment requests via mTLS",
+		Long: `Approve one or more pending platform workload enrollment requests (dashboard,
+application, or operator) from the authenticated CLI identity (mTLS).
+
+When run without selectors, the command lists all pending enrollment requests and prompts
+to approve each sequentially.
+
+Alternatively, name requests with any mix of space-separated selectors, each matched against
+the pending list by request ID, instance ID, or hostname (case-insensitive). A
+selector that matches several requests approves all of them. Every selector must match
+a pending request or nothing is approved.
+
+The command fetches the pending list to display the component kind, hostname,
+instance ID, CSR fingerprints, creation time, and expiry of each request, then asks
+for confirmation before posting decisions, unless --yes is supplied for
+non-interactive automation. The approver must hold a valid, non-revoked CLI
+certificate bound to the active first user (the persistent owner); the gateway enforces
+this server-side.
+
+Examples:
+  ztd auth enroll approve
+  ztd auth enroll approve 4d669cdb-34b6-4977-b7f5-175ba2c762b7 29ed21d0-d495-471b-8126-000b5bd76146
+  ztd auth enroll approve web-01.example.com
+  ztd auth enroll approve i-0abc123def456 --yes
+
+Use --reason to attach an optional bounded approval note (max ` + fmt.Sprintf("%d", constants.PlatformEnrollmentMaxReasonBytes) + ` bytes).
+
+The request body binds the selected request IDs, displayed fingerprints, typed
+decision, and optional reason — never a user ID or requester token. The requester token is held only by
+the requesting workload and is never exposed through this command.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if yes && len(args) == 0 {
+				return fmt.Errorf("enroll approve: specify one or more request IDs, instance IDs, or hostnames when using --yes")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := configLoader("")
+			if err != nil {
+				return err
+			}
+
+			fileSvc, err := fileSvcFactory("", slog.Default())
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+			}
+
+			client, err := clientFactory(fileSvc, cfg)
+			if err != nil {
+				return fmt.Errorf("enroll approve: create API client: %w", err)
+			}
+
+			pendingBody, err := client.Get(constants.APIPaths.AuthPlatformEnrollmentPending)
+			if err != nil {
+				return fmt.Errorf("enroll approve: fetch pending list: %w", err)
+			}
+
+			var pendingResp models.PlatformEnrollmentPendingResponse
+			if err := json.Unmarshal(pendingBody, &pendingResp); err != nil {
+				return fmt.Errorf("enroll approve: parse pending list: %w", err)
+			}
+
+			var targets []models.PlatformEnrollmentPendingRequest
+			sequential := len(args) == 0
+			if sequential {
+				targets = pendingResp.Requests
+				if len(targets) == 0 {
+					cmd.Printf("No pending platform enrollment requests.\n")
+					return nil
+				}
+			} else {
+				var unmatched []string
+				targets, unmatched = selectPendingRequests(pendingResp.Requests, args)
+				if len(unmatched) > 0 {
+					return fmt.Errorf("enroll approve: %w: %s", constants.ErrPlatformEnrollmentRequestNotFound, strings.Join(unmatched, ", "))
+				}
+			}
+
+			if len(reason) > constants.PlatformEnrollmentMaxReasonBytes {
+				return constants.ErrPlatformEnrollmentReasonTooLong
+			}
+
+			postOne := func(target models.PlatformEnrollmentPendingRequest) error {
+				decision := models.PlatformEnrollmentBatchDecisionRequest{
+					Requests: []models.PlatformEnrollmentDecisionTarget{
+						{RequestID: target.RequestID, Fingerprints: target.Fingerprints},
+					},
+					Decision: models.PlatformEnrollmentDecisionApprove,
+					Reason:   reason,
+				}
+				if err := decision.Validate(); err != nil {
+					return fmt.Errorf("enroll approve: %w", err)
+				}
+				resp, err := auth.PostPlatformEnrollmentBatchDecision(client, decision)
+				if err != nil {
+					var l3Err *models.PlatformEnrollmentL3RequiredError
+					if errors.As(err, &l3Err) {
+						return auth.WritePlatformEnrollmentSuspension(cmd.OutOrStdout(), l3Err.Suspension)
+					}
+					return fmt.Errorf("enroll approve: %w", err)
+				}
+				for _, result := range resp.Requests {
+					cmd.Printf("Platform enrollment request %s %s.\n", result.RequestID, result.State)
+				}
+				return nil
+			}
+
+			if sequential {
+				for i := range targets {
+					target := &targets[i]
+					PrintPlatformEnrollmentRequestDetails(cmd, target)
+					cmd.Printf("\n")
+
+					cmd.Print("Approve this platform enrollment request? (y/N): ")
+					response, readErr := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+					if readErr != nil && len(response) == 0 {
+						cmd.Println("Aborted.")
+						return nil
+					}
+					response = strings.TrimSpace(strings.ToLower(response))
+					if response == "y" || response == "yes" {
+						if err := postOne(*target); err != nil {
+							return err
+						}
+					} else {
+						cmd.Println("Skipped.")
+					}
+					if i < len(targets)-1 {
+						cmd.Printf("\n")
+					}
+				}
+				return nil
+			}
+
+			if yes {
+				decision := models.PlatformEnrollmentBatchDecisionRequest{
+					Decision: models.PlatformEnrollmentDecisionApprove,
+					Reason:   reason,
+				}
+				for _, target := range targets {
+					decision.Requests = append(decision.Requests, models.PlatformEnrollmentDecisionTarget{
+						RequestID: target.RequestID, Fingerprints: target.Fingerprints,
+					})
+				}
+				if err := decision.Validate(); err != nil {
+					return fmt.Errorf("enroll approve: %w", err)
+				}
+				for i := range targets {
+					PrintPlatformEnrollmentRequestDetails(cmd, &targets[i])
+					cmd.Printf("\n")
+				}
+				resp, err := auth.PostPlatformEnrollmentBatchDecision(client, decision)
+				if err != nil {
+					var l3Err *models.PlatformEnrollmentL3RequiredError
+					if errors.As(err, &l3Err) {
+						return auth.WritePlatformEnrollmentSuspension(cmd.OutOrStdout(), l3Err.Suspension)
+					}
+					return fmt.Errorf("enroll approve: %w", err)
+				}
+				for _, result := range resp.Requests {
+					cmd.Printf("Platform enrollment request %s %s.\n", result.RequestID, result.State)
+				}
+				return nil
+			}
+
+			for i := range targets {
+				target := &targets[i]
+				PrintPlatformEnrollmentRequestDetails(cmd, target)
+				cmd.Printf("\n")
+
+				prompt := "Approve this platform enrollment request? (y/N): "
+				if err := confirmPlatformEnrollmentAction(cmd, prompt); err != nil {
+					return err
+				}
+				if err := postOne(*target); err != nil {
+					return err
+				}
+				if i < len(targets)-1 {
+					cmd.Printf("\n")
+				}
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&reason, "reason", "",
+		"Optional bounded note attached to the decision (max "+fmt.Sprintf("%d", constants.PlatformEnrollmentMaxReasonBytes)+" bytes).")
+	cmd.Flags().BoolVar(&yes, "yes", false,
+		"Skip the interactive confirmation prompt (non-interactive automation).")
+	return cmd
 }
 
 func denyPlatformEnrollmentCmdWithConfig(

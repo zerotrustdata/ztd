@@ -3,8 +3,8 @@ doc_id: release_process
 title: Release Process
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.4.0
+last_updated: 2026-10-25
 owners:
   - VERSION
   - Makefile
@@ -23,6 +23,7 @@ owners:
   - internal/cli/cmd/compliance/
   - internal/services/gateway/explorer/static/
   - internal/services/gateway/console/static/
+  - website/src/index.html
   - website/worker.js
   - website/src/releases.js
   - website/wrangler.jsonc
@@ -88,7 +89,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-REL-VER-05 | Before tagging, every verified evaluation campaign MUST state the release it measured. The release is recorded in the campaign digest or, when the digest does not record it, carried as an asserted tag set with `ztd eval campaigns tag --release vX.Y.Z <campaign>...`. `ztd eval campaigns list` shows any campaign whose release is `unknown`. |
 | INV-REL-VER-06 | The Evaluation Explorer bundle compiles the current release from `VERSION` (`CURRENT_PLATFORM_RELEASE`). After changing `VERSION`, PR preparation MUST rebuild the bundle, refresh Gateway embed (`make explorer-embed`), and commit `internal/services/gateway/explorer/static/`. The Explorer's release filter defaults to the newest attributed release present in the public feed and falls back to `CURRENT_PLATFORM_RELEASE` only before any attributed record lands; a stale embed only mislabels which release is "(current)". |
 | INV-REL-VER-07 | The console embed (`internal/services/gateway/console/static/`) carries no release string, but `make console-embed-check` MUST pass before PR so committed embeds match `console/` at the release commit. |
-| INV-REL-VER-08 | Current installation examples in `README.md` and `.github/CONTRIBUTING.md` MUST match `VERSION`. Audit prerequisites and startup commands against current `Makefile`. Audit `AGENTS.md` and `CLAUDE.md` for removed paths, commands, and targets. Historical release notes and scoped evidence retain original versions. |
+| INV-REL-VER-08 | Current installation examples in `README.md` and `.github/CONTRIBUTING.md` and the homepage hero status chip in `website/src/index.html` (`ztd <b>vX.Y.Z</b>`) MUST match `VERSION`. After updating `website/src/index.html`, PR preparation MUST rebuild static assets with `make website-build` so `website/dist/index.html` is current. Audit prerequisites and startup commands against current `Makefile`. Audit `AGENTS.md` and `CLAUDE.md` for removed paths, commands, and targets. Historical release notes and scoped evidence retain original versions. |
 | INV-REL-VER-09 | The first line of `docs/release_notes/vX.Y.x/vX.Y.Z.md` MUST be `## [X.Y.Z] - YYYY-MM-DD - <Title>`, where `<Title>` is a short title-case phrase naming what the release delivers (for example `Onboarding and Host Configuration`), and `YYYY-MM-DD` is the planned tag date in UTC. A version number alone is not a title, and `Unreleased` is not a date. The `CHANGELOG.md` row carries the same date. |
 | INV-REL-VER-10 | While the major version is 1, a release that breaks a CLI, wire, or evidence contract, or that requires the Gateway and Operators to upgrade together, MUST bump the minor version (`v1.Y+1.0`). A patch release (`v1.Y.Z+1`) MUST be compatible with the previous release in the same minor series. The `CHANGELOG.md` preamble states this rule. |
 
@@ -118,6 +119,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Repository version | `VERSION` | `cat VERSION` |
 | Release index | `CHANGELOG.md` | Table row under `## vX.Y.x` |
 | Installation and contributor entry points | `README.md`, `.github/CONTRIBUTING.md` | `README.md` version badge matches `VERSION`; prerequisites and startup commands match `Makefile` |
+| Website homepage hero version | `website/src/index.html` | Hero status chip `ztd <b>vX.Y.Z</b>` matches `VERSION`; `make website-build` refreshes `website/dist/index.html`; verified by `make website-test` |
 | Agent entry points | `AGENTS.md`, `CLAUDE.md` | Repository map and build/test examples reference maintained paths and targets |
 | Protocol spec headers | `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, `spec.md` | `Version: vX.Y.Z` header |
 | Explorer embed | `internal/services/gateway/explorer/static/` | `make explorer-embed`; `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` lists the current bundle |
@@ -142,7 +144,7 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`; map changed code, schemas, configuration, and workflows to their canonical documents; then audit each affected document end-to-end against those sources. Review linked guides and entry points for stale commands, claims, and cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI. Documents assessed and left unchanged retain their metadata.
 3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then include the sections Overview, Added, Changed, Removed (when anything is removed), Fixed, Qualification evidence, Compatibility (`INV-REL-VER-10`), Tests, Documentation, Compliance Evidence, and Deferred sections.
 4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
-5. **Sync protocol specs and npm versions:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Confirm the version badge in `README.md` reads `v<VERSION>` (`INV-REL-VER-08`).
+5. **Sync protocol specs, npm versions, and website homepage:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Update the hero status chip in `website/src/index.html` to `v<VERSION>` (`INV-REL-VER-08`), confirm the version badge in `README.md` reads `v<VERSION>`, and run `make website-build` to refresh `website/dist/`.
 6. **Regenerate protocol bindings:** When `protocol/proto/ztd/` changed, run `make proto-generate` so generated Go and TypeScript output is current.
 7. **Update CHANGELOG:** Add the release table row under `## vX.Y.x` in `CHANGELOG.md`. When the release adds a new minor-version section, add the `## vX.Y.x` section with table headers above existing minor-version sections and create `docs/release_notes/vX.Y.x/`.
 8. **Refresh embedded frontends:** Run `make explorer-embed` (`INV-REL-VER-06`) and `make console-embed-check` (`INV-REL-VER-07`); refresh stale console embeds with `make console-embed`. `make build` compiles using committed embeds without building frontends.
@@ -195,7 +197,7 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Updating document metadata without auditing entire document against code (`INV-DOC-FMT-02` in [Documentation Guide](docs.md)).
 - Recording a source revision for a Gateway built from a different commit (`INV-REL-COMP-01`).
 - Hand-editing compliance projections instead of generating through `ztd compliance release-evidence` (`INV-REL-COMP-01`, `INV-REL-COMP-03`).
-- Leaving README or contributor installation examples pinned to a release other than `VERSION`, or agent instructions pointing to removed commands (`INV-REL-VER-08`).
+- Leaving README, contributor installation examples, or the website homepage hero chip in `website/src/index.html` pinned to a release other than `VERSION`, or agent instructions pointing to removed commands (`INV-REL-VER-08`).
 - Bumping `VERSION` without rebuilding Explorer embed, leaving the "(current)" release label stale (`INV-REL-VER-06`).
 - Release notes headed with a bare version number or `Unreleased` instead of a release date and title (`INV-REL-VER-09`).
 - Adding release rows to non-existent `## vX.Y.x` sections instead of creating new minor sections (`INV-REL-VER-04`).

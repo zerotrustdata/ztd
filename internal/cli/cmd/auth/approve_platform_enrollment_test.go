@@ -297,20 +297,21 @@ func TestApprovePlatformEnrollmentCmd_PostErrorReturnsWrappedError(t *testing.T)
 }
 
 // TestApprovePlatformEnrollmentCmd_RejectsMissingRequestID verifies that the
-// command rejects a missing request ID argument via cobra's Args validation.
+// command rejects missing request ID arguments when --yes is supplied.
 func TestApprovePlatformEnrollmentCmd_RejectsMissingRequestID(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{}
 	cmd := approvePlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--yes"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
 	err := cmd.Execute()
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "specify one or more request IDs")
 	assert.Empty(t, mockClient.GetCalls, "client must not be called when args validation fails")
 	assert.Empty(t, mockClient.PostCalls, "client must not be called when args validation fails")
 }

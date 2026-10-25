@@ -148,10 +148,10 @@ List pending enrollment requests:
 
 Approve one request with `./ztd auth enroll approve <request-id> --yes`, replacing `<request-id>` with an ID from that list.
 
-Or approve all pending requests simultaneously:
+Or review and approve pending requests sequentially:
 
 ```bash
-./ztd auth enroll approve --all --yes
+./ztd auth enroll approve
 ```
 
 ### Verify a governed action and local evidence
