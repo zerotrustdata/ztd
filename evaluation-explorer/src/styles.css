@@ -398,7 +398,7 @@ button { font-family: inherit; cursor: pointer; }
   box-sizing: border-box;
   padding: 0 14px;
   border-style: solid;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--bg-elev);
   overflow: hidden;
   transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
@@ -465,7 +465,7 @@ button { font-family: inherit; cursor: pointer; }
   height: 3px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   overflow: hidden;
-  border-radius: 0 0 999px 999px;
+  border-radius: 0 0 6px 6px;
   z-index: 3;
 }
 .header-campaign-role-bottom-progress-fill {
@@ -491,7 +491,7 @@ button { font-family: inherit; cursor: pointer; }
   box-sizing: border-box;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--bg-elev2) 80%, transparent);
   opacity: 0.85;
   transition: opacity 160ms ease;
@@ -527,7 +527,7 @@ button { font-family: inherit; cursor: pointer; }
   text-transform: uppercase;
   white-space: nowrap;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--fg-muted) 12%, transparent);
 }
 .header-cta {
@@ -617,6 +617,21 @@ button { font-family: inherit; cursor: pointer; }
 .freshness-tooltip-message { margin: 0 0 6px; color: var(--fg-muted); font-weight: 500; }
 .freshness-tooltip-detail { margin: 0; color: var(--fg-dim); line-height: 1.5; white-space: nowrap; }
 .freshness-dot, .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; flex-shrink: 0; }
+.status-spinner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  display: inline-block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 /* Status tones */
 .status-ok, .status-completed, .status-verified { color: var(--tone-ok); }
@@ -2053,6 +2068,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .skeleton-line { animation: none; }
+  .status-spinner { animation: none; }
   .progress-fill { transition: none; }
   * { scroll-behavior: auto; }
 }

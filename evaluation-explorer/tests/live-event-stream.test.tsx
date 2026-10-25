@@ -417,6 +417,27 @@ describe('LiveEventStream', () => {
       expect(within(tribunal).getByText('Deny')).toBeInTheDocument();
       expect(within(tribunal).getAllByText('Pending')).toHaveLength(4);
     });
+
+    it('renders a spinner when connecting and a status dot when live', () => {
+      const { rerender } = render(
+        <MemoryRouter>
+          <LiveEventStream events={[]} connection="connecting" streamConnection="connecting" />
+        </MemoryRouter>,
+      );
+      const status = screen.getByTestId('stream-status');
+      expect(status).toHaveTextContent('Connecting');
+      expect(status.querySelector('.status-spinner')).toBeInTheDocument();
+      expect(status.querySelector('.status-dot')).not.toBeInTheDocument();
+
+      rerender(
+        <MemoryRouter>
+          <LiveEventStream events={[]} connection="live" streamConnection="connected" />
+        </MemoryRouter>,
+      );
+      expect(status).toHaveTextContent('Live');
+      expect(status.querySelector('.status-dot')).toBeInTheDocument();
+      expect(status.querySelector('.status-spinner')).not.toBeInTheDocument();
+    });
   });
 
 });

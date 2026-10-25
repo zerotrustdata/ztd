@@ -69,13 +69,14 @@ export function StreamStatusIndicator({
         ? 'Streaming via SSE'
         : description
       : label;
+  const isConnecting = label === 'Connecting' || label === 'Reconnecting';
   return (
     <span
       className={`stream-state status-${tone === 'ok' ? 'ok' : tone}${className ? ` ${className}` : ''}`}
       data-testid="stream-status"
       aria-label={showLabel ? undefined : text}
     >
-      <span className="status-dot" aria-hidden="true" />
+      <span className={isConnecting ? 'status-spinner' : 'status-dot'} aria-hidden="true" />
       {showLabel ? text : null}
     </span>
   );
