@@ -324,7 +324,7 @@ env:
 		'  GW_ARGS             Extra gw start flags for up and gw (default: none)' \
 		'  OPERATOR_ARGS       Extra operator start flags (default: none)' \
 		'  QUICKSTART_ARGS     Options for the quickstart script (default: none)' \
-		'  GW_CAPABILITIES     Embedded Operator capabilities for gw (default: data,inference,observer)' \
+		'  GW_CAPABILITIES     Embedded Operator capabilities for gw (default: data)' \
 		'  MODEL_STORAGE_ROOT  Local model store; enables provenance for gw (default: unset)' \
 		'' \
 		'Examples:' \
@@ -1110,7 +1110,7 @@ up: build
 # added only when MODEL_STORAGE_ROOT names the local model store. GW_ARGS
 # carries extra flags, for example
 #   make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://host:11434'
-GW_CAPABILITIES ?= data,inference,observer
+GW_CAPABILITIES ?= data
 MODEL_STORAGE_ROOT ?=
 .PHONY: gw
 gw: build

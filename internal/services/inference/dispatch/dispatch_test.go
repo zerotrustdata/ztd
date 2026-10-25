@@ -237,7 +237,7 @@ func TestDispatchInference_MultipleCapableOperatorsRejectedWithoutTarget(t *test
 	assert.Equal(t, 0, dispatcher.calls, "ambiguous routing must not dispatch")
 }
 
-func TestDispatchInference_DedicatedOperatorPreferredOverEmbedded(t *testing.T) {
+func TestDispatchInference_EmbeddedOperatorTakesPrecedence(t *testing.T) {
 	embedded := capableOp("sess-embedded")
 	embedded.OperatorType = string(constants.OperatorTypeEmbedded)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResult(t)}
@@ -248,7 +248,7 @@ func TestDispatchInference_DedicatedOperatorPreferredOverEmbedded(t *testing.T) 
 
 	_, err := svc.DispatchInference(context.Background(), baseRequest())
 	require.NoError(t, err)
-	assert.Equal(t, "sess-remote", dispatcher.lastReq.TargetOperatorSessionID, "a dedicated Inference Operator must win over the embedded baseline")
+	assert.Equal(t, "sess-embedded", dispatcher.lastReq.TargetOperatorSessionID)
 }
 
 func TestDispatchInference_EmbeddedOperatorServesWhenAlone(t *testing.T) {

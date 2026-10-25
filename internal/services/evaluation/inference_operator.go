@@ -69,12 +69,8 @@ func inferenceOperatorStatus(op *operatorv1.OperatorDocument) InferenceOperatorS
 	}
 }
 
-// SelectInferenceOperator resolves exactly one inference-capable Operator.
-// When sessionID is non-empty it must match an active inference Operator.
-// When sessionID is empty, dedicated remote inference Operators take precedence
-// over the Gateway's embedded Operator fallback; exactly one dedicated
-// inference Operator must exist, or with no dedicated Operators active, the
-// embedded Operator is selected.
+// SelectInferenceOperator resolves an active inference-capable Operator, giving
+// embedded precedence. An explicit session must belong to an eligible Operator.
 func SelectInferenceOperator(operators []*operatorv1.OperatorDocument, sessionID string) (*InferenceOperatorStatus, error) {
 	return SelectInferenceOperatorForHardware(operators, sessionID, "")
 }
@@ -92,7 +88,7 @@ func SelectInferenceOperatorForHardware(
 			eligible = append(eligible, op)
 		}
 	}
-	matches := activeInferenceOperatorDocs(eligible, systemFingerprint)
+	matches := operatorcapability.PreferEmbedded(activeInferenceOperatorDocs(eligible, systemFingerprint))
 	if sessionID != "" {
 		for _, op := range matches {
 			if op.GetOperatorSessionId() == sessionID {
@@ -103,7 +99,7 @@ func SelectInferenceOperatorForHardware(
 		return nil, fmt.Errorf("%w: session %s", constants.ErrInferenceOperatorNotCapable, sessionID)
 	}
 
-	matches = operatorcapability.PreferDedicated(matches)
+	matches = operatorcapability.PreferEmbedded(matches)
 	switch len(matches) {
 	case 0:
 		return nil, constants.ErrInferenceOperatorNotFound

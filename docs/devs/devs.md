@@ -314,7 +314,7 @@ make lint
 `gatewayServiceBuilder.build` in `internal/services/gateway/gateway_service.go` wires governance in this order. Startup operations between these milestones must preserve this ordering:
 
 1. Open canonical database and obtain typed stores.
-2. After stores exist, and before `InitializePKI` or `InitializePKIWithNames`, construct in-process substrate with `embedded.New` and `RegisterPending`.
+2. After stores exist, and before `InitializePKI` or `InitializePKIWithNames`, construct in-process substrate with `embedded.New`, invoke `RegisterPending`, and commit its runtime configuration (`UpdateOperatorRuntimeConfig`). This reserves its configured singleton capabilities before PKI, remote enrollment services, or network listeners exist.
 3. Load L1 doctrine with `NewL1DoctrineFromDir`, then configure posture-required L2 consensus store.
 4. Construct gateway-mode `OperatorPubSubService` with governance and platform-enrollment dependencies. The builder assigns `GatewayModeDeps` directly (`INV-DEP-03`).
 5. Construct `mcp.GatewayService` with the command service as `EnvProc`, `auth` as `SessionValidator`, and the Local-First Events Store and L2 deliberator in its `Dependencies`.

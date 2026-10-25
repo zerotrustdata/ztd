@@ -27,14 +27,11 @@ type ProvenanceOperatorStatus struct {
 	Platform          string
 }
 
-// ActiveProvenanceOperators returns every active remote operator whose
+// ActiveProvenanceOperators returns every active operator whose
 // resolved capabilities include Provenance.
 func ActiveProvenanceOperators(operators []*operatorv1.OperatorDocument) []ProvenanceOperatorStatus {
 	matches := make([]ProvenanceOperatorStatus, 0)
-	for _, op := range operators {
-		if op.RuntimeConfig == nil || !HasActiveCapability(op, constants.OperatorCapabilityProvenance) {
-			continue
-		}
+	for _, op := range ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityProvenance) {
 		matches = append(matches, ProvenanceOperatorStatus{
 			OperatorID:        op.Id,
 			OperatorSessionID: op.OperatorSessionId,
@@ -52,7 +49,7 @@ func ActiveProvenanceOperators(operators []*operatorv1.OperatorDocument) []Prove
 // sessionID is non-empty it must match an active provenance operator;
 // otherwise exactly one active provenance operator must exist.
 func SelectProvenanceOperator(operators []*operatorv1.OperatorDocument, sessionID string) (*ProvenanceOperatorStatus, error) {
-	matches := ActiveProvenanceOperators(operators)
+	matches := ActiveProvenanceOperators(PreferEmbedded(ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityProvenance)))
 	if sessionID != "" {
 		for _, match := range matches {
 			if match.OperatorSessionID == sessionID {

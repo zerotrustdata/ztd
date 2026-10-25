@@ -97,7 +97,7 @@ type GatewayFlags struct {
 // addGatewayFlags registers all shared gateway flags on the given cobra command,
 // binding them to the provided GatewayFlags struct.
 func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
-	cmd.Flags().Var(&f.OperatorCapabilities, "capabilities", "Comma-separated embedded Operator capabilities: data,inference,provenance,observer (repeatable; the embedded Operator always includes data and inference; default: data,inference)")
+	cmd.Flags().Var(&f.OperatorCapabilities, "capabilities", "Comma-separated embedded Operator capabilities: data,inference,provenance,observer (repeatable; default: data)")
 	cmd.Flags().StringVar(&f.InferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Approved Ollama endpoint for embedded inference (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
 	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Ollama keep-alive duration")
 	cmd.Flags().StringVar(&f.ProviderBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity")

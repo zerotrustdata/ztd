@@ -769,6 +769,18 @@ definitions:
     x-enum-varnames:
     - GatewayModeGateway
     - GatewayModeStatusOK
+  constants.OperatorCapability:
+    enum:
+    - data
+    - inference
+    - provenance
+    - observer
+    type: string
+    x-enum-varnames:
+    - OperatorCapabilityData
+    - OperatorCapabilityInference
+    - OperatorCapabilityProvenance
+    - OperatorCapabilityObserver
   constants.Posture:
     enum:
     - doctrine
@@ -1850,6 +1862,10 @@ definitions:
         description: ActuatorPublicKey is the hex Ed25519 public key of this Operator's
           L5 Actuator.
         type: string
+      capabilities:
+        items:
+          $ref: '#/definitions/constants.OperatorCapability'
+        type: array
       cli_csr_pem:
         type: string
       operator_csr_pem:

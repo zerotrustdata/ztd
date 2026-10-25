@@ -212,6 +212,11 @@ func (r PlatformEnrollmentCreateRequest) ValidateShape() error {
 		}
 	}
 	if r.ComponentKind == PlatformComponentOperator {
+		if r.Operator != nil {
+			if err := r.Operator.Capabilities.Validate(); err != nil {
+				return err
+			}
+		}
 		if r.App != nil || r.Operator == nil || r.Operator.OperatorCSRPEM == "" || r.Operator.CLICSRPEM == "" {
 			return constants.ErrPlatformEnrollmentInvalidPayload
 		}
@@ -265,7 +270,8 @@ type PlatformOperatorCSRPayload struct {
 	OperatorCSRPEM string `json:"operator_csr_pem"`
 	CLICSRPEM      string `json:"cli_csr_pem"`
 	// ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5 Actuator.
-	ActuatorPublicKey string `json:"actuator_public_key"`
+	ActuatorPublicKey string                         `json:"actuator_public_key"`
+	Capabilities      constants.OperatorCapabilities `json:"capabilities,omitempty"`
 }
 
 // ActuatorKey decodes the presented Actuator public key. It fails with

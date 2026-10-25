@@ -342,11 +342,7 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   border-left: 4px solid var(--accent);
   border-radius: 9px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent) 12%, var(--bg-elev2)) 0%,
-    var(--bg-elev2) 42%
-  );
+  background: var(--bg-elev2);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--fg);
   text-decoration: none;
@@ -2186,7 +2182,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   gap: 8px;
   padding: 6px 14px;
   border: 1px solid color-mix(in srgb, var(--pill-tone) 55%, transparent);
-  border-radius: 999px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--pill-tone) 12%, transparent);
   color: color-mix(in srgb, var(--pill-tone) 60%, var(--fg));
   font-size: var(--fs-lede);

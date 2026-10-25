@@ -78,6 +78,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only Operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `event_receipt_list` and `event_receipt_get` over their own Local-First Events Store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
 | INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
+| INV-OP-CAP-03 | Operator capabilities MUST default to `data` when unspecified. Operators MAY be configured with any valid capability combination. Multiple Operators MAY own the `data` capability; `inference`, `provenance`, and `observer` MUST each have a single owner across the Gateway. Capability claims MUST be checked and reserved transactionally during enrollment (`RegisterOperator`) and runtime-config updates (`SetOperatorRuntimeConfig`). Offline and stopped Operators MUST retain their claims until explicitly terminated (`constants.OperatorStatusTerminated`). Conflicting claims for an in-use singleton capability MUST fail closed with `constants.ErrOperatorCapabilityInUse`. |
+| INV-OP-CAP-04 | An Operator runtime lock (`operator.lock`) MUST prevent two processes from sharing one working directory (`--working-dir`). Startup MUST fail closed with `constants.ExitConfigError` if the lock cannot be acquired. Each runtime MUST map to a unique anchor (actuator key and local root); duplicate actuator key registrations from distinct runtimes MUST be rejected with `constants.ErrOperatorActuatorKeyInUse`, identifying both conflicting Operator IDs. |
 
 ### Coexistence and Fingerprinting (`INV-OP-FPR`)
 
@@ -159,7 +161,13 @@ Signal atomicity is platform-specific:
 
 ### Capabilities Model and Enforcement Boundaries
 
-Each Operator process declares its functional roles through startup flags:
+Each Operator process declares its functional roles through startup flags. If `--capabilities` is omitted, the capability set defaults to `data`. Operators can be configured with any valid combination of capabilities (`data`, `inference`, `provenance`, `observer`).
+
+Capability ownership rules enforced by the Gateway:
+- **Data**: Multiple Operators can own the `data` capability simultaneously.
+- **Inference, Provenance, Observer**: Each of these singleton capabilities has at most a single owner across the Gateway at any time.
+- **Transactional Reservation**: Capability claims are validated and reserved under an immediate write transaction during enrollment (`RegisterOperator`) and runtime-config updates (`SetOperatorRuntimeConfig`). Offline and stopped Operators retain their claims until explicitly terminated (`constants.OperatorStatusTerminated`), preventing reconnections or new enrollments from usurping assigned roles. Conflicting claims are rejected with `constants.ErrOperatorCapabilityInUse`.
+- **Runtime Lock & Anchor Uniqueness**: Operator startup acquires an exclusive runtime lock (`operator.lock`) in its working directory (`--working-dir`) to prevent multiple processes from running in the same directory. Each Operator runtime must map to a single cryptographic anchor; if an enrollment presents an actuator key matching another non-terminated Operator, the Gateway rejects it with `constants.ErrOperatorActuatorKeyInUse`, identifying both conflicting Operator IDs and directing operators to use separate working directories or combine capabilities.
 
 ```bash
 # Data Operator (default: general command and tool execution)

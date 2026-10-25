@@ -143,9 +143,9 @@ func TestSelectInferenceOperator_BlendedDeploymentTypes(t *testing.T) {
 				OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}},
 			}), "")
 			if kind == constants.OperatorTypeEmbedded {
-				// Dedicated remote inference Operators take precedence over the embedded fallback.
+				// The embedded Operator takes precedence over remote inference.
 				require.NoError(t, err)
-				assert.Equal(t, "other-session", selected.OperatorSessionID)
+				assert.Equal(t, "blend-session", selected.OperatorSessionID)
 				return
 			}
 			require.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)

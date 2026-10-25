@@ -126,6 +126,9 @@ func (e operatorBootstrapExchange) run(ctx context.Context) error {
 		return err
 	}
 
+	// Bind the validated declaration to the governed issuance request.
+	enrollment.Operator.Capabilities = models.OperatorCapabilitiesFromProto(runtimeConfig.GetCapabilities()).WithDefault()
+
 	// Request creation is rejected before bootstrap; an Operator started
 	// ahead of the owner holds here until the first user exists.
 	if err := e.c.userSvc.WaitForAnyUser(ctx); err != nil {
@@ -257,7 +260,7 @@ func operatorBootstrapErrorFrame(err error) models.OperatorBootstrapFrame {
 // whose authority lapsed after approval is final even inside an issuance
 // failure: the Operator must not redial a completed request forever.
 func operatorBootstrapRetryable(err error) bool {
-	if errors.Is(err, constants.ErrPlatformEnrollmentInvalidDecision) {
+	if errors.Is(err, constants.ErrPlatformEnrollmentInvalidDecision) || errors.Is(err, constants.ErrOperatorCapabilityInUse) || errors.Is(err, constants.ErrOperatorActuatorKeyInUse) {
 		return false
 	}
 	return sqliteutil.IsBusyError(err) ||

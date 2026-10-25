@@ -786,6 +786,24 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 			constants.OperatorStatus(op.Status) == constants.OperatorStatusActive
 	}
 
+	var eligible []*operatorv1.OperatorDocument
+	for _, op := range operators {
+		if capable(op) {
+			eligible = append(eligible, op)
+		}
+	}
+	preferred := operatorcapability.PreferEmbedded(eligible)
+	// Keep the caller's explicit incapable-session error while preventing a
+	// shadow remote session from overriding an eligible embedded Operator.
+	if req.TargetOperatorSessionID != "" {
+		for _, op := range operators {
+			if op.GetOperatorSessionId() == req.TargetOperatorSessionID && !capable(op) {
+				return "", constants.ErrInferenceOperatorNotCapable
+			}
+		}
+	}
+	operators = preferred
+
 	if req.TargetOperatorID != "" {
 		var selected string
 		for _, op := range operators {
@@ -826,7 +844,7 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 			matches = append(matches, operators[i])
 		}
 	}
-	matches = operatorcapability.PreferDedicated(matches)
+	matches = operatorcapability.PreferEmbedded(matches)
 	switch len(matches) {
 	case 0:
 		return "", constants.ErrInferenceOperatorNotFound

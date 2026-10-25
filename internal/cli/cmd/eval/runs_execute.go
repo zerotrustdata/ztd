@@ -422,43 +422,65 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
-		// Windows recorded after their assignment completed are sealed here, while
-		// the run's models are still loaded. A strict run then waits, once, for the
-		// windows its scored attempts have not delivered yet.
-		if err := witness.CaptureRunProviderObservationEvidence(cmd.Context(), opts.RunID); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, cfg, authContext, operators, topology, spec, witness, publication, strictProvenance, strictObservation)
+		if err != nil {
+			return executed, err
 		}
-		if err := witness.CaptureRunModelProvenanceEvidence(cmd.Context(), opts.RunID); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
-		if strictProvenance {
-			if err := waitForRunEvidence(cmd, opts.RunID, "model provenance", constants.ModelProvenanceCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
-				return witness.WaitForRunModelProvenanceEvidence(ctx, opts.RunID)
-			}); err != nil {
-				return executed, fmt.Errorf("evaluation: run execute: %w", err)
-			}
-		}
-		if strictObservation {
-			if err := waitForRunEvidence(cmd, opts.RunID, "provider observation", constants.ProviderObservationCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
-				return witness.WaitForRunProviderObservationEvidence(ctx, opts.RunID)
-			}); err != nil {
-				return executed, fmt.Errorf("evaluation: run execute: %w", err)
-			}
-		}
-		if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
-		if publication != nil {
-			completionCount, publishErr := publication.PublishRunCompletion(cmd.Context(), opts.RunID, deps.now().UTC())
-			if publishErr != nil {
-				publicationErrs = append(publicationErrs, warnPublicationFailure(cmd, opts.RunID, fmt.Errorf("%w: run completion: %w", constants.ErrEvaluationPublicationFailed, publishErr)))
-			} else if completionCount > 0 && !opts.JSONOutput {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d completion projection record(s) for run %s\n", completionCount, opts.RunID)
-			}
-		}
+		publicationErrs = append(publicationErrs, finalPubErrs...)
 	}
 	finished = true
 	return executed, errors.Join(publicationErrs...)
+}
+
+func finalizeRunExecution(
+	cmd *cobra.Command,
+	deps nativeEvalDeps,
+	opts runExecuteOptions,
+	cfg *config.Config,
+	authContext *auth.ClientAuthContext,
+	operators []*operatorv1.OperatorDocument,
+	topology evaluation.CampaignOperatorTopology,
+	spec *evalv1.EvaluationCampaignSpec,
+	witness *evaluation.CampaignWitnessCapture,
+	publication *evaluation.CampaignPublicationCoordinator,
+	strictProvenance, strictObservation bool,
+) ([]error, error) {
+	// Windows recorded after their assignment completed are sealed here, while
+	// the run's models are still loaded. A strict run then waits, once, for the
+	// windows its scored attempts have not delivered yet.
+	if err := witness.CaptureRunProviderObservationEvidence(cmd.Context(), opts.RunID); err != nil {
+		return nil, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	if err := witness.CaptureRunModelProvenanceEvidence(cmd.Context(), opts.RunID); err != nil {
+		return nil, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	if strictProvenance {
+		if err := waitForRunEvidence(cmd, opts.RunID, "model provenance", constants.ModelProvenanceCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
+			return witness.WaitForRunModelProvenanceEvidence(ctx, opts.RunID)
+		}); err != nil {
+			return nil, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+	}
+	if strictObservation {
+		if err := waitForRunEvidence(cmd, opts.RunID, "provider observation", constants.ProviderObservationCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
+			return witness.WaitForRunProviderObservationEvidence(ctx, opts.RunID)
+		}); err != nil {
+			return nil, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+	}
+	if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec); err != nil {
+		return nil, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	var publicationErrs []error
+	if publication != nil {
+		completionCount, publishErr := publication.PublishRunCompletion(cmd.Context(), opts.RunID, deps.now().UTC())
+		if publishErr != nil {
+			publicationErrs = append(publicationErrs, warnPublicationFailure(cmd, opts.RunID, fmt.Errorf("%w: run completion: %w", constants.ErrEvaluationPublicationFailed, publishErr)))
+		} else if completionCount > 0 && !opts.JSONOutput {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d completion projection record(s) for run %s\n", completionCount, opts.RunID)
+		}
+	}
+	return publicationErrs, nil
 }
 
 // warnPublicationFailure reports a publication failure on stderr as it happens

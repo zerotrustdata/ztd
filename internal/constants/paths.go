@@ -352,6 +352,7 @@ const (
 
 	// Operator-specific filenames
 	OperatorPIDFilename     = "operator.pid"
+	OperatorLockFilename    = "operator.lock"
 	OperatorPostureFilename = "operator.posture"
 	OperatorBinaryFilename  = "ztd-operator"
 

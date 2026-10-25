@@ -140,8 +140,8 @@ func NewAnchorSet(anchors []*evalv1.ConformanceAnchor) (*AnchorSet, error) {
 		if err != nil {
 			return nil, fmt.Errorf("oracle: anchor set for %s: %w", anchor.GetRuntimeId(), err)
 		}
-		if _, exists := set.byKeyID[anchor.GetKeyId()]; exists {
-			return nil, fmt.Errorf("oracle: anchor set: duplicate key id %s: %w", anchor.GetKeyId(), constants.ErrConformanceAnchorInvalid)
+		if prior, exists := set.byKeyID[anchor.GetKeyId()]; exists {
+			return nil, fmt.Errorf("oracle: anchor set: duplicate key id %s for runtimes %s and %s; each Operator requires its own runtime root and actuator key: %w", anchor.GetKeyId(), prior.anchor.GetRuntimeId(), anchor.GetRuntimeId(), constants.ErrConformanceAnchorInvalid)
 		}
 		if _, exists := runtimeIDs[anchor.GetRuntimeId()]; exists {
 			return nil, fmt.Errorf("oracle: anchor set: duplicate runtime id %s: %w", anchor.GetRuntimeId(), constants.ErrConformanceAnchorInvalid)

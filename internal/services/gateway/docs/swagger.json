@@ -3442,6 +3442,21 @@
                 "GatewayModeStatusOK"
             ]
         },
+        "constants.OperatorCapability": {
+            "type": "string",
+            "enum": [
+                "data",
+                "inference",
+                "provenance",
+                "observer"
+            ],
+            "x-enum-varnames": [
+                "OperatorCapabilityData",
+                "OperatorCapabilityInference",
+                "OperatorCapabilityProvenance",
+                "OperatorCapabilityObserver"
+            ]
+        },
         "constants.Posture": {
             "type": "string",
             "enum": [
@@ -4991,6 +5006,12 @@
                 "actuator_public_key": {
                     "description": "ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5 Actuator.",
                     "type": "string"
+                },
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/constants.OperatorCapability"
+                    }
                 },
                 "cli_csr_pem": {
                     "type": "string"

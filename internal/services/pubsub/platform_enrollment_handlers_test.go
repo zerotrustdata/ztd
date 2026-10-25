@@ -37,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 const (
@@ -134,6 +135,14 @@ func (s *enrollTestDocStore) DocCreate(_ context.Context, collection, id string,
 	}
 	s.put(collection, id, fields)
 	return nil
+}
+
+func (s *enrollTestDocStore) RegisterOperator(ctx context.Context, op *operatorv1.OperatorDocument) error {
+	raw, err := models.MarshalOperatorDocument(op)
+	if err != nil {
+		return err
+	}
+	return s.DocSet(ctx, marshaler.CollectionName(constants.CollectionOperators), op.GetId(), raw)
 }
 
 func (s *enrollTestDocStore) DocSet(_ context.Context, collection, id string, data json.RawMessage) error {
@@ -1500,7 +1509,7 @@ func TestHandleIssue_OperatorPersistenceFailuresAbortAndRollBack(t *testing.T) {
 			issuePayload(commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_OPERATOR)))
 
 		require.ErrorIs(t, err, errEnrollTestBoom)
-		assert.Contains(t, err.Error(), "persist operator doc")
+		assert.Contains(t, err.Error(), "register operator")
 		assert.Equal(t, models.PlatformEnrollmentStateApproved, env.requestState(t))
 	})
 

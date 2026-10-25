@@ -68,10 +68,17 @@ func (c *Client) DiscoverInferenceOperator(ctx context.Context, operatorSessionI
 		if op.RuntimeConfig == nil || !operatorcapability.HasActiveCapability(op, constants.OperatorCapabilityInference) {
 			continue
 		}
-		if operatorSessionID != "" && op.GetOperatorSessionId() != operatorSessionID {
-			continue
-		}
 		matches = append(matches, op)
+	}
+	matches = operatorcapability.PreferEmbedded(matches)
+	if operatorSessionID != "" {
+		filtered := matches[:0]
+		for _, op := range matches {
+			if op.GetOperatorSessionId() == operatorSessionID {
+				filtered = append(filtered, op)
+			}
+		}
+		matches = filtered
 	}
 	switch len(matches) {
 	case 0:

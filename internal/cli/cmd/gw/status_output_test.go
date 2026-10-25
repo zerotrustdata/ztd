@@ -116,7 +116,7 @@ func TestStatusShowsLocalEmbeddedCapabilitiesWithoutCLIEnrollment(t *testing.T) 
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
 			require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{OperatorCapabilities: capabilities, Posture: "doctrine", LogLevel: constants.LogLevelInfo}))
-			expected := capabilities.WithEmbeddedBaseline().String()
+			expected := capabilities.WithDefault().String()
 			var full bytes.Buffer
 			printOperatorTables(&full, collectOperatorInventory(nil, fileSvc, cfg))
 			require.Contains(t, full.String(), string(constants.DocIDEmbeddedOperator))
@@ -174,7 +174,7 @@ func TestStatusDoesNotDuplicateEnrolledEmbeddedOperator(t *testing.T) {
 	mock := &statusMockClient{responses: map[string][]byte{constants.APIPaths.Operators: body}}
 	var buf bytes.Buffer
 	printOperatorTables(&buf, collectOperatorInventory(mock, fileSvc, cfg))
-	require.Contains(t, buf.String(), "data,inference")
+	require.Contains(t, buf.String(), "inference")
 	require.Equal(t, 1, operatorTableRows(buf.String(), string(constants.DocIDEmbeddedOperator)))
 	require.NotContains(t, buf.String(), "launch profile")
 }
@@ -315,7 +315,7 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 
 	require.Contains(t, out, "\n  OPERATOR ID ")
 	require.Equal(t, []string{"OPERATOR", "ID", "TYPE", "STATUS", "HOST", "HTTP", "PORT", "CAPABILITIES", "DIRECTORY"}, strings.Fields(lineStartingWith(out, "  OPERATOR ID")))
-	require.Equal(t, []string{"embedded-operator", "embedded", "active", "local", "8081", "data,inference,provenance", "/home/me/ztd"}, tableRow(t, out, "embedded-operator"))
+	require.Equal(t, []string{"embedded-operator", "embedded", "active", "local", "8081", "inference,provenance", "/home/me/ztd"}, tableRow(t, out, "embedded-operator"))
 	require.Equal(t, []string{"op-inf", "remote", "stale", "gpu-host", "8080", "inference", "/srv/ztd/inference"}, tableRow(t, out, "op-inf"))
 	require.Equal(t, []string{"op-prov", "remote", "active", "store-host", "8080", "provenance", "/srv/ztd/provenance"}, tableRow(t, out, "op-prov"))
 	require.Less(t, strings.Index(out, "embedded-operator"), strings.Index(out, "op-inf"), "embedded Operator is listed first, then by ID")
@@ -359,10 +359,8 @@ func TestGatewayStatusLocalFlagsComeFromLaunchProfileWithoutEnrollment(t *testin
 	}))
 	var buf bytes.Buffer
 	printOperatorTables(&buf, collectOperatorInventory(nil, fileSvc, cfg))
-	require.Equal(t, []string{"embedded-operator", "embedded", "running", "local", "8080", "data,inference,provenance,observer", filepath.Join(fileSvc.Resolve(""), constants.OperatorsDirname, constants.EmbeddedOperatorDirname)}, tableRow(t, buf.String(), "embedded-operator"))
+	require.Equal(t, []string{"embedded-operator", "embedded", "running", "local", "8080", "data,provenance,observer", filepath.Join(fileSvc.Resolve(""), constants.OperatorsDirname, constants.EmbeddedOperatorDirname)}, tableRow(t, buf.String(), "embedded-operator"))
 	require.Equal(t, [][]string{
-		{"inference", "--inference-ollama-endpoint", "(default)"},
-		{"inference", "--inference-keep-alive", "(default)"},
 		{"provenance", "--model-storage-root", "/mnt/d/ai/Ollama/models"},
 		{"provenance", "--provenance-operator-id", "(default)"},
 		{"observer", "--provider-boundary-observer-id", "ztd-observer"},

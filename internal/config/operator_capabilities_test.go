@@ -32,7 +32,6 @@ func TestStartupEnablesEveryRequestedOperatorCapabilityCombination(t *testing.T)
 				want := capabilities.Canonical()
 				if operatorType == constants.OperatorTypeEmbedded {
 					cfg, err = config.LoadGateway(config.GatewayOptions{OperatorCapabilities: capabilities, ProvenanceOperatorModelStorageRoot: testutil.TempDir(t)})
-					want = capabilities.WithEmbeddedBaseline()
 				} else {
 					cfg, err = config.Load(config.LoadOptions{OperatorCapabilities: capabilities, OperatorEndpoint: constants.DefaultEndpoint, WorkDir: testutil.TempDir(t), ProvenanceOperatorModelStorageRoot: testutil.TempDir(t)})
 				}
