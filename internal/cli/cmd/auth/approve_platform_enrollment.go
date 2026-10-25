@@ -249,13 +249,14 @@ the requesting workload and is never exposed through this command.`,
 			}
 
 			if sequential {
+				reader := bufio.NewReader(cmd.InOrStdin())
 				for i := range targets {
 					target := &targets[i]
 					PrintPlatformEnrollmentRequestDetails(cmd, target)
 					cmd.Printf("\n")
 
 					cmd.Print("Approve this platform enrollment request? (y/N): ")
-					response, readErr := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+					response, readErr := reader.ReadString('\n')
 					if readErr != nil && len(response) == 0 {
 						cmd.Println("Aborted.")
 						return nil

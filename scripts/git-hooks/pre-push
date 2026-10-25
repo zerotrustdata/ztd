@@ -10,6 +10,7 @@
 # Re-checks every commit being pushed, which also covers commits made with
 # --no-verify or created by rebase, cherry-pick, and amend.
 set -euo pipefail
+export LC_ALL=C
 
 check="$(git rev-parse --show-toplevel)/scripts/check-commit-hygiene.sh"
 zero="$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')"

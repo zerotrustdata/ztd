@@ -429,16 +429,14 @@ func TestApprovePlatformEnrollmentCmd_ReasonTooLongReturnsError(t *testing.T) {
 
 // runDecisionCmd runs an approve command against samplePendingResponse with
 // --yes and returns the mock client, captured output, and the command error.
-func runApproveWithYes(t *testing.T, flags map[string]string, args []string) (*cmdtest.MockAPIClient, string, error) {
+func runApproveWithYes(t *testing.T, args []string) (*cmdtest.MockAPIClient, string, error) {
 	t.Helper()
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 	targets := samplePendingResponse().Requests
-	if flags["all"] != "true" {
-		targets, _ = selectPendingRequests(targets, args)
-	}
+	targets, _ = selectPendingRequests(targets, args)
 	response := models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt"}
 	for _, target := range targets {
 		response.Requests = append(response.Requests, models.PlatformEnrollmentDecisionResponse{RequestID: target.RequestID, State: models.PlatformEnrollmentStateApproved})
@@ -450,9 +448,6 @@ func runApproveWithYes(t *testing.T, flags map[string]string, args []string) (*c
 	cmd := approvePlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
 	cmd.Flags().Set("yes", "true")
-	for name, value := range flags {
-		require.NoError(t, cmd.Flags().Set(name, value))
-	}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -474,7 +469,7 @@ func postedRequestIDs(t *testing.T, client *cmdtest.MockAPIClient) []string {
 }
 
 func TestApprovePlatformEnrollmentCmd_MultipleRequestIDs(t *testing.T) {
-	client, output, err := runApproveWithYes(t, nil, []string{"req-operator-001", "req-dashboard-002"})
+	client, output, err := runApproveWithYes(t, []string{"req-operator-001", "req-dashboard-002"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, client))
 	assert.Contains(t, output, "req-operator-001 approved")
@@ -483,19 +478,19 @@ func TestApprovePlatformEnrollmentCmd_MultipleRequestIDs(t *testing.T) {
 }
 
 func TestApprovePlatformEnrollmentCmd_ByHostname(t *testing.T) {
-	client, _, err := runApproveWithYes(t, nil, []string{"Dashboard.Example.COM"})
+	client, _, err := runApproveWithYes(t, []string{"Dashboard.Example.COM"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-dashboard-002"}, postedRequestIDs(t, client))
 }
 
 func TestApprovePlatformEnrollmentCmd_ByInstanceID(t *testing.T) {
-	client, _, err := runApproveWithYes(t, nil, []string{"operator-host-01"})
+	client, _, err := runApproveWithYes(t, []string{"operator-host-01"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001"}, postedRequestIDs(t, client))
 }
 
 func TestApprovePlatformEnrollmentCmd_MixedSelectorsDeduplicate(t *testing.T) {
-	client, _, err := runApproveWithYes(t, nil, []string{"req-operator-001", "operator.example.com", "operator-host-01", "dashboard-host-01"})
+	client, _, err := runApproveWithYes(t, []string{"req-operator-001", "operator.example.com", "operator-host-01", "dashboard-host-01"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, client),
 		"a request matched by several selectors is decided once, in pending-list order")
@@ -523,13 +518,74 @@ func TestApprovePlatformEnrollmentCmd_HostnameMatchingSeveralRequests(t *testing
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, mockClient))
 }
 
-func TestApprovePlatformEnrollmentCmd_AllApprovesEveryPending(t *testing.T) {
-	client, _, err := runApproveWithYes(t, map[string]string{"all": "true"}, nil)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, client))
+type dynamicDecisionMockClient struct {
+	getResp []byte
+	posts   []cmdtest.MockPostCall
 }
 
-func TestApprovePlatformEnrollmentCmd_AllWithNoPendingIsNoop(t *testing.T) {
+func (d *dynamicDecisionMockClient) Get(path string) ([]byte, error) {
+	return d.getResp, nil
+}
+
+func (d *dynamicDecisionMockClient) Post(path string, body interface{}) ([]byte, error) {
+	d.posts = append(d.posts, cmdtest.MockPostCall{Path: path, Body: body})
+	req, ok := body.(models.PlatformEnrollmentBatchDecisionRequest)
+	if !ok {
+		return nil, fmt.Errorf("unexpected body type")
+	}
+	resp := models.PlatformEnrollmentBatchDecisionResponse{
+		ReceiptID: "receipt-dynamic",
+	}
+	for _, r := range req.Requests {
+		state := models.PlatformEnrollmentStateApproved
+		if req.Decision == models.PlatformEnrollmentDecisionDeny {
+			state = models.PlatformEnrollmentStateDenied
+		}
+		resp.Requests = append(resp.Requests, models.PlatformEnrollmentDecisionResponse{
+			RequestID: r.RequestID,
+			State:     state,
+		})
+	}
+	return json.Marshal(resp)
+}
+
+func (d *dynamicDecisionMockClient) Put(path string, body interface{}) ([]byte, error) {
+	return nil, nil
+}
+
+func (d *dynamicDecisionMockClient) Delete(path string) ([]byte, error) {
+	return nil, nil
+}
+
+// TestApprovePlatformEnrollmentCmd_ApproveEachIndividually verifies that
+// each enrollment request is approved individually and explicitly by ID.
+func TestApprovePlatformEnrollmentCmd_ApproveEachIndividually(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	pending := samplePendingResponse()
+	pendingBody, err := json.Marshal(pending)
+	require.NoError(t, err)
+
+	for _, req := range pending.Requests {
+		postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{
+			ReceiptID: "receipt-" + req.RequestID,
+			Requests:  []models.PlatformEnrollmentDecisionResponse{{RequestID: req.RequestID, State: models.PlatformEnrollmentStateApproved}},
+		})
+		require.NoError(t, err)
+		mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
+		cmd := approvePlatformEnrollmentCmdWithConfig(
+			cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
+		cmd.Flags().Set("yes", "true")
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+
+		require.NoError(t, cmd.RunE(cmd, []string{req.RequestID}))
+		assert.Equal(t, []string{req.RequestID}, postedRequestIDs(t, mockClient))
+		assert.Contains(t, buf.String(), req.RequestID+" approved")
+	}
+}
+
+func TestApprovePlatformEnrollmentCmd_NoPendingIsNoop(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{})
@@ -538,8 +594,6 @@ func TestApprovePlatformEnrollmentCmd_AllWithNoPendingIsNoop(t *testing.T) {
 
 	cmd := approvePlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
-	cmd.Flags().Set("yes", "true")
-	cmd.Flags().Set("all", "true")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -549,75 +603,114 @@ func TestApprovePlatformEnrollmentCmd_AllWithNoPendingIsNoop(t *testing.T) {
 	assert.Empty(t, mockClient.PostCalls)
 }
 
-func TestApprovePlatformEnrollmentCmd_AllRejectsExplicitSelectors(t *testing.T) {
-	client, _, err := runApproveWithYes(t, map[string]string{"all": "true"}, []string{"req-operator-001"})
+func TestApprovePlatformEnrollmentCmd_YesRequiresExplicitSelectors(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	mockClient := &cmdtest.MockAPIClient{}
+	cmd := approvePlatformEnrollmentCmdWithConfig(
+		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
+	cmd.SetArgs([]string{"--yes"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--all cannot be combined")
-	assert.Empty(t, client.GetCalls)
-	assert.Empty(t, client.PostCalls)
+	assert.Contains(t, err.Error(), "specify one or more request IDs")
+	assert.Empty(t, mockClient.GetCalls)
+	assert.Empty(t, mockClient.PostCalls)
 }
 
-func TestApprovePlatformEnrollmentCmd_UnmatchedSelectorPostsNothing(t *testing.T) {
-	client, _, err := runApproveWithYes(t, nil, []string{"req-operator-001", "ghost-a", "ghost-b"})
-	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestNotFound)
-	assert.Contains(t, err.Error(), "ghost-a, ghost-b")
-	assert.NotContains(t, err.Error(), "req-operator-001")
-	assert.Empty(t, client.PostCalls, "no request may be decided when any selector is unmatched")
-}
-
-func TestApprovePlatformEnrollmentCmd_ReasonTooLongPostsNothingForBatch(t *testing.T) {
-	client, _, err := runApproveWithYes(t,
-		map[string]string{"reason": strings.Repeat("x", constants.PlatformEnrollmentMaxReasonBytes+1)},
-		[]string{"req-operator-001", "req-dashboard-002"})
-	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentReasonTooLong)
-	assert.Empty(t, client.PostCalls)
-}
-
-func TestApprovePlatformEnrollmentCmd_BatchFailureDoesNotFallBackToIndividualDecisions(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ExplicitApprovalPostFailure(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 	postErr := constants.ErrPlatformEnrollmentAlreadyDecided
 	client := &cmdtest.MockAPIClient{GetResp: pendingBody, PostErr: postErr}
 	cmd := approvePlatformEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), MockClientFactory(client), cmdtest.FileSvcFactoryFor(nil))
-	require.NoError(t, cmd.Flags().Set("all", "true"))
 	require.NoError(t, cmd.Flags().Set("yes", "true"))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	err = cmd.RunE(cmd, nil)
+	err = cmd.RunE(cmd, []string{"req-operator-001"})
 	require.ErrorIs(t, err, postErr)
 	require.Len(t, client.PostCalls, 1)
 	require.Equal(t, constants.APIPaths.AuthPlatformEnrollmentBatchDecision, client.PostCalls[0].Path)
 	require.NotContains(t, buf.String(), "approved.")
 }
 
-func TestApprovePlatformEnrollmentCmd_InteractiveBatchPromptsOnce(t *testing.T) {
+// TestApprovePlatformEnrollmentCmd_SequentialInteractivePromptsEachDevice verifies
+// that running approve without arguments prompts for each pending device sequentially.
+func TestApprovePlatformEnrollmentCmd_SequentialInteractivePromptsEachDevice(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateApproved}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateApproved}}})
-	require.NoError(t, err)
-	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
+
+	dynClient := &dynamicDecisionMockClient{getResp: pendingBody}
 
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
 	origStdin := os.Stdin
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = origStdin; r.Close(); w.Close() })
-	go func() { _, _ = w.WriteString("y\n"); _ = w.Close() }()
+	go func() {
+		_, _ = w.WriteString("y\nn\n")
+		_ = w.Close()
+	}()
 
 	cmd := approvePlatformEnrollmentCmdWithConfig(
-		cmdtest.ConfigLoaderFor(cfg), MockClientFactory(mockClient), cmdtest.FileSvcFactoryFor(nil))
-	cmd.Flags().Set("all", "true")
+		cmdtest.ConfigLoaderFor(cfg), func(_ fs.RuntimeFileService, _ *config.Config) (APIClient, error) {
+			return dynClient, nil
+		}, cmdtest.FileSvcFactoryFor(nil))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
 	require.NoError(t, cmd.RunE(cmd, nil))
-	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, mockClient))
+	require.Len(t, dynClient.posts, 1, "only the accepted device should be posted")
+	req := dynClient.posts[0].Body.(models.PlatformEnrollmentBatchDecisionRequest)
+	assert.Equal(t, "req-operator-001", req.Requests[0].RequestID)
+	out := buf.String()
+	assert.Contains(t, out, "req-operator-001 approved")
+	assert.Contains(t, out, "Skipped")
+}
+
+// TestApprovePlatformEnrollmentCmd_SequentialInteractiveApprovesAllSequentially verifies
+// answering 'y' to each device sequentially approves every device individually.
+func TestApprovePlatformEnrollmentCmd_SequentialInteractiveApprovesAllSequentially(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+
+	pendingBody, err := json.Marshal(samplePendingResponse())
+	require.NoError(t, err)
+
+	dynClient := &dynamicDecisionMockClient{getResp: pendingBody}
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = origStdin; r.Close(); w.Close() })
+	go func() {
+		_, _ = w.WriteString("y\ny\n")
+		_ = w.Close()
+	}()
+
+	cmd := approvePlatformEnrollmentCmdWithConfig(
+		cmdtest.ConfigLoaderFor(cfg), func(_ fs.RuntimeFileService, _ *config.Config) (APIClient, error) {
+			return dynClient, nil
+		}, cmdtest.FileSvcFactoryFor(nil))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+	require.Len(t, dynClient.posts, 2, "both accepted devices should be posted")
+	req1 := dynClient.posts[0].Body.(models.PlatformEnrollmentBatchDecisionRequest)
+	assert.Equal(t, "req-operator-001", req1.Requests[0].RequestID)
+	req2 := dynClient.posts[1].Body.(models.PlatformEnrollmentBatchDecisionRequest)
+	assert.Equal(t, "req-dashboard-002", req2.Requests[0].RequestID)
+	out := buf.String()
+	assert.Contains(t, out, "req-operator-001 approved")
+	assert.Contains(t, out, "req-dashboard-002 approved")
 }
 
 func TestDenyPlatformEnrollmentCmd_AllDeniesEveryPending(t *testing.T) {
@@ -914,14 +1007,13 @@ func TestApprovePlatformEnrollmentCmd_DisplaysSystemFingerprint(t *testing.T) {
 func TestApprovePlatformEnrollmentCmd_CommandStructure(t *testing.T) {
 	cmd := approvePlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(nil), PanickingClientFactory(), cmdtest.FileSvcFactoryFor(nil))
-	assert.Equal(t, "approve <request-id|instance-id|hostname>... | --all", cmd.Use)
+	assert.Equal(t, "approve [request-id|instance-id|hostname]...", cmd.Use)
 	assert.NotNil(t, cmd.RunE)
 	assert.Nil(t, cmd.Flags().Lookup("deny"))
 	assert.NotNil(t, cmd.Flags().Lookup("reason"))
 	assert.NotNil(t, cmd.Flags().Lookup("yes"))
 	assert.Equal(t, "false", cmd.Flags().Lookup("yes").DefValue)
-	assert.NotNil(t, cmd.Flags().Lookup("all"))
-	assert.Equal(t, "false", cmd.Flags().Lookup("all").DefValue)
+	assert.Nil(t, cmd.Flags().Lookup("all"))
 }
 
 // TestDenyPlatformEnrollmentCmd_CommandStructure verifies the deny command's
