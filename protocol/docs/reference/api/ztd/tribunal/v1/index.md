@@ -67,6 +67,7 @@ TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.
 | outcome | [TribunalOutcome](#ztd-tribunal-v1-TribunalOutcome) |  |  |
 | arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  | arguments are the approved typed run_shell_command arguments. |
 | arguments_json | [string](#string) |  | arguments_json are the exact canonical bytes dispatched to the Operator. |
+| consensus_inferences | [ztd.operator.v1.ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated | All command admission rounds, including revised or failed contextual reviews. |
 | steps | [ztd.eval.v1.AgentStep](#ztd-eval-v1-AgentStep) | repeated | steps are the persona steps of the deliberation, in order. |
 | member_calls | [TribunalMemberCall](#ztd-tribunal-v1-TribunalMemberCall) | repeated | member_calls are the governed member inferences, in order. |
 | risk_rationale | [string](#string) |  | Marshal&#39;s rationale and feedback for a BLOCKED outcome. |

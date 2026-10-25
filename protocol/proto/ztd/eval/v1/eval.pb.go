@@ -11150,16 +11150,17 @@ func (x *CanaryManifest) GetEntries() []*CanaryEntry {
 // one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
 // set, matching kind. NOT_RUN kinds carry no outcome fields.
 type ConformanceObservation struct {
-	state           protoimpl.MessageState     `protogen:"open.v1"`
-	Kind            ConformanceObservationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=ztd.eval.v1.ConformanceObservationKind" json:"kind,omitempty"`
-	HttpStatus      int32                      `protobuf:"varint,2,opt,name=http_status,json=httpStatus,proto3" json:"http_status,omitempty"`
-	Receipt         *v11.EventReceipt          `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	Rejection       *v11.GovernanceRejection   `protobuf:"bytes,4,opt,name=rejection,proto3" json:"rejection,omitempty"`
-	Refusal         *v11.IngressRefusal        `protobuf:"bytes,5,opt,name=refusal,proto3" json:"refusal,omitempty"`
-	SuspendedTxHash string                     `protobuf:"bytes,6,opt,name=suspended_tx_hash,json=suspendedTxHash,proto3" json:"suspended_tx_hash,omitempty"`
-	UntypedBody     []byte                     `protobuf:"bytes,7,opt,name=untyped_body,json=untypedBody,proto3" json:"untyped_body,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state               protoimpl.MessageState        `protogen:"open.v1"`
+	Kind                ConformanceObservationKind    `protobuf:"varint,1,opt,name=kind,proto3,enum=ztd.eval.v1.ConformanceObservationKind" json:"kind,omitempty"`
+	HttpStatus          int32                         `protobuf:"varint,2,opt,name=http_status,json=httpStatus,proto3" json:"http_status,omitempty"`
+	Receipt             *v11.EventReceipt             `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	Rejection           *v11.GovernanceRejection      `protobuf:"bytes,4,opt,name=rejection,proto3" json:"rejection,omitempty"`
+	Refusal             *v11.IngressRefusal           `protobuf:"bytes,5,opt,name=refusal,proto3" json:"refusal,omitempty"`
+	SuspendedTxHash     string                        `protobuf:"bytes,6,opt,name=suspended_tx_hash,json=suspendedTxHash,proto3" json:"suspended_tx_hash,omitempty"`
+	UntypedBody         []byte                        `protobuf:"bytes,7,opt,name=untyped_body,json=untypedBody,proto3" json:"untyped_body,omitempty"`
+	ConsensusInferences []*v11.ConsensusVoteInference `protobuf:"bytes,8,rep,name=consensus_inferences,json=consensusInferences,proto3" json:"consensus_inferences,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ConformanceObservation) Reset() {
@@ -11237,6 +11238,13 @@ func (x *ConformanceObservation) GetSuspendedTxHash() string {
 func (x *ConformanceObservation) GetUntypedBody() []byte {
 	if x != nil {
 		return x.UntypedBody
+	}
+	return nil
+}
+
+func (x *ConformanceObservation) GetConsensusInferences() []*v11.ConsensusVoteInference {
+	if x != nil {
+		return x.ConsensusInferences
 	}
 	return nil
 }
@@ -11585,8 +11593,11 @@ type ConformanceRunRecord struct {
 	// The selected Data Operator was the Gateway's embedded Operator, which also
 	// executed this run's outbound dispatch and CLI cases.
 	OutboundAbsent bool `protobuf:"varint,14,opt,name=outbound_absent,json=outboundAbsent,proto3" json:"outbound_absent,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Enrollment-bound keys for Tribunal inference and observation runtimes.
+	// These runtimes provide supporting evidence, not conformance executor roles.
+	ConsensusAnchors []*ConformanceAnchor `protobuf:"bytes,15,rep,name=consensus_anchors,json=consensusAnchors,proto3" json:"consensus_anchors,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ConformanceRunRecord) Reset() {
@@ -11715,6 +11726,13 @@ func (x *ConformanceRunRecord) GetOutboundAbsent() bool {
 		return x.OutboundAbsent
 	}
 	return false
+}
+
+func (x *ConformanceRunRecord) GetConsensusAnchors() []*ConformanceAnchor {
+	if x != nil {
+		return x.ConsensusAnchors
+	}
+	return nil
 }
 
 // ConformanceApprovalRequest is what an attended run asks its human approver for
@@ -13757,7 +13775,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\"D\n" +
 	"\x0eCanaryManifest\x122\n" +
-	"\aentries\x18\x01 \x03(\v2\x18.ztd.eval.v1.CanaryEntryR\aentries\"\xfd\x02\n" +
+	"\aentries\x18\x01 \x03(\v2\x18.ztd.eval.v1.CanaryEntryR\aentries\"\xd9\x03\n" +
 	"\x16ConformanceObservation\x12;\n" +
 	"\x04kind\x18\x01 \x01(\x0e2'.ztd.eval.v1.ConformanceObservationKindR\x04kind\x12\x1f\n" +
 	"\vhttp_status\x18\x02 \x01(\x05R\n" +
@@ -13766,7 +13784,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\trejection\x18\x04 \x01(\v2$.ztd.operator.v1.GovernanceRejectionR\trejection\x129\n" +
 	"\arefusal\x18\x05 \x01(\v2\x1f.ztd.operator.v1.IngressRefusalR\arefusal\x12*\n" +
 	"\x11suspended_tx_hash\x18\x06 \x01(\tR\x0fsuspendedTxHash\x12!\n" +
-	"\funtyped_body\x18\a \x01(\fR\vuntypedBody\"V\n" +
+	"\funtyped_body\x18\a \x01(\fR\vuntypedBody\x12Z\n" +
+	"\x14consensus_inferences\x18\b \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\"V\n" +
 	"\x12ConformanceA2ACall\x12\x1d\n" +
 	"\n" +
 	"skill_name\x18\x01 \x01(\tR\tskillName\x12!\n" +
@@ -13796,7 +13815,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x15ConformanceQuiescence\x12\x1a\n" +
 	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x123\n" +
 	"\x05first\x18\x02 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x05first\x125\n" +
-	"\x06second\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x06second\"\xad\x05\n" +
+	"\x06second\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x06second\"\xfa\x05\n" +
 	"\x14ConformanceRunRecord\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bsuite_id\x18\x02 \x01(\tR\asuiteId\x12#\n" +
@@ -13817,7 +13836,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\vfinished_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishedAt\x12,\n" +
 	"\x12a2a_ingress_absent\x18\r \x01(\bR\x10a2aIngressAbsent\x12'\n" +
-	"\x0foutbound_absent\x18\x0e \x01(\bR\x0eoutboundAbsent\"\xcd\x01\n" +
+	"\x0foutbound_absent\x18\x0e \x01(\bR\x0eoutboundAbsent\x12K\n" +
+	"\x11consensus_anchors\x18\x0f \x03(\v2\x1e.ztd.eval.v1.ConformanceAnchorR\x10consensusAnchors\"\xcd\x01\n" +
 	"\x1aConformanceApprovalRequest\x12\x17\n" +
 	"\acase_id\x18\x01 \x01(\tR\x06caseId\x12\x1d\n" +
 	"\n" +
@@ -14420,7 +14440,8 @@ var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(*v11.EventReceipt)(nil),                      // 158: ztd.operator.v1.EventReceipt
 	(*v11.GovernanceRejection)(nil),               // 159: ztd.operator.v1.GovernanceRejection
 	(*v11.IngressRefusal)(nil),                    // 160: ztd.operator.v1.IngressRefusal
-	(*v11.RunShellCommandArguments)(nil),          // 161: ztd.operator.v1.RunShellCommandArguments
+	(*v11.ConsensusVoteInference)(nil),            // 161: ztd.operator.v1.ConsensusVoteInference
+	(*v11.RunShellCommandArguments)(nil),          // 162: ztd.operator.v1.RunShellCommandArguments
 }
 var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	24,  // 0: ztd.eval.v1.EvaluationRuntimeBoundary.component:type_name -> ztd.eval.v1.EvaluationRuntimeComponent
@@ -14664,54 +14685,56 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	158, // 238: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.EventReceipt
 	159, // 239: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
 	160, // 240: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	131, // 241: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
-	158, // 242: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.EventReceipt
-	158, // 243: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.EventReceipt
-	130, // 244: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
-	130, // 245: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
-	132, // 246: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
-	133, // 247: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
-	158, // 248: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.EventReceipt
-	158, // 249: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.EventReceipt
-	23,  // 250: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	128, // 251: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
-	135, // 252: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence
-	134, // 253: ztd.eval.v1.ConformanceRunRecord.cases:type_name -> ztd.eval.v1.ConformanceCaseEvidence
-	156, // 254: ztd.eval.v1.ConformanceRunRecord.started_at:type_name -> google.protobuf.Timestamp
-	156, // 255: ztd.eval.v1.ConformanceRunRecord.finished_at:type_name -> google.protobuf.Timestamp
-	43,  // 256: ztd.eval.v1.ConformanceApprovalRequest.decision:type_name -> ztd.eval.v1.ConformanceApprovalDecision
-	29,  // 257: ztd.eval.v1.ConformanceVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	44,  // 258: ztd.eval.v1.ConformanceVerdict.failure_class:type_name -> ztd.eval.v1.ConformanceFailureClass
-	23,  // 259: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	45,  // 260: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
-	138, // 261: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
-	161, // 262: ztd.eval.v1.CandidateOutput.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
-	143, // 263: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
-	47,  // 264: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
-	48,  // 265: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
-	161, // 266: ztd.eval.v1.ReviewOutput.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
-	46,  // 267: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
-	1,   // 268: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
-	9,   // 269: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
-	140, // 270: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
-	141, // 271: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
-	142, // 272: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
-	144, // 273: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
-	145, // 274: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
-	146, // 275: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
-	147, // 276: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
-	148, // 277: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
-	149, // 278: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
-	49,  // 279: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
-	51,  // 280: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
-	50,  // 281: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
-	151, // 282: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
-	126, // 283: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
-	284, // [284:284] is the sub-list for method output_type
-	284, // [284:284] is the sub-list for method input_type
-	284, // [284:284] is the sub-list for extension type_name
-	284, // [284:284] is the sub-list for extension extendee
-	0,   // [0:284] is the sub-list for field type_name
+	161, // 241: ztd.eval.v1.ConformanceObservation.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	131, // 242: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
+	158, // 243: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.EventReceipt
+	158, // 244: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.EventReceipt
+	130, // 245: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
+	130, // 246: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
+	132, // 247: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
+	133, // 248: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
+	158, // 249: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.EventReceipt
+	158, // 250: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.EventReceipt
+	23,  // 251: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	128, // 252: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
+	135, // 253: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence
+	134, // 254: ztd.eval.v1.ConformanceRunRecord.cases:type_name -> ztd.eval.v1.ConformanceCaseEvidence
+	156, // 255: ztd.eval.v1.ConformanceRunRecord.started_at:type_name -> google.protobuf.Timestamp
+	156, // 256: ztd.eval.v1.ConformanceRunRecord.finished_at:type_name -> google.protobuf.Timestamp
+	128, // 257: ztd.eval.v1.ConformanceRunRecord.consensus_anchors:type_name -> ztd.eval.v1.ConformanceAnchor
+	43,  // 258: ztd.eval.v1.ConformanceApprovalRequest.decision:type_name -> ztd.eval.v1.ConformanceApprovalDecision
+	29,  // 259: ztd.eval.v1.ConformanceVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	44,  // 260: ztd.eval.v1.ConformanceVerdict.failure_class:type_name -> ztd.eval.v1.ConformanceFailureClass
+	23,  // 261: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	45,  // 262: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
+	138, // 263: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
+	162, // 264: ztd.eval.v1.CandidateOutput.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
+	143, // 265: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
+	47,  // 266: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
+	48,  // 267: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
+	162, // 268: ztd.eval.v1.ReviewOutput.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
+	46,  // 269: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
+	1,   // 270: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
+	9,   // 271: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
+	140, // 272: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
+	141, // 273: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
+	142, // 274: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
+	144, // 275: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
+	145, // 276: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
+	146, // 277: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
+	147, // 278: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
+	148, // 279: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
+	149, // 280: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
+	49,  // 281: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
+	51,  // 282: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
+	50,  // 283: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
+	151, // 284: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
+	126, // 285: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
+	286, // [286:286] is the sub-list for method output_type
+	286, // [286:286] is the sub-list for method input_type
+	286, // [286:286] is the sub-list for extension type_name
+	286, // [286:286] is the sub-list for extension extendee
+	0,   // [0:286] is the sub-list for field type_name
 }
 
 func init() { file_ztd_eval_v1_eval_proto_init() }

@@ -255,3 +255,11 @@ func TestAnchorSetKey(t *testing.T) {
 	_, err = nilSet.Key(signer.KeyID, "op-1")
 	assert.ErrorIs(t, err, constants.ErrConformanceAnchorUnknown)
 }
+
+func TestNewAnchorSetDuplicateKeyNamesBothRuntimes(t *testing.T) {
+	signer := oracletest.NewSigner(t)
+	_, err := NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor("provenance"), signer.Anchor("observer")})
+	require.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
+	require.ErrorContains(t, err, "provenance")
+	require.ErrorContains(t, err, "observer")
+}

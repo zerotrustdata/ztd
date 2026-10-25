@@ -351,7 +351,11 @@ func withoutL2(env *commonv1.GovernanceEnvelope) *commonv1.GovernanceEnvelope {
 // - No duplicate member IDs
 // - New consensus must be created with Enabled=true (updates may disable)
 func (s *ConsensusStoreService) AddConsensus(ctx context.Context, policy models.ConsensusPolicy) error {
-	if policy.EndpointURL != "" || policy.ID == string(constants.DocIDConsensusBinding) {
+	if policy.Provider == string(constants.ConsensusProviderTribunal) {
+		if policy.EndpointURL != "" {
+			return constants.ErrConsensusTribunalEndpointSet
+		}
+	} else if policy.EndpointURL != "" || policy.ID == string(constants.DocIDConsensusBinding) {
 		if err := models.ValidateConsensusEndpoint(policy.EndpointURL); err != nil {
 			return err
 		}

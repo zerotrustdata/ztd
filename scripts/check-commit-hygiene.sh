@@ -27,6 +27,7 @@
 # finding is a reviewed false positive. CI runs the same checks.
 
 set -euo pipefail
+export LC_ALL=C
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -112,7 +113,7 @@ done <<<"$ENTRIES"
 #    paths are fine; this machine's real path is not. Skipped in CI, where $HOME
 #    is the runner's and says nothing about the author.
 if [[ -n $CHECK_HOME ]]; then
-    HITS="$(awk -v home="$HOME/" '
+    HITS="$(LC_ALL=C awk -v home="$HOME/" '
         /^\+\+\+ b\// { file = substr($0, 7); next }
         /^\+/ && index($0, home) { print file }
     ' <<<"$PATCH" | sort -u)"

@@ -31,6 +31,7 @@ import {
   formatNumber,
 } from '../components/shared';
 import type { VerifierState } from '../contract/types';
+import { evaluationPassRate } from '../utils/run-metrics';
 import { campaignTerminalProgress, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
 
 const verifierStateLabels: Record<VerifierState, string> = {
@@ -63,9 +64,10 @@ export function EvaluationDetailView() {
   if (!runId) return <ErrorState message="No run selected." />;
   if (!run) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
 
+  const passRate = evaluationPassRate(run);
   const headlineLimitations = new Set(run.benchmark_unavailable_reasons ?? []);
   for (const [label, metric] of [
-    ['Pass rate', run.headline_metrics.pass_rate],
+    ['Pass rate', passRate],
     ['Latency p50', run.headline_metrics.latency_p50_ms],
     ['Output throughput p50', run.headline_metrics.output_throughput_p50_tokens_per_second],
   ] as const) {
@@ -117,12 +119,12 @@ export function EvaluationDetailView() {
           }
           label={run.native_result ? 'Required invariants' : 'Assignments'}
         />
-        {run.native_result ? <><p>{run.native_result.summary}</p><TonePill tone="info">{run.native_result.active_posture} · {run.native_result.lane}</TonePill></> : <OutcomeBreakdown outcomes={run.terminal_outcomes} />}
+        {run.native_result ? <><p>{run.native_result.summary}</p><TonePill tone="info">{run.native_result.active_posture} · {run.native_result.lane}</TonePill></> : <OutcomeBreakdown outcomes={run.terminal_outcomes} scope="run" />}
       </PanelSection>
 
       {!run.native_result ? <PanelSection title="Headline metrics">
         <div className="stat-tile-grid">
-          <MetricCard variant="tile" label="Pass rate" metric={run.headline_metrics.pass_rate} formatter={formatPercent} />
+          <MetricCard variant="tile" label="Pass rate" metric={passRate} formatter={formatPercent} />
           <MetricCard variant="tile" label="Latency p50" metric={run.headline_metrics.latency_p50_ms} formatter={formatLatency} />
           <MetricCard variant="tile" label="Output throughput p50" metric={run.headline_metrics.output_throughput_p50_tokens_per_second ?? run.headline_metrics.throughput} formatter={formatThroughput} />
         </div>

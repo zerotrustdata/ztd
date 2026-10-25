@@ -107,6 +107,8 @@ message TribunalIntentResult {
   ztd.operator.v1.RunShellCommandArguments arguments = 11;
   // arguments_json are the exact canonical bytes dispatched to the Operator.
   string arguments_json = 12;
+  // All command admission rounds, including revised or failed contextual reviews.
+  repeated ztd.operator.v1.ConsensusVoteInference consensus_inferences = 13;
   // steps are the persona steps of the deliberation, in order.
   repeated ztd.eval.v1.AgentStep steps = 3;
   // member_calls are the governed member inferences, in order.

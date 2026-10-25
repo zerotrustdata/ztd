@@ -710,9 +710,9 @@ func (s *PublicMirrorStore) proofManifestSourceID(ctx context.Context, preferred
 	return sourceID, true, nil
 }
 
-// ProofManifest returns a legacy signed manifest or a segment-backed active
-// projection. For a projection, the root and signature belong to SegmentIndex.
-func (s *PublicMirrorStore) ProofManifest(ctx context.Context, sourceID string) (models.PublicProofManifest, bool, error) {
+// proofManifestHeader reads only the persisted header and indexed summary,
+// without materializing the artifact inventory.
+func (s *PublicMirrorStore) proofManifestHeader(ctx context.Context, sourceID string) (models.PublicProofManifest, bool, error) {
 	var headerJSON, root string
 	var count int
 	err := s.db.QueryRowWithRetry(ctx, `SELECT manifest_json, proof_root_sha256, artifact_count FROM proof_manifests WHERE source_id = ?`, sourceID).
@@ -726,6 +726,42 @@ func (s *PublicMirrorStore) ProofManifest(ctx context.Context, sourceID string) 
 	var manifest models.PublicProofManifest
 	if err := decodePublicMirrorJSON(headerJSON, &manifest); err != nil {
 		return models.PublicProofManifest{}, false, publicMirrorCorrupt("decode proof manifest %s: %v", sourceID, err)
+	}
+	if manifest.ProofRootSHA256 != root || manifest.ArtifactCount != count {
+		return models.PublicProofManifest{}, false, publicMirrorCorrupt("proof manifest %s summary mismatch", sourceID)
+	}
+	return manifest, true, nil
+}
+
+// ProofHead returns the latest proof header without reading artifact entries.
+func (s *PublicMirrorStore) ProofHead(ctx context.Context, sourceID string) (models.PublicProofHead, bool, error) {
+	header, found, err := s.proofManifestHeader(ctx, sourceID)
+	if err != nil || !found {
+		return models.PublicProofHead{}, found, err
+	}
+	return models.PublicProofHead{
+		SchemaVersion:               constants.PublicProofHeadSchemaVersion,
+		SourceID:                    sourceID,
+		SegmentIndex:                header.SegmentIndex,
+		ProofRootSHA256:             header.ProofRootSHA256,
+		CampaignID:                  header.CampaignID,
+		CampaignRevision:            header.CampaignRevision,
+		VerifiedIndexGenerationHash: header.VerifiedIndexGenerationHash,
+		VerificationOK:              header.VerificationOK,
+		ArtifactCount:               header.ArtifactCount,
+		VerifierInstructions:        header.VerifierInstructions,
+		GeneratedAt:                 header.GeneratedAt,
+		SigningKeyID:                header.SigningKeyID,
+		Signature:                   header.Signature,
+	}, true, nil
+}
+
+// ProofManifest returns a legacy signed manifest or a segment-backed active
+// projection. For a projection, the root and signature belong to SegmentIndex.
+func (s *PublicMirrorStore) ProofManifest(ctx context.Context, sourceID string) (models.PublicProofManifest, bool, error) {
+	manifest, found, err := s.proofManifestHeader(ctx, sourceID)
+	if err != nil || !found {
+		return models.PublicProofManifest{}, found, err
 	}
 	rows, err := sqliteutil.MaterializeRows(ctx, s.db, `
 		SELECT entry_json FROM proof_manifest_entries
@@ -745,8 +781,7 @@ func (s *PublicMirrorStore) ProofManifest(ctx context.Context, sourceID string) 
 			return models.PublicProofManifest{}, false, publicMirrorCorrupt("decode proof manifest %s entry: %v", sourceID, err)
 		}
 	}
-	manifest.ArtifactCount = len(manifest.Artifacts)
-	if manifest.ProofRootSHA256 != root || manifest.ArtifactCount != count {
+	if manifest.ArtifactCount != len(manifest.Artifacts) {
 		return models.PublicProofManifest{}, false, publicMirrorCorrupt("proof manifest %s summary mismatch", sourceID)
 	}
 	return manifest, true, nil

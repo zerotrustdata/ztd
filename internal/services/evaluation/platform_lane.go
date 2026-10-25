@@ -44,6 +44,7 @@ const (
 // AgentDispatchScope identifies one governed dispatch made for a campaign attempt.
 type AgentDispatchScope struct {
 	RunID           string
+	AssignmentID    string
 	ScenarioID      string
 	InvestigationID string
 	AttemptID       string
@@ -149,14 +150,14 @@ type GovernedToolDispatch struct {
 // rejection or an ingress refusal is an answer the model sees. A transport
 // failure, an untyped answer or an approval suspension is a harness failure and
 // is returned as an error so it is never graded against the model.
-func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error) {
+func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runID, assignmentID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error) {
 	if l == nil || l.client == nil {
 		return GovernedToolDispatch{}, fmt.Errorf("%w: evaluation lane client is required", constants.ErrMissingRequiredField)
 	}
 	if target.OperatorID == "" || target.SessionID == "" || runID == "" || investigationID == "" || attemptID == "" || len(payload) == 0 {
 		return GovernedToolDispatch{}, fmt.Errorf("%w: agent tool dispatch requires operator target, scenario identity, and payload", constants.ErrMissingRequiredField)
 	}
-	scope := AgentDispatchScope{RunID: runID, InvestigationID: investigationID, AttemptID: attemptID, Target: target}
+	scope := AgentDispatchScope{RunID: runID, AssignmentID: assignmentID, InvestigationID: investigationID, AttemptID: attemptID, Target: target}
 	outcome, err := l.dispatchAction(ctx, scope, action, targetResource, payload)
 	if err != nil {
 		return GovernedToolDispatch{}, err
@@ -200,6 +201,7 @@ func (l *CommandLane) dispatchAction(ctx context.Context, scope AgentDispatchSco
 	outcome, err := l.client.DispatchCommand(ctx, l.persona, models.OperatorCommandRequest{
 		TargetOperatorSessionID: scope.Target.SessionID, EventType: string(eventType), Payload: payload, TargetResource: targetResource,
 		InvestigationID: investigationID, TaskID: taskID, CLISessionID: l.persona.CLISessionID,
+		EvaluationRunID: scope.RunID, EvaluationAssignmentID: scope.AssignmentID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: submit governed %s: %w", constants.ErrEvaluationDispatchFailed, action, err)

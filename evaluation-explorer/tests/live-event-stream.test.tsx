@@ -337,9 +337,9 @@ describe('LiveEventStream', () => {
   });
 
   describe('Tribunal votes', () => {
-    const voteEvent = (id: string, member: string, outcome: string, observedAt: string, transaction = 'tx-1') => liveEvent({
+    const voteEvent = (id: string, member: string, outcome: string, observedAt: string, transaction = 'tx-1', assignmentId = 'a-1') => liveEvent({
       event_id: id, kind: 'stage_updated', lifecycle_status: 'running', observed_at: observedAt,
-      dataset_id: 'ds-live-investigation', run_id: 'investigation', assignment_id: undefined,
+      assignment_id: assignmentId,
       role: undefined, task_id: undefined, variant_id: undefined,
       stage_label: `tribunal vote\n${JSON.stringify({
         member_app_id: `tribunal-${member}`, outcome, reason: 'read-only query', model_tag: 'gemma4:e2b', transaction_id: transaction,
@@ -356,7 +356,7 @@ describe('LiveEventStream', () => {
       expect(screen.queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
     });
 
-    it('spawns all five seats in the row of the assignment that was active, keeping votes out of the row set', async () => {
+    it('spawns all five seats in the identified assignment row, keeping votes out of the row set', async () => {
       const user = userEvent.setup();
       render(stream([
         started('a-1', '2026-09-17T08:00:00Z'),
@@ -378,12 +378,12 @@ describe('LiveEventStream', () => {
       expect(within(axiom).getByText(/gemma4:e2b/)).toBeInTheDocument();
     });
 
-    it('moves later votes to the next assignment and leaves the earlier row as it was', () => {
+    it('routes overlapping assignment votes by identity regardless of activity time', () => {
       render(stream([
         started('a-1', '2026-09-17T08:00:00Z'),
-        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:00:05Z'),
         started('a-2', '2026-09-17T08:01:00Z'),
-        voteEvent('v-pragma', 'pragma', 'deny', '2026-09-17T08:01:05Z', 'tx-2'),
+        voteEvent('v-pragma', 'pragma', 'deny', '2026-09-17T08:01:05Z', 'tx-2', 'a-2'),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:01:06Z'),
       ]));
       const first = within(rowFor('task-a-1')).getByRole('group', { name: 'Tribunal' });
       const second = within(rowFor('task-a-2')).getByRole('group', { name: 'Tribunal' });
@@ -391,6 +391,19 @@ describe('LiveEventStream', () => {
       expect(within(first).queryByText('Deny')).not.toBeInTheDocument();
       expect(within(second).getByText('Deny')).toBeInTheDocument();
       expect(within(second).queryByText('Approve')).not.toBeInTheDocument();
+    });
+
+    it('never attaches unassigned conformance votes or votes from another run or dataset', () => {
+      const vote = voteEvent('unrelated', 'axiom', 'deny', '2026-09-17T08:01:05Z');
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        { ...vote, event_id: 'conformance', run_id: 'conformance-run', assignment_id: undefined },
+        { ...vote, event_id: 'other-run', run_id: 'other-run' },
+        { ...vote, event_id: 'other-dataset', dataset_id: 'other-dataset' },
+        { ...vote, event_id: 'other-assignment', assignment_id: 'other-assignment' },
+      ]));
+      expect(rows()).toHaveLength(1);
+      expect(screen.queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
     });
 
     it('shows only the latest round of a row', () => {
@@ -403,6 +416,27 @@ describe('LiveEventStream', () => {
       expect(within(tribunal).queryByText('Approve')).not.toBeInTheDocument();
       expect(within(tribunal).getByText('Deny')).toBeInTheDocument();
       expect(within(tribunal).getAllByText('Pending')).toHaveLength(4);
+    });
+
+    it('renders a spinner when connecting and a status dot when live', () => {
+      const { rerender } = render(
+        <MemoryRouter>
+          <LiveEventStream events={[]} connection="connecting" streamConnection="connecting" />
+        </MemoryRouter>,
+      );
+      const status = screen.getByTestId('stream-status');
+      expect(status).toHaveTextContent('Connecting');
+      expect(status.querySelector('.status-spinner')).toBeInTheDocument();
+      expect(status.querySelector('.status-dot')).not.toBeInTheDocument();
+
+      rerender(
+        <MemoryRouter>
+          <LiveEventStream events={[]} connection="live" streamConnection="connected" />
+        </MemoryRouter>,
+      );
+      expect(status).toHaveTextContent('Live');
+      expect(status.querySelector('.status-dot')).toBeInTheDocument();
+      expect(status.querySelector('.status-spinner')).not.toBeInTheDocument();
     });
   });
 

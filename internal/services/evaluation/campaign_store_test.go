@@ -50,14 +50,14 @@ func newCampaignRuntimeFileService(t *testing.T) ztdfs.RuntimeFileService {
 }
 
 func (m *campaignMemoryFileService) MkdirAll(_ context.Context, relPath string, _ os.FileMode) error {
-	m.files[relPath] = nil
+	m.files[filepath.ToSlash(relPath)] = nil
 	return nil
 }
 
 func (m *campaignMemoryFileService) CreateRuntimeTree(context.Context) error { return nil }
 
 func (m *campaignMemoryFileService) ReadFile(_ context.Context, relPath string) ([]byte, error) {
-	body, ok := m.files[relPath]
+	body, ok := m.files[filepath.ToSlash(relPath)]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", constants.ErrNotFound, relPath)
 	}
@@ -65,7 +65,7 @@ func (m *campaignMemoryFileService) ReadFile(_ context.Context, relPath string) 
 }
 
 func (m *campaignMemoryFileService) FileExists(_ context.Context, relPath string) (bool, error) {
-	_, ok := m.files[relPath]
+	_, ok := m.files[filepath.ToSlash(relPath)]
 	return ok, nil
 }
 
@@ -77,7 +77,7 @@ func (m *campaignMemoryFileService) Lstat(context.Context, string) (os.FileInfo,
 }
 
 func (m *campaignMemoryFileService) WriteFile(_ context.Context, relPath string, data []byte, _ os.FileMode) error {
-	m.files[relPath] = append([]byte(nil), data...)
+	m.files[filepath.ToSlash(relPath)] = append([]byte(nil), data...)
 	return nil
 }
 
@@ -86,18 +86,19 @@ func (m *campaignMemoryFileService) OpenForAppend(context.Context, string, os.Fi
 }
 
 func (m *campaignMemoryFileService) Truncate(_ context.Context, relPath string, size int64) error {
-	body, ok := m.files[relPath]
+	key := filepath.ToSlash(relPath)
+	body, ok := m.files[key]
 	if !ok {
 		return constants.ErrNotFound
 	}
 	if int64(len(body)) > size {
-		m.files[relPath] = append([]byte(nil), body[:size]...)
+		m.files[key] = append([]byte(nil), body[:size]...)
 		return nil
 	}
 	if int64(len(body)) < size {
 		padded := make([]byte, size)
 		copy(padded, body)
-		m.files[relPath] = padded
+		m.files[key] = padded
 	}
 	return nil
 }
@@ -116,7 +117,7 @@ func (m *campaignMemoryFileService) TryLockShared(context.Context, string, os.Fi
 
 func (m *campaignMemoryFileService) Resolve(relPath string) string { return relPath }
 func (m *campaignMemoryFileService) Remove(_ context.Context, relPath string) error {
-	delete(m.files, relPath)
+	delete(m.files, filepath.ToSlash(relPath))
 	return nil
 }
 
@@ -129,12 +130,15 @@ func (m *campaignMemoryFileService) MkdirTemp(context.Context, string) (string, 
 }
 
 func (m *campaignMemoryFileService) RemoveAll(_ context.Context, relPath string) error {
-	if relPath == "" {
+	relPath = filepath.ToSlash(relPath)
+	if relPath == "" || relPath == "." {
+		clear(m.files)
 		return nil
 	}
-	prefix := relPath + string(filepath.Separator)
+	prefix := strings.TrimSuffix(relPath, "/") + "/"
 	for path := range m.files {
-		if path == relPath || strings.HasPrefix(path, prefix) {
+		cleanPath := filepath.ToSlash(path)
+		if cleanPath == relPath || strings.HasPrefix(cleanPath, prefix) {
 			delete(m.files, path)
 		}
 	}
@@ -142,14 +146,19 @@ func (m *campaignMemoryFileService) RemoveAll(_ context.Context, relPath string)
 }
 func (m *campaignMemoryFileService) Rename(context.Context, string, string) error { return nil }
 func (m *campaignMemoryFileService) ReadDir(_ context.Context, relPath string) ([]os.DirEntry, error) {
-	prefix := relPath + string(filepath.Separator)
+	relPath = filepath.ToSlash(relPath)
+	prefix := strings.TrimSuffix(relPath, "/") + "/"
+	if relPath == "" || relPath == "." {
+		prefix = ""
+	}
 	seen := make(map[string]bool)
 	for path := range m.files {
-		if !strings.HasPrefix(path, prefix) {
+		cleanPath := filepath.ToSlash(path)
+		if prefix != "" && !strings.HasPrefix(cleanPath, prefix) {
 			continue
 		}
-		remainder := strings.TrimPrefix(path, prefix)
-		parts := strings.Split(remainder, string(filepath.Separator))
+		remainder := strings.TrimPrefix(cleanPath, prefix)
+		parts := strings.Split(remainder, "/")
 		if len(parts) == 0 || parts[0] == "" {
 			continue
 		}

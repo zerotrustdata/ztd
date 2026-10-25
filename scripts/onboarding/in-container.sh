@@ -17,6 +17,7 @@
 #   quickstart     make quickstart twice: first run, then reuse of everything
 #   release-smoke  ./ztd test release-smoke (governed lifecycle + evidence)
 #   contributor    bash scripts/linux-setup.sh -y (full make ci toolchain)
+#   operator-deploy real three-Operator CLI lifecycle on an owned Gateway
 #
 # usage: in-container.sh <scenario>...
 
@@ -92,7 +93,7 @@ scenario_build_only() {
     expect "setup exits 0" bash -c "bash scripts/linux-setup.sh --build-only -y >'$OUT/build-only.log' 2>&1"
     expect "./ztd is executable" test -x ./ztd
     expect "./ztd --version runs" ./ztd --version
-    expect "Node.js not installed by --build-only" bash -c '! command -v node'
+    expect "Node.js and npm installed for frontend builds" bash -c 'command -v node && command -v npm'
     expect "PATH marker written once" test "$(marker_count)" = 1
     expect_log build-only.log 'ztd is ready'
     expect_log build-only.log 'make quickstart'
@@ -147,8 +148,16 @@ scenario_release_smoke() {
 }
 
 scenario_contributor() {
-    expect "contributor setup exits 0" bash -c "bash scripts/linux-setup.sh -y >'$OUT/contributor.log' 2>&1"
+    expect "contributor setup exits 0" in_new_terminal contributor.log "bash scripts/linux-setup.sh -y"
     expect_log contributor.log 'dev-check passed'
+    expect "third-party notices match" in_new_terminal notices.log "make third-party-notices-check"
+    expect "env template preserved" cmp .env.example .env
+    expect "env file is owner-only" test "$(stat -c %a .env)" = 600
+}
+
+scenario_operator_deploy() {
+    expect "real Operator deployment lifecycle passes" in_new_terminal operator-deploy.log \
+        "bash scripts/ci/operator-deploy-lifecycle.sh --count 3 --root '$OUT/deployment-lifecycle'"
 }
 
 # --- main ------------------------------------------------------------------------

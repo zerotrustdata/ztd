@@ -363,6 +363,8 @@ func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
 	env, _ := tribunalTestEnvelope(t)
 	env.Posture = string(constants.PostureConsensus)
 	env.InvestigationId = "run-1"
+	env.EvaluationRunId = "campaign-run-1"
+	env.EvaluationAssignmentId = "assignment-1"
 	env, _ = hashTribunalTestEnvelope(t, env)
 	binding := tribunalTestBinding()
 	feed := &fakeVoteFeed{}
@@ -379,8 +381,9 @@ func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
 	event := &evalv1.PublicLiveEvent{}
 	require.NoError(t, evalv1.UnmarshalCanonical(feed.bodies[0], event))
 	assert.Equal(t, "stage_updated", event.GetKind())
-	assert.Equal(t, "ds-live-run-1", event.GetDatasetId())
-	assert.Equal(t, "run-1", event.GetRunId())
+	assert.Equal(t, "ds-live-campaign-run-1", event.GetDatasetId())
+	assert.Equal(t, "campaign-run-1", event.GetRunId())
+	assert.Equal(t, "assignment-1", event.GetAssignmentId())
 	require.True(t, strings.HasPrefix(event.GetStageLabel(), tribunalVoteStagePrefix))
 	var published models.ConsensusVoteRecord
 	require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(event.GetStageLabel(), tribunalVoteStagePrefix)), &published))
@@ -389,11 +392,23 @@ func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
 	assert.Equal(t, "read-only query", published.Reason)
 	assert.Equal(t, d.votes.(*fakeVoteRecorder).records(t)[0], published)
 
+	// A later non-campaign deliberation keeps its own identity and cannot
+	// inherit the assignment from previously published activity.
+	env.EvaluationRunId, env.EvaluationAssignmentId = "", ""
+	require.NoError(t, d.recordVote(context.Background(), env, binding, binding.MemberAppIDs[1], memberVote{
+		answer: tribunal.ConsensusVoteAnswer{Decision: tribunal.ConsensusVoteDeny, Reason: "conformance"},
+	}))
+	require.Len(t, feed.bodies, 2)
+	event = &evalv1.PublicLiveEvent{}
+	require.NoError(t, evalv1.UnmarshalCanonical(feed.bodies[1], event))
+	assert.Empty(t, event.GetAssignmentId())
+	assert.Equal(t, "run-1", event.GetRunId())
+
 	env.Posture = string(constants.PostureDoctrine)
 	require.NoError(t, d.recordVote(context.Background(), env, binding, binding.MemberAppIDs[1], memberVote{
 		answer: tribunal.ConsensusVoteAnswer{Decision: tribunal.ConsensusVoteDeny, Reason: "not this posture"},
 	}))
-	assert.Len(t, feed.bodies, 1)
+	assert.Len(t, feed.bodies, 2)
 }
 
 func TestNewTribunalConsensusDeliberatorRejectsMissingRequiredDependencies(t *testing.T) {

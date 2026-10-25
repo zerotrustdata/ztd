@@ -64,7 +64,7 @@ jobs:
         run: make test-onboarding
 
       - name: Replay setup and quickstart on a fresh container host
-        run: bash scripts/onboarding/run-matrix.sh --distros ${{ matrix.distro }} --scenarios "build-only rerun quickstart" --out "${{ runner.temp }}/onboarding"
+        run: make test-onboarding-docker DISTROS=${{ matrix.distro }} ONBOARDING_OUT="${{ runner.temp }}/onboarding"
 
       - name: Preserve onboarding logs
         if: always()

@@ -226,6 +226,14 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return err
 	}
+	operators, _, err := gatewayClient.ListOperators(ctx)
+	if err != nil {
+		return fmt.Errorf("evaluation: conformance evidence runtimes: %w", err)
+	}
+	consensusAnchors, err := conformanceConsensusAnchors(operators, outbound.OperatorID)
+	if err != nil {
+		return err
+	}
 	poster, err := deps.conformance.poster(gwFiles, cfg)
 	if err != nil {
 		return err
@@ -284,16 +292,17 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		return err
 	}
 	record, err := deps.conformance.run(ctx, run.Config{
-		RunID:       runID,
-		Drivers:     drivers,
-		Unavailable: unavailable,
-		Sentinel:    sentinel,
-		Roots:       roots,
-		Posture:     func(context.Context) (evalv1.EvaluationGovernancePosture, error) { return posture, nil },
-		A2AIngress:  a2aIngress,
-		Recorder:    gatewayClient.Record,
-		Attended:    opts.attended,
-		Now:         deps.now,
+		RunID:            runID,
+		Drivers:          drivers,
+		Unavailable:      unavailable,
+		Sentinel:         sentinel,
+		Roots:            roots,
+		ConsensusAnchors: consensusAnchors,
+		Posture:          func(context.Context) (evalv1.EvaluationGovernancePosture, error) { return posture, nil },
+		A2AIngress:       a2aIngress,
+		Recorder:         gatewayClient.Record,
+		Attended:         opts.attended,
+		Now:              deps.now,
 	})
 	if err != nil {
 		return fmt.Errorf("evaluation: run conformance suite: %w", err)
@@ -466,6 +475,27 @@ func conformanceRoots(gwFiles, operatorFiles fs.RuntimeFileService, operatorID s
 	}
 	roots[cases.ExecutorOutbound] = run.Root{Files: operatorFiles, Dir: operatorDir, RuntimeID: operatorID, Bound: bound}
 	return roots, nil
+}
+
+// Supporting inference and observer receipts can come from runtimes other
+// than the selected Data Operator. Pin their enrollment keys before any case;
+// never take a trust anchor from the receipt it is meant to authenticate.
+func conformanceConsensusAnchors(operators []*operatorv1.OperatorDocument, executorID string) ([]*evalv1.ConformanceAnchor, error) {
+	var anchors []*evalv1.ConformanceAnchor
+	for _, doc := range operators {
+		if doc.GetId() == string(constants.DocIDEmbeddedOperator) || doc.GetId() == executorID || doc.GetStatus() != string(constants.OperatorStatusActive) {
+			continue
+		}
+		if doc.GetActuatorKeyId() == "" && doc.GetActuatorPublicKey() == "" {
+			continue
+		}
+		anchor, err := oracle.BoundAnchor(doc)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: conformance consensus runtime %s: %w", doc.GetId(), err)
+		}
+		anchors = append(anchors, anchor)
+	}
+	return anchors, nil
 }
 
 // absoluteRuntimeDir is the absolute runtime directory a file service resolves

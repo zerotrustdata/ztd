@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS assignment_event_records (
     PRIMARY KEY (source_id, sequence)
 );
 
-CREATE INDEX IF NOT EXISTS idx_public_mirror_assignment_event_records_assignment ON assignment_event_records(source_id, run_id, assignment_id);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_assignment_event_records_assignment_sequence ON assignment_event_records(source_id, run_id, assignment_id, sequence);
 
 -- Current records outlive replay-history retention. Their original signed
 -- batches remain while referenced, preserving independently verifiable bytes.
@@ -95,8 +95,8 @@ CREATE TABLE IF NOT EXISTS snapshot_records (
     FOREIGN KEY (source_id, first_sequence) REFERENCES snapshot_batches(source_id, first_sequence)
 );
 CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_batch ON snapshot_records(source_id, first_sequence);
-CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_sequence ON snapshot_records(source_id, sequence);
-CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_events ON snapshot_records(source_id, is_event, sequence);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_sequence_dataset ON snapshot_records(source_id, sequence, dataset_id);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_snapshot_events_covering ON snapshot_records(source_id, is_event, sequence, first_sequence, record_key);
 
 CREATE TABLE IF NOT EXISTS snapshot_heads (
     source_id TEXT PRIMARY KEY REFERENCES sources(source_id),
@@ -162,8 +162,8 @@ CREATE TABLE IF NOT EXISTS proof_manifest_entries (
     PRIMARY KEY (source_id, segment_index, ordinal)
 );
 
-CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_artifact ON proof_manifest_entries(artifact_id);
-CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_source_artifact ON proof_manifest_entries(source_id, artifact_id);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_artifact_position ON proof_manifest_entries(artifact_id, source_id, segment_index, ordinal);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_manifest_entries_source_artifact_position ON proof_manifest_entries(source_id, artifact_id, segment_index, ordinal);
 
 -- Withdrawn artifact IDs recorded by signed withdrawal segments.
 CREATE TABLE IF NOT EXISTS proof_withdrawn_artifacts (

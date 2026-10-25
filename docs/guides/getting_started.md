@@ -75,7 +75,7 @@ Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe
 
 ### What setup does
 
-The setup script checks Git, Make, curl, and Go (the version `go.mod` requires), offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `--build-only` does not need Node.js: `make build` embeds the committed Console and Evaluation Explorer assets. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs, including Node.js 22.22.2+, 24.15+, or 26+. Rerunning setup reuses everything already installed.
+The setup script checks Git, Make, curl, Go (the version `go.mod` requires), Node.js 22.22.2+, 24.15+, or 26+, and npm, offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `make build` compiles and embeds the Console and Evaluation Explorer frontends, so both setup modes need Node.js and npm. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs. Rerunning setup reuses everything already installed.
 
 ### What `make quickstart` does
 
@@ -148,10 +148,10 @@ List pending enrollment requests:
 
 Approve one request with `./ztd auth enroll approve <request-id> --yes`, replacing `<request-id>` with an ID from that list.
 
-Or approve all pending requests simultaneously:
+Or review and approve pending requests sequentially:
 
 ```bash
-./ztd auth enroll approve --all --yes
+./ztd auth enroll approve
 ```
 
 ### Verify a governed action and local evidence
@@ -199,7 +199,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
-| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development only; `make build` and `--build-only` setup use committed Console and Evaluation Explorer embeds |
+| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development; required by `make build` to compile embedded frontends |
 
 ---
 
@@ -300,7 +300,7 @@ make up
 make gw
 ```
 
-`make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator always includes Data and Inference. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
+`make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator defaults to Data only when no capabilities are specified; the `make gw` default explicitly enables Data, Inference, and Observer. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
 
 ```bash
 make gw MODEL_STORAGE_ROOT=/srv/ollama/models

@@ -12,18 +12,128 @@ package eval
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
+
+func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *testing.T) {
+	replies := make([]fixtures.OllamaReply, 16)
+	for i := range replies {
+		replies[i].Content = "READY"
+		if i < rolloutProviderFailureLimit {
+			replies[i] = fixtures.OllamaReply{Failure: "llama-server terminated: GGML_ASSERT(hparams.is_swa_any()) failed"}
+		}
+	}
+	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{
+		Posture: constants.PostureDoctrine, EnablePublicSpectator: true,
+		Provenance: true, ModelTags: []string{"qwen3:8b"}, Replies: replies,
+	})
+	previousOrigin := gwremote.PublicMirrorOrigin
+	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
+	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previousOrigin })
+	bad, healthy := testQwenVariant(), testQwenVariant()
+	bad.ModelDigest = fixtures.ScriptedModelDigest(t, bad.ServedModelTag)
+	healthy.VariantId, healthy.ServedModelTag = "qwen3-8b", "qwen3:8b"
+	healthy.ModelDigest = fixtures.ScriptedModelDigest(t, healthy.ServedModelTag)
+	writeTestFrozenInventory(t, env.root, bad, healthy)
+	env.mustRun(t, "rollout", "add", bad.ServedModelTag)
+	env.mustRun(t, "rollout", "add", healthy.ServedModelTag)
+	var out bytes.Buffer
+	env.cmd.SetOut(&out)
+	env.cmd.SetErr(&out)
+	err := runRollout(env.cmd, env.deps, rolloutRunOptions{
+		SkipVerified: true, GateSmoke: true,
+		MirrorBootstrapURL: run.stack.Gateway.PublicMirrorBootstrapURL,
+	})
+	require.Error(t, err, out.String())
+	assert.Contains(t, out.String(), "planned=2 succeeded=1 failed=1")
+	assert.Contains(t, out.String(), "3 consecutive provider generation failures")
+	queue, err := evaluation.LoadRolloutQueue(run.ctx, env.fileSvc(t))
+	require.NoError(t, err)
+	require.Len(t, queue.Models, 2)
+	assert.Equal(t, evaluation.QueueStatusFailed, queue.Models[0].Status)
+	assert.Contains(t, queue.Models[0].Notes, "provider_failure (generation_failed)")
+	assert.Equal(t, evaluation.QueueStatusPending, queue.Models[1].Status, "a successful smoke gate leaves the healthy entry eligible for full qualification")
+	assert.Contains(t, queue.Models[1].Notes, "smoke gate passed")
+	store := env.store(t)
+	assignments, err := store.ListAssignments(run.ctx, queue.Models[0].VerifiedRunID)
+	require.NoError(t, err)
+	failed, queued := 0, 0
+	for _, assignment := range assignments {
+		switch assignment.GetLifecycleStatus() {
+		case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED:
+			failed++
+			trace, err := store.LoadAssignmentAgentTrace(run.ctx, assignment.GetRunId(), assignment.GetAssignmentId())
+			require.NoError(t, err)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+		case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED:
+			queued++
+		default:
+			t.Fatalf("unexpected assignment lifecycle %s", assignment.GetLifecycleStatus())
+		}
+	}
+	assert.Equal(t, rolloutProviderFailureLimit, failed)
+	assert.Positive(t, queued, "unexecuted assignments keep their real queued lifecycle")
+	requests := run.stack.Provider.ChatRequests()
+	require.Greater(t, len(requests), rolloutProviderFailureLimit, "the healthy model still receives governed inference")
+	for i, raw := range requests {
+		var request fixtures.OllamaChatRequest
+		require.NoError(t, json.Unmarshal(raw, &request))
+		if i < rolloutProviderFailureLimit {
+			assert.Equal(t, bad.ServedModelTag, request.Model)
+		} else {
+			assert.Equal(t, healthy.ServedModelTag, request.Model)
+		}
+	}
+	var plan rolloutRunPlanJSON
+	require.NoError(t, env.runJSON(t, &plan, "rollout", "run", "--dry-run", "--skip-verified=false"))
+	require.Len(t, plan.Models, 1, "a failed entry is excluded even when verified entries are requested")
+	assert.Equal(t, healthy.VariantId, plan.Models[0].VariantID)
+	env.mustRun(t, "rollout", "retry", bad.ServedModelTag)
+	require.NoError(t, env.runJSON(t, &plan, "rollout", "run", "--dry-run"))
+	assert.Len(t, plan.Models, 2, "an explicit retry makes the failed entry eligible again")
+}
+
+func TestRunRollout_HealthyResponseResetsGenerationFailureCount(t *testing.T) {
+	replies := make([]fixtures.OllamaReply, 16)
+	for i := range replies {
+		replies[i].Content = "READY"
+		if i < 2 || i == 3 || i == 4 {
+			replies[i] = fixtures.OllamaReply{Failure: "temporary generation failure"}
+		}
+	}
+	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{
+		Posture: constants.PostureDoctrine, EnablePublicSpectator: true,
+		Provenance: true, Replies: replies,
+	})
+	previousOrigin := gwremote.PublicMirrorOrigin
+	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
+	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previousOrigin })
+	variant := testQwenVariant()
+	variant.ModelDigest = fixtures.ScriptedModelDigest(t, variant.ServedModelTag)
+	writeTestFrozenInventory(t, env.root, variant)
+	env.mustRun(t, "rollout", "add", variant.ServedModelTag)
+	var out bytes.Buffer
+	env.cmd.SetOut(&out)
+	env.cmd.SetErr(&out)
+	require.NoError(t, runRollout(env.cmd, env.deps, rolloutRunOptions{
+		SkipVerified: true, GateSmoke: true,
+		MirrorBootstrapURL: run.stack.Gateway.PublicMirrorBootstrapURL,
+	}), out.String())
+	assert.Contains(t, out.String(), "planned=1 succeeded=1 failed=0")
+	assert.Greater(t, run.stack.Provider.ChatCount(), 5, "separated failures do not trip the consecutive failure limit")
+}
 
 // newRolloutGateEnv is the rollout test environment over the real eval stack. The
 // run preflight checks the public mirror bootstrap, which the Gateway serves, so

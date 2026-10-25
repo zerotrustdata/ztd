@@ -65,6 +65,8 @@ type CommandDispatcher interface {
 // by the CommandDispatcher interface. The gateway adapter converts this to
 // gateway.DispatchRequest before calling DispatchService.Dispatch.
 type CommandDispatchRequest struct {
+	EvaluationRunID         string
+	EvaluationAssignmentID  string
 	TargetOperatorSessionID string
 	EventType               string
 	Payload                 []byte
@@ -375,6 +377,8 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	attempt := attemptState{ctx: ctx}
 	var beginErr error
 	result, err := s.dispatcher.Dispatch(ctx, CommandDispatchRequest{
+		EvaluationRunID:         req.RunID,
+		EvaluationAssignmentID:  req.AssignmentID,
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.Inference.Requested),
 		Payload:                 payload,
@@ -782,6 +786,24 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 			constants.OperatorStatus(op.Status) == constants.OperatorStatusActive
 	}
 
+	var eligible []*operatorv1.OperatorDocument
+	for _, op := range operators {
+		if capable(op) {
+			eligible = append(eligible, op)
+		}
+	}
+	preferred := operatorcapability.PreferEmbedded(eligible)
+	// Keep the caller's explicit incapable-session error while preventing a
+	// shadow remote session from overriding an eligible embedded Operator.
+	if req.TargetOperatorSessionID != "" {
+		for _, op := range operators {
+			if op.GetOperatorSessionId() == req.TargetOperatorSessionID && !capable(op) {
+				return "", constants.ErrInferenceOperatorNotCapable
+			}
+		}
+	}
+	operators = preferred
+
 	if req.TargetOperatorID != "" {
 		var selected string
 		for _, op := range operators {
@@ -822,7 +844,7 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 			matches = append(matches, operators[i])
 		}
 	}
-	matches = operatorcapability.PreferDedicated(matches)
+	matches = operatorcapability.PreferEmbedded(matches)
 	switch len(matches) {
 	case 0:
 		return "", constants.ErrInferenceOperatorNotFound

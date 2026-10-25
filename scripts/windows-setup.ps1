@@ -8,9 +8,9 @@
 # ztd Windows dev setup: install the toolchain, make build, and offer to add the
 # repository root to PATH. The full contributor flow also builds
 # evaluation-explorer, installs the contributor toolchain that `make ci` needs
-# (Go dev tools, Node deps), and runs make dev-check; Node.js is only required
-# for that full flow.
-# Pass --build-only to stop after `make build` (Go only; no Node.js needed).
+# (Go dev tools, Node deps), and runs make dev-check. Both setup modes need
+# Node.js and npm because make build compiles the embedded frontends.
+# Pass --build-only to stop after `make build`.
 # Requires PowerShell 7+ (pwsh). See docs/architecture/scripts.md.
 
 #Requires -Version 7.0
@@ -616,7 +616,7 @@ $goMin = Parse-GoVersion (Get-GoMinVersion)
 
 if ($Script:BuildOnly) {
     $totalSteps = 3
-    $prereqsText = "git, make, curl, go >= $($goMin.ToString())"
+    $prereqsText = "git, make, curl, go >= $($goMin.ToString()), node ($Script:NodeRequirement)"
 } else {
     $totalSteps = 6
     $prereqsText = "git, make, curl, go >= $($goMin.ToString()), node ($Script:NodeRequirement), rg"
@@ -631,8 +631,8 @@ if (-not (Test-Make)) { $missing += "make" }
 if (-not (Test-Curl)) { $missing += "curl" }
 if (-not (Test-Go -Need $goMin)) { $missing += "go" }
 
+if (-not (Test-Node)) { $missing += "node" }
 if (-not $Script:BuildOnly) {
-    if (-not (Test-Node)) { $missing += "node" }
     if (-not (Test-Ripgrep)) { $missing += "rg" }
 
     $missingCi = @()
@@ -666,8 +666,8 @@ if ($missing.Count -gt 0) {
     if (-not (Test-Make)) { $missing += "make" }
     if (-not (Test-Curl)) { $missing += "curl" }
     if (-not (Test-Go -Need $goMin)) { $missing += "go" }
+    if (-not (Test-Node)) { $missing += "node" }
     if (-not $Script:BuildOnly) {
-        if (-not (Test-Node)) { $missing += "node" }
         if (-not (Test-Ripgrep)) { $missing += "rg" }
     }
     if ($missing.Count -gt 0) {

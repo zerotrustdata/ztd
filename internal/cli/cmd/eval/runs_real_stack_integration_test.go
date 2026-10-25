@@ -241,11 +241,12 @@ func newPublicationRunEnv(t *testing.T) *runEnv {
 func newGatewayRunEnvWithOptions(t *testing.T, opts fixtures.EvalStackOptions) (*runEnv, *realStackRun) {
 	t.Helper()
 	control := newFakeProcessControl()
-	replies := make([]fixtures.OllamaReply, 16)
-	for i := range replies {
-		replies[i] = fixtures.OllamaReply{Content: "READY"}
+	if opts.Replies == nil {
+		opts.Replies = make([]fixtures.OllamaReply, 16)
+		for i := range opts.Replies {
+			opts.Replies[i] = fixtures.OllamaReply{Content: "READY"}
+		}
 	}
-	opts.Replies = replies
 	run := newRealStackEnvironment(t, opts, testRunControl(control))
 	cmd := &cobra.Command{}
 	cmd.SetContext(run.ctx)
@@ -280,7 +281,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
-			cmd.SetArgs([]string{"runs", "start", "real-stack-campaign", "--daemon=false", "--publish=false", "--no-backup", "--project-root", run.root})
+			cmd.SetArgs([]string{"runs", "start", "real-stack-campaign", "--daemon=false", "--publish=false", "--project-root", run.root})
 			cmdCtx, cancelCmd := context.WithTimeout(testVersionContext(), 2*time.Minute)
 			t.Cleanup(cancelCmd)
 			require.NoError(t, cmd.ExecuteContext(cmdCtx), out.String())

@@ -74,8 +74,8 @@ func TestGatewayStart_RunningWithMatchingFlagsReusesGateway(t *testing.T) {
 	markGatewayRunning(t, fileSvc)
 	writeRunningProfile(t, fileSvc, constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference})
 
-	// Order and the implicit data capability do not count as differences.
-	out, err := runGatewayStart(t, fileSvc, cfg, "--capabilities", "inference", "--posture", "doctrine", "--listen-host", constants.LocalhostIP)
+	// Capability order does not count as a difference.
+	out, err := runGatewayStart(t, fileSvc, cfg, "--capabilities", "inference,data", "--posture", "doctrine", "--listen-host", constants.LocalhostIP)
 	require.NoError(t, err)
 	assert.Contains(t, out, "already running")
 }

@@ -26,7 +26,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
-	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 )
 
@@ -144,34 +143,7 @@ func (s *RegistrationService) UpdateOperatorRuntimeConfig(ctx context.Context, o
 	if runtimeConfig == nil {
 		return constants.ErrMissingRequiredField
 	}
-	type configUpdatePayload struct {
-		RuntimeConfig        json.RawMessage                `json:"runtime_config"`
-		OperatorCapabilities constants.OperatorCapabilities `json:"operator_capabilities,omitempty"`
-		LocalDir             string                         `json:"local_dir,omitempty"`
-		Account              string                         `json:"account,omitempty"`
-		Port                 int32                          `json:"port,omitempty"`
-		UpdatedAt            time.Time                      `json:"updated_at"`
-	}
-	runtimeConfigBytes, err := models.MarshalOperatorRuntimeConfig(runtimeConfig)
-	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-	payload := configUpdatePayload{
-		RuntimeConfig:        runtimeConfigBytes,
-		OperatorCapabilities: operatorcapability.ResolveOperatorCapabilities(runtimeConfig),
-		LocalDir:             runtimeConfig.LocalDir,
-		Account:              runtimeConfig.Account,
-		Port:                 runtimeConfig.HttpPort,
-		UpdatedAt:            time.Now().UTC(),
-	}
-	updateBytes, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-	if _, err := s.docStore.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperators), operatorID, updateBytes); err != nil {
-		return fmt.Errorf("%w: update operator runtime config: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-	return nil
+	return s.docStore.SetOperatorRuntimeConfig(ctx, operatorID, runtimeConfig)
 }
 
 // RecordEmbeddedActuatorKey binds the Gateway's Actuator public key, which

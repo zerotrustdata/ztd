@@ -235,6 +235,25 @@ type PublicProofRootResponse struct {
 	ArtifactCount   int    `json:"artifact_count"`
 }
 
+// PublicProofHead is the constant-size response for GET /proof-head. Its root
+// and signature identify the latest signed segment; verify the segment log to
+// authenticate the active catalog. Index zero identifies a legacy manifest.
+type PublicProofHead struct {
+	SchemaVersion               string    `json:"schema_version"`
+	SourceID                    string    `json:"source_id"`
+	SegmentIndex                int64     `json:"segment_index"`
+	ProofRootSHA256             string    `json:"proof_root_sha256"`
+	CampaignID                  string    `json:"campaign_id"`
+	CampaignRevision            string    `json:"campaign_revision"`
+	VerifiedIndexGenerationHash string    `json:"verified_index_generation_hash"`
+	VerificationOK              bool      `json:"verification_ok"`
+	ArtifactCount               int       `json:"artifact_count"`
+	VerifierInstructions        string    `json:"verifier_instructions"`
+	GeneratedAt                 time.Time `json:"generated_at"`
+	SigningKeyID                string    `json:"signing_key_id"`
+	Signature                   string    `json:"signature"`
+}
+
 // PublicProofSegmentsResponse is the response for GET /proof-segments.
 type PublicProofSegmentsResponse struct {
 	SchemaVersion string                       `json:"schema_version"`

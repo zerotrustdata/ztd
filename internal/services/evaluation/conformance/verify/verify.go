@@ -194,7 +194,8 @@ func newRecordCheck(record *evalv1.ConformanceRunRecord, applicable []cases.Case
 // checkAnchors requires exactly one Gateway anchor and at most one outbound
 // anchor, and maps each executor to its runtime id.
 func checkAnchors(record *evalv1.ConformanceRunRecord) (map[string]string, *oracle.AnchorSet, error) {
-	anchors, err := oracle.NewAnchorSet(record.GetAnchors())
+	allAnchors := append(append([]*evalv1.ConformanceAnchor{}, record.GetAnchors()...), record.GetConsensusAnchors()...)
+	anchors, err := oracle.NewAnchorSet(allAnchors)
 	if err != nil {
 		return nil, nil, fmt.Errorf("conformance verify: anchors: %w", err)
 	}

@@ -8,7 +8,6 @@
 package eval
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -24,33 +23,6 @@ import (
 // eval/backups under the project root, outside the .ztd/ runtime tree.
 func defaultEvalBackupDir(cfg *config.Config) string {
 	return shared.DefaultEvalBackupDir(cfg)
-}
-
-// autoBackupEval snapshots evaluation evidence into the default backup
-// directory once a run has finished, whatever its outcome: a failed or
-// cancelled run's evidence is worth keeping too. A backup failure never masks
-// the run's own result, so it is reported as a warning. Text output goes to
-// stdout only outside JSON mode, which must stay machine-parseable.
-func autoBackupEval(cmd *cobra.Command, deps nativeEvalDeps, jsonOutput bool) {
-	// The run may have been cancelled, so the backup must not inherit that.
-	ctx := context.WithoutCancel(cmd.Context())
-	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
-	if err == nil {
-		var report *evaluation.EvalBackupReport
-		report, err = evaluation.NewEvalBackup(fileSvc, deps.now).CreateIfChanged(ctx, defaultEvalBackupDir(cfg))
-		if err == nil {
-			if jsonOutput {
-				return
-			}
-			if report.Unchanged {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Evaluation evidence already backed up in %s\n", report.SnapshotDir)
-				return
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Backed up evaluation evidence (%d file(s), %d bytes) to %s\n", len(report.Files), report.TotalBytes, report.SnapshotDir)
-			return
-		}
-	}
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: evaluation: automatic backup failed: %v\n", err)
 }
 
 type evalBackupJSON struct {
@@ -83,9 +55,9 @@ snapshot can be restored after .ztd/ is wiped and its vault recreated. A
 sealed file the runtime vault cannot open fails the backup before anything is
 written; delete the runs or campaigns that hold it.
 
-The destination must be outside .ztd/ so it survives deleting the runtime tree. Run and lease state is not copied. Runs made by
-ztd eval runs start or resume back up to the default directory
-automatically when they finish. A backup cannot run while runs delete or
+The destination must be outside .ztd/ so it survives deleting the runtime tree.
+Run and lease state is not copied. Run commands do not create backups;
+invoke ztd eval backup explicitly. A backup cannot run while runs delete or
 campaigns delete is purging the backups. Put a snapshot back with:
 ztd eval restore`,
 		Args: cobra.NoArgs,

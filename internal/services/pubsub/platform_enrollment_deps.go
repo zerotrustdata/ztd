@@ -16,6 +16,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // PlatformEnrollmentDocStore is the document-store subset required by the
@@ -24,6 +25,7 @@ import (
 // so the handler layer does not import the gateway package (which would
 // invert the dependency direction: gateway already imports pubsub).
 type PlatformEnrollmentDocStore interface {
+	RegisterOperator(context.Context, *operatorv1.OperatorDocument) error
 	DecidePlatformEnrollments(context.Context, string, models.PlatformEnrollmentBatchDecisionRequest, string) error
 	DocCreate(ctx context.Context, collection, id string, data json.RawMessage) error
 	DocSet(ctx context.Context, collection, id string, data json.RawMessage) error

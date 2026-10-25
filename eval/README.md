@@ -75,6 +75,9 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 ./ztd eval rollout run
 # ./ztd eval rollout run --until 5
 
+# Failed models stay excluded until explicitly retried after repair.
+./ztd eval rollout retry <tag>
+
 # A model-role campaign freezes exactly one model; queue several for rollout
 ./ztd eval rollout add qwen3:0.6b
 ./ztd eval rollout add qwen3:4b
@@ -102,6 +105,8 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval rollout retry` | Reset entries back to pending |
 | `ztd eval rollout skip` | Skip queue entries |
 | `ztd public restore` | Republish verified runs to the gateway-owned public mirror |
+
+Rollouts stop a model's run after three consecutive provider `generation_failed` results, record the entry as failed, and continue to the next model. The failed attempts retain their signed evidence; unexecuted assignments stay queued for explicit inspection or resume. Successful responses and other failure classes reset the consecutive-failure count. Both `rollout run` and `rollout resume` exclude failed entries until `rollout retry` returns them to pending, including when `--skip-verified=false` is used. Evidence verification remains separate from model performance grading.
 
 See [Evaluations architecture](../docs/architecture/evals.md) for full campaign operations.
 

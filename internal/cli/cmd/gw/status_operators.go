@@ -265,7 +265,7 @@ func localEmbeddedOperator(fileSvc fs.RuntimeFileService, profile serve.GatewayL
 		reported: map[string]string{},
 	}
 	if profileErr == nil {
-		row.Capabilities = profile.Config.OperatorCapabilities.WithEmbeddedBaseline()
+		row.Capabilities = profile.Config.OperatorCapabilities.WithDefault()
 		row.fillFromProfile(profile.Config)
 	}
 	// The embedded Operator always works in its own directory under the

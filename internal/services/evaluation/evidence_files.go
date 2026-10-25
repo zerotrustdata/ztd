@@ -52,7 +52,7 @@ type sealedRoot struct {
 
 func sealedRoots() []sealedRoot {
 	return []sealedRoot{
-		{dir: evalRoot(), aad: evidenceAAD},
+		{dir: constants.EvaluationDataPath, aad: evidenceAAD},
 		{dir: constants.ComplianceBundlesDirname, aad: complianceReportAAD},
 	}
 }

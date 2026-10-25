@@ -15,7 +15,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// ProviderBoundaryObserverStatus summarizes one active remote provider-boundary
+// ProviderBoundaryObserverStatus summarizes one active provider-boundary
 // observer operator session discovered through the operator registry.
 type ProviderBoundaryObserverStatus struct {
 	OperatorID        string
@@ -26,14 +26,11 @@ type ProviderBoundaryObserverStatus struct {
 	Platform          string
 }
 
-// ActiveProviderBoundaryObservers returns every active remote operator whose
+// ActiveProviderBoundaryObservers returns every active operator whose
 // resolved capabilities include Observer.
 func ActiveProviderBoundaryObservers(operators []*operatorv1.OperatorDocument) []ProviderBoundaryObserverStatus {
 	matches := make([]ProviderBoundaryObserverStatus, 0)
-	for _, op := range operators {
-		if op.RuntimeConfig == nil || !HasActiveCapability(op, constants.OperatorCapabilityObserver) {
-			continue
-		}
+	for _, op := range ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityObserver) {
 		matches = append(matches, ProviderBoundaryObserverStatus{
 			OperatorID:        op.Id,
 			OperatorSessionID: op.OperatorSessionId,
@@ -60,7 +57,7 @@ func SelectProviderBoundaryObserverForHardware(
 	sessionID string,
 	systemFingerprint string,
 ) (*ProviderBoundaryObserverStatus, error) {
-	matches := ActiveProviderBoundaryObservers(operators)
+	matches := ActiveProviderBoundaryObservers(PreferEmbedded(ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityObserver)))
 	if systemFingerprint != "" {
 		filtered := make([]ProviderBoundaryObserverStatus, 0, len(matches))
 		for _, op := range operators {

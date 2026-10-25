@@ -610,7 +610,7 @@ func TestComplianceReportGenerateCmdWithConfig_CampaignSourceVerifiesOffline(t *
 		StartedAt:    timestamppb.New(time.Unix(1_600_000_000, 0).UTC()),
 		FinishedAt:   timestamppb.New(time.Unix(1_600_000_100, 0).UTC()),
 	}))
-	require.NoError(t, fileSvc.MkdirAll(context.Background(), path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, "incomplete-candidate"), constants.PermDirStandard))
+	require.NoError(t, fileSvc.MkdirAll(context.Background(), path.Join(constants.EvaluationRunsPath, "incomplete-candidate"), constants.PermDirStandard))
 	scopeID := constants.EvalScopePrefix + req.CampaignID
 	identity, policy := complianceReportSigningFixtureForTest(t, scopeID)
 	cmd := complianceReportGenerateCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), func(context.Context, signingKeyLocation, string, string) (*compliancereport.ComplianceReportSigningIdentity, error) {

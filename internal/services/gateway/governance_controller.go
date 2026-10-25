@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -35,6 +36,7 @@ type GovernanceController struct {
 	cfg         *config.Config
 	logger      *slog.Logger
 	responder   *response.Writer
+	deliberator mcp.L2ConsensusDeliberator
 	envProc     governance.EnvelopeProcessor
 	cliSessions *CLISessionService
 }
@@ -42,10 +44,11 @@ type GovernanceController struct {
 // GovernanceControllerDeps groups all dependencies for GovernanceController.
 // EnvProc may be nil if envelope submission is not enabled.
 type GovernanceControllerDeps struct {
-	Cfg       *config.Config
-	Logger    *slog.Logger
-	Responder *response.Writer
-	EnvProc   governance.EnvelopeProcessor
+	Cfg         *config.Config
+	Logger      *slog.Logger
+	Responder   *response.Writer
+	EnvProc     governance.EnvelopeProcessor
+	Deliberator mcp.L2ConsensusDeliberator
 	// CLISessions resolves the cli_session_id an envelope claims when it is
 	// admitted on an Operator or app certificate. Required: a nil service fails
 	// construction with constants.ErrGovernanceCLISessionRequired.
@@ -61,6 +64,7 @@ func newGovernanceController(d GovernanceControllerDeps) (*GovernanceController,
 		logger:      d.Logger,
 		responder:   d.Responder,
 		envProc:     d.EnvProc,
+		deliberator: d.Deliberator,
 		cliSessions: d.CLISessions,
 	}, nil
 }
@@ -472,4 +476,68 @@ func envelopeErrorCode(err error) (int, error) {
 		}
 	}
 	return http.StatusInternalServerError, constants.ErrInternal
+}
+
+// handleGovernanceDeliberation obtains the internal Tribunal's L2 decision.
+// The subject is never executed here; submission still requires independent L4 verification.
+//
+// @Summary Deliberate with the internal Tribunal
+// @Description Authenticates an envelope and returns its Tribunal L2 votes and signed vote inference evidence. Does not execute the subject or mint L3 proofs.
+// @Tags governance
+// @Accept json
+// @Produce json
+// @Param envelope body []byte true "GovernanceEnvelope (protojson, without posture)"
+// @Success 200 {object} operatorv1.GovernanceDeliberationResult
+// @Failure 400 {object} operatorv1.IngressRefusal
+// @Failure 403 {object} operatorv1.IngressRefusal
+// @Failure 405 {object} operatorv1.IngressRefusal
+// @Failure 503 {object} operatorv1.IngressRefusal
+// @Router /api/v1/governance/deliberations [post]
+func (c *GovernanceController) handleGovernanceDeliberation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.renderEnvelopeError(w, constants.ErrMethodNotAllowed)
+		return
+	}
+	if c.deliberator == nil {
+		c.responder.ProtoJSONCanonical(w, http.StatusServiceUnavailable, governance.NewIngressRefusal(constants.ErrConsensusAppNotEnrolled))
+		return
+	}
+	body, err := readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
+	if err != nil {
+		c.renderEnvelopeError(w, err)
+		return
+	}
+	if len(body) == 0 {
+		c.renderEnvelopeError(w, constants.ErrInvalidJSONBody)
+		return
+	}
+	if err := c.verifyEnvelopeIdentityBinding(r, body); err != nil {
+		c.renderEnvelopeError(w, err)
+		return
+	}
+	body, err = stampEnvelopePosture(body, string(c.cfg.Gateway.Posture))
+	if err != nil {
+		c.renderEnvelopeError(w, err)
+		return
+	}
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		c.logger.Warn("governance deliberation: clear response deadline", logging.ErrorKind(err))
+	}
+	decision, err := c.deliberator.Deliberate(r.Context(), body)
+	if err != nil {
+		c.renderEnvelopeError(w, err)
+		return
+	}
+	if decision == nil {
+		c.renderEnvelopeError(w, constants.ErrTxInvalidEnvelope)
+		return
+	}
+	var env commonv1.GovernanceEnvelope
+	if err := protojson.Unmarshal(decision.Envelope, &env); err != nil {
+		c.renderEnvelopeError(w, constants.ErrTxInvalidEnvelope)
+		return
+	}
+	// Posture is authoritative on ingress and must not become a caller claim.
+	env.Posture = ""
+	c.responder.ProtoJSONCanonical(w, http.StatusOK, &operatorv1.GovernanceDeliberationResult{Envelope: &env, ConsensusInferences: decision.Inferences})
 }

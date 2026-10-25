@@ -11,18 +11,25 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/conformancetest"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -1140,4 +1147,91 @@ func TestVerifyPersistedPinnedDoctrineRecordByteFlipWithoutRecomputedDigestIsDig
 	require.Len(t, set.GetVerdicts(), 1)
 	assert.Empty(t, set.GetVerdicts()[0].GetCaseId())
 	assert.Equal(t, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH, set.GetVerdicts()[0].GetFailureClass())
+}
+
+func TestVerifyClaimsInternalTribunalDeliberationExecutions(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		corrupt    func(*operatorv1.ConsensusVoteInference)
+		want       evalv1.EvaluationVerdictStatus
+		observer   bool
+		unpinned   bool
+		remoteVote bool
+	}{
+		{name: "valid", want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
+		{name: "remote inference and observer", remoteVote: true, observer: true, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
+		{name: "unknown observer", observer: true, unpinned: true, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+		{name: "tampered observer", observer: true, corrupt: func(c *operatorv1.ConsensusVoteInference) { c.ObservationReceipts[0].Signature = "00" }, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+		{name: "tampered receipt", corrupt: func(c *operatorv1.ConsensusVoteInference) { c.Receipt.Signature = "00" }, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+		{name: "different subject", corrupt: func(c *operatorv1.ConsensusVoteInference) { c.SubjectTransactionHash = "other" }, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFixture(t)
+			rec := f.record()
+			ev := caseEvidence(t, rec, caseDirect)
+			env := &commonv1.GovernanceEnvelope{ActionType: string(constants.ActionTypeFileEdit), Payload: []byte("target")}
+			hash, err := govpkg.GenerateMessageID(env)
+			require.NoError(t, err)
+			env.Id = hash
+			env.TransactionHash = hash
+			member := constants.TribunalConsensusMemberAppIDs()[0]
+			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID(hash, member)}
+			digest, err := models.ComputeInferenceResultDigest(result)
+			require.NoError(t, err)
+			result.ResultDigest = digest
+			opts := receiptOpts(caseDirect, oracle.GatewayRuntimeID, "vote", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED)
+			opts.ActionType = string(constants.ActionTypeInference)
+			opts.ResultSummary = digest
+			vote := f.gateway.Executed(t, opts, "h0-"+caseDirect, "h-vote")
+			for _, stage := range vote.DeterministicStageEvidence {
+				stage.ActingAppId = member
+			}
+			f.gateway.Resign(t, vote)
+			actual := ev.Observations[0].Receipt
+			for _, stage := range actual.DeterministicStageEvidence {
+				if stage.GetCommitmentHash() != "" {
+					stage.PriorCommitmentHash = "h-vote"
+				}
+			}
+			f.gateway.Resign(t, actual)
+			call := &operatorv1.ConsensusVoteInference{SubjectTransactionId: hash, SubjectTransactionHash: hash, MemberAppId: member, ProviderAttemptId: result.ProviderAttemptId, TransactionId: vote.TransactionId, Result: result, Receipt: vote}
+			if test.remoteVote {
+				signer := oracletest.NewSigner(t)
+				rec.ConsensusAnchors = append(rec.ConsensusAnchors, signer.Anchor("inference"))
+				opts.OperatorID = "inference"
+				call.Receipt = signer.Executed(t, opts, "remote-before", "remote-after")
+				for _, stage := range call.Receipt.DeterministicStageEvidence {
+					stage.ActingAppId = member
+				}
+				signer.Resign(t, call.Receipt)
+				// This runtime's ledger has no vote execution inside the bracket.
+				for _, stage := range actual.DeterministicStageEvidence {
+					if stage.GetCommitmentHash() != "" {
+						stage.PriorCommitmentHash = "h0-" + caseDirect
+					}
+				}
+				f.gateway.Resign(t, actual)
+			}
+			if test.observer {
+				signer := oracletest.NewSigner(t)
+				if !test.unpinned {
+					rec.ConsensusAnchors = append(rec.ConsensusAnchors, signer.Anchor("observer"))
+				}
+				observationOpts := receiptOpts(caseDirect, "observer", "observation", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED)
+				observationOpts.ActionType = string(constants.ActionTypeProviderBoundaryObservation)
+				call.ObservationReceipts = []*operatorv1.EventReceipt{signer.Executed(t, observationOpts, "observer-before", "observer-after")}
+			}
+			if test.corrupt != nil {
+				test.corrupt(call)
+			}
+			req, err := protojson.Marshal(env)
+			require.NoError(t, err)
+			resp, err := protojson.Marshal(&operatorv1.GovernanceDeliberationResult{Envelope: env, ConsensusInferences: []*operatorv1.ConsensusVoteInference{call}})
+			require.NoError(t, err)
+			ev.Exchanges = []*evalv1.ConformanceExchange{{Method: http.MethodPost, Url: "https://gateway" + constants.APIPaths.GovernanceDeliberations, Status: http.StatusOK, RequestBody: req, ResponseBody: resp}}
+			set, err := verifyAgainst(rec, f.applicable)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, verdictOf(t, set, caseDirect).GetStatus())
+		})
+	}
 }

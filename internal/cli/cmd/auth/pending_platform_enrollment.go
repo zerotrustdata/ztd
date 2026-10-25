@@ -45,9 +45,9 @@ requester tokens, token hashes, CSR PEM, or certificates.
 
 Use request IDs, instance IDs, or hostnames with
 one of these commands:
-ztd auth enroll approve <selector>...
+ztd auth enroll approve [selector...]
 ztd auth enroll deny <selector>...
-to decide specific requests, or pass --all to decide every pending request.`,
+to decide specific requests, or run 'ztd auth enroll approve' without arguments to review each sequentially.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")

@@ -15,6 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
+| 1.4.1 | 2026-10-25 | Operator capability ownership and data-only embedded default; Tribunal evaluation evidence and assignment fixes; public mirror performance; Explorer startup and stream improvements; Ollama and website fixes. | [v1.4.1](docs/release_notes/v1.4.x/v1.4.1.md) |
 | 1.4.0 | 2026-10-24 | EventReceipt contracts across MCP, protocol and compliance evidence; stricter Tribunal authoring with guided retries; standalone leaderboard and sponsorship pages; Zero Trust Paper Company demo; public spectator listener and onboarding fixes; expanded test orchestration. | [v1.4.0](docs/release_notes/v1.4.x/v1.4.0.md) |
 
 ## v1.3.x

@@ -25,6 +25,9 @@
       "PublicProofCatalogSummary": {
         "$ref": "#/x-models/public_proof_catalog_summary"
       },
+      "PublicProofHead": {
+        "$ref": "#/x-models/public_proof_head"
+      },
       "PublicProofManifest": {
         "$ref": "#/x-models/public_proof_manifest"
       },
@@ -155,9 +158,9 @@
         }
       }
     },
-    "/proof-manifest": {
+    "/proof-head": {
       "get": {
-        "operationId": "public_proof_manifest",
+        "operationId": "public_proof_head",
         "parameters": [
           {
             "in": "query",
@@ -173,11 +176,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicProofManifest"
+                  "$ref": "#/components/schemas/PublicProofHead"
                 }
               }
             },
-            "description": "Proof manifest; nonzero segment_index requires signed log verification"
+            "description": "Constant-size proof head without artifact entries; verify the signed log for authenticity"
+          },
+          "404": {
+            "description": "No proof publication for the source"
           }
         }
       }
@@ -612,6 +618,74 @@
         "description": "Total byte size of all proof artifacts",
         "required": true,
         "type": "integer"
+      }
+    },
+    "public_proof_head": {
+      "artifact_count": {
+        "description": "Active artifact count from the mirror projection; authenticate membership through the signed log",
+        "required": true,
+        "type": "integer"
+      },
+      "campaign_id": {
+        "description": "Campaign identity from the campaign manifest",
+        "required": true,
+        "type": "string"
+      },
+      "campaign_revision": {
+        "description": "Campaign revision from the frozen profile hash",
+        "required": true,
+        "type": "string"
+      },
+      "generated_at": {
+        "description": "UTC timestamp of the latest proof publication",
+        "format": "iso8601",
+        "required": true,
+        "type": "string"
+      },
+      "proof_root_sha256": {
+        "description": "Signed segment root for a chain projection, or legacy full-manifest root (64-char hex)",
+        "required": true,
+        "type": "string"
+      },
+      "schema_version": {
+        "description": "Proof head schema version",
+        "required": true,
+        "type": "string"
+      },
+      "segment_index": {
+        "description": "Latest signed segment index, or zero for a legacy full manifest",
+        "required": true,
+        "type": "integer"
+      },
+      "signature": {
+        "description": "Ed25519 signature over the proof root SHA-256, hex-encoded",
+        "required": true,
+        "type": "string"
+      },
+      "signing_key_id": {
+        "description": "Identifier of the signing key used to sign the proof root",
+        "required": true,
+        "type": "string"
+      },
+      "source_id": {
+        "description": "Public source identity",
+        "required": true,
+        "type": "string"
+      },
+      "verification_ok": {
+        "description": "Latest publication verification status; authenticate it through the signed log",
+        "required": true,
+        "type": "boolean"
+      },
+      "verified_index_generation_hash": {
+        "description": "SHA-256 of the verified index generation's content hash (64-char hex)",
+        "required": true,
+        "type": "string"
+      },
+      "verifier_instructions": {
+        "description": "Human-readable offline verification instructions",
+        "required": true,
+        "type": "string"
       }
     },
     "public_proof_manifest": {

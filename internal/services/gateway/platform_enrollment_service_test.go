@@ -193,10 +193,15 @@ func createAndApproveRequestWithFingerprint(t *testing.T, env *platformEnrollmen
 	}
 	if operatorCSR != "" {
 		req.SystemFingerprint = fingerprint
+		actuatorKey := testActuatorPublicKeyHex
+		if fingerprint != "" {
+			h := sha256.Sum256([]byte("actuator-key:" + fingerprint))
+			actuatorKey = fmt.Sprintf("%x", h)
+		}
 		req.Operator = &models.PlatformOperatorCSRPayload{
 			OperatorCSRPEM:    operatorCSR,
 			CLICSRPEM:         cliCSR,
-			ActuatorPublicKey: testActuatorPublicKeyHex,
+			ActuatorPublicKey: actuatorKey,
 		}
 	}
 

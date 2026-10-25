@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -47,11 +48,12 @@ type OperatorRuntimeDeps struct {
 // OperatorRuntime is one started outbound Operator. It owns the service and
 // its background work until Stop.
 type OperatorRuntime struct {
-	service    *services.ZtdoService
-	logger     *slog.Logger
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	serviceErr chan error
+	service     *services.ZtdoService
+	logger      *slog.Logger
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	serviceErr  chan error
+	runtimeLock io.Closer
 }
 
 // operatorStartError carries the process exit code for a startup failure.
@@ -118,6 +120,18 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
 		return nil, startFailure(constants.ExitConfigError, err)
 	}
+	// Own the runtime before touching its vault, database, or enrollment state.
+	// Capability sets distinguish enrollments, never concurrent owners of a root.
+	runtimeLock, err := fileSvc.TryLock(ctx, constants.OperatorLockFilename, constants.PermFilePrivate)
+	if err != nil {
+		return nil, startFailure(constants.ExitConfigError, fmt.Errorf("operator start: lock runtime %s; use a separate --working-dir for each Operator, or combine --capabilities in one process: %w", fileSvc.Resolve(""), err))
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, runtimeLock.Close())
+		}
+	}()
+
 	if err := fileSvc.CreateRuntimeTree(ctx); err != nil {
 		logger.Error("Failed to create runtime tree", string(constants.ConnectionStateError), err)
 		return nil, startFailure(exitcode.FromError(err), err)
@@ -256,10 +270,11 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 
 	runCtx, cancel := context.WithCancel(ctx)
 	rt := &OperatorRuntime{
-		service:    ztdoService,
-		logger:     logger,
-		cancel:     cancel,
-		serviceErr: make(chan error, 1),
+		service:     ztdoService,
+		logger:      logger,
+		cancel:      cancel,
+		serviceErr:  make(chan error, 1),
+		runtimeLock: runtimeLock,
 	}
 
 	rt.wg.Add(1)
@@ -330,7 +345,7 @@ func (rt *OperatorRuntime) Done() <-chan struct{} {
 func (rt *OperatorRuntime) Stop(ctx context.Context) error {
 	rt.cancel()
 	rt.wg.Wait()
-	return rt.service.Stop(ctx)
+	return errors.Join(rt.service.Stop(ctx), rt.runtimeLock.Close())
 }
 
 // refuseGatewayRuntime keeps an outbound Operator out of a Gateway's runtime

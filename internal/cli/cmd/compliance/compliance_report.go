@@ -576,7 +576,7 @@ func buildEvaluationReportSources(ctx context.Context, fileSvc fs.RuntimeFileSer
 		if admission.GetSourceKind() != constants.EvaluationSourceKindConformance || admission.GetSourceVersion() != constants.EvaluationSourceVersion || admission.GetVerifierRef().GetId() != constants.ConformanceVerifierID || admission.GetVerifierRef().GetVersion() != constants.ConformanceVerifierVersion {
 			return nil, nil, fmt.Errorf("%w: conformance eval run %s does not match protected source admission %s", constants.ErrEvidenceScopeMismatch, runID, admission.GetAdmissionId())
 		}
-		runtimeRoot := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
+		runtimeRoot := path.Join(constants.EvaluationRunsPath, runID)
 		bundleRoot := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, runID)
 		report, _, err := evaluation.VerifyConformanceSource(ctx, fileSvc, runID, verifiedAt)
 		if err != nil {
@@ -665,8 +665,8 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 	bundleRoot := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, admission.GetAdmissionId())
 	runtimeBundleRoot := path.Join(bundleRoot, constants.ComplianceBundleSourceRuntimeDirname)
 	roots := []string{
-		path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID),
-		path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationCampaignsDirname, campaignID),
+		path.Join(constants.EvaluationRunsPath, runID),
+		path.Join(constants.EvaluationCampaignsPath, campaignID),
 	}
 	artifacts := make([]compliancereport.SourceArtifact, 0)
 	bodies := make(map[string][]byte)
@@ -682,7 +682,7 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 			if runtimePath == path.Join(roots[1], constants.EvaluationCampaignReleaseTagFilename) {
 				continue
 			}
-			bodies[filepath.FromSlash(runtimePath)] = append([]byte(nil), artifact.Body...)
+			bodies[filepath.ToSlash(runtimePath)] = append([]byte(nil), artifact.Body...)
 			artifacts = append(artifacts, artifact)
 		}
 	}
@@ -740,7 +740,7 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 	}
 	sort.Strings(runtimePaths)
 	for _, runtimePath := range runtimePaths {
-		digest := sha256.Sum256(bodies[filepath.FromSlash(runtimePath)])
+		digest := sha256.Sum256(bodies[runtimePath])
 		inventory.Artifacts = append(inventory.Artifacts, &evalv1.CampaignComplianceSourceArtifact{RuntimePath: runtimePath, Sha256: hex.EncodeToString(digest[:]), MediaType: constants.MediaTypeJSON})
 	}
 	inventoryBody, err := evalv1.MarshalCanonical(inventory)
@@ -950,7 +950,10 @@ func (r *explicitSourceReader) ReadFile(ctx context.Context, sourcePath string) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	body, exists := r.bodies[sourcePath]
+	body, exists := r.bodies[filepath.ToSlash(sourcePath)]
+	if !exists {
+		body, exists = r.bodies[sourcePath]
+	}
 	if !exists {
 		return nil, constants.ErrNotFound
 	}
@@ -961,14 +964,19 @@ func (r *explicitSourceReader) ReadDir(ctx context.Context, sourcePath string) (
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	prefix := strings.TrimSuffix(sourcePath, string(filepath.Separator)) + string(filepath.Separator)
+	cleanSource := filepath.ToSlash(sourcePath)
+	prefix := strings.TrimSuffix(cleanSource, "/") + "/"
+	if cleanSource == "" || cleanSource == "." {
+		prefix = ""
+	}
 	entries := make(map[string]bool)
 	for candidate := range r.bodies {
-		if !strings.HasPrefix(candidate, prefix) {
+		cleanCandidate := filepath.ToSlash(candidate)
+		if prefix != "" && !strings.HasPrefix(cleanCandidate, prefix) {
 			continue
 		}
-		remainder := strings.TrimPrefix(candidate, prefix)
-		parts := strings.SplitN(remainder, string(filepath.Separator), 2)
+		remainder := strings.TrimPrefix(cleanCandidate, prefix)
+		parts := strings.SplitN(remainder, "/", 2)
 		if parts[0] != "" {
 			entries[parts[0]] = len(parts) == 2
 		}
@@ -1003,7 +1011,10 @@ func (r *explicitSourceReader) FileExists(ctx context.Context, sourcePath string
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	_, exists := r.bodies[sourcePath]
+	_, exists := r.bodies[filepath.ToSlash(sourcePath)]
+	if !exists {
+		_, exists = r.bodies[sourcePath]
+	}
 	return exists, nil
 }
 func (r *explicitSourceReader) MkdirAll(context.Context, string, os.FileMode) error {

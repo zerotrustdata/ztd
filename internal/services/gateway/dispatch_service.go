@@ -62,21 +62,23 @@ const EnvelopeExpiry = 5 * time.Minute
 // payload before setting L1.Validated. A nil doctrine fails closed: the
 // builder cannot assert L1.Validated=true without screening.
 type BuildEnvelopeParams struct {
-	OperatorID        string
-	OperatorSessionID string
-	EventType         string
-	Payload           []byte
-	TargetResource    string
-	RequestorUserID   string
-	ActingAppID       string
-	StateMerkleRoot   string
-	CaseID            string
-	InvestigationID   string
-	TaskID            string
-	WebSessionID      string
-	CliSessionID      string
-	Posture           constants.Posture
-	Doctrine          *governance.L1Doctrine
+	EvaluationRunID        string
+	EvaluationAssignmentID string
+	OperatorID             string
+	OperatorSessionID      string
+	EventType              string
+	Payload                []byte
+	TargetResource         string
+	RequestorUserID        string
+	ActingAppID            string
+	StateMerkleRoot        string
+	CaseID                 string
+	InvestigationID        string
+	TaskID                 string
+	WebSessionID           string
+	CliSessionID           string
+	Posture                constants.Posture
+	Doctrine               *governance.L1Doctrine
 }
 
 // BuildGovernanceEnvelope constructs a canonical GovernanceEnvelope with
@@ -157,26 +159,28 @@ func buildGovernanceEnvelope(params BuildEnvelopeParams, awaitingApproval bool) 
 	}
 
 	env := &commonv1.GovernanceEnvelope{
-		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
-		Timestamp:         timestamppb.Now(),
-		ExpiresAt:         timestamppb.New(time.Now().Add(EnvelopeExpiry)),
-		SourceComponent:   commonv1.Component_COMPONENT_CLIENT,
-		OperatorId:        params.OperatorID,
-		OperatorSessionId: params.OperatorSessionID,
-		ActionType:        string(actionType),
-		TargetResource:    params.TargetResource,
-		EventType:         string(eventType),
-		Payload:           params.Payload,
-		StateMerkleRoot:   params.StateMerkleRoot,
-		Nonce:             hex.EncodeToString(nonce),
-		RequestorUserId:   params.RequestorUserID,
-		ActingAppId:       params.ActingAppID,
-		CaseId:            params.CaseID,
-		InvestigationId:   params.InvestigationID,
-		TaskId:            params.TaskID,
-		WebSessionId:      params.WebSessionID,
-		CliSessionId:      params.CliSessionID,
-		Posture:           string(params.Posture),
+		ProtocolVersion:        govpkg.GovernanceProtocolVersionV2,
+		Timestamp:              timestamppb.Now(),
+		ExpiresAt:              timestamppb.New(time.Now().Add(EnvelopeExpiry)),
+		SourceComponent:        commonv1.Component_COMPONENT_CLIENT,
+		OperatorId:             params.OperatorID,
+		OperatorSessionId:      params.OperatorSessionID,
+		ActionType:             string(actionType),
+		TargetResource:         params.TargetResource,
+		EventType:              string(eventType),
+		Payload:                params.Payload,
+		StateMerkleRoot:        params.StateMerkleRoot,
+		Nonce:                  hex.EncodeToString(nonce),
+		RequestorUserId:        params.RequestorUserID,
+		ActingAppId:            params.ActingAppID,
+		CaseId:                 params.CaseID,
+		InvestigationId:        params.InvestigationID,
+		TaskId:                 params.TaskID,
+		EvaluationRunId:        params.EvaluationRunID,
+		EvaluationAssignmentId: params.EvaluationAssignmentID,
+		WebSessionId:           params.WebSessionID,
+		CliSessionId:           params.CliSessionID,
+		Posture:                string(params.Posture),
 		Governance: &commonv1.GovernanceMetadata{
 			L1: &commonv1.L1Metadata{Validated: l1Validated},
 		},
@@ -194,6 +198,8 @@ func buildGovernanceEnvelope(params BuildEnvelopeParams, awaitingApproval bool) 
 
 // DispatchRequest is the input to the command dispatch service.
 type DispatchRequest struct {
+	EvaluationRunID         string
+	EvaluationAssignmentID  string
 	TargetOperatorSessionID string
 	EventType               string
 	Payload                 []byte
@@ -370,21 +376,23 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 	// postures, admits the unsigned mutation only when the approval coordinator
 	// owns the wait (the Gateway never mints L3 proofs).
 	env, err := buildGovernanceEnvelope(BuildEnvelopeParams{
-		OperatorID:        operatorID,
-		OperatorSessionID: operatorSessionID,
-		EventType:         req.EventType,
-		Payload:           req.Payload,
-		TargetResource:    req.TargetResource,
-		RequestorUserID:   req.RequestorUserID,
-		ActingAppID:       req.ActingAppID,
-		StateMerkleRoot:   stateRoot,
-		CaseID:            req.CaseID,
-		InvestigationID:   req.InvestigationID,
-		TaskID:            req.TaskID,
-		WebSessionID:      req.WebSessionID,
-		CliSessionID:      req.CliSessionID,
-		Posture:           d.posture,
-		Doctrine:          d.doctrine,
+		OperatorID:             operatorID,
+		OperatorSessionID:      operatorSessionID,
+		EventType:              req.EventType,
+		Payload:                req.Payload,
+		TargetResource:         req.TargetResource,
+		RequestorUserID:        req.RequestorUserID,
+		ActingAppID:            req.ActingAppID,
+		StateMerkleRoot:        stateRoot,
+		CaseID:                 req.CaseID,
+		InvestigationID:        req.InvestigationID,
+		TaskID:                 req.TaskID,
+		EvaluationRunID:        req.EvaluationRunID,
+		EvaluationAssignmentID: req.EvaluationAssignmentID,
+		WebSessionID:           req.WebSessionID,
+		CliSessionID:           req.CliSessionID,
+		Posture:                d.posture,
+		Doctrine:               d.doctrine,
 	}, d.approvals != nil)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
@@ -1229,6 +1237,8 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 		CaseID:                  req.CaseID,
 		InvestigationID:         req.InvestigationID,
 		TaskID:                  req.TaskID,
+		EvaluationRunID:         req.EvaluationRunID,
+		EvaluationAssignmentID:  req.EvaluationAssignmentID,
 		WebSessionID:            req.WebSessionID,
 		CliSessionID:            req.CLISessionID,
 	})

@@ -588,7 +588,9 @@ func addReadinessSigner(t *testing.T, infra *TestInfrastructure, id string, enab
 func bindReadinessConsensus(t *testing.T, infra *TestInfrastructure, policy models.ConsensusPolicy) {
 	t.Helper()
 	policy.ID = string(constants.DocIDConsensusBinding)
-	policy.EndpointURL = "https://consensus.example.test/deliberate"
+	if policy.Provider != string(constants.ConsensusProviderTribunal) {
+		policy.EndpointURL = "https://consensus.example.test/deliberate"
+	}
 	policy.RequireDistinct = true
 	policy.Enabled = true
 	require.NoError(t, infra.ConsensusStore.AddConsensus(t.Context(), policy))

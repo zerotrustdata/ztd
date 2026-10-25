@@ -390,15 +390,16 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 	// is certificate-based; user_id is the approving owner so the owner
 	// can discover and manage the platform-enrolled operator.
 	operatorDoc := &operatorv1.OperatorDocument{
-		Id:                operatorID,
-		UserId:            user.ID,
-		OrganizationId:    organization.ID,
-		Component:         string(constants.ComponentNameZTDO),
-		Name:              req.Hostname,
-		Status:            string(constants.OperatorStatusOffline),
-		OperatorSessionId: operatorSessionID,
-		OperatorType:      string(constants.OperatorTypeRemote),
-		SystemFingerprint: req.SystemFingerprint,
+		Id:                   operatorID,
+		UserId:               user.ID,
+		OrganizationId:       organization.ID,
+		Component:            string(constants.ComponentNameZTDO),
+		Name:                 req.Hostname,
+		Status:               string(constants.OperatorStatusOffline),
+		OperatorSessionId:    operatorSessionID,
+		OperatorType:         string(constants.OperatorTypeRemote),
+		SystemFingerprint:    req.SystemFingerprint,
+		OperatorCapabilities: models.OperatorCapabilitiesToProto(req.Operator.Capabilities.WithDefault()),
 		// The Actuator key bound at enrollment. Receipts from this Operator
 		// verify against it alone (SignerStoreService.ReceiptSignerKey in the Gateway).
 		ActuatorPublicKey: actuatorKeyHex,
@@ -408,14 +409,8 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		CreatedAt:         timestamppb.New(now),
 		UpdatedAt:         timestamppb.New(now),
 	}
-	opBytes, err := models.MarshalOperatorDocument(operatorDoc)
-	if err != nil {
-		return nil, "", "", "", "", "", fmt.Errorf("marshal operator doc: %w", err)
-	}
-	if err := h.deps.DocStore.DocSet(
-		ctx, marshaler.CollectionName(constants.CollectionOperators), operatorID, opBytes,
-	); err != nil {
-		return nil, "", "", "", "", "", fmt.Errorf("persist operator doc: %w", err)
+	if err := h.deps.DocStore.RegisterOperator(ctx, operatorDoc); err != nil {
+		return nil, "", "", "", "", "", fmt.Errorf("register operator: %w", err)
 	}
 	if err := h.supersedeOperatorLeases(ctx, user.ID, req.SystemFingerprint, operatorID); err != nil {
 		return nil, "", "", "", "", "", fmt.Errorf("supersede prior operator leases: %w", err)

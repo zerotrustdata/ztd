@@ -10,19 +10,15 @@
 package eval
 
 import (
-	"bytes"
 	"context"
-	"os"
 	"path"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -39,7 +35,7 @@ func TestBackupRestore_RoundTripAfterWipe(t *testing.T) {
 	assert.Equal(t, len(created.Files), created.FileCount)
 	assert.Equal(t, backupRoot, filepath.Dir(created.SnapshotDir))
 
-	recordRel := filepath.ToSlash(filepath.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1", constants.ConformanceRecordFilename))
+	recordRel := path.Join(constants.EvaluationRunsPath, "run-a-1", constants.ConformanceRecordFilename)
 	want, err := fileSvc.ReadFile(ctx, recordRel)
 	if err != nil {
 		recordRel = created.Files[0].Path
@@ -100,8 +96,8 @@ func TestRestore_DefaultMergesEverySnapshotIncludingEvidenceOnlyAnOlderOneHolds(
 	require.NoError(t, env.runJSON(t, &first, "backup"))
 
 	env.prepareStoredRun(t, "eval-b", "run-b-1")
-	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationDataPath, constants.EvaluationCampaignsDirname, "eval-a")))
-	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1")))
+	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationCampaignsPath, "eval-a")))
+	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationRunsPath, "run-a-1")))
 	var second evalBackupJSON
 	require.NoError(t, env.runJSON(t, &second, "backup"))
 	require.NotEqual(t, first.SnapshotDir, second.SnapshotDir)
@@ -147,76 +143,35 @@ func TestRestore_WithoutSnapshotAndNoDefaultBackupsFails(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrEvaluationBackupNone)
 }
 
-func TestAutoBackupEval_SnapshotsOnceThenSkipsUnchangedEvidence(t *testing.T) {
-	env := newStoreRunEnv(t)
-	env.prepareStoredRun(t, "eval-a", "run-a-1")
-	var out bytes.Buffer
-	env.cmd.SetOut(&out)
-	backupDir := filepath.Join(env.root, "eval", "backups")
+func TestRunsStart_DoesNotBackUpEvidence(t *testing.T) {
+	env := newGatewayRunEnv(t)
+	env.createCampaign(t, "eval-a")
 
-	autoBackupEval(env.cmd, env.deps, false)
-	assert.Contains(t, out.String(), "Backed up evaluation evidence")
-	snapshots, err := evaluation.AllEvalBackupSnapshots(backupDir)
-	require.NoError(t, err)
-	require.Len(t, snapshots, 1)
+	out := env.mustRun(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 
-	out.Reset()
-	env.deps.now = func() time.Time { return time.Unix(1789657337, 0).UTC().Add(time.Minute) }
-	autoBackupEval(env.cmd, env.deps, false)
-	assert.Contains(t, out.String(), "already backed up")
-	snapshots, err = evaluation.AllEvalBackupSnapshots(backupDir)
-	require.NoError(t, err)
-	assert.Len(t, snapshots, 1)
+	assert.Contains(t, out, "Executed 1 assignment(s)")
+	assert.NotContains(t, out, "backed up")
+	assert.NoDirExists(t, filepath.Join(env.root, "eval", "backups"))
 }
 
-func TestAutoBackupEval_JSONModeStaysSilentOnStdout(t *testing.T) {
-	env := newStoreRunEnv(t)
-	env.prepareStoredRun(t, "eval-a", "run-a-1")
-	var out bytes.Buffer
-	env.cmd.SetOut(&out)
-
-	autoBackupEval(env.cmd, env.deps, true)
-
-	assert.Empty(t, out.String())
-	assert.DirExists(t, filepath.Join(env.root, "eval", "backups"))
-}
-
-func TestAutoBackupEval_WarnsWithoutFailingWhenBackupIsImpossible(t *testing.T) {
-	env := newStoreRunEnv(t)
-	// A file where the backup directory belongs makes the snapshot impossible.
-	require.NoError(t, os.MkdirAll(filepath.Join(env.root, "eval"), constants.PermDirPrivate))
-	require.NoError(t, os.WriteFile(filepath.Join(env.root, "eval", "backups"), []byte("in the way"), constants.PermFilePrivate))
-	var stdout, stderr bytes.Buffer
-	env.cmd.SetOut(&stdout)
-	env.cmd.SetErr(&stderr)
-
-	autoBackupEval(env.cmd, env.deps, false)
-
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "warning: evaluation: automatic backup failed")
-}
-
-func TestRunsResume_BacksUpEvidenceWhenItFinishes(t *testing.T) {
+func TestRunsResume_DoesNotBackUpEvidence(t *testing.T) {
 	env := newGatewayRunEnv(t)
 	runID := env.prepareRun(t)
 
 	out := env.mustRun(t, "runs", "resume", runID)
 
-	assert.Contains(t, out, "Backed up evaluation evidence")
-	latest, err := evaluation.LatestEvalBackupSnapshot(filepath.Join(env.root, "eval", "backups"))
-	require.NoError(t, err)
-	raw, err := os.ReadFile(filepath.Join(latest, constants.EvaluationBackupManifestFilename))
-	require.NoError(t, err)
-	assert.Contains(t, string(raw), path.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, runID)+"/")
+	assert.Contains(t, out, "Executed 1 assignment(s)")
+	assert.NotContains(t, out, "backed up")
+	assert.NoDirExists(t, filepath.Join(env.root, "eval", "backups"))
 }
 
-func TestRunsResume_NoBackupFlagSkipsTheBackup(t *testing.T) {
-	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t)
+func TestRunsResume_MissingRunDoesNotBackUpOtherEvidence(t *testing.T) {
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
-	out := env.mustRun(t, "runs", "resume", runID, "--no-backup")
+	_, err := env.run(t, "runs", "resume", "missing-run")
 
-	assert.NotContains(t, out, "Backed up")
+	require.Error(t, err)
 	assert.NoDirExists(t, filepath.Join(env.root, "eval", "backups"))
 }
 

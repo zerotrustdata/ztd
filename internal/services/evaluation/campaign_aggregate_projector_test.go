@@ -56,10 +56,9 @@ func TestCollectRunAggregateState(t *testing.T) {
 	assert.Equal(t, uint32(1), state.VariantRoles["qwen3-4b:assistant"].Failed)
 }
 
-// A provider outage is terminal but says nothing about the model, so it must
-// not lower the pass rate: one pass, one model miss, and one provider failure
-// is 1/2 judged, not 1/3 terminal.
-func TestPassRateDividesByAssignmentsJudgedOnTheModel(t *testing.T) {
+// Run pass rates include all terminal outcomes. Model accuracy keeps its
+// separate denominator of assignments judged on the model.
+func TestRunPassRateIncludesProviderFailures(t *testing.T) {
 	passGrade := []*evalv1.DeterministicGrade{{Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION, Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS}}
 	failGrade := []*evalv1.DeterministicGrade{{Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION, Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL}}
 	const completed = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
@@ -81,8 +80,16 @@ func TestPassRateDividesByAssignmentsJudgedOnTheModel(t *testing.T) {
 
 	require.NotNil(t, state.Headline)
 	require.NotNil(t, state.Headline.PassRate.Value)
-	assert.InDelta(t, 0.5, *state.Headline.PassRate.Value, 1e-9)
-	assert.Equal(t, uint32(2), state.Headline.PassRate.Eligible)
+	assert.InDelta(t, 1.0/3, *state.Headline.PassRate.Value, 1e-9)
+	assert.Equal(t, uint32(3), state.Headline.PassRate.Eligible)
+	assert.Equal(t, uint32(3), state.Headline.PassRate.Observed)
+	assert.Zero(t, state.Headline.PassRate.Unavailable)
+
+	state.Headline = nil
+	projected := headlineMetricsForState(state).PassRate
+	require.NotNil(t, projected.Value)
+	assert.InDelta(t, 1.0/3, *projected.Value, 1e-9)
+	assert.Equal(t, uint32(3), projected.EligibleCount)
 
 	model := buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", state.VariantRoles["qwen3-4b:primary"], CampaignRelease{})
 	require.NotNil(t, model.PassRate)
@@ -130,8 +137,8 @@ func TestModelSummaryPublishesFrozenVariantIdentity(t *testing.T) {
 	assert.NotContains(t, string(body), "artifact_size_bytes")
 }
 
-// With no assignment judged on the model the rate is unavailable, never zero.
-func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
+// A provider-only failed run has a zero run pass rate and no model accuracy.
+func TestRunPassRateIsZeroWhenEveryProviderCallFails(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -141,8 +148,10 @@ func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
 	state, err := CollectRunAggregateState(assignments, results)
 	require.NoError(t, err)
 	require.NotNil(t, state.Headline)
-	assert.Nil(t, state.Headline.PassRate.Value)
-	assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE, state.Headline.PassRate.UnavailableReason)
+	require.NotNil(t, state.Headline.PassRate.Value)
+	assert.Zero(t, *state.Headline.PassRate.Value)
+	assert.Equal(t, uint32(1), state.Headline.PassRate.Eligible)
+	assert.Equal(t, uint32(1), state.Headline.PassRate.Observed)
 
 	model := buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", state.VariantRoles["qwen3-4b:primary"], CampaignRelease{})
 	assert.Nil(t, model.PassRate)

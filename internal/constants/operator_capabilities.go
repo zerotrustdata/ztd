@@ -45,11 +45,12 @@ func (c OperatorCapabilities) Canonical() OperatorCapabilities {
 	return result
 }
 
-// WithEmbeddedBaseline returns the canonical set including Data and
-// Inference. The embedded Operator is the Gateway's own default Data and
-// Inference operator, so its capabilities always include both.
-func (c OperatorCapabilities) WithEmbeddedBaseline() OperatorCapabilities {
-	return append(append(OperatorCapabilities{}, c...), OperatorCapabilityData, OperatorCapabilityInference).Canonical()
+// WithDefault preserves explicit capabilities and defaults an empty set to Data.
+func (c OperatorCapabilities) WithDefault() OperatorCapabilities {
+	if len(c) == 0 {
+		return OperatorCapabilities{OperatorCapabilityData}
+	}
+	return c.Canonical()
 }
 
 func (c OperatorCapabilities) String() string {

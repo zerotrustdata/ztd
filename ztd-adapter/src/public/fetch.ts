@@ -9,7 +9,7 @@ const PUBLIC_ENDPOINTS = {
   history: '/history',
   stream: '/stream',
   proofCatalog: '/proof-catalog',
-  proofManifest: '/proof-manifest',
+  proofHead: '/proof-head',
   proofSegments: '/proof-segments',
 } as const;
 

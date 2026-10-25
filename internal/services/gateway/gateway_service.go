@@ -264,6 +264,19 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if err := embeddedOperator.RegisterPending(ctx); err != nil {
 		return nil, err
 	}
+	// Establish the embedded capability claims first, before PKI, remote
+	// enrollment services, or listeners exist. The pending record reserves its
+	// singleton capabilities even before the first user claims it.
+
+	// The embedded Operator executes in its own runtime directory.
+	if err := b.fileSvc.MkdirAll(ctx, filepath.Join(constants.OperatorsDirname, constants.EmbeddedOperatorDirname), constants.PermDirPrivate); err != nil {
+		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
+	}
+	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
+	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
+		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
+	}
+
 	// The embedded Operator executes before it is claimed, so the Gateway starts
 	// the audit session it owns up front; the claim later supersedes it with the
 	// minted operator session.
@@ -284,15 +297,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		if err := pki.InitializePKI(extraIPs); err != nil {
 			return nil, fmt.Errorf("gateway: failed to initialize PKI hierarchy: %w", err)
 		}
-	}
-
-	// The embedded Operator executes in its own runtime directory.
-	if err := b.fileSvc.MkdirAll(ctx, filepath.Join(constants.OperatorsDirname, constants.EmbeddedOperatorDirname), constants.PermDirPrivate); err != nil {
-		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
-	}
-	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
-	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
-		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
 	}
 
 	// --- Passkey ---
@@ -961,6 +965,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Logger:      logger,
 			Responder:   ls.responder,
 			EnvProc:     envProc,
+			Deliberator: ls.tribunalConsensus,
 			CLISessions: cliSessionSvc,
 		},
 		MCPControllerDeps: MCPControllerDeps{

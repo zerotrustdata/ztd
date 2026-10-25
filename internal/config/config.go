@@ -422,8 +422,8 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	if err := opts.OperatorCapabilities.Validate(); err != nil {
 		return nil, err
 	}
-	// The embedded Operator is the Gateway's own Data and Inference operator.
-	capabilities := opts.OperatorCapabilities.WithEmbeddedBaseline()
+	// Embedded and outbound Operators use the same explicit capabilities and Data default.
+	capabilities := opts.OperatorCapabilities.WithDefault()
 	provenance, err := newProvenanceOperatorConfig(capabilities.Has(constants.OperatorCapabilityProvenance), LoadOptions{ProvenanceOperatorID: opts.ProvenanceOperatorID, ProvenanceOperatorModelStorageRoot: opts.ProvenanceOperatorModelStorageRoot})
 	if err != nil {
 		return nil, err

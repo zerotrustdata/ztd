@@ -49,10 +49,10 @@ func TestValidateWitnessDispatch(t *testing.T) {
 			OperatorType:         string(constants.OperatorTypeRemote),
 			OperatorCapabilities: []string{string(constants.OperatorCapabilityObserver)},
 		}},
-		{name: "embedded observer carries the embedded baseline", op: &operatorv1.OperatorDocument{
+		{name: "embedded observer preserves witness restrictions", op: &operatorv1.OperatorDocument{
 			OperatorType:  string(constants.OperatorTypeEmbedded),
 			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}},
-		}, generic: true},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

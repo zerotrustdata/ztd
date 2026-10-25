@@ -15,6 +15,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
@@ -62,6 +64,43 @@ func makeTestCatalogEntry(filename string, content []byte) models.PublicProofCat
 		GeneratedAt:         time.Now().UTC(),
 		VerificationCommand: "sha256sum " + filename,
 		ImmutableURL:        "/proofs/" + artifactID,
+	}
+}
+
+func TestMirror_ProofHead_TracksSignedHeadWithoutArtifactList(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	content := []byte(`{"proof":"head"}`)
+	entry := makeTestCatalogEntry("head.json", content)
+	first := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{entry}, nil)
+	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
+		SourceID: env.sourceID, Segment: &first,
+		Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}},
+	}))
+	withdrawal := makeTestSegment(env, 2, first.ProofRootSHA256, nil, []string{entry.ArtifactID})
+	for _, segment := range []models.PublicProofManifestSegment{first, withdrawal} {
+		if segment.SegmentIndex == 2 {
+			require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
+				SourceID: env.sourceID, Segment: &segment,
+			}))
+		}
+		response, err := env.client.Get(env.publicServer.URL + "/proof-head?source=" + env.sourceID)
+		require.NoError(t, err)
+		body, err := io.ReadAll(response.Body)
+		require.NoError(t, response.Body.Close())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode, string(body))
+		var head models.PublicProofHead
+		require.NoError(t, json.Unmarshal(body, &head))
+		assert.Equal(t, segment.SegmentIndex, head.SegmentIndex)
+		assert.Equal(t, segment.ProofRootSHA256, head.ProofRootSHA256)
+		assert.Equal(t, segment.SigningKeyID, head.SigningKeyID)
+		assert.Equal(t, segment.Signature, head.Signature)
+		assert.True(t, segment.GeneratedAt.Equal(head.GeneratedAt))
+		assert.Equal(t, 2-int(segment.SegmentIndex), head.ArtifactCount)
+		assert.NotContains(t, string(body), `"artifacts"`)
+		assert.NotContains(t, string(body), `"entries"`)
+		assert.Equal(t, env.sourceID, head.SourceID)
 	}
 }
 

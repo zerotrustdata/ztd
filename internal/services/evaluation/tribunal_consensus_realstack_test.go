@@ -16,19 +16,26 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
+	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	"github.com/zerotrustdata/ztd/protocol"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -40,6 +47,40 @@ const tribunalConsensusVoteAnswer = `{"decision":"approve","reason":"ok"}`
 
 // tribunalConsensusQuorum is the approval count the Tribunal binding requires.
 const tribunalConsensusQuorum = 3
+
+func TestConformanceDeliberatesWithInternalTribunalRealStack(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{
+		posture: constants.PostureConsensus, singleRole: true, suffix: "conformance-tribunal",
+		replies: tribunalConsensusVotes(len(tribunal.AllMembers)), bindConsensus: bindTribunalConsensus,
+	})
+	ctx := t.Context()
+	stateRoot, err := env.gateway.StateRoot(ctx)
+	require.NoError(t, err)
+	subject, err := drive.Baseline(cases.Attempt{
+		RunID: "conformance-tribunal", AttemptID: "direct-baseline",
+		Case:      cases.Case{ID: "direct", Action: cases.ActionMutation},
+		TargetAbs: filepath.Join(env.workingDirectory, "conformance-target.txt"), Marker: "conformance marker",
+	}, drive.Identity{Persona: env.persona, Target: cliop.Target{OperatorID: env.dataOperatorID, OperatorSessionID: env.dataSessionID}}, stateRoot, time.Now())
+	require.NoError(t, err)
+	var exchanges []harnessclient.Exchange
+	env.gateway.Record(&exchanges)
+	proof, err := env.gateway.Deliberate(ctx, env.persona, subject)
+	require.NoError(t, err)
+	require.Len(t, proof.GetVotes(), tribunalConsensusQuorum, "fault mutations operate on the required quorum")
+	require.Len(t, exchanges, 2)
+	require.Equal(t, http.StatusOK, exchanges[1].Status)
+	var result operatorv1.GovernanceDeliberationResult
+	require.NoError(t, protojson.Unmarshal(exchanges[1].RespBody, &result))
+	require.Len(t, result.GetConsensusInferences(), len(tribunal.AllMembers), "all five vote executions remain available offline")
+	anchors, err := oracle.NewAnchorSet([]*evalv1.ConformanceAnchor{env.topology.Inference.Anchor})
+	require.NoError(t, err)
+	for _, call := range result.GetConsensusInferences() {
+		require.Equal(t, subject.GetTransactionHash(), call.GetSubjectTransactionHash())
+		require.NoError(t, oracle.ValidateConsensusInference(call))
+		_, err := oracle.VerifyReceipt(anchors, env.topology.Inference.OperatorID, call.GetReceipt())
+		require.NoError(t, err)
+	}
+}
 
 // tribunalConsensusMemberSigner is the test Gateway host's member signer: each
 // enrolled Tribunal member signs with its own ed25519 key.
@@ -79,12 +120,6 @@ func bindTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, ident
 	gw := gateway.Service
 	consensusStore := gw.GetConsensusStore()
 
-	// The fixture's binding carries the HTTPS endpoint the application provider
-	// used. AddConsensus validates the endpoint of the binding document, so the
-	// Tribunal binding keeps that endpoint; the Tribunal provider never dials it.
-	fixtureBinding, err := consensusStore.GetBoundConsensusApp(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, fixtureBinding)
 	require.NoError(t, consensusStore.ClearConsensusBinding(ctx, ""))
 
 	signer := &tribunalConsensusMemberSigner{keys: map[string]ed25519.PrivateKey{}}
@@ -112,7 +147,6 @@ func bindTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, ident
 	require.NoError(t, consensusStore.AddConsensus(ctx, models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
 		Provider:        string(constants.ConsensusProviderTribunal),
-		EndpointURL:     fixtureBinding.EndpointURL,
 		MemberAppIDs:    memberAppIDs,
 		Quorum:          tribunalConsensusQuorum,
 		RequireDistinct: true,
@@ -160,7 +194,7 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	require.NoError(t, err)
 	read, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
 		ctx, evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
-		env.req.RunID, "tribunal-consensus-investigation", "tribunal-consensus-attempt-0",
+		env.req.RunID, "assignment-0", "tribunal-consensus-investigation", "tribunal-consensus-attempt-0",
 		constants.ActionTypeMcpCall, constants.MCPToolReadFile, readPayload,
 	)
 	require.NoError(t, err)
@@ -176,7 +210,7 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	require.NoError(t, err)
 	out, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
 		ctx, evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
-		env.req.RunID, "tribunal-consensus-investigation", "tribunal-consensus-attempt-1",
+		env.req.RunID, "assignment-1", "tribunal-consensus-investigation", "tribunal-consensus-attempt-1",
 		constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, payload,
 	)
 	require.NoError(t, err)

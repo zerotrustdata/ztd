@@ -81,6 +81,12 @@ func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 		{name: "runs unarchive", args: []string{"runs", "unarchive", "run-id"}},
 
 		// rollout
+		{name: "rollout create", args: []string{"rollout", "create", "nightly", "camp-id"}},
+		{name: "rollout update", args: []string{"rollout", "update", "nightly", "camp-id"}},
+		{name: "rollout show", args: []string{"rollout", "show", "nightly"}},
+		{name: "rollout delete", args: []string{"rollout", "delete", "nightly"}},
+		{name: "rollout run named", args: []string{"rollout", "run", "nightly"}},
+		{name: "rollout resume named", args: []string{"rollout", "resume", "nightly"}},
 		{name: "rollout list", args: []string{"rollout", "list"}},
 		{name: "rollout add", args: []string{"rollout", "add", "qwen3:4b"}},
 		{name: "rollout remove", args: []string{"rollout", "remove", "qwen3:4b"}},

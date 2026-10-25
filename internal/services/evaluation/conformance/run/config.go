@@ -27,8 +27,11 @@ type Root struct {
 
 // Config is everything one conformance run needs from its caller.
 type Config struct {
-	RunID   string
-	Drivers map[cases.Ingress]cases.Driver
+	// ConsensusAnchors pins supporting inference/observer runtimes at enrollment.
+	// Executor keys remain independently checked against their local exports.
+	ConsensusAnchors []*evalv1.ConformanceAnchor
+	RunID            string
+	Drivers          map[cases.Ingress]cases.Driver
 	// Unavailable explicitly declares optional ingress coverage that cannot run.
 	Unavailable map[cases.Ingress]evalv1.ConformanceObservationKind
 	Sentinel    cases.Sentinel

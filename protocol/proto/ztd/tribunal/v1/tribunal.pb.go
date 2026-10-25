@@ -456,6 +456,8 @@ type TribunalIntentResult struct {
 	Arguments *v1.RunShellCommandArguments `protobuf:"bytes,11,opt,name=arguments,proto3" json:"arguments,omitempty"`
 	// arguments_json are the exact canonical bytes dispatched to the Operator.
 	ArgumentsJson string `protobuf:"bytes,12,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
+	// All command admission rounds, including revised or failed contextual reviews.
+	ConsensusInferences []*v1.ConsensusVoteInference `protobuf:"bytes,13,rep,name=consensus_inferences,json=consensusInferences,proto3" json:"consensus_inferences,omitempty"`
 	// steps are the persona steps of the deliberation, in order.
 	Steps []*v11.AgentStep `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
 	// member_calls are the governed member inferences, in order.
@@ -526,6 +528,13 @@ func (x *TribunalIntentResult) GetArgumentsJson() string {
 		return x.ArgumentsJson
 	}
 	return ""
+}
+
+func (x *TribunalIntentResult) GetConsensusInferences() []*v1.ConsensusVoteInference {
+	if x != nil {
+		return x.ConsensusInferences
+	}
+	return nil
 }
 
 func (x *TribunalIntentResult) GetSteps() []*v11.AgentStep {
@@ -653,11 +662,12 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x127\n" +
 	"\areceipt\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12C\n" +
 	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12P\n" +
-	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\x90\x05\n" +
+	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xec\x05\n" +
 	"\x14TribunalIntentResult\x12:\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2 .ztd.tribunal.v1.TribunalOutcomeR\aoutcome\x12G\n" +
 	"\targuments\x18\v \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\x12%\n" +
-	"\x0earguments_json\x18\f \x01(\tR\rargumentsJson\x12,\n" +
+	"\x0earguments_json\x18\f \x01(\tR\rargumentsJson\x12Z\n" +
+	"\x14consensus_inferences\x18\r \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\x12,\n" +
 	"\x05steps\x18\x03 \x03(\v2\x16.ztd.eval.v1.AgentStepR\x05steps\x12F\n" +
 	"\fmember_calls\x18\x04 \x03(\v2#.ztd.tribunal.v1.TribunalMemberCallR\vmemberCalls\x12%\n" +
 	"\x0erisk_rationale\x18\b \x01(\tR\rriskRationale\x12#\n" +
@@ -709,10 +719,11 @@ var file_ztd_tribunal_v1_tribunal_proto_goTypes = []any{
 	(*v1.EventReceipt)(nil),             // 8: ztd.operator.v1.EventReceipt
 	(*v1.InferenceDispatchFailure)(nil), // 9: ztd.operator.v1.InferenceDispatchFailure
 	(*v1.RunShellCommandArguments)(nil), // 10: ztd.operator.v1.RunShellCommandArguments
-	(*v11.AgentStep)(nil),               // 11: ztd.eval.v1.AgentStep
-	(*v1.GovernedDispatchResult)(nil),   // 12: ztd.operator.v1.GovernedDispatchResult
-	(*v1.GovernanceRejection)(nil),      // 13: ztd.operator.v1.GovernanceRejection
-	(*v1.IngressRefusal)(nil),           // 14: ztd.operator.v1.IngressRefusal
+	(*v1.ConsensusVoteInference)(nil),   // 11: ztd.operator.v1.ConsensusVoteInference
+	(*v11.AgentStep)(nil),               // 12: ztd.eval.v1.AgentStep
+	(*v1.GovernedDispatchResult)(nil),   // 13: ztd.operator.v1.GovernedDispatchResult
+	(*v1.GovernanceRejection)(nil),      // 14: ztd.operator.v1.GovernanceRejection
+	(*v1.IngressRefusal)(nil),           // 15: ztd.operator.v1.IngressRefusal
 }
 var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	5,  // 0: ztd.tribunal.v1.TribunalIntentRequest.member_inference:type_name -> ztd.operator.v1.InferenceDispatchRequest
@@ -724,16 +735,17 @@ var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
 	1,  // 7: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
 	10, // 8: ztd.tribunal.v1.TribunalIntentResult.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
-	11, // 9: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
-	3,  // 10: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
-	12, // 11: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
-	13, // 12: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
-	14, // 13: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	11, // 9: ztd.tribunal.v1.TribunalIntentResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	12, // 10: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
+	3,  // 11: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
+	13, // 12: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
+	14, // 13: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
+	15, // 14: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_ztd_tribunal_v1_tribunal_proto_init() }

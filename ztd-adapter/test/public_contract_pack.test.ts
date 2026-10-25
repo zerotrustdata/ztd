@@ -7,7 +7,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isPublicFeedBatch, isPublicFeedBootstrap, isPublicProofSegmentsResponse } from '../contract-pack/public/models';
+import { isPublicFeedBatch, isPublicFeedBootstrap, isPublicProofSegmentsResponse, isPublicProofHead } from '../contract-pack/public/models';
 
 const adapterRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const publicPack = join(adapterRoot, 'contract-pack', 'public');
@@ -34,7 +34,7 @@ describe('public spectator contract pack', () => {
       '/bootstrap',
       '/history',
       '/proof-catalog',
-      '/proof-manifest',
+      '/proof-head',
       '/proof-segments',
       '/proofs/{artifact_id}',
       '/snapshot',
@@ -59,6 +59,22 @@ describe('public spectator contract pack', () => {
       'source-offline.json',
       'stale.json',
     ]);
+  });
+
+  it('describes a proof head without duplicating artifact entries', () => {
+    const head = {
+      schema_version: '1.0.0', source_id: 'source', segment_index: 2,
+      proof_root_sha256: 'a'.repeat(64), campaign_id: 'campaign', campaign_revision: 'revision',
+      verified_index_generation_hash: 'b'.repeat(64), verification_ok: true, artifact_count: 128,
+      verifier_instructions: 'Verify the signed log.', generated_at: '2026-10-25T00:00:00Z',
+      signing_key_id: 'key', signature: 'c'.repeat(128),
+    };
+    expect(isPublicProofHead(head)).toBe(true);
+    expect(isPublicProofHead({ ...head, segment_index: '2' })).toBe(false);
+    expect(isPublicProofHead({ ...head, artifact_count: '128' })).toBe(false);
+    const proofs = readJson('proof-schemas.json') as { schemas: Record<string, Record<string, unknown>> };
+    expect(proofs.schemas.public_proof_head).not.toHaveProperty('artifacts');
+    expect(proofs.schemas.public_proof_head).not.toHaveProperty('entries');
   });
 
   it('describes typed signed logs including withdrawal-only segments', () => {

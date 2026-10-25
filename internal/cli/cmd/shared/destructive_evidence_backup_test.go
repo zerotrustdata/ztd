@@ -35,7 +35,7 @@ import (
 
 var priorSnapshotTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
-var runRecordRelPath = path.Join(constants.EvaluationDataPath, "runs", "run-1", constants.ConformanceRecordFilename)
+var runRecordRelPath = path.Join(constants.EvaluationRunsPath, "run-1", constants.ConformanceRecordFilename)
 
 type evidenceFixture struct {
 	fileSvc fs.RuntimeFileService

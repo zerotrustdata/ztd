@@ -172,6 +172,11 @@ func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tri
 	var err error
 	for range tribunal.MaxAdmissionReviews {
 		dispatched, err = c.dispatchShellCommand(ctx, req, result.GetArgumentsJson(), appID, userID, review)
+		if err != nil {
+			result.ConsensusInferences = append(result.ConsensusInferences, governance.ConsensusInferences(err)...)
+		} else if dispatched != nil {
+			result.ConsensusInferences = append(result.ConsensusInferences, dispatched.ConsensusInferences...)
+		}
 		if !errors.Is(err, constants.ErrTribunalCommandRevised) {
 			break
 		}
@@ -225,6 +230,8 @@ func (c *TribunalIntentController) dispatchShellCommand(ctx context.Context, req
 		CaseID:                  req.GetCaseId(),
 		InvestigationID:         req.GetInvestigationId(),
 		TaskID:                  req.GetTaskId(),
+		EvaluationRunID:         req.GetMemberInference().GetRunId(),
+		EvaluationAssignmentID:  req.GetMemberInference().GetAssignmentId(),
 		CliSessionID:            req.GetCliSessionId(),
 		OnAdmitted:              review,
 	})

@@ -31,7 +31,7 @@ func TestOperatorCapabilitiesValidateNormalizeAndRejectUnknownValues(t *testing.
 	require.ErrorIs(t, json.Unmarshal([]byte(`["cloud"]`), &decoded), ErrOperatorCapabilityInvalid)
 }
 
-func TestOperatorCapabilitiesWithEmbeddedBaselineAddsDataAndInference(t *testing.T) {
-	require.Equal(t, OperatorCapabilities{OperatorCapabilityData, OperatorCapabilityInference}, OperatorCapabilities{}.WithEmbeddedBaseline())
-	require.Equal(t, OperatorCapabilities{OperatorCapabilityData, OperatorCapabilityInference, OperatorCapabilityObserver}, OperatorCapabilities{OperatorCapabilityObserver, OperatorCapabilityData}.WithEmbeddedBaseline())
+func TestOperatorCapabilitiesDefaultToDataAndPreserveExplicitCapabilities(t *testing.T) {
+	require.Equal(t, OperatorCapabilities{OperatorCapabilityData}, OperatorCapabilities{}.WithDefault())
+	require.Equal(t, OperatorCapabilities{OperatorCapabilityObserver}, OperatorCapabilities{OperatorCapabilityObserver}.WithDefault())
 }

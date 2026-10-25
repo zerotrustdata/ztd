@@ -127,10 +127,10 @@ func enrollCmd() *cobra.Command {
             enrollment request IDs for revocation.
 
   approve   Approve pending platform workload enrollment requests by request
-            ID, instance ID, or hostname (several at once), or all with --all.
+            ID, instance ID, or hostname, or sequentially when omitted.
 
-  deny      Deny pending platform workload enrollment requests (same
-            selectors as approve).
+  deny      Deny pending platform workload enrollment requests by request
+            ID, instance ID, or hostname, or all with --all.
 
   revoke    Revoke a completed platform workload enrollment.
 

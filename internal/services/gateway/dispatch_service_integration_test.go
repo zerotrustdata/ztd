@@ -178,6 +178,8 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 		assert.Equal(t, cmdEnv.Id, cmdEnv.TransactionHash, "Id must equal TransactionHash")
 		assert.Equal(t, string(constants.ActionTypeFsRead), cmdEnv.ActionType, "action type must be FS_READ")
 		assert.Equal(t, requestorUserID, cmdEnv.RequestorUserId, "envelope must carry the requestor user ID from mTLS context")
+		assert.Equal(t, "evaluation-run", cmdEnv.GetEvaluationRunId())
+		assert.Equal(t, "evaluation-assignment", cmdEnv.GetEvaluationAssignmentId())
 
 		// Publish a correlated result envelope on the results channel, then
 		// the signed final receipt on the receipts channel.
@@ -199,6 +201,8 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 payload,
 		TargetResource:          "/etc/hostname",
+		EvaluationRunID:         "evaluation-run",
+		EvaluationAssignmentID:  "evaluation-assignment",
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	require.NoError(t, err)

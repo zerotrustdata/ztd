@@ -12,6 +12,7 @@ package gateway
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +35,8 @@ import (
 // approval wait is bounded by the request expiry.
 const platformEnrollmentBurstClientDeadline = 10 * time.Second
 
+const platformEnrollmentBurstSize = 1000
+
 const (
 	burstOutcomeOK       = "ok"
 	burstOutcomeDeadline = "deadline"
@@ -55,25 +58,21 @@ func TestPlatformEnrollmentBurst(t *testing.T) {
 	if testing.CoverMode() != "" {
 		t.Skip("timing contract requires an uninstrumented build; run make test-enrollment-burst")
 	}
-	for _, n := range []int{100, 1000} {
-		t.Run(fmt.Sprintf("n=%d", n), func(t *testing.T) {
-			runPlatformEnrollmentBurst(t, n, burstScenario{})
-		})
-	}
+	runPlatformEnrollmentBurst(t, platformEnrollmentBurstSize, burstScenario{})
 }
 
 // A live Operator authenticates as soon as completion returns, while the rest
 // of the cohort is still issuing. Include that work in the release burst under
 // the same correctness budget as the deployment-events scenario.
 func TestPlatformEnrollmentBurstWithSessionValidation(t *testing.T) {
-	runPlatformEnrollmentBurst(t, 1000, burstScenario{validateSession: true})
+	runPlatformEnrollmentBurst(t, platformEnrollmentBurstSize, burstScenario{validateSession: true})
 }
 
 // Include the deploying owner's live stream, each issued worker CLI session,
 // command readiness announcements and initial heartbeat writes in the burst.
 // An enrollment-only fixture misses the fan-out work performed by a real deploy.
 func TestPlatformEnrollmentBurstWithDeploymentEvents(t *testing.T) {
-	runPlatformEnrollmentBurst(t, 1000, burstScenario{validateSession: true, deploymentEvents: true})
+	runPlatformEnrollmentBurst(t, platformEnrollmentBurstSize, burstScenario{validateSession: true, deploymentEvents: true})
 }
 
 type burstScenario struct {
@@ -125,7 +124,7 @@ func runPlatformEnrollmentBurst(t *testing.T, n int, scenario burstScenario) {
 				InstanceID:        fmt.Sprintf("burst-%04d", i),
 				Hostname:          "burst.local",
 				SystemFingerprint: fmt.Sprintf("burst-host-%04d", i),
-				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: testActuatorPublicKeyHex},
+				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: hex.EncodeToString(generateTestPublicKey(t))},
 			},
 			operatorKey: operatorKey,
 			cliKey:      cliKey,

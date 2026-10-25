@@ -48,7 +48,7 @@ func (f *fakeMemberDispatcher) DispatchMember(_ context.Context, req *operatorv1
 	receipt := &operatorv1.EventReceipt{TransactionId: txn}
 	stage, answer := f.answer(req)
 	if f.fail != "" && stage == f.fail {
-		return nil, &operatorv1.InferenceDispatchFailure{Error: testFailureMessage, Receipt: receipt}
+		return nil, &operatorv1.InferenceDispatchFailure{Error: testFailureMessage, Receipt: receipt, ObservationReceipts: []*operatorv1.EventReceipt{{TransactionId: "observation"}}}
 	}
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: txn,
@@ -205,7 +205,8 @@ func TestDeliberateMemberFailure(t *testing.T) {
 			assert.Equal(t, dispatcher.requests[len(calls)-1].GetProviderAttemptId(), last.GetProviderAttemptId())
 			assert.Equal(t, testFailureMessage, last.GetFailure().GetError())
 			assert.Equal(t, fmt.Sprintf("txn-%d", len(calls)), last.GetReceipt().GetTransactionId())
-			assert.Empty(t, last.GetTransactionId())
+			assert.Equal(t, last.GetReceipt().GetTransactionId(), last.GetTransactionId())
+			assert.Len(t, last.GetObservationReceipts(), 1)
 		})
 	}
 }

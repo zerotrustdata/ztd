@@ -352,6 +352,7 @@ const (
 
 	// Operator-specific filenames
 	OperatorPIDFilename     = "operator.pid"
+	OperatorLockFilename    = "operator.lock"
 	OperatorPostureFilename = "operator.posture"
 	OperatorBinaryFilename  = "ztd-operator"
 
@@ -691,12 +692,20 @@ const (
 	EvaluationCampaignsDirname                    = "campaigns"
 	EvaluationSuitesDirname                       = "suites"
 	EvaluationRunsDirname                         = "runs"
+	EvaluationRolloutsDirname                     = "rollouts"
 	EvaluationArchiveDirname                      = "archive"
 	EvaluationArchiveManifestSuffix               = ".archive.json"
 	EvaluationRunLeaseFilename                    = "lease.json"
 	EvaluationAssignmentsDirname                  = "assignments"
 	EvaluationActiveRunFilename                   = "active-run.json"
 	EvaluationDataPath                            = DataDirname + "/" + EvaluationDirname
+	EvaluationCampaignsPath                       = EvaluationDataPath + "/" + EvaluationCampaignsDirname
+	EvaluationSuitesPath                          = EvaluationDataPath + "/" + EvaluationSuitesDirname
+	EvaluationRunsPath                            = EvaluationDataPath + "/" + EvaluationRunsDirname
+	EvaluationRolloutsPath                        = EvaluationDataPath + "/" + EvaluationRolloutsDirname
+	EvaluationArchivePath                         = EvaluationDataPath + "/" + EvaluationArchiveDirname
+	EvaluationArchiveCampaignsPath                = EvaluationArchivePath + "/" + EvaluationCampaignsDirname
+	EvaluationArchiveRunsPath                     = EvaluationArchivePath + "/" + EvaluationRunsDirname
 	EvaluationBackupManifestFilename              = "eval-backup.json"
 	EvaluationBackupDirPrefix                     = "eval-backup-"
 	EvaluationBackupTimestampLayout               = "20060102T150405Z"
@@ -908,6 +917,7 @@ const (
 	PublicFeedProtocolVersion          = "1.0.0"
 	PublicFeedSchemaVersion            = "1.0.0"
 	PublicProofManifestSchemaVersion   = "1.0.0"
+	PublicProofHeadSchemaVersion       = "1.0.0"
 	PublicProofSegmentSchemaVersion    = "1.0.0"
 	PublicProofCatalogSchemaVersion    = "1.0.0"
 	PublicProofMirrorSyncSchemaVersion = "2.0.0"

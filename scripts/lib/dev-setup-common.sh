@@ -297,16 +297,16 @@ ztd_check_cc() {
 }
 
 # Fills MISSING with the logical names of absent prerequisites. --build-only
-# checks only what `make build` needs: it embeds the committed Console and
-# Evaluation Explorer assets, so Node.js belongs to the contributor toolchain.
+# checks what `make build` needs, including Node.js and npm to build the
+# embedded Console and Evaluation Explorer assets.
 ztd_collect_missing() {
     MISSING=()
     ztd_check_git || MISSING+=("git")
     ztd_check_make || MISSING+=("make")
     ztd_check_curl || MISSING+=("curl")
     ztd_check_go || MISSING+=("go")
+    ztd_check_node || MISSING+=("node")
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
-        ztd_check_node || MISSING+=("node")
         ztd_check_ripgrep || MISSING+=("rg")
         ztd_check_bc || MISSING+=("bc")
         ztd_check_cc || MISSING+=("cc")
@@ -669,6 +669,11 @@ ztd_configure_path_unix() {
     if [[ "$(command -v go 2>/dev/null)" == /usr/local/go/bin/go ]]; then
         ztd_plan_path_entry /usr/local/go/bin "# ztd: Go toolchain" prepend
     fi
+    # The Linux Node tarball links into /usr/local/bin, which a fresh shell's
+    # base PATH may omit. Preserve it in both setup modes, ahead of distro Node.
+    if [[ "$(command -v node 2>/dev/null)" == /usr/local/bin/node ]]; then
+        ztd_plan_path_entry /usr/local/bin "# ztd: Node.js toolchain" prepend
+    fi
 
     if [[ ${#ZTD_PATH_PLAN[@]} -eq 0 ]]; then
         ZTD_PATH_CONFIGURED=true
@@ -745,7 +750,7 @@ ztd_setup_main() {
     local platform="$1" install_fn="$2" script="$3" total step=0 prereqs
     if [[ "$ZTD_BUILD_ONLY" == true ]]; then
         total=3
-        prereqs="git, make, curl, go >= ${ZTD_GO_MIN}"
+        prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT})"
         ztd_ui_title "ztd ${platform} setup ${ZTD_UI_DIM}(build only)${ZTD_UI_RESET}"
     else
         total=6

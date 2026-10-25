@@ -39,8 +39,10 @@ type runStartFlowOptions struct {
 	RequireObservation bool
 	RequireProvenance  bool
 	NoAutoBind         bool
-	NoBackup           bool
 	JSONOutput         bool
+	// ProviderFailureLimit bounds consecutive generation failures in rollout
+	// runs. Zero keeps explicit campaign runs exhaustive.
+	ProviderFailureLimit int
 }
 
 type runStartFlowResult struct {
@@ -243,25 +245,21 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		result.Prepared = true
 		return result, nil
 	}
-	if !opts.NoBackup {
-		// Deferred so the snapshot also captures verification output and the
-		// evidence of a run that failed or was cancelled.
-		defer autoBackupEval(cmd, deps, opts.JSONOutput)
-	}
 	executed, err := executeRun(cmd, deps, runExecuteOptions{
-		RunID:      runID,
-		Publish:    opts.Publish,
-		Daemon:     opts.Daemon,
-		NoAutoBind: opts.NoAutoBind,
-		JSONOutput: opts.JSONOutput,
+		RunID:                runID,
+		Publish:              opts.Publish,
+		Daemon:               opts.Daemon,
+		NoAutoBind:           opts.NoAutoBind,
+		JSONOutput:           opts.JSONOutput,
+		ProviderFailureLimit: opts.ProviderFailureLimit,
 	})
 	// A publication failure leaves every result persisted, so the run still
 	// verifies; the failure is returned once verification has run.
+	result.Executed = executed
 	publicationErr := err
-	if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
+	if err != nil && (errors.Is(err, constants.ErrInferenceGenerateFailed) || !errors.Is(err, constants.ErrEvaluationPublicationFailed)) {
 		return result, err
 	}
-	result.Executed = executed
 	if !opts.JSONOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
 	}
@@ -297,10 +295,11 @@ func runsStartCmd(deps nativeEvalDeps) *cobra.Command {
 	var requireWitness bool
 	cmd := &cobra.Command{
 		Use:   "start <campaign>",
-		Short: "Start a run of a campaign: bind sessions, schedule, execute, and optionally verify",
+		Short: "Start a run of a campaign: bind sessions, schedule, execute, and verify",
 		Long: `Start one run of an existing campaign. The run binds the operator sessions,
 persists its full assignment matrix, and then executes it. Progress is
 resumable (ztd eval runs resume) and cancellable (ztd eval runs cancel).
+Verification runs after execution by default; use --verify=false to skip it.
 
 Operator sessions are resolved from the active Inference Operator and the
 campaign's Data Operator. A persistent campaign resolves its frozen Data
@@ -351,16 +350,13 @@ Examples:
 	cmd.Flags().BoolVar(&opts.PrepareOnly, "prepare-only", false, "Persist the run and its assignments, then stop before executing")
 	cmd.Flags().BoolVar(&opts.Publish, "publish", true, "Publish lifecycle projections to the public mirror")
 	cmd.Flags().BoolVar(&opts.Daemon, "daemon", true, "Execute continuously until the assignment matrix is exhausted")
-	cmd.Flags().BoolVar(&opts.Verify, "verify", false, "Verify the run after it completes")
+	cmd.Flags().BoolVar(&opts.Verify, "verify", true, "Verify the run after it completes")
 	cmd.Flags().BoolVar(&requireWitness, "require-witness", false, "Require provider-boundary observation and model-provenance witness evidence (implies --verify)")
 	cmd.Flags().BoolVar(&opts.RequireProvenance, "require-provenance", false, "Fail verification when model provenance attestation windows are missing")
 	cmd.Flags().BoolVar(&opts.RequireObservation, "require-observation", false, "Fail verification when provider-boundary observation windows are missing")
 	cmd.Flags().BoolVar(&opts.NoAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
-	cmd.Flags().BoolVar(&opts.NoBackup, "no-backup", false, noBackupFlagUsage)
 	return cmd
 }
-
-const noBackupFlagUsage = "Do not back up evaluation evidence to eval/backups when the run finishes"
 
 func verificationStatusString(report *evalv1.EvaluationVerificationReport) string {
 	if report == nil {
@@ -390,15 +386,19 @@ type runResumeResult struct {
 }
 
 type runResumeJSON struct {
-	RunID     string            `json:"run_id"`
-	Executed  int               `json:"executed"`
-	Remaining int64             `json:"remaining"`
-	Results   []runResumeResult `json:"results"`
+	RunID          string            `json:"run_id"`
+	Executed       int               `json:"executed"`
+	Remaining      int64             `json:"remaining"`
+	Results        []runResumeResult `json:"results"`
+	Verified       bool              `json:"verified"`
+	VerifyStatus   string            `json:"verify_status"`
+	FailureCount   int               `json:"failure_count"`
+	FailureReasons []string          `json:"failure_reasons"`
 }
 
 func runsResumeCmd(deps nativeEvalDeps) *cobra.Command {
 	var limit uint32
-	var noAutoBind, noBackup, publish, daemon bool
+	var noAutoBind, publish, daemon, verify bool
 	cmd := &cobra.Command{
 		Use:   "resume <run>",
 		Short: "Execute the remaining queued assignments of a run",
@@ -407,15 +407,13 @@ as a tool-calling agent (each turn an Inference Operator dispatch, each tool
 call a governed Data Operator action). By default one assignment runs; --limit raises
 that and --daemon runs until the matrix is exhausted. A run left with an
 unresolved running assignment cannot resume; cancel it and start a new run.
-An archived run cannot be resumed.`,
+An archived run cannot be resumed.
+Verification runs after execution by default; use --verify=false to skip it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			jsonOutput := output.JSONEnabled(cmd)
 			results := make([]runResumeResult, 0)
-			if !noBackup {
-				defer autoBackupEval(cmd, deps, jsonOutput)
-			}
 			executed, err := executeRun(cmd, deps, runExecuteOptions{
 				RunID:      runID,
 				Publish:    publish,
@@ -437,9 +435,32 @@ An archived run cannot be resumed.`,
 			if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
 				return err
 			}
+			var report *evalv1.EvaluationVerificationReport
+			if verify {
+				_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
+				if err != nil {
+					return errors.Join(err, publicationErr)
+				}
+				report, err = verifyRun(cmd, deps, evaluation.NewStore(fileSvc), runID, false, false, publish, jsonOutput)
+				if err != nil {
+					return errors.Join(err, publicationErr)
+				}
+			}
+			var verificationErr error
+			if report.GetFailureCount() > 0 {
+				verificationErr = constants.ErrEvalRunVerificationFailed
+			}
 			if !jsonOutput {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
-				return errors.Join(err, publicationErr)
+				if report != nil {
+					_, reportErr := fmt.Fprintf(cmd.OutOrStdout(), "Run %s verification: %s (%d failure(s))\n", runID, report.GetStatus().String(), report.GetFailureCount())
+					err = errors.Join(err, reportErr)
+					for _, reason := range report.GetFailureReasons() {
+						_, reasonErr := fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", reason)
+						err = errors.Join(err, reasonErr)
+					}
+				}
+				return errors.Join(err, verificationErr, publicationErr)
 			}
 			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
@@ -453,14 +474,18 @@ An archived run cannot be resumed.`,
 			if remaining < 0 {
 				remaining = 0
 			}
-			return errors.Join(output.WriteJSON(cmd.OutOrStdout(), runResumeJSON{RunID: runID, Executed: executed, Remaining: remaining, Results: results}), publicationErr)
+			return errors.Join(output.WriteJSON(cmd.OutOrStdout(), runResumeJSON{
+				RunID: runID, Executed: executed, Remaining: remaining, Results: results,
+				Verified: report != nil, VerifyStatus: verificationStatusString(report),
+				FailureCount: verificationFailureCount(report), FailureReasons: verificationFailureReasons(report),
+			}), verificationErr, publicationErr)
 		},
 	}
 	cmd.Flags().Uint32Var(&limit, "limit", 1, "Maximum queued assignments to execute in this invocation")
 	cmd.Flags().BoolVar(&daemon, "daemon", false, "Run continuously until the queued matrix is exhausted")
+	cmd.Flags().BoolVar(&verify, "verify", true, "Verify the run after execution")
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish assignment lifecycle and terminal result projections to the public mirror")
 	cmd.Flags().BoolVar(&noAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
-	cmd.Flags().BoolVar(&noBackup, "no-backup", false, noBackupFlagUsage)
 	return cmd
 }
 

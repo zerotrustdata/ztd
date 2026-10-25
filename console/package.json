@@ -1,7 +1,7 @@
 {
   "name": "@ztd/console",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "ztd Console — the Gateway-embedded browser frontend: passkey authentication, approvals, Operator inventory, binding, deploy, and stop, and the native API reference.",
   "license": "BUSL-1.1",
   "type": "module",

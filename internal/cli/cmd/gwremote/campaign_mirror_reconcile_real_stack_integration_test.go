@@ -11,7 +11,7 @@ package gwremote
 
 import (
 	"context"
-	"path/filepath"
+	"path"
 	"testing"
 	"time"
 
@@ -304,7 +304,7 @@ func TestCampaignMirrorReconcilerRealStack_EligibilityUsesCanonicalCampaignState
 // run store seals into, at the run's campaign-verification path.
 func corruptCampaignVerificationReport(t *testing.T, e *evalRunStack, runID string) {
 	t.Helper()
-	path := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID, constants.CampaignVerificationFilename)
+	path := path.Join(constants.EvaluationRunsPath, runID, constants.CampaignVerificationFilename)
 	require.NoError(t, e.files.WriteFile(t.Context(), path, []byte("invalid"), constants.PermFilePrivate))
 }
 

@@ -7,6 +7,7 @@
 // - Campaign aggregation and Evaluation Framework reference values
 
 import type { EvaluationSummary, ModelRole, ModelSummary } from "../contract/types";
+import { evaluationPassRate } from '../utils/run-metrics';
 
 export type ModelCapabilityKey =
   | "completion"
@@ -2172,7 +2173,7 @@ export function deriveCampaignSummaries(evaluations: EvaluationSummary[]): Campa
   const result = Array.from(groups.values());
   for (const group of result) {
     const passRates = group.runs
-      .map((r) => r.headline_metrics.pass_rate?.value)
+      .map((r) => evaluationPassRate(r)?.value)
       .filter((v): v is number => v !== undefined)
       .sort((a, b) => a - b);
     if (passRates.length > 0) {

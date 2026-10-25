@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,9 +26,64 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
+
+type recordedDeliberator struct {
+	envelope   *commonv1.GovernanceEnvelope
+	inferences []*operatorv1.ConsensusVoteInference
+}
+
+func (d *recordedDeliberator) Deliberate(_ context.Context, body []byte) (*governance.ConsensusDeliberation, error) {
+	d.envelope = &commonv1.GovernanceEnvelope{}
+	if err := protojson.Unmarshal(body, d.envelope); err != nil {
+		return nil, err
+	}
+	d.envelope.Governance = &commonv1.GovernanceMetadata{L2: &commonv1.L2Metadata{Votes: []*commonv1.L2Vote{{SignerKeyId: "tribunal-axiom", Decision: true}}}}
+	wire, err := protojson.Marshal(d.envelope)
+	return &governance.ConsensusDeliberation{Envelope: wire, Inferences: d.inferences}, err
+}
+
+func TestGovernanceDeliberationAuthenticatesBeforeRequestingVotes(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		posture  string
+		identity string
+		status   int
+	}{
+		{name: "valid operator identity", identity: "op-1", status: http.StatusOK},
+		{name: "different operator", identity: "other", status: http.StatusForbidden},
+		{name: "caller posture", identity: "op-1", posture: "doctrine", status: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := newTestGovernanceController(t)
+			c.cfg.Gateway.Posture = constants.PostureConsensus
+			d := &recordedDeliberator{inferences: []*operatorv1.ConsensusVoteInference{{MemberAppId: "tribunal-axiom"}}}
+			c.deliberator = d
+			env := &commonv1.GovernanceEnvelope{OperatorId: test.identity, OperatorSessionId: "sess-1", ActionType: string(constants.ActionTypeFileEdit), Posture: test.posture}
+			wire, err := protojson.Marshal(env)
+			require.NoError(t, err)
+			req := identityBindingRequest(t, "spiffe://ztd.local/operator/org-1/op-1/sess-1")
+			req.Body = io.NopCloser(bytes.NewReader(wire))
+			w := httptest.NewRecorder()
+			c.handleGovernanceDeliberation(w, req)
+			require.Equal(t, test.status, w.Code, w.Body.String())
+			if test.status != http.StatusOK {
+				require.Nil(t, d.envelope, "refused identities never cause vote executions")
+				return
+			}
+			require.Equal(t, "consensus", d.envelope.GetPosture())
+			var result operatorv1.GovernanceDeliberationResult
+			require.NoError(t, protojson.Unmarshal(w.Body.Bytes(), &result))
+			require.Empty(t, result.GetEnvelope().GetPosture(), "submission gets its own authoritative posture")
+			require.Len(t, result.GetEnvelope().GetGovernance().GetL2().GetVotes(), 1)
+			require.Len(t, result.GetConsensusInferences(), 1)
+		})
+	}
+}
 
 // newTestGovernanceController creates a GovernanceController with minimal
 // dependencies for unit-testing the controller. The CLI session service is

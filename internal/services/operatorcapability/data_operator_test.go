@@ -206,11 +206,11 @@ func tierOp(id string, kind constants.OperatorType, hostname string, capabilitie
 	}
 }
 
-func TestEmbeddedTypeImpliesDataAndWitnessCommands(t *testing.T) {
+func TestEmbeddedWitnessOnlyOperatorPreservesExplicitCapabilities(t *testing.T) {
 	op := tierOp("embedded-operator", constants.OperatorTypeEmbedded, "", constants.OperatorCapabilityObserver)
-	require.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver}, GetOperatorCapabilities(op))
-	require.NoError(t, ValidateWitnessCommand(GetOperatorCapabilities(op), "pwd"))
-	require.True(t, IsDataOperator(op))
+	require.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, GetOperatorCapabilities(op))
+	require.ErrorIs(t, ValidateWitnessCommand(GetOperatorCapabilities(op), "pwd"), constants.ErrWitnessCommandNotCapable)
+	require.False(t, IsDataOperator(op))
 	require.False(t, IsDedicatedDataOperator(op))
 }
 

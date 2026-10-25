@@ -24,15 +24,15 @@ type CampaignQueueBatchPlanRequest struct {
 	Until int
 }
 
-// BuildBatchPlan returns queue entries to execute in order. Skipped entries
-// never run.
+// BuildBatchPlan returns queue entries to execute in order. Failed entries
+// require an explicit retry; skipped entries never run.
 func (queue *CampaignQueue) BuildBatchPlan(req CampaignQueueBatchPlanRequest) []CampaignQueueModel {
 	if queue == nil {
 		return nil
 	}
 	plan := make([]CampaignQueueModel, 0, len(queue.Models))
 	for _, entry := range queue.Models {
-		if strings.EqualFold(entry.Status, QueueStatusSkipped) {
+		if strings.EqualFold(entry.Status, QueueStatusSkipped) || strings.EqualFold(entry.Status, QueueStatusFailed) {
 			continue
 		}
 		if req.SkipVerified && strings.EqualFold(entry.Status, QueueStatusVerified) && (req.VerifiedIsStale == nil || !req.VerifiedIsStale(entry)) {

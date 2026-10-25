@@ -5,7 +5,12 @@
     "date": "2026-10-24",
     "description": "One sloppy noun became a second receipt store. v1.3.0 deletes it, cuts the observed eval databases roughly in half, and sharpens how ztd names events, scores models, and tests Tribunal consensus.",
     "author": "Danny",
-    "tags": ["Engineering", "Evaluations", "Releases"]
+    "tags": ["Engineering", "Evaluations", "Releases"],
+    "artwork": {
+      "src": "/journal-event-receipts.svg",
+      "alt": "Two duplicate receipt stores converging into one signed event chain while the redundant receipts table is deleted.",
+      "caption": "TWO STORES → ONE EVENT CHAIN"
+    }
   },
   {
     "slug": "ugly-evals-pprof-and-the-bugs-in-l2-l5",

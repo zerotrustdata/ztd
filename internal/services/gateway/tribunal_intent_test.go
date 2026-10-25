@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -26,18 +27,21 @@ import (
 
 // capturingTribunalDispatcher admits every request as a distinct envelope and
 // runs its OnAdmitted hook, as DispatchService does before publish.
-type capturingTribunalDispatcher struct{ requests []DispatchRequest }
+type capturingTribunalDispatcher struct {
+	requests []DispatchRequest
+	votes    []*operatorv1.ConsensusVoteInference
+}
 
 func (d *capturingTribunalDispatcher) Dispatch(ctx context.Context, req DispatchRequest) (*DispatchResult, error) {
 	d.requests = append(d.requests, req)
 	id := fmt.Sprintf("transaction-%d", len(d.requests))
 	if req.OnAdmitted != nil {
 		env := &commonv1.GovernanceEnvelope{Id: id, Payload: req.Payload}
-		if err := req.OnAdmitted(ctx, env, nil); err != nil {
-			return nil, fmt.Errorf("dispatch: admitted: %w", err)
+		if err := req.OnAdmitted(ctx, env, d.votes); err != nil {
+			return nil, governance.WithConsensusInferences(d.votes, fmt.Errorf("dispatch: admitted: %w", err))
 		}
 	}
-	return &DispatchResult{TransactionID: id}, nil
+	return &DispatchResult{TransactionID: id, ConsensusInferences: d.votes}, nil
 }
 
 // fakeAdmissionReviewer records each admitted envelope and answers with review.
@@ -67,6 +71,7 @@ func TestTribunalIntentDispatchUsesApprovedArgumentBytesOnce(t *testing.T) {
 	// Noncanonical whitespace proves the controller uses the approved bytes directly.
 	approved := `{"command":"printf", "args":["%s", "a  b"],"timeout":17,"working_dir":"/workspace"}`
 	req := &tribunalv1.TribunalIntentRequest{TargetOperatorSessionId: "operator-session", ExecutionId: "execution", WorkingDirectory: "/workspace", CaseId: "case", InvestigationId: "investigation", TaskId: "task", CliSessionId: "cli"}
+	req.MemberInference = &operatorv1.InferenceDispatchRequest{RunId: "run", AssignmentId: "assignment"}
 	result := &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, ArgumentsJson: approved}
 	reviewer := &fakeAdmissionReviewer{}
 	controller.dispatchCommand(context.Background(), req, result, "app", "user", reviewer)
@@ -85,6 +90,8 @@ func TestTribunalIntentDispatchUsesApprovedArgumentBytesOnce(t *testing.T) {
 	assert.Equal(t, "investigation", captured.InvestigationID)
 	assert.Equal(t, "task", captured.TaskID)
 	assert.Equal(t, "cli", captured.CliSessionID)
+	assert.Equal(t, "run", captured.EvaluationRunID)
+	assert.Equal(t, "assignment", captured.EvaluationAssignmentID)
 	payload := &operatorv1.McpCallRequested{}
 	require.NoError(t, proto.Unmarshal(captured.Payload, payload))
 	assert.Equal(t, constants.MCPToolRunShellCommand, payload.GetToolName())
@@ -191,4 +198,19 @@ func TestTribunalIntentReviewCancellationIsRefused(t *testing.T) {
 	require.Len(t, dispatcher.requests, 1)
 	assert.Nil(t, result.GetDispatched())
 	assert.NotNil(t, result.GetRefusal(), "an interrupted review is a refused dispatch, never a success")
+}
+
+func TestTribunalIntentKeepsVotesWhenContextualReviewFails(t *testing.T) {
+	votes := []*operatorv1.ConsensusVoteInference{{SubjectTransactionHash: "subject", MemberAppId: "tribunal-axiom"}}
+	dispatcher := &capturingTribunalDispatcher{votes: votes}
+	controller := &TribunalIntentController{commands: dispatcher}
+	result := &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, ArgumentsJson: `{"command":"pwd"}`}
+	reviewer := &fakeAdmissionReviewer{review: func(result *tribunalv1.TribunalIntentResult, _ *commonv1.GovernanceEnvelope) error {
+		result.Outcome = tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED
+		return constants.ErrTribunalInferenceFailed
+	}}
+	controller.dispatchCommand(context.Background(), &tribunalv1.TribunalIntentRequest{}, result, "app", "user", reviewer)
+	assert.Nil(t, result.GetCommandOutcome())
+	require.Len(t, result.GetConsensusInferences(), 1, "executed L2 votes survive a failed contextual review")
+	assert.True(t, proto.Equal(votes[0], result.GetConsensusInferences()[0]))
 }

@@ -116,6 +116,23 @@
     "signature": {"type": "string", "required": true, "description": "Ed25519 signature over the proof root SHA-256, hex-encoded"}
   },
 
+  "public_proof_head": {
+    "_description": "Constant-size public proof head from GET /proof-head, without artifact entries. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
+    "schema_version": {"type": "string", "required": true, "description": "Proof head schema version"},
+    "source_id": {"type": "string", "required": true, "description": "Public source identity"},
+    "segment_index": {"type": "integer", "required": true, "description": "Latest signed segment index, or zero for a legacy full manifest"},
+    "proof_root_sha256": {"type": "string", "required": true, "description": "Signed segment root for a chain projection, or legacy full-manifest root (64-char hex)"},
+    "campaign_id": {"type": "string", "required": true, "description": "Campaign identity from the campaign manifest"},
+    "campaign_revision": {"type": "string", "required": true, "description": "Campaign revision from the frozen profile hash"},
+    "verified_index_generation_hash": {"type": "string", "required": true, "description": "SHA-256 of the verified index generation's content hash (64-char hex)"},
+    "verification_ok": {"type": "boolean", "required": true, "description": "Latest publication verification status; authenticate it through the signed log"},
+    "artifact_count": {"type": "integer", "required": true, "description": "Active artifact count from the mirror projection; authenticate membership through the signed log"},
+    "verifier_instructions": {"type": "string", "required": true, "description": "Human-readable offline verification instructions"},
+    "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp of the latest proof publication"},
+    "signing_key_id": {"type": "string", "required": true, "description": "Identifier of the signing key used to sign the proof root"},
+    "signature": {"type": "string", "required": true, "description": "Ed25519 signature over the proof root SHA-256, hex-encoded"}
+  },
+
   "public_proof_manifest_segment": {
     "_description": "One source-signed append-only proof log link. The root binds every field except root and signature using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot.",
     "schema_version": {"type": "string", "required": true, "description": "Signed segment schema version"},

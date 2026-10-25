@@ -151,7 +151,7 @@ func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
 	require.NoError(t, lane.WriteWorkspaceFile(ctx, target, "run-1", "scenario-1", "attempt-1", "/tmp/fixture", "secret setup"))
 	_, err = lane.ReadWorkspaceFile(ctx, target, "run-1", "scenario-1", "attempt-1", "/tmp/fixture")
 	require.NoError(t, err)
-	_, err = lane.DispatchAgentTool(ctx, target, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFsRead, "/tmp/fixture", []byte("payload"))
+	_, err = lane.DispatchAgentTool(ctx, target, "run-1", "assignment-1", "scenario-1", "attempt-1", constants.ActionTypeFsRead, "/tmp/fixture", []byte("payload"))
 	require.NoError(t, err)
 	require.Len(t, fakeClient.dispatchRequests, 3)
 	setup, probe, scored := fakeClient.dispatchRequests[0], fakeClient.dispatchRequests[1], fakeClient.dispatchRequests[2]
@@ -160,6 +160,10 @@ func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
 	assert.Equal(t, "scenario-1", scored.InvestigationID)
 	assert.NotEqual(t, setup.TaskID, probe.TaskID)
 	assert.NotEqual(t, setup.TaskID, scored.TaskID)
+	assert.Equal(t, "run-1", scored.EvaluationRunID)
+	assert.Equal(t, "assignment-1", scored.EvaluationAssignmentID)
+	assert.Empty(t, setup.EvaluationAssignmentID)
+	assert.Empty(t, probe.EvaluationAssignmentID)
 }
 
 func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
@@ -233,7 +237,7 @@ func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome}, client.Persona{CLISessionID: "cli-session-1"})
 
-			dispatched, err := lane.DispatchAgentTool(context.Background(), target, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/workspaces/ws-0123456789abcdef/out.txt", []byte("payload"))
+			dispatched, err := lane.DispatchAgentTool(context.Background(), target, "run-1", "assignment-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/workspaces/ws-0123456789abcdef/out.txt", []byte("payload"))
 
 			require.NoError(t, err)
 			assert.Same(t, tt.outcome, dispatched.Outcome)
@@ -260,7 +264,7 @@ func TestCommandLane_DispatchAgentTool_FailsClosedOnTransportUntypedAndSuspended
 		t.Run(tt.name, func(t *testing.T) {
 			lane := NewCommandLane(&laneTestClient{dispatchOutcome: tt.outcome, dispatchErr: tt.err}, client.Persona{})
 
-			_, err := lane.DispatchAgentTool(context.Background(), Target{OperatorID: "operator-1", SessionID: "session-1"}, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/out.txt", []byte("payload"))
+			_, err := lane.DispatchAgentTool(context.Background(), Target{OperatorID: "operator-1", SessionID: "session-1"}, "run-1", "assignment-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/out.txt", []byte("payload"))
 
 			require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 			if tt.typed != nil {
@@ -273,7 +277,7 @@ func TestCommandLane_DispatchAgentTool_FailsClosedOnTransportUntypedAndSuspended
 func TestCommandLane_DispatchAgentTool_RequiresOperatorTargetScopeAndPayload(t *testing.T) {
 	lane := NewCommandLane(&laneTestClient{}, client.Persona{})
 
-	_, err := lane.DispatchAgentTool(context.Background(), Target{}, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/out.txt", []byte("payload"))
+	_, err := lane.DispatchAgentTool(context.Background(), Target{}, "run-1", "assignment-1", "scenario-1", "attempt-1", constants.ActionTypeFileEdit, "/home/op/out.txt", []byte("payload"))
 
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }

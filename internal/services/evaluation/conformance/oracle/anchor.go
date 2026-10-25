@@ -140,8 +140,8 @@ func NewAnchorSet(anchors []*evalv1.ConformanceAnchor) (*AnchorSet, error) {
 		if err != nil {
 			return nil, fmt.Errorf("oracle: anchor set for %s: %w", anchor.GetRuntimeId(), err)
 		}
-		if _, exists := set.byKeyID[anchor.GetKeyId()]; exists {
-			return nil, fmt.Errorf("oracle: anchor set: duplicate key id %s: %w", anchor.GetKeyId(), constants.ErrConformanceAnchorInvalid)
+		if prior, exists := set.byKeyID[anchor.GetKeyId()]; exists {
+			return nil, fmt.Errorf("oracle: anchor set: duplicate key id %s for runtimes %s and %s; each Operator requires its own runtime root and actuator key: %w", anchor.GetKeyId(), prior.anchor.GetRuntimeId(), anchor.GetRuntimeId(), constants.ErrConformanceAnchorInvalid)
 		}
 		if _, exists := runtimeIDs[anchor.GetRuntimeId()]; exists {
 			return nil, fmt.Errorf("oracle: anchor set: duplicate runtime id %s: %w", anchor.GetRuntimeId(), constants.ErrConformanceAnchorInvalid)
@@ -183,4 +183,14 @@ func validateAnchorKey(algorithm, keyID, publicKeyHex string) (ed25519.PublicKey
 		return nil, fmt.Errorf("key_id must equal lowercase hex(public_key): %w", constants.ErrConformanceAnchorInvalid)
 	}
 	return ed25519.PublicKey(decoded), nil
+}
+
+// Runtime resolves a receipt signer to a runtime pinned in this record.
+func (s *AnchorSet) Runtime(keyID string) (string, error) {
+	if s != nil {
+		if pinned, ok := s.byKeyID[keyID]; ok {
+			return pinned.anchor.GetRuntimeId(), nil
+		}
+	}
+	return "", fmt.Errorf("oracle: resolve runtime for %s: %w", keyID, constants.ErrConformanceAnchorUnknown)
 }

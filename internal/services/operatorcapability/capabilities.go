@@ -30,8 +30,8 @@ func ResolveOperatorCapabilities(cfg *operatorv1.OperatorRuntimeConfig) constant
 }
 
 // GetOperatorCapabilities resolves runtime capabilities; stored capability
-// metadata is used only without runtime configuration. The embedded Operator
-// type always carries Data.
+// metadata is used only without runtime configuration. Deployment type does
+// not add capabilities.
 func GetOperatorCapabilities(op *operatorv1.OperatorDocument) constants.OperatorCapabilities {
 	var capabilities constants.OperatorCapabilities
 	if op.RuntimeConfig != nil {
@@ -40,9 +40,6 @@ func GetOperatorCapabilities(op *operatorv1.OperatorDocument) constants.Operator
 		capabilities = models.OperatorCapabilitiesFromProto(op.GetOperatorCapabilities()).Canonical()
 	} else {
 		capabilities = constants.OperatorCapabilities{constants.OperatorCapabilityData}
-	}
-	if constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded {
-		capabilities = capabilities.WithEmbeddedBaseline()
 	}
 	return capabilities
 }
@@ -91,19 +88,30 @@ func HasActiveCapability(op *operatorv1.OperatorDocument, capability constants.O
 	return IsActiveOperatorSession(op) && GetOperatorCapabilities(op).Has(capability)
 }
 
-// PreferDedicated returns the dedicated (non-embedded) Operators in ops when
-// any exist, otherwise ops. A dedicated Operator takes precedence over the
-// Gateway's embedded Operator, whose baseline always carries Data and
-// Inference, so an untargeted selection is not made ambiguous by the fallback.
-func PreferDedicated(ops []*operatorv1.OperatorDocument) []*operatorv1.OperatorDocument {
-	dedicated := make([]*operatorv1.OperatorDocument, 0, len(ops))
+// ActiveOperatorsWithCapability returns configured active sessions that carry
+// capability, independently of deployment type.
+func ActiveOperatorsWithCapability(ops []*operatorv1.OperatorDocument, capability constants.OperatorCapability) []*operatorv1.OperatorDocument {
+	var matches []*operatorv1.OperatorDocument
 	for _, op := range ops {
-		if constants.OperatorType(op.GetOperatorType()) != constants.OperatorTypeEmbedded {
-			dedicated = append(dedicated, op)
+		if op != nil && op.GetRuntimeConfig() != nil && HasActiveCapability(op, capability) {
+			matches = append(matches, op)
 		}
 	}
-	if len(dedicated) == 0 {
-		return ops
+	return matches
+}
+
+// PreferEmbedded gives the Gateway's embedded Operator precedence among
+// otherwise eligible Operators. Without an embedded match, ambiguity remains
+// visible to the caller.
+func PreferEmbedded(ops []*operatorv1.OperatorDocument) []*operatorv1.OperatorDocument {
+	var embedded []*operatorv1.OperatorDocument
+	for _, op := range ops {
+		if constants.OperatorType(op.GetOperatorType()) == constants.OperatorTypeEmbedded {
+			embedded = append(embedded, op)
+		}
 	}
-	return dedicated
+	if len(embedded) > 0 {
+		return embedded
+	}
+	return ops
 }

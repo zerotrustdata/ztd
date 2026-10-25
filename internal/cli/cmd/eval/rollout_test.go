@@ -61,7 +61,7 @@ func TestRolloutRemove_DropsModelByTag(t *testing.T) {
 	assert.Contains(t, out, "Removed qwen3:4b")
 	assert.Contains(t, out, "0 model(s) in the rollout queue")
 
-	require.NoError(t, env.runJSON(t, &rolloutListJSON{}, "rollout", "list"))
+	require.NoError(t, env.runJSON(t, &rolloutListJSON{}, "rollout", "list", "--queue"))
 }
 
 func TestRolloutRemove_LastEntryDeletesQueueFile(t *testing.T) {
@@ -85,7 +85,7 @@ func TestRolloutRetry_ReturnsModelsToPending(t *testing.T) {
 	assert.Contains(t, out, "Pending qwen3:4b")
 
 	var payload rolloutListJSON
-	require.NoError(t, env.runJSON(t, &payload, "rollout", "list", "--status", "pending"))
+	require.NoError(t, env.runJSON(t, &payload, "rollout", "list", "--queue", "--status", "pending"))
 	require.Len(t, payload.Models, 1)
 	assert.Equal(t, "qwen3:4b", payload.Models[0].ServedModelTag)
 }
@@ -97,7 +97,7 @@ func TestRolloutSkip_ExcludesModelFromRuns(t *testing.T) {
 	assert.Contains(t, out, "Skipped qwen3:4b")
 
 	var payload rolloutListJSON
-	require.NoError(t, env.runJSON(t, &payload, "rollout", "list", "--status", "skipped"))
+	require.NoError(t, env.runJSON(t, &payload, "rollout", "list", "--queue", "--status", "skipped"))
 	require.Len(t, payload.Models, 1)
 	assert.Equal(t, evaluation.QueueStatusSkipped, payload.Models[0].Status)
 }
@@ -123,10 +123,10 @@ func TestRolloutList_FiltersByStatus(t *testing.T) {
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "skip", "qwen3:4b")
 
-	out := env.mustRun(t, "rollout", "list", "--status", "pending")
+	out := env.mustRun(t, "rollout", "list", "--queue", "--status", "pending")
 	assert.Contains(t, out, "No queue entries found")
 
-	out = env.mustRun(t, "rollout", "list", "--status", "skipped")
+	out = env.mustRun(t, "rollout", "list", "--queue", "--status", "skipped")
 	assert.Contains(t, out, "qwen3:4b")
 	assert.Contains(t, out, "skipped")
 }

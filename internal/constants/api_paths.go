@@ -26,6 +26,7 @@ var APIPaths = struct {
 	A2ACall   string `json:"a2a_call"`
 	A2APrefix string `json:"a2a_prefix"`
 	// Governance routes
+	GovernanceDeliberations string `json:"governance_deliberations"`
 	GovernanceEnvelopes     string `json:"governance_envelopes"`
 	GovernanceSigners       string `json:"governance_signers"`
 	GovernanceSignersByID   string `json:"governance_signers_by_id"`
@@ -207,6 +208,7 @@ var APIPaths = struct {
 	A2APrefix: "/api/v1/a2a/",
 	// Governance routes
 	GovernanceEnvelopes:     "/api/v1/governance/envelopes",
+	GovernanceDeliberations: "/api/v1/governance/deliberations",
 	GovernanceSigners:       "/api/v1/governance/signers",
 	GovernanceSignersByID:   "/api/v1/governance/signers/",
 	GovernanceSignersPrefix: "/api/v1/governance/signers/",

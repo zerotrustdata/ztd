@@ -324,7 +324,7 @@ env:
 		'  GW_ARGS             Extra gw start flags for up and gw (default: none)' \
 		'  OPERATOR_ARGS       Extra operator start flags (default: none)' \
 		'  QUICKSTART_ARGS     Options for the quickstart script (default: none)' \
-		'  GW_CAPABILITIES     Embedded Operator capabilities for gw (default: data,inference,observer)' \
+		'  GW_CAPABILITIES     Embedded Operator capabilities for gw (default: data)' \
 		'  MODEL_STORAGE_ROOT  Local model store; enables provenance for gw (default: unset)' \
 		'' \
 		'Examples:' \
@@ -486,8 +486,9 @@ test-onboarding-smoke:
 
 DISTROS ?= ubuntu debian fedora arch
 SCENARIOS ?= build-only rerun quickstart
+ONBOARDING_OUT ?=
 test-onboarding-docker:
-	@bash scripts/onboarding/run-matrix.sh --distros "$(DISTROS)" --scenarios "$(SCENARIOS)"
+	@bash scripts/onboarding/run-matrix.sh --distros "$(DISTROS)" --scenarios "$(SCENARIOS)" $(if $(ONBOARDING_OUT),--out "$(ONBOARDING_OUT)")
 
 # Point git at the tracked hooks: pre-commit and pre-push run
 # scripts/check-commit-hygiene.sh (ignored paths, >5 MiB blobs, executables,
@@ -621,6 +622,14 @@ CONSOLE_DIST := console/dist
 CONSOLE_EMBED := internal/services/gateway/console/static
 CONSOLE_SOURCES := $(call source_files,-exclude node_modules$(comma)dist$(comma)tests console)
 
+console/node_modules/.package-lock.json: console/package-lock.json
+	@npm ci --prefix console
+
+$(CONSOLE_DIST)/index.html: console/node_modules/.package-lock.json $(CONSOLE_SOURCES)
+	@echo "Building the console SPA..."
+	@npm run build --prefix console
+	@touch $@
+
 $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 	@rm -rf $(CONSOLE_EMBED) && cp -r $(CONSOLE_DIST) $(CONSOLE_EMBED)
 	@echo "Embedded console updated from fresh console build."
@@ -628,10 +637,9 @@ $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 .PHONY: console-embed
 console-embed: $(CONSOLE_EMBED)/index.html
 
-# Source builds use committed frontend assets and require only Go. Refresh
-# changed frontend sources explicitly with console-embed / explorer-embed.
+# Builds the host binary including embedded frontend assets (console and evaluation explorer).
 .PHONY: build
-build:
+build: console-embed explorer-embed
 	@echo "Building ztd for the host platform..."
 	@mkdir -p $(BIN_DIR)
 	@rm -f $(BIN_DIR)/ztd-binaries.json
@@ -667,7 +675,7 @@ build-compressed: build
 	echo "Compressed binary: $$BINARY"
 
 .PHONY: build-target
-build-target:
+build-target: console-embed explorer-embed
 	@test -n "$(GOOS)" || { echo "ERROR: GOOS is required for build-target"; exit 1; }
 	@test -n "$(GOARCH)" || { echo "ERROR: GOARCH is required for build-target"; exit 1; }
 	@mkdir -p $(BIN_DIR)
@@ -675,13 +683,13 @@ build-target:
 	@set -e; GOOS=$(GOOS); GOARCH=$(GOARCH); $(BUILD_ONE)
 
 .PHONY: build-linux build-darwin build-windows
-build-linux build-darwin build-windows: build-%:
+build-linux build-darwin build-windows: build-%: console-embed explorer-embed
 	@mkdir -p $(BIN_DIR)
 	@rm -f $(BIN_DIR)/ztd-binaries.json
 	@set -e; GOOS=$*; for GOARCH in $(patsubst $*/%,%,$(filter $*/%,$(PLATFORMS))); do $(BUILD_ONE); done
 
 .PHONY: build-all
-build-all:
+build-all: console-embed explorer-embed
 	@echo "Building ztd for all platforms (FIPS 140-3 for linux)..."
 	@test -n "$(strip $(PLATFORMS))" || { echo "ERROR: ztdbinaries catalog lists no build targets"; exit 1; }
 	@mkdir -p $(BIN_DIR)
@@ -713,7 +721,7 @@ build-all:
 #   https://go.dev/doc/security/fips140
 # Verify the deployed binary with: ./ztd version --fips
 .PHONY: fips-build
-fips-build:
+fips-build: console-embed explorer-embed
 	@echo "Building ztd with FIPS 140-3 approved mode (GOFIPS140=$(GOFIPS140_VERSION), $(FIPS_GOOS)/$(FIPS_GOARCH))..."
 	@mkdir -p $(BIN_DIR)
 	@ZTD_BINARY=$(BIN_DIR)/ztd-fips-$(FIPS_GOOS)-$(FIPS_GOARCH); \
@@ -934,14 +942,6 @@ test-go-import:
 # Requires node_modules installed first:
 #   cd console && npm ci
 
-console/node_modules/.package-lock.json: console/package-lock.json
-	@npm ci --prefix console
-
-$(CONSOLE_DIST)/index.html: console/node_modules/.package-lock.json $(CONSOLE_SOURCES)
-	@echo "Building the console SPA..."
-	@npm run build --prefix console
-	@touch $@
-
 .PHONY: console-build
 console-build: $(CONSOLE_DIST)/index.html
 
@@ -1110,7 +1110,7 @@ up: build
 # added only when MODEL_STORAGE_ROOT names the local model store. GW_ARGS
 # carries extra flags, for example
 #   make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://host:11434'
-GW_CAPABILITIES ?= data,inference,observer
+GW_CAPABILITIES ?= data
 MODEL_STORAGE_ROOT ?=
 .PHONY: gw
 gw: build
@@ -1153,6 +1153,7 @@ ci: dev-check
 	@$(MAKE) ci-console
 	@$(MAKE) ci-explorer
 	@$(MAKE) ci-platform
+	@$(MAKE) ci-onboarding
 	@$(MAKE) ci-protocol
 	@$(MAKE) ci-website
 	@echo "CI complete. Generated artifacts have been refreshed."
@@ -1166,6 +1167,9 @@ ci-platform: dev-check
 	@$(MAKE) lint
 	@$(MAKE) _ci-test
 	@$(MAKE) _ci-binaries
+ifeq ($(HOST_OS),linux)
+	@$(MAKE) test-fips
+endif
 	@$(MAKE) test-airgap
 	@$(MAKE) test-go-import
 	@$(MAKE) bsl-headers-check
@@ -1175,6 +1179,14 @@ ci-platform: dev-check
 	@$(MAKE) test-onboarding
 	@$(MAKE) version-sync-check
 	@echo "Platform CI complete."
+
+# Disposable hosts exercise setup and the real Operator lifecycle without
+# changing the contributor's toolchain, home directory, or running Gateway.
+.PHONY: ci-onboarding
+ci-onboarding:
+	@$(MAKE) test-onboarding-docker
+	@$(MAKE) test-onboarding-docker DISTROS=ubuntu SCENARIOS="build-only contributor release-smoke operator-deploy"
+	@echo "Onboarding CI complete."
 
 .PHONY: ci-console
 ci-console: dev-check

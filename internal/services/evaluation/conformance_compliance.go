@@ -10,7 +10,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"path"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -32,11 +32,11 @@ func readConformanceRecordRaw(ctx context.Context, reader complianceevidence.Art
 		return nil, "", fmt.Errorf("%w: canonical run ID: %w", constants.ErrConformanceRecordInvalid, err)
 	}
 	runDir := evaluationRunDir(runID)
-	raw, err := reader.ReadFile(ctx, filepath.Join(runDir, constants.ConformanceRecordFilename))
+	raw, err := reader.ReadFile(ctx, path.Join(runDir, constants.ConformanceRecordFilename))
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: read conformance record: %w", err)
 	}
-	digest, err := reader.ReadFile(ctx, filepath.Join(runDir, constants.ConformanceRecordDigestFilename))
+	digest, err := reader.ReadFile(ctx, path.Join(runDir, constants.ConformanceRecordDigestFilename))
 	if err != nil {
 		return nil, "", fmt.Errorf("evaluation: read conformance record digest: %w", err)
 	}

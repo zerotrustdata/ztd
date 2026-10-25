@@ -49,7 +49,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 			assert.Equal(t, "planted fault", content)
 			payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: path, ExecutionId: "scored-read"})
 			require.NoError(t, err)
-			scored, err := lane.DispatchAgentTool(ctx, target, "run", investigation, "attempt", constants.ActionTypeFsRead, path, payload)
+			scored, err := lane.DispatchAgentTool(ctx, target, "run", "assignment", investigation, "attempt", constants.ActionTypeFsRead, path, payload)
 			require.NoError(t, err)
 			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, scored.Outcome.Observation.GetReceipt().GetStatus())
 
@@ -66,7 +66,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 				require.NoError(t, err)
 				payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolEventReceiptList, ArgumentsJson: string(args)})
 				require.NoError(t, err)
-				out, err := lane.DispatchAgentTool(ctx, target, "run", scope, "attempt", constants.ActionTypeMcpCall, constants.MCPToolEventReceiptList, payload)
+				out, err := lane.DispatchAgentTool(ctx, target, "run", "assignment", scope, "attempt", constants.ActionTypeMcpCall, constants.MCPToolEventReceiptList, payload)
 				require.NoError(t, err)
 				receipt := out.Outcome.Observation.GetReceipt()
 				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
