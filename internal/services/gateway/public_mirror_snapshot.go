@@ -74,6 +74,23 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 		return err
 	}
 	obsolete := map[int64]bool{batch.FirstSequence: true}
+	selectStmt, err := tx.PrepareContext(ctx, `SELECT first_sequence FROM snapshot_records WHERE source_id = ? AND record_key = ?`)
+	if err != nil {
+		return err
+	}
+	defer selectStmt.Close()
+
+	insertStmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshot_records
+		(source_id, record_key, dataset_id, sequence, first_sequence, is_event, record_type, record_hash, record_bytes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(source_id, record_key) DO UPDATE SET
+		sequence=excluded.sequence, first_sequence=excluded.first_sequence,
+		record_type=excluded.record_type, record_hash=excluded.record_hash, record_bytes=excluded.record_bytes`)
+	if err != nil {
+		return err
+	}
+	defer insertStmt.Close()
+
 	for _, record := range batch.Records {
 		key, dataset, event, err := snapshotRecordIdentity(record)
 		if err != nil {
@@ -83,19 +100,14 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 			continue
 		}
 		var previous int64
-		err = tx.QueryRowContext(ctx, `SELECT first_sequence FROM snapshot_records WHERE source_id = ? AND record_key = ?`, batch.SourceID, key).Scan(&previous)
+		err = selectStmt.QueryRowContext(ctx, batch.SourceID, key).Scan(&previous)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		if err == nil {
 			obsolete[previous] = true
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO snapshot_records
-			(source_id, record_key, dataset_id, sequence, first_sequence, is_event, record_type, record_hash, record_bytes)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(source_id, record_key) DO UPDATE SET
-			sequence=excluded.sequence, first_sequence=excluded.first_sequence,
-			record_type=excluded.record_type, record_hash=excluded.record_hash, record_bytes=excluded.record_bytes`,
+		if _, err := insertStmt.ExecContext(ctx,
 			batch.SourceID, key, dataset, record.Sequence, batch.FirstSequence, event, record.RecordType, record.RecordHash, record.RecordBytes); err != nil {
 			return err
 		}
@@ -120,15 +132,29 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 	if err != nil {
 		return err
 	}
-	for _, key := range expired {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM snapshot_records WHERE source_id = ? AND record_key = ?`, batch.SourceID, key); err != nil {
+	if len(expired) > 0 {
+		delStmt, err := tx.PrepareContext(ctx, `DELETE FROM snapshot_records WHERE source_id = ? AND record_key = ?`)
+		if err != nil {
 			return err
 		}
+		defer delStmt.Close()
+		for _, key := range expired {
+			if _, err := delStmt.ExecContext(ctx, batch.SourceID, key); err != nil {
+				return err
+			}
+		}
 	}
-	for first := range obsolete {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM snapshot_batches WHERE source_id = ? AND first_sequence = ? AND NOT EXISTS
-			(SELECT 1 FROM snapshot_records r WHERE r.source_id = snapshot_batches.source_id AND r.first_sequence = snapshot_batches.first_sequence)`, batch.SourceID, first); err != nil {
+	if len(obsolete) > 0 {
+		delBatchStmt, err := tx.PrepareContext(ctx, `DELETE FROM snapshot_batches WHERE source_id = ? AND first_sequence = ? AND NOT EXISTS
+			(SELECT 1 FROM snapshot_records r WHERE r.source_id = snapshot_batches.source_id AND r.first_sequence = snapshot_batches.first_sequence)`)
+		if err != nil {
 			return err
+		}
+		defer delBatchStmt.Close()
+		for first := range obsolete {
+			if _, err := delBatchStmt.ExecContext(ctx, batch.SourceID, first); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO snapshot_heads VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET high_water_sequence=excluded.high_water_sequence`, batch.SourceID, batch.LastSequence)

@@ -1432,11 +1432,11 @@ scan:
 			return
 		}
 		for _, rec := range records {
-			if mirrorRecordWithdrawn(summary.WithdrawnDatasetIDs, rec) {
-				continue
-			}
 			var item models.PublicFeedObject
 			if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
+				continue
+			}
+			if mirrorProjectionWithdrawn(summary.WithdrawnDatasetIDs, item) {
 				continue
 			}
 			if recordKind != "" {
