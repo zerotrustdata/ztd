@@ -116,9 +116,11 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
 		return nil, startFailure(constants.ExitConfigError, err)
 	}
-	if err := refuseModelStoreRuntime(fileSvc.Resolve(""), opts.ProvenanceOperatorModelStorageRoot); err != nil {
-		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
-		return nil, startFailure(constants.ExitConfigError, err)
+	for _, modelRoot := range []string{opts.ProvenanceOperatorModelStorageRoot, opts.InferenceLlamaCppModelRoot} {
+		if err := refuseModelStoreRuntime(fileSvc.Resolve(""), modelRoot); err != nil {
+			logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
+			return nil, startFailure(constants.ExitConfigError, err)
+		}
 	}
 	// Own the runtime before touching its vault, database, or enrollment state.
 	// Capability sets distinguish enrollments, never concurrent owners of a root.

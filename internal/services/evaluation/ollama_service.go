@@ -397,7 +397,7 @@ func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelComm
 // ReleaseOllamaModels sends one governed typed batch release to the exact
 // Inference Operator session. The Operator validates the full set, unloads it,
 // and verifies absence before this command completes.
-func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispatcher, targetOperatorSessionID, runID string, modelTags []string, environment map[string]string, newID func(string) string) error {
+func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispatcher, targetOperatorSessionID, runID string, modelTags []string, newID func(string) string) error {
 	if dispatcher == nil || targetOperatorSessionID == "" || runID == "" || newID == nil || len(modelTags) == 0 {
 		return fmt.Errorf("evaluation: release Ollama models: %w", constants.ErrMissingRequiredField)
 	}
@@ -415,7 +415,6 @@ func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispa
 		TargetOperatorSessionID: targetOperatorSessionID,
 		ActionType:              constants.ActionTypeOllamaModelRelease,
 		Payload:                 payload,
-		Environment:             environment,
 		TimeoutSeconds:          60,
 		ExecutionID:             executionID,
 		CaseID:                  runID,

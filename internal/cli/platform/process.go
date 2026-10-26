@@ -283,6 +283,12 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	if opts.InferenceOllamaEndpoint != "" {
 		args = append(args, "--inference-ollama-endpoint", opts.InferenceOllamaEndpoint)
 	}
+	if opts.InferenceLlamaCppEndpoint != "" {
+		args = append(args, "--inference-llamacpp-endpoint", opts.InferenceLlamaCppEndpoint)
+	}
+	if opts.InferenceLlamaCppModelRoot != "" {
+		args = append(args, "--inference-llamacpp-model-root", opts.InferenceLlamaCppModelRoot)
+	}
 	if opts.InferenceKeepAlive != "" {
 		args = append(args, "--inference-keep-alive", opts.InferenceKeepAlive)
 	}
@@ -294,6 +300,9 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	}
 	if opts.ProvenanceOperatorModelStorageRoot != "" {
 		args = append(args, "--model-storage-root", opts.ProvenanceOperatorModelStorageRoot)
+	}
+	if opts.ProvenanceOperatorModelStorageFormat != "" {
+		args = append(args, "--model-storage-format", opts.ProvenanceOperatorModelStorageFormat)
 	}
 	if opts.VaultDir != "" {
 		args = append(args, "--vault-dir", opts.VaultDir)

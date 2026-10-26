@@ -273,7 +273,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
 	}
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
-	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
+	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceLlamacppEndpoint: cfg.Inference.LlamaCppEndpoint, InferenceLlamacppModelRoot: cfg.Inference.LlamaCppModelRoot, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
 		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
 	}
 

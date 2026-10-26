@@ -101,11 +101,13 @@ func TestInferenceOllamaEndpoint(t *testing.T) {
 	key := string(constants.EnvVar.OllamaEndpoint)
 
 	t.Setenv(key, " http://10.0.0.2:11434 ")
-	assert.Equal(t, "http://10.0.0.3:11434", InferenceOllamaEndpoint(" http://10.0.0.3:11434 "), "flag wins")
-	assert.Equal(t, "http://10.0.0.2:11434", InferenceOllamaEndpoint("  "), "env fills a blank flag")
+	assert.Equal(t, "http://10.0.0.3:11434", InferenceOllamaEndpoint(" http://10.0.0.3:11434 ", ""), "flag wins")
+	assert.Equal(t, "http://10.0.0.2:11434", InferenceOllamaEndpoint("  ", ""), "env fills a blank flag")
+	assert.Empty(t, InferenceOllamaEndpoint("", "http://10.0.0.4:8080"), "llama.cpp selection ignores the env default")
+	assert.Equal(t, "http://10.0.0.3:11434", InferenceOllamaEndpoint("http://10.0.0.3:11434", "http://10.0.0.4:8080"), "an explicit Ollama flag is kept so the provider conflict surfaces")
 
 	t.Setenv(key, "")
-	assert.Empty(t, InferenceOllamaEndpoint(""))
+	assert.Empty(t, InferenceOllamaEndpoint("", ""))
 }
 
 func TestWithoutUserEnv(t *testing.T) {

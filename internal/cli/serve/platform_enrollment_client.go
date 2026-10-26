@@ -434,16 +434,20 @@ func operatorRuntimeConfig(cfg *config.Config) (json.RawMessage, error) {
 		LocalDir:     cfg.WorkDir,
 		Account:      auth.ResolveCurrentAccount(),
 
-		InferenceOllamaEndpoint:      cfg.Inference.OllamaEndpoint,
-		InferenceKeepAlive:           cfg.Inference.KeepAlive,
-		InferenceAllowHostedDecision: cfg.Inference.AllowHostedDecision,
-		InferenceDecisionModels:      cfg.Inference.DecisionModels, InferenceDecisionOnly: cfg.Inference.DecisionOnly,
-		InferenceDecisionBackend:           inferenceDecisionBackendKind(cfg),
-		ProvenanceOperatorId:               cfg.ProvenanceOperator.OperatorID,
-		ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot,
-		ProviderBoundaryObserverId:         cfg.ProviderBoundaryObserver.ObserverID,
-		Platform:                           runtime.GOOS,
-		HeartbeatIntervalMs:                uint32(cfg.HeartbeatInterval.Milliseconds()),
+		InferenceOllamaEndpoint:              cfg.Inference.OllamaEndpoint,
+		InferenceLlamacppEndpoint:            cfg.Inference.LlamaCppEndpoint,
+		InferenceLlamacppModelRoot:           cfg.Inference.LlamaCppModelRoot,
+		InferenceKeepAlive:                   cfg.Inference.KeepAlive,
+		InferenceAllowHostedDecision:         cfg.Inference.AllowHostedDecision,
+		InferenceDecisionModels:              cfg.Inference.DecisionModels,
+		InferenceDecisionOnly:                cfg.Inference.DecisionOnly,
+		InferenceDecisionBackend:             inferenceDecisionBackendKind(cfg),
+		ProvenanceOperatorId:                 cfg.ProvenanceOperator.OperatorID,
+		ProvenanceOperatorModelStorageRoot:   cfg.ProvenanceOperator.ModelStorageRoot,
+		ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat,
+		ProviderBoundaryObserverId:           cfg.ProviderBoundaryObserver.ObserverID,
+		Platform:                             runtime.GOOS,
+		HeartbeatIntervalMs:                  uint32(cfg.HeartbeatInterval.Milliseconds()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrOperatorRuntimeConfigMarshal, err)
@@ -530,8 +534,9 @@ func inferenceDecisionBackendKind(cfg *config.Config) string {
 	if !cfg.Inference.Enabled {
 		return ""
 	}
+	kind := cfg.Inference.Provider + "-systemone"
 	if cfg.Inference.AllowHostedDecision {
-		return "ollama-systemone,typesafe"
+		return kind + ",typesafe"
 	}
-	return "ollama-systemone"
+	return kind
 }

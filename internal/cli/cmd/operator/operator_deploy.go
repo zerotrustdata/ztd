@@ -950,8 +950,9 @@ func (s deploySSH) readDeploymentState(ctx context.Context, dir string) (*models
 
 // Reuse start's flag definitions so deploy and start cannot drift in types/defaults.
 var operatorDeployForwardFlags = []string{
-	"capabilities", "inference-ollama-endpoint", "inference-keep-alive", "allow-hosted-decision", "decision-model", "decision-only",
-	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root",
+	"capabilities", "inference-ollama-endpoint", "inference-llamacpp-endpoint", "inference-llamacpp-model-root",
+	"inference-keep-alive", "allow-hosted-decision", "decision-model", "decision-only",
+	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root", "model-storage-format",
 	"gateway-http-port", "gateway-https-port",
 	"heartbeat-interval", "log", "trust-bundle",
 }

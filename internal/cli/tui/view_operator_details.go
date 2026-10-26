@@ -60,6 +60,10 @@ func operatorDetailsLines(op *operatorv1.OperatorDocument, identity Identity) []
 	if op.RuntimeConfig != nil {
 		lines = append(lines, "", paneHeaderStyle.Render("RUNTIME"),
 			detailRow("Ollama", op.RuntimeConfig.InferenceOllamaEndpoint),
+			detailRow("llama.cpp", op.RuntimeConfig.InferenceLlamacppEndpoint),
+			detailRow("llama.cpp dir", op.RuntimeConfig.InferenceLlamacppModelRoot),
+			detailRow("Model store", op.RuntimeConfig.ProvenanceOperatorModelStorageRoot),
+			detailRow("Store format", op.RuntimeConfig.ProvenanceOperatorModelStorageFormat),
 		)
 	}
 

@@ -114,7 +114,12 @@ func unquoteEnvValue(value string) string {
 
 // InferenceOllamaEndpoint resolves the Ollama provider endpoint for the
 // --inference-ollama-endpoint flags: the flag value, else ZTD_OLLAMA_ENDPOINT,
-// else blank.
-func InferenceOllamaEndpoint(flag string) string {
+// else blank. The environment default never applies when
+// --inference-llamacpp-endpoint selects the llama.cpp provider; an explicit
+// Ollama flag beside it is still a provider conflict.
+func InferenceOllamaEndpoint(flag, llamaCppFlag string) string {
+	if strings.TrimSpace(llamaCppFlag) != "" {
+		return strings.TrimSpace(flag)
+	}
 	return cmp.Or(strings.TrimSpace(flag), strings.TrimSpace(os.Getenv(string(constants.EnvVar.OllamaEndpoint))))
 }

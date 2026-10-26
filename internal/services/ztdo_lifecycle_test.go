@@ -107,6 +107,7 @@ func TestZtdoService_Start_SuccessFlow(t *testing.T) {
 func TestZtdoService_Start_RejectsInvalidInferenceEndpointBeforeConnecting(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	cfg.Inference.Enabled = true
+	cfg.Inference.Provider = constants.InferenceProviderOllama
 	cfg.Inference.OllamaEndpoint = "not-a-url"
 	calls := 0
 	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {

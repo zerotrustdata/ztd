@@ -33,41 +33,45 @@ type GatewayConfig struct {
 	WorkingDir                         string                         `json:"working_dir,omitempty"`
 	OperatorCapabilities               constants.OperatorCapabilities `json:"operator_capabilities,omitempty"`
 	InferenceOllamaEndpoint            string                         `json:"inference_ollama_endpoint,omitempty"`
+	InferenceLlamaCppEndpoint          string                         `json:"inference_llamacpp_endpoint,omitempty"`
+	InferenceLlamaCppModelRoot         string                         `json:"inference_llamacpp_model_root,omitempty"`
 	InferenceKeepAlive                 string                         `json:"inference_keep_alive,omitempty"`
 	ProviderBoundaryObserverID         string                         `json:"provider_boundary_observer_id,omitempty"`
 	ProvenanceOperatorID               string                         `json:"provenance_operator_id,omitempty"`
 	ProvenanceOperatorModelStorageRoot string                         `json:"provenance_operator_model_storage_root,omitempty"`
-	Posture                            constants.Posture              `json:"posture"`
-	HTTPPort                           int                            `json:"http_port"`
-	HTTPSPort                          int                            `json:"https_port"`
-	ListenHost                         string                         `json:"listen_host,omitempty"`
-	DataDir                            string                         `json:"data_dir,omitempty"`
-	PKIDir                             string                         `json:"pki_dir,omitempty"`
-	SecretsDir                         string                         `json:"secrets_dir,omitempty"`
-	VaultDir                           string                         `json:"vault_dir,omitempty"`
-	PasskeyRpID                        string                         `json:"passkey_rp_id,omitempty"`
-	PasskeyRpName                      string                         `json:"passkey_rp_name,omitempty"`
-	PasskeyRpOrigins                   []string                       `json:"passkey_rp_origins,omitempty"`
-	RateLimitRPS                       float64                        `json:"rate_limit_rps"`
-	RateLimitBurst                     int                            `json:"rate_limit_burst"`
-	LogLevel                           string                         `json:"log_level"`
-	CertIdentityMode                   string                         `json:"cert_identity_mode,omitempty"`
-	NetworkIdentityFile                string                         `json:"network_identity_file,omitempty"`
-	MCPDownstreamURL                   string                         `json:"mcp_downstream_url,omitempty"`
-	MCPDownstreamCmd                   string                         `json:"mcp_downstream_cmd,omitempty"`
-	MCPDownstreamArgs                  []string                       `json:"mcp_downstream_args,omitempty"`
-	A2ADownstreamURL                   string                         `json:"a2a_downstream_url,omitempty"`
-	PublicBaseURL                      string                         `json:"public_base_url,omitempty"`
-	AllowedOrigins                     []string                       `json:"allowed_origins,omitempty"`
-	DoctrineDir                        string                         `json:"doctrine_dir,omitempty"`
-	PublicSpectatorEnabled             bool                           `json:"public_spectator_enabled"`
-	PublicSpectatorPrivateAddr         string                         `json:"public_spectator_private_addr,omitempty"`
-	PublicSpectatorPublicAddr          string                         `json:"public_spectator_public_addr,omitempty"`
-	PublicSpectatorAllowContainerBind  bool                           `json:"public_spectator_allow_container_bind,omitempty"`
-	EvalExplorerAddr                   string                         `json:"eval_explorer_addr,omitempty"`
-	EvalExplorerRoot                   string                         `json:"eval_explorer_root,omitempty"`
-	PublicSpectatorTrustedProxyCIDRs   []string                       `json:"public_spectator_trusted_proxy_cidrs,omitempty"`
-	PprofListenAddr                    string                         `json:"pprof_listen_addr,omitempty"`
+	// ProvenanceOperatorModelStorageFormat is the model store layout.
+	ProvenanceOperatorModelStorageFormat string            `json:"provenance_operator_model_storage_format,omitempty"`
+	Posture                              constants.Posture `json:"posture"`
+	HTTPPort                             int               `json:"http_port"`
+	HTTPSPort                            int               `json:"https_port"`
+	ListenHost                           string            `json:"listen_host,omitempty"`
+	DataDir                              string            `json:"data_dir,omitempty"`
+	PKIDir                               string            `json:"pki_dir,omitempty"`
+	SecretsDir                           string            `json:"secrets_dir,omitempty"`
+	VaultDir                             string            `json:"vault_dir,omitempty"`
+	PasskeyRpID                          string            `json:"passkey_rp_id,omitempty"`
+	PasskeyRpName                        string            `json:"passkey_rp_name,omitempty"`
+	PasskeyRpOrigins                     []string          `json:"passkey_rp_origins,omitempty"`
+	RateLimitRPS                         float64           `json:"rate_limit_rps"`
+	RateLimitBurst                       int               `json:"rate_limit_burst"`
+	LogLevel                             string            `json:"log_level"`
+	CertIdentityMode                     string            `json:"cert_identity_mode,omitempty"`
+	NetworkIdentityFile                  string            `json:"network_identity_file,omitempty"`
+	MCPDownstreamURL                     string            `json:"mcp_downstream_url,omitempty"`
+	MCPDownstreamCmd                     string            `json:"mcp_downstream_cmd,omitempty"`
+	MCPDownstreamArgs                    []string          `json:"mcp_downstream_args,omitempty"`
+	A2ADownstreamURL                     string            `json:"a2a_downstream_url,omitempty"`
+	PublicBaseURL                        string            `json:"public_base_url,omitempty"`
+	AllowedOrigins                       []string          `json:"allowed_origins,omitempty"`
+	DoctrineDir                          string            `json:"doctrine_dir,omitempty"`
+	PublicSpectatorEnabled               bool              `json:"public_spectator_enabled"`
+	PublicSpectatorPrivateAddr           string            `json:"public_spectator_private_addr,omitempty"`
+	PublicSpectatorPublicAddr            string            `json:"public_spectator_public_addr,omitempty"`
+	PublicSpectatorAllowContainerBind    bool              `json:"public_spectator_allow_container_bind,omitempty"`
+	EvalExplorerAddr                     string            `json:"eval_explorer_addr,omitempty"`
+	EvalExplorerRoot                     string            `json:"eval_explorer_root,omitempty"`
+	PublicSpectatorTrustedProxyCIDRs     []string          `json:"public_spectator_trusted_proxy_cidrs,omitempty"`
+	PprofListenAddr                      string            `json:"pprof_listen_addr,omitempty"`
 	// ConsensusMemberSignerFactory builds the signer for the Gateway-hosted
 	// Tribunal consensus members. It is a process dependency, never part of
 	// the launch profile; nil leaves the Tribunal unable to vote.
@@ -143,36 +147,39 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 		"build", vi.BuildID)
 
 	gatewayCfg, err := config.LoadGateway(config.GatewayOptions{
-		WorkDir:                            cfg.WorkingDir,
-		OperatorCapabilities:               cfg.OperatorCapabilities,
-		InferenceOllamaEndpoint:            cfg.InferenceOllamaEndpoint,
-		InferenceKeepAlive:                 cfg.InferenceKeepAlive,
-		ProviderBoundaryObserverID:         cfg.ProviderBoundaryObserverID,
-		ProvenanceOperatorID:               cfg.ProvenanceOperatorID,
-		ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperatorModelStorageRoot,
-		Posture:                            cfg.Posture,
-		HTTPPort:                           cfg.HTTPPort,
-		HTTPSPort:                          cfg.HTTPSPort,
-		ListenHost:                         cfg.ListenHost,
-		DataDir:                            cfg.DataDir,
-		PKIDir:                             cfg.PKIDir,
-		SecretsDir:                         cfg.SecretsDir,
-		VaultDir:                           cfg.VaultDir,
-		PasskeyRpID:                        cfg.PasskeyRpID,
-		PasskeyRpName:                      cfg.PasskeyRpName,
-		PasskeyRpOrigins:                   cfg.PasskeyRpOrigins,
-		RateLimitRPS:                       cfg.RateLimitRPS,
-		RateLimitBurst:                     cfg.RateLimitBurst,
-		CertMode:                           cfg.CertIdentityMode,
-		NetworkIdentityFile:                cfg.NetworkIdentityFile,
-		MCPDownstreamURL:                   cfg.MCPDownstreamURL, // empty by default — no downstream proxy
-		MCPDownstreamCmd:                   cfg.MCPDownstreamCmd,
-		MCPDownstreamArgs:                  cfg.MCPDownstreamArgs,
-		A2ADownstreamURL:                   cfg.A2ADownstreamURL, // empty by default — no downstream proxy
-		PublicBaseURL:                      cfg.PublicBaseURL,
-		AllowedOrigins:                     cfg.AllowedOrigins,
-		DoctrineDir:                        cfg.DoctrineDir,
-		AllowTestPortZero:                  false,
+		WorkDir:                              cfg.WorkingDir,
+		OperatorCapabilities:                 cfg.OperatorCapabilities,
+		InferenceOllamaEndpoint:              cfg.InferenceOllamaEndpoint,
+		InferenceLlamaCppEndpoint:            cfg.InferenceLlamaCppEndpoint,
+		InferenceLlamaCppModelRoot:           cfg.InferenceLlamaCppModelRoot,
+		InferenceKeepAlive:                   cfg.InferenceKeepAlive,
+		ProviderBoundaryObserverID:           cfg.ProviderBoundaryObserverID,
+		ProvenanceOperatorID:                 cfg.ProvenanceOperatorID,
+		ProvenanceOperatorModelStorageRoot:   cfg.ProvenanceOperatorModelStorageRoot,
+		ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperatorModelStorageFormat,
+		Posture:                              cfg.Posture,
+		HTTPPort:                             cfg.HTTPPort,
+		HTTPSPort:                            cfg.HTTPSPort,
+		ListenHost:                           cfg.ListenHost,
+		DataDir:                              cfg.DataDir,
+		PKIDir:                               cfg.PKIDir,
+		SecretsDir:                           cfg.SecretsDir,
+		VaultDir:                             cfg.VaultDir,
+		PasskeyRpID:                          cfg.PasskeyRpID,
+		PasskeyRpName:                        cfg.PasskeyRpName,
+		PasskeyRpOrigins:                     cfg.PasskeyRpOrigins,
+		RateLimitRPS:                         cfg.RateLimitRPS,
+		RateLimitBurst:                       cfg.RateLimitBurst,
+		CertMode:                             cfg.CertIdentityMode,
+		NetworkIdentityFile:                  cfg.NetworkIdentityFile,
+		MCPDownstreamURL:                     cfg.MCPDownstreamURL, // empty by default — no downstream proxy
+		MCPDownstreamCmd:                     cfg.MCPDownstreamCmd,
+		MCPDownstreamArgs:                    cfg.MCPDownstreamArgs,
+		A2ADownstreamURL:                     cfg.A2ADownstreamURL, // empty by default — no downstream proxy
+		PublicBaseURL:                        cfg.PublicBaseURL,
+		AllowedOrigins:                       cfg.AllowedOrigins,
+		DoctrineDir:                          cfg.DoctrineDir,
+		AllowTestPortZero:                    false,
 	})
 	if err != nil {
 		return fmt.Errorf("gateway: load configuration: %w", err)

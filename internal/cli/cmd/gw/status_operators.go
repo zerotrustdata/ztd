@@ -39,8 +39,11 @@ const (
 	flagCloud              = "--cloud"
 	flagProvider           = "--provider"
 	flagInferenceEndpoint  = "--inference-ollama-endpoint"
+	flagLlamaCppEndpoint   = "--inference-llamacpp-endpoint"
+	flagLlamaCppModelRoot  = "--inference-llamacpp-model-root"
 	flagInferenceKeepAlive = "--inference-keep-alive"
 	flagModelStorageRoot   = "--model-storage-root"
+	flagModelStorageFormat = "--model-storage-format"
 	flagProvenanceID       = "--provenance-operator-id"
 	flagObserverID         = "--provider-boundary-observer-id"
 
@@ -55,8 +58,8 @@ var capabilityFlags = []struct {
 	capability constants.OperatorCapability
 	flags      []string
 }{
-	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagInferenceKeepAlive}},
-	{constants.OperatorCapabilityProvenance, []string{flagModelStorageRoot, flagProvenanceID}},
+	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive}},
+	{constants.OperatorCapabilityProvenance, []string{flagModelStorageRoot, flagModelStorageFormat, flagProvenanceID}},
 	{constants.OperatorCapabilityObserver, []string{flagObserverID}},
 }
 
@@ -106,11 +109,14 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 	}
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
 	row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
+	row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
+	row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
 	// Operators resolve these to non-empty defaults before reporting; empty
 	// means an Operator that predates reporting them, so leave them unknown.
 	for flag, value := range map[string]string{
 		flagInferenceKeepAlive: rc.InferenceKeepAlive,
+		flagModelStorageFormat: rc.ProvenanceOperatorModelStorageFormat,
 		flagProvenanceID:       rc.ProvenanceOperatorId,
 		flagObserverID:         rc.ProviderBoundaryObserverId,
 	} {
@@ -143,8 +149,11 @@ func (o *operatorStatus) fillFromProfile(cfg serve.GatewayConfig) {
 	}
 	for flag, value := range map[string]string{
 		flagInferenceEndpoint:  cfg.InferenceOllamaEndpoint,
+		flagLlamaCppEndpoint:   cfg.InferenceLlamaCppEndpoint,
+		flagLlamaCppModelRoot:  cfg.InferenceLlamaCppModelRoot,
 		flagInferenceKeepAlive: cfg.InferenceKeepAlive,
 		flagModelStorageRoot:   cfg.ProvenanceOperatorModelStorageRoot,
+		flagModelStorageFormat: cfg.ProvenanceOperatorModelStorageFormat,
 		flagProvenanceID:       cfg.ProvenanceOperatorID,
 		flagObserverID:         cfg.ProviderBoundaryObserverID,
 	} {

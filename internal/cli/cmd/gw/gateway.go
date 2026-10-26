@@ -54,12 +54,15 @@ func getBinaryName() string {
 // It is populated by addGatewayFlags and converted to serve.GatewayConfig
 // via gatewayFlagsToServeConfig.
 type GatewayFlags struct {
-	OperatorCapabilities               constants.OperatorCapabilities
-	InferenceOllamaEndpoint            string
-	InferenceKeepAlive                 string
-	ProviderBoundaryObserverID         string
-	ProvenanceOperatorID               string
-	ProvenanceOperatorModelStorageRoot string
+	OperatorCapabilities                 constants.OperatorCapabilities
+	InferenceOllamaEndpoint              string
+	InferenceLlamaCppEndpoint            string
+	InferenceLlamaCppModelRoot           string
+	InferenceKeepAlive                   string
+	ProviderBoundaryObserverID           string
+	ProvenanceOperatorID                 string
+	ProvenanceOperatorModelStorageRoot   string
+	ProvenanceOperatorModelStorageFormat string
 
 	Posture           string
 	HTTPPort          int
@@ -99,10 +102,13 @@ type GatewayFlags struct {
 func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().Var(&f.OperatorCapabilities, "capabilities", "Comma-separated embedded Operator capabilities: data,inference,provenance,observer (repeatable; default: data)")
 	cmd.Flags().StringVar(&f.InferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Approved Ollama endpoint for embedded inference (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
-	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Ollama keep-alive duration")
+	cmd.Flags().StringVar(&f.InferenceLlamaCppEndpoint, "inference-llamacpp-endpoint", "", "Approved llama.cpp llama-server router endpoint for embedded inference; selects the llama.cpp provider instead of Ollama")
+	cmd.Flags().StringVar(&f.InferenceLlamaCppModelRoot, "inference-llamacpp-model-root", "", "llama-server --models-dir as seen by the Gateway (required with --inference-llamacpp-endpoint)")
+	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Provider keep-alive duration (llama.cpp accepts -1 or 0)")
 	cmd.Flags().StringVar(&f.ProviderBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
-	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory containing model weight blobs")
+	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory of the model weight store")
+	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageFormat, "model-storage-format", "", "Model store layout under --model-storage-root: ollama (default) or llamacpp")
 
 	cmd.Flags().StringVar(&f.Posture, "posture", string(constants.DefaultPosture), postureFlagHelp())
 	cmd.Flags().IntVar(&f.HTTPPort, "http-port", 0, "Plain HTTP port for bootstrap, PKI discovery and enrollment (default: from constants.Ports.OperatorHttp)")
@@ -148,9 +154,10 @@ func postureFlagHelp() string {
 
 // resolveGatewayFlags finalizes gateway flag values. Gateway configuration is
 // flag-only, except that the user_endpoint ZTD_OLLAMA_ENDPOINT supplies
-// --inference-ollama-endpoint when the flag is blank.
+// --inference-ollama-endpoint when the flag is blank and no
+// --inference-llamacpp-endpoint selects llama.cpp.
 func resolveGatewayFlags(f GatewayFlags) GatewayFlags {
-	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint)
+	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint, f.InferenceLlamaCppEndpoint)
 	return f
 }
 
@@ -172,42 +179,45 @@ func tribunalConsensusSignerFactory(workingDir string) func(context.Context, fs.
 
 func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 	return serve.GatewayConfig{
-		OperatorCapabilities:               f.OperatorCapabilities,
-		InferenceOllamaEndpoint:            f.InferenceOllamaEndpoint,
-		InferenceKeepAlive:                 f.InferenceKeepAlive,
-		ProviderBoundaryObserverID:         f.ProviderBoundaryObserverID,
-		ProvenanceOperatorID:               f.ProvenanceOperatorID,
-		ProvenanceOperatorModelStorageRoot: f.ProvenanceOperatorModelStorageRoot,
-		Posture:                            constants.Posture(f.Posture),
-		HTTPPort:                           f.HTTPPort,
-		HTTPSPort:                          f.HTTPSPort,
-		ListenHost:                         f.ListenHost,
-		DataDir:                            f.DataDir,
-		PKIDir:                             f.PKIDir,
-		SecretsDir:                         f.SecretsDir,
-		VaultDir:                           f.VaultDir,
-		PasskeyRpID:                        f.PasskeyRpID,
-		PasskeyRpName:                      f.PasskeyRpName,
-		PasskeyRpOrigins:                   f.PasskeyRpOrigins,
-		RateLimitRPS:                       f.RateLimitRPS,
-		RateLimitBurst:                     f.RateLimitBurst,
-		LogLevel:                           f.LogLevel,
-		CertIdentityMode:                   f.CertIdentityMode,
-		MCPDownstreamURL:                   f.MCPDownstreamURL,
-		MCPDownstreamCmd:                   f.MCPDownstreamCmd,
-		MCPDownstreamArgs:                  parseDownstreamArgs(f.MCPDownstreamArgs),
-		A2ADownstreamURL:                   f.A2ADownstreamURL,
-		PublicBaseURL:                      f.PublicBaseURL,
-		AllowedOrigins:                     f.AllowedOrigins,
-		DoctrineDir:                        f.DoctrineDir,
-		PublicSpectatorEnabled:             f.PublicSpectatorEnabled,
-		PublicSpectatorPrivateAddr:         f.PublicSpectatorPrivateAddr,
-		PublicSpectatorPublicAddr:          f.PublicSpectatorPublicAddr,
-		PublicSpectatorAllowContainerBind:  f.PublicSpectatorAllowContainerBind,
-		EvalExplorerAddr:                   f.EvalExplorerAddr,
-		EvalExplorerRoot:                   f.EvalExplorerRoot,
-		PublicSpectatorTrustedProxyCIDRs:   f.PublicSpectatorTrustedProxyCIDRs,
-		PprofListenAddr:                    f.PprofListenAddr,
+		OperatorCapabilities:                 f.OperatorCapabilities,
+		InferenceOllamaEndpoint:              f.InferenceOllamaEndpoint,
+		InferenceLlamaCppEndpoint:            f.InferenceLlamaCppEndpoint,
+		InferenceLlamaCppModelRoot:           f.InferenceLlamaCppModelRoot,
+		InferenceKeepAlive:                   f.InferenceKeepAlive,
+		ProviderBoundaryObserverID:           f.ProviderBoundaryObserverID,
+		ProvenanceOperatorID:                 f.ProvenanceOperatorID,
+		ProvenanceOperatorModelStorageRoot:   f.ProvenanceOperatorModelStorageRoot,
+		ProvenanceOperatorModelStorageFormat: f.ProvenanceOperatorModelStorageFormat,
+		Posture:                              constants.Posture(f.Posture),
+		HTTPPort:                             f.HTTPPort,
+		HTTPSPort:                            f.HTTPSPort,
+		ListenHost:                           f.ListenHost,
+		DataDir:                              f.DataDir,
+		PKIDir:                               f.PKIDir,
+		SecretsDir:                           f.SecretsDir,
+		VaultDir:                             f.VaultDir,
+		PasskeyRpID:                          f.PasskeyRpID,
+		PasskeyRpName:                        f.PasskeyRpName,
+		PasskeyRpOrigins:                     f.PasskeyRpOrigins,
+		RateLimitRPS:                         f.RateLimitRPS,
+		RateLimitBurst:                       f.RateLimitBurst,
+		LogLevel:                             f.LogLevel,
+		CertIdentityMode:                     f.CertIdentityMode,
+		MCPDownstreamURL:                     f.MCPDownstreamURL,
+		MCPDownstreamCmd:                     f.MCPDownstreamCmd,
+		MCPDownstreamArgs:                    parseDownstreamArgs(f.MCPDownstreamArgs),
+		A2ADownstreamURL:                     f.A2ADownstreamURL,
+		PublicBaseURL:                        f.PublicBaseURL,
+		AllowedOrigins:                       f.AllowedOrigins,
+		DoctrineDir:                          f.DoctrineDir,
+		PublicSpectatorEnabled:               f.PublicSpectatorEnabled,
+		PublicSpectatorPrivateAddr:           f.PublicSpectatorPrivateAddr,
+		PublicSpectatorPublicAddr:            f.PublicSpectatorPublicAddr,
+		PublicSpectatorAllowContainerBind:    f.PublicSpectatorAllowContainerBind,
+		EvalExplorerAddr:                     f.EvalExplorerAddr,
+		EvalExplorerRoot:                     f.EvalExplorerRoot,
+		PublicSpectatorTrustedProxyCIDRs:     f.PublicSpectatorTrustedProxyCIDRs,
+		PprofListenAddr:                      f.PprofListenAddr,
 	}
 }
 
