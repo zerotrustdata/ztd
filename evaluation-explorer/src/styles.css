@@ -124,17 +124,20 @@ button { font-family: inherit; cursor: pointer; }
   flex-shrink: 0;
   border-radius: var(--radius);
 }
-.header-brand-wordmark,
-.header-brand-logo {
+.header-brand-wordmark {
   display: block;
-  height: 30px;
+  height: 38px;
   width: auto;
 }
-.header-brand-logo { display: none; }
+.header-brand-logo {
+  display: none;
+  height: 32px;
+  width: auto;
+}
 /* Light theme: the artwork's wordmark is near-white, so it gets a dark backing. */
 [data-theme="light"] .header-brand {
   background: #0d1117;
-  padding: 4px 10px;
+  padding: 2px 8px;
 }
 .header-campaign-slot {
   display: flex;
