@@ -180,6 +180,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Testing Guide](tests.md): Four-tier test model, execution commands, fixture lifecycles, and testing invariants.
 - [Release Process](release_process.md): Version synchronization, release compliance evidence, smoke gates, and release publication workflow.
 - [Troubleshooting Guide](troubleshooting.md): Diagnostics, failure modes, and recovery procedures.
+- [Cloud VM Deployment Guide](cloud_deployment.md): Architecture, prerequisites, provisioning, firewall configuration, systemd daemonization, and DNS setup for hosting the Gateway on cloud VMs.
 
 #### Platform architecture (`docs/architecture/`)
 

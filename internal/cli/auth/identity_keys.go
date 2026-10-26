@@ -13,7 +13,6 @@ import (
 	"crypto/tls"
 	"encoding/pem"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 

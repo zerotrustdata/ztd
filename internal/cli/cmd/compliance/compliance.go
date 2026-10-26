@@ -64,7 +64,7 @@ evaluation snapshots for historical metrics.`,
 func complianceLogger() *slog.Logger {
 	l, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
 	if err != nil {
-		return complianceLogger()
+		return slog.New(slog.DiscardHandler)
 	}
 	return l
 }

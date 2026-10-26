@@ -11,7 +11,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
