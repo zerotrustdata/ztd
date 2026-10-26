@@ -428,6 +428,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 				ResultsService:           results,
 				Inference:                handlers.Inference,
 				InferenceAttemptStore:    handlers.InferenceAttemptStore,
+				InferenceProvider:        handlers.InferenceProvider,
 				ProviderBoundaryObserver: handlers.ProviderBoundaryObserver,
 				ModelProvenanceOperator:  handlers.ModelProvenanceOperator,
 				Logger:                   embeddedOperatorLogger,

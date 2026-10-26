@@ -40,6 +40,10 @@ const (
 // llama.cpp model store.
 const ModelWeightMediaTypeGGUF = "application/vnd.ggml.gguf"
 
+// ModelWeightFormatGGUF is the provider inventory weight format of a GGUF
+// model, the value Ollama reports in its model details.
+const ModelWeightFormatGGUF = "gguf"
+
 const (
 	// Bound full blob hashes independently of the command-channel goroutine count.
 	ModelProvenanceHashConcurrency = 2

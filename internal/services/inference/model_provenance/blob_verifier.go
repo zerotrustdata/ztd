@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -22,13 +21,12 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// blobVerifier owns content verification of content-addressed weight blobs.
-// A blob is streamed through SHA-256 once per file identity; later
-// attestations re-read only the identity and rest on that hash. Concurrent
-// requests for one blob share a single in-flight hash, and full hashes across
-// blobs are bounded by ModelProvenanceHashConcurrency.
+// blobVerifier owns content verification of weight files, keyed by path. A
+// file is streamed through SHA-256 once per file identity; later attestations
+// re-read only the identity and rest on that hash. Concurrent requests for one
+// file share a single in-flight hash, and full hashes across files are bounded
+// by ModelProvenanceHashConcurrency.
 type blobVerifier struct {
-	blobsDir  string
 	now       func() time.Time
 	hashSlots chan struct{}
 
@@ -39,10 +37,12 @@ type blobVerifier struct {
 
 type verifiedBlob struct {
 	identity        blobIdentity
+	digestHex       string
 	hashCompletedAt time.Time
 }
 
 type blobVerification struct {
+	digestHex       string
 	sizeBytes       int64
 	mode            evalv1.ModelWeightVerificationMode
 	hashCompletedAt time.Time
@@ -65,9 +65,8 @@ func (a blobIdentity) lastChangedAt() time.Time {
 	return time.Unix(0, max(a.modTimeNanos, a.changeNanos))
 }
 
-func newBlobVerifier(blobsDir string, now func() time.Time) *blobVerifier {
+func newBlobVerifier(now func() time.Time) *blobVerifier {
 	return &blobVerifier{
-		blobsDir:  blobsDir,
 		now:       now,
 		hashSlots: make(chan struct{}, constants.ModelProvenanceHashConcurrency),
 		verified:  make(map[string]verifiedBlob),
@@ -75,24 +74,38 @@ func newBlobVerifier(blobsDir string, now func() time.Time) *blobVerifier {
 	}
 }
 
-// verify confirms that blobs/sha256-<digestHex> holds content with that
-// digest, hashing only when no settled hash covers the blob's current identity.
-func (v *blobVerifier) verify(ctx context.Context, digestHex string) (blobVerification, error) {
+// verify reports the SHA-256 of the file at path, hashing only when no settled
+// hash covers the file's current identity. A non-empty expectedDigest is the
+// content address the file must hold; a different digest fails closed with
+// ErrModelProvenanceBlobDigestMismatch.
+func (v *blobVerifier) verify(ctx context.Context, path, expectedDigest string) (blobVerification, error) {
+	verification, err := v.digest(ctx, path)
+	if err != nil {
+		return blobVerification{}, err
+	}
+	if expectedDigest != "" && verification.digestHex != expectedDigest {
+		return blobVerification{}, fmt.Errorf("model provenance attestor: %s: %w", path, constants.ErrModelProvenanceBlobDigestMismatch)
+	}
+	return verification, nil
+}
+
+func (v *blobVerifier) digest(ctx context.Context, path string) (blobVerification, error) {
 	for {
-		identity, err := v.currentIdentity(digestHex)
+		identity, err := currentBlobIdentity(path)
 		if err != nil {
 			return blobVerification{}, err
 		}
 		v.mu.Lock()
-		if cached, ok := v.verified[digestHex]; ok && cached.identity.equal(identity) {
+		if cached, ok := v.verified[path]; ok && cached.identity.equal(identity) {
 			v.mu.Unlock()
 			return blobVerification{
+				digestHex:       cached.digestHex,
 				sizeBytes:       identity.sizeBytes,
 				mode:            evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED,
 				hashCompletedAt: cached.hashCompletedAt,
 			}, nil
 		}
-		if wait, ok := v.inflight[digestHex]; ok {
+		if wait, ok := v.inflight[path]; ok {
 			v.mu.Unlock()
 			select {
 			case <-wait:
@@ -101,16 +114,16 @@ func (v *blobVerifier) verify(ctx context.Context, digestHex string) (blobVerifi
 				return blobVerification{}, ctx.Err()
 			}
 		}
-		delete(v.verified, digestHex)
+		delete(v.verified, path)
 		done := make(chan struct{})
-		v.inflight[digestHex] = done
+		v.inflight[path] = done
 		v.mu.Unlock()
 
-		verification, hashed, settled, err := v.hash(ctx, digestHex)
+		verification, hashed, settled, err := v.hash(ctx, path)
 		v.mu.Lock()
-		delete(v.inflight, digestHex)
+		delete(v.inflight, path)
 		if err == nil && settled {
-			v.verified[digestHex] = verifiedBlob{identity: hashed, hashCompletedAt: verification.hashCompletedAt}
+			v.verified[path] = verifiedBlob{identity: hashed, digestHex: verification.digestHex, hashCompletedAt: verification.hashCompletedAt}
 		}
 		v.mu.Unlock()
 		close(done)
@@ -118,31 +131,27 @@ func (v *blobVerifier) verify(ctx context.Context, digestHex string) (blobVerifi
 	}
 }
 
-func (v *blobVerifier) blobPath(digestHex string) string {
-	return filepath.Join(v.blobsDir, "sha256-"+digestHex)
-}
-
-func (v *blobVerifier) currentIdentity(digestHex string) (blobIdentity, error) {
-	file, err := os.Open(v.blobPath(digestHex))
+func currentBlobIdentity(path string) (blobIdentity, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return blobIdentity{}, fmt.Errorf("model provenance attestor: open blob %s: %w", digestHex, err)
+		return blobIdentity{}, fmt.Errorf("model provenance attestor: open %s: %w", path, err)
 	}
 	defer file.Close()
 	return readBlobIdentity(file)
 }
 
-// hash streams one blob through SHA-256. settled reports whether the blob's
+// hash streams one file through SHA-256. settled reports whether the file's
 // identity predates the hash by the settle window, so the hash may be reused.
-func (v *blobVerifier) hash(ctx context.Context, digestHex string) (blobVerification, blobIdentity, bool, error) {
+func (v *blobVerifier) hash(ctx context.Context, path string) (blobVerification, blobIdentity, bool, error) {
 	select {
 	case v.hashSlots <- struct{}{}:
 		defer func() { <-v.hashSlots }()
 	case <-ctx.Done():
 		return blobVerification{}, blobIdentity{}, false, ctx.Err()
 	}
-	file, err := os.Open(v.blobPath(digestHex))
+	file, err := os.Open(path)
 	if err != nil {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: open blob %s: %w", digestHex, err)
+		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: open %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -154,23 +163,21 @@ func (v *blobVerifier) hash(ctx context.Context, digestHex string) (blobVerifica
 	hasher := sha256.New()
 	size, err := io.CopyBuffer(hasher, &provenanceContextReader{ctx: ctx, reader: file}, make([]byte, constants.ModelProvenanceHashBufferBytes))
 	if err != nil {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: hash blob %s: %w", digestHex, err)
+		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: hash %s: %w", path, err)
 	}
 	if ctx.Err() != nil {
 		return blobVerification{}, blobIdentity{}, false, ctx.Err()
-	}
-	if observed := hex.EncodeToString(hasher.Sum(nil)); observed != digestHex {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: blob digest mismatch for %s", digestHex)
 	}
 	after, err := readBlobIdentity(file)
 	if err != nil {
 		return blobVerification{}, blobIdentity{}, false, err
 	}
 	if !before.equal(after) || size != after.sizeBytes {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: blob %s: %w", digestHex, constants.ErrModelProvenanceBlobChanged)
+		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: %s: %w", path, constants.ErrModelProvenanceBlobChanged)
 	}
 	settled := after.lastChangedAt().Before(startedAt.Add(-constants.ModelProvenanceBlobIdentitySettleWindow))
 	return blobVerification{
+		digestHex:       hex.EncodeToString(hasher.Sum(nil)),
 		sizeBytes:       size,
 		mode:            evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH,
 		hashCompletedAt: v.now(),

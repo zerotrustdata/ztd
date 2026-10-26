@@ -32,6 +32,7 @@ type Attestor interface {
 // campaign model digest.
 type OllamaStorageAttestor struct {
 	modelStorageRoot string
+	blobsDir         string
 	operatorID       string
 	blobs            *blobVerifier
 }
@@ -46,7 +47,12 @@ func NewOllamaStorageAttestor(modelStorageRoot, operatorID string) (*OllamaStora
 	if operatorID == "" {
 		operatorID = "ztd-model-provenance-operator"
 	}
-	return &OllamaStorageAttestor{modelStorageRoot: root, operatorID: operatorID, blobs: newBlobVerifier(filepath.Join(root, "blobs"), time.Now)}, nil
+	return &OllamaStorageAttestor{modelStorageRoot: root, blobsDir: filepath.Join(root, "blobs"), operatorID: operatorID, blobs: newBlobVerifier(time.Now)}, nil
+}
+
+// blobPath is the content-addressed path of the blob with digestHex.
+func (a *OllamaStorageAttestor) blobPath(digestHex string) string {
+	return filepath.Join(a.blobsDir, "sha256-"+digestHex)
 }
 
 // ollamaRunnerManifestMediaType marks a wrapper layer that is itself one
@@ -153,7 +159,7 @@ func (a *OllamaStorageAttestor) readRunnerManifest(wrapper ollamaManifest, expec
 		if err != nil {
 			return "", nil, false, err
 		}
-		body, err := os.ReadFile(filepath.Join(a.modelStorageRoot, "blobs", "sha256-"+digestHex))
+		body, err := os.ReadFile(a.blobPath(digestHex))
 		if err != nil {
 			return "", nil, false, fmt.Errorf("model provenance attestor: read runner manifest %s: %w", digestHex, err)
 		}
@@ -170,7 +176,7 @@ func (a *OllamaStorageAttestor) attestBlob(ctx context.Context, digestRef, media
 	if err != nil {
 		return nil, err
 	}
-	verification, err := a.blobs.verify(ctx, digestHex)
+	verification, err := a.blobs.verify(ctx, a.blobPath(digestHex), digestHex)
 	if err != nil {
 		return nil, err
 	}

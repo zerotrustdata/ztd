@@ -59,6 +59,8 @@ type LoadOptions struct {
 
 	// Inference backend (ztdllama); enabled by the inference capability.
 	InferenceOllamaEndpoint      string
+	InferenceLlamaCppEndpoint    string
+	InferenceLlamaCppModelRoot   string
 	InferenceKeepAlive           string
 	InferenceAllowHostedDecision bool
 	InferenceDecisionModels      []string
@@ -69,9 +71,14 @@ type LoadOptions struct {
 
 	// ProvenanceOperatorID identifies the provenance capability.
 	ProvenanceOperatorID string
-	// ProvenanceOperatorModelStorageRoot is the root directory containing
-	// content-addressed model weight blobs (for example ~/.ollama/models).
+	// ProvenanceOperatorModelStorageRoot is the root directory of the model
+	// store the provenance capability attests (for example ~/.ollama/models
+	// or a llama-server --models-dir).
 	ProvenanceOperatorModelStorageRoot string
+	// ProvenanceOperatorModelStorageFormat is the store layout beneath the
+	// root: constants.ModelStorageFormatOllama (default) or
+	// constants.ModelStorageFormatLlamaCpp.
+	ProvenanceOperatorModelStorageFormat string
 }
 
 // GatewayConfig holds configuration for gateway mode.
@@ -162,10 +169,9 @@ func (c GatewayConfig) A2AIngressEnabled() bool {
 }
 
 // InferenceConfig holds configuration for the inference backend
-// (ztdllama). The remote Ollama provider owns process lifecycle, VRAM
-// management, model eviction, and multi-model residency; the gateway's
-// responsibility is limited to acting as an HTTP client to Ollama's
-// /api/chat endpoint.
+// (ztdllama). The provider (Ollama or a llama.cpp llama-server router) owns
+// process lifecycle, VRAM management, model eviction, and multi-model
+// residency; the Inference Operator only acts as its HTTP client.
 // The Inference Operator is a worker: it holds no model configuration. Each
 // governed request names the model it wants, chosen by the user in the Console.
 type InferenceConfig struct {
@@ -174,15 +180,39 @@ type InferenceConfig struct {
 	AllowHostedDecision bool
 	Enabled             bool
 
+	// Provider is the provider class the Inference Operator calls:
+	// constants.InferenceProviderOllama or constants.InferenceProviderLlamaCpp.
+	Provider string
+
 	// OllamaEndpoint is the HTTP endpoint of the configured Ollama provider
 	// (default: http://127.0.0.1:<InferenceOllamaDefaultPort>). For this
 	// release the provider is remote; nothing here manages a local daemon.
 	OllamaEndpoint string
 
-	// KeepAlive is the Ollama keep-alive duration passed to /api/chat per
-	// request. Default "-1" keeps each requested model resident on the
-	// remote provider.
+	// LlamaCppEndpoint is the HTTP endpoint of a llama-server running in
+	// router mode. Setting it selects the llama.cpp provider.
+	LlamaCppEndpoint string
+	// LlamaCppModelRoot is the llama-server --models-dir, read to compute
+	// the served-model digest from the GGUF files it serves.
+	LlamaCppModelRoot string
+
+	// KeepAlive is the provider keep-alive passed per request. Default "-1"
+	// keeps each requested model resident on the provider. A llama.cpp
+	// router accepts only "-1" (resident) or "0" (unload after the request).
 	KeepAlive string
+}
+
+// Endpoint returns the HTTP endpoint of the selected provider, or "" when no
+// provider is selected.
+func (c InferenceConfig) Endpoint() string {
+	switch c.Provider {
+	case constants.InferenceProviderOllama:
+		return c.OllamaEndpoint
+	case constants.InferenceProviderLlamaCpp:
+		return c.LlamaCppEndpoint
+	default:
+		return ""
+	}
 }
 
 // ProviderBoundaryObserverConfig holds configuration for the remote
@@ -198,6 +228,8 @@ type ProvenanceOperatorConfig struct {
 	Enabled          bool
 	OperatorID       string
 	ModelStorageRoot string
+	// ModelStorageFormat is the layout of the store beneath ModelStorageRoot.
+	ModelStorageFormat string
 }
 
 // Config holds all configuration for ztdo
@@ -294,15 +326,18 @@ func FindProjectRoot() string {
 
 // GatewayOptions contains configuration values for LoadGateway.
 type GatewayOptions struct {
-	WorkDir                            string
-	InferenceOllamaEndpoint            string
-	InferenceKeepAlive                 string
-	InferenceAllowHostedDecision       bool
-	InferenceDecisionModels            []string
-	InferenceDecisionOnly              bool
-	ProviderBoundaryObserverID         string
-	ProvenanceOperatorID               string
-	ProvenanceOperatorModelStorageRoot string
+	WorkDir                              string
+	InferenceOllamaEndpoint              string
+	InferenceLlamaCppEndpoint            string
+	InferenceLlamaCppModelRoot           string
+	InferenceKeepAlive                   string
+	InferenceAllowHostedDecision         bool
+	InferenceDecisionModels              []string
+	InferenceDecisionOnly                bool
+	ProviderBoundaryObserverID           string
+	ProvenanceOperatorID                 string
+	ProvenanceOperatorModelStorageRoot   string
+	ProvenanceOperatorModelStorageFormat string
 
 	OperatorCapabilities constants.OperatorCapabilities
 
@@ -424,7 +459,11 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	}
 	// Embedded and outbound Operators use the same explicit capabilities and Data default.
 	capabilities := opts.OperatorCapabilities.WithDefault()
-	provenance, err := newProvenanceOperatorConfig(capabilities.Has(constants.OperatorCapabilityProvenance), LoadOptions{ProvenanceOperatorID: opts.ProvenanceOperatorID, ProvenanceOperatorModelStorageRoot: opts.ProvenanceOperatorModelStorageRoot})
+	provenance, err := newProvenanceOperatorConfig(capabilities.Has(constants.OperatorCapabilityProvenance), LoadOptions{ProvenanceOperatorID: opts.ProvenanceOperatorID, ProvenanceOperatorModelStorageRoot: opts.ProvenanceOperatorModelStorageRoot, ProvenanceOperatorModelStorageFormat: opts.ProvenanceOperatorModelStorageFormat})
+	if err != nil {
+		return nil, err
+	}
+	inference, err := newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceLlamaCppEndpoint: opts.InferenceLlamaCppEndpoint, InferenceLlamaCppModelRoot: opts.InferenceLlamaCppModelRoot, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +556,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 		// The embedded Operator executes in its own runtime directory, never in
 		// the project, so model-driven work cannot touch ztd source or state.
 		WorkDir:                  paths.EmbeddedOperatorWorkDir,
-		Inference:                newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly}),
+		Inference:                inference,
 		ProviderBoundaryObserver: newProviderBoundaryObserverConfig(capabilities.Has(constants.OperatorCapabilityObserver), LoadOptions{ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID}),
 		ProvenanceOperator:       provenance,
 
@@ -587,6 +626,10 @@ func Load(opts LoadOptions) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	inference, err := newInferenceConfig(opts.OperatorCapabilities.Has(constants.OperatorCapabilityInference), opts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Resolve the worker root. An explicit --working-dir owns the Operator's
 	// .ztd vault, ledger, PKI, and databases; the repository root is only the
@@ -651,7 +694,7 @@ func Load(opts LoadOptions) (*Config, error) {
 		// Inference backend (ztdllama). Disabled by default; enabled when
 		// the operator runs as an Inference Node calling the configured
 		// remote Ollama provider.
-		Inference:                newInferenceConfig(opts.OperatorCapabilities.Has(constants.OperatorCapabilityInference), opts),
+		Inference:                inference,
 		ProviderBoundaryObserver: newProviderBoundaryObserverConfig(opts.OperatorCapabilities.Has(constants.OperatorCapabilityObserver), opts),
 		ProvenanceOperator:       provenance,
 	}
@@ -684,20 +727,41 @@ func heartbeatIntervalOrDefault(d time.Duration) time.Duration {
 }
 
 // newInferenceConfig builds an InferenceConfig from LoadOptions, applying
-// defaults for unset fields. The Ollama endpoint defaults to loopback on the
-// canonical Ollama port.
-func newInferenceConfig(enabled bool, opts LoadOptions) InferenceConfig {
-	endpoint := opts.InferenceOllamaEndpoint
-	if endpoint == "" {
-		endpoint = fmt.Sprintf("http://127.0.0.1:%d", constants.InferenceOllamaDefaultPort)
-	}
-	return InferenceConfig{
+// defaults for unset fields. A llama.cpp endpoint selects the llama.cpp
+// provider and requires its model root; otherwise the provider is Ollama and
+// its endpoint defaults to loopback on the canonical Ollama port.
+func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error) {
+	cfg := InferenceConfig{
 		Enabled:             enabled,
 		AllowHostedDecision: opts.InferenceAllowHostedDecision,
-		DecisionModels:      append([]string(nil), opts.InferenceDecisionModels...), DecisionOnly: opts.InferenceDecisionOnly,
-		OllamaEndpoint: endpoint,
-		KeepAlive:      cmp.Or(opts.InferenceKeepAlive, constants.InferenceDefaultKeepAlive),
+		DecisionModels:      append([]string(nil), opts.InferenceDecisionModels...),
+		DecisionOnly:        opts.InferenceDecisionOnly,
+		Provider:            constants.InferenceProviderOllama,
+		OllamaEndpoint:      strings.TrimSpace(opts.InferenceOllamaEndpoint),
+		LlamaCppEndpoint:    strings.TrimSpace(opts.InferenceLlamaCppEndpoint),
+		LlamaCppModelRoot:   strings.TrimSpace(opts.InferenceLlamaCppModelRoot),
+		KeepAlive:           cmp.Or(opts.InferenceKeepAlive, constants.InferenceDefaultKeepAlive),
 	}
+	if cfg.LlamaCppEndpoint == "" {
+		if cfg.OllamaEndpoint == "" {
+			cfg.OllamaEndpoint = fmt.Sprintf("http://127.0.0.1:%d", constants.InferenceOllamaDefaultPort)
+		}
+		return cfg, nil
+	}
+	cfg.Provider = constants.InferenceProviderLlamaCpp
+	if !enabled {
+		return cfg, nil
+	}
+	if cfg.OllamaEndpoint != "" {
+		return InferenceConfig{}, constants.ErrInferenceProviderConflict
+	}
+	if cfg.LlamaCppModelRoot == "" {
+		return InferenceConfig{}, constants.ErrInferenceLlamaCppModelRootRequired
+	}
+	if cfg.KeepAlive != "-1" && cfg.KeepAlive != "0" {
+		return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceLlamaCppKeepAliveInvalid)
+	}
+	return cfg, nil
 }
 
 func newProviderBoundaryObserverConfig(enabled bool, opts LoadOptions) ProviderBoundaryObserverConfig {
@@ -716,14 +780,19 @@ func newProvenanceOperatorConfig(enabled bool, opts LoadOptions) (ProvenanceOper
 	if enabled && modelStorageRoot == "" {
 		return ProvenanceOperatorConfig{}, constants.ErrProvenanceModelStorageRootRequired
 	}
+	format := cmp.Or(strings.TrimSpace(opts.ProvenanceOperatorModelStorageFormat), constants.ModelStorageFormatOllama)
+	if format != constants.ModelStorageFormatOllama && format != constants.ModelStorageFormatLlamaCpp {
+		return ProvenanceOperatorConfig{}, fmt.Errorf("config: model storage format %q: %w", format, constants.ErrProvenanceModelStorageFormatInvalid)
+	}
 	operatorID := opts.ProvenanceOperatorID
 	if operatorID == "" {
 		operatorID = "ztd-model-provenance-operator"
 	}
 	return ProvenanceOperatorConfig{
-		Enabled:          enabled,
-		OperatorID:       operatorID,
-		ModelStorageRoot: modelStorageRoot,
+		Enabled:            enabled,
+		OperatorID:         operatorID,
+		ModelStorageRoot:   modelStorageRoot,
+		ModelStorageFormat: format,
 	}, nil
 }
 

@@ -163,6 +163,11 @@ type CommandServiceConfig struct {
 	// Inference Operator. Nil when inference is disabled.
 	InferenceAttemptStore inference.AttemptStore
 
+	// InferenceProvider is the Inference Operator's provider, queried by the
+	// governed provider inventory, residency, and release commands. Nil when
+	// inference is disabled; those commands then fail closed.
+	InferenceProvider inference.Provider
+
 	// ProviderBoundaryObserver handles pubsub observation commands on the
 	// remote provider host. Nil when provider-boundary observation is disabled.
 	ProviderBoundaryObserver *provider_observer.Handler
@@ -233,7 +238,7 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	}
 	rs.ports = ports
 
-	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.EventsStore)
+	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.EventsStore, c.InferenceProvider)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: ollama maintenance: %w", err)

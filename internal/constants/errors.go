@@ -30,6 +30,8 @@ var (
 	ErrProvenanceModelStorageFormatInvalid = errors.New("provenance capability: --model-storage-format must be ollama or llamacpp")
 	ErrInferenceProviderConflict           = errors.New("inference capability: set --inference-ollama-endpoint or --inference-llamacpp-endpoint, not both")
 	ErrInferenceLlamaCppModelRootRequired  = errors.New("inference capability: --inference-llamacpp-endpoint requires --inference-llamacpp-model-root")
+	ErrInferenceLlamaCppKeepAliveInvalid   = errors.New("inference capability: a llama.cpp provider accepts --inference-keep-alive -1 or 0")
+	ErrInferenceProviderInvalid            = errors.New("inference capability: inference provider must be ollama or llamacpp")
 	ErrInvalidJSONBody                     = errors.New("invalid JSON body")
 	ErrRequestBodyRead                     = errors.New("failed to read request body")
 	ErrUserIDRequired                      = errors.New("user_id required")
@@ -1393,6 +1395,7 @@ var (
 	ErrInferenceProviderAttemptIDInvalid  = errors.New("inference: provider attempt ID invalid")
 	ErrInferenceIdentityMismatch          = errors.New("inference: request and result identity mismatch")
 	ErrInferenceModelDigestMismatch       = errors.New("inference: model digest mismatch")
+	ErrInferenceModelFileChanged          = errors.New("inference: model file changed while it was hashed")
 	ErrInferenceEvidenceHashInvalid       = errors.New("inference: evidence hash invalid")
 
 	// Execution topology formation errors.

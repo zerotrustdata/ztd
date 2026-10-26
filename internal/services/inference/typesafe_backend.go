@@ -78,6 +78,9 @@ func (r decisionBackendRouter) Decide(ctx context.Context, req models.DecisionRe
 		}
 		return r.hosted.Decide(ctx, req)
 	}
+	if r.local == nil {
+		return nil, fmt.Errorf("inference: decide: %w: no local provider", constants.ErrInferenceBackendUnavailable)
+	}
 	return r.local.Decide(ctx, req)
 }
 

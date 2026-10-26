@@ -231,7 +231,7 @@ func TestZtdoService_Start_InferenceProviderAvailabilityDoesNotGateStartup(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint := tt.endpoint(t)
 			service := newStartableZtdoService(t, func(cfg *config.Config) {
-				cfg.Inference = config.InferenceConfig{Enabled: true, OllamaEndpoint: endpoint}
+				cfg.Inference = config.InferenceConfig{Enabled: true, Provider: constants.InferenceProviderOllama, OllamaEndpoint: endpoint}
 			})
 
 			err := startWithTimeout(t, service)
@@ -258,7 +258,7 @@ func TestZtdoService_Start_InferenceDoesNotProbeProvider(t *testing.T) {
 	}))
 	defer provider.Close()
 	service := newStartableZtdoService(t, func(cfg *config.Config) {
-		cfg.Inference = config.InferenceConfig{Enabled: true, OllamaEndpoint: provider.URL}
+		cfg.Inference = config.InferenceConfig{Enabled: true, Provider: constants.InferenceProviderOllama, OllamaEndpoint: provider.URL}
 	})
 	require.NoError(t, startWithTimeout(t, service))
 	assert.True(t, service.running)
@@ -270,7 +270,7 @@ func TestZtdoService_Start_EnablesProviderBoundaryObserverAndProvenanceOperator(
 	storageRoot := testutil.TempDir(t)
 	service := newStartableZtdoService(t, func(cfg *config.Config) {
 		cfg.ProviderBoundaryObserver = config.ProviderBoundaryObserverConfig{Enabled: true, ObserverID: "observer-under-test"}
-		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test", ModelStorageRoot: storageRoot}
+		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test", ModelStorageRoot: storageRoot, ModelStorageFormat: constants.ModelStorageFormatOllama}
 	})
 
 	require.NoError(t, startWithTimeout(t, service))
@@ -281,7 +281,7 @@ func TestZtdoService_Start_EnablesProviderBoundaryObserverAndProvenanceOperator(
 
 func TestZtdoService_Start_ProvenanceOperatorRequiresModelStorageRoot(t *testing.T) {
 	service := newStartableZtdoService(t, func(cfg *config.Config) {
-		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test"}
+		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test", ModelStorageFormat: constants.ModelStorageFormatLlamaCpp}
 	})
 
 	err := startWithTimeout(t, service)

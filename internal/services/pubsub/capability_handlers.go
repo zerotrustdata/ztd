@@ -22,14 +22,19 @@ import (
 
 // CapabilityHandlers holds the independently constructed handlers for every enabled Operator capability.
 type CapabilityHandlers struct {
-	Inference                *inference.InferenceExecutionHandler
-	InferenceAttemptStore    inference.AttemptStore
+	Inference             *inference.InferenceExecutionHandler
+	InferenceAttemptStore inference.AttemptStore
+	// InferenceProvider is the provider the Inference handler calls, shared
+	// with the Operator's provider maintenance commands. Nil when inference
+	// is disabled.
+	InferenceProvider        inference.Provider
 	ProviderBoundaryObserver *provider_observer.Handler
 	ModelProvenanceOperator  *model_provenance.Handler
 }
 
 // NewCapabilityHandlers builds every enabled capability for either embedded or outbound execution.
-func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.RuntimeFileService, scrubbingService *scrubbing.ScrubbingService, results ResultsPublisher, ollamaBackend *inference.OllamaBackend) (*CapabilityHandlers, error) {
+// A nil provider is built from cfg.Inference when inference is enabled.
+func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.RuntimeFileService, scrubbingService *scrubbing.ScrubbingService, results ResultsPublisher, provider inference.Provider) (*CapabilityHandlers, error) {
 	if cfg == nil || logger == nil || fileSvc == nil || results == nil {
 		return nil, fmt.Errorf("operator capability handlers: %w", constants.ErrMissingRequiredField)
 	}
@@ -37,16 +42,19 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 		return nil, err
 	}
 	var err error
-	if cfg.Inference.Enabled && ollamaBackend == nil {
-		ollamaBackend, err = inference.NewOllamaBackend(cfg.Inference.OllamaEndpoint, logger)
+	if cfg.Inference.Enabled && provider == nil {
+		provider, err = inference.NewProvider(cfg.Inference, logger)
 		if err != nil {
-			return nil, fmt.Errorf("operator capabilities: inference backend: %w", err)
+			return nil, fmt.Errorf("operator capabilities: inference provider: %w", err)
 		}
+	}
+	if !cfg.Inference.Enabled {
+		provider = nil
 	}
 	var inferenceHandler *inference.InferenceExecutionHandler
 	var inferenceAttemptStore inference.AttemptStore
 	if cfg.Inference.Enabled {
-		inferenceHandler, err = inference.NewInferenceExecutionHandler(ollamaBackend, cfg, scrubbingService, logger)
+		inferenceHandler, err = inference.NewInferenceExecutionHandler(provider, cfg, scrubbingService, logger)
 		if err != nil {
 			return nil, fmt.Errorf("operator capabilities: inference handler: %w", err)
 		}
@@ -55,7 +63,8 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 			return nil, fmt.Errorf("operator capabilities: inference attempt store: %w", err)
 		}
 		logger.Info("Inference backend initialized",
-			"endpoint", cfg.Inference.OllamaEndpoint)
+			"provider", cfg.Inference.Provider,
+			"endpoint", cfg.Inference.Endpoint())
 	}
 
 	var providerBoundaryObserver *provider_observer.Handler
@@ -77,10 +86,7 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 
 	var modelProvenanceOperator *model_provenance.Handler
 	if cfg.ProvenanceOperator.Enabled {
-		attestor, err := model_provenance.NewOllamaStorageAttestor(
-			cfg.ProvenanceOperator.ModelStorageRoot,
-			cfg.ProvenanceOperator.OperatorID,
-		)
+		attestor, err := newModelProvenanceAttestor(cfg.ProvenanceOperator)
 		if err != nil {
 			return nil, fmt.Errorf("operator capabilities: model provenance attestor: %w", err)
 		}
@@ -97,8 +103,22 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 		}
 		logger.Info("Model provenance operator enabled",
 			"operator_id", cfg.ProvenanceOperator.OperatorID,
-			"model_storage_root", cfg.ProvenanceOperator.ModelStorageRoot)
+			"model_storage_root", cfg.ProvenanceOperator.ModelStorageRoot,
+			"model_storage_format", cfg.ProvenanceOperator.ModelStorageFormat)
 	}
 
-	return &CapabilityHandlers{Inference: inferenceHandler, InferenceAttemptStore: inferenceAttemptStore, ProviderBoundaryObserver: providerBoundaryObserver, ModelProvenanceOperator: modelProvenanceOperator}, nil
+	return &CapabilityHandlers{Inference: inferenceHandler, InferenceAttemptStore: inferenceAttemptStore, InferenceProvider: provider, ProviderBoundaryObserver: providerBoundaryObserver, ModelProvenanceOperator: modelProvenanceOperator}, nil
+}
+
+// newModelProvenanceAttestor builds the storage attestor for the configured
+// model store layout.
+func newModelProvenanceAttestor(cfg config.ProvenanceOperatorConfig) (model_provenance.Attestor, error) {
+	switch cfg.ModelStorageFormat {
+	case constants.ModelStorageFormatOllama:
+		return model_provenance.NewOllamaStorageAttestor(cfg.ModelStorageRoot, cfg.OperatorID)
+	case constants.ModelStorageFormatLlamaCpp:
+		return model_provenance.NewLlamaCppStorageAttestor(cfg.ModelStorageRoot, cfg.OperatorID)
+	default:
+		return nil, fmt.Errorf("model storage format %q: %w", cfg.ModelStorageFormat, constants.ErrProvenanceModelStorageFormatInvalid)
+	}
 }

@@ -15,10 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -65,10 +62,8 @@ const maxErrorBodyBytes int64 = 4 << 10
 // process management, no goroutine supervision, no health-check loop —
 // Ollama is a remote daemon that the deployment owns and monitors.
 type OllamaBackend struct {
-	base             *url.URL
-	client           *http.Client
-	maxResponseBytes int64
-	logger           *slog.Logger
+	providerHTTP
+	logger *slog.Logger
 }
 
 // NewOllamaBackend constructs an OllamaBackend for the given provider
@@ -77,21 +72,11 @@ type OllamaBackend struct {
 // endpoints behind a reverse-proxied prefix such as
 // http://host/ollama resolve to http://host/ollama/api/chat.
 func NewOllamaBackend(endpoint string, logger *slog.Logger) (*OllamaBackend, error) {
-	base, err := url.Parse(endpoint)
+	provider, err := newProviderHTTP("ollama_backend", endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("ollama_backend: endpoint: %w: %w", constants.ErrInferenceEndpointInvalid, err)
+		return nil, err
 	}
-	if (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
-		return nil, fmt.Errorf("ollama_backend: endpoint %q: %w", endpoint, constants.ErrInferenceEndpointInvalid)
-	}
-	return &OllamaBackend{
-		base: base,
-		client: &http.Client{
-			Timeout: ProviderRequestTimeout,
-		},
-		maxResponseBytes: defaultMaxResponseBytes,
-		logger:           logger,
-	}, nil
+	return &OllamaBackend{providerHTTP: provider, logger: logger}, nil
 }
 
 // ollamaChatRequest is the request body for Ollama's /api/chat endpoint.
@@ -219,38 +204,9 @@ func (b *OllamaBackend) ReleaseModels(ctx context.Context, models []string) erro
 			return err
 		}
 	}
-	return b.awaitModelsAbsent(ctx, models)
-}
-
-// awaitModelsAbsent verifies the released set has left provider residency.
-// Ollama acknowledges keep_alive 0 with done_reason "unload" before its
-// scheduler stops the runner, and it emits no unload event, so /api/ps is the
-// only completion signal. It is re-read until the set is absent or
-// ProviderStatusTimeout elapses.
-func (b *OllamaBackend) awaitModelsAbsent(ctx context.Context, models []string) error {
-	ctx, cancel := context.WithTimeout(ctx, ProviderStatusTimeout)
-	defer cancel()
-	for {
-		residency, err := b.ReadResidency(ctx)
-		if err != nil {
-			return fmt.Errorf("ollama_backend: verify released models absent: %w", err)
-		}
-		resident := ""
-		for _, model := range residency.Models {
-			if slices.Contains(models, model.Name) {
-				resident = model.Name
-				break
-			}
-		}
-		if resident == "" {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("ollama_backend: verify released models absent: %w: model %q remains resident", constants.ErrInferenceModelReleaseFailed, resident)
-		case <-time.After(providerUnloadRecheckInterval):
-		}
-	}
+	// Ollama acknowledges keep_alive 0 with done_reason "unload" before its
+	// scheduler stops the runner, so /api/ps is the completion signal.
+	return awaitModelsAbsent(ctx, b.component, b.ReadResidency, models)
 }
 
 func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
@@ -272,7 +228,7 @@ func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
-		return transportError(ctx, "release model", err)
+		return transportError(ctx, "ollama_backend", "release model", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -390,7 +346,7 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	requestStartedAt := time.Now()
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
-		return nil, transportError(ctx, "generate", err)
+		return nil, transportError(ctx, "ollama_backend", "generate", err)
 	}
 	defer resp.Body.Close()
 
@@ -415,7 +371,7 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 		}
 	}
 	if readErr != nil {
-		return nil, transportError(ctx, "generate", readErr)
+		return nil, transportError(ctx, "ollama_backend", "generate", readErr)
 	}
 	if int64(len(responseBody)) > b.maxResponseBytes {
 		return nil, fmt.Errorf("ollama_backend: generate: %w: response exceeds %d bytes", constants.ErrInferenceProviderResponseInvalid, b.maxResponseBytes)
@@ -834,49 +790,6 @@ func (b *OllamaBackend) listTags(ctx context.Context, op string) ([]ollamaTagMod
 	return tagsResp.Models, nil
 }
 
-// getJSON issues a GET against a provider API path and decodes the bounded
-// JSON response into out. A non-200 status is ErrInferenceBackendUnavailable;
-// the error body is drained for connection reuse and never surfaced.
-func (b *OllamaBackend) getJSON(ctx context.Context, op string, out any, apiPath ...string) error {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, b.apiURL(apiPath...), nil)
-	if err != nil {
-		return fmt.Errorf("ollama_backend: %s: build request: %w", op, err)
-	}
-	resp, err := b.client.Do(httpReq)
-	if err != nil {
-		return transportError(ctx, op, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return fmt.Errorf("ollama_backend: %s: %w: status %d", op, constants.ErrInferenceBackendUnavailable, resp.StatusCode)
-	}
-	return b.decodeResponse(op, resp.Body, out)
-}
-
-// apiURL resolves a provider API path against the validated base endpoint.
-func (b *OllamaBackend) apiURL(elem ...string) string {
-	return b.base.JoinPath(elem...).String()
-}
-
-// decodeResponse reads a bounded provider response body and unmarshals it.
-// Oversized or malformed bodies fail closed with
-// ErrInferenceProviderResponseInvalid; the raw body text is never included
-// in the error.
-func (b *OllamaBackend) decodeResponse(op string, body io.Reader, out any) error {
-	data, err := io.ReadAll(io.LimitReader(body, b.maxResponseBytes+1))
-	if err != nil {
-		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceProviderResponseInvalid, err)
-	}
-	if int64(len(data)) > b.maxResponseBytes {
-		return fmt.Errorf("ollama_backend: %s: %w: response exceeds %d bytes", op, constants.ErrInferenceProviderResponseInvalid, b.maxResponseBytes)
-	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceProviderResponseInvalid, err)
-	}
-	return nil
-}
-
 func ollamaErrorIndicatesCapabilityUnsupported(statusCode int, body []byte) bool {
 	if statusCode != http.StatusBadRequest || len(body) == 0 {
 		return false
@@ -895,21 +808,4 @@ func ollamaCapabilityRejection(statusCode int, body []byte) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(string(body)), "does not support thinking")
-}
-
-// transportError classifies a failed provider call. Caller cancellation
-// stays distinguishable as context.Canceled; a context or client deadline
-// is ErrInferenceBackendTimeout; anything else is
-// ErrInferenceBackendUnavailable with the underlying transport cause
-// preserved in the chain.
-func transportError(ctx context.Context, op string, err error) error {
-	var netErr net.Error
-	switch {
-	case errors.Is(ctx.Err(), context.Canceled):
-		return fmt.Errorf("ollama_backend: %s: %w: %w", op, context.Canceled, err)
-	case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
-		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceBackendTimeout, err)
-	default:
-		return fmt.Errorf("ollama_backend: %s: %w: %w", op, constants.ErrInferenceBackendUnavailable, err)
-	}
 }

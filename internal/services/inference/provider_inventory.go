@@ -25,8 +25,6 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const providerClassOllama = "ollama"
-
 // ProviderModelInventoryEntry is one discovered provider model identity with
 // normalized metadata used to materialize eval ModelVariant records.
 type ProviderModelInventoryEntry struct {
@@ -118,7 +116,7 @@ func (b *OllamaBackend) describeProviderModel(ctx context.Context, servedTag, di
 	}
 	capabilities := append([]string(nil), show.Capabilities...)
 	return ProviderModelInventoryEntry{
-		ProviderClass:          providerClassOllama,
+		ProviderClass:          constants.InferenceProviderOllama,
 		ServedModelTag:         servedTag,
 		ModelDigest:            digest,
 		ModelFamily:            family,
@@ -144,7 +142,7 @@ func (b *OllamaBackend) showModel(ctx context.Context, model string) (*ollamaSho
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
-		return nil, transportError(ctx, "show model", err)
+		return nil, transportError(ctx, "ollama_backend", "show model", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

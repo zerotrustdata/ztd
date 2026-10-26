@@ -158,12 +158,12 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 
 	// Validate local inference configuration without contacting the provider.
 	// Provider availability belongs to individual requests, not Operator liveness.
-	var ollamaBackend *inference.OllamaBackend
+	var inferenceProvider inference.Provider
 	if vs.config.Inference.Enabled {
 		var err error
-		ollamaBackend, err = vs.newInferenceBackend()
+		inferenceProvider, err = inference.NewProvider(vs.config.Inference, vs.logger)
 		if err != nil {
-			return err
+			return fmt.Errorf("ztdo: inference provider: %w", err)
 		}
 	}
 
@@ -280,12 +280,12 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		return fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
 	}
 
-	handlers, err := pubsub.NewCapabilityHandlers(vs.config, vs.logger, vs.fileSvc, scrubbingService, vs.pubSubResults, ollamaBackend)
+	handlers, err := pubsub.NewCapabilityHandlers(vs.config, vs.logger, vs.fileSvc, scrubbingService, vs.pubSubResults, inferenceProvider)
 	if err != nil {
 		return err
 	}
 	if handlers.Inference != nil {
-		if err := handlers.Inference.ConfigureDecisionBackend(ollamaBackend, vs.config.Inference.AllowHostedDecision, vs.secretManager.GetKeystore()); err != nil {
+		if err := handlers.Inference.ConfigureDecisionBackend(handlers.InferenceProvider, vs.config.Inference.AllowHostedDecision, vs.secretManager.GetKeystore()); err != nil {
 			return fmt.Errorf("ztdo: decision backend: %w", err)
 		}
 	}
@@ -306,6 +306,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		Scrubbing:                scrubbingService,
 		Inference:                handlers.Inference,
 		InferenceAttemptStore:    handlers.InferenceAttemptStore,
+		InferenceProvider:        handlers.InferenceProvider,
 		ProviderBoundaryObserver: handlers.ProviderBoundaryObserver,
 		ModelProvenanceOperator:  handlers.ModelProvenanceOperator,
 		ActuatorSigningKey:       actuatorPriv,
@@ -369,17 +370,6 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 
 	vs.logger.Info("Standing by")
 	return nil
-}
-
-// newInferenceBackend validates the endpoint without requiring the remote provider
-// to be online. The reusable backend retries connectivity on each request, allowing
-// recovery without restarting or re-enrolling the Operator.
-func (vs *ZtdoService) newInferenceBackend() (*inference.OllamaBackend, error) {
-	backend, err := inference.NewOllamaBackend(vs.config.Inference.OllamaEndpoint, vs.logger)
-	if err != nil {
-		return nil, fmt.Errorf("ztdo: inference backend: %w", err)
-	}
-	return backend, nil
 }
 
 // Stop gracefully shuts down all ztdo sub-services.
