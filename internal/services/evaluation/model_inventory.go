@@ -225,26 +225,7 @@ func LoadModelInventoryFreezeFile(path string) (*ModelInventoryFreeze, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: load model inventory freeze file: %w", err)
 	}
-	var payload struct {
-		CampaignID          string            `json:"campaign_id"`
-		ModelRegistryDigest string            `json:"model_registry_digest"`
-		Variants            []json.RawMessage `json:"variants"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("evaluation: load model inventory freeze file: decode: %w", err)
-	}
-	if payload.ModelRegistryDigest == "" || len(payload.Variants) == 0 {
-		return nil, fmt.Errorf("evaluation: load model inventory freeze file: %w", constants.ErrMissingRequiredField)
-	}
-	variants := make([]*evalv1.ModelVariant, 0, len(payload.Variants))
-	for _, raw := range payload.Variants {
-		variant := &evalv1.ModelVariant{}
-		if err := protojson.Unmarshal(raw, variant); err != nil {
-			return nil, fmt.Errorf("evaluation: load model inventory freeze file: decode variant: %w", err)
-		}
-		variants = append(variants, variant)
-	}
-	return MaterializeModelRegistry(payload.CampaignID, variants)
+	return parseModelInventoryFreeze(data)
 }
 
 func parseModelInventoryFreeze(data []byte) (*ModelInventoryFreeze, error) {

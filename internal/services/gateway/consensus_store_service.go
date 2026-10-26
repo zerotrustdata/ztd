@@ -439,14 +439,9 @@ func (s *ConsensusStoreService) ListConsensus(ctx context.Context) ([]models.Con
 
 	results := make([]models.ConsensusPolicy, 0, len(docs))
 	for _, doc := range docs {
-		data, err := json.Marshal(doc.Data)
-		if err != nil {
-			s.logger.Warn("failed to marshal consensus document", "error", err)
-			continue
-		}
 		var policy models.ConsensusPolicy
-		if err := json.Unmarshal(data, &policy); err != nil {
-			s.logger.Warn("failed to unmarshal consensus document", "error", err)
+		if err := unmarshalDocData(doc, &policy); err != nil {
+			s.logger.Warn("failed to decode consensus document", "error", err)
 			continue
 		}
 		// id is not in the data map usually, so we set it from doc.ID

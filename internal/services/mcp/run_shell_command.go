@@ -169,6 +169,13 @@ func (t *RunShellCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	}, nil
 }
 
+// shellArgvHint is the argv form named in the not-executable rejection. Fields
+// are ordered by JSON key so the encoded hint keeps its sorted-key bytes.
+type shellArgvHint struct {
+	Args    []string `json:"args"`
+	Command string   `json:"command"`
+}
+
 // validateCommandSafety checks if a command is safe to execute based on denylist.
 func validateCommandSafety(command string, args []string, workingDir string) error {
 	// Check base command
@@ -201,7 +208,7 @@ func validateCommandSafety(command string, args []string, workingDir string) err
 	// The command is exec'd without a shell, so a command line in command
 	// can never resolve; name the argv form the caller must send instead.
 	if fields := strings.Fields(command); len(fields) > 1 {
-		argv, err := json.Marshal(map[string]any{"command": fields[0], "args": append(fields[1:], args...)})
+		argv, err := json.Marshal(shellArgvHint{Command: fields[0], Args: append(fields[1:], args...)})
 		if err != nil {
 			return fmt.Errorf("run_shell_command: %w", constants.ErrMCPRunShellCommandMarshalResult)
 		}

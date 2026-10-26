@@ -550,7 +550,7 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, pending
 		if err != nil {
 			return nil, fmt.Errorf("app enrollment: create request: %w", err)
 		}
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
 		resp, err := c.doHTTPRequest(ctx, req)
 		if err != nil {
@@ -684,8 +684,8 @@ func (c *AppPlatformEnrollmentClient) submitCompletion(ctx context.Context, toke
 	if err != nil {
 		return nil, fmt.Errorf("app enrollment: create completion request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Cache-Control", "no-store")
+	req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	req.Header.Set(constants.HeaderCacheControl, "no-store")
 
 	resp, err := c.doHTTPRequest(compCtx, req)
 	if err != nil {

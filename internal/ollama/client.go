@@ -67,11 +67,18 @@ func (c *Client) Pull(ctx context.Context, model string, fn func(ProgressRespons
 	})
 }
 
+// copyRequest is the /api/copy body. Fields are ordered by JSON key so the
+// encoded bytes match the previous sorted-key map output.
+type copyRequest struct {
+	Destination string `json:"destination"`
+	Source      string `json:"source"`
+}
+
 // Copy creates a model alias from an existing local model.
 func (c *Client) Copy(ctx context.Context, source, destination string) error {
-	return c.do(ctx, http.MethodPost, "/api/copy", map[string]string{
-		"source":      source,
-		"destination": destination,
+	return c.do(ctx, http.MethodPost, "/api/copy", copyRequest{
+		Destination: destination,
+		Source:      source,
 	})
 }
 

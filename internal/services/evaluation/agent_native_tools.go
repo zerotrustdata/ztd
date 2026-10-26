@@ -119,27 +119,37 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 	return catalog, nil
 }
 
+// agentToolDeclarationProperty is one property of a tool's declared JSON schema.
+// Fields are in JSON key order so the encoded schema is canonical.
+type agentToolDeclarationProperty struct {
+	Description string   `json:"description,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+	Type        string   `json:"type"`
+}
+
+// agentToolDeclarationSchema is the JSON schema a model receives for one tool.
+// Fields are in JSON key order so the encoded schema is canonical.
+type agentToolDeclarationSchema struct {
+	AdditionalProperties bool                                    `json:"additionalProperties"`
+	Properties           map[string]agentToolDeclarationProperty `json:"properties"`
+	Required             []string                                `json:"required,omitempty"`
+	Type                 string                                  `json:"type"`
+}
+
 func buildInferenceToolDeclaration(name, description string, properties map[string]*mcp.PropertySchema, required []string) (*operatorv1.InferenceToolDeclaration, error) {
-	propsMap := make(map[string]any, len(properties))
+	propsMap := make(map[string]agentToolDeclarationProperty, len(properties))
 	for k, v := range properties {
-		p := map[string]any{"type": v.Type}
-		if v.Description != "" {
-			p["description"] = v.Description
-		}
-		if len(v.Enum) > 0 {
-			p["enum"] = v.Enum
-		}
-		propsMap[k] = p
+		propsMap[k] = agentToolDeclarationProperty{Description: v.Description, Enum: v.Enum, Type: v.Type}
 	}
-	doc := map[string]any{
-		"type":                 "object",
-		"properties":           propsMap,
-		"additionalProperties": false,
+	doc := agentToolDeclarationSchema{
+		AdditionalProperties: false,
+		Properties:           propsMap,
+		Type:                 "object",
 	}
 	if len(required) > 0 {
 		reqNames := append([]string(nil), required...)
 		sort.Strings(reqNames)
-		doc["required"] = reqNames
+		doc.Required = reqNames
 	}
 	encoded, err := MarshalCanonicalJSONObject(doc)
 	if err != nil {

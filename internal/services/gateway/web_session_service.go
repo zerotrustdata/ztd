@@ -74,13 +74,9 @@ func (s *WebSessionService) ValidateWebSession(ctx context.Context, webSessionID
 		return nil, constants.ErrNotFound
 	}
 
-	dataBytes, err := json.Marshal(doc.Data)
+	webSession, err := decodeWebSession(doc)
 	if err != nil {
-		return nil, fmt.Errorf("gateway: marshal web session data: %w", err)
-	}
-	var webSession models.WebSession
-	if err := json.Unmarshal(dataBytes, &webSession); err != nil {
-		return nil, fmt.Errorf("gateway: unmarshal web session: %w", err)
+		return nil, fmt.Errorf("gateway: validate web session: %w", err)
 	}
 
 	webSession.ID = webSessionID
@@ -111,13 +107,8 @@ func (s *WebSessionService) TerminateUserWebSessions(ctx context.Context, userID
 	live := 0
 	var errs []error
 	for _, doc := range docs {
-		wire, err := json.Marshal(doc.ForWire())
+		session, err := decodeWebSession(doc)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("marshal web session %s: %w", doc.ID, err))
-			continue
-		}
-		var session models.WebSession
-		if err := json.Unmarshal(wire, &session); err != nil {
 			errs = append(errs, fmt.Errorf("decode web session %s: %w", doc.ID, err))
 			continue
 		}

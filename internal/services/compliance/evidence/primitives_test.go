@@ -169,14 +169,14 @@ func TestValidateCanonicalJSON_AcceptsCanonicalCompact(t *testing.T) {
 func TestValidateCanonicalJSON_RejectsNonCanonicalWhitespace(t *testing.T) {
 	body := []byte(`{"key": "value"}`)
 	err := ValidateCanonicalJSON(body)
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Contains(t, err.Error(), "canonical compact")
 }
 
 func TestValidateCanonicalJSON_RejectsTrailingData(t *testing.T) {
 	body := []byte(`{"key":"value"}extra`)
 	err := ValidateCanonicalJSON(body)
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Contains(t, err.Error(), "trailing data")
 }
 

@@ -125,12 +125,26 @@ func readStdioLines(r io.Reader, lines chan<- stdioLine, done <-chan struct{}) {
 	}
 }
 
+// mcpStdioInitParams is the initialize params the driver sends. Fields are in
+// JSON key order, so the encoded bytes are sorted by key.
+type mcpStdioInitParams struct {
+	Capabilities    struct{}           `json:"capabilities"`
+	ClientInfo      mcpStdioClientInfo `json:"clientInfo"`
+	ProtocolVersion string             `json:"protocolVersion"`
+}
+
+// mcpStdioClientInfo identifies the driver in initialize.
+type mcpStdioClientInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
 // handshake initializes the session and checks the served tools.
 func (m *MCPStdio) handshake(ctx context.Context) error {
-	init := map[string]any{
-		"protocolVersion": mcpStdioProtocolVersion,
-		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "ztd-conformance", "version": cases.SuiteVersion},
+	init := mcpStdioInitParams{
+		Capabilities:    struct{}{},
+		ClientInfo:      mcpStdioClientInfo{Name: "ztd-conformance", Version: cases.SuiteVersion},
+		ProtocolVersion: mcpStdioProtocolVersion,
 	}
 	if _, err := m.result(ctx, "initialize", init); err != nil {
 		return err

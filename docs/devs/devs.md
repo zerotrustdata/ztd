@@ -136,6 +136,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-ERR-05 | MUST use a centralized `constants.Err*` for a known failure mode, `fmt.Errorf` with runtime values for a dynamic error, and a one-off `fmt.Errorf` in tests only when the injected cause has no production meaning. |
 | INV-ERR-06 | MUST NOT compare rendered error strings when `errors.Is`, `errors.As`, or a typed status is available. |
 
+Gateway API clients decode failed responses with `api.DecodeGatewayError`, which returns an `api.StatusError`. Use `errors.As` to inspect its HTTP status and `errors.Is` for recognized Gateway sentinels, including publication recovery errors and authentication failures. HTTP 404 matches `constants.ErrNotFound`; text mentioning a status code does not. When adding context to a platform error and an underlying cause, wrap both with `%w` so callers can inspect either identity.
+
 ### Typed contracts (`INV-TYPE`)
 
 | ID | Rule |

@@ -42,8 +42,7 @@ func TestValidateAttestationWindow_RejectsDigestMismatch(t *testing.T) {
 	window := testAttestationWindow(t, "attempt-1")
 	window.AttestationDigest = "deadbeef"
 	err := ValidateAttestationWindow(window)
-	assert.ErrorIs(t, err, constants.ErrChecksumMismatch)
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrChecksumMismatch)
 	assert.Contains(t, err.Error(), "digest mismatch")
 }
 

@@ -143,9 +143,9 @@ func callSystemOne(ctx context.Context, client *http.Client, endpoint, key strin
 	if err != nil {
 		return nil, fmt.Errorf("decision request: %w", err)
 	}
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	if key != "" {
-		request.Header.Set("Authorization", "Bearer "+key)
+		request.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+key)
 	}
 	response, err := client.Do(request)
 	if err != nil {

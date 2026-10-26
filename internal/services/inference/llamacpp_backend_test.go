@@ -254,7 +254,7 @@ func TestLlamaCppUsageCounts_ValidatesReportedUsage(t *testing.T) {
 }
 
 func TestFormatParameterCount(t *testing.T) {
-	assert.Equal(t, "", formatParameterCount(0))
+	assert.Empty(t, formatParameterCount(0))
 	assert.Equal(t, "950", formatParameterCount(950))
 	assert.Equal(t, "1.5K", formatParameterCount(1_500))
 	assert.Equal(t, "596.0M", formatParameterCount(596_000_000))

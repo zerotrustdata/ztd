@@ -1053,7 +1053,13 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		record.ResultJSON = canonical
 		return record, nil
 	}
-	return r.succeed(record, map[string]any{"result": summary})
+	return r.succeed(record, agentToolTextResult{Result: summary})
+}
+
+// agentToolTextResult is the model-visible result of a tool whose output is
+// plain text rather than a JSON object.
+type agentToolTextResult struct {
+	Result string `json:"result"`
 }
 
 func (r *agentRun) injectEventReceiptListDefaults(args agentToolArguments) {

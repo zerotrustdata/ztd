@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -77,9 +78,9 @@ func localOperatorSessionID(dir string) string {
 // names carry .exe and are case-insensitive.
 func isZtdExecutable(base string) bool {
 	if runtime.GOOS == "windows" {
-		return strings.EqualFold(base, "ztd") || strings.EqualFold(base, "ztd.exe")
+		return strings.EqualFold(base, constants.BinaryImageName) || strings.EqualFold(base, constants.BinaryImageNameWindows)
 	}
-	return base == "ztd"
+	return base == constants.BinaryImageName
 }
 
 func isLocalOperatorArgv(args []string) bool {

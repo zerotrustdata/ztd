@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -123,7 +124,7 @@ func TestInProcessPubSubClient_Subscribe(t *testing.T) {
 
 		ctx2 := context.Background()
 		_, err = client.Subscribe(ctx2, "test-channel")
-		require.Error(t, err)
+		require.ErrorIs(t, err, constants.ErrAlreadyExists)
 		assert.Contains(t, err.Error(), "already subscribed")
 	})
 

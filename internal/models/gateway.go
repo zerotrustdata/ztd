@@ -28,6 +28,19 @@ type Document struct {
 	UpdatedAt  time.Time
 }
 
+// DecodeData decodes the document's Data fields into target, a typed struct.
+// Data is a field map, not raw JSON, so it is re-serialized once before decoding.
+func (d *Document) DecodeData(target any) error {
+	b, err := json.Marshal(d.Data)
+	if err != nil {
+		return fmt.Errorf("marshal document data: %w", err)
+	}
+	if err := json.Unmarshal(b, target); err != nil {
+		return fmt.Errorf("unmarshal document data: %w", err)
+	}
+	return nil
+}
+
 // ForWire serializes Document to a JSON-encodable map for the HTTP response boundary.
 // Timestamps are formatted as fixed-microsecond UTC strings. The caller's data fields are
 // merged with system fields (id, created_at, updated_at).

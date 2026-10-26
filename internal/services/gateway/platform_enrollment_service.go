@@ -701,12 +701,8 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	if err != nil || boundDoc == nil {
 		return nil, fmt.Errorf("read bound consensus: %w", err)
 	}
-	bData, err := json.Marshal(boundDoc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal bound consensus: %w", err)
-	}
 	var policy models.ConsensusPolicy
-	if err := json.Unmarshal(bData, &policy); err != nil {
+	if err := unmarshalDocData(boundDoc, &policy); err != nil {
 		return nil, fmt.Errorf("unmarshal bound consensus: %w", err)
 	}
 	policy.ID = boundDoc.ID
@@ -1275,12 +1271,8 @@ func platformEnrollmentCollectionName() string {
 // decodePlatformEnrollmentRequest deserializes a Document into a
 // PlatformEnrollmentRequest.
 func decodePlatformEnrollmentRequest(doc *models.Document) (*models.PlatformEnrollmentRequest, error) {
-	dataBytes, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal document data: %w", err)
-	}
 	var req models.PlatformEnrollmentRequest
-	if err := json.Unmarshal(dataBytes, &req); err != nil {
+	if err := unmarshalDocData(doc, &req); err != nil {
 		return nil, fmt.Errorf("unmarshal platform enrollment request: %w", err)
 	}
 	req.CreatedAt = doc.CreatedAt

@@ -59,7 +59,7 @@ func (f HandlerFunc) Handle(ctx context.Context, req JSONRPCRequest) (JSONRPCRes
 // SendError writes a JSON-RPC error response to out.
 func SendError(out io.Writer, id interface{}, code int, message string) error {
 	resp := JSONRPCResponse{
-		JSONRPC: "2.0",
+		JSONRPC: constants.JSONRPCVersion,
 		ID:      id,
 		Error: &JSONRPCError{
 			Code:    code,

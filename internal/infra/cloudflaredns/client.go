@@ -68,6 +68,16 @@ type dnsRecord struct {
 	Proxied bool   `json:"proxied"`
 }
 
+// dnsRecordWrite is the create/update body for a DNS record. Fields are ordered
+// by JSON key so the encoded bytes match the previous sorted-key map output.
+type dnsRecordWrite struct {
+	Content string `json:"content"`
+	Name    string `json:"name"`
+	Proxied bool   `json:"proxied"`
+	TTL     int    `json:"ttl"`
+	Type    string `json:"type"`
+}
+
 // ZoneIDForHostname returns the Cloudflare zone ID that owns hostname.
 func (c *Client) ZoneIDForHostname(ctx context.Context, hostname string) (string, error) {
 	zoneName, err := zoneNameForHostname(hostname)
@@ -105,12 +115,12 @@ func (c *Client) UpsertTunnelCNAME(ctx context.Context, hostname, tunnelID strin
 		return err
 	}
 
-	body := map[string]any{
-		"type":    "CNAME",
-		"name":    recordName,
-		"content": target,
-		"proxied": true,
-		"ttl":     1,
+	body := dnsRecordWrite{
+		Content: target,
+		Name:    recordName,
+		Proxied: true,
+		TTL:     1,
+		Type:    "CNAME",
 	}
 	if len(existing) == 0 {
 		return c.postJSON(ctx, "/zones/"+zoneID+"/dns_records", body, nil)
@@ -189,8 +199,8 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, out 
 	if err != nil {
 		return fmt.Errorf("cloudflare dns: build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+c.token)
+	req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
 	resp, err := c.client.Do(req)
 	if err != nil {

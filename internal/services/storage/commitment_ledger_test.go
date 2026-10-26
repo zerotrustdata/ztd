@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -404,7 +405,7 @@ func TestCommitmentLedger_NilReceiverSafety(t *testing.T) {
 
 	// AppendCommitmentJSON
 	err := cl.AppendCommitmentJSON([]byte(`{}`), "prior", "hash")
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrLedgerRequired)
 	assert.Contains(t, err.Error(), "not initialized")
 }
 

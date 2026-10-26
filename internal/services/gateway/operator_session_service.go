@@ -160,12 +160,8 @@ func (s *OperatorSessionService) GetActiveSessionForUser(ctx context.Context, us
 	embedded := string(constants.DocIDEmbeddedOperator)
 	selected := docs[0] // newest by created_at DESC
 	for _, doc := range docs {
-		dataBytes, err := json.Marshal(doc.Data)
-		if err != nil {
-			return nil, fmt.Errorf("marshal operator session document: %w", err)
-		}
 		var session models.OperatorSession
-		if err := json.Unmarshal(dataBytes, &session); err != nil {
+		if err := unmarshalDocData(doc, &session); err != nil {
 			return nil, fmt.Errorf("unmarshal operator session: %w", err)
 		}
 		if session.OperatorID == embedded {
@@ -174,12 +170,8 @@ func (s *OperatorSessionService) GetActiveSessionForUser(ctx context.Context, us
 		}
 	}
 
-	dataBytes, err := json.Marshal(selected.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal operator session document: %w", err)
-	}
 	var session models.OperatorSession
-	if err := json.Unmarshal(dataBytes, &session); err != nil {
+	if err := unmarshalDocData(selected, &session); err != nil {
 		return nil, fmt.Errorf("unmarshal operator session: %w", err)
 	}
 	session.ID = selected.ID

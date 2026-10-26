@@ -164,8 +164,8 @@ func (c *Client) ConnectOnce(ctx context.Context, handler EventHandler) error {
 	if err != nil {
 		return fmt.Errorf("sse client: build request: %w", err)
 	}
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set(constants.HeaderAccept, constants.HeaderValueTextEvent)
+	req.Header.Set(constants.HeaderCacheControl, constants.HeaderValueNoCache)
 	// R12: send Last-Event-ID header on reconnect so the server can replay
 	// events received after the last DB-backed replay cursor.
 	if c.lastEventID > 0 {

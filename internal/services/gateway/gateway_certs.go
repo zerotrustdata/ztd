@@ -927,7 +927,7 @@ func (pki *PKIAuthority) generateRootCA(certPath string) error {
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   constants.RootCACommonName,
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 			Country:      []string{"US"},
 		},
 		NotBefore:             now.Add(-1 * time.Minute),
@@ -984,7 +984,7 @@ func (pki *PKIAuthority) generateIntermediateCA(certPath string, parentCert *x50
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   commonName,
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 			Country:      []string{"US"},
 		},
 		NotBefore:             now.Add(-1 * time.Minute),
@@ -1087,7 +1087,7 @@ func (pki *PKIAuthority) generateServiceCertWithNames(extraIPs []net.IP, extraDN
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   string(constants.ServiceNameOperatorGateway),
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 			Country:      []string{"US"},
 		},
 		NotBefore:             now.Add(-1 * time.Minute),

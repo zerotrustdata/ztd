@@ -164,22 +164,7 @@ func LoadFrozenVariantsFromExternalSource(path string) ([]*evalv1.ModelVariant, 
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: load frozen variants: %w", err)
 	}
-	var payload struct {
-		Variants []json.RawMessage `json:"variants"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("evaluation: load frozen variants: decode: %w", err)
-	}
-	variants := make([]*evalv1.ModelVariant, 0, len(payload.Variants))
-	for _, raw := range payload.Variants {
-		variant := &evalv1.ModelVariant{}
-		if err := protojson.Unmarshal(raw, variant); err != nil {
-			return nil, fmt.Errorf("evaluation: load frozen variants: decode variant: %w", err)
-		}
-		variants = append(variants, variant)
-	}
-	SortModelVariantsForRollout(variants)
-	return variants, nil
+	return parseFrozenVariants(data)
 }
 
 func parseFrozenVariants(data []byte) ([]*evalv1.ModelVariant, error) {

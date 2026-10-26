@@ -176,10 +176,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 Evaluation programs instantiate the **Confidential Edge Execution with Governed State Mutation** topology:
 - **Governance Gateway (PDP)**: Enforces central policy, admits transactions, coordinates consensus and notary proofs, and manages campaign matrices.
-- **Inference Operator (PEP)**: Serves as the sole scored execution path to approved model providers (e.g. Ollama). Excluded from general tool execution.
+- **Inference Operator (PEP)**: Serves as the sole scored execution path to approved model providers (Ollama or llama.cpp; each Inference Operator serves one provider). Excluded from general tool execution.
 - **Data Operator (PEP)**: Executes governed workspace mutations and shell commands requested by tool-calling agents.
 - **Observer Operator (Witness)**: Collects read-only hardware telemetry (GPU VRAM, temperature, power, system RAM) at the provider boundary.
-- **Provenance Operator (Witness)**: Attests storage-side model weight files, manifests, and content-addressed blobs via SHA-256 digests.
+- **Provenance Operator (Witness)**: Attests storage-side model weight files via SHA-256 digests: Ollama manifests and content-addressed blobs, or llama.cpp GGUF files.
 
 ### Integration evidence boundary
 
@@ -199,12 +199,12 @@ This Tier 2 rig establishes in-process production-path coverage. Store-only CLI 
 
 The `ztd eval` command tree organizes platform evaluation across ten subcommands:
 - `ztd eval conformance …`: Run, verify, and report the governance conformance suite.
-- `ztd eval models …`: Catalog management: list, show, add, remove, import, freeze, pull, and diff model variants.
+- `ztd eval models …`: Catalog management: list, show, add, remove, import, freeze, and diff model variants, plus `pull`, which requires the selected Inference Operator to serve Ollama.
 - `ztd eval suites …`: Manage scenario suites: list, show, export, create, update, and delete.
 - `ztd eval campaigns …`: Freeze, inspect, tag platform release identity, archive, unarchive, and delete campaigns.
 - `ztd eval runs …`: Start, resume, cancel, verify, publish, export, repair, compare, archive, unarchive, and delete evaluation runs.
 - `ztd eval rollout …`: Create, list, show, update, delete, and run named rollouts. Resume continues an interrupted execution. Also manages the model qualification queue with add, remove, next, retry, and skip.
-- `ztd eval formations …`: Manage the heterogeneous formation catalog: list, show, add, and remove. `formations add` needs only `--primary-tag`, `--assistant-tag`, and `--lite-tag`. Each role resolves family, quantization, parameter count, and digest from the model registry, then the model catalog. Sovereign VRAM is estimated from parameter count and quantization. `--max-vram` takes a size such as `8gb` or `8192mib`, and a bare number is GiB. The default is 12 GiB. A budget failure lists each role's estimate.
+- `ztd eval formations …`: Manage the heterogeneous formation catalog: list, show, add, and remove. `formations add` needs only `--primary-tag`, `--assistant-tag`, and `--lite-tag`. Each role resolves family, quantization, parameter count, and digest from the model registry, then the model catalog. A sovereign role must name a local provider class (`ollama` or `llamacpp`) and a supported quantization. A delegated role must not declare a local provider class or local allocation. Sovereign VRAM is estimated from parameter count and quantization. `--max-vram` takes a size such as `8gb` or `8192mib`, and a bare number is GiB. The default is 12 GiB. A budget failure lists each role's estimate.
 - `ztd eval gates …`: Run pre-campaign acceptance gates (inference latency, capability probing).
 - `ztd eval backup`: Archive evaluation evidence to an external directory with a SHA-256 manifest.
 - `ztd eval restore [snapshot-dir]`: Verify and restore evaluation evidence into `.ztd/` from complete snapshots.
@@ -239,7 +239,7 @@ A run's published run time (`evaluation_summary.run_seconds`, from `assignmentRu
 
 ### Provider Model Release and Residency Verification
 
-Before scored execution in strict observation runs, the evaluation CLI sends all resident model tags in one governed release command. Completion cleanup uses the same batch operation for resident campaign model tags. The executing Inference Operator unloads the complete set, then verifies the final provider state with local `/api/ps` reads inside the same L5 execution. Ollama acknowledges an unload before its runner stops and emits no unload event, so the Operator re-reads `/api/ps` until the set is absent. The command fails if any requested tag is still resident when `ProviderStatusTimeout` elapses. The release is a typed `OLLAMA_MODEL_RELEASE` action (`constants.ActionTypeOllamaModelRelease`). It is a mutation, so L3 applies under `ratify` and `notary`. It is not a state change, so L2 does not gate it (INV-CON-WARD-11), and residency reads are not voted either. The provider-state check is part of that command's L5 execution and does not exempt or bypass governance.
+Before scored execution in strict observation runs, the evaluation CLI sends all resident model tags in one governed release command. Completion cleanup uses the same batch operation for resident campaign model tags. The executing Inference Operator unloads the complete set, then verifies the final provider state with local residency reads inside the same L5 execution. Under Ollama the reads are `/api/ps`. Under llama.cpp they read the llama-server router's model list, and unloading posts to its `models/unload` route. Ollama acknowledges an unload before its runner stops and emits no unload event, so the Operator re-reads `/api/ps` until the set is absent. The command fails if any requested tag is still resident when `ProviderStatusTimeout` elapses. The release is a typed `OLLAMA_MODEL_RELEASE` action (the name is retained for both providers; the Operator serves it from its configured provider) (`constants.ActionTypeOllamaModelRelease`). It is a mutation, so L3 applies under `ratify` and `notary`. It is not a state change, so L2 does not gate it (INV-CON-WARD-11), and residency reads are not voted either. The provider-state check is part of that command's L5 execution and does not exempt or bypass governance.
 
 ### L2 Consensus Prerequisite
 
@@ -457,7 +457,7 @@ The homogeneous executor scopes the frozen scenario's tools against the agent ca
   - Listens for BEGIN and FINALIZE commands over pub/sub. Samples GPU memory, core utilization, temperature, power, clock rates, and host RAM.
   - Emits `ProviderBoundaryObservationCompleted` windows ingested by the Gateway, which announces each stored window with `ztd.v1.inference.provider.boundary.observation.recorded`. Witness waits follow that event and never re-read on a timer (INV-EVAL-CAMP-03). Under `ztd eval runs start --require-observation` (or `--require-witness`), when the run's frozen provider-observation policy is strict, run completion during run execution waits up to `ProviderObservationCompletionTimeout` (30 seconds) for each scored attempt's observation window and attempt record (`WaitForRunProviderObservationEvidence`). `ztd eval runs verify` never waits.
 - **Provenance Operator**:
-  - Enrolled at the model storage site via `ztd operator start --capabilities provenance --model-storage-root <path>`.
+  - Enrolled at the model storage site via `ztd operator start --capabilities provenance --model-storage-root <path>`, adding `--model-storage-format llamacpp` when `<path>` is a llama-server `--models-dir` (the default format is `ollama`).
   - Attestation flow, digest verification, and window persistence are owned by [Attestation Flow and Storage Verification](model-provenance.md#attestation-flow-and-storage-verification), and the run-completion wait for provenance windows (`ModelProvenanceCompletionTimeout`) is owned by [Evidence Persistence and Campaign Verification](model-provenance.md#evidence-persistence-and-campaign-verification).
 
 ### Evidence Persistence, Backups, and Offline Verification

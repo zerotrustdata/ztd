@@ -11,6 +11,7 @@ import (
 	"errors"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -174,8 +175,11 @@ func TestValidatePath(t *testing.T) {
 				return
 			}
 			if tt.wantErr && tt.errMsg != "" && err != nil {
-				if err.Error() != tt.errMsg {
-					t.Errorf("ValidatePath() error message = %q, want %q", err.Error(), tt.errMsg)
+				if !errors.Is(err, constants.ErrPathValidation) {
+					t.Errorf("ValidatePath() error = %v, want ErrPathValidation", err)
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("ValidatePath() error message = %q, want context %q", err.Error(), tt.errMsg)
 				}
 			}
 			if !tt.wantErr && got == "" {

@@ -215,7 +215,7 @@ func (c *Client) DoRequestContext(ctx context.Context, method, path string, body
 	}
 
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	}
 
 	req.Header.Set(constants.HeaderOperatorSessionID, c.creds.OperatorSessionID)

@@ -225,7 +225,7 @@ func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	if err != nil {
 		return fmt.Errorf("ollama_backend: release model: build request: %w", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	resp, err := b.client.Do(httpReq)
 	if err != nil {
 		return transportError(ctx, "ollama_backend", "release model", err)
@@ -341,7 +341,7 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	if err != nil {
 		return nil, fmt.Errorf("ollama_backend: build request: %w", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
 	requestStartedAt := time.Now()
 	resp, err := b.client.Do(httpReq)

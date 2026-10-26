@@ -73,11 +73,13 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 		name       string
 		mutate     func(*evalv1.ProviderBoundaryObservationWindow)
 		wantSubstr string
+		wantErr    error
 	}{
 		{
 			name:       "nil window",
 			mutate:     func(_ *evalv1.ProviderBoundaryObservationWindow) {},
 			wantSubstr: constants.ErrMissingRequiredField.Error(),
+			wantErr:    constants.ErrMissingRequiredField,
 		},
 		{
 			name: "unsupported schema version",
@@ -85,6 +87,7 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 				window.SchemaVersion = "9.9.9"
 			},
 			wantSubstr: "unsupported schema version",
+			wantErr:    constants.ErrEvidenceSchemaMismatch,
 		},
 		{
 			name: "digest mismatch",
@@ -92,6 +95,7 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 				window.ObservationDigest = "bad-digest"
 			},
 			wantSubstr: "digest mismatch",
+			wantErr:    constants.ErrChecksumMismatch,
 		},
 	}
 	for _, test := range tests {
@@ -100,7 +104,7 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 			var window *evalv1.ProviderBoundaryObservationWindow
 			if test.name == "nil window" {
 				err := ValidateObservationWindow(nil)
-				require.Error(t, err)
+				require.ErrorIs(t, err, test.wantErr)
 				assert.Contains(t, err.Error(), test.wantSubstr)
 				return
 			}
@@ -119,7 +123,7 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 			window.ObservationDigest = digest
 			test.mutate(window)
 			err = ValidateObservationWindow(window)
-			require.Error(t, err)
+			require.ErrorIs(t, err, test.wantErr)
 			assert.Contains(t, err.Error(), test.wantSubstr)
 		})
 	}

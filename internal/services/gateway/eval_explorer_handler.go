@@ -179,7 +179,7 @@ func writeEvalExplorerRuntime(w http.ResponseWriter, r *http.Request, configured
 		"mirror_origin":  mirrorOrigin,
 	}
 	setEvalExplorerSecurityHeaders(w, "runtime.json")
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
@@ -218,11 +218,11 @@ func requestOriginURL(r *http.Request) string {
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+	if forwarded := strings.TrimSpace(r.Header.Get(constants.HeaderXForwardedProto)); forwarded != "" {
 		scheme = strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
 	host := strings.TrimSpace(r.Host)
-	if forwardedHost := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+	if forwardedHost := strings.TrimSpace(r.Header.Get(constants.HeaderXForwardedHost)); forwardedHost != "" {
 		host = strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
 	}
 	return fmt.Sprintf("%s://%s", scheme, host)

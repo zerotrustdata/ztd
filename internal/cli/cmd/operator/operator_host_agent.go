@@ -90,7 +90,7 @@ func ExecuteDeployHost(ctx context.Context, req models.DeployHostRequest, factor
 	case models.DeployHostActionInstall:
 		target := req.Target
 		if target == "" && req.DestDir != "" {
-			target = filepath.Join(req.DestDir, constants.DeployBinDirname, "ztd")
+			target = filepath.Join(req.DestDir, constants.DeployBinDirname, constants.BinaryImageName)
 		}
 		if err := ExecuteDeployHostInstall(ctx, req.Source, target); err != nil {
 			return resp, err
@@ -279,7 +279,7 @@ func ExecuteDeployHostInstall(ctx context.Context, source, target string) error 
 // ExecuteDeployHostLink hard-links a binary from binaryDir into destDir/binary via a staging name.
 func ExecuteDeployHostLink(ctx context.Context, binaryDir, destDir, binary string) error {
 	if binary == "" {
-		binary = "ztd"
+		binary = constants.BinaryImageName
 	}
 	if binaryDir == "" {
 		return fmt.Errorf("operator deploy-host link: binary_dir required: %w", constants.ErrMissingRequiredField)
@@ -351,9 +351,9 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 	}
 	workingDir = filepath.Clean(absWorkingDir)
 
-	binName := "ztd"
+	binName := constants.BinaryImageName
 	if runtime.GOOS == "windows" {
-		binName = "ztd.exe"
+		binName = constants.BinaryImageNameWindows
 	}
 	binPath := binary
 	if binPath == "" {

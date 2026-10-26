@@ -53,15 +53,15 @@ func Handler() (http.Handler, error) {
 
 func setSecurityHeaders(w http.ResponseWriter, path string) {
 	h := w.Header()
-	h.Set("Content-Security-Policy", contentSecurityPolicy)
+	h.Set(constants.HeaderContentSecurityPolicy, contentSecurityPolicy)
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
 	h.Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
 	h.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()")
 	if strings.HasPrefix(path, "/assets/") {
 		// Vite content-hashes asset filenames, so they never change in place.
-		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+		h.Set(constants.HeaderCacheControl, "public, max-age=31536000, immutable")
 	} else {
-		h.Set("Cache-Control", "no-cache")
+		h.Set(constants.HeaderCacheControl, constants.HeaderValueNoCache)
 	}
 }

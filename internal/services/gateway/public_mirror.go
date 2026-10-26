@@ -1955,9 +1955,14 @@ func sseWriteRecord(w http.ResponseWriter, flusher http.Flusher, rec models.Publ
 	flusher.Flush()
 }
 
+// publicMirrorSentinelPayload is the data body of a sentinel SSE event.
+type publicMirrorSentinelPayload struct {
+	Reason string `json:"reason"`
+}
+
 // sseWriteSentinel writes a sentinel SSE event (truncated or error).
 func sseWriteSentinel(w http.ResponseWriter, flusher http.Flusher, sentinelType, reason string) {
-	payload, _ := json.Marshal(map[string]string{"reason": reason})
+	payload, _ := json.Marshal(publicMirrorSentinelPayload{Reason: reason})
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sentinelType, string(payload))
 	flusher.Flush()
 }

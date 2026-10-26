@@ -559,13 +559,9 @@ func (s *AuthService) ValidateOperatorCLISessionBinding(ctx context.Context, ope
 	if doc == nil {
 		return nil, &AuthError{Message: constants.ErrCLISessionNotFound.Error(), Status: http.StatusUnauthorized}
 	}
-	b, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: auth: marshal CLI session binding: %w: %w", err, constants.ErrRequestMarshalFailed)
-	}
 	var cliSession models.CLISession
-	if err := json.Unmarshal(b, &cliSession); err != nil {
-		return nil, fmt.Errorf("gateway: auth: unmarshal CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
+	if err := unmarshalDocData(doc, &cliSession); err != nil {
+		return nil, fmt.Errorf("gateway: auth: decode CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
 	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
@@ -785,14 +781,8 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 		}
 
 		var cliSession models.CLISession
-		b, err := json.Marshal(cliDoc.Data)
-		if err != nil {
-			s.logger.Error("gateway: auth: marshal CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal CLI session %s: %w: %w", cliSessionID, err, constants.ErrRequestMarshalFailed))
-			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
-			return true
-		}
-		if err := json.Unmarshal(b, &cliSession); err != nil {
-			s.logger.Error("gateway: auth: unmarshal CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal CLI session %s: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed))
+		if err := unmarshalDocData(cliDoc, &cliSession); err != nil {
+			s.logger.Error("gateway: auth: decode CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode CLI session %s: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed))
 			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
 			return true
 		}
@@ -997,14 +987,8 @@ func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next
 				}
 
 				var policy models.AppPolicy
-				data, err := json.Marshal(doc.Data)
-				if err != nil {
-					s.logger.Error("gateway: auth: marshal app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal app policy %s: %w: %w", appID, err, constants.ErrRequestMarshalFailed))
-					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
-					return true
-				}
-				if err := json.Unmarshal(data, &policy); err != nil {
-					s.logger.Error("gateway: auth: unmarshal app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal app policy %s: %w: %w", appID, err, constants.ErrResponseParseFailed))
+				if err := unmarshalDocData(doc, &policy); err != nil {
+					s.logger.Error("gateway: auth: decode app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode app policy %s: %w: %w", appID, err, constants.ErrResponseParseFailed))
 					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
 					return true
 				}
@@ -1136,12 +1120,8 @@ func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*ur
 		return false, nil
 	}
 	var cliSession models.CLISession
-	b, err := json.Marshal(doc.Data)
-	if err != nil {
-		return false, fmt.Errorf("gateway: auth: marshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrRequestMarshalFailed)
-	}
-	if err := json.Unmarshal(b, &cliSession); err != nil {
-		return false, fmt.Errorf("gateway: auth: unmarshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
+	if err := unmarshalDocData(doc, &cliSession); err != nil {
+		return false, fmt.Errorf("gateway: auth: decode CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
 	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
@@ -1174,13 +1154,8 @@ func (s *AuthService) ValidateWebSessionCookie(r *http.Request) (webSessionID, u
 	}
 
 	var webSession models.WebSession
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		s.logger.Error("gateway: auth: marshal web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal web session %s: %w: %w", webSessionID, err, constants.ErrRequestMarshalFailed))
-		return "", "", constants.ErrSessionParseFailed
-	}
-	if err := json.Unmarshal(data, &webSession); err != nil {
-		s.logger.Error("gateway: auth: unmarshal web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal web session %s: %w: %w", webSessionID, err, constants.ErrResponseParseFailed))
+	if err := unmarshalDocData(doc, &webSession); err != nil {
+		s.logger.Error("gateway: auth: decode web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode web session %s: %w: %w", webSessionID, err, constants.ErrResponseParseFailed))
 		return "", "", constants.ErrSessionParseFailed
 	}
 

@@ -869,7 +869,7 @@ func (g *GatewayService) ExecuteResourceRead(ctx context.Context, uri string) (s
 	if uri == "" {
 		return "", constants.ErrGatewayURIRequired
 	}
-	raw, err := g.proxyMCPMethod(ctx, "resources/read", map[string]string{"uri": uri})
+	raw, err := g.proxyMCPMethod(ctx, "resources/read", ReadResourceRequest{URI: uri})
 	if err != nil {
 		return "", err
 	}
@@ -881,7 +881,7 @@ func (g *GatewayService) ExecutePromptGet(ctx context.Context, name string) (str
 	if name == "" {
 		return "", constants.ErrGatewayNameRequired
 	}
-	raw, err := g.proxyMCPMethod(ctx, "prompts/get", map[string]string{"name": name})
+	raw, err := g.proxyMCPMethod(ctx, "prompts/get", GetPromptRequest{Name: name})
 	if err != nil {
 		return "", err
 	}

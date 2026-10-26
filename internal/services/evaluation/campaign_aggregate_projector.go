@@ -1816,9 +1816,5 @@ func marshalCanonicalViewRecord(record any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: marshal campaign view record: %w", err)
 	}
-	var compact json.RawMessage
-	if err := json.Unmarshal(body, &compact); err != nil {
-		return nil, fmt.Errorf("evaluation: marshal campaign view record: %w", err)
-	}
-	return compact, nil
+	return body, nil
 }

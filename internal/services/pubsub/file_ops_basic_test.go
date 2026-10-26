@@ -232,7 +232,7 @@ func TestPayloadToFileEditRequest_InvalidOperation(t *testing.T) {
 	}
 
 	_, err := payloadToFileEditRequest(msg)
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrFileEditUnsupportedOperation)
 }
 
 func TestPayloadToFileEditRequest_WithTaskID(t *testing.T) {

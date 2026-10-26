@@ -54,14 +54,10 @@ func documentUpdateStruct(fields DocumentUpdateFields) (*structpb.Struct, error)
 	if err != nil {
 		return nil, fmt.Errorf("submit document update: marshal fields: %w", err)
 	}
-	// structpb.NewStruct accepts only map[string]any. The typed
-	// DocumentUpdateFields value is the contract; this map is the protobuf boundary.
-	var decoded map[string]any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return nil, fmt.Errorf("submit document update: decode fields: %w", err)
-	}
-	updates, err := structpb.NewStruct(decoded)
-	if err != nil {
+	// The typed DocumentUpdateFields value is the contract; protojson reads its
+	// JSON object directly into the protobuf Struct.
+	updates := &structpb.Struct{}
+	if err := protojson.Unmarshal(raw, updates); err != nil {
 		return nil, fmt.Errorf("submit document update: build updates struct: %w", err)
 	}
 	return updates, nil

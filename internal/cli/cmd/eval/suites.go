@@ -76,6 +76,11 @@ type suiteChangeJSON struct {
 	CatalogDigest string `json:"catalog_digest"`
 }
 
+type suiteDeleteJSON struct {
+	Deleted bool   `json:"deleted"`
+	ID      string `json:"id"`
+}
+
 func suitesListCmd(deps nativeEvalDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -237,7 +242,7 @@ cannot be deleted.`,
 				return err
 			}
 			if output.JSONEnabled(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), map[string]any{"id": args[0], "deleted": true})
+				return output.WriteJSON(cmd.OutOrStdout(), suiteDeleteJSON{Deleted: true, ID: args[0]})
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Suite %s deleted\n", args[0])
 			return err

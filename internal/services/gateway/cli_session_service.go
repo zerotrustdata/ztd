@@ -579,13 +579,9 @@ func cliSessionExpired(session *models.CLISession, now time.Time) bool {
 
 // decodeCLISession deserializes a Document into a CLISession.
 func decodeCLISession(doc *models.Document) (*models.CLISession, error) {
-	dataBytes, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal document data: %w", err)
-	}
 	var session models.CLISession
-	if err := json.Unmarshal(dataBytes, &session); err != nil {
-		return nil, fmt.Errorf("unmarshal CLI session: %w", err)
+	if err := unmarshalDocData(doc, &session); err != nil {
+		return nil, fmt.Errorf("decode CLI session: %w", err)
 	}
 	session.ID = doc.ID
 	return &session, nil

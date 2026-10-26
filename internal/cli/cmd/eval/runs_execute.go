@@ -15,8 +15,6 @@ import (
 	"slices"
 	"time"
 
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -418,7 +416,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
-		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, cfg, authContext, operators, topology, spec, witness, publication, strictProvenance, strictObservation)
+		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, cfg, authContext, topology, spec, witness, publication, strictProvenance, strictObservation)
 		if err != nil {
 			return executed, err
 		}
@@ -434,7 +432,6 @@ func finalizeRunExecution(
 	opts runExecuteOptions,
 	cfg *config.Config,
 	authContext *auth.ClientAuthContext,
-	operators []*operatorv1.OperatorDocument,
 	topology evaluation.CampaignOperatorTopology,
 	spec *evalv1.EvaluationCampaignSpec,
 	witness *evaluation.CampaignWitnessCapture,

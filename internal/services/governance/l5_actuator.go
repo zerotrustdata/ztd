@@ -355,7 +355,7 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 		EventType:                  vt.Envelope.EventType,
 		ActionType:                 vt.Envelope.ActionType,
 		Status:                     operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-		ResultSummary:              "executing",
+		ResultSummary:              string(constants.ExecutionStatusExecuting),
 		StateRootBefore:            stateBefore,
 		ExecutedAtUnixMs:           time.Now().UnixMilli(),
 		SignerKeyId:                w.KeyID,
@@ -549,7 +549,7 @@ func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.Ev
 	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	if execErr != nil {
 		status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), "failed", classifyReceiptFailure(execErr), execErr)
+		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), string(constants.ExecutionStatusFailed), classifyReceiptFailure(execErr), execErr)
 	} else {
 		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest, eventReceiptListSummary)
 	}
@@ -598,9 +598,9 @@ func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, infer
 	case eventReceiptListSummary != "":
 		return eventReceiptListSummary
 	case summary == "":
-		return "completed"
+		return string(constants.ExecutionStatusCompleted)
 	case !w.scrubberActive():
-		return "completed"
+		return string(constants.ExecutionStatusCompleted)
 	default:
 		return w.Scrubbing.ScrubText(ctx, summary)
 	}
