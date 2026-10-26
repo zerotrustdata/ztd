@@ -100,7 +100,7 @@ func ComputeAttestationDigest(window *evalv1.ModelProvenanceAttestationWindow) (
 	}
 	clone, ok := proto.Clone(window).(*evalv1.ModelProvenanceAttestationWindow)
 	if !ok {
-		return "", fmt.Errorf("model provenance: compute attestation digest: invalid clone")
+		return "", fmt.Errorf("model provenance: compute attestation digest: invalid clone: %w", constants.ErrInternal)
 	}
 	clone.AttestationDigest = ""
 	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
@@ -116,14 +116,14 @@ func ValidateAttestationWindow(window *evalv1.ModelProvenanceAttestationWindow) 
 		return fmt.Errorf("model provenance: validate attestation window: %w", constants.ErrMissingRequiredField)
 	}
 	if window.GetSchemaVersion() != "" && window.GetSchemaVersion() != SchemaVersion {
-		return fmt.Errorf("model provenance: validate attestation window: unsupported schema version")
+		return fmt.Errorf("model provenance: validate attestation window: unsupported schema version: %w", constants.ErrEvidenceSchemaMismatch)
 	}
 	for _, weight := range window.GetWeightAttestations() {
 		switch weight.GetVerificationMode() {
 		case evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH,
 			evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED:
 		default:
-			return fmt.Errorf("model provenance: validate attestation window: blob %s: unrecognized verification mode", weight.GetBlobDigest())
+			return fmt.Errorf("model provenance: validate attestation window: blob %s: unrecognized verification mode: %w", weight.GetBlobDigest(), constants.ErrEvidenceArtifactMalformed)
 		}
 		if weight.GetFullHashCompletedAtUnixMs() <= 0 {
 			return fmt.Errorf("model provenance: validate attestation window: blob %s: %w", weight.GetBlobDigest(), constants.ErrMissingRequiredField)
@@ -134,7 +134,7 @@ func ValidateAttestationWindow(window *evalv1.ModelProvenanceAttestationWindow) 
 		return err
 	}
 	if window.GetAttestationDigest() != expected {
-		return fmt.Errorf("model provenance: validate attestation window: digest mismatch")
+		return fmt.Errorf("model provenance: validate attestation window: digest mismatch: %w", constants.ErrChecksumMismatch)
 	}
 	return nil
 }

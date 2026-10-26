@@ -1040,7 +1040,7 @@ func (c *CampaignPublicationCoordinator) exportFeedRecordsInBatches(ctx context.
 }
 
 func isCampaignFeedSequenceOutOfOrder(err error) bool {
-	return err != nil && strings.Contains(err.Error(), constants.ErrPublicFeedSequenceOutOfOrder.Error())
+	return errors.Is(err, constants.ErrPublicFeedSequenceOutOfOrder)
 }
 
 func viewRecordsToPublishRequests(records []CampaignViewRecord) []campaignFeedPublishRequest {

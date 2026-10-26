@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -25,7 +26,7 @@ var heartbeatSnapshotMarshalOptions = protojson.MarshalOptions{UseProtoNames: tr
 // protojson fallback for envelopes that omit payload bytes.
 func heartbeatResultFromEnvelope(env *commonv1.GovernanceEnvelope) (*operatorv1.HeartbeatResult, error) {
 	if env == nil {
-		return nil, fmt.Errorf("heartbeat envelope is required")
+		return nil, fmt.Errorf("heartbeat envelope is required: %w", constants.ErrTxPayloadMissing)
 	}
 
 	heartbeat := &operatorv1.HeartbeatResult{}
@@ -34,13 +35,13 @@ func heartbeatResultFromEnvelope(env *commonv1.GovernanceEnvelope) (*operatorv1.
 			return nil, fmt.Errorf("heartbeat payload decode failed: %w", err)
 		}
 		if proto.Size(heartbeat) == 0 {
-			return nil, fmt.Errorf("heartbeat payload is empty")
+			return nil, fmt.Errorf("heartbeat payload is empty: %w", constants.ErrTxPayloadMissing)
 		}
 		return heartbeat, nil
 	}
 
 	if env.IntentData == nil || len(env.IntentData.Fields) == 0 {
-		return nil, fmt.Errorf("heartbeat envelope has no payload")
+		return nil, fmt.Errorf("heartbeat envelope has no payload: %w", constants.ErrTxPayloadMissing)
 	}
 
 	intentJSON, err := protojson.Marshal(env.IntentData)
@@ -51,14 +52,14 @@ func heartbeatResultFromEnvelope(env *commonv1.GovernanceEnvelope) (*operatorv1.
 		return nil, fmt.Errorf("heartbeat intent_data decode failed: %w", err)
 	}
 	if proto.Size(heartbeat) == 0 {
-		return nil, fmt.Errorf("heartbeat intent_data is empty")
+		return nil, fmt.Errorf("heartbeat intent_data is empty: %w", constants.ErrTxPayloadMissing)
 	}
 	return heartbeat, nil
 }
 
 func marshalHeartbeatSnapshot(heartbeat *operatorv1.HeartbeatResult) (json.RawMessage, error) {
 	if heartbeat == nil {
-		return nil, fmt.Errorf("heartbeat result is required")
+		return nil, fmt.Errorf("heartbeat result is required: %w", constants.ErrTxPayloadMissing)
 	}
 	snapshotBytes, err := heartbeatSnapshotMarshalOptions.Marshal(heartbeat)
 	if err != nil {

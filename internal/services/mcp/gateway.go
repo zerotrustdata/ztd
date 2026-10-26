@@ -522,7 +522,7 @@ func (g *GatewayService) handleA2ARequest(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate JSON-RPC 2.0
-	if req.JSONRPC != "2.0" {
+	if req.JSONRPC != constants.JSONRPCVersion {
 		g.writeDispatchError(w, req.ID, g.rpcRefusal(-32600, fmt.Errorf("a2a request: %w", constants.ErrJSONRPCVersionInvalid)))
 		return
 	}
@@ -920,7 +920,7 @@ func marshalMCPCatalog(res interface{}) (string, error) {
 func mcpResultSummary(raw json.RawMessage) string {
 	summary := strings.TrimSpace(string(raw))
 	if summary == "" || summary == "null" {
-		return "completed"
+		return string(constants.ExecutionStatusCompleted)
 	}
 	if len(summary) > constants.ReceiptSummaryMaxBytes {
 		return summary[:constants.ReceiptSummaryMaxBytes]
@@ -1548,7 +1548,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 		resultRaw = raw
 	} else {
 		mcpReq := &response.JSONRPCRequest{
-			JSONRPC: "2.0",
+			JSONRPC: constants.JSONRPCVersion,
 			Method:  "tools/call",
 			Params:  mcpParams,
 			ID:      1,
@@ -1560,7 +1560,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 		}
 
 		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Post(g.downstreamURL, "application/json", strings.NewReader(string(reqBody)))
+		resp, err := client.Post(g.downstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 		if err != nil {
 			g.recordFailure()
 			return "", fmt.Errorf("gateway: %w", constants.ErrGatewayDownstreamUnavailable)
@@ -1610,7 +1610,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 
 	resultSummary := summary.String()
 	if resultSummary == "" {
-		resultSummary = "completed"
+		resultSummary = string(constants.ExecutionStatusCompleted)
 	}
 
 	// Scrub downstream MCP output before it leaves this layer. There is no unscrubbed
@@ -1671,7 +1671,7 @@ func (g *GatewayService) DispatchToA2ADownstream(ctx context.Context, skillName 
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(g.a2aDownstreamURL, "application/json", strings.NewReader(string(reqBody)))
+	resp, err := client.Post(g.a2aDownstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 	if err != nil {
 		g.recordFailure()
 		return "", fmt.Errorf("gateway: %w", constants.ErrGatewayDownstreamUnavailable)
@@ -1713,5 +1713,5 @@ func (g *GatewayService) DispatchToA2ADownstream(ctx context.Context, skillName 
 		return a2aResp.Result, nil
 	}
 
-	return "completed", nil
+	return string(constants.ToolCallStatusCompleted), nil
 }

@@ -93,7 +93,7 @@ func NormalizeDeterministicStages(receipt *operatorv1.EventReceipt) ([]*operator
 		return nil, fmt.Errorf("%w: deterministic stage evidence is missing", constants.ErrInvalidEvidenceGraph)
 	}
 	if _, err := DeterministicStageActionType(receipt); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidEvidenceGraph, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	seenIDs := make(map[string]struct{}, len(stages))
 	seenKinds := make(map[operatorv1.DeterministicStageKind]struct{}, len(stages))

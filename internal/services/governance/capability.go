@@ -116,7 +116,7 @@ func MintCapability(vt *VerifiedTransaction, signingKey ed25519.PrivateKey, keyI
 	// Generate a random single-use token
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrL5ActuatorCapabilityMint, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCapabilityMint, err)
 	}
 	token := hex.EncodeToString(tokenBytes)
 

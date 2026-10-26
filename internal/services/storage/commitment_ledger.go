@@ -77,7 +77,7 @@ func NewCommitmentLedger(db *sqliteutil.DB, logger *slog.Logger, encryptionVault
 // ListCommitments retrieves all commitments ordered by committed_at_unix_ms ASC (chain order).
 func (cl *CommitmentLedger) ListCommitments() ([]*CommitmentRow, error) {
 	if cl == nil || cl.db == nil {
-		return nil, fmt.Errorf("commitment ledger not initialized")
+		return nil, fmt.Errorf("commitment ledger not initialized: %w", constants.ErrLedgerRequired)
 	}
 
 	query := `
@@ -163,7 +163,7 @@ type CommitmentBuilder func(priorHash string) (*operatorv1.CommitmentAttestation
 // AppendCommitment builds and appends an attestation while holding SQLite's write lock so every ledger instance selects a unique chain head.
 func (cl *CommitmentLedger) AppendCommitment(build CommitmentBuilder) error {
 	if cl == nil || cl.db == nil {
-		return fmt.Errorf("commitment ledger not initialized")
+		return fmt.Errorf("commitment ledger not initialized: %w", constants.ErrLedgerRequired)
 	}
 	var appended *CommitmentRow
 	err := cl.db.ExecInImmediateTxWithRetry(context.Background(), func(conn *sql.Conn) error {
@@ -180,7 +180,7 @@ func (cl *CommitmentLedger) AppendCommitment(build CommitmentBuilder) error {
 // AppendCommitmentJSON appends a prebuilt attestation after verifying its prior hash under SQLite's write lock.
 func (cl *CommitmentLedger) AppendCommitmentJSON(attestationJSON []byte, priorHash, hash string) error {
 	if cl == nil || cl.db == nil {
-		return fmt.Errorf("commitment ledger not initialized")
+		return fmt.Errorf("commitment ledger not initialized: %w", constants.ErrLedgerRequired)
 	}
 	var appended *CommitmentRow
 	err := cl.db.ExecInImmediateTxWithRetry(context.Background(), func(conn *sql.Conn) error {
@@ -189,10 +189,10 @@ func (cl *CommitmentLedger) AppendCommitmentJSON(attestationJSON []byte, priorHa
 			return fmt.Errorf("failed to query current prior hash: %w", err)
 		}
 		if currentPriorHash != "" && currentPriorHash != priorHash {
-			return fmt.Errorf("prior_commitment_hash mismatch: expected %s, got %s", currentPriorHash, priorHash)
+			return fmt.Errorf("prior_commitment_hash mismatch: expected %s, got %s: %w", currentPriorHash, priorHash, constants.ErrConstraintViolation)
 		}
 		if len(attestationJSON) == 0 {
-			return fmt.Errorf("attestation JSON is empty")
+			return fmt.Errorf("attestation JSON is empty: %w", constants.ErrMissingRequiredField)
 		}
 		attestation := &operatorv1.CommitmentAttestation{}
 		if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(attestationJSON, attestation); err != nil {

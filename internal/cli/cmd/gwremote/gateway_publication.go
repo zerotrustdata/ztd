@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -77,13 +78,9 @@ func isPublicFeedPublicationRetryable(err error) bool {
 }
 
 func isPublicFeedOutboxPublicationError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	return strings.Contains(message, constants.ErrPublicFeedOutboxEquivocation.Error()) ||
-		strings.Contains(message, constants.ErrPublicFeedOutboxCorrupt.Error()) ||
-		strings.Contains(message, constants.ErrPublicFeedHashChainMismatch.Error())
+	return errors.Is(err, constants.ErrPublicFeedOutboxEquivocation) ||
+		errors.Is(err, constants.ErrPublicFeedOutboxCorrupt) ||
+		errors.Is(err, constants.ErrPublicFeedHashChainMismatch)
 }
 
 func (e *remoteGatewayCampaignFeedExporter) exportBatchOnce(records []evaluation.CampaignPublicFeedRecord) error {
@@ -142,11 +139,11 @@ func (e *remoteGatewayCampaignFeedExporter) invalidateHighWater() {
 }
 
 func isPublicFeedSequenceOutOfOrder(err error) bool {
-	return err != nil && strings.Contains(err.Error(), constants.ErrPublicFeedSequenceOutOfOrder.Error())
+	return errors.Is(err, constants.ErrPublicFeedSequenceOutOfOrder)
 }
 
 func isPublicFeedSnapshotNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), constants.ErrPublicFeedSnapshotNotFound.Error())
+	return errors.Is(err, constants.ErrPublicFeedSnapshotNotFound)
 }
 
 func IsGatewayHealthy() bool {

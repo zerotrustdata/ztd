@@ -21,7 +21,7 @@ import (
 // enforce they're within root (allowing test fixtures and system paths).
 func ValidatePath(path string, root string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("empty path")
+		return "", fmt.Errorf("empty path: %w", constants.ErrPathValidation)
 	}
 
 	// Clean the path to handle multiple slashes and redundant segments
@@ -29,7 +29,7 @@ func ValidatePath(path string, root string) (string, error) {
 
 	// SECURITY: Block obvious path traversal attempts before resolution
 	if strings.Contains(cleanPath, "..") {
-		return "", fmt.Errorf("path traversal attempt detected")
+		return "", fmt.Errorf("path traversal attempt detected: %w", constants.ErrPathValidation)
 	}
 
 	// Resolve to absolute path
@@ -44,7 +44,7 @@ func ValidatePath(path string, root string) (string, error) {
 	// Re-clean and re-validate absolute path
 	absPath = filepath.Clean(absPath)
 	if strings.Contains(absPath, "..") {
-		return "", fmt.Errorf("path traversal detected after resolution")
+		return "", fmt.Errorf("path traversal detected after resolution: %w", constants.ErrPathValidation)
 	}
 
 	// For relative paths (now resolved), ensure they're within the root directory
@@ -55,7 +55,7 @@ func ValidatePath(path string, root string) (string, error) {
 			return "", fmt.Errorf("failed to calculate relative path: %w", err)
 		}
 		if strings.HasPrefix(rel, "..") {
-			return "", fmt.Errorf("path is outside of the root directory")
+			return "", fmt.Errorf("path is outside of the root directory: %w", constants.ErrPathValidation)
 		}
 	}
 

@@ -100,10 +100,22 @@ Inference Operator terminal:
 make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --inference-ollama-endpoint http://192.168.1.2:11434 --working-dir ~/.ztd-inference'
 ```
 
-For a single process that carries every capability, start the Gateway with its embedded Operator instead. The embedded Operator defaults to Data only when no capabilities are specified. `make gw` enables `GW_CAPABILITIES` (default `data,inference,observer`), and setting `MODEL_STORAGE_ROOT` adds Provenance over that model store:
+To serve llama.cpp instead of Ollama, pass the llama.cpp endpoint and model root in place of the Ollama endpoint. The llama.cpp provider requires `--inference-llamacpp-model-root`, and `eval models pull` requires an Inference Operator that serves Ollama:
 
 ```bash
-make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://192.168.1.2:11434'
+make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --inference-llamacpp-endpoint http://192.168.1.2:8080 --inference-llamacpp-model-root ~/models --working-dir ~/.ztd-inference'
+```
+
+For a single process that carries every capability, start the Gateway with its embedded Operator instead. The embedded Operator defaults to Data only. `make gw` enables `GW_CAPABILITIES` (default `data`); set it to include `inference`. Setting `MODEL_STORAGE_ROOT` adds Provenance over that model store:
+
+```bash
+make gw GW_CAPABILITIES=data,inference MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint http://192.168.1.2:11434'
+```
+
+For the llama.cpp provider on the embedded Operator, set the llama.cpp flags and the llama.cpp store layout:
+
+```bash
+make gw GW_CAPABILITIES=data,inference MODEL_STORAGE_ROOT=~/models GW_ARGS='--inference-llamacpp-endpoint http://192.168.1.2:8080 --inference-llamacpp-model-root ~/models --model-storage-format llamacpp'
 ```
 
 Capabilities are fixed when the Gateway starts. Run `make down` first to change them.
@@ -288,7 +300,7 @@ The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public r
 | Target | Behavior |
 | :--- | :--- |
 | `make up` | Starts the Gateway on this host with `ztd gw start` (flags from `GW_ARGS`). Sign in the owner with `./ztd login web` or `./ztd login`. |
-| `make gw` | Starts the Gateway with its embedded Operator carrying capabilities from `GW_CAPABILITIES` (default `data,inference,observer`), then prints `ztd gw status`. Setting `MODEL_STORAGE_ROOT` adds the Provenance capability. |
+| `make gw` | Starts the Gateway with its embedded Operator carrying capabilities from `GW_CAPABILITIES` (default `data`), then prints `ztd gw status`. Setting `MODEL_STORAGE_ROOT` adds the Provenance capability. |
 | `make up-public` / `make gw-public` | Same as `make up` / `make gw` with the listeners bound to every interface (`--listen-host 0.0.0.0`) so Operators on other hosts can enroll. |
 | `make operator` | Runs one outbound Operator in the foreground. Pass capability and endpoint flags in `OPERATOR_ARGS`. |
 | `make status` | Prints `ztd gw status`: Gateway status, Operator capabilities, and enrollment counts. |

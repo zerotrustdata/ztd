@@ -51,7 +51,7 @@ func (a *LlamaCppStorageAttestor) Attest(ctx context.Context, servedModelTag, ex
 		return nil, fmt.Errorf("model provenance attestor: %w", constants.ErrMissingRequiredField)
 	}
 	if !models.IsSHA256Hex(expectedModelDigest) {
-		return nil, fmt.Errorf("model provenance attestor: invalid expected digest")
+		return nil, fmt.Errorf("model provenance attestor: invalid expected digest: %w", constants.ErrInferenceEvidenceHashInvalid)
 	}
 	model, err := llamacpp.ResolveModel(a.modelsDir, servedModelTag)
 	if err != nil {

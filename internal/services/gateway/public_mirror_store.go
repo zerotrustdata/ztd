@@ -849,7 +849,7 @@ func decodePublicMirrorJSON(value string, target any) error {
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return fmt.Errorf("trailing JSON")
+		return fmt.Errorf("trailing JSON: %w", constants.ErrInvalidJSONBody)
 	}
 	return nil
 }

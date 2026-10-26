@@ -10,7 +10,6 @@ package evaluation
 import (
 	"errors"
 	"os"
-	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
@@ -20,9 +19,6 @@ func isGatewayEvidenceNotFound(err error) bool {
 		return false
 	}
 	if errors.Is(err, constants.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
-		return true
-	}
-	if errors.Is(err, constants.ErrHTTPStatusError) && strings.Contains(err.Error(), "status 404") {
 		return true
 	}
 	return false

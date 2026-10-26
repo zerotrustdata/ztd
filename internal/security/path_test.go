@@ -8,12 +8,24 @@
 package security
 
 import (
+	"errors"
 	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
+
+func TestValidatePath_PreservesValidationErrorIdentity(t *testing.T) {
+	for _, path := range []string{"", "../escape"} {
+		t.Run(path, func(t *testing.T) {
+			_, err := ValidatePath(path, filepath.FromSlash("/safe/root"))
+			if !errors.Is(err, constants.ErrPathValidation) {
+				t.Fatalf("expected path validation error, got %v", err)
+			}
+		})
+	}
+}
 
 func TestValidatePath(t *testing.T) {
 	root := "/safe/root"

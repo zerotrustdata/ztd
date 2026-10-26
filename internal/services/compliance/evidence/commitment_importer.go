@@ -84,7 +84,7 @@ func (i *CommitmentImporter) Import(ctx context.Context) ([]EvidenceNode, error)
 
 func validCommitmentBinding(binding CommitmentImportBinding) error {
 	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.CommitmentReferencePrefix); !referenceValid {
-		return errors.New("content reference is invalid")
+		return fmt.Errorf("content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := ValidateRelativePath(binding.Path); err != nil {
 		return err

@@ -169,7 +169,7 @@ func stopLocalOperator(cmd *cobra.Command, p localOperatorProcess, response mode
 		return fail(err)
 	}
 	if !exited {
-		return fail(errors.New("process did not exit after KILL"))
+		return fail(constants.ErrProcessSigKillTimeout)
 	}
 	result.Success = true
 	result.Method = "KILL"

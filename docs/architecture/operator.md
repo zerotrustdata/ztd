@@ -77,7 +77,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only Operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `event_receipt_list` and `event_receipt_get` over their own Local-First Events Store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
-| INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
+| INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST run exactly one model provider. Setting `--inference-llamacpp-endpoint` selects llama.cpp and requires `--inference-llamacpp-model-root`; an explicit `--inference-ollama-endpoint` beside it fails with `ErrInferenceProviderConflict`. Without a llama.cpp endpoint, the Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
 | INV-OP-CAP-03 | Operator capabilities MUST default to `data` when unspecified. Operators MAY be configured with any valid capability combination. Multiple Operators MAY own the `data` capability; `inference`, `provenance`, and `observer` MUST each have a single owner across the Gateway. Capability claims MUST be checked and reserved transactionally during enrollment (`RegisterOperator`) and runtime-config updates (`SetOperatorRuntimeConfig`). Offline and stopped Operators MUST retain their claims until explicitly terminated (`constants.OperatorStatusTerminated`). Conflicting claims for an in-use singleton capability MUST fail closed with `constants.ErrOperatorCapabilityInUse`. |
 | INV-OP-CAP-04 | An Operator runtime lock (`operator.lock`) MUST prevent two processes from sharing one working directory (`--working-dir`). Startup MUST fail closed with `constants.ExitConfigError` if the lock cannot be acquired. Each runtime MUST map to a unique anchor (actuator key and local root); duplicate actuator key registrations from distinct runtimes MUST be rejected with `constants.ErrOperatorActuatorKeyInUse`, identifying both conflicting Operator IDs. |
 
@@ -178,6 +178,12 @@ Capability ownership rules enforced by the Gateway:
   --inference-ollama-endpoint http://127.0.0.1:11434 \
   --inference-keep-alive -1
 
+# Inference Operator (llama.cpp llama-server backend)
+./ztd operator start --endpoint gateway.example --capabilities inference \
+  --inference-llamacpp-endpoint http://127.0.0.1:8080 \
+  --inference-llamacpp-model-root /srv/llamacpp/models \
+  --inference-keep-alive 0
+
 # Provenance Operator (storage-side model weight attestation witness)
 ./ztd operator start --endpoint gateway.example --capabilities provenance \
   --model-storage-root /srv/ollama/models \
@@ -194,6 +200,8 @@ Capability ownership rules enforced by the Gateway:
   --provenance-operator-id prov-witness-01
 ```
 
+An Inference Operator runs one provider. Under llama.cpp, `--inference-keep-alive` accepts `-1` or `0` only, and `ZTD_OLLAMA_ENDPOINT` is not read as the provider endpoint. Inference and governed model maintenance run on whichever provider the Operator selected.
+
 Witness constraints:
 - Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the event-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.
@@ -201,7 +209,7 @@ Witness constraints:
 
 Inference output is capped at 16,384 tokens per call (`constants.InferenceMaxOutputTokens`). An omitted or zero `max_tokens` sends Ollama `num_predict: 16384`; smaller explicit limits pass through, and requests above the ceiling are rejected before provider execution. This output limit is independent of Ollama's `num_ctx` context window.
 
-Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
+Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration, the llama.cpp endpoint and model root when that provider is selected, the provenance model storage format, and stable provenance and provider-boundary observer pseudonyms. `operator list` JSON, `operator show`, `gw status`, and the TUI operator details report these reported runtime settings. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
 
 ### Multi-Operator Coexistence and Composite Fingerprinting
 

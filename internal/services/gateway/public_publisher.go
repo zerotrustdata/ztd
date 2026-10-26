@@ -87,7 +87,7 @@ func (s *runtimePublicOutboxStore) Append(ctx context.Context, entry models.Publ
 		last := entries[len(entries)-1]
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return fmt.Errorf("%w: decode appended batch: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+			return fmt.Errorf("%w: decode appended batch: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 		}
 		if entry.Sequence <= last.Sequence {
 			return constants.ErrPublicFeedSequenceOutOfOrder
@@ -157,10 +157,10 @@ func (s *runtimePublicOutboxStore) readRaw(ctx context.Context) ([]models.Public
 		}
 		var entry models.PublicOutboxEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
-			return nil, fmt.Errorf("%w: line %d: %v", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
+			return nil, fmt.Errorf("%w: line %d: %w", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
 		}
 		if err := validatePublicOutboxEntry(entry); err != nil {
-			return nil, fmt.Errorf("%w: line %d: %v", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
+			return nil, fmt.Errorf("%w: line %d: %w", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
 		}
 		entries = append(entries, entry)
 	}
@@ -210,14 +210,14 @@ func (s *runtimePublicOutboxStore) read(ctx context.Context) ([]models.PublicOut
 		}
 		var entry models.PublicOutboxEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
-			return nil, fmt.Errorf("%w: line %d: %v", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
+			return nil, fmt.Errorf("%w: line %d: %w", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
 		}
 		if err := validatePublicOutboxEntry(entry); err != nil {
-			return nil, fmt.Errorf("%w: line %d: %v", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
+			return nil, fmt.Errorf("%w: line %d: %w", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
 		}
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return nil, fmt.Errorf("%w: line %d batch: %v", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
+			return nil, fmt.Errorf("%w: line %d batch: %w", constants.ErrPublicFeedOutboxCorrupt, index+1, err)
 		}
 		if len(entries) > 0 {
 			previous := entries[len(entries)-1]
@@ -255,7 +255,7 @@ func (s *runtimePublicOutboxStore) write(ctx context.Context, entries []models.P
 func validatePublicOutboxEntry(entry models.PublicOutboxEntry) error {
 	var batch models.PublicFeedBatch
 	if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-		return fmt.Errorf("%w: decode batch: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+		return fmt.Errorf("%w: decode batch: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 	}
 	if entry.Sequence <= 0 || batch.LastSequence != entry.Sequence || batch.ContentHash != entry.BatchHash {
 		return constants.ErrPublicFeedOutboxCorrupt
@@ -709,17 +709,17 @@ func (s *PublicPublisherService) sendToMirror(ctx context.Context, origin, inges
 	url := strings.TrimRight(origin, "/") + "/ingest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	if ingestAuthToken != "" {
-		req.Header.Set("Authorization", "Bearer "+ingestAuthToken)
+		req.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+ingestAuthToken)
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -729,7 +729,7 @@ func (s *PublicPublisherService) sendToMirror(ctx context.Context, origin, inges
 
 	var ingestResp models.PublicIngestResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ingestResp); err != nil {
-		return fmt.Errorf("%w: decode response: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: decode response: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 
 	if !ingestResp.Accepted {
@@ -802,7 +802,7 @@ func (s *PublicPublisherService) retransmitUnacknowledgedOutbox(ctx context.Cont
 		// is determined by its first sequence, including multi-record batches.
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return fmt.Errorf("%w: decode unacknowledged batch: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+			return fmt.Errorf("%w: decode unacknowledged batch: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 		}
 		if batch.FirstSequence != expectedSequence || batch.LastSequence != entry.Sequence || batch.PreviousBatchHash != tipHash {
 			return fmt.Errorf("%w: sequence %d hash chain does not match mirror tip", constants.ErrPublicFeedOutboxCorrupt, entry.Sequence)
@@ -917,7 +917,7 @@ func (s *PublicPublisherService) RepairOutboxFromSnapshot(ctx context.Context) e
 		return fmt.Errorf("public-feed: repair outbox: read snapshot: %w", err)
 	}
 	if err := json.Unmarshal(data, &snapshot); err != nil {
-		return fmt.Errorf("%w: decode snapshot: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+		return fmt.Errorf("%w: decode snapshot: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 	}
 	if snapshot.SourceID != s.cfg.SourceID || snapshot.HighWaterSequence <= 0 || snapshot.FeedChainHash == "" {
 		return fmt.Errorf("%w: invalid snapshot", constants.ErrPublicFeedOutboxCorrupt)
@@ -972,7 +972,7 @@ func (s *PublicPublisherService) loadSnapshotFromOutbox(ctx context.Context) err
 			return fmt.Errorf("load snapshot from outbox: read snapshot: %w", err)
 		}
 		if err := json.Unmarshal(data, &snapshot); err != nil {
-			return fmt.Errorf("%w: decode snapshot: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+			return fmt.Errorf("%w: decode snapshot: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 		}
 		if snapshot.SourceID != s.cfg.SourceID || snapshot.HighWaterSequence <= 0 || snapshot.FeedChainHash == "" {
 			return fmt.Errorf("%w: invalid snapshot", constants.ErrPublicFeedOutboxCorrupt)
@@ -1000,7 +1000,7 @@ func (s *PublicPublisherService) loadSnapshotFromOutbox(ctx context.Context) err
 	if maxSeq == 0 && len(entries) > 0 {
 		var firstBatch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entries[0].BatchBytes), &firstBatch); err != nil {
-			return fmt.Errorf("%w: decode first batch: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+			return fmt.Errorf("%w: decode first batch: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 		}
 		if firstBatch.FirstSequence != 1 || firstBatch.PreviousBatchHash != constants.PublicFeedZeroHashHex {
 			return constants.ErrPublicFeedOutboxCorrupt
@@ -1021,7 +1021,7 @@ func (s *PublicPublisherService) loadSnapshotFromOutbox(ctx context.Context) err
 		}
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return fmt.Errorf("%w: decode recovery batch: %v", constants.ErrPublicFeedOutboxCorrupt, err)
+			return fmt.Errorf("%w: decode recovery batch: %w", constants.ErrPublicFeedOutboxCorrupt, err)
 		}
 		if batch.FirstSequence != maxSeq+1 || batch.PreviousBatchHash != lastHash {
 			return constants.ErrPublicFeedOutboxCorrupt
@@ -1057,24 +1057,24 @@ func (s *PublicPublisherService) registerRotatedKey(ctx context.Context, newKeyI
 	}
 	signingBytes, err := publicKeyRegistrationSigningBytes(request)
 	if err != nil {
-		return fmt.Errorf("%w: encode request: %v", constants.ErrPublicFeedKeyRegistration, err)
+		return fmt.Errorf("%w: encode request: %w", constants.ErrPublicFeedKeyRegistration, err)
 	}
 	request.Signature = hex.EncodeToString(ed25519.Sign(currentPrivateKey, signingBytes))
 	body, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("%w: encode request: %v", constants.ErrPublicFeedKeyRegistration, err)
+		return fmt.Errorf("%w: encode request: %w", constants.ErrPublicFeedKeyRegistration, err)
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(origin, "/")+"/keys/register", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
-	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	if token != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+token)
+		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
 	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpRequest)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 500 {
@@ -1082,7 +1082,7 @@ func (s *PublicPublisherService) registerRotatedKey(ctx context.Context, newKeyI
 	}
 	var registrationResponse models.PublicKeyRegistrationResponse
 	if err := json.NewDecoder(response.Body).Decode(&registrationResponse); err != nil {
-		return fmt.Errorf("%w: decode response: %v", constants.ErrPublicFeedKeyRegistration, err)
+		return fmt.Errorf("%w: decode response: %w", constants.ErrPublicFeedKeyRegistration, err)
 	}
 	if !registrationResponse.Accepted {
 		return constants.ErrPublicFeedKeyRegistration
@@ -1096,7 +1096,7 @@ func (s *PublicPublisherService) registerRotatedKey(ctx context.Context, newKeyI
 func (s *PublicPublisherService) RotateKey(ctx context.Context) (string, string, error) {
 	newPub, newPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return "", "", fmt.Errorf("%w: %v", constants.ErrPublicFeedKeyGenFailed, err)
+		return "", "", fmt.Errorf("%w: %w", constants.ErrPublicFeedKeyGenFailed, err)
 	}
 	keyDigest := sha256.Sum256(newPub)
 	newKeyID := hex.EncodeToString(keyDigest[:])
@@ -1263,14 +1263,14 @@ func (s *PublicPublisherService) fetchMirrorProofRoot(ctx context.Context) (mode
 	requestURL := strings.TrimRight(origin, "/") + "/proof-root?source=" + url.QueryEscape(s.cfg.SourceID)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
-		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	if token != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+token)
+		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
 	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpRequest)
 	if err != nil {
-		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNotFound {
@@ -1281,7 +1281,7 @@ func (s *PublicPublisherService) fetchMirrorProofRoot(ctx context.Context) (mode
 	}
 	var root models.PublicProofRootResponse
 	if err := json.NewDecoder(response.Body).Decode(&root); err != nil {
-		return models.PublicProofRootResponse{}, fmt.Errorf("%w: decode proof root: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return models.PublicProofRootResponse{}, fmt.Errorf("%w: decode proof root: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	if root.SourceID != s.cfg.SourceID {
 		return models.PublicProofRootResponse{}, fmt.Errorf("%w: proof root for source %q", constants.ErrPublicFeedMirrorUnreachable, root.SourceID)
@@ -1369,15 +1369,15 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, segment mo
 	)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(origin, "/")+"/proof-ingest", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
-	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	if token != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+token)
+		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
 	response, err := (&http.Client{Timeout: 10 * time.Minute}).Do(httpRequest)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrPublicFeedMirrorUnreachable, err)
+		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 500 {
@@ -1385,7 +1385,7 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, segment mo
 	}
 	var ingestResponse models.PublicProofIngestResponse
 	if err := json.NewDecoder(response.Body).Decode(&ingestResponse); err != nil {
-		return fmt.Errorf("%w: decode response: %v", constants.ErrPublicFeedProofIngestRejected, err)
+		return fmt.Errorf("%w: decode response: %w", constants.ErrPublicFeedProofIngestRejected, err)
 	}
 	if response.StatusCode == http.StatusOK && ingestResponse.Accepted && ingestResponse.ProofRoot == segment.ProofRootSHA256 {
 		return nil
@@ -2125,10 +2125,10 @@ func (s *PublicPublisherService) StreamProof(ctx context.Context, artifactID str
 	}
 
 	// Set safe headers.
-	w.Header().Set("Content-Type", entry.MediaType)
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", entry.Filename))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	w.Header().Set(constants.HeaderContentType, entry.MediaType)
+	w.Header().Set(constants.HeaderCacheControl, "public, max-age=31536000, immutable")
+	w.Header().Set(constants.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", entry.Filename))
+	w.Header().Set(constants.HeaderContentLength, fmt.Sprintf("%d", len(data)))
 
 	// Write the body.
 	if _, err := w.Write(data); err != nil {

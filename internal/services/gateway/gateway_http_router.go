@@ -514,13 +514,13 @@ func handleSwaggerDoc(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	w.Header().Set(constants.HeaderCacheControl, constants.HeaderValueNoCache)
 	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
 	_, _ = w.Write(docs.SwaggerJSON)
 }
 
 func handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set(constants.HeaderContentType, constants.MediaTypeHTML)
 	_, _ = w.Write([]byte(swaggerUIHTML))
 }

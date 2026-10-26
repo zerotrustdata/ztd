@@ -78,9 +78,9 @@ func setEvalExplorerSecurityHeaders(w http.ResponseWriter, name string) {
 	w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()")
 	switch {
 	case name == "index.html", name == "runtime.json":
-		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		w.Header().Set(constants.HeaderCacheControl, "public, max-age=0, must-revalidate")
 	case strings.HasPrefix(name, "assets/"):
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Header().Set(constants.HeaderCacheControl, "public, max-age=31536000, immutable")
 	}
 }
 

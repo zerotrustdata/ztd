@@ -16,6 +16,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // Client is a minimal HTTP client for Ollama model maintenance endpoints.
@@ -83,8 +85,8 @@ func (c *Client) do(ctx context.Context, method, path string, reqData any) error
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	request.Header.Set(constants.HeaderAccept, constants.HeaderValueApplicationJSON)
 
 	response, err := c.http.Do(request)
 	if err != nil {
@@ -109,8 +111,8 @@ func (c *Client) stream(ctx context.Context, method, path string, reqData any, f
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/x-ndjson")
+	request.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	request.Header.Set(constants.HeaderAccept, constants.HeaderValueApplicationNDJSON)
 
 	response, err := c.http.Do(request)
 	if err != nil {

@@ -139,7 +139,7 @@ func buildResultEnvelope(
 			return nil, fmt.Errorf("validate governed result envelope: %w", err)
 		}
 	} else if originatingActionType == "" {
-		return nil, fmt.Errorf("originating action type required for outcome %q", outcomeEvent)
+		return nil, fmt.Errorf("originating action type required for outcome %q: %w", outcomeEvent, constants.ErrMissingRequiredField)
 	}
 	payloadBytes, err := proto.Marshal(payload)
 	if err != nil {
@@ -263,7 +263,7 @@ func unmarshalPayload(eventType constants.EventType, payload []byte) (proto.Mess
 		constants.EventPlatformEnrollmentBindConsensusRequested:
 		m = &commonv1.PlatformEnrollmentGovernancePayload{}
 	default:
-		return nil, fmt.Errorf("unknown event type for unmarshaling: %s", eventType)
+		return nil, fmt.Errorf("unknown event type for unmarshaling: %s: %w", eventType, constants.ErrTxPayloadDecoderMissing)
 	}
 
 	if err := proto.Unmarshal(payload, m); err != nil {

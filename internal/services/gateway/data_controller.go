@@ -411,7 +411,7 @@ func (c *DataController) handleBlob(w http.ResponseWriter, r *http.Request) {
 			c.responder.Error(w, http.StatusForbidden, err.Error())
 			return
 		}
-		contentType := r.Header.Get("Content-Type")
+		contentType := r.Header.Get(constants.HeaderContentType)
 		if contentType == "" {
 			c.responder.Error(w, http.StatusBadRequest, constants.ErrDBControllerContentTypeRequired.Error())
 			return
@@ -451,25 +451,25 @@ func (c *DataController) handleBlob(w http.ResponseWriter, r *http.Request) {
 			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
 			return
 		}
-		safeContentType := "application/octet-stream"
+		safeContentType := constants.HeaderValueOctetStream
 		allowedTypes := map[string]bool{
-			"application/json":       true,
-			"application/pdf":        true,
-			"image/png":              true,
-			"image/jpeg":             true,
-			"image/gif":              true,
-			"text/plain":             true,
-			"application/x-ndjson":   true,
-			"application/x-pem-file": true,
+			constants.HeaderValueApplicationJSON:   true,
+			"application/pdf":                      true,
+			"image/png":                            true,
+			"image/jpeg":                           true,
+			"image/gif":                            true,
+			"text/plain":                           true,
+			constants.HeaderValueApplicationNDJSON: true,
+			constants.HeaderValuePEM:               true,
 		}
 		if allowedTypes[contentType] {
 			safeContentType = contentType
 		}
-		w.Header().Set("Content-Type", safeContentType)
-		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		w.Header().Set(constants.HeaderContentType, safeContentType)
+		w.Header().Set(constants.HeaderContentLength, strconv.Itoa(len(data)))
+		w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+		w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+		w.Header().Set(constants.HeaderContentSecurityPolicy, constants.HeaderValueCSPNone)
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(data); err != nil {
 			c.logger.Error("failed to write blob response", "error", err)

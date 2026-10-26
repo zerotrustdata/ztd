@@ -50,7 +50,7 @@ func (c *InProcessPubSubClient) Subscribe(ctx context.Context, channel string) (
 	}
 
 	if _, exists := c.subs[channel]; exists {
-		return nil, fmt.Errorf("already subscribed to channel %s", channel)
+		return nil, fmt.Errorf("already subscribed to channel %s: %w", channel, constants.ErrAlreadyExists)
 	}
 
 	ch := make(chan []byte, 1024)

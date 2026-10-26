@@ -15,6 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
+| 1.4.2 | TBD | llama.cpp `llama-server` inference provider for Inference Operators and the embedded Operator; llama.cpp GGUF model store for provenance; provider-aware eval model maintenance and sovereign formations. | [v1.4.2](docs/release_notes/v1.4.x/v1.4.2.md) |
 | 1.4.1 | 2026-10-25 | Operator capability ownership and data-only embedded default; Tribunal evaluation evidence and assignment fixes; public mirror performance; Explorer startup and stream improvements; Ollama and website fixes. | [v1.4.1](docs/release_notes/v1.4.x/v1.4.1.md) |
 | 1.4.0 | 2026-10-24 | EventReceipt contracts across MCP, protocol and compliance evidence; stricter Tribunal authoring with guided retries; standalone leaderboard and sponsorship pages; Zero Trust Paper Company demo; public spectator listener and onboarding fixes; expanded test orchestration. | [v1.4.0](docs/release_notes/v1.4.x/v1.4.0.md) |
 

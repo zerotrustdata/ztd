@@ -1029,7 +1029,7 @@ func (pki *PKIAuthority) generateIntermediateCA(certPath string, parentCert *x50
 		return constants.ErrPKIPrivateKeyRequired
 	}
 	if caType == "" {
-		return fmt.Errorf("%s: %s", constants.ErrPKIUnknownCACommonName, commonName)
+		return fmt.Errorf("%w: %s", constants.ErrPKIUnknownCACommonName, commonName)
 	}
 	if err := pki.secretManager.StoreCAPrivateKey(string(caType), keyDER); err != nil {
 		return fmt.Errorf("%s %s: %w", constants.ErrPKIStorePrivateKey, caType, err)

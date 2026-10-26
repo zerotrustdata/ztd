@@ -166,7 +166,7 @@ func ExecuteDeployHost(ctx context.Context, req models.DeployHostRequest, factor
 		return resp, nil
 
 	default:
-		return resp, fmt.Errorf("unknown deploy-host action: %q", req.Action)
+		return resp, fmt.Errorf("unknown deploy-host action: %q: %w", req.Action, constants.ErrOperatorDeployFailed)
 	}
 }
 
@@ -193,7 +193,7 @@ func resolveHomePath(p string) (string, error) {
 // and returns their absolute resolved paths.
 func ExecuteDeployHostPrepare(ctx context.Context, dirs []string) ([]string, error) {
 	if len(dirs) == 0 {
-		return nil, errors.New("operator deploy-host prepare: dirs list must not be empty")
+		return nil, fmt.Errorf("operator deploy-host prepare: dirs list must not be empty: %w", constants.ErrMissingRequiredField)
 	}
 	var resolvedDirs []string
 	for _, dir := range dirs {
@@ -223,10 +223,10 @@ func ExecuteDeployHostPrepare(ctx context.Context, dirs []string) ([]string, err
 // ExecuteDeployHostInstall copies a binary from source to target atomically and ETXTBSY-safe.
 func ExecuteDeployHostInstall(ctx context.Context, source, target string) error {
 	if source == "" {
-		return errors.New("operator deploy-host install: source path required")
+		return fmt.Errorf("operator deploy-host install: source path required: %w", constants.ErrMissingRequiredField)
 	}
 	if target == "" {
-		return errors.New("operator deploy-host install: target path required")
+		return fmt.Errorf("operator deploy-host install: target path required: %w", constants.ErrMissingRequiredField)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -282,10 +282,10 @@ func ExecuteDeployHostLink(ctx context.Context, binaryDir, destDir, binary strin
 		binary = "ztd"
 	}
 	if binaryDir == "" {
-		return errors.New("operator deploy-host link: binary_dir required")
+		return fmt.Errorf("operator deploy-host link: binary_dir required: %w", constants.ErrMissingRequiredField)
 	}
 	if destDir == "" {
-		return errors.New("operator deploy-host link: dest_dir required")
+		return fmt.Errorf("operator deploy-host link: dest_dir required: %w", constants.ErrMissingRequiredField)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -335,7 +335,7 @@ func ExecuteDeployHostLink(ctx context.Context, binaryDir, destDir, binary strin
 // writes operator.pid, and returns the new PID.
 func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args []string) (int, error) {
 	if workingDir == "" {
-		return 0, errors.New("operator deploy-host start: working_dir required")
+		return 0, fmt.Errorf("operator deploy-host start: working_dir required: %w", constants.ErrMissingRequiredField)
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -442,7 +442,7 @@ func ExecuteDeployHostPreflight(ctx context.Context, preflightArgs []string) err
 // ExecuteDeployHostStop stops every worker under destDir or matching workingDir concurrently.
 func ExecuteDeployHostStop(ctx context.Context, destDir, workingDir string) ([]int, error) {
 	if destDir == "" && workingDir == "" {
-		return nil, errors.New("operator deploy-host stop: dest_dir or working_dir required")
+		return nil, fmt.Errorf("operator deploy-host stop: dest_dir or working_dir required: %w", constants.ErrMissingRequiredField)
 	}
 
 	var cleanDest, cleanWork string

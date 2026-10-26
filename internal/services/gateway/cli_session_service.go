@@ -266,10 +266,10 @@ func (s *CLISessionService) ReplaceCLISession(ctx context.Context, oldSessionID,
 		return nil, fmt.Errorf("replace CLI session: %w", constants.ErrCLISessionInvalid)
 	}
 	if newSessionID == "" {
-		return nil, fmt.Errorf("replace CLI session: missing new session ID")
+		return nil, fmt.Errorf("replace CLI session: missing new session ID: %w", constants.ErrMissingRequiredField)
 	}
 	if newFields.UserID == "" || newFields.OperatorSessionID == "" {
-		return nil, fmt.Errorf("replace CLI session: missing user or operator session binding")
+		return nil, fmt.Errorf("replace CLI session: missing user or operator session binding: %w", constants.ErrMissingRequiredField)
 	}
 
 	// 1. Verify the old session exists and is still active.
@@ -434,7 +434,7 @@ func (s *CLISessionService) RefreshCLISession(ctx context.Context, cliSessionID 
 		return nil, fmt.Errorf("refresh CLI session: %w", constants.ErrCLISessionInvalid)
 	}
 	if fields.UserID == "" || fields.OperatorSessionID == "" {
-		return nil, fmt.Errorf("refresh CLI session: missing user or operator session binding")
+		return nil, fmt.Errorf("refresh CLI session: missing user or operator session binding: %w", constants.ErrMissingRequiredField)
 	}
 
 	existing, err := s.loadCLISession(ctx, cliSessionID)

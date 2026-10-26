@@ -71,12 +71,12 @@ func (s *SignerStoreService) GetTrustedSigner(ctx context.Context, keyID string)
 
 	data, err := json.Marshal(doc.Data)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreMarshalDocument, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
 	}
 
 	var signer models.TrustedSigner
 	if err := json.Unmarshal(data, &signer); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 
 	if !signer.Enabled {
@@ -85,7 +85,7 @@ func (s *SignerStoreService) GetTrustedSigner(ctx context.Context, keyID string)
 
 	pubBytes, err := hex.DecodeString(signer.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrValidationFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrValidationFailed, err)
 	}
 
 	if len(pubBytes) != ed25519.PublicKeySize {
@@ -110,7 +110,7 @@ func (s *SignerStoreService) AddTrustedSigner(ctx context.Context, signer models
 
 	data, err := json.Marshal(signer)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrDocumentStoreMarshalDocument, err)
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
 	}
 
 	return s.docSvc.DocSet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), signer.ID, data)
@@ -120,7 +120,7 @@ func (s *SignerStoreService) AddTrustedSigner(ctx context.Context, signer models
 func (s *SignerStoreService) ListTrustedSigners(ctx context.Context) ([]models.TrustedSigner, error) {
 	docs, err := s.docSvc.DocQuery(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), nil, "id", 0)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 
 	results := make([]models.TrustedSigner, 0, len(docs))
@@ -154,7 +154,7 @@ func (s *SignerStoreService) HasTrustedSigners(ctx context.Context) (bool, error
 	}
 	docs, err := s.docSvc.DocQuery(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), filters, "", 1)
 	if err != nil {
-		return false, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+		return false, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 	return len(docs) > 0, nil
 }

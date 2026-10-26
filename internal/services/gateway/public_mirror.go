@@ -685,7 +685,7 @@ func (w gzipResponseWriter) Write(body []byte) (int, error) {
 
 func (m *PublicMirrorServer) withGzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add("Vary", "Accept-Encoding")
+		w.Header().Add(constants.HeaderVary, "Accept-Encoding")
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
 			return
@@ -811,11 +811,11 @@ func (m *PublicMirrorServer) expireAnonymousRateWindows(now time.Time) {
 func (m *PublicMirrorServer) withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if publicMirrorAnonymousReadPath(r.URL.Path) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID, If-None-Match")
+			w.Header().Set(constants.HeaderAccessControlAllowOrigin, "*")
+			w.Header().Set(constants.HeaderAccessControlAllowMethods, "GET, OPTIONS")
+			w.Header().Set(constants.HeaderAccessControlAllowHeaders, constants.HeaderContentType+", "+constants.HeaderLastEventID+", If-None-Match")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag")
-			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.Header().Set(constants.HeaderAccessControlMaxAge, "86400")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -841,8 +841,8 @@ func (m *PublicMirrorServer) ingestAuthorized(r *http.Request) error {
 		m.logger.Warn("mirror: ingest token is not configured; rejecting request", "path", r.URL.Path)
 		return fmt.Errorf("mirror ingest: %w", constants.ErrPublicFeedIngestTokenRequired)
 	}
-	provided := r.Header.Get("Authorization")
-	expected := "Bearer " + token
+	provided := r.Header.Get(constants.HeaderAuthorization)
+	expected := constants.BearerScheme + token
 	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 		return constants.ErrPublicFeedIngestUnauthorized
 	}
@@ -1248,7 +1248,7 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 	if summary != nil {
 		etag := fmt.Sprintf(`"%s:%d:%s:%s"`, sourceID, summary.HighWaterSequence, summary.FeedChainHash, mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs))
 		w.Header().Set("ETag", etag)
-		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		w.Header().Set(constants.HeaderCacheControl, "public, max-age=0, must-revalidate")
 		if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
 			if strings.Trim(ifNoneMatch, "W/") == strings.Trim(etag, "W/") {
 				w.WriteHeader(http.StatusNotModified)
@@ -1495,7 +1495,7 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 	requestedSource := r.URL.Query().Get("source")
 	sinceIDStr := r.URL.Query().Get("since_id")
 	if sinceIDStr == "" {
-		sinceIDStr = r.Header.Get("Last-Event-ID")
+		sinceIDStr = r.Header.Get(constants.HeaderLastEventID)
 	}
 	sinceID := int64(0)
 	if sinceIDStr != "" {
@@ -1504,10 +1504,10 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueTextEvent)
+	w.Header().Set(constants.HeaderCacheControl, "no-cache, no-transform")
+	w.Header().Set(constants.HeaderConnection, constants.HeaderValueKeepAlive)
+	w.Header().Set(constants.HeaderXAccelBuffering, "no")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -1839,13 +1839,13 @@ func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.
 	}
 
 	if artifact.Entry != nil {
-		w.Header().Set("Content-Type", artifact.Entry.MediaType)
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", artifact.Entry.Filename))
+		w.Header().Set(constants.HeaderContentType, artifact.Entry.MediaType)
+		w.Header().Set(constants.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", artifact.Entry.Filename))
 	} else {
-		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set(constants.HeaderContentType, constants.HeaderValueOctetStream)
 	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("Content-Length", strconv.FormatInt(artifact.ByteSize, 10))
+	w.Header().Set(constants.HeaderCacheControl, "public, max-age=31536000, immutable")
+	w.Header().Set(constants.HeaderContentLength, strconv.FormatInt(artifact.ByteSize, 10))
 	if _, err := io.CopyN(w, file, artifact.ByteSize); err != nil {
 		m.logResponseError("mirror: write proof response", err)
 	}
@@ -1926,7 +1926,7 @@ func (s *mirrorSSESubscriber) close() {
 
 // writeJSON writes a JSON response with the given status code.
 func (m *PublicMirrorServer) writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		m.logResponseError("mirror: encode JSON response", err)
