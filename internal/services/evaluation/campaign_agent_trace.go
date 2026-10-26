@@ -703,8 +703,8 @@ func ComputeAgentTraceDigest(trace *AgentTrace) (string, error) {
 	return models.SHA256Hex(body), nil
 }
 
-// ValidateAgentTraceDigest verifies one trace's digest binding.
-func ValidateAgentTraceDigest(trace *AgentTrace) error {
+// validateAgentTraceRules checks structural requirements for a trace's schema version.
+func validateAgentTraceRules(trace *AgentTrace) error {
 	if trace == nil || trace.EvidenceDigest == "" {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
@@ -736,6 +736,14 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 				return fmt.Errorf("evaluation: validate agent trace: %s carries approved arguments: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
 			}
 		}
+	}
+	return nil
+}
+
+// ValidateAgentTraceDigest verifies one trace's digest binding.
+func ValidateAgentTraceDigest(trace *AgentTrace) error {
+	if err := validateAgentTraceRules(trace); err != nil {
+		return err
 	}
 	expected, err := ComputeAgentTraceDigest(trace)
 	if err != nil {
@@ -848,6 +856,17 @@ func DecodeAgentTrace(body []byte) (*AgentTrace, error) {
 	trace := &AgentTrace{}
 	if err := json.Unmarshal(body, trace); err != nil {
 		return nil, fmt.Errorf("evaluation: decode agent trace: %w", err)
+	}
+	if err := validateAgentTraceRules(trace); err != nil {
+		return nil, err
+	}
+	prefix := `{"schema_version":"` + trace.SchemaVersion + `","evidence_digest":"` + trace.EvidenceDigest + `",`
+	if strings.HasPrefix(string(body), prefix) {
+		preimage := `{"schema_version":"` + trace.SchemaVersion + `","evidence_digest":"",` + strings.TrimPrefix(string(body), prefix)
+		if models.SHA256Hex([]byte(preimage)) != trace.EvidenceDigest {
+			return nil, fmt.Errorf("evaluation: validate agent trace: evidence digest: %w", constants.ErrChecksumMismatch)
+		}
+		return trace, nil
 	}
 	if err := ValidateAgentTraceDigest(trace); err != nil {
 		return nil, err

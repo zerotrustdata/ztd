@@ -243,3 +243,17 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(fixture), string(body))
 }
+
+func TestAgentTrace_DecodeAgentTraceVerifiesPreimageAndRejectsTampered(t *testing.T) {
+	trace := v7EvidenceTraceWithToolCalls(t)
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+
+	decoded, err := DecodeAgentTrace(body)
+	require.NoError(t, err)
+	assert.Equal(t, trace.EvidenceDigest, decoded.EvidenceDigest)
+
+	tampered := []byte(strings.Replace(string(body), trace.RunID, trace.RunID+"-tampered", 1))
+	_, err = DecodeAgentTrace(tampered)
+	assert.ErrorIs(t, err, constants.ErrChecksumMismatch)
+}

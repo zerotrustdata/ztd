@@ -121,6 +121,7 @@ type EventReceiptListRequest struct {
 	InvestigationID          string `json:"investigation_id,omitempty"`
 	ActionType               string `json:"action_type,omitempty"`
 	ExcludeEventReceiptReads bool   `json:"exclude_event_receipt_reads,omitempty"`
+	ExcludeAuditReads        bool   `json:"exclude_audit_reads,omitempty"`
 	NotBefore                string `json:"not_before,omitempty"`
 	Limit                    int    `json:"limit,omitempty"`
 	Offset                   int    `json:"offset,omitempty"`
