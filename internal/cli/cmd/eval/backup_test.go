@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -188,4 +189,57 @@ func TestRestore_RejectsConflictingEvidenceWithoutOverwrite(t *testing.T) {
 
 	_, err = env.run(t, "restore", created.SnapshotDir, "--overwrite")
 	require.NoError(t, err)
+}
+
+func TestBackup_StatusCompareCompactAndRestoreVerify(t *testing.T) {
+	env := newStoreRunEnv(t)
+	fileSvc := env.fileSvc(t)
+	ctx := context.Background()
+
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	var first evalBackupJSON
+	require.NoError(t, env.runJSON(t, &first, "backup"))
+
+	env.prepareStoredRun(t, "eval-b", "run-b-1")
+	var second evalBackupJSON
+	require.NoError(t, env.runJSON(t, &second, "backup"))
+
+	// Status over the backup root shows 2 snapshots (1 active, 1 superseded).
+	var status evaluation.EvalSnapshotInspectReport
+	require.NoError(t, env.runJSON(t, &status, "backup", "--status"))
+	assert.Equal(t, 2, status.SnapshotCount)
+	assert.Equal(t, 1, status.ActiveSnapshotCount)
+	assert.Equal(t, 1, status.SupersededSnapshotCount)
+	assert.Equal(t, 2, status.Content.CampaignCount)
+	assert.Equal(t, 2, status.Content.RunCount)
+
+	// Compare first snapshot against second snapshot shows eval-b/run-b-1 added.
+	var diff evaluation.EvalSnapshotCompareReport
+	require.NoError(t, env.runJSON(t, &diff, "backup", "--compare", first.SnapshotDir, second.SnapshotDir))
+	assert.Equal(t, []string{"eval-b"}, diff.AddedCampaigns)
+	assert.Equal(t, []string{"run-b-1"}, diff.AddedRuns)
+	assert.NotEmpty(t, diff.Added)
+	assert.Empty(t, diff.Removed)
+
+	// Compact prunes the superseded first snapshot.
+	var compact evaluation.EvalBackupCompactReport
+	require.NoError(t, env.runJSON(t, &compact, "backup", "--compact"))
+	assert.Equal(t, 1, compact.KeptSnapshots)
+	assert.Equal(t, 1, compact.RemovedSupersededSnapshots)
+	assert.NoDirExists(t, first.SnapshotDir)
+	assert.DirExists(t, second.SnapshotDir)
+
+	// Remove one campaign from live .ztd/ and run restore --verify to confirm
+	// restorability without writing to .ztd/.
+	campAPath := path.Join(constants.EvaluationCampaignsPath, "eval-a")
+	require.NoError(t, fileSvc.RemoveAll(ctx, campAPath))
+	var verify evaluation.EvalSnapshotVerifyReport
+	require.NoError(t, env.runJSON(t, &verify, "restore", "--verify"))
+	assert.True(t, verify.Restorable)
+	assert.Equal(t, 1, verify.Snapshots)
+	assert.NotEmpty(t, verify.WouldRestore)
+	assert.Empty(t, verify.Conflicts)
+	exists, err := fileSvc.FileExists(ctx, path.Join(campAPath, "campaign-spec.json"))
+	require.NoError(t, err)
+	assert.False(t, exists, "restore --verify must not write to the runtime tree")
 }
