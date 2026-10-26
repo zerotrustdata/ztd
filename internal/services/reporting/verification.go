@@ -49,7 +49,21 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 		}
 	}
 
-	// Check 1: Commitment chain integrity
+	// Check 1: Events chain integrity
+	if ctx.Err() != nil {
+		return FileResult{}, vr, ctx.Err()
+	}
+	if eventsStore != nil {
+		if err := eventsStore.VerifyChain(ctx, 0); err != nil {
+			addRow("events_chain", "events", "all", verifyResultFail, fmt.Sprintf("events chain verification failed: %v", err))
+		} else {
+			addRow("events_chain", "events", "all", verifyResultPass, "events chain verified")
+		}
+	} else {
+		addRow("events_chain", "events", "all", verifyResultSkipped, "local-first events store not configured")
+	}
+
+	// Check 2: Commitment chain integrity
 	if ctx.Err() != nil {
 		return FileResult{}, vr, ctx.Err()
 	}

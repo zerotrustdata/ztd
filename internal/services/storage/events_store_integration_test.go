@@ -12,6 +12,7 @@ package storage
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -36,7 +37,7 @@ func newIntegrationEventsStore(t *testing.T) *LocalFirstEventsStore {
 	t.Helper()
 
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
-	_, privKey, err := ed25519.GenerateKey(nil)
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	testVault := CreateTestVault(t, fileSvc, privKey)
 
@@ -47,6 +48,8 @@ func newIntegrationEventsStore(t *testing.T) *LocalFirstEventsStore {
 
 	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
+	config.CheckpointSigner = NewEd25519CheckpointSigner(privKey, hex.EncodeToString(pubKey))
+	config.PinnedAuditorPublicKey = pubKey
 
 	ass, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
@@ -329,7 +332,7 @@ func TestPruneChainedEvents_WritesCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339Nano)
-	require.NoError(t, PruneChainedEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, cutoff))
+	require.NoError(t, PruneChainedEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, ass.checkpointSigner, cutoff))
 
 	var checkpointCount int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM audit_chain_checkpoints`).Scan(&checkpointCount))

@@ -92,6 +92,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	// Open the local-first events store; event receipts project its events rows.
 	eventsStoreCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	eventsStoreCfg.EncryptionVault = v
+	eventsStoreCfg.PinnedAuditorPublicKey = auditorKey
 	eventsStore, err := storage.NewLocalFirstEventsStore(eventsStoreCfg, mainDB, logger, fileSvc)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("%w: local-first events store: %w", constants.ErrReportStoreUnavailable, err)

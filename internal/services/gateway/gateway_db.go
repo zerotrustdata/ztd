@@ -214,6 +214,16 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	}
 	actuatorPub := actuatorPriv.Public().(ed25519.PublicKey)
 
+	auditorPriv, auditorKeyID, err := svc.sm.GetAuditorKey()
+	if err != nil {
+		cancel()
+		closeAfterEventsStore()
+		return nil, fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
+	}
+	auditorPub := auditorPriv.Public().(ed25519.PublicKey)
+	eventsStore.SetCheckpointSigner(storage.NewEd25519CheckpointSigner(auditorPriv, auditorKeyID))
+	eventsStore.SetPinnedAuditorPublicKey(auditorPub)
+
 	// Initialize extracted services with the same db connection
 	s := &stores{
 		DocStore:     NewDocumentStoreService(db, logger),

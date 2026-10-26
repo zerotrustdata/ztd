@@ -7,6 +7,8 @@
     - [A2aCallRequested](#ztd-operator-v1-A2aCallRequested)
     - [AssertionResponse](#ztd-operator-v1-AssertionResponse)
     - [AttestationResponse](#ztd-operator-v1-AttestationResponse)
+    - [AuditChainCheckpoint](#ztd-operator-v1-AuditChainCheckpoint)
+    - [AuditChainCheckpointPayload](#ztd-operator-v1-AuditChainCheckpointPayload)
     - [AuditEvent](#ztd-operator-v1-AuditEvent)
     - [AuditFileMutation](#ztd-operator-v1-AuditFileMutation)
     - [AuditMsgRequested](#ztd-operator-v1-AuditMsgRequested)
@@ -243,6 +245,49 @@ Mirrors McpCallRequested for the Agent-to-Agent JSON protocol.
 | client_data_json | [string](#string) |  |  |
 | attestation_object | [string](#string) |  |  |
 | transports | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-AuditChainCheckpoint"></a>
+
+### AuditChainCheckpoint
+AuditChainCheckpoint represents a durable, signed checkpoint anchor
+stored in audit_chain_checkpoints.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| pruned_through_seq | [int64](#int64) |  |  |
+| pruned_through_hash | [string](#string) |  |  |
+| events_pruned_count | [int64](#int64) |  |  |
+| checkpoint_hash | [string](#string) |  |  |
+| created_at_unix_ms | [int64](#int64) |  |  |
+| auditor_key_id | [string](#string) |  |  |
+| format_version | [string](#string) |  |  |
+| signature | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-AuditChainCheckpointPayload"></a>
+
+### AuditChainCheckpointPayload
+AuditChainCheckpointPayload is the canonical protobuf payload for
+ztd.v1.platform.audit.chain.checkpointed events on the audit events chain.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| pruned_through_seq | [int64](#int64) |  |  |
+| pruned_through_hash | [string](#string) |  |  |
+| events_pruned_count | [int64](#int64) |  |  |
+| created_at_unix_ms | [int64](#int64) |  |  |
+| format_version | [string](#string) |  |  |
 
 
 

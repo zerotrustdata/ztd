@@ -9,6 +9,7 @@ package compliancecmd
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -250,7 +251,7 @@ func openEvaluatorDeps(fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (co
 		return compliance.EvaluatorDeps{}, nil, fmt.Errorf("compliance: actuator trust anchor: %w", err)
 	}
 
-	eventsStore, auditCleanup, ok := openEventsStore(fileSvc, v)
+	eventsStore, auditCleanup, ok := openEventsStore(fileSvc, v, auditorKey)
 	if !ok {
 		runCleanups(cleanups)
 		return compliance.EvaluatorDeps{}, nil, fmt.Errorf("compliance: open local-first events store: %w", constants.ErrReportStoreUnavailable)
@@ -314,7 +315,7 @@ func openRuntimeVault(fileSvc fs.RuntimeFileService, opts keystore.Options) (*va
 
 // openEventsStore opens ztd.db once and builds the local-first events store over it; the
 // store's commitment ledger shares the same pool. Returns ok=false on failure.
-func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.LocalFirstEventsStore, func(), bool) {
+func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault, auditorKey ed25519.PublicKey) (*storage.LocalFirstEventsStore, func(), bool) {
 	if err := fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return nil, nil, false
 	}
@@ -324,6 +325,7 @@ func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.Lo
 	}
 	auditCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	auditCfg.EncryptionVault = v
+	auditCfg.PinnedAuditorPublicKey = auditorKey
 	eventsStore, err := storage.NewLocalFirstEventsStore(auditCfg, mainDB, complianceLogger(), fileSvc)
 	if err != nil {
 		mainDB.Close()

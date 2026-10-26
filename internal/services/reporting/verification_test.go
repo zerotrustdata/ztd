@@ -39,9 +39,9 @@ import (
 // Test helpers
 // ---------------------------------------------------------------------------
 
-// setupTestEventsStore creates a real LocalFirstEventsStore with a temp directory and
-// unlocked vault for encryption. Cleanup is registered via t.Cleanup.
-func setupTestEventsStore(t *testing.T) *storage.LocalFirstEventsStore {
+// setupTestEventsStoreWithDB creates a real LocalFirstEventsStore with a temp directory and
+// unlocked vault for encryption, returning both the store and the underlying database.
+func setupTestEventsStoreWithDB(t *testing.T) (*storage.LocalFirstEventsStore, *sqliteutil.DB) {
 	t.Helper()
 	tempDir := testutil.TempDir(t)
 
@@ -49,7 +49,7 @@ func setupTestEventsStore(t *testing.T) *storage.LocalFirstEventsStore {
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 
-	_, privKey, err := ed25519.GenerateKey(nil)
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	testVault := createTestVault(t, fileSvc, privKey)
 
@@ -59,13 +59,23 @@ func setupTestEventsStore(t *testing.T) *storage.LocalFirstEventsStore {
 	t.Cleanup(func() { db.Close() })
 
 	cfg := &storage.LocalFirstEventsStoreConfig{
-		RetentionDays:        7,
-		PruneIntervalMinutes: 60,
-		EncryptionVault:      testVault,
+		RetentionDays:          7,
+		PruneIntervalMinutes:   60,
+		EncryptionVault:        testVault,
+		CheckpointSigner:       storage.NewEd25519CheckpointSigner(privKey, "test-auditor"),
+		PinnedAuditorPublicKey: pubKey,
 	}
 	store, err := storage.NewLocalFirstEventsStore(cfg, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
+	return store, db
+}
+
+// setupTestEventsStore creates a real LocalFirstEventsStore with a temp directory and
+// unlocked vault for encryption. Cleanup is registered via t.Cleanup.
+func setupTestEventsStore(t *testing.T) *storage.LocalFirstEventsStore {
+	t.Helper()
+	store, _ := setupTestEventsStoreWithDB(t)
 	return store
 }
 
@@ -203,6 +213,41 @@ func hasVerificationDetail(vr VerificationResult, check, detail string) bool {
 
 func reportTestTrust() *governance.PinnedSignerSource {
 	return governance.NewPinnedSignerSource(ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey))
+}
+
+func TestReportVerification_EventsChain_PassesWhenValid(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	eventsStore := setupTestEventsStore(t)
+	_ = createSessionAndEvent(t, eventsStore)
+
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil, reportTestTrust(), reportTestTrust())
+	require.NoError(t, err)
+	assert.Equal(t, 0, vr.FailCount)
+
+	chainRow := findRow(vr, "events_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultPass, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "events chain verified")
+}
+
+func TestReportVerification_EventsChain_FailsWhenTampered(t *testing.T) {
+	outDir := testutil.TempDir(t)
+	cl, _, _ := setupTestCommitmentLedger(t)
+	eventsStore, db := setupTestEventsStoreWithDB(t)
+	_ = createSessionAndEvent(t, eventsStore)
+
+	_, err := db.ExecWithRetry(context.Background(), "UPDATE events SET content_digest = ? WHERE seq = 1", "tampered-digest")
+	require.NoError(t, err)
+
+	_, vr, err := reportVerification(context.Background(), outDir, eventsStore, cl, nil, reportTestTrust(), reportTestTrust())
+	require.NoError(t, err)
+	assert.Positive(t, vr.FailCount)
+
+	chainRow := findRow(vr, "events_chain")
+	require.NotNil(t, chainRow)
+	assert.Equal(t, verifyResultFail, chainRow.Result)
+	assert.Contains(t, chainRow.Detail, "events chain verification failed")
 }
 
 func TestReportVerification_EmptyLedger_AllPass(t *testing.T) {

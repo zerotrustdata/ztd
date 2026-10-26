@@ -2054,3 +2054,26 @@ message InferenceHostedEgressAttestation {
  string normalized_request_hash = 4;
  bool explicit_consent = 5;
 }
+
+// AuditChainCheckpointPayload is the canonical protobuf payload for
+// ztd.v1.platform.audit.chain.checkpointed events on the audit events chain.
+message AuditChainCheckpointPayload {
+  int64 pruned_through_seq = 1;
+  string pruned_through_hash = 2;
+  int64 events_pruned_count = 3;
+  int64 created_at_unix_ms = 4;
+  string format_version = 5;
+}
+
+// AuditChainCheckpoint represents a durable, signed checkpoint anchor
+// stored in audit_chain_checkpoints.
+message AuditChainCheckpoint {
+  int64 pruned_through_seq = 1;
+  string pruned_through_hash = 2;
+  int64 events_pruned_count = 3;
+  string checkpoint_hash = 4;
+  int64 created_at_unix_ms = 5;
+  string auditor_key_id = 6;
+  string format_version = 7;
+  string signature = 8;
+}

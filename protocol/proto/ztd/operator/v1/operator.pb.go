@@ -13909,6 +13909,186 @@ func (x *InferenceHostedEgressAttestation) GetExplicitConsent() bool {
 	return false
 }
 
+// AuditChainCheckpointPayload is the canonical protobuf payload for
+// ztd.v1.platform.audit.chain.checkpointed events on the audit events chain.
+type AuditChainCheckpointPayload struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	PrunedThroughSeq  int64                  `protobuf:"varint,1,opt,name=pruned_through_seq,json=prunedThroughSeq,proto3" json:"pruned_through_seq,omitempty"`
+	PrunedThroughHash string                 `protobuf:"bytes,2,opt,name=pruned_through_hash,json=prunedThroughHash,proto3" json:"pruned_through_hash,omitempty"`
+	EventsPrunedCount int64                  `protobuf:"varint,3,opt,name=events_pruned_count,json=eventsPrunedCount,proto3" json:"events_pruned_count,omitempty"`
+	CreatedAtUnixMs   int64                  `protobuf:"varint,4,opt,name=created_at_unix_ms,json=createdAtUnixMs,proto3" json:"created_at_unix_ms,omitempty"`
+	FormatVersion     string                 `protobuf:"bytes,5,opt,name=format_version,json=formatVersion,proto3" json:"format_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AuditChainCheckpointPayload) Reset() {
+	*x = AuditChainCheckpointPayload{}
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[150]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditChainCheckpointPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditChainCheckpointPayload) ProtoMessage() {}
+
+func (x *AuditChainCheckpointPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[150]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditChainCheckpointPayload.ProtoReflect.Descriptor instead.
+func (*AuditChainCheckpointPayload) Descriptor() ([]byte, []int) {
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{150}
+}
+
+func (x *AuditChainCheckpointPayload) GetPrunedThroughSeq() int64 {
+	if x != nil {
+		return x.PrunedThroughSeq
+	}
+	return 0
+}
+
+func (x *AuditChainCheckpointPayload) GetPrunedThroughHash() string {
+	if x != nil {
+		return x.PrunedThroughHash
+	}
+	return ""
+}
+
+func (x *AuditChainCheckpointPayload) GetEventsPrunedCount() int64 {
+	if x != nil {
+		return x.EventsPrunedCount
+	}
+	return 0
+}
+
+func (x *AuditChainCheckpointPayload) GetCreatedAtUnixMs() int64 {
+	if x != nil {
+		return x.CreatedAtUnixMs
+	}
+	return 0
+}
+
+func (x *AuditChainCheckpointPayload) GetFormatVersion() string {
+	if x != nil {
+		return x.FormatVersion
+	}
+	return ""
+}
+
+// AuditChainCheckpoint represents a durable, signed checkpoint anchor
+// stored in audit_chain_checkpoints.
+type AuditChainCheckpoint struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	PrunedThroughSeq  int64                  `protobuf:"varint,1,opt,name=pruned_through_seq,json=prunedThroughSeq,proto3" json:"pruned_through_seq,omitempty"`
+	PrunedThroughHash string                 `protobuf:"bytes,2,opt,name=pruned_through_hash,json=prunedThroughHash,proto3" json:"pruned_through_hash,omitempty"`
+	EventsPrunedCount int64                  `protobuf:"varint,3,opt,name=events_pruned_count,json=eventsPrunedCount,proto3" json:"events_pruned_count,omitempty"`
+	CheckpointHash    string                 `protobuf:"bytes,4,opt,name=checkpoint_hash,json=checkpointHash,proto3" json:"checkpoint_hash,omitempty"`
+	CreatedAtUnixMs   int64                  `protobuf:"varint,5,opt,name=created_at_unix_ms,json=createdAtUnixMs,proto3" json:"created_at_unix_ms,omitempty"`
+	AuditorKeyId      string                 `protobuf:"bytes,6,opt,name=auditor_key_id,json=auditorKeyId,proto3" json:"auditor_key_id,omitempty"`
+	FormatVersion     string                 `protobuf:"bytes,7,opt,name=format_version,json=formatVersion,proto3" json:"format_version,omitempty"`
+	Signature         string                 `protobuf:"bytes,8,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AuditChainCheckpoint) Reset() {
+	*x = AuditChainCheckpoint{}
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditChainCheckpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditChainCheckpoint) ProtoMessage() {}
+
+func (x *AuditChainCheckpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditChainCheckpoint.ProtoReflect.Descriptor instead.
+func (*AuditChainCheckpoint) Descriptor() ([]byte, []int) {
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{151}
+}
+
+func (x *AuditChainCheckpoint) GetPrunedThroughSeq() int64 {
+	if x != nil {
+		return x.PrunedThroughSeq
+	}
+	return 0
+}
+
+func (x *AuditChainCheckpoint) GetPrunedThroughHash() string {
+	if x != nil {
+		return x.PrunedThroughHash
+	}
+	return ""
+}
+
+func (x *AuditChainCheckpoint) GetEventsPrunedCount() int64 {
+	if x != nil {
+		return x.EventsPrunedCount
+	}
+	return 0
+}
+
+func (x *AuditChainCheckpoint) GetCheckpointHash() string {
+	if x != nil {
+		return x.CheckpointHash
+	}
+	return ""
+}
+
+func (x *AuditChainCheckpoint) GetCreatedAtUnixMs() int64 {
+	if x != nil {
+		return x.CreatedAtUnixMs
+	}
+	return 0
+}
+
+func (x *AuditChainCheckpoint) GetAuditorKeyId() string {
+	if x != nil {
+		return x.AuditorKeyId
+	}
+	return ""
+}
+
+func (x *AuditChainCheckpoint) GetFormatVersion() string {
+	if x != nil {
+		return x.FormatVersion
+	}
+	return ""
+}
+
+func (x *AuditChainCheckpoint) GetSignature() string {
+	if x != nil {
+		return x.Signature
+	}
+	return ""
+}
+
 type PasskeyRegisterChallengeResult_RelyingParty struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -13919,7 +14099,7 @@ type PasskeyRegisterChallengeResult_RelyingParty struct {
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) Reset() {
 	*x = PasskeyRegisterChallengeResult_RelyingParty{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13931,7 +14111,7 @@ func (x *PasskeyRegisterChallengeResult_RelyingParty) String() string {
 func (*PasskeyRegisterChallengeResult_RelyingParty) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13972,7 +14152,7 @@ type PasskeyRegisterChallengeResult_UserInfo struct {
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) Reset() {
 	*x = PasskeyRegisterChallengeResult_UserInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[152]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13984,7 +14164,7 @@ func (x *PasskeyRegisterChallengeResult_UserInfo) String() string {
 func (*PasskeyRegisterChallengeResult_UserInfo) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[152]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14031,7 +14211,7 @@ type PasskeyRegisterChallengeResult_PublicKeyCredentialParameters struct {
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) Reset() {
 	*x = PasskeyRegisterChallengeResult_PublicKeyCredentialParameters{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14043,7 +14223,7 @@ func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) String() 
 func (*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14083,7 +14263,7 @@ type PasskeyRegisterChallengeResult_AuthenticatorSelection struct {
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) Reset() {
 	*x = PasskeyRegisterChallengeResult_AuthenticatorSelection{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14095,7 +14275,7 @@ func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) String() string 
 func (*PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15297,7 +15477,22 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"provenance\x18\x03 \x01(\tR\n" +
 	"provenance\x126\n" +
 	"\x17normalized_request_hash\x18\x04 \x01(\tR\x15normalizedRequestHash\x12)\n" +
-	"\x10explicit_consent\x18\x05 \x01(\bR\x0fexplicitConsent*\xce\x01\n" +
+	"\x10explicit_consent\x18\x05 \x01(\bR\x0fexplicitConsent\"\xff\x01\n" +
+	"\x1bAuditChainCheckpointPayload\x12,\n" +
+	"\x12pruned_through_seq\x18\x01 \x01(\x03R\x10prunedThroughSeq\x12.\n" +
+	"\x13pruned_through_hash\x18\x02 \x01(\tR\x11prunedThroughHash\x12.\n" +
+	"\x13events_pruned_count\x18\x03 \x01(\x03R\x11eventsPrunedCount\x12+\n" +
+	"\x12created_at_unix_ms\x18\x04 \x01(\x03R\x0fcreatedAtUnixMs\x12%\n" +
+	"\x0eformat_version\x18\x05 \x01(\tR\rformatVersion\"\xe5\x02\n" +
+	"\x14AuditChainCheckpoint\x12,\n" +
+	"\x12pruned_through_seq\x18\x01 \x01(\x03R\x10prunedThroughSeq\x12.\n" +
+	"\x13pruned_through_hash\x18\x02 \x01(\tR\x11prunedThroughHash\x12.\n" +
+	"\x13events_pruned_count\x18\x03 \x01(\x03R\x11eventsPrunedCount\x12'\n" +
+	"\x0fcheckpoint_hash\x18\x04 \x01(\tR\x0echeckpointHash\x12+\n" +
+	"\x12created_at_unix_ms\x18\x05 \x01(\x03R\x0fcreatedAtUnixMs\x12$\n" +
+	"\x0eauditor_key_id\x18\x06 \x01(\tR\fauditorKeyId\x12%\n" +
+	"\x0eformat_version\x18\a \x01(\tR\rformatVersion\x12\x1c\n" +
+	"\tsignature\x18\b \x01(\tR\tsignature*\xce\x01\n" +
 	"\x0fExecutionStatus\x12 \n" +
 	"\x1cEXECUTION_STATUS_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aEXECUTION_STATUS_EXECUTING\x10\x01\x12\x1e\n" +
@@ -15521,7 +15716,7 @@ func file_ztd_operator_v1_operator_proto_rawDescGZIP() []byte {
 }
 
 var file_ztd_operator_v1_operator_proto_enumTypes = make([]protoimpl.EnumInfo, 18)
-var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 155)
+var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 157)
 var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(ExecutionStatus)(0),                                                 // 0: ztd.operator.v1.ExecutionStatus
 	(L3Status)(0),                                                        // 1: ztd.operator.v1.L3Status
@@ -15691,30 +15886,32 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(*InferenceDispatchStreamFrame)(nil),                                 // 165: ztd.operator.v1.InferenceDispatchStreamFrame
 	(*InferenceDispatchResponse)(nil),                                    // 166: ztd.operator.v1.InferenceDispatchResponse
 	(*InferenceHostedEgressAttestation)(nil),                             // 167: ztd.operator.v1.InferenceHostedEgressAttestation
-	nil,                                                                  // 168: ztd.operator.v1.CommandRequested.EnvironmentEntry
-	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 169: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 170: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 171: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 172: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	(*structpb.Struct)(nil),                                              // 173: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),                                        // 174: google.protobuf.Timestamp
-	(*v1.GovernanceEnvelope)(nil),                                        // 175: ztd.common.v1.GovernanceEnvelope
+	(*AuditChainCheckpointPayload)(nil),                                  // 168: ztd.operator.v1.AuditChainCheckpointPayload
+	(*AuditChainCheckpoint)(nil),                                         // 169: ztd.operator.v1.AuditChainCheckpoint
+	nil,                                                                  // 170: ztd.operator.v1.CommandRequested.EnvironmentEntry
+	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 171: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 172: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 173: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 174: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	(*structpb.Struct)(nil),                                              // 175: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),                                        // 176: google.protobuf.Timestamp
+	(*v1.GovernanceEnvelope)(nil),                                        // 177: ztd.common.v1.GovernanceEnvelope
 }
 var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
-	168, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
+	170, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
 	0,   // 1: ztd.operator.v1.EvaluationWorkspaceSeedResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	173, // 2: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
+	175, // 2: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
 	46,  // 3: ztd.operator.v1.DeviceLinkResult.link:type_name -> ztd.operator.v1.DeviceLink
 	46,  // 4: ztd.operator.v1.ListDeviceLinksResult.links:type_name -> ztd.operator.v1.DeviceLink
 	62,  // 5: ztd.operator.v1.ListOperatorSlotsResult.operators:type_name -> ztd.operator.v1.OperatorDocument
-	174, // 6: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
-	174, // 7: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
-	174, // 8: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
-	174, // 9: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
-	174, // 10: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	176, // 6: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
+	176, // 7: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
+	176, // 8: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
+	176, // 9: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
+	176, // 10: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
 	108, // 11: ztd.operator.v1.OperatorDocument.latest_heartbeat_snapshot:type_name -> ztd.operator.v1.HeartbeatResult
 	61,  // 12: ztd.operator.v1.OperatorDocument.runtime_config:type_name -> ztd.operator.v1.OperatorRuntimeConfig
-	174, // 13: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
+	176, // 13: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
 	4,   // 14: ztd.operator.v1.DeterministicStageEvidence.kind:type_name -> ztd.operator.v1.DeterministicStageKind
 	5,   // 15: ztd.operator.v1.DeterministicStageEvidence.outcome:type_name -> ztd.operator.v1.DeterministicStageOutcome
 	0,   // 16: ztd.operator.v1.EventReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
@@ -15728,7 +15925,7 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	73,  // 24: ztd.operator.v1.ConsensusVoteInference.receipt:type_name -> ztd.operator.v1.EventReceipt
 	163, // 25: ztd.operator.v1.ConsensusVoteInference.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
 	73,  // 26: ztd.operator.v1.ConsensusVoteInference.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	175, // 27: ztd.operator.v1.GovernanceDeliberationResult.envelope:type_name -> ztd.common.v1.GovernanceEnvelope
+	177, // 27: ztd.operator.v1.GovernanceDeliberationResult.envelope:type_name -> ztd.common.v1.GovernanceEnvelope
 	74,  // 28: ztd.operator.v1.GovernanceDeliberationResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
 	73,  // 29: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.EventReceipt
 	74,  // 30: ztd.operator.v1.GovernanceRejection.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
@@ -15771,10 +15968,10 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	119, // 67: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
 	120, // 68: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
 	110, // 69: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
-	169, // 70: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	170, // 71: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	171, // 72: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	172, // 73: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	171, // 70: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	172, // 71: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	173, // 72: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	174, // 73: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
 	124, // 74: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
 	121, // 75: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
 	129, // 76: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
@@ -15893,7 +16090,7 @@ func file_ztd_operator_v1_operator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_operator_v1_operator_proto_rawDesc), len(file_ztd_operator_v1_operator_proto_rawDesc)),
 			NumEnums:      18,
-			NumMessages:   155,
+			NumMessages:   157,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
