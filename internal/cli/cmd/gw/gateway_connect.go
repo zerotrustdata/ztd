@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 )
 
 // connectDeps holds the injectable external boundaries for the gw connect
@@ -78,6 +79,7 @@ type connectDeps struct {
 // and continueFn defaults are auto-confirm/auto-continue; the interactive
 // command layer overrides them with stdin-reading implementations.
 func defaultConnectDeps() connectDeps {
+	logger, _ := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
 	return connectDeps{
 		discoveryFetcher: auth.DiscoverLiveTrustBundle,
 		verifier:         frontendverify.NewVerifier(frontendverify.VerifierDeps{}),
@@ -85,7 +87,7 @@ func defaultConnectDeps() connectDeps {
 		confirm:          func(string) bool { return true },
 		continueFn:       func(string) bool { return true },
 		now:              time.Now,
-		logger:           slog.Default(),
+		logger:           logger,
 	}
 }
 
@@ -185,7 +187,7 @@ func runGatewayConnect(
 		deps.now = time.Now
 	}
 	if deps.logger == nil {
-		deps.logger = slog.Default()
+		deps.logger, _ = logging.NewLogger(constants.LogLevelInfo, os.Stderr)
 	}
 
 	// 1. Parse and validate the frontend origin.
@@ -212,7 +214,7 @@ func runGatewayConnect(
 		return fmt.Errorf("gateway: load config: %w", err)
 	}
 
-	fileSvc, err := fileSvcFactory("", slog.Default())
+	fileSvc, err := fileSvcFactory("", deps.logger)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
@@ -309,7 +311,10 @@ func connectStoppedGateway(
 	renderConnectReview(cmd, origin, rpID, rpName, apiURL, gatewayStateStopped)
 
 	// Detect network identity and resolve cert mode.
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("gateway connect: create logger: %w", err)
+	}
 	identityResult := detectIdentity(cmd.Context(), logger, connectCfg.CertIdentityMode)
 	if identityResult.ShouldFallback {
 		cmd.Println("Warning: Failed to detect network identity, falling back to localhost-only mode")
@@ -363,7 +368,10 @@ func connectRestartGateway(
 	connectCfg := deriveConnectConfig(origin, rpID, rpName, profile.Config)
 
 	// Re-run network identity detection with the profile's cert mode.
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("gateway connect: create logger: %w", err)
+	}
 	identityResult := detectIdentity(cmd.Context(), logger, connectCfg.CertIdentityMode)
 	if identityResult.ShouldFallback {
 		cmd.Println("Warning: Failed to detect network identity, falling back to localhost-only mode")

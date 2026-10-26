@@ -13,7 +13,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -30,11 +29,11 @@ import (
 func TestActuatorPublicKeyExport(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := testutil.TempDir(t)
-		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
+		fileSvc, err := fs.NewRuntimeFileService(tmpDir, testutil.NewTestLogger())
 		require.NoError(t, err)
 		pubKey, _, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
-		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		logger := testutil.NewTestLogger()
 
 		err = ExportActuatorPublicKey(fileSvc, pubKey, "test-Actuator-key", logger)
 		require.NoError(t, err)
@@ -52,7 +51,7 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 
 	t.Run("NilLogger", func(t *testing.T) {
 		tmpDir := testutil.TempDir(t)
-		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
+		fileSvc, err := fs.NewRuntimeFileService(tmpDir, testutil.NewTestLogger())
 		require.NoError(t, err)
 		pubKey, _, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
@@ -67,7 +66,7 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 
 	t.Run("OverwriteExisting", func(t *testing.T) {
 		tmpDir := testutil.TempDir(t)
-		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
+		fileSvc, err := fs.NewRuntimeFileService(tmpDir, testutil.NewTestLogger())
 		require.NoError(t, err)
 		pubKey1, _, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
@@ -75,7 +74,7 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 		pubKey2, _, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
 
-		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		logger := testutil.NewTestLogger()
 
 		require.NoError(t, ExportActuatorPublicKey(fileSvc, pubKey1, "key-1", logger))
 		require.NoError(t, ExportActuatorPublicKey(fileSvc, pubKey2, "key-2", logger))
@@ -92,12 +91,12 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 
 	t.Run("FilePermissions", func(t *testing.T) {
 		tmpDir := testutil.TempDir(t)
-		fileSvc, err := fs.NewRuntimeFileService(tmpDir, slog.Default())
+		fileSvc, err := fs.NewRuntimeFileService(tmpDir, testutil.NewTestLogger())
 		require.NoError(t, err)
 		pubKey, _, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
 
-		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		logger := testutil.NewTestLogger()
 
 		err = ExportActuatorPublicKey(fileSvc, pubKey, "key-id", logger)
 		require.NoError(t, err)

@@ -202,6 +202,8 @@ Capability ownership rules enforced by the Gateway:
 
 An Inference Operator runs one provider. Under llama.cpp, `--inference-keep-alive` accepts `-1` or `0` only, and `ZTD_OLLAMA_ENDPOINT` is not read as the provider endpoint. Inference and governed model maintenance run on whichever provider the Operator selected.
 
+The llama.cpp backend sends the requested temperature explicitly, including zero. A frozen GGUF digest is checked before and after both generation and System One decisions; its file-hash cache compares file ID, size, modification time, and filesystem change time, and caches only settled identities. These checks describe local files under the configured model root, not the provider's in-memory weights. Router inventory must contain an explicit model array with unique IDs and recognized statuses; missing or unknown state fails with `ErrInferenceProviderResponseInvalid` rather than proving models are absent. Provider error bodies are excluded from generation failure logs because they can echo prompt material.
+
 Witness constraints:
 - Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the event-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.

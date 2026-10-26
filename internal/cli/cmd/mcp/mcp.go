@@ -43,6 +43,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
@@ -263,7 +264,7 @@ func isCLICredentialTier(tierName string) bool {
 // Cert and key are resolved as pairs per tier; supplying only one half fails closed.
 // CA bundle resolves: --ca-bundle flag → auth.ReadTrustBundle.
 // Gateway URL resolves: --gateway-url flag → cfg.OperatorHTTPURL() + "/mcp".
-func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags) (*gatewayConn, error) {
+func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags, loggers ...*slog.Logger) (*gatewayConn, error) {
 	var appCert, appKey string
 	if flags.App != "" {
 		appCert = cfg.AppCertFile(flags.App)
@@ -367,7 +368,15 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 		gatewayAddr.Host = net.JoinHostPort(constants.LocalhostIP, port)
 	}
 	session.gatewayURL = gatewayAddr.String()
-	slog.Info("ztd.local DNS resolution failed, falling back to loopback", "ip", constants.LocalhostIP)
+	var fallbackLogger *slog.Logger
+	if len(loggers) > 0 && loggers[0] != nil {
+		fallbackLogger = loggers[0]
+	} else {
+		fallbackLogger, _ = logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	}
+	if fallbackLogger != nil {
+		fallbackLogger.Info("ztd.local DNS resolution failed, falling back to loopback", "ip", constants.LocalhostIP)
+	}
 
 	return session, nil
 }
@@ -387,12 +396,15 @@ func runMCPStdioProxy(cmd *cobra.Command, _ []string, fileSvcFactory func(string
 		return fmt.Errorf("mcp: load config: %w", err)
 	}
 
-	fileSvc, err := fileSvcFactory("", slog.Default())
+	logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("mcp: configure logger: %w", err)
+	}
+
+	fileSvc, err := fileSvcFactory("", logger)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// Parse credential flags from the stdio subcommand. Empty fields fall through
 	// to the enrolled CLI credentials on disk.
@@ -415,7 +427,7 @@ func ServeStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *c
 func serveStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, credFlags stdioCredentialFlags, in io.Reader, out io.Writer, logger *slog.Logger) error {
 	// Build the mTLS gateway connection once. Identity is in the application cert's
 	// URI SANs — no session object or headers. All proxy calls reuse this connection.
-	conn, err := buildGatewayConn(fileSvc, cfg, credFlags)
+	conn, err := buildGatewayConn(fileSvc, cfg, credFlags, logger)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrGatewayNotReady, err)
 	}

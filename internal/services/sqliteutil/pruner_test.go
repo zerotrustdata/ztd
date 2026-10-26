@@ -244,7 +244,7 @@ func TestPruner_FnReceivesCorrectDB(t *testing.T) {
 
 func TestNewPruner_Tier1_SetsFieldsCorrectly(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	db := &DB{}
 	interval := 5 * time.Minute
 	callCount := 0
@@ -266,7 +266,7 @@ func TestNewPruner_Tier1_SetsFieldsCorrectly(t *testing.T) {
 
 func TestNewPruner_Tier1_NilDBAllowed(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	fn := func(_ context.Context, _ *DB, _ *slog.Logger) error { return nil }
 
 	p := NewPruner(nil, logger, time.Hour, fn)
@@ -288,7 +288,7 @@ func TestNewPruner_Tier1_NilLoggerAllowed(t *testing.T) {
 
 func TestNewPruner_Tier1_NilFnAllowed(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	db := &DB{}
 
 	p := NewPruner(db, logger, time.Hour, nil)
@@ -299,7 +299,7 @@ func TestNewPruner_Tier1_NilFnAllowed(t *testing.T) {
 
 func TestPruner_Start_Tier1_Idempotent(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	p.Start()
@@ -311,7 +311,7 @@ func TestPruner_Start_Tier1_Idempotent(t *testing.T) {
 
 func TestPruner_Stop_Tier1_Idempotent(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	p.Stop()
@@ -323,7 +323,7 @@ func TestPruner_Stop_Tier1_Idempotent(t *testing.T) {
 
 func TestPruner_Stop_Tier1_WithoutStartDoesNotPanic(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	assert.NotPanics(t, func() {
@@ -334,7 +334,7 @@ func TestPruner_Stop_Tier1_WithoutStartDoesNotPanic(t *testing.T) {
 
 func TestPruner_Start_Tier1_SetsStartedFlag(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	assert.False(t, p.started)
@@ -344,7 +344,7 @@ func TestPruner_Start_Tier1_SetsStartedFlag(t *testing.T) {
 
 func TestPruner_Stop_Tier1_ResetsStartedFlag(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	p.Start()
@@ -356,7 +356,7 @@ func TestPruner_Stop_Tier1_ResetsStartedFlag(t *testing.T) {
 
 func TestPruner_Tier1_ContextCancelledOnStop(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	require.NoError(t, p.ctx.Err(), "context should not be cancelled initially")
@@ -369,7 +369,7 @@ func TestPruner_Tier1_ContextCancelledOnStop(t *testing.T) {
 
 func TestPruner_Tier1_FnStoresCorrectly(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	called := false
 	fn := func(_ context.Context, _ *DB, _ *slog.Logger) error {
 		called = true
@@ -385,7 +385,7 @@ func TestPruner_Tier1_FnStoresCorrectly(t *testing.T) {
 
 func TestPruner_Tier1_FnErrorHandling(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	expectedErr := errors.New("prune failed")
 	fn := func(_ context.Context, _ *DB, _ *slog.Logger) error {
 		return expectedErr
@@ -399,7 +399,7 @@ func TestPruner_Tier1_FnErrorHandling(t *testing.T) {
 
 func TestPruner_Tier1_ContextPassedToFn(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	var receivedCtx any
 	fn := func(ctx context.Context, _ *DB, _ *slog.Logger) error {
 		receivedCtx = ctx
@@ -415,7 +415,7 @@ func TestPruner_Tier1_ContextPassedToFn(t *testing.T) {
 
 func TestPruner_Tier1_DBPassedToFn(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	db := &DB{}
 	var receivedDB *DB
 	fn := func(_ context.Context, d *DB, _ *slog.Logger) error {
@@ -431,7 +431,7 @@ func TestPruner_Tier1_DBPassedToFn(t *testing.T) {
 
 func TestPruner_Tier1_LoggerPassedToFn(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	var receivedLogger *slog.Logger
 	fn := func(_ context.Context, _ *DB, l *slog.Logger) error {
 		receivedLogger = l
@@ -446,7 +446,7 @@ func TestPruner_Tier1_LoggerPassedToFn(t *testing.T) {
 
 func TestPruner_Tier1_MutexProtectsStartedFlag(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	// Concurrent Start calls should be safe

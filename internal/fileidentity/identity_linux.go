@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package model_provenance
+package fileidentity
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ import (
 func fileChangeTimeNanos(_ *os.File, info os.FileInfo) (int64, error) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return 0, fmt.Errorf("model provenance attestor: %w", constants.ErrModelProvenanceBlobIdentity)
+		return 0, fmt.Errorf("file identity: %w", constants.ErrFileIdentityUnavailable)
 	}
 	return stat.Ctim.Nano(), nil
 }

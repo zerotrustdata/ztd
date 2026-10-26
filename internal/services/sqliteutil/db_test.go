@@ -911,7 +911,7 @@ func TestFindSubstring_Tier1_Overlapping(t *testing.T) {
 
 func TestDB_Tier1_StructFieldsAccessible(t *testing.T) {
 	t.Parallel()
-	logger := slog.New(slog.NewTextHandler(nil, nil))
+	logger := testutil.NewTestLogger()
 	db := &DB{
 		DB:     nil,
 		logger: logger,

@@ -42,7 +42,8 @@ type LlamaCppBackend struct {
 }
 
 // NewLlamaCppBackend constructs a LlamaCppBackend for a llama-server router
-// endpoint and the router's --models-dir.
+// endpoint and the router's --models-dir. A logger is required for progress
+// delivery and residency cleanup failures.
 func NewLlamaCppBackend(endpoint, modelRoot string, logger *slog.Logger) (*LlamaCppBackend, error) {
 	provider, err := newProviderHTTP("llamacpp_backend", endpoint)
 	if err != nil {
@@ -50,6 +51,9 @@ func NewLlamaCppBackend(endpoint, modelRoot string, logger *slog.Logger) (*Llama
 	}
 	if modelRoot == "" {
 		return nil, fmt.Errorf("llamacpp_backend: %w", constants.ErrInferenceLlamaCppModelRootRequired)
+	}
+	if logger == nil {
+		return nil, fmt.Errorf("llamacpp_backend: logger: %w", constants.ErrMissingRequiredField)
 	}
 	return &LlamaCppBackend{providerHTTP: provider, logger: logger, digester: newLlamaCppModelDigester(modelRoot)}, nil
 }
@@ -65,7 +69,7 @@ type llamaCppChatRequest struct {
 	ParallelToolCalls  *bool                       `json:"parallel_tool_calls,omitempty"`
 	Stream             bool                        `json:"stream"`
 	StreamOptions      llamaCppStreamOptions       `json:"stream_options"`
-	Temperature        float32                     `json:"temperature,omitempty"`
+	Temperature        float32                     `json:"temperature"`
 	MaxTokens          int32                       `json:"max_tokens,omitempty"`
 	TopP               *float32                    `json:"top_p,omitempty"`
 	TopK               *int32                      `json:"top_k,omitempty"`
@@ -429,13 +433,7 @@ func (b *LlamaCppBackend) generateStatusError(statusCode int, body []byte, model
 		Error llamaCppError `json:"error"`
 	}
 	_ = json.Unmarshal(body, &apiError)
-	if b.logger != nil {
-		b.logger.Warn("llama.cpp generation failed",
-			"status", statusCode,
-			"model", model,
-			"error", apiError.Error.Message,
-		)
-	}
+	b.logger.Warn("llama.cpp generation failed", "status", statusCode, "model", model)
 	message := strings.ToLower(string(body))
 	switch {
 	case statusCode == http.StatusRequestTimeout:
@@ -714,13 +712,13 @@ func (b *LlamaCppBackend) verifyModelDigest(ctx context.Context, model, expected
 func (b *LlamaCppBackend) unloadAfterRequest(ctx context.Context, model string) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ProviderStatusTimeout)
 	defer cancel()
-	if err := b.unloadModel(ctx, model); err != nil && b.logger != nil {
+	if err := b.unloadModel(ctx, model); err != nil {
 		b.logger.Warn("llama.cpp keep-alive 0 unload failed", "model", model, "error", err)
 	}
 }
 
 // Decide calls llama-server's System One endpoint, verifying the frozen model
-// digest before egress.
+// digest before egress and after the response.
 func (b *LlamaCppBackend) Decide(ctx context.Context, req models.DecisionRequest) (*models.DecisionResponse, error) {
 	if req.AllowHosted || req.Input.GetAllowHosted() {
 		return nil, constants.ErrInferenceHostedNotAllowed
@@ -742,7 +740,16 @@ func (b *LlamaCppBackend) Decide(ctx context.Context, req models.DecisionRequest
 	if unload {
 		defer b.unloadAfterRequest(ctx, req.Model)
 	}
-	return callSystemOne(ctx, b.client, b.apiURL("v1", "systemone"), "", body, req, b.maxResponseBytes)
+	response, err := callSystemOne(ctx, b.client, b.apiURL("v1", "systemone"), "", body, req, b.maxResponseBytes)
+	if err != nil {
+		return nil, err
+	}
+	if req.ModelDigest != "" {
+		if err := b.verifyModelDigest(ctx, req.Model, req.ModelDigest); err != nil {
+			return nil, err
+		}
+	}
+	return response, nil
 }
 
 // Status queries the router's /models endpoint to verify llama-server is
@@ -765,9 +772,24 @@ func (b *LlamaCppBackend) listRouterModels(ctx context.Context, op string) ([]ll
 	if err := b.getJSON(ctx, op, &listed, "models"); err != nil {
 		return nil, err
 	}
+	if listed.Data == nil {
+		return nil, fmt.Errorf("llamacpp_backend: %s: model list is required: %w", op, constants.ErrInferenceProviderResponseInvalid)
+	}
+	seen := make(map[string]struct{}, len(listed.Data))
 	for _, model := range listed.Data {
 		if model.ID == "" {
 			return nil, fmt.Errorf("llamacpp_backend: %s: %w: model id is required", op, constants.ErrInferenceProviderResponseInvalid)
+		}
+		if _, exists := seen[model.ID]; exists {
+			return nil, fmt.Errorf("llamacpp_backend: %s: duplicate model id: %w", op, constants.ErrInferenceProviderResponseInvalid)
+		}
+		seen[model.ID] = struct{}{}
+		// An unknown state cannot prove absence from residency. These are
+		// llama-server's complete router states, including cache downloads.
+		switch model.Status.Value {
+		case "loaded", "loading", "sleeping", "unloaded", "downloading", "downloaded", "incomplete":
+		default:
+			return nil, fmt.Errorf("llamacpp_backend: %s: model status: %w", op, constants.ErrInferenceProviderResponseInvalid)
 		}
 	}
 	return listed.Data, nil
@@ -857,9 +879,7 @@ func (b *LlamaCppBackend) ListProviderModelInventory(ctx context.Context) ([]Pro
 	for _, routerModel := range routerModels {
 		model, digest, err := b.digester.modelDigest(ctx, routerModel.ID)
 		if errors.Is(err, constants.ErrInferenceModelNotFound) || errors.Is(err, constants.ErrLlamaCppModelLayoutInvalid) {
-			if b.logger != nil {
-				b.logger.Warn("llama.cpp router model does not resolve under the model root; skipped", "model", routerModel.ID, "error", err)
-			}
+			b.logger.Warn("llama.cpp router model does not resolve under the model root; skipped", "model", routerModel.ID, "error", err)
 			continue
 		}
 		if err != nil {

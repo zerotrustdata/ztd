@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package model_provenance
+package fileidentity
 
 import (
 	"fmt"
@@ -33,7 +33,7 @@ const fileTimeUnixEpochTicks = 116444736000000000
 func fileChangeTimeNanos(file *os.File, _ os.FileInfo) (int64, error) {
 	var info fileBasicInfo
 	if err := windows.GetFileInformationByHandleEx(windows.Handle(file.Fd()), windows.FileBasicInfo, (*byte)(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
-		return 0, fmt.Errorf("model provenance attestor: %w: %w", constants.ErrModelProvenanceBlobIdentity, err)
+		return 0, fmt.Errorf("file identity: %w: %w", constants.ErrFileIdentityUnavailable, err)
 	}
 	return (info.ChangeTime - fileTimeUnixEpochTicks) * 100, nil
 }

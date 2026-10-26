@@ -46,6 +46,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
@@ -377,7 +378,10 @@ func Run(cfg Config) error {
 		return fmt.Errorf("chaos: count must be positive, got %d", cfg.Count)
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := logging.NewStdoutLogger(constants.LogLevelInfo)
+	if err != nil {
+		return fmt.Errorf("chaos: configure logger: %w", err)
+	}
 
 	// Initialize paths relative to current working directory
 	if err := paths.Init(); err != nil {

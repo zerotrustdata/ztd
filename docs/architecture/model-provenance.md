@@ -83,7 +83,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | --- | --- | --- |
 | Provenance Operator capability | `internal/services/operatorcapability/provenance_operator.go` | `./ztd test unit --pkg ./internal/services/operatorcapability` |
 | Ollama manifest attestation | `internal/services/inference/model_provenance/attestor.go` | `./ztd test unit --pkg ./internal/services/inference/model_provenance` |
-| llama.cpp GGUF attestation | `internal/services/inference/model_provenance/llamacpp_attestor.go` | `./ztd test unit --pkg ./internal/services/inference/model_provenance` |
+| llama.cpp GGUF attestation | `internal/services/inference/model_provenance/llamacpp_attestor.go` | `./ztd test integration --pkg ./internal/services/inference/model_provenance --run TestLlamaCppStorageAttestor` |
 | Protocol surface | `protocol/proto/ztd/eval/v1/eval.proto` | `ModelProvenanceAttestationWindow` schema |
 | Gateway attestation window persistence | `internal/services/inference/model_provenance/window_store.go` | `WindowStore.Load` and `WindowStore.Save` implementations |
 | Sealed campaign copy | `internal/services/evaluation/campaign_model_provenance.go` | `Store.SaveModelProvenanceWindow` and `Store.LoadModelProvenanceWindow`, run with `./ztd test unit --pkg ./internal/services/evaluation --run ModelProvenance` |

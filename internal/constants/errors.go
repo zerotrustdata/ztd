@@ -200,6 +200,8 @@ var (
 	ErrFileOwnershipExtract = errors.New("failed to extract syscall.Stat_t from FileInfo")
 	ErrRuntimeFileLocked    = errors.New("runtime file is locked by another process")
 
+	ErrFileIdentityUnavailable = errors.New("file identity unavailable")
+
 	// FsGrep error type constants
 	ErrFsGrepValidation     = errors.New("fs_grep validation error")
 	ErrFsGrepInvalidPattern = errors.New("fs_grep invalid pattern")
@@ -1369,7 +1371,6 @@ var (
 	ErrProvenanceOperatorNotCapable       = errors.New("provenance operator: target operator session is not a provenance operator")
 	ErrModelProvenanceDigestMismatch      = errors.New("model provenance: observed model digest does not match expected digest")
 	ErrModelProvenanceBlobChanged         = errors.New("model provenance: weight blob changed while it was hashed")
-	ErrModelProvenanceBlobIdentity        = errors.New("model provenance: weight blob file identity unavailable")
 	ErrModelProvenanceBlobDigestMismatch  = errors.New("model provenance: weight blob content does not match its digest")
 	ErrLlamaCppModelLayoutInvalid         = errors.New("llamacpp: model directory layout invalid")
 	ErrLlamaCppModelNotFound              = errors.New("llamacpp: model not found under models dir")

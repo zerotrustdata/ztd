@@ -30,11 +30,13 @@ func newUnitLlamaCppBackend(t *testing.T) *LlamaCppBackend {
 	return backend
 }
 
-func TestNewLlamaCppBackend_RequiresEndpointAndModelRoot(t *testing.T) {
+func TestNewLlamaCppBackend_RequiresEndpointModelRootAndLogger(t *testing.T) {
 	_, err := NewLlamaCppBackend("not-a-url", "/models", testutil.NewTestLogger())
 	require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
 	_, err = NewLlamaCppBackend("http://127.0.0.1:8080", "", testutil.NewTestLogger())
 	require.ErrorIs(t, err, constants.ErrInferenceLlamaCppModelRootRequired)
+	_, err = NewLlamaCppBackend("http://127.0.0.1:8080", "/models", nil)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField, "stream delivery failures require a logger")
 }
 
 func TestLlamaCppUnloadAfterRequest(t *testing.T) {
@@ -88,6 +90,14 @@ func TestLlamaCppChatRequestFor_MapsGenerationOptions(t *testing.T) {
 	}`, string(body))
 }
 
+func TestLlamaCppChatRequestFor_PreservesZeroTemperature(t *testing.T) {
+	request, err := llamaCppChatRequestFor(models.GenerateRequest{Model: "m", Messages: textInferenceMessages("hi"), Temperature: 0})
+	require.NoError(t, err)
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"temperature":0`, "zero must reach the provider instead of selecting its default sampling temperature")
+}
+
 func TestLlamaCppChatRequestFor_RejectsUnsupportedOptions(t *testing.T) {
 	base := models.GenerateRequest{Model: "m", Messages: textInferenceMessages("hi")}
 
@@ -138,6 +148,16 @@ func TestLlamaCppGenerateStatusError_Classifies(t *testing.T) {
 		err := backend.generateStatusError(tc.status, []byte(tc.body), "m")
 		require.ErrorIs(t, err, tc.want, "%d %s", tc.status, tc.body)
 	}
+}
+
+func TestLlamaCppGenerateStatusError_DoesNotLogProviderContent(t *testing.T) {
+	backend := newUnitLlamaCppBackend(t)
+	logger, sink := testutil.NewBufferLogger(t)
+	backend.logger = logger
+	err := backend.generateStatusError(http.StatusInternalServerError, []byte(`{"error":{"message":"PRIVATE-PROMPT-MARKER"}}`), "m")
+	require.ErrorIs(t, err, constants.ErrInferenceGenerateFailed)
+	assert.Contains(t, sink.String(), "llama.cpp generation failed")
+	assert.NotContains(t, sink.String(), "PRIVATE-PROMPT-MARKER", "provider error text can echo prompt material")
 }
 
 func llamaCppSSE(events ...string) string {

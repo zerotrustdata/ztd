@@ -761,7 +761,7 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	vaultDir := filepath.Join(tempDir, "vault")
 
-	fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
+	fileSvc, err := fs.NewRuntimeFileService(tempDir, testutil.NewTestLogger())
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 
@@ -772,7 +772,7 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 
 	// Create local-first events store
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -781,7 +781,7 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 		PruneIntervalMinutes: 60,
 		EncryptionVault:      testVault,
 	}
-	eventsStore, err := storage.NewLocalFirstEventsStore(auditConfig, db, slog.Default(), fileSvc)
+	eventsStore, err := storage.NewLocalFirstEventsStore(auditConfig, db, testutil.NewTestLogger(), fileSvc)
 	require.NoError(t, err)
 	defer eventsStore.Close()
 
@@ -1165,7 +1165,7 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 		tempDir := testutil.TempDir(t)
 		vaultDir := filepath.Join(tempDir, "vault")
 
-		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
+		fileSvc, err := fs.NewRuntimeFileService(tempDir, testutil.NewTestLogger())
 		require.NoError(t, err)
 		require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 
@@ -1176,7 +1176,7 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 
 		// Create local-first events store
 		dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-		db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
+		db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -1185,7 +1185,7 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 			PruneIntervalMinutes: 60,
 			EncryptionVault:      testVault,
 		}
-		eventsStore, err := storage.NewLocalFirstEventsStore(auditConfig, db, slog.Default(), fileSvc)
+		eventsStore, err := storage.NewLocalFirstEventsStore(auditConfig, db, testutil.NewTestLogger(), fileSvc)
 		require.NoError(t, err)
 		defer eventsStore.Close()
 
@@ -1287,8 +1287,8 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 	t.Run("creates service with dependencies", func(t *testing.T) {
 		deps := Dependencies{
 			Posture:          constants.PostureDoctrine,
-			Logger:           slog.Default(),
-			Responder:        response.NewWriter(slog.Default()),
+			Logger:           testutil.NewTestLogger(),
+			Responder:        response.NewWriter(testutil.NewTestLogger()),
 			SuspendedStore:   &fakeSuspendedStore{},
 			MaxPayloadBytes:  10 * 1024 * 1024,
 			EventsStore:      noopAuditEventRecorder{},
@@ -1312,8 +1312,8 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 	t.Run("initializes field path registry", func(t *testing.T) {
 		deps := Dependencies{
 			Posture:          constants.PostureDoctrine,
-			Logger:           slog.Default(),
-			Responder:        response.NewWriter(slog.Default()),
+			Logger:           testutil.NewTestLogger(),
+			Responder:        response.NewWriter(testutil.NewTestLogger()),
 			MaxPayloadBytes:  10 * 1024 * 1024,
 			EventsStore:      noopAuditEventRecorder{},
 			EmbeddedSession:  fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
@@ -1330,8 +1330,8 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 		factoryErr := fmt.Errorf("simulated registry initialization failure")
 		deps := Dependencies{
 			Posture:          constants.PostureDoctrine,
-			Logger:           slog.Default(),
-			Responder:        response.NewWriter(slog.Default()),
+			Logger:           testutil.NewTestLogger(),
+			Responder:        response.NewWriter(testutil.NewTestLogger()),
 			MaxPayloadBytes:  10 * 1024 * 1024,
 			EventsStore:      noopAuditEventRecorder{},
 			EmbeddedSession:  fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
@@ -1352,8 +1352,8 @@ func TestGatewayService_NewGatewayService(t *testing.T) {
 func TestGatewayService_NilEventsStore_ReturnsError(t *testing.T) {
 	deps := Dependencies{
 		Posture:         constants.PostureDoctrine,
-		Logger:          slog.Default(),
-		Responder:       response.NewWriter(slog.Default()),
+		Logger:          testutil.NewTestLogger(),
+		Responder:       response.NewWriter(testutil.NewTestLogger()),
 		SuspendedStore:  &fakeSuspendedStore{},
 		MaxPayloadBytes: 10 * 1024 * 1024,
 		// EventsStore intentionally omitted — a missing local-first events store is a wiring
@@ -1532,8 +1532,8 @@ func TestGatewayService_HandleToolsCall_AppCredentialFailsClosedWhenEmbeddedOper
 func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T) {
 	g, err := NewGatewayService(Dependencies{
 		Posture:         constants.PostureDoctrine,
-		Logger:          slog.Default(),
-		Responder:       response.NewWriter(slog.Default()),
+		Logger:          testutil.NewTestLogger(),
+		Responder:       response.NewWriter(testutil.NewTestLogger()),
 		EventsStore:     noopAuditEventRecorder{},
 		EmbeddedSession: fakeEmbeddedSession{sessionID: testEmbeddedSessionID},
 	})
@@ -1544,8 +1544,8 @@ func TestGatewayService_NewGatewayService_RequiresScrubbingService(t *testing.T)
 func TestGatewayService_NewGatewayService_RequiresEmbeddedSession(t *testing.T) {
 	g, err := NewGatewayService(Dependencies{
 		Posture:     constants.PostureDoctrine,
-		Logger:      slog.Default(),
-		Responder:   response.NewWriter(slog.Default()),
+		Logger:      testutil.NewTestLogger(),
+		Responder:   response.NewWriter(testutil.NewTestLogger()),
 		EventsStore: noopAuditEventRecorder{},
 	})
 	require.ErrorIs(t, err, constants.ErrEmbeddedSessionResolverRequired)
@@ -1563,7 +1563,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("database service not configured", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(nil))
 
 		_, err := g.handleReadField(context.Background(), json.RawMessage(`{}`))
@@ -1572,7 +1572,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("invalid JSON arguments", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}))
 
 		_, err := g.handleReadField(context.Background(), json.RawMessage(`invalid json`))
@@ -1581,7 +1581,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("missing required fields", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}))
 
 		testCases := []struct {
@@ -1605,7 +1605,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("field path validation failed", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}))
 
 		args := `{"collection":"investigations","document_id":"doc1","field_path":"credentials.api_key","operator_session_id":"sess1"}`
@@ -1615,7 +1615,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("missing session validator rejects field read", func(t *testing.T) {
-		registry, err := NewFieldPathRegistry(slog.Default())
+		registry, err := NewFieldPathRegistry(testutil.NewTestLogger())
 		require.NoError(t, err)
 		db := &fakeDBService{}
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(db), withSessionValidator(nil))
@@ -1628,7 +1628,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("session lookup error rejects field read", func(t *testing.T) {
-		registry, err := NewFieldPathRegistry(slog.Default())
+		registry, err := NewFieldPathRegistry(testutil.NewTestLogger())
 		require.NoError(t, err)
 		db := &fakeDBService{}
 		validator := &fakeSessionValidator{err: context.Canceled}
@@ -1646,7 +1646,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("session validation failed", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		validator := &fakeSessionValidator{valid: false}
 		g := newTestGatewayService(t, withFieldPathRegistry(registry), withDBService(&fakeDBService{}), withSessionValidator(validator))
 
@@ -1657,7 +1657,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("successful field read", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		db := &fakeDBService{}
 		validator := &fakeSessionValidator{valid: true}
 		audit := &fakeAuditLogger{}
@@ -1676,7 +1676,7 @@ func TestGatewayService_HandleReadField(t *testing.T) {
 	})
 
 	t.Run("forbidden pattern in field value", func(t *testing.T) {
-		registry, _ := NewFieldPathRegistry(slog.Default())
+		registry, _ := NewFieldPathRegistry(testutil.NewTestLogger())
 		s := "password=secret123"
 		db := &fakeDBService{fieldValue: &FieldValue{Str: &s}}
 		validator := &fakeSessionValidator{valid: true}
@@ -1874,7 +1874,7 @@ func TestGatewayService_HandleA2ARequest(t *testing.T) {
 func TestGatewayService_Dependencies(t *testing.T) {
 
 	t.Run("envProc nil before initialization", func(t *testing.T) {
-		g := &GatewayService{logger: slog.Default(), posture: constants.PostureDoctrine}
+		g := &GatewayService{logger: testutil.NewTestLogger(), posture: constants.PostureDoctrine}
 		require.Nil(t, g.envProc, "envProc should be nil initially")
 	})
 
@@ -1885,7 +1885,7 @@ func TestGatewayService_Dependencies(t *testing.T) {
 		stateRoot := &fakeStateRootProvider{root: "test"}
 		g := &GatewayService{
 			posture:                constants.PostureDoctrine,
-			logger:                 slog.Default(),
+			logger:                 testutil.NewTestLogger(),
 			envProc:                envProc,
 			stateRootProvider:      stateRoot,
 			signingKey:             privKey,
@@ -1905,8 +1905,8 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	t.Run("dispatchMCP returns not-ready error before deps are wired", func(t *testing.T) {
 		g := &GatewayService{
 			posture:         constants.PostureDoctrine,
-			logger:          slog.Default(),
-			responder:       response.NewWriter(slog.Default()),
+			logger:          testutil.NewTestLogger(),
+			responder:       response.NewWriter(testutil.NewTestLogger()),
 			maxPayloadBytes: 10 * 1024 * 1024,
 		}
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test","arguments":{}}}`
@@ -1924,8 +1924,8 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	t.Run("dispatchMCP allows initialize without deps", func(t *testing.T) {
 		g := &GatewayService{
 			posture:         constants.PostureDoctrine,
-			logger:          slog.Default(),
-			responder:       response.NewWriter(slog.Default()),
+			logger:          testutil.NewTestLogger(),
+			responder:       response.NewWriter(testutil.NewTestLogger()),
 			maxPayloadBytes: 10 * 1024 * 1024,
 		}
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`
@@ -1942,8 +1942,8 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	t.Run("dispatchMCP allows ping without deps", func(t *testing.T) {
 		g := &GatewayService{
 			posture:         constants.PostureDoctrine,
-			logger:          slog.Default(),
-			responder:       response.NewWriter(slog.Default()),
+			logger:          testutil.NewTestLogger(),
+			responder:       response.NewWriter(testutil.NewTestLogger()),
 			maxPayloadBytes: 10 * 1024 * 1024,
 		}
 		reqBody := `{"jsonrpc":"2.0","id":42,"method":"ping"}`
@@ -2095,7 +2095,7 @@ func withAuditLogger(audit AuditLogger) testGatewayOption {
 // newTestScrubbingService builds an enabled egress scrubber with the default configuration.
 func newTestScrubbingService(t *testing.T) *scrubbing.ScrubbingService {
 	t.Helper()
-	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), storagetest.NewTestTokenStore())
+	svc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), storagetest.NewTestTokenStore())
 	require.NoError(t, err)
 	return svc
 }
@@ -2107,8 +2107,8 @@ func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayServ
 
 	g := &GatewayService{
 		posture:           constants.PostureDoctrine,
-		logger:            slog.Default(),
-		responder:         response.NewWriter(slog.Default()),
+		logger:            testutil.NewTestLogger(),
+		responder:         response.NewWriter(testutil.NewTestLogger()),
 		suspendedStore:    &fakeSuspendedStore{},
 		eventsStore:       noopAuditEventRecorder{},
 		scrubbingService:  newTestScrubbingService(t),

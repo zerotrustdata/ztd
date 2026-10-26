@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	pubsubv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/pubsub/v1"
 )
 
@@ -80,7 +81,7 @@ func TestPubSubBackPressureDropsOldestAndLogs(t *testing.T) {
 // channels. The prior kill-on-overflow policy synchronously evicted the
 // subscriber from broker maps; drop-oldest must not.
 func TestPubSubBackPressureKeepsSubscriptions(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{buf: newDropOldestBuf(1), done: make(chan struct{})}
@@ -100,7 +101,7 @@ func TestPubSubBackPressureKeepsSubscriptions(t *testing.T) {
 }
 
 func TestPubSubSessionHandler_handleAction(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{
@@ -180,7 +181,7 @@ func TestPubSubSessionHandler_handleAction(t *testing.T) {
 }
 
 func TestPubSubSessionHandler_cleanup(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{
@@ -216,7 +217,7 @@ func TestPubSubSessionHandler_cleanup(t *testing.T) {
 // triple-signal (closed bool + close(send) + ws.Close) bookkeeping that
 // was the root cause of a subtle double-close race.
 func TestPubSubSubscriberShutdownIsIdempotentAndFailsFast(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
@@ -261,7 +262,7 @@ func TestPubSubHappyPathDoesNotLogDrop(t *testing.T) {
 }
 
 func TestNewGatewayWebSocketHandler(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	assert.NotNil(t, broker)
@@ -271,7 +272,7 @@ func TestNewGatewayWebSocketHandler(t *testing.T) {
 }
 
 func TestRegisterHandler(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	called := false
@@ -302,7 +303,7 @@ func TestRegisterHandler(t *testing.T) {
 }
 
 func TestSubscribe(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{buf: newDropOldestBuf(4), done: make(chan struct{})}
@@ -453,7 +454,7 @@ func TestExtractMTLSIdentity_MalformedOperatorSPIFFEID(t *testing.T) {
 // not part of the wire protocol: a "psubscribe" frame registers nothing, so
 // a glob such as heartbeat:* can never fan out another Operator's traffic.
 func TestPubSubPSubscribeActionIgnored(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{
@@ -475,7 +476,7 @@ func TestPubSubPSubscribeActionIgnored(t *testing.T) {
 // TestPubSubUnsubscribeActionEvictsSubscriber verifies that the
 // PubSubActionUnsubscribe case evicts the subscriber from the channel map.
 func TestPubSubUnsubscribeActionEvictsSubscriber(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{
@@ -546,7 +547,7 @@ func TestVerifyChannelACL(t *testing.T) {
 // TestPubSubSubscribeActionRejectsOtherSession verifies that an Operator
 // connection cannot subscribe to another session's command channel.
 func TestPubSubSubscribeActionRejectsOtherSession(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	logger := testutil.NewTestLogger()
 	broker := NewGatewayWebSocketHandler(logger)
 
 	sub := &wsSubscriber{

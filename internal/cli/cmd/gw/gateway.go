@@ -39,6 +39,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
@@ -507,7 +508,10 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				}
 			}
 
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+			if err != nil {
+				return fmt.Errorf("gateway: create logger: %w", err)
+			}
 			identityResult := detectIdentity(context.Background(), logger, resolved.CertIdentityMode)
 
 			if identityResult.ShouldFallback {
@@ -787,7 +791,10 @@ restart.`,
 			// subprocess re-detects identity in foreground; the parent
 			// detection is for display and to resolve the effective mode
 			// (which may fall back to "localhost" on detection failure).
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+			if err != nil {
+				return fmt.Errorf("gateway: create logger: %w", err)
+			}
 			identityResult := detectIdentity(context.Background(), logger, profile.Config.CertIdentityMode)
 
 			if identityResult.ShouldFallback {

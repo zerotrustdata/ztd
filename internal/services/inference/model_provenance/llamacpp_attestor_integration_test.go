@@ -27,8 +27,8 @@ import (
 func writeLlamaCppModelFile(t *testing.T, root, name string, body []byte) string {
 	t.Helper()
 	path := filepath.Join(root, name)
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	require.NoError(t, os.WriteFile(path, body, 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), constants.PermDirPrivate))
+	require.NoError(t, os.WriteFile(path, body, constants.PermFilePrivate))
 	return models.SHA256Hex(body)
 }
 
@@ -39,7 +39,7 @@ func TestLlamaCppStorageAttestor_AttestsSingleFileModel(t *testing.T) {
 	attestor, err := NewLlamaCppStorageAttestor(root, "test-provenance-operator")
 	require.NoError(t, err)
 
-	window, err := attestor.Attest(t.Context(), "qwen3", digest, time.UnixMilli(1_700_000_000_000))
+	window, err := attestor.Attest(testutil.Context(t), "qwen3", digest, time.UnixMilli(1_700_000_000_000))
 	require.NoError(t, err)
 	assert.True(t, window.GetDigestMatch())
 	assert.Equal(t, digest, window.GetObservedModelDigest(), "a single-file model digest is its GGUF checksum")
@@ -63,7 +63,7 @@ func TestLlamaCppStorageAttestor_ComposesSplitModelAndAttestsSidecars(t *testing
 	attestor, err := NewLlamaCppStorageAttestor(root, "test-provenance-operator")
 	require.NoError(t, err)
 
-	window, err := attestor.Attest(t.Context(), "big", composed, time.UnixMilli(1_700_000_000_000))
+	window, err := attestor.Attest(testutil.Context(t), "big", composed, time.UnixMilli(1_700_000_000_000))
 	require.NoError(t, err)
 	assert.True(t, window.GetDigestMatch())
 	assert.Equal(t, composed, window.GetObservedModelDigest())
@@ -81,7 +81,7 @@ func TestLlamaCppStorageAttestor_ReportsAMismatchedModel(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := models.SHA256Hex([]byte("campaign weights"))
-	window, err := attestor.Attest(t.Context(), "qwen3", expected, time.UnixMilli(1_700_000_000_000))
+	window, err := attestor.Attest(testutil.Context(t), "qwen3", expected, time.UnixMilli(1_700_000_000_000))
 	require.NoError(t, err)
 	assert.False(t, window.GetDigestMatch())
 	assert.Equal(t, digest, window.GetObservedModelDigest())
@@ -96,12 +96,12 @@ func TestLlamaCppStorageAttestor_FailsClosed(t *testing.T) {
 
 	_, err = NewLlamaCppStorageAttestor(" ", "")
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-	_, err = attestor.Attest(t.Context(), "", digest, time.Now())
+	_, err = attestor.Attest(testutil.Context(t), "", digest, time.Now())
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-	_, err = attestor.Attest(t.Context(), "qwen3", "not-a-digest", time.Now())
-	require.Error(t, err)
-	_, err = attestor.Attest(t.Context(), "absent", digest, time.Now())
+	_, err = attestor.Attest(testutil.Context(t), "qwen3", "not-a-digest", time.Now())
+	require.ErrorIs(t, err, constants.ErrInferenceEvidenceHashInvalid)
+	_, err = attestor.Attest(testutil.Context(t), "absent", digest, time.Now())
 	require.ErrorIs(t, err, constants.ErrLlamaCppModelNotFound)
-	_, err = attestor.Attest(t.Context(), "../qwen3", digest, time.Now())
+	_, err = attestor.Attest(testutil.Context(t), "../qwen3", digest, time.Now())
 	require.ErrorIs(t, err, constants.ErrLlamaCppModelNotFound)
 }

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/fileidentity"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -36,7 +37,7 @@ type blobVerifier struct {
 }
 
 type verifiedBlob struct {
-	identity        blobIdentity
+	identity        fileidentity.Identity
 	digestHex       string
 	hashCompletedAt time.Time
 }
@@ -46,23 +47,6 @@ type blobVerification struct {
 	sizeBytes       int64
 	mode            evalv1.ModelWeightVerificationMode
 	hashCompletedAt time.Time
-}
-
-// blobIdentity is the filesystem identity a cached hash is bound to. Any
-// write moves the change time, and a replaced file has a different file ID.
-type blobIdentity struct {
-	info         os.FileInfo
-	sizeBytes    int64
-	modTimeNanos int64
-	changeNanos  int64
-}
-
-func (a blobIdentity) equal(b blobIdentity) bool {
-	return os.SameFile(a.info, b.info) && a.sizeBytes == b.sizeBytes && a.modTimeNanos == b.modTimeNanos && a.changeNanos == b.changeNanos
-}
-
-func (a blobIdentity) lastChangedAt() time.Time {
-	return time.Unix(0, max(a.modTimeNanos, a.changeNanos))
 }
 
 func newBlobVerifier(now func() time.Time) *blobVerifier {
@@ -91,16 +75,16 @@ func (v *blobVerifier) verify(ctx context.Context, path, expectedDigest string) 
 
 func (v *blobVerifier) digest(ctx context.Context, path string) (blobVerification, error) {
 	for {
-		identity, err := currentBlobIdentity(path)
+		identity, err := fileidentity.Stat(path)
 		if err != nil {
-			return blobVerification{}, err
+			return blobVerification{}, fmt.Errorf("model provenance attestor: file identity: %w", err)
 		}
 		v.mu.Lock()
-		if cached, ok := v.verified[path]; ok && cached.identity.equal(identity) {
+		if cached, ok := v.verified[path]; ok && cached.identity.Equal(identity) {
 			v.mu.Unlock()
 			return blobVerification{
 				digestHex:       cached.digestHex,
-				sizeBytes:       identity.sizeBytes,
+				sizeBytes:       identity.Info.Size(),
 				mode:            evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED,
 				hashCompletedAt: cached.hashCompletedAt,
 			}, nil
@@ -131,69 +115,48 @@ func (v *blobVerifier) digest(ctx context.Context, path string) (blobVerificatio
 	}
 }
 
-func currentBlobIdentity(path string) (blobIdentity, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return blobIdentity{}, fmt.Errorf("model provenance attestor: open %s: %w", path, err)
-	}
-	defer file.Close()
-	return readBlobIdentity(file)
-}
-
 // hash streams one file through SHA-256. settled reports whether the file's
 // identity predates the hash by the settle window, so the hash may be reused.
-func (v *blobVerifier) hash(ctx context.Context, path string) (blobVerification, blobIdentity, bool, error) {
+func (v *blobVerifier) hash(ctx context.Context, path string) (blobVerification, fileidentity.Identity, bool, error) {
 	select {
 	case v.hashSlots <- struct{}{}:
 		defer func() { <-v.hashSlots }()
 	case <-ctx.Done():
-		return blobVerification{}, blobIdentity{}, false, ctx.Err()
+		return blobVerification{}, fileidentity.Identity{}, false, ctx.Err()
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: open %s: %w", path, err)
+		return blobVerification{}, fileidentity.Identity{}, false, fmt.Errorf("model provenance attestor: open %s: %w", path, err)
 	}
 	defer file.Close()
 
 	startedAt := v.now()
-	before, err := readBlobIdentity(file)
+	before, err := fileidentity.Read(file)
 	if err != nil {
-		return blobVerification{}, blobIdentity{}, false, err
+		return blobVerification{}, fileidentity.Identity{}, false, err
 	}
 	hasher := sha256.New()
 	size, err := io.CopyBuffer(hasher, &provenanceContextReader{ctx: ctx, reader: file}, make([]byte, constants.ModelProvenanceHashBufferBytes))
 	if err != nil {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: hash %s: %w", path, err)
+		return blobVerification{}, fileidentity.Identity{}, false, fmt.Errorf("model provenance attestor: hash %s: %w", path, err)
 	}
 	if ctx.Err() != nil {
-		return blobVerification{}, blobIdentity{}, false, ctx.Err()
+		return blobVerification{}, fileidentity.Identity{}, false, ctx.Err()
 	}
-	after, err := readBlobIdentity(file)
+	after, err := fileidentity.Read(file)
 	if err != nil {
-		return blobVerification{}, blobIdentity{}, false, err
+		return blobVerification{}, fileidentity.Identity{}, false, err
 	}
-	if !before.equal(after) || size != after.sizeBytes {
-		return blobVerification{}, blobIdentity{}, false, fmt.Errorf("model provenance attestor: %s: %w", path, constants.ErrModelProvenanceBlobChanged)
+	if !before.Equal(after) || size != after.Info.Size() {
+		return blobVerification{}, fileidentity.Identity{}, false, fmt.Errorf("model provenance attestor: %s: %w", path, constants.ErrModelProvenanceBlobChanged)
 	}
-	settled := after.lastChangedAt().Before(startedAt.Add(-constants.ModelProvenanceBlobIdentitySettleWindow))
+	settled := after.LastChangedAt().Before(startedAt.Add(-constants.ModelProvenanceBlobIdentitySettleWindow))
 	return blobVerification{
 		digestHex:       hex.EncodeToString(hasher.Sum(nil)),
 		sizeBytes:       size,
 		mode:            evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH,
 		hashCompletedAt: v.now(),
 	}, after, settled, nil
-}
-
-func readBlobIdentity(file *os.File) (blobIdentity, error) {
-	info, err := file.Stat()
-	if err != nil {
-		return blobIdentity{}, fmt.Errorf("model provenance attestor: stat blob: %w", err)
-	}
-	changeNanos, err := fileChangeTimeNanos(file, info)
-	if err != nil {
-		return blobIdentity{}, err
-	}
-	return blobIdentity{info: info, sizeBytes: info.Size(), modTimeNanos: info.ModTime().UnixNano(), changeNanos: changeNanos}, nil
 }
 
 // Check cancellation between filesystem reads rather than after the entire

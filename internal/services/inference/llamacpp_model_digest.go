@@ -19,10 +19,11 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/fileidentity"
 	"github.com/zerotrustdata/ztd/internal/llamacpp"
 )
 
-// llamaCppDigestSettleWindow keeps a file modified this shortly before its
+// llamaCppDigestSettleWindow keeps a file changed this shortly before its
 // hash began out of the digest cache. A filesystem with coarse modification
 // times could otherwise hide a write that landed in the same tick as the
 // cached identity.
@@ -36,7 +37,7 @@ const llamaCppDigestConcurrency = 2
 // model from the GGUF files under the router's --models-dir. llama-server
 // reports no content digest, so the Inference Operator hashes the files it
 // serves. A file digest is cached by path and reused only while the file
-// keeps the same identity (same file, size, and modification time).
+// keeps the same identity (same file, size, modification time, and change time).
 type llamaCppModelDigester struct {
 	modelRoot string
 	slots     chan struct{}
@@ -48,8 +49,8 @@ type llamaCppModelDigester struct {
 }
 
 type llamaCppFileDigest struct {
-	info   os.FileInfo
-	digest string
+	identity fileidentity.Identity
+	digest   string
 }
 
 // llamaCppDigestCall is one in-flight file hash that concurrent callers for
@@ -100,13 +101,16 @@ func (d *llamaCppModelDigester) modelDigest(ctx context.Context, id string) (lla
 // hashing caller was canceled, a still-live waiter hashes the file itself.
 func (d *llamaCppModelDigester) fileDigest(ctx context.Context, path string) (string, error) {
 	for {
-		info, err := os.Stat(path)
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("llamacpp_backend: hash model file: %w", err)
+		}
+		identity, err := fileidentity.Stat(path)
 		if err != nil {
 			return "", fmt.Errorf("llamacpp_backend: model file: %w", err)
 		}
 		d.mu.Lock()
 		if cached, ok := d.cached[path]; ok {
-			if sameLlamaCppModelFile(cached.info, info) {
+			if cached.identity.Equal(identity) {
 				d.mu.Unlock()
 				return cached.digest, nil
 			}
@@ -120,7 +124,7 @@ func (d *llamaCppModelDigester) fileDigest(ctx context.Context, path string) (st
 		d.mu.Unlock()
 
 		if !joined {
-			call.digest, call.err = d.hashFile(ctx, path, info)
+			call.digest, call.err = d.hashFile(ctx, path, identity)
 			d.mu.Lock()
 			delete(d.inflight, path)
 			d.mu.Unlock()
@@ -140,8 +144,8 @@ func (d *llamaCppModelDigester) fileDigest(ctx context.Context, path string) (st
 }
 
 // hashFile hashes path and fails closed when the file's identity at open or
-// after the read differs from info, the identity the caller observed.
-func (d *llamaCppModelDigester) hashFile(ctx context.Context, path string, info os.FileInfo) (string, error) {
+// after the read differs from the identity the caller observed.
+func (d *llamaCppModelDigester) hashFile(ctx context.Context, path string, identity fileidentity.Identity) (string, error) {
 	select {
 	case d.slots <- struct{}{}:
 	case <-ctx.Done():
@@ -155,11 +159,11 @@ func (d *llamaCppModelDigester) hashFile(ctx context.Context, path string, info 
 		return "", fmt.Errorf("llamacpp_backend: hash model file: %w", err)
 	}
 	defer file.Close()
-	opened, err := file.Stat()
+	opened, err := fileidentity.Read(file)
 	if err != nil {
 		return "", fmt.Errorf("llamacpp_backend: hash model file: %w", err)
 	}
-	if !sameLlamaCppModelFile(info, opened) {
+	if !identity.Equal(opened) {
 		return "", fmt.Errorf("llamacpp_backend: hash model file %q: %w", path, constants.ErrInferenceModelFileChanged)
 	}
 	hash := sha256.New()
@@ -168,28 +172,24 @@ func (d *llamaCppModelDigester) hashFile(ctx context.Context, path string, info 
 	}
 	// The open handle catches an in-place write; the path catches a rename
 	// that replaced the file while it was read.
-	read, err := file.Stat()
+	read, err := fileidentity.Read(file)
 	if err != nil {
 		return "", fmt.Errorf("llamacpp_backend: hash model file: %w", err)
 	}
-	current, err := os.Stat(path)
+	current, err := fileidentity.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("llamacpp_backend: hash model file: %w", err)
 	}
-	if !sameLlamaCppModelFile(info, read) || !sameLlamaCppModelFile(info, current) {
+	if !identity.Equal(read) || !identity.Equal(current) {
 		return "", fmt.Errorf("llamacpp_backend: hash model file %q: %w", path, constants.ErrInferenceModelFileChanged)
 	}
 	digest := hex.EncodeToString(hash.Sum(nil))
-	if startedAt.Sub(info.ModTime()) >= llamaCppDigestSettleWindow {
+	if startedAt.Sub(identity.LastChangedAt()) >= llamaCppDigestSettleWindow {
 		d.mu.Lock()
-		d.cached[path] = llamaCppFileDigest{info: info, digest: digest}
+		d.cached[path] = llamaCppFileDigest{identity: identity, digest: digest}
 		d.mu.Unlock()
 	}
 	return digest, nil
-}
-
-func sameLlamaCppModelFile(a, b os.FileInfo) bool {
-	return a.Size() == b.Size() && a.ModTime().Equal(b.ModTime()) && os.SameFile(a, b)
 }
 
 // llamaCppContextReader stops a model file hash when its context ends.

@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 )
 
 // Client identity secrets (the CLI and app private keys, and the pending app
@@ -39,8 +40,11 @@ func openIdentityKeystore(fileSvc fs.RuntimeFileService, cfg *config.Config, cre
 	}
 	opts := keystore.Options{Keyring: cfg.Keyring}
 	// Every CLI request unseals the identity key, so keystore progress logging
-	// stays below warn level instead of printing on each command.
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	// stays below warn/error level instead of printing on each command.
+	logger, err := logging.NewLogger(constants.LogLevelError, os.Stderr)
+	if err != nil {
+		return nil, fmt.Errorf("auth: configure logger: %w", err)
+	}
 	if create {
 		return keystore.Open(fileSvc, logger, opts)
 	}

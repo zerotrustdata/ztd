@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
@@ -59,6 +61,14 @@ evaluation snapshots for historical metrics.`,
 	return cmd
 }
 
+func complianceLogger() *slog.Logger {
+	l, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return complianceLogger()
+	}
+	return l
+}
+
 // complianceKSICmdWithConfig creates the `compliance ksi` subcommand with
 // injectable dependencies for testing.
 func complianceKSICmdWithConfig(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error), ksOpts keystore.Options) *cobra.Command {
@@ -86,7 +96,7 @@ prove no result was produced from evidence outside the assessment context.`,
 				ctx = context.Background()
 			}
 
-			fileSvc, err := fileSvcFactory("", slog.Default())
+			fileSvc, err := fileSvcFactory("", complianceLogger())
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
@@ -106,7 +116,7 @@ prove no result was produced from evidence outside the assessment context.`,
 			}
 			// Opened without Initialize so evaluation never generates a master
 			// key. Without a usable key store evaluation fails closed.
-			ks, ksErr := keystore.NewWithFS(fileSvc, slog.Default(), ksOpts)
+			ks, ksErr := keystore.NewWithFS(fileSvc, complianceLogger(), ksOpts)
 			if ksErr != nil {
 				return fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, ksErr)
 			}
@@ -117,7 +127,7 @@ prove no result was produced from evidence outside the assessment context.`,
 
 			historyStore := newKSIHistoryStore(fileSvc)
 			if err := saveKSIHistorySnapshot(ctx, historyStore, resultSet); err != nil {
-				slog.Default().Warn("compliance: failed to save KSI history snapshot", "error", err)
+				complianceLogger().Warn("compliance: failed to save KSI history snapshot", "error", err)
 			}
 			if err := newKSIUnavailableIntervalStore(fileSvc).AppendFromResultSet(ctx, resultSet); err != nil {
 				return fmt.Errorf("compliance: save KSI unavailable intervals: %w", err)
@@ -281,7 +291,7 @@ func openVault(ks *keystore.Keystore) (*vault.Vault, func(), error) {
 // unlocks the vault through openVault.
 // Commands that read encrypted runtime content call it and propagate its error.
 func openRuntimeVault(fileSvc fs.RuntimeFileService, opts keystore.Options) (*vault.Vault, func(), error) {
-	ks, err := keystore.NewWithFS(fileSvc, slog.Default(), opts)
+	ks, err := keystore.NewWithFS(fileSvc, complianceLogger(), opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: open key store: %w", constants.ErrVaultKeyReadFailed, err)
 	}
@@ -294,13 +304,13 @@ func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.Lo
 	if err := fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return nil, nil, false
 	}
-	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), slog.Default())
+	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), complianceLogger())
 	if err != nil {
 		return nil, nil, false
 	}
 	auditCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	auditCfg.EncryptionVault = v
-	eventsStore, err := storage.NewLocalFirstEventsStore(auditCfg, mainDB, slog.Default(), fileSvc)
+	eventsStore, err := storage.NewLocalFirstEventsStore(auditCfg, mainDB, complianceLogger(), fileSvc)
 	if err != nil {
 		mainDB.Close()
 		return nil, nil, false
@@ -316,7 +326,7 @@ func openLedger(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.GitLedg
 	ledgerCfg := &storage.LedgerConfig{
 		EncryptionVault: v,
 	}
-	ledger, err := storage.NewGitLedgerService(ledgerCfg, slog.Default(), fileSvc)
+	ledger, err := storage.NewGitLedgerService(ledgerCfg, complianceLogger(), fileSvc)
 	if err != nil {
 		return nil, nil, false
 	}
@@ -335,7 +345,7 @@ func complianceKSIHistoryCmdWithConfig(fileSvcFactory func(string, *slog.Logger)
 When --ksi is specified, prints the chronological series for that KSI ID.
 Without --ksi, prints all snapshots as a JSON array.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fileSvc, err := fileSvcFactory("", slog.Default())
+			fileSvc, err := fileSvcFactory("", complianceLogger())
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
@@ -403,7 +413,7 @@ func saveKSIHistorySnapshot(ctx context.Context, store *compliance.KSIHistorySto
 
 	retention := time.Duration(constants.KSIHistoryRetentionDays) * 24 * time.Hour
 	if _, err := store.PruneOlderThan(ctx, retention); err != nil {
-		slog.Default().Warn("compliance: failed to prune KSI history", "error", err)
+		complianceLogger().Warn("compliance: failed to prune KSI history", "error", err)
 	}
 
 	return nil
@@ -435,7 +445,7 @@ custom overlay directory (default: docs/reference/).`,
 			// fileSvc is initialized for error-injection test parity with the
 			// other compliance subcommands. The overlay command reads from
 			// docs/reference/ (not .ztd/), so fileSvc itself is unused here.
-			if _, err := fileSvcFactory("", slog.Default()); err != nil {
+			if _, err := fileSvcFactory("", complianceLogger()); err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 
