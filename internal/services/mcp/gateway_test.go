@@ -529,6 +529,28 @@ func TestGovernedSuspension_MCPAndA2AShareTypedShape(t *testing.T) {
 	assert.Equal(t, approvalPausedMessage(constants.PostureNotary, mcpSuspension.ApprovalURL), mcpSuspension.Message)
 }
 
+func TestGovernedSuspension_DelegatedAppRetainsRequestor(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}
+	store := &fakeSuspendedStore{}
+	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))
+	g.posture = constants.PostureRatify
+	ctx := context.WithValue(t.Context(), constants.ContextKeyAppID, "calling-app")
+	ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, "delegated-user")
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
+	_, err := g.callTool(ctx, r, json.RawMessage(`{"name":"test-tool","arguments":{}}`))
+	require.NoError(t, err)
+	_, err = g.a2aCall(ctx, r, json.RawMessage(`{"skill_name":"test-skill","payload":{}}`))
+	require.NoError(t, err)
+	require.Len(t, store.txs, 2)
+	for _, tx := range store.txs {
+		assert.Equal(t, "delegated-user", tx.UserID)
+		var envelope commonv1.GovernanceEnvelope
+		require.NoError(t, protojson.Unmarshal(tx.Envelope, &envelope))
+		assert.Equal(t, "delegated-user", envelope.GetRequestorUserId())
+		assert.Equal(t, "calling-app", envelope.GetActingAppId())
+	}
+}
+
 // suspendedCallFixture stores one suspended MCP tools/call and one suspended
 // A2A a2a/call under a ratify posture, returning their transaction hashes.
 func suspendedCallFixture(t *testing.T, proc *fakeEnvelopeProcessor, store *fakeSuspendedStore, call func(ctx context.Context, r *http.Request) (string, error)) string {

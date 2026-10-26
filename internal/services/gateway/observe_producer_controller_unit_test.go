@@ -75,7 +75,7 @@ func newProducerControllerTestEnv(t *testing.T) *ObserveProducerController {
 // the peer certificate, never from the body.
 func withAppAuthCtx(r *http.Request, _ string, userID string) *http.Request {
 	ctx := context.WithValue(r.Context(), constants.ContextKeyAppID, "app-workload")
-	ctx = context.WithValue(ctx, constants.ContextKeyUserID, userID)
+	ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, userID)
 	return r.WithContext(ctx)
 }
 

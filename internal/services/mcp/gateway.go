@@ -37,6 +37,7 @@ import (
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
@@ -1001,9 +1002,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 			env.OperatorSessionId = opSessionID
 		}
 	}
-	if userID, ok := ctx.Value(constants.ContextKeyUserID).(string); ok && userID != "" {
-		env.RequestorUserId = userID
-	}
+	env.RequestorUserId = serviceauth.RequestorUserID(ctx)
 
 	hash, err = govpkg.GenerateMessageID(env)
 	if err != nil {
@@ -1146,7 +1145,7 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 // suspendGovernedCall stores a call that awaits L3 approval and returns the typed
 // suspension shared by MCP tools/call and A2A a2a/call.
 func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Request, hash string, envelopeBytes []byte, targetResource string, arguments json.RawMessage) (*GovernedSuspension, error) {
-	userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	userID := serviceauth.RequestorUserID(r.Context())
 	operatorID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
 	certFingerprint := extractCertFingerprint(r)
 

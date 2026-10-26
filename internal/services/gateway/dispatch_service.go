@@ -27,6 +27,7 @@ import (
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
@@ -1221,7 +1222,7 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Extract the requestor's user ID from the mTLS identity context.
-	requestorUserID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	requestorUserID := serviceauth.RequestorUserID(r.Context())
 	actingAppID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		c.logger.Warn("dispatch: clear response deadline", logging.ErrorKind(err))

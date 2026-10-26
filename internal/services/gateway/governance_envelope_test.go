@@ -556,6 +556,33 @@ func TestVerifyEnvelopeIdentityBinding_InvalidJSON_ReturnsError(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrTxInvalidEnvelope, "an unparseable envelope must be refused, not passed downstream")
 }
 
+// Delegated attribution remains required and bound to the app's user SAN even
+// though it no longer occupies the authenticated-user context key.
+func TestVerifyEnvelopeIdentityBinding_DelegatedRequestor(t *testing.T) {
+	appURI, err := url.Parse("spiffe://ztd.local/app/test-app")
+	require.NoError(t, err)
+	for _, requestor := range []string{"delegated-user", "other-user", ""} {
+		t.Run("requestor="+requestor, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, nil)
+			req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{appURI}}}}
+			ctx := context.WithValue(req.Context(), constants.ContextKeyAppID, appURI.String())
+			ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, "delegated-user")
+			req = req.WithContext(ctx)
+			wire := marshalEnvelope(t, &commonv1.GovernanceEnvelope{
+				SourceComponent: commonv1.Component_COMPONENT_AGENT,
+				ActingAppId:     "test-app", RequestorUserId: requestor,
+				ActionType: string(constants.ActionTypeDocumentUpdate),
+			})
+			err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, wire)
+			if requestor == "delegated-user" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
+			}
+		})
+	}
+}
+
 // TestVerifyEnvelopeIdentityBinding_RequestorBinding proves requestor_user_id
 // must equal the user the auth middleware authenticated: a forged, missing, or
 // extra requestor is refused, and only an exact match is admitted.

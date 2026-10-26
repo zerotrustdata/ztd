@@ -99,6 +99,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-SESS-01 | Session types MUST be strictly bound: `operator_session_id` (mTLS Operator certificate), `cli_session_id` (mTLS CLI certificate), `web_session_id` (WebAuthn passkey), or `sub` (JWT subject ID). A single request MUST carry exactly one authoritative session identifier. |
 | INV-GW-SESS-02 | The Gateway state root service MUST maintain incremental 16-ary Merkle tree commitments (algorithm 2). The Bound State root MUST gate transaction admission; the Observed State root MUST capture telemetry without invalidating in-flight transaction freshness. |
+| INV-GW-SESS-03 | Delegated app user attribution MUST remain distinct from authenticated user authority (`INV-AUTH-ID-09`). Governed MCP/A2A and HTTP envelope/command ingresses preserve the delegated user in `requestor_user_id`; app producer, inference, and Tribunal handlers require the delegated user explicitly. An app user SAN MUST NOT authorize owner-only admin actions. |
 
 ## Owned surfaces
 

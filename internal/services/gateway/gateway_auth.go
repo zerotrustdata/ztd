@@ -1024,7 +1024,7 @@ func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next
 					}
 				}
 				if delegateUserID != "" {
-					ctx = context.WithValue(ctx, constants.ContextKeyUserID, delegateUserID)
+					ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, delegateUserID)
 				}
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return true
