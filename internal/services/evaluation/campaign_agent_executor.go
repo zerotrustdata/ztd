@@ -964,7 +964,24 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 	}
 	var argsJSON []byte
 	if request.Shell != nil {
-		argsJSON = []byte(request.Shell.CanonicalJSON())
+		shellReq := *request.Shell
+		if shellReq.WorkingDir == "" {
+			targetDir := r.workspace.Root
+			if targetDir == "" {
+				targetDir = r.workspace.OperatorWorkingDirectory
+			}
+			shellReq.WorkingDir = targetDir
+		} else {
+			resolved := r.workspace.Resolve(shellReq.WorkingDir)
+			if !pathWithin(resolved, r.workspace.OperatorWorkingDirectory) {
+				return r.fail(record, agentToolFailure{
+					ErrorType: agentToolErrorSecurity,
+					Error:     fmt.Sprintf("security violation: working directory %q is outside operator workspace", shellReq.WorkingDir),
+				})
+			}
+			shellReq.WorkingDir = resolved
+		}
+		argsJSON = []byte(shellReq.CanonicalJSON())
 	} else {
 		var err error
 		argsJSON, err = json.Marshal(args.Values())

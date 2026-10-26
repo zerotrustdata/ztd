@@ -80,7 +80,6 @@ func rolloutResumeCmd(deps nativeEvalDeps) *cobra.Command {
 func rolloutExecuteCmd(deps nativeEvalDeps, pendingOnly bool) *cobra.Command {
 	opts := rolloutRunOptions{SkipVerified: !pendingOnly, PendingOnly: pendingOnly}
 	named := namedRolloutOptions{Resume: pendingOnly, Repeat: 1}
-	var continueOnFailure bool
 	action := "run"
 	if pendingOnly {
 		action = "resume"
@@ -93,8 +92,7 @@ campaign order. Each campaign runs to completion with strict witness verificatio
 before the next starts. Existing campaign suites, lanes, and conditions are
 preserved. --repeat repeats the entire sequence; --until limits the number of
 campaigns attempted in this invocation. Use rollout resume <name> to continue
-without repeating successful steps. --continue-on-failure overrides the saved
-failure policy for this execution. Every execution retains its own progress and
+without repeating successful steps. Every execution retains its own progress and
 run references. --dry-run validates and previews without writing or executing.
 
 Without a name, qualify each selected queue entry: freeze a single-model campaign over the
@@ -116,7 +114,7 @@ pending. The batch holds the queue lock, so 'rollout add', 'remove', 'retry',
 
 Examples:
   ztd eval rollout run nightly
-  ztd eval rollout run compare --repeat 3 --continue-on-failure
+  ztd eval rollout run compare --repeat 3
   ztd eval rollout run nightly --until 2
   ztd eval rollout run --until 1
   ztd eval rollout run --gate-smoke --promote-on-pass
@@ -148,14 +146,11 @@ Examples:
 						}
 					}
 					named.DryRun, named.Until = opts.DryRun, opts.Until
-					if cmd.Flags().Changed("continue-on-failure") {
-						named.ContinueOnFailure = &continueOnFailure
-					}
 					return runNamedRollout(cmd, deps, files, args[0], named, productionNamedRolloutRunner(deps, files))
 				}
 			}
-			if cmd.Flags().Changed("repeat") || cmd.Flags().Changed("continue-on-failure") {
-				return fmt.Errorf("evaluation: --repeat and --continue-on-failure require a named rollout: %w", constants.ErrEvaluationFlagsInvalid)
+			if cmd.Flags().Changed("repeat") {
+				return fmt.Errorf("evaluation: --repeat requires a named rollout: %w", constants.ErrEvaluationFlagsInvalid)
 			}
 			opts.CampaignIDs = args
 			return runRollout(cmd, deps, opts)
@@ -168,7 +163,7 @@ Examples:
 sequence order, skipping successful steps. Stopped steps resume their existing
 run; failed steps start a new run and retain earlier attempts. A definition
 update affects fresh executions only. --until limits campaigns attempted in this
-invocation; --continue-on-failure overrides this execution's failure policy.
+invocation.
 
 Otherwise continue qualification of pending campaigns in rollout queue order. With no
 arguments, select every pending campaign; otherwise select the named campaign
@@ -194,7 +189,6 @@ Examples:
 	if !pendingOnly {
 		cmd.Flags().IntVar(&named.Repeat, "repeat", 1, "For a named rollout, repeat the entire campaign sequence this many times")
 	}
-	cmd.Flags().BoolVar(&continueOnFailure, "continue-on-failure", false, "For a named rollout, continue after a campaign failure (overrides the saved policy)")
 	cmd.Flags().IntVar(&opts.Until, "until", 0, "Attempt at most this many campaigns or queued models in this invocation (0 means all)")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Print the rollout plan without executing")
 	cmd.Flags().BoolVar(&opts.GateSmoke, "gate-smoke", false, "Screen each model with the fast smoke campaign before any full run")

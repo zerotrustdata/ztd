@@ -19,6 +19,27 @@ const EvaluationAppName = "ztd-eval"
 // no models: each governed request carries the model the user chose.
 const InferenceDefaultKeepAlive = "-1"
 
+// Inference provider classes. The class names the provider API an Inference
+// Operator calls; it is recorded on provider inventory entries and formation
+// models. Both are local providers serving weights the deployment holds.
+const (
+	InferenceProviderOllama   = "ollama"
+	InferenceProviderLlamaCpp = "llamacpp"
+)
+
+// Model store layouts a Provenance Operator attests beneath its
+// --model-storage-root (--model-storage-format).
+const (
+	// ModelStorageFormatOllama is Ollama's manifests/ + content-addressed blobs/ store.
+	ModelStorageFormatOllama = "ollama"
+	// ModelStorageFormatLlamaCpp is a llama-server --models-dir of GGUF files.
+	ModelStorageFormatLlamaCpp = "llamacpp"
+)
+
+// ModelWeightMediaTypeGGUF labels a GGUF weight file attested from a
+// llama.cpp model store.
+const ModelWeightMediaTypeGGUF = "application/vnd.ggml.gguf"
+
 const (
 	// Bound full blob hashes independently of the command-channel goroutine count.
 	ModelProvenanceHashConcurrency = 2

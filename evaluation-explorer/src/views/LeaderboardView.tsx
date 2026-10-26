@@ -95,7 +95,7 @@ export function LeaderboardView() {
         <div className="models-score" role="math" aria-label={LEADERBOARD_SCORE_FORMULA}>
           <div className="models-score-equation" aria-hidden="true">
             <span className="models-score-label">Role score = 100</span>
-            <span>× accuracy</span>
+            <span>× accuracy²</span>
             <span>× √security</span>
             <span>× size factor</span>
             <span>× efficiency</span>

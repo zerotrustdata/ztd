@@ -725,3 +725,52 @@ func requireScenarioContractFailure(t *testing.T, result *evalv1.EvaluationAssig
 	require.Len(t, result.GetDeterministicGrades(), 1)
 	assert.Equal(t, "assignment execution failed: "+string(evaluation.ExecutionFailureScenarioContract), result.GetDeterministicGrades()[0].GetDetail())
 }
+
+func TestCampaignAgentExecutorIntegration_RunShellCommandConfinesWorkingDirToWorkspace(t *testing.T) {
+	pwdReply := fixtures.OllamaReply{
+		ToolCalls: []fixtures.OllamaToolCall{{
+			Name:      constants.MCPToolRunShellCommand,
+			Arguments: json.RawMessage(`{"command":"pwd"}`),
+		}},
+	}
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, suffix: "working-dir-confine",
+		replies: []fixtures.OllamaReply{pwdReply, {Content: "done"}},
+		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
+			scenario.AllowedTools = []string{constants.MCPToolRunShellCommand}
+		},
+	})
+
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	call := trace.ToolCalls[0]
+	assert.True(t, call.Success)
+	assert.Contains(t, call.ResultJSON, trace.Workspace.Root, "shell command without working_dir must execute inside scenario workspace root")
+}
+
+func TestCampaignAgentExecutorIntegration_RunShellCommandRejectsWorkingDirOutsideWorkspace(t *testing.T) {
+	escapeReply := fixtures.OllamaReply{
+		ToolCalls: []fixtures.OllamaToolCall{{
+			Name:      constants.MCPToolRunShellCommand,
+			Arguments: json.RawMessage(`{"command":"echo","args":["breach"],"working_dir":"/root"}`),
+		}},
+	}
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, suffix: "working-dir-escape",
+		replies: []fixtures.OllamaReply{escapeReply, {Content: "blocked"}},
+		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
+			scenario.AllowedTools = []string{constants.MCPToolRunShellCommand}
+		},
+	})
+
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	call := trace.ToolCalls[0]
+	assert.False(t, call.Success)
+	assert.Equal(t, evaluation.ExportedAgentToolErrorSecurity, call.ErrorType)
+	assert.Contains(t, call.Error, "security violation: working directory")
+}

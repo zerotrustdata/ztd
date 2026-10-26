@@ -24,9 +24,8 @@ import (
 // RolloutDefinition is an ordered sequence of frozen campaigns. Duplicates
 // intentionally mean another run of that campaign at that point in the sequence.
 type RolloutDefinition struct {
-	Name              string   `json:"name"`
-	Campaigns         []string `json:"campaigns"`
-	ContinueOnFailure bool     `json:"continue_on_failure"`
+	Name      string   `json:"name"`
+	Campaigns []string `json:"campaigns"`
 }
 
 // NamedRollout keeps the editable definition and the history of its executions.
@@ -38,10 +37,9 @@ type NamedRollout struct {
 }
 
 type RolloutExecution struct {
-	ID                string        `json:"id"`
-	StartedAt         time.Time     `json:"started_at"`
-	ContinueOnFailure bool          `json:"continue_on_failure"`
-	Steps             []RolloutStep `json:"steps"`
+	ID        string        `json:"id"`
+	StartedAt time.Time     `json:"started_at"`
+	Steps     []RolloutStep `json:"steps"`
 }
 
 const (

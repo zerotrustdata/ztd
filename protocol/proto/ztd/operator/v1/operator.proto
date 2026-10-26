@@ -437,6 +437,14 @@ message OperatorRuntimeConfig {
   bool inference_allow_hosted_decision = 21;
   repeated string inference_decision_models = 22;
   bool inference_decision_only = 23;
+  // Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint).
+  string inference_llamacpp_endpoint = 24;
+  // llama-server --models-dir as seen by this Operator
+  // (--inference-llamacpp-model-root).
+  string inference_llamacpp_model_root = 25;
+  // Model store layout under provenance_operator_model_storage_root
+  // (--model-storage-format: ollama or llamacpp).
+  string provenance_operator_model_storage_format = 26;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and

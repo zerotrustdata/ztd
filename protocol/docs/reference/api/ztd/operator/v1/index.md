@@ -2573,6 +2573,9 @@ OperatorDocument.runtime_config.
 | inference_allow_hosted_decision | [bool](#bool) |  |  |
 | inference_decision_models | [string](#string) | repeated |  |
 | inference_decision_only | [bool](#bool) |  |  |
+| inference_llamacpp_endpoint | [string](#string) |  | Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint). |
+| inference_llamacpp_model_root | [string](#string) |  | llama-server --models-dir as seen by this Operator (--inference-llamacpp-model-root). |
+| provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama or llamacpp). |
 
 
 

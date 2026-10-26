@@ -29,7 +29,6 @@ func rolloutDefineCmd(deps nativeEvalDeps, update bool) *cobra.Command {
 		verb = "update"
 		short = "Replace the campaign list of a named rollout"
 	}
-	var continueOnFailure bool
 	cmd := &cobra.Command{
 		Use:   verb + " <name> <campaign-id>...",
 		Short: short,
@@ -40,7 +39,6 @@ campaign ID, in the order it should run. Find IDs with: ztd eval campaigns list
 
 Create requires a new name. Update replaces the saved list and keeps execution
 history. Repeating a campaign ID runs that campaign again at that position.
---continue-on-failure allows the next campaign to run after a failure.
 
 Examples (campaign-1 and campaign-2 are placeholders for your campaign IDs):
   ztd eval rollout ` + verb + ` my-rollout campaign-1 campaign-2`,
@@ -73,16 +71,12 @@ Examples (campaign-1 and campaign-2 are placeholders for your campaign IDs):
 				return err
 			}
 			rollout.Campaigns = append([]string{}, args[1:]...)
-			if !update || cmd.Flags().Changed("continue-on-failure") {
-				rollout.ContinueOnFailure = continueOnFailure
-			}
 			if err := evaluation.SaveNamedRollout(cmd.Context(), files, rollout); err != nil {
 				return err
 			}
 			return writeNamedRollout(cmd, rollout)
 		},
 	}
-	cmd.Flags().BoolVar(&continueOnFailure, "continue-on-failure", false, "Continue with later campaigns after a failure")
 	return cmd
 }
 
@@ -140,7 +134,7 @@ func writeNamedRollout(cmd *cobra.Command, rollout *evaluation.NamedRollout) err
 	if output.JSONEnabled(cmd) {
 		return output.WriteJSON(cmd.OutOrStdout(), rollout)
 	}
-	cmd.Printf("Rollout: %s\nContinue on failure: %t\n", rollout.Name, rollout.ContinueOnFailure)
+	cmd.Printf("Rollout: %s\n", rollout.Name)
 	for i, id := range rollout.Campaigns {
 		cmd.Printf("  %d. %s\n", i+1, id)
 	}
@@ -175,11 +169,10 @@ func validateRolloutCampaigns(cmd *cobra.Command, deps nativeEvalDeps, ids []str
 }
 
 type namedRolloutOptions struct {
-	Resume            bool
-	DryRun            bool
-	Until             int
-	Repeat            int
-	ContinueOnFailure *bool
+	Resume bool
+	DryRun bool
+	Until  int
+	Repeat int
 }
 
 // namedRolloutRunner is the governed campaign execution boundary. A reserved
@@ -209,7 +202,7 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 		}
 		execution = &rollout.Executions[len(rollout.Executions)-1]
 	} else {
-		next := evaluation.RolloutExecution{StartedAt: deps.now().UTC(), ContinueOnFailure: rollout.ContinueOnFailure}
+		next := evaluation.RolloutExecution{StartedAt: deps.now().UTC()}
 		for range opts.Repeat {
 			for _, id := range rollout.Campaigns {
 				next.Steps = append(next.Steps, evaluation.RolloutStep{CampaignID: id, Status: evaluation.RolloutStepPending})
@@ -217,9 +210,6 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 		}
 		rollout.Executions = append(rollout.Executions, next)
 		execution = &rollout.Executions[len(rollout.Executions)-1]
-	}
-	if opts.ContinueOnFailure != nil {
-		execution.ContinueOnFailure = *opts.ContinueOnFailure
 	}
 	indices := make([]int, 0, len(execution.Steps))
 	ids := make([]string, 0, len(execution.Steps))
@@ -239,14 +229,14 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 		indices = indices[:opts.Until]
 	}
 	if opts.DryRun {
-		plan := namedRolloutPlan{Name: name, Resume: opts.Resume, ContinueOnFailure: execution.ContinueOnFailure, Campaigns: []string{}}
+		plan := namedRolloutPlan{Name: name, Resume: opts.Resume, Campaigns: []string{}}
 		for _, i := range indices {
 			plan.Campaigns = append(plan.Campaigns, execution.Steps[i].CampaignID)
 		}
 		if output.JSONEnabled(cmd) {
 			return output.WriteJSON(cmd.OutOrStdout(), plan)
 		}
-		cmd.Printf("Rollout plan: %s (continue on failure: %t)\n", name, plan.ContinueOnFailure)
+		cmd.Printf("Rollout plan: %s\n", name)
 		for i, id := range plan.Campaigns {
 			cmd.Printf("  %d. %s\n", i+1, id)
 		}
@@ -311,13 +301,14 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 			if (stopped && !errors.As(runErr, &canceled)) || resumeGuard {
 				step.Status = evaluation.RolloutStepStopped
 			}
-			batchErr = errors.Join(batchErr, fmt.Errorf("campaign %q: %w", step.CampaignID, runErr))
+			sub.Printf("Rollout %s: campaign %s failed: %v\n", name, step.CampaignID, runErr)
 		}
 		// A cancellation must not prevent checkpointing the stopped step.
 		if err := evaluation.SaveNamedRollout(context.WithoutCancel(cmd.Context()), files, rollout); err != nil {
 			return errors.Join(batchErr, err)
 		}
-		if stopped || resumeGuard || (runErr != nil && !execution.ContinueOnFailure) {
+		if stopped || resumeGuard {
+			batchErr = errors.Join(batchErr, fmt.Errorf("campaign %q: %w", step.CampaignID, runErr))
 			break
 		}
 	}
@@ -325,10 +316,9 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 }
 
 type namedRolloutPlan struct {
-	Name              string   `json:"name"`
-	Resume            bool     `json:"resume"`
-	ContinueOnFailure bool     `json:"continue_on_failure"`
-	Campaigns         []string `json:"campaigns"`
+	Name      string   `json:"name"`
+	Resume    bool     `json:"resume"`
+	Campaigns []string `json:"campaigns"`
 }
 
 func productionNamedRolloutRunner(deps nativeEvalDeps, files fs.RuntimeFileService) namedRolloutRunner {

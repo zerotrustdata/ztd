@@ -221,7 +221,7 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		var payload operatorv1.McpCallRequested
 		require.NoError(t, proto.Unmarshal(tools.payload, &payload))
 		assert.Equal(t, constants.MCPToolRunShellCommand, payload.GetToolName())
-		assert.JSONEq(t, proposal, payload.GetArgumentsJson())
+		assert.JSONEq(t, `{"command":"echo","args":["hello"],"working_dir":"/operator/workspace"}`, payload.GetArgumentsJson())
 	})
 
 	t.Run("Tribunal uses intent and does not dispatch native MCP", func(t *testing.T) {

@@ -4289,8 +4289,16 @@ type OperatorRuntimeConfig struct {
 	InferenceAllowHostedDecision bool     `protobuf:"varint,21,opt,name=inference_allow_hosted_decision,json=inferenceAllowHostedDecision,proto3" json:"inference_allow_hosted_decision,omitempty"`
 	InferenceDecisionModels      []string `protobuf:"bytes,22,rep,name=inference_decision_models,json=inferenceDecisionModels,proto3" json:"inference_decision_models,omitempty"`
 	InferenceDecisionOnly        bool     `protobuf:"varint,23,opt,name=inference_decision_only,json=inferenceDecisionOnly,proto3" json:"inference_decision_only,omitempty"`
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	// Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint).
+	InferenceLlamacppEndpoint string `protobuf:"bytes,24,opt,name=inference_llamacpp_endpoint,json=inferenceLlamacppEndpoint,proto3" json:"inference_llamacpp_endpoint,omitempty"`
+	// llama-server --models-dir as seen by this Operator
+	// (--inference-llamacpp-model-root).
+	InferenceLlamacppModelRoot string `protobuf:"bytes,25,opt,name=inference_llamacpp_model_root,json=inferenceLlamacppModelRoot,proto3" json:"inference_llamacpp_model_root,omitempty"`
+	// Model store layout under provenance_operator_model_storage_root
+	// (--model-storage-format: ollama or llamacpp).
+	ProvenanceOperatorModelStorageFormat string `protobuf:"bytes,26,opt,name=provenance_operator_model_storage_format,json=provenanceOperatorModelStorageFormat,proto3" json:"provenance_operator_model_storage_format,omitempty"`
+	unknownFields                        protoimpl.UnknownFields
+	sizeCache                            protoimpl.SizeCache
 }
 
 func (x *OperatorRuntimeConfig) Reset() {
@@ -4447,6 +4455,27 @@ func (x *OperatorRuntimeConfig) GetInferenceDecisionOnly() bool {
 		return x.InferenceDecisionOnly
 	}
 	return false
+}
+
+func (x *OperatorRuntimeConfig) GetInferenceLlamacppEndpoint() string {
+	if x != nil {
+		return x.InferenceLlamacppEndpoint
+	}
+	return ""
+}
+
+func (x *OperatorRuntimeConfig) GetInferenceLlamacppModelRoot() string {
+	if x != nil {
+		return x.InferenceLlamacppModelRoot
+	}
+	return ""
+}
+
+func (x *OperatorRuntimeConfig) GetProvenanceOperatorModelStorageFormat() string {
+	if x != nil {
+		return x.ProvenanceOperatorModelStorageFormat
+	}
+	return ""
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -14325,7 +14354,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
 	"\voperator_id\x18\x02 \x01(\tR\n" +
 	"operatorId\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\x87\b\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xe2\t\n" +
 	"\x15OperatorRuntimeConfig\x12\x1d\n" +
 	"\n" +
 	"cloud_mode\x18\x01 \x01(\bR\tcloudMode\x12%\n" +
@@ -14345,7 +14374,10 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x1ainference_decision_backend\x18\x14 \x01(\tR\x18inferenceDecisionBackend\x12E\n" +
 	"\x1finference_allow_hosted_decision\x18\x15 \x01(\bR\x1cinferenceAllowHostedDecision\x12:\n" +
 	"\x19inference_decision_models\x18\x16 \x03(\tR\x17inferenceDecisionModels\x126\n" +
-	"\x17inference_decision_only\x18\x17 \x01(\bR\x15inferenceDecisionOnlyJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
+	"\x17inference_decision_only\x18\x17 \x01(\bR\x15inferenceDecisionOnly\x12>\n" +
+	"\x1binference_llamacpp_endpoint\x18\x18 \x01(\tR\x19inferenceLlamacppEndpoint\x12A\n" +
+	"\x1dinference_llamacpp_model_root\x18\x19 \x01(\tR\x1ainferenceLlamacppModelRoot\x12V\n" +
+	"(provenance_operator_model_storage_format\x18\x1a \x01(\tR$provenanceOperatorModelStorageFormatJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
 	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x15local_storage_enabledR\x11inference_enabledR\"provider_boundary_observer_enabledR\x1bprovenance_operator_enabledR\x06no_git\"\xa9\f\n" +
 	"\x10OperatorDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +

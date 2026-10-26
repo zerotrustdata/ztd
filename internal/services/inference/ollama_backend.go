@@ -422,10 +422,18 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Read a bounded slice of the error body for connection reuse and
-		// capability classification. Provider error text is never returned
-		// or logged: it can echo prompt material and provider internals.
 		errorBody := responseBody
+		var apiError struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(errorBody, &apiError)
+		if b.logger != nil {
+			b.logger.Warn("Ollama generation failed",
+				"status", resp.StatusCode,
+				"model", req.Model,
+				"error", apiError.Error,
+			)
+		}
 		switch {
 		case resp.StatusCode == http.StatusRequestTimeout:
 			return nil, fmt.Errorf("ollama_backend: generate: %w", constants.ErrInferenceBackendTimeout)
