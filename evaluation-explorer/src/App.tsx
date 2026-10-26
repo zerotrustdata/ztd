@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { useFeedStatus, useConnection, useStoreState, evalStore } from './state/store';
 import { startFeed, stopFeed } from './state/startup';
@@ -25,6 +25,12 @@ import brandWordmarkUrl from './assets/brand/opendevops-logo-plus-title-text.png
 import brandLogoUrl from './assets/brand/opendevops-logo-only.png';
 
 function Shell() {
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const drawerButtonRef = useRef<HTMLButtonElement>(null);
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    drawerButtonRef.current?.focus();
+  }, []);
   const feedStatus = useFeedStatus();
   const connection = useConnection();
   const errors = useStoreState((state) => state.errors);
@@ -37,14 +43,23 @@ function Shell() {
     return () => stopFeed();
   }, []);
 
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) closeDrawer();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [drawerOpen, closeDrawer]);
+
   return (
-    <div className={`app-shell connection-${connection}`}>
+    <div className={`app-shell connection-${connection}${drawerOpen ? '' : ' is-drawer-closed'}`}>
       <a
         className="skip-link"
         href="#main"
         onClick={(event) => {
           event.preventDefault();
-          document.getElementById('main')?.scrollIntoView({ behavior: 'smooth' });
+          document.getElementById('main')?.focus();
         }}
       >
         Skip to content
@@ -52,7 +67,22 @@ function Shell() {
       <header className="app-header">
         <div className="header-primary">
           <div className="header-leading">
-            <NavDrawer />
+            <button
+              ref={drawerButtonRef}
+              type="button"
+              className={`nav-hamburger-btn${drawerOpen ? ' is-active' : ''}`}
+              onClick={() => setDrawerOpen((open) => !open)}
+              aria-label={drawerOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
+              aria-expanded={drawerOpen}
+              aria-controls="navigation-drawer"
+              title="Navigation and runs"
+            >
+              <span className="nav-hamburger-icon" aria-hidden="true">
+                <span className="hamburger-line line-1" />
+                <span className="hamburger-line line-2" />
+                <span className="hamburger-line line-3" />
+              </span>
+            </button>
             <Link className="header-brand" to="/" aria-label="OpenDevOps.ai home">
               <img className="header-brand-wordmark" src={brandWordmarkUrl} alt="" />
               <img className="header-brand-logo" src={brandLogoUrl} alt="" />
@@ -70,24 +100,29 @@ function Shell() {
           </div>
         </div>
       </header>
-      <ErrorBanner errors={errors} onDismiss={() => evalStore.clearErrors()} />
-      <main id="main" className="app-main">
-        <Routes>
-          <Route path="/" element={<OverviewView />} />
-          <Route path="/leaderboard" element={<LeaderboardView />} />
-          <Route path="/models" element={<ModelsView />} />
-          <Route path="/models/:datasetId?/:variantId" element={<ModelDetailView />} />
-          <Route path="/evaluations" element={<EvaluationsView />} />
-          <Route path="/evaluations/:datasetId?/:runId" element={<EvaluationDetailView />} />
-          <Route path="/evaluations/:datasetId?/:runId/assignments/:assignmentId" element={<AssignmentDetailView />} />
-          <Route path="/failures" element={<Navigate to="/evaluations" replace />} />
-          <Route path="/about" element={<AboutView />} />
-          <Route path="/sponsors" element={<SponsorsView />} />
-          <Route path="/tasks" element={<TasksView />} />
-          <Route path="/tasks/:taskId" element={<TasksView />} />
-          <Route path="/methodology" element={<MethodologyView />} />
-        </Routes>
-      </main>
+      <div className="app-workspace">
+        <NavDrawer isOpen={drawerOpen} onClose={closeDrawer} />
+        <div className="app-content">
+          <ErrorBanner errors={errors} onDismiss={() => evalStore.clearErrors()} />
+          <main id="main" className="app-main" tabIndex={-1}>
+            <Routes>
+              <Route path="/" element={<OverviewView />} />
+              <Route path="/leaderboard" element={<LeaderboardView />} />
+              <Route path="/models" element={<ModelsView />} />
+              <Route path="/models/:datasetId?/:variantId" element={<ModelDetailView />} />
+              <Route path="/evaluations" element={<EvaluationsView />} />
+              <Route path="/evaluations/:datasetId?/:runId" element={<EvaluationDetailView />} />
+              <Route path="/evaluations/:datasetId?/:runId/assignments/:assignmentId" element={<AssignmentDetailView />} />
+              <Route path="/failures" element={<Navigate to="/evaluations" replace />} />
+              <Route path="/about" element={<AboutView />} />
+              <Route path="/sponsors" element={<SponsorsView />} />
+              <Route path="/tasks" element={<TasksView />} />
+              <Route path="/tasks/:taskId" element={<TasksView />} />
+              <Route path="/methodology" element={<MethodologyView />} />
+            </Routes>
+          </main>
+        </div>
+      </div>
       <AppFooter />
     </div>
   );

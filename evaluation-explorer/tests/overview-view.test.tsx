@@ -7,6 +7,11 @@ import { MemoryRouter } from 'react-router-dom';
 import type { CatalogSnapshot, EvaluationSummary, LiveEvent, ModelSummary, SnapshotRecord, SuiteSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { OverviewView } from '../src/views/OverviewView';
+import { RunsPanel } from '../src/components/RunsPanel';
+
+function LiveWorkspace() {
+  return <><RunsPanel /><OverviewView /></>;
+}
 
 const datasetId = 'ds-live-smoke-run';
 
@@ -112,7 +117,7 @@ const events: LiveEvent[] = [
   },
 ];
 
-describe('OverviewView', () => {
+describe('Live workspace', () => {
   beforeEach(() => {
     evalStore.loadFixtures([catalog, archivedCatalog, suite, evaluation] as SnapshotRecord[], events);
     evalStore.setConnection('live');
@@ -124,7 +129,7 @@ describe('OverviewView', () => {
   });
 
   it('updates Runs from canonical SSE summaries and preserves the same values on a snapshot reload', () => {
-    render(<MemoryRouter><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter><LiveWorkspace /></MemoryRouter>);
     const runs = within(screen.getByRole('region', { name: 'Runs' }));
     expect(runs.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '6');
     const updated: EvaluationSummary = {
@@ -154,7 +159,7 @@ describe('OverviewView', () => {
   it.each(['running', 'completed', 'cancelled', 'interrupted', 'verified', 'verify_failed', 'scheduled', 'in_progress', 'initialized', 'unknown'])(
     'shows the published CLI run status %s instead of assignment lifecycle', (status) => {
       evalStore.loadFixtures([catalog, Object.assign({}, evaluation, { run_status: status })], []);
-      render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+      render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
       const row = within(screen.getByRole('list', { name: 'Recent runs' }));
       expect(row.getByText(status)).toHaveClass(`status-${status}`);
     },
@@ -162,24 +167,24 @@ describe('OverviewView', () => {
 
   it('shows assignment run time, never wall-clock time since start', () => {
     evalStore.loadFixtures([catalog, { ...evaluation, ended_at: '2026-09-23T12:00:00Z' }], []);
-    const { unmount } = render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    const { unmount } = render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
     expect(within(screen.getByRole('list', { name: 'Recent runs' })).queryByText(/Run time/)).not.toBeInTheDocument();
     unmount();
     evalStore.loadFixtures([catalog, { ...evaluation, ended_at: '2026-09-23T12:00:00Z', run_seconds: 5400 }], []);
-    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
     expect(within(screen.getByRole('list', { name: 'Recent runs' })).getByText('Run time 1h 30m')).toBeInTheDocument();
   });
 
   it('does not claim running from a historical partial summary without process evidence', () => {
     evalStore.loadFixtures([catalog, { ...evaluation, run_status: undefined }], []);
-    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
     const row = within(screen.getByRole('list', { name: 'Recent runs' }));
     expect(row.getByText('unknown')).toBeInTheDocument();
   });
 
   it('receives cancellation through a pushed summary and counts stopped assignments as terminal', () => {
     evalStore.loadFixtures([catalog, Object.assign({}, evaluation, { run_status: 'running' })], []);
-    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
     act(() => evalStore.acceptProjection({
       sequence: 1,
       record_type: 'projection',
@@ -209,7 +214,7 @@ describe('OverviewView', () => {
   it('renders the live event stream without the system overview panel', () => {
     render(
       <MemoryRouter initialEntries={['/?dataset=ds-verified-archive&release=all']}>
-        <OverviewView />
+        <LiveWorkspace />
       </MemoryRouter>,
     );
 
@@ -236,7 +241,7 @@ describe('OverviewView', () => {
     };
     evalStore.loadFixtures([catalog, evaluation], [...events, secondEvent]);
 
-    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
 
     const stream = within(screen.getByRole('region', { name: 'Live activity' }));
     expect(stream.getByRole('link', { name: /Provider Failed:.*View details/ })).toHaveAttribute('data-tone', 'neutral');
@@ -251,7 +256,7 @@ describe('OverviewView', () => {
       { ...events[0]!, event_id: 'unknown-event', run_id: 'unknown-run', assignment_id: 'unknown-assignment', variant_id: 'unknown-model' },
     ]);
 
-    render(<MemoryRouter initialEntries={[route]}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[route]}><LiveWorkspace /></MemoryRouter>);
 
     const stream = within(screen.getByRole('region', { name: 'Live activity' }));
     expect(stream.getByRole('link', { name: 'current-model' })).toBeInTheDocument();
@@ -266,7 +271,7 @@ describe('OverviewView', () => {
         release: 'v1.2.0', release_basis: 'recorded', started_at: '2026-09-23T12:00:00Z' },
       { ...evaluation, dataset_id: 'ds-live-unknown', run_id: 'recent-unknown', started_at: '2026-09-24T12:00:00Z' },
     ], []);
-    render(<MemoryRouter><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter><LiveWorkspace /></MemoryRouter>);
     const recent = within(screen.getByRole('list', { name: 'Recent runs' }));
     expect(recent.getAllByRole('link').map((link) => link.textContent)).toEqual([
       'recent-unknown', 'recent-older-release', evaluation.run_id,
@@ -274,7 +279,7 @@ describe('OverviewView', () => {
   });
 
   it('removes the landing page explainer while retaining recent runs', () => {
-    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?release=all']}><LiveWorkspace /></MemoryRouter>);
     expect(screen.queryByRole('region', { name: 'What am I looking at?' })).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Runs' })).toBeInTheDocument();
   });
@@ -282,7 +287,7 @@ describe('OverviewView', () => {
   it('presents recent runs with coverage for engineers without duplicate public data section', () => {
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
-        <OverviewView />
+        <LiveWorkspace />
       </MemoryRouter>,
     );
 
@@ -322,7 +327,7 @@ describe('OverviewView', () => {
 
     render(
       <MemoryRouter initialEntries={['/?release=all']}>
-        <OverviewView />
+        <LiveWorkspace />
       </MemoryRouter>,
     );
 

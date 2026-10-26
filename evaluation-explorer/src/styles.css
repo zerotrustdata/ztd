@@ -98,7 +98,20 @@ button { font-family: inherit; cursor: pointer; }
 .skip-link:focus { left: 0; }
 
 /* Header */
-.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.app-shell {
+  --drawer-width: 350px;
+  height: 100dvh; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.app-shell > .app-header, .app-shell > .app-footer { flex-shrink: 0; }
+.app-workspace {
+  position: relative; display: grid; flex: 1; min-height: 0;
+  grid-template-columns: var(--drawer-width) minmax(0, 1fr);
+  overflow: hidden; transition: grid-template-columns 200ms ease;
+}
+.is-drawer-closed .app-workspace { grid-template-columns: 0 minmax(0, 1fr); }
+.app-content { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.app-content > .error-banner { flex-shrink: 0; max-height: 30%; overflow: auto; }
 .app-header {
   --header-sticky-offset: 52px;
   padding: 6px 16px 6px;
@@ -153,14 +166,7 @@ button { font-family: inherit; cursor: pointer; }
   min-width: 0;
   flex-shrink: 0;
 }
-/* Nav Drawer & Hamburger Menu */
-.nav-drawer-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-  z-index: 50;
-  flex-shrink: 0;
-}
+/* Persistent navigation and live Runs drawer */
 .nav-hamburger-btn {
   display: inline-flex;
   align-items: center;
@@ -219,30 +225,23 @@ button { font-family: inherit; cursor: pointer; }
 .nav-hamburger-btn.is-active .line-3 {
   transform: translateY(-5.5px) rotate(-45deg);
 }
-.nav-drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 95;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  animation: drawerBackdropFade 160ms ease;
+.nav-drawer {
+  display: flex; flex-direction: column; gap: 8px;
+  width: var(--drawer-width); min-height: 0; padding: 12px;
+  background: var(--bg-elev); border-right: 1px solid var(--border);
+  overflow: hidden; transform: translateX(0); visibility: visible;
+  transition: transform 200ms ease, visibility 200ms;
 }
-.nav-dropdown-drawer {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  width: 310px;
-  max-width: calc(100vw - 24px);
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
-  padding: 10px;
-  z-index: 100;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  animation: drawerSlideDown 180ms cubic-bezier(0.16, 1, 0.3, 1);
+.is-drawer-closed .nav-drawer { transform: translateX(-100%); visibility: hidden; }
+.nav-drawer .campaign-evidence-panel {
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+  padding: 12px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  overflow: hidden;
+}
+.nav-drawer .campaign-evidence-panel > :not(.campaign-evidence-list) { flex-shrink: 0; }
+.nav-drawer .campaign-evidence-list {
+  flex: 1; min-height: 0; overflow: auto; align-content: start;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
 }
 .nav-drawer-header {
   display: flex;
@@ -250,7 +249,7 @@ button { font-family: inherit; cursor: pointer; }
   justify-content: space-between;
   padding: 4px 8px 8px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
+  margin-bottom: 0; flex-shrink: 0;
 }
 .nav-drawer-kicker {
   font-size: var(--text-2xs);
@@ -280,20 +279,22 @@ button { font-family: inherit; cursor: pointer; }
 .nav-drawer-items {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px; flex-shrink: 1; min-height: 70px; max-height: 46%;
+  overflow: auto; overscroll-behavior: contain;
 }
 .nav-drawer-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 6px 10px;
   border-radius: 8px;
   text-decoration: none;
   color: var(--fg-muted);
   border: 1px solid transparent;
   transition: all 140ms ease;
 }
+.nav-drawer-item:focus { text-decoration: none; }
 .nav-drawer-item:hover {
   background: var(--bg-elev2);
   color: var(--fg);
@@ -313,11 +314,6 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-.nav-drawer-item-title-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 .nav-drawer-item-label {
   font-size: 14px;
@@ -346,13 +342,8 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--accent);
   opacity: 0.9;
 }
-@keyframes drawerSlideDown {
-  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes drawerBackdropFade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@media (max-height: 850px) {
+  .nav-drawer-item-desc { display: none; }
 }
 
 /* Campaign Status Bar */
@@ -571,14 +562,11 @@ button { font-family: inherit; cursor: pointer; }
 .theme-toggle-icon { font-size: 15px; line-height: 1; }
 
 /* Main */
-.app-main { flex: 1; padding: 24px 24px 72px; max-width: 1400px; width: 100%; margin: 0 auto; }
+.app-main { flex: 1; min-height: 0; overflow: auto; padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; overscroll-behavior: contain; }
 /* Data-dense views (Live, Leaderboard, Models, Evaluations) span the full viewport width. */
 .app-main:has(> .overview, > .leaderboard-view, > .models-view, > .evaluations-view, > .evaluation-detail) { max-width: none; }
 .app-footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   z-index: 10;
   background: var(--bg-elev);
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 20px;
@@ -592,10 +580,7 @@ button { font-family: inherit; cursor: pointer; }
 .app-footer-links code { margin-left: 3px; color: var(--fg-dim); font-size: var(--text-xs); }
 .app-footer-unavailable { color: var(--fg-dim); }
 
-/* Live fills the space between the header and the footer, including wrapped chrome. */
-.app-shell:has(.overview) { height: 100dvh; min-height: 0; overflow: hidden; }
-.app-shell:has(.overview) > :not(.app-main) { flex-shrink: 0; }
-.app-shell:has(.overview) .app-footer { position: static; }
+/* Live activity fills the available height; other views scroll inside main. */
 .app-main:has(> .overview) {
   display: flex; min-height: 0; overflow: hidden;
   padding-bottom: 8px;
@@ -1266,19 +1251,16 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
   display: grid;
   flex: 1;
   min-height: 0;
-  grid-template-columns: clamp(300px, 26vw, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  gap: 16px;
+  gap: 16px; container-type: inline-size;
 }
 .overview > .panel { min-width: 0; min-height: 0; overflow: hidden; }
-.overview .campaign-evidence-panel { display: flex; flex-direction: column; }
-.overview .campaign-evidence-panel > :not(.campaign-evidence-list),
 .overview .stream-panel > :not(.stream-scroll) { flex-shrink: 0; }
-.overview .campaign-evidence-list, .overview .stream-panel .stream-scroll {
+.overview .stream-panel .stream-scroll {
   flex: 1; min-height: 0; max-height: none; overflow: auto;
   overscroll-behavior: contain; scrollbar-gutter: stable;
 }
-.overview .campaign-evidence-list { align-content: start; }
 .overview .stream-panel > .stream-toolbar {
   flex-shrink: 1; min-height: 32px; max-height: 40%; overflow: auto;
   overscroll-behavior: contain;
@@ -1559,7 +1541,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   background: var(--bg-elev2);
 }
 
-@media (max-width: 1000px) and (min-width: 701px) {
+@container (max-width: 1000px) and (min-width: 701px) {
   .stream-table th, .stream-table td { padding: 10px 7px; }
   .stream-table th:first-child { width: 65px; }
   .stream-table .stream-metric-header { width: 78px; }
@@ -1568,10 +1550,10 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .stream-detail-cue { font-size: 0; }
   .stream-detail-cue::after { content: '→'; font-size: 14px; }
 }
-@media (max-width: 1100px) {
+@container (max-width: 1100px) {
   .stream-head { grid-template-columns: minmax(0, 1fr) auto; }
 }
-@media (max-width: 700px) {
+@container (max-width: 700px) {
   .stream-panel { padding: 14px 12px; }
   .stream-head { gap: 14px; }
   .stream-head select { flex: 1; min-width: 100px; max-width: 100%; }
@@ -2001,7 +1983,6 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .header-campaign-task-label { display: none; }
 }
 @media (max-width: 1000px) {
-  .overview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 2fr); }
   .app-header { --header-sticky-offset: 86px; }
   .header-primary {
     grid-template-columns: auto 1fr;
@@ -2051,7 +2032,13 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .app-header { --header-sticky-offset: 96px; padding: 2px 4px 2px; }
   .header-brand-wordmark { display: none; }
   .header-brand-logo { display: block; height: 32px; }
-  .app-main { padding: 14px 14px 80px; }
+  .app-main { padding: 14px; }
+  .app-workspace, .is-drawer-closed .app-workspace { grid-template-columns: minmax(0, 1fr); }
+  .nav-drawer {
+    position: absolute; inset: 0 auto 0 0; z-index: 20;
+    width: min(var(--drawer-width), calc(100% - 44px));
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.3);
+  }
   .header-primary { gap: 8px 10px; }
   .header-utilities { flex-wrap: wrap; justify-content: flex-end; }
   .header-campaign-bar { min-height: 38px; padding: 6px 10px; gap: 8px; }
@@ -2083,7 +2070,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 }
 
 @media (max-width: 320px) {
-  .app-main { padding: 10px 10px 88px; }
+  .app-main { padding: 10px; }
   .stat-grid { grid-template-columns: 1fr; }
   .metric-grid { grid-template-columns: 1fr; }
   .agents-grid { grid-template-columns: 1fr; }
@@ -2093,7 +2080,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 @media (prefers-reduced-motion: reduce) {
   .skeleton-line { animation: none; }
   .status-spinner { animation: none; }
-  .progress-fill { transition: none; }
+  .progress-fill, .app-workspace, .nav-drawer { transition: none; }
   * { scroll-behavior: auto; }
 }
 
