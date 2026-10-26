@@ -94,19 +94,20 @@ func TestMirror_SnapshotUpgradeAndCorruption(t *testing.T) {
 	}
 }
 
-func TestMirror_SnapshotBackfillsVerifiedLegacyHistory(t *testing.T) {
+func TestMirror_SnapshotMissingMarkerFailsClosed(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	ctx := context.Background()
 	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "run-a"}))}, constants.PublicFeedZeroHashHex)
 	require.NoError(t, env.mirror.acceptBatch(ctx, batch))
-	// Simulate a pre-snapshot schema without touching the retained signed chain.
-	_, err := env.store.db.ExecWithRetry(ctx, `DROP TABLE snapshot_records; DROP TABLE snapshot_batches; DROP TABLE snapshot_heads; PRAGMA user_version = 0`)
+	// Missing snapshot tables must fail closed under INV-STOR-SCHEMA-01 rather than backfilling.
+	_, err := env.store.db.ExecWithRetry(ctx, `DROP TABLE snapshot_records; DROP TABLE snapshot_batches; DROP TABLE snapshot_heads`)
 	require.NoError(t, err)
-	mirror := env.reopenMirror()
-	bootstrap, err := mirror.currentBootstrap(ctx, env.sourceID)
-	require.NoError(t, err)
-	require.Len(t, bootstrap.RecentProjections, 1)
-	assert.Equal(t, int64(1), bootstrap.Snapshot.HighWaterSequence)
+	require.NoError(t, env.store.Close())
+	store, err := OpenPublicMirrorStore(ctx, env.fileSvc, testutil.NewTestLogger())
+	if store != nil {
+		_ = store.Close()
+	}
+	require.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
 }
 
 func TestMirror_SnapshotFailureRollsBackFeedCursor(t *testing.T) {

@@ -151,6 +151,12 @@ func EvalEvidenceBackup(
 			if report.Unchanged {
 				return fmt.Sprintf("Evaluation evidence already backed up in %s", report.SnapshotDir), nil
 			}
+			backupDir := DefaultEvalBackupDir(cfg)
+			compactReport, compactErr := evaluation.NewEvalBackup(fileSvc, time.Now).Compact(ctx, backupDir)
+			if compactErr == nil && compactReport != nil && compactReport.TotalReclaimedBytes > 0 {
+				return fmt.Sprintf("Backed up evaluation evidence (%d file(s), %d bytes) to %s (compacted %d superseded snapshot(s), reclaimed %d bytes)",
+					len(report.Files), report.TotalBytes, report.SnapshotDir, compactReport.RemovedSupersededSnapshots, compactReport.TotalReclaimedBytes), nil
+			}
 			return fmt.Sprintf("Backed up evaluation evidence (%d file(s), %d bytes) to %s", len(report.Files), report.TotalBytes, report.SnapshotDir), nil
 		},
 	}

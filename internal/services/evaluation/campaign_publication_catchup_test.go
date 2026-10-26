@@ -49,8 +49,9 @@ func messageTypeCounts(t *testing.T, batch []CampaignPublicFeedRecord) map[strin
 	return counts
 }
 
-// Catch-up ships every assignment lifecycle and terminal result of a run in one
-// export batch, so the feed does not pay one export per record.
+// Catch-up ships assignment lifecycles for pending assignments and terminal
+// results for finished assignments in export batches without emitting redundant
+// lifecycles for already-completed assignments.
 func TestPublishRunCatchUpExportsLifecyclesAndResultsInOneBatch(t *testing.T) {
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
@@ -59,7 +60,9 @@ func TestPublishRunCatchUpExportsLifecyclesAndResultsInOneBatch(t *testing.T) {
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)
 	require.Greater(t, len(assignments), 1)
-	executeTestAssignments(t, controller, req, run.GetRunId(), len(assignments))
+
+	// Execute only the first assignment; remaining assignments have no result yet.
+	executeTestAssignments(t, controller, req, run.GetRunId(), 1)
 
 	exporter := &batchRecordingCampaignFeedExporter{}
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
@@ -67,18 +70,32 @@ func TestPublishRunCatchUpExportsLifecyclesAndResultsInOneBatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Positive(t, published)
 
-	var lifecycleBatch []CampaignPublicFeedRecord
+	var assignmentBatch []CampaignPublicFeedRecord
 	for _, batch := range exporter.batches {
-		if messageTypeCounts(t, batch)[publicMessageTypeAssignmentLifecycle] > 0 {
-			lifecycleBatch = batch
+		counts := messageTypeCounts(t, batch)
+		if counts[publicMessageTypeAssignmentLifecycle] > 0 || counts[publicMessageTypeAssignmentResult] > 0 {
+			assignmentBatch = batch
 			break
 		}
 	}
-	require.NotNil(t, lifecycleBatch, "catch-up exported no assignment lifecycle batch")
+	require.NotNil(t, assignmentBatch, "catch-up exported no assignment batch")
 	assert.Equal(t, map[string]int{
-		publicMessageTypeAssignmentLifecycle: len(assignments),
-		publicMessageTypeAssignmentResult:    len(assignments),
-	}, messageTypeCounts(t, lifecycleBatch), "every lifecycle and result of the run must share one batch")
+		publicMessageTypeAssignmentLifecycle: len(assignments) - 1,
+		publicMessageTypeAssignmentResult:    1,
+	}, messageTypeCounts(t, assignmentBatch), "pending assignments emit lifecycles while completed assignments emit results")
+
+	// When all assignments are complete, catch-up omits redundant lifecycle records.
+	executeTestAssignments(t, controller, req, run.GetRunId(), len(assignments)-1)
+	require.NoError(t, coordinator.ResetFeedPublicationIdempotency(ctx, run.GetRunId()))
+	exporter.batches = nil
+	published, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
+	require.NoError(t, err)
+	require.Positive(t, published)
+
+	for _, batch := range exporter.batches {
+		counts := messageTypeCounts(t, batch)
+		assert.Zero(t, counts[publicMessageTypeAssignmentLifecycle], "completed assignments must not emit redundant lifecycle records")
+	}
 }
 
 // recordedProofArtifacts returns proof idempotency keys and recorded hashes for

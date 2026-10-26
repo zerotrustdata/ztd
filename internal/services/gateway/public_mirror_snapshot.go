@@ -34,33 +34,56 @@ type publicSnapshotIdentity struct {
 	Record       json.RawMessage `json:"record"`
 }
 
-func snapshotRecordIdentity(record models.PublicFeedRecord) (key, dataset string, event bool, err error) {
+func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, identity publicSnapshotIdentity, event bool, err error) {
 	if record.RecordType != models.PublicFeedRecordTypeProjection && record.RecordType != models.PublicFeedRecordTypeEvent {
-		return "", "", false, nil
+		return "", publicSnapshotIdentity{}, false, nil
 	}
-	var identity publicSnapshotIdentity
-	if err := json.Unmarshal([]byte(record.RecordBytes), &identity); err != nil {
-		return "", "", false, fmt.Errorf("mirror snapshot: decode identity: %w", err)
+	var id publicSnapshotIdentity
+	if err := json.Unmarshal([]byte(record.RecordBytes), &id); err != nil {
+		return "", publicSnapshotIdentity{}, false, fmt.Errorf("mirror snapshot: decode identity: %w", err)
 	}
-	if identity.MessageType != "" {
+	if id.MessageType != "" {
 		var assignment publicSnapshotIdentity
-		if err := json.Unmarshal(identity.Record, &assignment); err != nil {
-			return "", "", false, fmt.Errorf("mirror snapshot: decode assignment identity: %w", err)
+		if err := json.Unmarshal(id.Record, &assignment); err != nil {
+			return "", publicSnapshotIdentity{}, false, fmt.Errorf("mirror snapshot: decode assignment identity: %w", err)
 		}
-		assignment.Kind = identity.MessageType
+		assignment.Kind = id.MessageType
 		assignment.DatasetID = campaignMirrorDatasetID(assignment.RunID)
-		identity = assignment
+		id = assignment
 	}
-	event = identity.EventID != ""
-	parts := []string{identity.Kind, identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
+	event = id.EventID != ""
+	parts := []string{id.Kind, id.DatasetID, id.RunID, id.AssignmentID, id.VariantID, id.Role, id.SuiteID}
 	if event {
-		parts = []string{"event", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.EventID}
+		parts = []string{"event", id.DatasetID, id.RunID, id.AssignmentID, id.EventID}
 	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {
-		return "", "", false, fmt.Errorf("mirror snapshot: encode identity: %w", err)
+		return "", publicSnapshotIdentity{}, false, fmt.Errorf("mirror snapshot: encode identity: %w", err)
 	}
-	return string(encoded), identity.DatasetID, event, nil
+	return string(encoded), id, event, nil
+}
+
+func snapshotRecordIdentity(record models.PublicFeedRecord) (key, dataset string, event bool, err error) {
+	key, id, event, err := parseSnapshotRecordIdentity(record)
+	return key, id.DatasetID, event, err
+}
+
+func snapshotLifecycleCompanionKey(identity publicSnapshotIdentity) string {
+	if identity.Kind == "PublicAssignmentResultProjection" {
+		parts := []string{"PublicAssignmentLifecycleRecord", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
+		encoded, _ := json.Marshal(parts)
+		return string(encoded)
+	}
+	return ""
+}
+
+func snapshotResultCompanionKey(identity publicSnapshotIdentity) string {
+	if identity.Kind == "PublicAssignmentLifecycleRecord" {
+		parts := []string{"PublicAssignmentResultProjection", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
+		encoded, _ := json.Marshal(parts)
+		return string(encoded)
+	}
+	return ""
 }
 
 // updatePublicSnapshot runs in the signed-feed append transaction. Only the
@@ -80,6 +103,12 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 	}
 	defer selectStmt.Close()
 
+	deleteStmt, err := tx.PrepareContext(ctx, `DELETE FROM snapshot_records WHERE source_id = ? AND record_key = ?`)
+	if err != nil {
+		return err
+	}
+	defer deleteStmt.Close()
+
 	insertStmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshot_records
 		(source_id, record_key, dataset_id, sequence, first_sequence, is_event, record_type, record_hash, record_bytes)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -92,12 +121,30 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 	defer insertStmt.Close()
 
 	for _, record := range batch.Records {
-		key, dataset, event, err := snapshotRecordIdentity(record)
+		key, identity, event, err := parseSnapshotRecordIdentity(record)
 		if err != nil {
 			return err
 		}
 		if key == "" {
 			continue
+		}
+		if resultKey := snapshotResultCompanionKey(identity); resultKey != "" {
+			var resultFirst int64
+			err := selectStmt.QueryRowContext(ctx, batch.SourceID, resultKey).Scan(&resultFirst)
+			if err == nil {
+				// Terminal result projection already exists for this assignment; do not retain superseded lifecycle row.
+				continue
+			}
+		}
+		if lifecycleKey := snapshotLifecycleCompanionKey(identity); lifecycleKey != "" {
+			var lifecycleFirst int64
+			err := selectStmt.QueryRowContext(ctx, batch.SourceID, lifecycleKey).Scan(&lifecycleFirst)
+			if err == nil {
+				obsolete[lifecycleFirst] = true
+				if _, err := deleteStmt.ExecContext(ctx, batch.SourceID, lifecycleKey); err != nil {
+					return err
+				}
+			}
 		}
 		var previous int64
 		err = selectStmt.QueryRowContext(ctx, batch.SourceID, key).Scan(&previous)
@@ -108,7 +155,7 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 			obsolete[previous] = true
 		}
 		if _, err := insertStmt.ExecContext(ctx,
-			batch.SourceID, key, dataset, record.Sequence, batch.FirstSequence, event, record.RecordType, record.RecordHash, record.RecordBytes); err != nil {
+			batch.SourceID, key, identity.DatasetID, record.Sequence, batch.FirstSequence, event, record.RecordType, record.RecordHash, record.RecordBytes); err != nil {
 			return err
 		}
 	}
@@ -174,14 +221,10 @@ func (s *PublicMirrorStore) snapshotRecords(ctx context.Context, sourceID string
 	return records, nil
 }
 
-// initializePublicSnapshots upgrades verified retained history once. Existing
-// snapshots are verified, never silently rebuilt over corruption or data loss.
+// initializePublicSnapshots validates retained history and snapshots fail-closed.
+// Existing snapshots are verified, never silently rebuilt over corruption or data loss.
 func (s *PublicMirrorStore) initializePublicSnapshots(ctx context.Context) error {
 	s.logger.Info("Public mirror verification stage", "stage", "snapshots")
-	var version int
-	if err := s.db.QueryRowWithRetry(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
-		return err
-	}
 	state, err := s.loadState(ctx)
 	if err != nil {
 		return err
@@ -189,60 +232,17 @@ func (s *PublicMirrorStore) initializePublicSnapshots(ctx context.Context) error
 	for sourceID, summary := range state.sources {
 		var head int64
 		err := s.db.QueryRowWithRetry(ctx, `SELECT high_water_sequence FROM snapshot_heads WHERE source_id = ?`, sourceID).Scan(&head)
-		if err == nil {
-			if head != summary.HighWaterSequence {
-				return publicMirrorCorrupt("snapshot cursor mismatch for %s", sourceID)
-			}
-			continue
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if version >= 1 {
-			return publicMirrorCorrupt("snapshot initialization marker missing for %s", sourceID)
-		}
-		batches, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT first_sequence, last_sequence, protocol_version, schema_version, previous_batch_hash, generated_at, content_hash, signing_key_id, signature FROM batches WHERE source_id = ? ORDER BY first_sequence`, []interface{}{sourceID}, func(rows *sql.Rows) (models.PublicFeedBatch, error) {
-			batch := models.PublicFeedBatch{SourceID: sourceID}
-			var generated string
-			if err := rows.Scan(&batch.FirstSequence, &batch.LastSequence, &batch.ProtocolVersion, &batch.SchemaVersion, &batch.PreviousBatchHash, &generated, &batch.ContentHash, &batch.SigningKeyID, &batch.Signature); err != nil {
-				return batch, err
-			}
-			parsed, err := time.Parse(time.RFC3339Nano, generated)
-			batch.GeneratedAt = parsed
-			return batch, err
-		})
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return publicMirrorCorrupt("snapshot initialization marker missing for %s", sourceID)
+			}
 			return err
 		}
-		// One transaction includes the initialization marker, so interrupted
-		// migration retries cannot mistake a partial snapshot for a complete one.
-		for i := range batches {
-			batches[i].Records, err = s.recordsInRange(ctx, sourceID, batches[i].FirstSequence, batches[i].LastSequence)
-			if err != nil {
-				return err
-			}
-			for _, record := range batches[i].Records {
-				batches[i].RecordHashes = append(batches[i].RecordHashes, record.RecordHash)
-			}
-		}
-		if err := s.write(ctx, "initialize snapshot", func(tx *sql.Tx) error {
-			for _, batch := range batches {
-				if err := updatePublicSnapshot(ctx, tx, batch); err != nil {
-					return err
-				}
-			}
-			return nil
-		}); err != nil {
-			return err
+		if head != summary.HighWaterSequence {
+			return publicMirrorCorrupt("snapshot cursor mismatch for %s", sourceID)
 		}
 	}
-	if err := s.verifyPublicSnapshots(ctx, state.keys); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecWithRetry(ctx, `PRAGMA user_version = 1`); err != nil {
-		return fmt.Errorf("mirror snapshot: record migration: %w", err)
-	}
-	return nil
+	return s.verifyPublicSnapshots(ctx, state.keys)
 }
 
 // Snapshot verification retains identities and authenticated hashes, never the
@@ -320,19 +320,27 @@ func (s *PublicMirrorStore) verifyPublicSnapshot(ctx context.Context, source str
 				if record.RecordHash != hex.EncodeToString(hash[:]) || record.RecordHash != batch.RecordHashes[i] || record.Sequence != batch.FirstSequence+int64(i) {
 					return publicMirrorCorrupt("invalid snapshot record")
 				}
-				key, dataset, event, err := snapshotRecordIdentity(record)
+				key, identity, event, err := parseSnapshotRecordIdentity(record)
 				if err != nil {
 					return publicMirrorCorrupt("decode signed snapshot identity: %v", err)
 				}
 				if key == "" {
 					continue
 				}
+				if resultKey := snapshotResultCompanionKey(identity); resultKey != "" {
+					if _, hasResult := expected[resultKey]; hasResult {
+						continue
+					}
+				}
+				if lifecycleKey := snapshotLifecycleCompanionKey(identity); lifecycleKey != "" {
+					delete(expected, lifecycleKey)
+				}
 				current := expected
 				if event {
 					current = events
 				}
 				if prior, found := current[key]; !found || record.Sequence > prior.sequence {
-					current[key] = projection{key, dataset, record.RecordHash, record.RecordType, event, batch.FirstSequence, record.Sequence}
+					current[key] = projection{key, identity.DatasetID, record.RecordHash, record.RecordType, event, batch.FirstSequence, record.Sequence}
 				}
 			}
 		}

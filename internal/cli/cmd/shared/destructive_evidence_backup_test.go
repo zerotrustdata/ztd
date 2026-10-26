@@ -121,8 +121,9 @@ func TestEvalEvidenceBackup_RunTakesANewSnapshotWhenEvidenceChangedSinceTheLastO
 
 	require.NoError(t, err)
 	assert.Contains(t, summary, "Backed up evaluation evidence")
+	assert.Contains(t, summary, "compacted 1 superseded snapshot(s)")
 	assert.NotContains(t, summary, "already backed up")
-	assert.Len(t, f.snapshotDirs(t), 2)
+	assert.Len(t, f.snapshotDirs(t), 1, "superseded older snapshots are automatically compacted")
 }
 
 func TestEvalEvidenceBackup_RunReturnsSentinelWhenThereIsNoEvidence(t *testing.T) {

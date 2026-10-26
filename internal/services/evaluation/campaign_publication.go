@@ -823,13 +823,13 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 		if err != nil {
 			return 0, err
 		}
-		lifecycleRequest, err := buildAssignmentLifecyclePublishRequest(assignment, category, assignmentLifecycleObservedAt(assignment), state.Release)
-		if err != nil {
-			return 0, err
-		}
-		requests = append(requests, lifecycleRequest)
 		result := results[assignment.GetAssignmentId()]
 		if result == nil {
+			lifecycleRequest, err := buildAssignmentLifecyclePublishRequest(assignment, category, assignmentLifecycleObservedAt(assignment), state.Release)
+			if err != nil {
+				return 0, err
+			}
+			requests = append(requests, lifecycleRequest)
 			continue
 		}
 		resultKey := AssignmentResultIdempotencyKey(runID, assignment.GetAssignmentId())
