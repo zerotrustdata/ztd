@@ -35,6 +35,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -51,7 +52,8 @@ const unprovenAppSPIFFEID = "spiffe://ztd.local/app/" + unprovenAppID
 
 // seedUnprovenAppWorkload registers an app policy for unprovenAppID and returns
 // an mTLS client presenting an app certificate signed by the fixture PKI.
-func seedUnprovenAppWorkload(t *testing.T, f *fixtures.GatewayFixture) *http.Client {
+// An optional user ID adds the delegated user SAN used by platform enrollment.
+func seedUnprovenAppWorkload(t *testing.T, f *fixtures.GatewayFixture, delegatedUserID ...string) *http.Client {
 	t.Helper()
 	ctx := t.Context()
 
@@ -63,13 +65,28 @@ func seedUnprovenAppWorkload(t *testing.T, f *fixtures.GatewayFixture) *http.Cli
 	require.NoError(t, err)
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: unprovenAppID}}, key)
 	require.NoError(t, err)
-	certPEM, _, err := f.Service.GetPKI().SignCSR(string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})), constants.LeafTypeApp, "", unprovenAppID, "", "", "")
+	csrPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER}))
+	var certPEM string
+	if len(delegatedUserID) > 0 {
+		certPEM, _, err = f.Service.GetPKI().SignPlatformAppCSR(csrPEM, unprovenAppID, delegatedUserID[0])
+	} else {
+		certPEM, _, err = f.Service.GetPKI().SignCSR(csrPEM, constants.LeafTypeApp, "", unprovenAppID, "", "", "")
+	}
 	require.NoError(t, err)
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	require.NoError(t, err)
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 	cert, err := tls.X509KeyPair([]byte(certPEM), keyPEM)
 	require.NoError(t, err)
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	require.NoError(t, err)
+	require.Equal(t, unprovenAppSPIFFEID, leaf.URIs[0].String())
+	if len(delegatedUserID) > 0 {
+		userURI, err := protocol.NewWorkloadIdentity().UserSPIFFEURL(delegatedUserID[0])
+		require.NoError(t, err)
+		require.Len(t, leaf.URIs, 2)
+		require.Equal(t, userURI.String(), leaf.URIs[1].String())
+	}
 
 	roots := x509.NewCertPool()
 	require.True(t, roots.AppendCertsFromPEM(testutil.ReadRootCA(t, f.PKIDir)))

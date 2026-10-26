@@ -167,7 +167,7 @@ Canonical channels include:
 
 ### 6. Document Store API
 
-CRUD operations and query support are available under `/api/v1/data/{collection}/{id}` and `/api/v1/data/{collection}/_query`. From the CLI:
+Read documents with `GET /api/v1/data/{collection}/{id}` and query them with `POST /api/v1/data/{collection}/_query`. `GET /api/v1/data/settings` reads platform settings. From the CLI:
 
 ```bash
 # List a collection, or read one document
@@ -186,7 +186,7 @@ The query endpoint is `POST /api/v1/data/{collection}/_query` over mTLS with `Co
 }
 ```
 
-Direct mutations (PUT, PATCH, DELETE) are restricted to infrastructure collections: `settings`, `users`, `operators`, `operator_sessions`, `bound_sessions`, `passkey_challenges`, `revoked_certificates`, and `trusted_signers`. Every other collection requires `GovernanceEnvelope` transactions for mutations.
+The data API is read-only. Direct document writes (`POST`, `PUT`, `PATCH`, `DELETE`) and settings writes return HTTP 405 for every collection and authenticated identity. The query endpoint's `POST` remains a read. Submit application record changes through classified governed actions; platform authority records such as users, signers, revocations, and settings use their owning enrollment and management workflows and cannot be written through the generic data API. See [Authentication Architecture](../architecture/auth.md#route-classification-inv-auth-route) for the admission invariant.
 
 ---
 

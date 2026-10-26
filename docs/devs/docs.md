@@ -318,6 +318,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 - [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
 - [v1.4.2 Release Notes](../release_notes/v1.4.x/v1.4.2.md): llama.cpp inference provider, llama.cpp GGUF model provenance, and provider-aware evaluation model maintenance.
+- [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Draft trust and evidence integrity readiness, starting with removal of ungoverned data API writes.
 
 ## Procedures
 

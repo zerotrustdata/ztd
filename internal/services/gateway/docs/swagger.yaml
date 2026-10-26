@@ -1051,6 +1051,28 @@ definitions:
           $ref: '#/definitions/models.ConsensusVoteRecord'
         type: array
     type: object
+  models.DocFilter:
+    properties:
+      field:
+        type: string
+      op:
+        type: string
+      value:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.DocQueryRequest:
+    properties:
+      filters:
+        items:
+          $ref: '#/definitions/models.DocFilter'
+        type: array
+      limit:
+        type: integer
+      order_by:
+        type: string
+    type: object
   models.DownloadArtifact:
     properties:
       artifact_id:
@@ -4519,6 +4541,74 @@ paths:
       summary: Get current web session
       tags:
       - auth
+  /api/v1/data/{collection}/_query:
+    post:
+      consumes:
+      - application/json
+      description: Requires mTLS. POST accepts read-only query parameters and never
+        creates, updates, or deletes documents.
+      parameters:
+      - description: Collection name
+        in: path
+        name: collection
+        required: true
+        type: string
+      - description: Read-only query
+        in: body
+        name: query
+        schema:
+          $ref: '#/definitions/models.DocQueryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "400":
+          description: Invalid query
+          schema:
+            type: object
+      summary: Query documents
+      tags:
+      - data
+  /api/v1/data/{collection}/{id}:
+    get:
+      description: Requires mTLS. Direct document writes return 405 for every collection
+        and identity, including platform authority collections. Application record
+        mutations require governed actions; platform authority changes use their owning
+        enrollment and management workflows.
+      parameters:
+      - description: Collection name
+        in: path
+        name: collection
+        required: true
+        type: string
+      - description: Document ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Document not found
+          schema:
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: object
+      summary: Read a document
+      tags:
+      - data
   /api/v1/data/blobs/{namespace}/{id}:
     get:
       description: Retrieves a blob from the data store
@@ -4530,6 +4620,28 @@ paths:
           schema:
             type: file
       summary: Get blob
+      tags:
+      - data
+  /api/v1/data/settings:
+    get:
+      description: Requires mTLS. This endpoint is read-only; direct settings writes
+        return 405 in every posture.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Settings not found
+          schema:
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: object
+      summary: Read platform settings
       tags:
       - data
   /api/v1/gateway/reputation/sign:

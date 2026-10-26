@@ -11,6 +11,12 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.5.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.5.0 | TBD | In progress: remove ungoverned document and settings API writes; trust and evidence integrity readiness. | [v1.5.0 (draft)](docs/release_notes/v1.5.x/v1.5.0.md) |
+
 ## v1.4.x
 
 | Version | Date | Description | Notes |
