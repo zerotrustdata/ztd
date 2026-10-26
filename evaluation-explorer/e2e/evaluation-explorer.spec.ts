@@ -282,6 +282,7 @@ test('Live panels fit above the footer and scroll independently through resizing
 });
 
 for (const viewport of [
+  { width: 1920, height: 1080, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'light' },
   { width: 900, height: 1000, theme: 'dark' },
@@ -331,6 +332,11 @@ for (const viewport of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     if (viewport.width > 700) {
+      const columnWidths = await live.locator('tbody tr').first().locator('td').evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width));
+      expect(columnWidths[0]).toBeLessThan(90);
+      expect(columnWidths.at(-1)).toBeLessThan(100);
+      const numericWidths = columnWidths.slice(3);
+      expect(Math.max(...numericWidths) - Math.min(...numericWidths)).toBeLessThan(1);
       const heights = await live.locator('tbody tr').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
       expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(2);
       expect(Math.max(...heights)).toBeLessThan(80);

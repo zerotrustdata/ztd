@@ -383,7 +383,7 @@ describe('LiveEventStream', () => {
       const user = userEvent.setup();
       render(stream([
         ...Array.from({ length: 26 }, (_, index) => started(`a-${index}`, new Date(Date.UTC(2026, 8, 17, 8, index)).toISOString())),
-        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:01:05Z'),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:01:05Z', 'tx-1', 'a-0'),
       ]));
       expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Next page' }));
