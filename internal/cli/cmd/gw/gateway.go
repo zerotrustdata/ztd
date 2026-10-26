@@ -573,7 +573,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
 			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(&startOpts); err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrProcessStartFailed, err)
+				return err
 			}
 			gatewayCfg = startOpts.GatewayConfig
 

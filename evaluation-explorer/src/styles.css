@@ -1352,11 +1352,12 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .stream-table th:first-child { width: 76px; }
 .stream-table th:nth-child(2) { width: 19%; }
 .stream-table th:nth-child(3) { width: 14%; }
-.stream-table th:nth-child(4) { width: 25%; }
-.stream-table th:nth-child(n+5) { width: 8%; }
+.stream-table .stream-tribunal-header { width: 25%; }
+.stream-table .stream-metric-header { width: 8%; }
 .stream-table th:last-child { width: 100px; }
-.stream-table th:nth-child(n+5), .stream-table td:nth-child(n+5) { text-align: right; }
-.stream-table th:nth-child(n+5) .th-sort { justify-content: flex-end; }
+.stream-table .stream-metric-header, .stream-table .stream-time-header,
+.stream-table .stream-metric-cell, .stream-table .stream-time { text-align: right; }
+.stream-table .stream-metric-header .th-sort, .stream-table .stream-time-header .th-sort { justify-content: flex-end; }
 .stream-table tbody tr:hover, .stream-table tbody tr:focus-within { background: var(--bg-elev2); }
 .stream-table tbody tr:last-child td { border-bottom: 0; }
 .stream-result {
@@ -1537,7 +1538,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .stream-table th:first-child { width: 65px; }
   .stream-table th:nth-child(2) { width: 19%; }
   .stream-table th:nth-child(3) { width: 14%; }
-  .stream-table th:nth-child(4) { width: 22%; }
+  .stream-table .stream-tribunal-header { width: 22%; }
   .stream-table th:last-child { width: 78px; }
   .stream-detail-cue { font-size: 0; }
   .stream-detail-cue::after { content: '→'; font-size: 14px; }
@@ -1570,11 +1571,11 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .stream-table tbody .stream-metric-cell {
     display: flex; align-items: baseline; gap: 5px; grid-row: 3; text-align: left; font-size: 11px; margin-top: 3px;
   }
-  .stream-table .stream-metric-cell:nth-child(5) { grid-column: 2; }
-  .stream-table .stream-metric-cell:nth-child(8) { grid-column: 3; justify-content: flex-end; }
+  .stream-table .stream-metric-cell[data-metric="latency_ms"] { grid-column: 2; }
+  .stream-table .stream-metric-cell[data-metric="tokens_per_second"] { grid-column: 3; justify-content: flex-end; }
   .stream-metric-cell::before { content: attr(data-label); color: var(--fg-muted); }
-  .stream-table .stream-metric-cell:nth-child(6),
-  .stream-table .stream-metric-cell:nth-child(7) { display: none; }
+  .stream-table .stream-metric-cell[data-metric="input_tokens"],
+  .stream-table .stream-metric-cell[data-metric="output_tokens"] { display: none; }
   .stream-table tbody .stream-tribunal-cell { grid-column: 1 / -1; grid-row: 4; text-align: left; margin-top: 6px; }
   .stream-table tbody .stream-tribunal-cell:empty { display: none; }
 }
