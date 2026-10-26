@@ -19,13 +19,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -297,28 +300,18 @@ func (c *Client) stateRoot(ctx context.Context, baseURL string) (string, error) 
 	return h.StateMerkleRoot, nil
 }
 
-// RegisterSigner registers an Ed25519 public key as a trusted signer so
-// consensus/notary postures will accept Agent Harness's proofs. The body is the
-// Gateway's models.TrustedSigner wire type, decoded by handleGovernanceSigners.
-// A non-2xx response is returned as an error.
-func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex string) error {
-	payload, err := json.Marshal(models.TrustedSigner{
-		ID:        keyID,
-		PublicKey: pubHex,
-		Enabled:   true,
+// EnrollSignerApplication enrolls an application with an Ed25519 signing key through
+// governed platform enrollment, replacing self-registration via RegisterSigner.
+func (c *Client) EnrollSignerApplication(ctx context.Context, appName string, fileSvc fs.RuntimeFileService, cfg *cliconfig.Config, approver auth.AppEnrollmentApprover) (*models.PlatformEnrollmentCompleteResponse, error) {
+	enroller, err := auth.NewAppPlatformEnrollmentClient(appName, fileSvc, cfg, slog.Default(), auth.AppEnrollmentOptions{
+		GenerateSigningKey: true,
+		GatewayHTTPURL:     c.cfg.MTLSBaseURL,
+		Approver:           approver,
 	})
 	if err != nil {
-		return fmt.Errorf("register signer %q: %w", keyID, err)
+		return nil, fmt.Errorf("create app platform enrollment client: %w", err)
 	}
-	status, _, err := c.do(ctx, Persona{ID: "agent-harness"}, http.MethodPost,
-		c.cfg.MTLSBaseURL+constants.APIPaths.GovernanceSigners, payload)
-	if err != nil {
-		return err
-	}
-	if status >= 300 {
-		return fmt.Errorf("register signer %q: status %d", keyID, status)
-	}
-	return nil
+	return enroller.Enroll(ctx, io.Discard)
 }
 
 // SubscribeApprovals opens the approval subscription for the persona's CLI session over

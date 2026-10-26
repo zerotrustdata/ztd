@@ -332,7 +332,7 @@ func mtlsIdentityRouteAllowed(identity mtlsIdentityClass, method, path string) b
 	switch identity {
 	case mtlsIdentityApp:
 		switch {
-		case method == http.MethodPost && (path == constants.APIPaths.MCPEndpoint || path == constants.APIPaths.A2ACall || path == constants.APIPaths.GovernanceEnvelopes || path == constants.APIPaths.GovernanceDeliberations || path == constants.APIPaths.OperatorsIntents || path == constants.APIPaths.InferenceDispatch || path == constants.APIPaths.ObserveProducerAgentState || path == constants.APIPaths.ObserveProducerRunState || path == constants.APIPaths.ObserveProducerStop):
+		case method == http.MethodPost && (path == constants.APIPaths.MCPEndpoint || path == constants.APIPaths.A2ACall || path == constants.APIPaths.GovernanceEnvelopes || path == constants.APIPaths.GovernanceDeliberations || path == constants.APIPaths.OperatorsIntents || path == constants.APIPaths.InferenceDispatch || path == constants.APIPaths.ObserveProducerAgentState || path == constants.APIPaths.ObserveProducerRunState || path == constants.APIPaths.ObserveProducerStop || path == constants.APIPaths.GatewayReputationSign):
 			return true
 		case method == http.MethodGet && path == constants.APIPaths.AuditEventReceipts:
 			return true

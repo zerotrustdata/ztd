@@ -414,9 +414,6 @@ func TestRouteAuthRegistry_GenericRoutesRemainMTLS(t *testing.T) {
 		// Operator mTLS-only sub-paths
 		constants.APIPaths.OperatorsValidate,
 		constants.APIPaths.OperatorsStop,
-		// Admin routes
-		constants.APIPaths.AdminAppsRevoke,
-		constants.APIPaths.AdminAppPoliciesBySigner + "some-signer",
 	}
 	for _, path := range mtlsPaths {
 		assert.Equal(t, RouteAuthMTLS, registry.AuthMode(path),

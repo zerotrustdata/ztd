@@ -44,7 +44,6 @@ type HTTPHandlerDependencies struct {
 	EnrollmentTokenControllerDeps         EnrollmentTokenControllerDeps
 	UserControllerDeps                    UserControllerDeps
 	WebSessionControllerDeps              WebSessionControllerDeps
-	AdminControllerDeps                   AdminControllerDeps
 	OperatorControllerDeps                OperatorControllerDeps
 	DispatchControllerDeps                DispatchControllerDeps
 	InferenceDispatchControllerDeps       InferenceDispatchControllerDeps
@@ -87,7 +86,6 @@ type HTTPHandler struct {
 	enrollmentTokenController         *EnrollmentTokenController
 	userController                    *UserController
 	webSessionController              *WebSessionController
-	adminController                   *AdminController
 	operatorController                *OperatorController
 	dispatchController                *DispatchController
 	inferenceDispatchController       *InferenceDispatchController
@@ -246,7 +244,6 @@ func newHTTPHandler(deps HTTPHandlerDependencies) (*HTTPHandler, error) {
 		enrollmentTokenController:         newEnrollmentTokenController(deps.EnrollmentTokenControllerDeps),
 		userController:                    newUserController(deps.UserControllerDeps),
 		webSessionController:              newWebSessionController(deps.WebSessionControllerDeps),
-		adminController:                   newAdminController(deps.AdminControllerDeps),
 		operatorController:                newOperatorController(deps.OperatorControllerDeps),
 		dispatchController:                newDispatchController(deps.DispatchControllerDeps),
 		inferenceDispatchController:       newInferenceDispatchController(deps.InferenceDispatchControllerDeps),

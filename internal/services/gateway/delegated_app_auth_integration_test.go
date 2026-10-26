@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"testing"
 	"time"
 
@@ -60,22 +59,18 @@ func TestDelegatedAppCannotMutateOwnerAuthority(t *testing.T) {
 				require.NotEmpty(t, before)
 				foreignKey, _, err := ed25519.GenerateKey(nil)
 				require.NoError(t, err)
-				body, err := json.Marshal(struct {
-					PublicKey string `json:"public_key_hex"`
-				}{PublicKey: hex.EncodeToString(foreignKey)})
+				body, err := json.Marshal(models.TrustedSigner{
+					ID:        appName,
+					PublicKey: hex.EncodeToString(foreignKey),
+					Enabled:   true,
+				})
 				require.NoError(t, err)
-				path := constants.APIPaths.AdminAppPoliciesPrefix + url.PathEscape(appURI.String()) + "/signers"
-				status, response := requestDataAPI(t, client, http.MethodPost, baseURL+path, string(body))
+				status, response := requestDataAPI(t, client, http.MethodPost, baseURL+constants.APIPaths.GovernanceSigners, string(body))
 				assert.Equal(t, http.StatusForbidden, status, "%s", response)
 				assert.Contains(t, string(response), constants.ErrPrivilegedEndpointAccess.Error())
 				after, err := f.Service.GetSignerStore().GetTrustedSigner(t.Context(), appName)
 				require.NoError(t, err)
 				assert.Equal(t, before, after)
-				// The admin handler uses the policy ID as its signer ID. It must
-				// not create a second signer under the full SPIFFE URI either.
-				alias, err := f.Service.GetSignerStore().GetTrustedSigner(t.Context(), appURI.String())
-				require.NoError(t, err)
-				assert.Empty(t, alias)
 			})
 			// Exercise both actual enrollment records: the signing key uses the
 			// short app ID and the policy uses its SPIFFE URI.
@@ -91,11 +86,12 @@ func TestDelegatedAppCannotMutateOwnerAuthority(t *testing.T) {
 					before, err := store.DocGet(t.Context(), string(target.collection), target.id)
 					require.NoError(t, err)
 					require.NotNil(t, before, "governed enrollment must create the authority record")
-					body, err := json.Marshal(struct {
-						AppID string `json:"app_id"`
-					}{AppID: target.id})
+					body, err := json.Marshal(models.PlatformEnrollmentRevokeRequest{
+						RequestID: appName,
+						Reason:    "malicious delegated revocation",
+					})
 					require.NoError(t, err)
-					status, response := requestDataAPI(t, client, http.MethodPost, baseURL+constants.APIPaths.AdminAppsRevoke, string(body))
+					status, response := requestDataAPI(t, client, http.MethodPost, baseURL+constants.APIPaths.AuthPlatformEnrollmentRevoke, string(body))
 					assert.Equal(t, http.StatusForbidden, status, "%s", response)
 					assert.Contains(t, string(response), constants.ErrPrivilegedEndpointAccess.Error())
 					after, err := store.DocGet(t.Context(), string(target.collection), target.id)

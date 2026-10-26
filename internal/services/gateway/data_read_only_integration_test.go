@@ -26,8 +26,9 @@ import (
 
 // Exercise the real TLS listener, authentication middleware, and SQLite store.
 // App policies and app certificates use the fixture PKI; Operator and CLI
-// certificates come from device enrollment. All four identities must be able
-// to read the seeded document, but none may mutate it through the data API.
+// certificates come from device enrollment. Non-human identities are bounded
+// by explicit route allowlists while CLI identity is bounded by the read-only
+// data controller; none may mutate records through the data API.
 func TestDataAPIReadOnlyAcrossMTLSIdentities(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "data-api-read-only",
@@ -40,13 +41,15 @@ func TestDataAPIReadOnlyAcrossMTLSIdentities(t *testing.T) {
 	require.True(t, first)
 
 	clients := []struct {
-		name   string
-		client *http.Client
+		name       string
+		client     *http.Client
+		wantGet    int
+		wantModify int
 	}{
-		{"app", seedUnprovenAppWorkload(t, f)},
-		{"owner-delegated-app", seedUnprovenAppWorkload(t, f, owner.UserID)},
-		{"outbound-operator", fixtures.CreateMTLSClient(t, f, owner)},
-		{"owner-cli", fixtures.CreateCLIMTLSClient(t, f, owner)},
+		{"app", seedUnprovenAppWorkload(t, f), http.StatusOK, http.StatusForbidden},
+		{"owner-delegated-app", seedUnprovenAppWorkload(t, f, owner.UserID), http.StatusOK, http.StatusForbidden},
+		{"outbound-operator", fixtures.CreateMTLSClient(t, f, owner), http.StatusForbidden, http.StatusForbidden},
+		{"owner-cli", fixtures.CreateCLIMTLSClient(t, f, owner), http.StatusOK, http.StatusMethodNotAllowed},
 	}
 	baseURL := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
 	collections := []constants.CollectionName{
@@ -78,9 +81,9 @@ func TestDataAPIReadOnlyAcrossMTLSIdentities(t *testing.T) {
 							require.NotNil(t, before)
 
 							status, body := requestDataAPI(t, identity.client, http.MethodGet, baseURL+path, "")
-							require.Equal(t, http.StatusOK, status, "identity must authenticate: %s", body)
+							require.Equal(t, identity.wantGet, status, "identity must produce expected read status: %s", body)
 							status, body = requestDataAPI(t, identity.client, method, baseURL+path, `{"value":"attacker"}`)
-							assert.Equal(t, http.StatusMethodNotAllowed, status, "%s", body)
+							assert.Equal(t, identity.wantModify, status, "%s", body)
 							after, err := f.Service.GetDocStore().DocGet(t.Context(), string(collection), id)
 							require.NoError(t, err)
 							assert.Equal(t, before, after, "rejected write must leave document and timestamps unchanged")
@@ -90,13 +93,17 @@ func TestDataAPIReadOnlyAcrossMTLSIdentities(t *testing.T) {
 			}
 
 			t.Run("settings-singleton", func(t *testing.T) {
+				if identity.wantGet == http.StatusOK {
+					status, body := requestDataAPI(t, identity.client, http.MethodGet, baseURL+constants.APIPaths.DataSettings, "")
+					require.Equal(t, http.StatusOK, status, "identity must produce expected read status: %s", body)
+				}
 				for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 					t.Run(method, func(t *testing.T) {
 						store := f.Service.GetDocStore()
 						before, err := store.DocGet(t.Context(), string(constants.CollectionSettings), string(constants.DocIDPlatformSettings))
 						require.NoError(t, err)
 						status, body := requestDataAPI(t, identity.client, method, baseURL+constants.APIPaths.DataSettings, `{"value":"attacker"}`)
-						assert.Equal(t, http.StatusMethodNotAllowed, status, "%s", body)
+						assert.Equal(t, identity.wantModify, status, "%s", body)
 						after, err := store.DocGet(t.Context(), string(constants.CollectionSettings), string(constants.DocIDPlatformSettings))
 						require.NoError(t, err)
 						assert.Equal(t, before, after)

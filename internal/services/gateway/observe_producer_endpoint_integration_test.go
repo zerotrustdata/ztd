@@ -138,14 +138,6 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 			Responder:   infra.Responder,
 			CrossOrigin: len(infra.Cfg.Gateway.AllowedOrigins) > 0,
 		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         infra.Cfg,
-			Logger:      infra.Logger,
-			DocStore:    infra.DocStore,
-			SignerStore: infra.SignerStore,
-			UserSvc:     infra.UserSvc,
-			Responder:   infra.Responder,
-		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       infra.Cfg,
 			Logger:    infra.Logger,

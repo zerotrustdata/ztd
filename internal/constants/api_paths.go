@@ -153,10 +153,6 @@ var APIPaths = struct {
 	ApprovalsVerifyAction string `json:"approvals_verify_action"`
 	ApprovalsCLIList      string `json:"approvals_cli_list"`
 	ApprovalsRespond      string `json:"approvals_respond"`
-	// Admin routes
-	AdminAppPoliciesBySigner string `json:"admin_app_policies_by_signer"`
-	AdminAppsRevoke          string `json:"admin_apps_revoke"`
-	AdminAppPoliciesPrefix   string `json:"admin_app_policies_prefix"`
 	// Consensus routes
 	// Well-known routes
 	WellKnownPKICABundle    string `json:"well_known_pki_ca_bundle"`
@@ -328,10 +324,6 @@ var APIPaths = struct {
 	ApprovalsVerifyAction: "/verify",
 	ApprovalsCLIList:      "/api/v1/approvals/pending",
 	ApprovalsRespond:      "/api/v1/approvals/respond",
-	// Admin routes
-	AdminAppPoliciesBySigner: "/api/v1/admin/app-policies/",
-	AdminAppsRevoke:          "/api/v1/admin/apps/revoke",
-	AdminAppPoliciesPrefix:   "/api/v1/admin/app-policies/",
 	// Consensus routes
 	// Well-known routes
 	WellKnownPKICABundle:    "/.well-known/ztd/pki/ca-bundle",

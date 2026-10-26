@@ -169,8 +169,6 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.HandleFunc(constants.APIPaths.OperatorsIntents, h.tribunalIntentController.HandleIntent)
 	mux.HandleFunc(constants.APIPaths.GovernanceSigners, h.signerController.handleGovernanceSigners)
 	mux.Handle(constants.APIPaths.GovernanceSignersByID, http.HandlerFunc(h.signerController.handleGovernanceSignerByID))
-	mux.Handle(constants.APIPaths.AdminAppPoliciesBySigner, http.HandlerFunc(h.adminController.handleAppPolicySigner))
-	mux.HandleFunc(constants.APIPaths.AdminAppsRevoke, h.adminController.handleRevokeApp)
 
 	// Rate-limited governance envelope
 	govEnvMux := http.NewServeMux()

@@ -909,14 +909,6 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Responder:   ls.responder,
 			CrossOrigin: len(cfg.Gateway.AllowedOrigins) > 0,
 		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         cfg,
-			Logger:      logger,
-			DocStore:    ls.docStore,
-			SignerStore: ls.signerStore,
-			UserSvc:     userSvc,
-			Responder:   ls.responder,
-		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       cfg,
 			Logger:    logger,

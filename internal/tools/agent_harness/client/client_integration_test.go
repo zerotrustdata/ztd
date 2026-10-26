@@ -142,91 +142,20 @@ func TestClient_StateRoot(t *testing.T) {
 	}
 }
 
-func TestClient_RegisterSigner(t *testing.T) {
-	tests := []struct {
-		name         string
-		keyID        string
-		pubHex       string
-		responseCode int
-		wantErr      bool
-	}{
-		{
-			name:         "successful registration",
-			keyID:        "test-key",
-			pubHex:       "abc123",
-			responseCode: http.StatusOK,
-			wantErr:      false,
-		},
-		{
-			name:         "second signer",
-			keyID:        "principal-key",
-			pubHex:       "def456",
-			responseCode: http.StatusOK,
-			wantErr:      false,
-		},
-		{
-			name:         "server returns 404",
-			keyID:        "test-key",
-			pubHex:       "abc123",
-			responseCode: http.StatusNotFound,
-			wantErr:      true,
-		},
-		{
-			name:         "server returns 500",
-			keyID:        "test-key",
-			pubHex:       "abc123",
-			responseCode: http.StatusInternalServerError,
-			wantErr:      true,
-		},
+func TestClient_EnrollSignerApplication(t *testing.T) {
+	cfg := config.Config{
+		MTLSBaseURL: "https://127.0.0.1:8443",
+		Auth:        config.Auth{},
 	}
+	client, err := New(cfg)
+	require.NoError(t, err)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					t.Errorf("expected POST, got %s", r.Method)
-				}
-				if r.URL.Path != constants.APIPaths.GovernanceSigners {
-					t.Errorf("expected path %s, got %s", constants.APIPaths.GovernanceSigners, r.URL.Path)
-				}
+	ctx := context.Background()
+	_, err = client.EnrollSignerApplication(ctx, "INVALID_NAME", nil, nil, nil)
+	require.Error(t, err)
 
-				var req map[string]any
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					t.Errorf("failed to decode request: %v", err)
-				}
-
-				if req["id"] != tt.keyID {
-					t.Errorf("expected id %s, got %v", tt.keyID, req["id"])
-				}
-				if req["public_key_hex"] != tt.pubHex {
-					t.Errorf("expected public_key_hex %s, got %v", tt.pubHex, req["public_key_hex"])
-				}
-				if req["enabled"] != true {
-					t.Errorf("expected enabled true, got %v", req["enabled"])
-				}
-
-				w.WriteHeader(tt.responseCode)
-			}))
-			defer server.Close()
-
-			cfg := config.Config{
-				MTLSBaseURL: server.URL,
-				Auth:        config.Auth{},
-			}
-
-			client, err := New(cfg)
-			if err != nil {
-				t.Fatalf("New() failed: %v", err)
-			}
-
-			ctx := context.Background()
-			err = client.RegisterSigner(ctx, tt.keyID, tt.pubHex)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RegisterSigner() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
+	_, err = client.EnrollSignerApplication(ctx, "valid-app", nil, nil, nil)
+	require.Error(t, err)
 }
 
 func TestClient_do(t *testing.T) {
