@@ -86,7 +86,7 @@ func submitGatewayOriginEnrollment(t *testing.T, env *platformEnrollmentTestEnv,
 			CLICSRPEM:         cliCSR,
 			ActuatorPublicKey: testActuatorPublicKeyHex,
 			AuditorPublicKey:  testAuditorPublicKeyHex,
-				AuditorKeyID:     testAuditorPublicKeyHex,
+			AuditorKeyID:      testAuditorPublicKeyHex,
 		},
 	}, "https://gateway.local/console")
 	require.NoError(t, err)

@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ValidationError,
   isCatalogSnapshot,
+  isAssignmentResult,
   isModelSummary,
   isSuiteSummary,
   isFeedSnapshot,
@@ -68,6 +69,19 @@ describe('isCatalogSnapshot', () => {
     expect(() => isCatalogSnapshot(bad)).toThrow(ValidationError);
   });
 
+});
+
+describe('public string validation', () => {
+  it('retains UTF-8 byte limits and control-character rejection', () => {
+    const assignment = fixtureAssignmentResults[0];
+    expect(assignment).toBeDefined();
+    const current = { ...assignment, schema_version: '1.4.0' as const };
+    expect(() => isAssignmentResult({ ...current, tools_declared: ['café 🧪'] })).not.toThrow();
+    for (const control of ['\u0000', '\u001f', '\u007f']) {
+      expect(() => isAssignmentResult({ ...current, tools_declared: [`bad${control}text`] })).toThrow(ValidationError);
+    }
+    expect(() => isAssignmentResult({ ...current, tools_declared: ['🧪'.repeat(33)] })).toThrow(ValidationError);
+  });
 });
 
 describe('isModelSummary', () => {

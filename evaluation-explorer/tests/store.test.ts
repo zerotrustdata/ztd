@@ -2,10 +2,13 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as campaignAdapter from '../src/state/campaign-adapter';
+import * as campaignWire from '../src/contract/campaign-wire';
+import { createLazyProjectionRecord } from '../src/contract/validators';
 import { EvalStore, recordKey } from '../src/state/store';
 import { allFixtureSnapshotRecords, fixtureLiveEvents, fixtureCampaignResultEnvelope } from '../src/fixtures/fixtures';
 import { LIVE_EVENT_STORE_LIMIT } from '../src/constants';
-import type { LiveEvent } from '../src/contract/types';
+import type { LiveEvent, ProjectionRecord } from '../src/contract/types';
 
 function loadFixtures(store: EvalStore): void {
   store.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
@@ -24,6 +27,40 @@ describe('EvalStore', () => {
     expect(state.streamConnection).toBe('disconnected');
     expect(state.catalogs.size).toBe(0);
     expect(state.models.size).toBe(0);
+  });
+
+  it('clears mirror state and campaign context when the configured origin changes', () => {
+    store.setMirrorOrigin('https://mirror-one.example');
+    store.acceptProjection({ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify(fixtureCampaignResultEnvelope) });
+    expect(store.getState().assignments.size).toBeGreaterThan(0);
+    expect(store.getState().observedSequence).toBe(1);
+    const contexts = (store as unknown as { campaignContexts: Map<string, unknown> }).campaignContexts;
+    expect(contexts.size).toBeGreaterThan(0);
+
+    store.setMirrorOrigin('https://mirror-one.example');
+    expect(store.getState().assignments.size).toBeGreaterThan(0);
+    expect(contexts.size).toBeGreaterThan(0);
+
+    store.setMirrorOrigin('https://mirror-two.example');
+    expect(store.getState().mirrorOrigin).toBe('https://mirror-two.example');
+    expect(store.getState().assignments.size).toBe(0);
+    expect(store.getState().observedSequence).toBe(0);
+    expect(store.getState().sourceId).toBeNull();
+    expect((store as unknown as { campaignContexts: Map<string, unknown> }).campaignContexts.size).toBe(0);
+  });
+
+  it('validates associated lazy payloads and leaves context untouched on malformed input', () => {
+    const lazy = createLazyProjectionRecord(1, 'projection', {
+      kind: 'not_a_public_record_kind',
+      schema_version: '1.0.0',
+      dataset_id: 'invalid-lazy-record',
+      quality_state: 'exploratory_verified',
+      observed_at: '2026-09-16T14:00:00.000Z',
+    });
+    store.acceptProjection(lazy);
+    expect(store.getState().errors).toHaveLength(1);
+    expect(store.getState().catalogs.size).toBe(0);
+    expect((store as unknown as { campaignContexts: Map<string, unknown> }).campaignContexts.size).toBe(0);
   });
 
   it('loadFixtures populates all records', () => {
@@ -612,6 +649,100 @@ describe('EvalStore', () => {
     expect(store.getAssignments(runId, datasetId)).toHaveLength(0);
     expect(store.getEvents(runId, datasetId)).toHaveLength(0);
     expect(store.getState().errors.length).toBe(1);
+  });
+
+  it('decodes each campaign envelope once and keeps malformed records out of campaign context', () => {
+    const runId = 'run-single-decode-atomic';
+    const assignmentId = 'assignment-1';
+    const lifecycle = (status: string, scenarioId: string) => ({
+      schema_version: '1.0.0',
+      message_type: 'PublicAssignmentLifecycleRecord',
+      idempotency_key: `${runId}:${assignmentId}:lifecycle:${status}`,
+      record: {
+        run_id: runId,
+        assignment_id: assignmentId,
+        scenario_id: scenarioId,
+        lifecycle_status: status,
+        scenario_category: 'EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE',
+        lane: 'EVALUATION_LANE_MODEL_ROLE',
+        designated_role: 'MODEL_CAMPAIGN_ROLE_PRIMARY',
+        variant_id: 'qwen3-4b',
+        observed_at: '2026-09-16T14:00:00.000Z',
+      },
+    });
+
+    store.acceptProjection({ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify(lifecycle('EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED', 'queued-scenario')) });
+    const contexts = (store as unknown as { campaignContexts: Map<string, { assignmentMeta: Map<unknown, unknown>; scheduledAssignments: Map<string, Set<string>>; runTotals: Map<string, { scheduled: number; terminal: number }> }> }).campaignContexts;
+    const originalContext = contexts.get(runId);
+    expect(originalContext?.assignmentMeta.size).toBe(1);
+    expect(originalContext?.scheduledAssignments.get(runId)?.size).toBe(1);
+
+    const decoder = vi.spyOn(campaignWire, 'decodeCampaignProjectionEnvelope');
+    const resultEnvelope = {
+      ...fixtureCampaignResultEnvelope,
+      idempotency_key: `${runId}:${assignmentId}:result`,
+      record: { ...fixtureCampaignResultEnvelope.record, run_id: runId, assignment_id: assignmentId, scenario_id: 'result-scenario' },
+    };
+    store.acceptProjection({ sequence: 2, record_type: 'projection', record_bytes: JSON.stringify(resultEnvelope) });
+    expect(decoder).toHaveBeenCalledTimes(1);
+    decoder.mockRestore();
+
+    store.acceptProjection({
+      sequence: 3,
+      record_type: 'projection',
+      record_bytes: JSON.stringify(lifecycle('NOT_A_PUBLIC_LIFECYCLE', 'bad-scenario')),
+    });
+    expect(contexts.get(runId)?.assignmentMeta.size).toBe(1);
+    expect(contexts.get(runId)?.scheduledAssignments.get(runId)?.size).toBe(1);
+    expect(contexts.get(runId)?.runTotals.get(runId)?.terminal).toBe(1);
+
+    store.acceptProjection({ sequence: 4, record_type: 'projection', record_bytes: JSON.stringify(resultEnvelope) });
+    expect(store.getAssignments(runId, `ds-live-${runId}`)).toHaveLength(1);
+    expect(store.getAssignments(runId, `ds-live-${runId}`)[0]?.task_id).toBe('queued-scenario');
+    expect(contexts.get(runId)?.runTotals.get(runId)?.terminal).toBe(1);
+  });
+
+  it('ingests thousands of lifecycle assignments without cloning the accumulated context', () => {
+    const clone = vi.spyOn(campaignAdapter, 'cloneCampaignAdaptContext');
+    const bulkStore = new EvalStore();
+    const runId = 'run-linear-bulk-ingest';
+    const count = 2_500;
+    let firstRecord: ProjectionRecord | undefined;
+
+    for (let index = 1; index <= count; index++) {
+      const assignmentId = `assignment-${index}`;
+      const record: ProjectionRecord = {
+        sequence: index,
+        record_type: 'projection',
+        record_bytes: JSON.stringify({
+          schema_version: '1.0.0',
+          message_type: 'PublicAssignmentLifecycleRecord',
+          idempotency_key: `${runId}:${assignmentId}:queued`,
+          record: {
+            run_id: runId,
+            assignment_id: assignmentId,
+            scenario_id: `scenario-${index}`,
+            lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED',
+            scenario_category: 'EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE',
+            lane: 'EVALUATION_LANE_MODEL_ROLE',
+            designated_role: 'MODEL_CAMPAIGN_ROLE_PRIMARY',
+            variant_id: 'qwen3-4b',
+            observed_at: '2026-09-16T14:00:00.000Z',
+          },
+        }),
+      };
+      if (index === 1) firstRecord = record;
+      bulkStore.acceptProjection(record);
+    }
+    if (firstRecord) bulkStore.acceptProjection({ ...firstRecord, sequence: count + 1 });
+
+    expect(bulkStore.getState().errors).toHaveLength(0);
+    expect(clone).not.toHaveBeenCalled();
+    const contexts = (bulkStore as unknown as { campaignContexts: Map<string, { assignmentMeta: Map<unknown, unknown>; scheduledAssignments: Map<string, Set<string>> }> }).campaignContexts;
+    expect(contexts.get(runId)?.assignmentMeta.size).toBe(count);
+    expect(contexts.get(runId)?.scheduledAssignments.get(runId)?.size).toBe(count);
+    expect(bulkStore.getState().observedSequence).toBe(count + 1);
+    expect(bulkStore.getEvents(runId, `ds-live-${runId}`)).toHaveLength(LIVE_EVENT_STORE_LIMIT);
   });
 
   it('indexes native scenario and verdict detail without fake assignments', () => {

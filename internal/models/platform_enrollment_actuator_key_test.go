@@ -72,9 +72,9 @@ func TestPlatformOperatorCSRPayload_AuditorKeyUsesPresentedKey(t *testing.T) {
 
 	missing := &PlatformOperatorCSRPayload{}
 	_, err = missing.AuditorKey()
-	assert.ErrorIs(t, err, constants.ErrOperatorAuditorKeyInvalid)
+	require.ErrorIs(t, err, constants.ErrOperatorAuditorKeyInvalid)
 
 	payload.AuditorKeyID = hex.EncodeToString(make([]byte, ed25519.PublicKeySize))
 	_, err = payload.AuditorKey()
-	assert.ErrorIs(t, err, constants.ErrOperatorAuditorKeyInvalid)
+	require.ErrorIs(t, err, constants.ErrOperatorAuditorKeyInvalid)
 }

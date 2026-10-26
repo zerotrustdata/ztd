@@ -667,17 +667,11 @@ func TestOperatorController_HandleValidateOperatorSession(t *testing.T) {
 	})
 }
 
-// TestOperatorController_ValidateOperatorSession_AppMTLSReach confirms that an
-// app workload mTLS certificate is
-// admitted by the unified auth middleware for POST /api/v1/operators/validate.
-// The validate endpoint is not privileged and not RouteAuthNone, so it
-// defaults to RouteAuthMTLS. An app cert with a valid AppPolicy must reach the
-// handler rather than being blocked by the middleware.
-//
-// The test seeds a valid operator+CLI binding so the handler returns 200. A
-// middleware-level rejection would produce 401/403, not 200 — so a 200 proves
-// the app cert was admitted and the request reached the controller.
-func TestOperatorController_ValidateOperatorSession_AppMTLSReach(t *testing.T) {
+// TestOperatorController_ValidateOperatorSession_AppMTLSBlocked confirms an
+// app workload certificate cannot use the CLI/operator binding validation
+// route. The route allowlist blocks it before the controller sees caller
+// supplied session identifiers.
+func TestOperatorController_ValidateOperatorSession_AppMTLSBlocked(t *testing.T) {
 
 	infra := setupTestInfrastructure(t, false)
 
@@ -694,7 +688,8 @@ func TestOperatorController_ValidateOperatorSession_AppMTLSReach(t *testing.T) {
 	require.NoError(t, infra.DocStore.DocSet(t.Context(),
 		marshaler.CollectionName(constants.CollectionAppPolicies), appID, policyBytes))
 
-	// Seed a valid operator+CLI binding so the handler can return 200.
+	// Seed a valid operator+CLI binding so the test would reach the handler if
+	// app identities were mistakenly admitted to this CLI control route.
 	userID := "appmtls-user"
 	operatorSessionID := "appmtls-operator-session"
 	cliSessionID := "appmtls-cli-session"
@@ -755,16 +750,9 @@ func TestOperatorController_ValidateOperatorSession_AppMTLSReach(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	// 200 proves the app mTLS cert was admitted by the middleware and the
-	// request reached the controller, which validated the binding
-	// successfully. A middleware-level rejection would produce 401/403.
-	require.Equal(t, http.StatusOK, w.Code,
-		"app mTLS must reach the handler and return 200; got: %s", w.Body.String())
-	var resp models.OperatorSessionValidationResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp.Valid)
-	assert.Equal(t, operatorID, resp.OperatorID)
-	assert.Equal(t, userID, resp.UserID)
+	require.Equal(t, http.StatusForbidden, w.Code,
+		"app mTLS must be blocked before CLI binding validation; got: %s", w.Body.String())
+	assert.Contains(t, w.Body.String(), constants.ErrPrivilegedEndpointAccess.Error())
 }
 
 func TestWithResolvedOperatorCapability(t *testing.T) {

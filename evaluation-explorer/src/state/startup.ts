@@ -4,6 +4,7 @@
 // One current snapshot, followed by SSE deltas through the same store decoder.
 // History and proof artifacts are evidence queries, not initialization inputs.
 import { evalStore } from './store';
+import type { FeedBootstrap } from '../contract/types';
 import {
   fetchBootstrap,
   fetchSnapshot,
@@ -12,7 +13,7 @@ import {
   openStream,
   type StreamHandle,
 } from './feed';
-import { loadCachedBootstrap, saveCachedBootstrap } from './cache';
+import { clearCachedBootstrap, loadCachedBootstrap, saveCachedBootstrap } from './cache';
 
 let activeStream: StreamHandle | null = null;
 let generation = 0;
@@ -31,9 +32,15 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
   const streamFactory = opts.streamFactory ?? openStream;
   try {
     evalStore.setConnection('connecting', 'Connecting to the public mirror.');
-    const cachedRecord = !opts.skipCache ? loadCachedBootstrap() : null;
+    const runtime = await loadRuntimeConfig(fetchImpl);
+    if (gen !== generation) return;
+    evalStore.setMirrorOrigin(runtime.mirror_origin);
+
+    const loadedCache = !opts.skipCache ? await loadCachedBootstrap() : null;
+    if (gen !== generation) return;
+    const cachedRecord = loadedCache?.mirror_origin === runtime.mirror_origin ? loadedCache : null;
+    if (loadedCache && !cachedRecord) void clearCachedBootstrap();
     if (cachedRecord) {
-      evalStore.setMirrorOrigin(cachedRecord.mirror_origin);
       evalStore.initBootstrap(
         cachedRecord.bootstrap.snapshot,
         cachedRecord.bootstrap.recent_projections.map(normalizeRecentProjection),
@@ -42,11 +49,8 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
       evalStore.setConnection('connecting', 'Connecting to the public mirror.');
     }
 
-    const runtime = await loadRuntimeConfig(fetchImpl);
-    if (gen !== generation) return;
-    evalStore.setMirrorOrigin(runtime.mirror_origin);
-
     let needsFullBootstrap = true;
+    let bootstrapToCache: FeedBootstrap | null = null;
     let targetSourceId = cachedRecord?.bootstrap.snapshot.source_id ?? '';
     let targetHighWater = cachedRecord?.bootstrap.snapshot.high_water_sequence ?? 0;
 
@@ -79,7 +83,7 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
     if (needsFullBootstrap) {
       const bootstrap = await fetchBootstrap(runtime.mirror_origin, fetchImpl);
       if (gen !== generation) return;
-      saveCachedBootstrap(runtime.mirror_origin, bootstrap);
+      bootstrapToCache = bootstrap;
 
       const current = evalStore.getState().currentSnapshot;
       const isSameSnapshot =
@@ -101,7 +105,7 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
     }
 
     if (targetSourceId) {
-      activeStream = streamFactory(runtime.mirror_origin, targetSourceId, targetHighWater, {
+      const stream = streamFactory(runtime.mirror_origin, targetSourceId, targetHighWater, {
         onSnapshot: (snapshot) => {
           if (gen !== generation) return;
           const reference = evalStore.getState().currentSnapshot;
@@ -131,6 +135,12 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
           if (streamState === 'connected') evalStore.setConnection('live', 'Streaming live updates via SSE.');
         },
       });
+      if (gen !== generation) {
+        stream.close();
+        return;
+      }
+      activeStream = stream;
+      if (bootstrapToCache) void saveCachedBootstrap(runtime.mirror_origin, bootstrapToCache).catch(() => {});
     }
   } catch (error) {
     if (gen !== generation) return;

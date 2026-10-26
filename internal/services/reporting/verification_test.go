@@ -240,8 +240,7 @@ func TestReportVerification_ValidCommitmentChain_AllPass(t *testing.T) {
 func TestReportVerification_ForeignAuditorKeyFails(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
-	_, firstKey, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
+	firstKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 	_, secondKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	firstHash := insertCommitmentWithKey(t, cl, firstKey, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
@@ -617,6 +616,16 @@ func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
 	require.NotNil(t, crossRow)
 	assert.Equal(t, verifyResultPass, crossRow.Result)
 	assert.Equal(t, "no commitments to cross-link", crossRow.Detail)
+}
+
+func TestReportVerification_EmptyTransactionID_FailsCrossLink(t *testing.T) {
+	cl, _, _ := setupTestCommitmentLedger(t)
+	insertCommitment(t, cl, "", "hash-1", "", "FS_WRITE", "/file1")
+	_, vr, err := reportVerification(context.Background(), testutil.TempDir(t), setupTestEventsStore(t), cl, nil, reportTestTrust(), reportTestTrust())
+	require.NoError(t, err)
+	row := findRow(vr, "receipt_commitment_crosslink")
+	require.NotNil(t, row)
+	assert.Equal(t, verifyResultFail, row.Result)
 }
 
 // ---------------------------------------------------------------------------

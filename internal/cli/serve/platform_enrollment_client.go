@@ -219,7 +219,7 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 					CLICSRPEM:         cliCSR,
 					ActuatorPublicKey: c.cfg.ActuatorPublicKey,
 					AuditorPublicKey:  c.cfg.AuditorPublicKey,
-					AuditorKeyID:     c.cfg.AuditorPublicKey,
+					AuditorKeyID:      c.cfg.AuditorPublicKey,
 				},
 			},
 			RuntimeConfig: c.cfg.RuntimeConfig,

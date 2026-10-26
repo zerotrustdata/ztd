@@ -72,7 +72,6 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-NET-01 | The Gateway MUST expose separate HTTP and HTTPS surfaces. Their default ports are 8080 (`GatewayHTTPPort`) and 8443 (`GatewayHTTPSPort`); after configuration validation, startup probes for an available pair and can select matching higher offsets. HTTP serves bootstrap, PKI discovery, health, and HTTPS redirects; HTTPS serves authenticated application, console, MCP, pub/sub, and governance traffic. Mutating or authenticated routes MUST NOT be served on HTTP. |
 | INV-GW-NET-02 | The Gateway route classifier (`internal/services/gateway/gateway_auth.go`) MUST assign every route exactly one of four authentication policies: `RouteAuthNone`, `RouteAuthMTLS`, `RouteAuthWebSession`, or `RouteAuthDual`. Handlers MUST fail closed if route authentication requirements are unmet. |
-
 | INV-GW-NET-03 | Verified app and outbound Operator certificates MUST be restricted to explicit method/route allowlists before controller dispatch, including on dual-auth routes authenticated by mTLS. An unknown route MUST NOT inherit workload access from `RouteAuthMTLS`. The allowlists and route inventory tests are owned by `gateway_auth.go`; see `INV-AUTH-ROUTE-07` in [Authentication Architecture](auth.md#route-classification-inv-auth-route). |
 
 ### Governance Pipeline Coordination (`INV-GW-GOV`)

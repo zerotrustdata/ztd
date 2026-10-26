@@ -29,7 +29,7 @@ import {
   PUBLIC_TOOL_SCORE_DIMENSION_VALUES,
   type PublicReleaseBasis,
 } from './proto-enums.generated';
-import { assertReleaseProvenance, assertRoleTranscripts, assertString as assertVerbatimText, ValidationError } from './validators';
+import { assertReleaseProvenance, assertRoleTranscripts, assertString as assertVerbatimText, hasControlCharacters, utf8ByteLengthWithin, ValidationError } from './validators';
 
 export const CAMPAIGN_LIFECYCLE_SCHEMA_VERSION = '1.0.0' as const;
 export const CAMPAIGN_RESULT_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0'] as const;
@@ -59,6 +59,7 @@ const TRAJECTORY_OUTCOMES = EVALUATION_TRAJECTORY_OUTCOME_VALUES;
 const HINT_ARGUMENT_SOURCES = EVALUATION_HINT_ARGUMENT_SOURCE_VALUES;
 const TOOL_DIMENSIONS = PUBLIC_TOOL_SCORE_DIMENSION_VALUES;
 const VERIFICATION_STATUSES = ['verified', 'unverified', 'failed', 'invalid'] as const;
+const ALL_WIRE_UNAVAILABLE_REASONS = [...WIRE_UNAVAILABLE_REASONS, ...PUBLIC_UNAVAILABLE_REASONS] as const;
 const EVIDENCE_KINDS = [
   'campaign_profile',
   'model_registry',
@@ -368,19 +369,16 @@ function assertObject(value: unknown, path: string): asserts value is Record<str
 }
 
 function rejectUnknown(value: Record<string, unknown>, fields: readonly string[], path: string): void {
-  for (const key of Object.keys(value)) {
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
     if (!fields.includes(key)) fail(`${path}.${key}`, `unknown field "${key}"`);
   }
 }
 
 function assertString(value: unknown, path: string, maxBytes = 128): asserts value is string {
   assert(typeof value === 'string', path, 'expected string');
-  const bytes = new TextEncoder().encode(value).byteLength;
-  assert(bytes >= 1 && bytes <= maxBytes, path, `expected 1-${maxBytes} UTF-8 bytes`);
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 0;
-    assert(code > 0x1f && code !== 0x7f, path, 'control characters are not allowed');
-  }
+  assert(value.length > 0 && utf8ByteLengthWithin(value, maxBytes), path, `expected 1-${maxBytes} UTF-8 bytes`);
+  assert(!hasControlCharacters(value), path, 'control characters are not allowed');
 }
 
 function assertOptionalString(value: unknown, path: string, maxBytes = 128): void {
@@ -419,7 +417,7 @@ function assertMetric(value: unknown, path: string): asserts value is WireMetric
     assert(typeof value.value === 'number' && Number.isFinite(value.value), `${path}.value`, 'expected finite number');
     assert(value.value >= 0, `${path}.value`, 'must be nonnegative');
   }
-  if (hasReason) assertEnum(value.unavailable_reason, [...WIRE_UNAVAILABLE_REASONS, ...PUBLIC_UNAVAILABLE_REASONS], `${path}.unavailable_reason`);
+  if (hasReason) assertEnum(value.unavailable_reason, ALL_WIRE_UNAVAILABLE_REASONS, `${path}.unavailable_reason`);
 }
 
 function assertStringArray(value: unknown, path: string, maxItems: number, maxBytes = 128): asserts value is string[] {

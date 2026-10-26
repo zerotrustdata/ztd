@@ -410,8 +410,6 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		ActuatorPublicKey: actuatorKeyHex,
 		ActuatorKeyId:     actuatorKeyHex,
 		AuditorPublicKey:  auditorKeyHex,
-		AuditorKeyID:      auditorKeyHex,
-				AuditorKeyID:     auditorKeyHex,
 		AuditorKeyId:      auditorKeyHex,
 		Claimed:           true,
 		ClaimedAt:         timestamppb.New(now),

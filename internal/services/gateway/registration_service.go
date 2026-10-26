@@ -10,7 +10,6 @@ package gateway
 import (
 	"context"
 	"encoding/hex"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"

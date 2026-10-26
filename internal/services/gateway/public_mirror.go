@@ -114,8 +114,15 @@ type cachedBootstrapSnapshot struct {
 	sequence         int64
 	feedChainHash    string
 	withdrawalDigest string
+	freshness        models.CampaignFreshness
 	proofCount       int
+	proofByteSize    int64
+	proofRoot        string
+	proofGeneratedAt time.Time
+	etag             string
 	bootstrap        models.PublicFeedBootstrap
+	jsonBytes        []byte
+	gzipBytes        []byte
 }
 
 // mirrorSSESubscriber represents one active SSE connection.
@@ -663,7 +670,7 @@ func (m *PublicMirrorServer) PublicHandler() http.Handler {
 
 func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle("/bootstrap", m.withGzip(http.HandlerFunc(m.handleBootstrap)))
+	mux.HandleFunc("/bootstrap", m.handleBootstrap)
 	mux.Handle("/snapshot", m.withGzip(http.HandlerFunc(m.handleSnapshot)))
 	mux.Handle("/history", m.withGzip(http.HandlerFunc(m.handleHistory)))
 	mux.HandleFunc("/stream", m.handleStream)
@@ -1244,74 +1251,104 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
-	if summary != nil {
-		etag := fmt.Sprintf(`"%s:%d:%s:%s"`, sourceID, summary.HighWaterSequence, summary.FeedChainHash, mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs))
-		w.Header().Set("ETag", etag)
-		w.Header().Set(constants.HeaderCacheControl, "public, max-age=0, must-revalidate")
-		if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
-			if strings.Trim(ifNoneMatch, "W/") == strings.Trim(etag, "W/") {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
-	}
-	bootstrap, err := m.currentBootstrap(r.Context(), r.URL.Query().Get("source"))
+	cached, err := m.currentBootstrapCached(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: read current snapshot", err)
 		return
 	}
-	m.writeJSON(w, http.StatusOK, bootstrap)
+	w.Header().Set(constants.HeaderVary, "Accept-Encoding")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	w.Header().Set(constants.HeaderCacheControl, "public, max-age=0, must-revalidate")
+	if cached.etag != "" {
+		w.Header().Set("ETag", cached.etag)
+		if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" && strings.Trim(ifNoneMatch, "W/") == strings.Trim(cached.etag, "W/") {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	body := cached.jsonBytes
+	if strings.Contains(strings.ToLower(r.Header.Get("Accept-Encoding")), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		body = cached.gzipBytes
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(body); err != nil {
+		m.logResponseError("mirror: write bootstrap response", err)
+	}
 }
 
-// currentBootstrap captures records, proofs, withdrawals and cursor under the
-// same mutation lock, releasing it before writing to a potentially slow client.
+// currentBootstrap returns the decoded view for internal callers.
 func (m *PublicMirrorServer) currentBootstrap(ctx context.Context, requestedSource string) (models.PublicFeedBootstrap, error) {
+	cached, err := m.currentBootstrapCached(ctx, requestedSource)
+	if err != nil {
+		return models.PublicFeedBootstrap{}, err
+	}
+	return cached.bootstrap, nil
+}
+
+// currentBootstrapCached captures a coherent mirror version while mutations
+// are excluded, then decodes and compresses the potentially large response
+// after releasing writeMu.
+func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, requestedSource string) (cachedBootstrapSnapshot, error) {
 	m.writeMu.Lock()
-	defer m.writeMu.Unlock()
 	sourceID, summary := m.sourceView(requestedSource)
 	if summary == nil {
-		return models.PublicFeedBootstrap{
+		m.writeMu.Unlock()
+		bootstrap := models.PublicFeedBootstrap{
 			ProtocolVersion:     constants.PublicFeedProtocolVersion,
 			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
 			SourceFreshness:     models.CampaignFreshnessSourceOffline,
 			RecentProjections:   []models.PublicFeedObject{},
 			ProofCatalogSummary: models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0},
 			GeneratedAt:         time.Now().UTC(),
-		}, nil
+		}
+		return buildCachedBootstrap(bootstrap, sourceID, nil, models.CampaignFreshnessSourceOffline, PublicMirrorProofSummary{})
 	}
 
 	withdrawalDigest := mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs)
 	proofSummary, hasProof, err := m.store.proofSummary(ctx, sourceID)
 	if err != nil {
-		return models.PublicFeedBootstrap{}, err
+		m.writeMu.Unlock()
+		return cachedBootstrapSnapshot{}, err
 	}
 	catalogSummary := models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0}
+	proofKey := PublicMirrorProofSummary{}
 	if hasProof && proofSummary.ArtifactCount > 0 {
+		proofKey = proofSummary
 		catalogSummary.ArtifactCount = proofSummary.ArtifactCount
 		catalogSummary.TotalByteSize = proofSummary.TotalByteSize
 		catalogSummary.LastGeneratedAt = &proofSummary.GeneratedAt
 	}
 
+	freshness := m.sourceFreshness(summary)
 	if cached, ok := m.bootstrapCache[sourceID]; ok &&
 		cached.sequence == summary.HighWaterSequence &&
 		cached.feedChainHash == summary.FeedChainHash &&
 		cached.withdrawalDigest == withdrawalDigest &&
-		cached.proofCount == catalogSummary.ArtifactCount {
-		return cached.bootstrap, nil
+		cached.freshness == freshness &&
+		cached.proofCount == catalogSummary.ArtifactCount &&
+		cached.proofByteSize == catalogSummary.TotalByteSize &&
+		cached.proofRoot == proofKey.ProofRootSHA256 && cached.proofGeneratedAt.Equal(proofKey.GeneratedAt) {
+		m.writeMu.Unlock()
+		return cached, nil
 	}
 
 	records, err := m.store.snapshotRecords(ctx, sourceID)
 	if err != nil {
-		return models.PublicFeedBootstrap{}, err
+		m.writeMu.Unlock()
+		return cachedBootstrapSnapshot{}, err
 	}
+	summaryCopy := *summary
+	m.writeMu.Unlock()
+
 	// Preserve the transport's newest-first ordering. Unlike a history tail,
 	// these are the latest records for every current entity plus recent activity.
 	recent := make([]models.PublicFeedObject, 0, len(records))
 	for i := len(records) - 1; i >= 0; i-- {
 		var item models.PublicFeedObject
 		if err := json.Unmarshal([]byte(records[i].RecordBytes), &item); err != nil {
-			return models.PublicFeedBootstrap{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
+			return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
 		}
 		item.SetInt64Field("sequence", records[i].Sequence)
 		recent = append(recent, item)
@@ -1319,23 +1356,77 @@ func (m *PublicMirrorServer) currentBootstrap(ctx context.Context, requestedSour
 
 	result := models.PublicFeedBootstrap{
 		ProtocolVersion:     constants.PublicFeedProtocolVersion,
-		Snapshot:            m.snapshotOf(sourceID, summary),
-		SourceFreshness:     m.sourceFreshness(summary),
+		Snapshot:            m.snapshotOf(sourceID, &summaryCopy),
+		SourceFreshness:     freshness,
 		RecentProjections:   recent,
 		ProofCatalogSummary: catalogSummary,
 		GeneratedAt:         time.Now().UTC(),
 	}
-	if m.bootstrapCache == nil {
-		m.bootstrapCache = make(map[string]cachedBootstrapSnapshot)
+	result.Snapshot.Freshness = freshness
+	cachedResult, err := buildCachedBootstrap(result, sourceID, &summaryCopy, freshness, proofKey)
+	if err != nil {
+		return cachedBootstrapSnapshot{}, err
 	}
-	m.bootstrapCache[sourceID] = cachedBootstrapSnapshot{
-		sequence:         summary.HighWaterSequence,
-		feedChainHash:    summary.FeedChainHash,
-		withdrawalDigest: withdrawalDigest,
-		proofCount:       catalogSummary.ArtifactCount,
-		bootstrap:        result,
+
+	m.writeMu.Lock()
+	currentID, currentSummary := m.sourceView(sourceID)
+	currentProofSummary, currentHasProof, currentProofErr := m.store.proofSummary(ctx, sourceID)
+	currentProofCount, currentProofByteSize := 0, int64(0)
+	if currentProofErr == nil && currentHasProof {
+		currentProofCount, currentProofByteSize = currentProofSummary.ArtifactCount, currentProofSummary.TotalByteSize
 	}
-	return result, nil
+	currentProofRoot, currentProofGeneratedAt := "", time.Time{}
+	if currentProofErr == nil && currentHasProof && currentProofSummary.ArtifactCount > 0 {
+		currentProofRoot, currentProofGeneratedAt = currentProofSummary.ProofRootSHA256, currentProofSummary.GeneratedAt
+	}
+	if currentProofErr == nil && currentID == sourceID && currentSummary != nil &&
+		currentSummary.HighWaterSequence == cachedResult.sequence && currentSummary.FeedChainHash == cachedResult.feedChainHash &&
+		mirrorWithdrawalDigest(currentSummary.WithdrawnDatasetIDs) == cachedResult.withdrawalDigest &&
+		m.sourceFreshness(currentSummary) == cachedResult.freshness && currentProofCount == cachedResult.proofCount &&
+		currentProofByteSize == cachedResult.proofByteSize && currentProofRoot == cachedResult.proofRoot &&
+		currentProofGeneratedAt.Equal(cachedResult.proofGeneratedAt) {
+		if m.bootstrapCache == nil {
+			m.bootstrapCache = make(map[string]cachedBootstrapSnapshot)
+		}
+		m.bootstrapCache[sourceID] = cachedResult
+	}
+	m.writeMu.Unlock()
+	return cachedResult, nil
+}
+
+func buildCachedBootstrap(bootstrap models.PublicFeedBootstrap, sourceID string, summary *PublicMirrorSourceSummary, freshness models.CampaignFreshness, proofSummary PublicMirrorProofSummary) (cachedBootstrapSnapshot, error) {
+	var jsonBuffer bytes.Buffer
+	if err := json.NewEncoder(&jsonBuffer).Encode(bootstrap); err != nil {
+		return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: encode bootstrap snapshot: %w", err)
+	}
+	jsonBytes := jsonBuffer.Bytes()
+	var gzipBuffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&gzipBuffer)
+	if _, err := gzipWriter.Write(jsonBytes); err != nil {
+		_ = gzipWriter.Close()
+		return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: compress bootstrap snapshot: %w", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: finish compressed bootstrap snapshot: %w", err)
+	}
+	cached := cachedBootstrapSnapshot{
+		freshness:        freshness,
+		proofCount:       proofSummary.ArtifactCount,
+		proofByteSize:    proofSummary.TotalByteSize,
+		proofRoot:        proofSummary.ProofRootSHA256,
+		proofGeneratedAt: proofSummary.GeneratedAt,
+		bootstrap:        bootstrap,
+		jsonBytes:        jsonBytes,
+		gzipBytes:        gzipBuffer.Bytes(),
+	}
+	if summary != nil {
+		cached.sequence = summary.HighWaterSequence
+		cached.feedChainHash = summary.FeedChainHash
+		cached.withdrawalDigest = mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs)
+		bodyDigest := sha256.Sum256(jsonBytes)
+		cached.etag = fmt.Sprintf(`W/"%s:%d:%s:%s:%s:%d:%d:%s:%s:%s"`, sourceID, cached.sequence, cached.feedChainHash, cached.withdrawalDigest, freshness, cached.proofCount, cached.proofByteSize, cached.proofRoot, cached.proofGeneratedAt.UTC().Format(time.RFC3339Nano), hex.EncodeToString(bodyDigest[:]))
+	}
+	return cached, nil
 }
 
 // handleSnapshot handles GET /snapshot — current high-water sequence and

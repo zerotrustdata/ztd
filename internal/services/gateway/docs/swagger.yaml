@@ -1832,6 +1832,8 @@ definitions:
     properties:
       app:
         type: string
+      auditor_key:
+        type: string
       cli:
         type: string
       operator:
@@ -1883,6 +1885,12 @@ definitions:
       actuator_public_key:
         description: ActuatorPublicKey is the hex Ed25519 public key of this Operator's
           L5 Actuator.
+        type: string
+      auditor_key_id:
+        type: string
+      auditor_public_key:
+        description: AuditorPublicKey is the hex Ed25519 public key of this Operator's
+          Auditor.
         type: string
       capabilities:
         items:

@@ -203,7 +203,7 @@ func createAndApproveRequestWithFingerprint(t *testing.T, env *platformEnrollmen
 			CLICSRPEM:         cliCSR,
 			ActuatorPublicKey: actuatorKey,
 			AuditorPublicKey:  testAuditorPublicKeyHex,
-				AuditorKeyID:     testAuditorPublicKeyHex,
+			AuditorKeyID:      testAuditorPublicKeyHex,
 		}
 	}
 
@@ -1067,7 +1067,7 @@ func TestPlatformEnrollmentService_FullPlatformOperatorsAwaitApproval(t *testing
 				CLICSRPEM:         cliCSR,
 				ActuatorPublicKey: testActuatorPublicKeyHex,
 				AuditorPublicKey:  testAuditorPublicKeyHex,
-				AuditorKeyID:     testAuditorPublicKeyHex,
+				AuditorKeyID:      testAuditorPublicKeyHex,
 			},
 		}
 		response, err := createPlatformEnrollmentRequest(t, env.enrollSvc, context.Background(), req, "https://gateway.local/console")
@@ -1806,8 +1806,11 @@ func TestPlatformEnrollmentService_DuplicateOperatorKeysFails(t *testing.T) {
 		Hostname:          "operator.local",
 		SystemFingerprint: "fp",
 		Operator: &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: csr,
-			CLICSRPEM:      csr,
+			OperatorCSRPEM:    csr,
+			CLICSRPEM:         csr,
+			ActuatorPublicKey: testActuatorPublicKeyHex,
+			AuditorPublicKey:  testAuditorPublicKeyHex,
+			AuditorKeyID:      testAuditorPublicKeyHex,
 		},
 	}, "https://gateway.local/console")
 	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentDuplicateKey)

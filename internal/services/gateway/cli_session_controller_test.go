@@ -174,12 +174,11 @@ func TestHandleCLISessionInfo_ReportsRegisteredPasskey(t *testing.T) {
 	assert.True(t, resp.PasskeyRegistered)
 }
 
-// TestHandleCLISessionInfo_NonCLIIdentityReturns401 verifies the endpoint
-// fails closed for authenticated callers that are not CLI sessions: an
-// operator certificate reaches the handler without ContextKeyCLISessionID
-// and is rejected, and a request with no client certificate is rejected
-// by the mTLS middleware before the handler runs.
-func TestHandleCLISessionInfo_NonCLIIdentityReturns401(t *testing.T) {
+// TestHandleCLISessionInfo_NonCLIIdentityIsRejected verifies the endpoint
+// fails closed for callers that are not CLI sessions. The workload route
+// allowlist rejects an Operator certificate before the CLI-only handler, while
+// a request with no client certificate is rejected by mTLS authentication.
+func TestHandleCLISessionInfo_NonCLIIdentityIsRejected(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 
 	user, err := infra.UserSvc.CreateUser(t.Context())
@@ -198,7 +197,8 @@ func TestHandleCLISessionInfo_NonCLIIdentityReturns401(t *testing.T) {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
 
-		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+		assert.Contains(t, rr.Body.String(), constants.ErrPrivilegedEndpointAccess.Error())
 	})
 
 	t.Run("no client certificate", func(t *testing.T) {

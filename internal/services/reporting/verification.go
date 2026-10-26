@@ -197,6 +197,7 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 		invalidReceipts := 0
 		for _, c := range commitments {
 			if c.TransactionID == "" {
+				invalidReceipts++
 				continue
 			}
 			r, err := eventsStore.GetEventReceipt(c.TransactionID)

@@ -77,6 +77,55 @@ export class ValidationError extends Error {
   }
 }
 
+const UTF8_ENCODER = new TextEncoder();
+const lazyProjectionPayloads = new WeakMap<ProjectionRecord, Record<string, unknown>>();
+
+/** Construct an in-memory feed record without serializing its already-decoded payload. */
+export function createLazyProjectionRecord(
+  sequence: number,
+  recordType: ProjectionRecord['record_type'],
+  payload: Record<string, unknown>,
+): ProjectionRecord {
+  const record = { sequence, record_type: recordType } as ProjectionRecord;
+  lazyProjectionPayloads.set(record, payload);
+  let serialized: string | undefined;
+  let didSerialize = false;
+  Object.defineProperty(record, 'record_bytes', {
+    enumerable: true,
+    configurable: false,
+    get: () => {
+      if (!didSerialize) {
+        serialized = JSON.stringify(payload);
+        didSerialize = true;
+      }
+      return serialized as string;
+    },
+  });
+  return record;
+}
+
+export function getParsedProjectionPayload(record: ProjectionRecord): Record<string, unknown> | undefined {
+  return lazyProjectionPayloads.get(record);
+}
+
+export function hasParsedProjectionPayload(value: unknown): value is ProjectionRecord {
+  return typeof value === 'object' && value !== null && lazyProjectionPayloads.has(value as ProjectionRecord);
+}
+
+export function utf8ByteLengthWithin(value: string, maxBytes: number): boolean {
+  if (value.length > maxBytes) return false;
+  if (value.length * 3 <= maxBytes) return true;
+  return UTF8_ENCODER.encode(value).byteLength <= maxBytes;
+}
+
+export function hasControlCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -111,7 +160,7 @@ export function assertString(value: unknown, path: string): asserts value is str
 
 function assertPublicIdentifier(value: unknown, path: string): asserts value is string {
   assertString(value, path);
-  assert(new TextEncoder().encode(value).byteLength <= 128, path, 'expected at most 128 UTF-8 bytes');
+  assert(utf8ByteLengthWithin(value, 128), path, 'expected at most 128 UTF-8 bytes');
 }
 
 function assertNumber(value: unknown, path: string): asserts value is number {
@@ -168,17 +217,15 @@ function assertStringArray(value: unknown, path: string, maxItems = 128, maxByte
   for (let i = 0; i < value.length; i++) {
     const itemPath = `${path}[${i}]`;
     assertString(value[i], itemPath);
-    assert(new TextEncoder().encode(value[i]).byteLength <= maxBytes, itemPath, `expected at most ${maxBytes} UTF-8 bytes`);
-    for (const character of value[i]) {
-      const code = character.codePointAt(0) ?? 0;
-      assert(code > 0x1f && code !== 0x7f, itemPath, 'control characters are not allowed');
-    }
+    assert(utf8ByteLengthWithin(value[i], maxBytes), itemPath, `expected at most ${maxBytes} UTF-8 bytes`);
+    assert(!hasControlCharacters(value[i]), itemPath, 'control characters are not allowed');
   }
 }
 
 /** Reject unknown fields on a record to prevent silent shape drift. */
 export function rejectUnknown(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
-  for (const key of Object.keys(value)) {
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
     if (!allowed.includes(key)) {
       throw new ValidationError(`unknown field "${key}"`, path);
     }
@@ -196,6 +243,14 @@ const ENVELOPE_FIELDS = [
   'release_basis',
   'source_revision',
 ] as const;
+const CATALOG_FIELDS = [...ENVELOPE_FIELDS, 'dataset_kind', 'title', 'description', 'limitations', 'model_count', 'evaluated_count', 'suite_count', 'run_count', 'assignment_count', 'provider_request_count', 'provider_token_count', 'retry_count', 'verifier_passed_count', 'verifier_failed_count', 'generated_at', 'provider_environment'] as const;
+const MODEL_FIELDS = [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'] as const;
+const SUITE_FIELDS = [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_count', 'assignment_count', 'status', 'verifier_state', 'verifier_failure_summary', 'model_coverage', 'metric_summaries', 'limitations'] as const;
+const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'] as const;
+const ASSIGNMENT_FIELDS = [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'] as const;
+const METHODOLOGY_FIELDS = [...ENVELOPE_FIELDS, 'metric_definitions', 'suite_definitions', 'limitations'] as const;
+const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'feed_sequence'] as const;
+const ASSIGNMENT_TERMINAL_STATUSES = [...TERMINAL_STATUSES, 'running', 'queued'] as const;
 
 /** Reports whether a supported schema version is at or after a revision.
  *  SUPPORTED_VIEW_SCHEMA_VERSIONS is ordered oldest first. */
@@ -333,7 +388,7 @@ function assertProviderEnvironment(value: unknown, path: string): void {
 
 export function isCatalogSnapshot(value: unknown): asserts value is CatalogSnapshot {
   assertObject(value, 'catalog_snapshot');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'dataset_kind', 'title', 'description', 'limitations', 'model_count', 'evaluated_count', 'suite_count', 'run_count', 'assignment_count', 'provider_request_count', 'provider_token_count', 'retry_count', 'verifier_passed_count', 'verifier_failed_count', 'generated_at', 'provider_environment'], 'catalog_snapshot');
+  rejectUnknown(value, CATALOG_FIELDS, 'catalog_snapshot');
   assertEnvelope(value, 'catalog_snapshot', ['catalog_snapshot']);
   assertEnum(value.dataset_kind, DATASET_KINDS, 'catalog_snapshot.dataset_kind');
   assertString(value.title, 'catalog_snapshot.title');
@@ -370,7 +425,7 @@ export function isCatalogSnapshot(value: unknown): asserts value is CatalogSnaps
 
 export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertObject(value, 'model_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
+  rejectUnknown(value, MODEL_FIELDS, 'model_summary');
   assertEnvelope(value, 'model_summary', ['model_summary']);
   assertString(value.variant_id, 'model_summary.variant_id');
   assertString(value.display_name, 'model_summary.display_name');
@@ -448,7 +503,7 @@ export function isModelSummary(value: unknown): asserts value is ModelSummary {
 
 export function isSuiteSummary(value: unknown): asserts value is SuiteSummary {
   assertObject(value, 'suite_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_count', 'assignment_count', 'status', 'verifier_state', 'verifier_failure_summary', 'model_coverage', 'metric_summaries', 'limitations'], 'suite_summary');
+  rejectUnknown(value, SUITE_FIELDS, 'suite_summary');
   assertEnvelope(value, 'suite_summary', ['suite_summary']);
   assertString(value.suite_id, 'suite_summary.suite_id');
   assertString(value.display_name, 'suite_summary.display_name');
@@ -555,7 +610,7 @@ function assertCurrentHeadlineMetrics(value: unknown, path: string): void {
 
 export function isEvaluationSummary(value: unknown): asserts value is EvaluationSummary {
   assertObject(value, 'evaluation_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
+  rejectUnknown(value, EVALUATION_FIELDS, 'evaluation_summary');
   assertEnvelope(value, 'evaluation_summary', ['evaluation_summary']);
   assertString(value.run_id, 'evaluation_summary.run_id');
   assertOptional(value.campaign_id, 'evaluation_summary.campaign_id', assertString);
@@ -638,11 +693,8 @@ function assertPublicStringArray(value: unknown, path: string, maxItems: number,
   for (let index = 0; index < value.length; index++) {
     assertString(value[index], `${path}[${index}]`);
     const item = value[index] as string;
-    assert(new TextEncoder().encode(item).byteLength <= maxBytes, `${path}[${index}]`, `expected at most ${maxBytes} UTF-8 bytes`);
-    assert(!Array.from(item).some((character) => {
-      const codePoint = character.codePointAt(0) ?? 0;
-      return codePoint <= 0x1f || codePoint === 0x7f;
-    }), `${path}[${index}]`, 'control characters are not allowed');
+    assert(utf8ByteLengthWithin(item, maxBytes), `${path}[${index}]`, `expected at most ${maxBytes} UTF-8 bytes`);
+    assert(!hasControlCharacters(item), `${path}[${index}]`, 'control characters are not allowed');
   }
 }
 
@@ -673,7 +725,7 @@ function assertPublicScenarioSummary(value: unknown, path: string): void {
   assertPublicIdentifier(value.scenario_version, `${path}.scenario_version`);
   assertEnum(value.category, SCENARIO_CATEGORIES, `${path}.category`);
   assertString(value.public_description, `${path}.public_description`);
-  assert(new TextEncoder().encode(value.public_description).byteLength <= 512, `${path}.public_description`, 'expected at most 512 UTF-8 bytes');
+  assert(utf8ByteLengthWithin(value.public_description, 512), `${path}.public_description`, 'expected at most 512 UTF-8 bytes');
   assertEnum(value.grading_method, ['deterministic', 'semantic_judge'], `${path}.grading_method`);
   for (const field of ['allowed_tools', 'expected_tools', 'forbidden_tools'] as const) {
     assertPublicStringArray(value[field], `${path}.${field}`, 64);
@@ -691,7 +743,7 @@ function assertPublicScenarioSummary(value: unknown, path: string): void {
     criterionIds.add(criterion.criterion_id);
     assertPublicIdentifier(criterion.public_label, `${criterionPath}.public_label`);
     assertString(criterion.public_description, `${criterionPath}.public_description`);
-    assert(new TextEncoder().encode(criterion.public_description).byteLength <= 512, `${criterionPath}.public_description`, 'expected at most 512 UTF-8 bytes');
+    assert(utf8ByteLengthWithin(criterion.public_description, 512), `${criterionPath}.public_description`, 'expected at most 512 UTF-8 bytes');
     assertEnum(criterion.grading_method, ['deterministic', 'semantic_judge'], `${criterionPath}.grading_method`);
     assertBoolean(criterion.required, `${criterionPath}.required`);
   }
@@ -816,7 +868,7 @@ function assertPublicEvidenceBindings(value: unknown, path: string): void {
     assertString(binding.sha256, `${bindingPath}.sha256`);
     assert(/^[0-9a-f]{64}$/u.test(binding.sha256), `${bindingPath}.sha256`, 'expected lowercase SHA-256');
     assertString(binding.schema_ref, `${bindingPath}.schema_ref`);
-    assert(new TextEncoder().encode(binding.schema_ref).byteLength <= 128, `${bindingPath}.schema_ref`, 'expected at most 128 UTF-8 bytes');
+    assert(utf8ByteLengthWithin(binding.schema_ref, 128), `${bindingPath}.schema_ref`, 'expected at most 128 UTF-8 bytes');
     assertEnum(binding.kind, PUBLIC_EVIDENCE_KINDS, `${bindingPath}.kind`);
     assert(!identities.has(binding.sha256), `${bindingPath}.sha256`, 'duplicate evidence identity');
     identities.add(binding.sha256);
@@ -920,7 +972,7 @@ function assertPublicResourceSummary(value: unknown, path: string): void {
 
 export function isAssignmentResult(value: unknown): asserts value is AssignmentResult {
   assertObject(value, 'assignment_result');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'], 'assignment_result');
+  rejectUnknown(value, ASSIGNMENT_FIELDS, 'assignment_result');
   assertEnvelope(value, 'assignment_result', ['assignment_result']);
   assertString(value.assignment_id, 'assignment_result.assignment_id');
   assertString(value.run_id, 'assignment_result.run_id');
@@ -947,7 +999,7 @@ export function isAssignmentResult(value: unknown): asserts value is AssignmentR
     if (value.evidence_bindings !== undefined) assertPublicEvidenceBindings(value.evidence_bindings, 'assignment_result.evidence_bindings');
     if (value.verification_metadata !== undefined) assertPublicVerificationMetadata(value.verification_metadata, 'assignment_result.verification_metadata');
   }
-  assertEnum(value.terminal_status, [...TERMINAL_STATUSES, 'running', 'queued'], 'assignment_result.terminal_status');
+  assertEnum(value.terminal_status, ASSIGNMENT_TERMINAL_STATUSES, 'assignment_result.terminal_status');
   assertObject(value.metric_values, 'assignment_result.metric_values');
   for (const [key, metric] of Object.entries(value.metric_values)) assertMetricValue(metric, `assignment_result.metric_values.${key}`);
   assertOptional(value.missingness_reason, 'assignment_result.missingness_reason', assertString);
@@ -957,7 +1009,7 @@ export function isAssignmentResult(value: unknown): asserts value is AssignmentR
   assertOptional(value.guided_retry_count, 'assignment_result.guided_retry_count', assertInteger);
   if (value.failure_reason !== undefined) {
     assertString(value.failure_reason, 'assignment_result.failure_reason');
-    assert(new TextEncoder().encode(value.failure_reason).byteLength <= 512, 'assignment_result.failure_reason', 'expected at most 512 UTF-8 bytes');
+    assert(utf8ByteLengthWithin(value.failure_reason, 512), 'assignment_result.failure_reason', 'expected at most 512 UTF-8 bytes');
   }
   if (value.tools_declared !== undefined) assertPublicStringArray(value.tools_declared, 'assignment_result.tools_declared', 64);
   if (value.role_transcripts !== undefined) assertRoleTranscripts(value.role_transcripts, 'assignment_result.role_transcripts');
@@ -980,7 +1032,7 @@ export function isAssignmentResult(value: unknown): asserts value is AssignmentR
 
 export function isMethodologySnapshot(value: unknown): asserts value is MethodologySnapshot {
   assertObject(value, 'methodology_snapshot');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'metric_definitions', 'suite_definitions', 'limitations'], 'methodology_snapshot');
+  rejectUnknown(value, METHODOLOGY_FIELDS, 'methodology_snapshot');
   assertEnvelope(value, 'methodology_snapshot', ['methodology_snapshot']);
   assert(Array.isArray(value.metric_definitions), 'methodology_snapshot.metric_definitions', 'expected array');
   assert(value.metric_definitions.length <= 128, 'methodology_snapshot.metric_definitions', 'expected at most 128 entries');
@@ -1012,7 +1064,7 @@ export function isMethodologySnapshot(value: unknown): asserts value is Methodol
 
 export function isLiveEvent(value: unknown): asserts value is LiveEvent {
   assertObject(value, 'live_event');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'feed_sequence'], 'live_event');
+  rejectUnknown(value, LIVE_EVENT_FIELDS, 'live_event');
   assertEnvelope(value, 'live_event', LIVE_EVENT_KINDS as unknown as string[]);
   assertString(value.event_id, 'live_event.event_id');
   assertString(value.run_id, 'live_event.run_id');
@@ -1083,7 +1135,7 @@ export function isProjectionRecord(value: unknown): asserts value is ProjectionR
     assertString(value.record_hash, 'projection.record_hash');
     assert(/^[0-9a-f]{64}$/u.test(value.record_hash), 'projection.record_hash', 'expected sha256 hex');
   }
-  assertString(value.record_bytes, 'projection.record_bytes');
+  if (!hasParsedProjectionPayload(value)) assertString(value.record_bytes, 'projection.record_bytes');
   if (value.decoded !== undefined) {
     assertObject(value.decoded, 'projection.decoded');
     assertString(value.decoded.kind, 'projection.decoded.kind');

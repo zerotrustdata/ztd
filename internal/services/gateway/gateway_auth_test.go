@@ -1526,7 +1526,7 @@ func TestAuthService_HandleOperatorAuth_Integration(t *testing.T) {
 		opURI, err := wid.OperatorSPIFFEURL(organizationID, "op-auth-test", operatorSessionID)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.OperatorsTarget, nil)
 		req.Header.Set("Authorization", "Bearer "+operatorSessionID)
 		req.TLS = &tls.ConnectionState{
 			PeerCertificates: []*x509.Certificate{
@@ -1545,7 +1545,7 @@ func TestAuthService_HandleOperatorAuth_Integration(t *testing.T) {
 		wrongURI, err := wid.OperatorSPIFFEURL("wrong-org", "wrong-op", operatorSessionID)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.OperatorsTarget, nil)
 		req.Header.Set("Authorization", "Bearer "+operatorSessionID)
 		req.TLS = &tls.ConnectionState{
 			PeerCertificates: []*x509.Certificate{
@@ -1693,8 +1693,13 @@ func TestAuthService_HandleAppAuth_Integration(t *testing.T) {
 		appURI, err := wid.AppSPIFFEURL(operatorID)
 		require.NoError(t, err)
 
-		for _, path := range []string{"/api/test", constants.APIPaths.GovernanceEnvelopes} {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
+		for _, route := range []struct{ method, path string }{
+			{http.MethodPost, constants.APIPaths.MCPEndpoint},
+			{http.MethodPost, constants.APIPaths.A2ACall},
+			{http.MethodPost, constants.APIPaths.GovernanceEnvelopes},
+			{http.MethodGet, constants.APIPaths.DataSettings},
+		} {
+			req := httptest.NewRequest(route.method, route.path, nil)
 			req.TLS = &tls.ConnectionState{
 				PeerCertificates: []*x509.Certificate{
 					{URIs: []*url.URL{appURI}},

@@ -618,7 +618,7 @@ func TestOperatorCert_CLISessionHeaderNotStamped(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	probeRR := httptest.NewRecorder()
-	probe.ServeHTTP(probeRR, operatorCertRequest(t, constants.APIPaths.AuthCLISession, orgID, operatorID, operatorSessionID, foreignSessionID, nil))
+	probe.ServeHTTP(probeRR, operatorCertRequest(t, constants.APIPaths.OperatorsTarget, orgID, operatorID, operatorSessionID, foreignSessionID, nil))
 	require.Equal(t, http.StatusOK, probeRR.Code, probeRR.Body.String())
 	assert.Empty(t, probeRR.Header().Get("X-Stamped-CLI-Session-ID"), "an Operator certificate request must not carry a CLI session identity")
 
@@ -639,7 +639,8 @@ func TestOperatorCert_CLISessionHeaderNotStamped(t *testing.T) {
 	for _, cliSessionID := range []string{foreignSessionID, inactiveSessionID} {
 		rr := httptest.NewRecorder()
 		bindHandler.ServeHTTP(rr, operatorCertRequest(t, constants.APIPaths.AuthCLIBind, orgID, operatorID, operatorSessionID, cliSessionID, body))
-		assert.Equal(t, http.StatusNotFound, rr.Code, "bind with an Operator certificate must not reach the CLI session the header names: %s", rr.Body.String())
+		assert.Equal(t, http.StatusForbidden, rr.Code, "Operator identity must be blocked from the CLI-only bind route before the header can be used: %s", rr.Body.String())
+		assert.Contains(t, rr.Body.String(), constants.ErrPrivilegedEndpointAccess.Error())
 	}
 
 	foreignAfter := loadStoredCLISession(t, infra.CLISessionSvc, foreignSessionID)
