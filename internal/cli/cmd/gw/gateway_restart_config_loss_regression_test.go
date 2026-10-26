@@ -49,6 +49,7 @@ func TestGatewayRestartCmd_FailsClosedWhenNoLaunchProfile_AfterFix(t *testing.T)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), postureRelPath, []byte("consensus"), constants.PermFilePrivate))
 
 	cmd := gatewayRestartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetContext(t.Context())
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -108,6 +109,7 @@ func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing
 	t.Cleanup(func() { _ = os.Chmod(binAbsPath, constants.PermDirStandard) })
 
 	cmd := gatewayRestartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetContext(t.Context())
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)

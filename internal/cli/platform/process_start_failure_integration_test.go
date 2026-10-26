@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -160,8 +161,53 @@ func TestStartOperator_TimeoutReturnsChildDiagnostic(t *testing.T) {
 	pm.SetHealthCheckParameters(100*time.Millisecond, 150)
 	startErr := pm.StartOperator(t.Context(), minimalStartOpts())
 	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
+	require.ErrorIs(t, startErr, context.DeadlineExceeded)
 	require.ErrorContains(t, startErr, "stage=snapshots batches=42")
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
+}
+
+type cancelAfterPIDWriteFileSvc struct {
+	fs.RuntimeFileService
+	cancel context.CancelFunc
+}
+
+func (s *cancelAfterPIDWriteFileSvc) WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error {
+	err := s.RuntimeFileService.WriteFile(ctx, relPath, data, mode)
+	if err == nil && relPath == pidRelPath() {
+		s.cancel()
+	}
+	return err
+}
+
+func TestStartOperator_CancellationStopsChild(t *testing.T) {
+	t.Setenv(testReexecEnv, "hold")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fileSvc := &cancelAfterPIDWriteFileSvc{RuntimeFileService: newStartFailureFileSvc(t), cancel: cancel}
+	pm, err := NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	err = pm.StartOperator(ctx, minimalStartOpts())
+	require.ErrorIs(t, err, constants.ErrProcessStartFailed)
+	require.ErrorIs(t, err, context.Canceled)
+	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
+}
+
+func TestStartupDiagnostic_ReadsTailOfCurrentAttempt(t *testing.T) {
+	fileSvc := newStartFailureFileSvc(t)
+	pm, err := NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	log, err := pm.logSvc.OpenLogForAppend(t.Context())
+	require.NoError(t, err)
+	_, err = log.WriteString("old attempt diagnostic\n")
+	require.NoError(t, err)
+	start, err := log.Seek(0, io.SeekEnd)
+	require.NoError(t, err)
+	_, err = log.Write(bytes.Repeat([]byte("progress\n"), maxStartupDiagnosticBytes))
+	require.NoError(t, err)
+	_, err = log.WriteString("latest verification diagnostic\n")
+	require.NoError(t, err)
+	require.NoError(t, log.Close())
+	assert.Equal(t, "latest verification diagnostic", pm.startupDiagnostic(start))
 }
 
 // TestStartOperator_KeyStoreApprovalExtendsHealthWait verifies that a child

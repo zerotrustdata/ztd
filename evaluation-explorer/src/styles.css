@@ -100,8 +100,8 @@ button { font-family: inherit; cursor: pointer; }
 /* Header */
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 .app-header {
-  --header-sticky-offset: 58px;
-  padding: 10px 24px 8px;
+  --header-sticky-offset: 52px;
+  padding: 6px 16px 6px;
   background: var(--bg-elev); border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 10;
 }
@@ -115,7 +115,7 @@ button { font-family: inherit; cursor: pointer; }
 .header-leading {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 .header-brand {
@@ -1999,7 +1999,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 }
 @media (max-width: 1000px) {
   .overview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 2fr); }
-  .app-header { --header-sticky-offset: 92px; }
+  .app-header { --header-sticky-offset: 86px; }
   .header-primary {
     grid-template-columns: auto 1fr;
     grid-template-areas:
@@ -2045,7 +2045,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .docs-hero-title { font-size: 28px; }
 }
 @media (max-width: 768px) {
-  .app-header { --header-sticky-offset: 102px; padding: 10px 14px 8px; }
+  .app-header { --header-sticky-offset: 96px; padding: 2px 4px 2px; }
   .header-brand-wordmark { display: none; }
   .header-brand-logo { display: block; height: 32px; }
   .app-main { padding: 14px 14px 80px; }

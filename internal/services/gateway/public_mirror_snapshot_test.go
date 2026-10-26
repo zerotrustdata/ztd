@@ -7,7 +7,9 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -124,4 +126,59 @@ func TestMirror_SnapshotFailureRollsBackFeedCursor(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, int64(1), summary.HighWaterSequence)
+}
+
+func TestMirror_SnapshotVerificationAcrossPages(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := t.Context()
+	require.NoError(t, env.mirror.SetMaxRetainedBatches(1))
+	previous := constants.PublicFeedZeroHashHex
+	for i := range publicMirrorReadPageRecords + 1 {
+		seq := int64(i*3 + 1)
+		records := []models.PublicFeedRecord{
+			env.makeRecord(seq, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": fmt.Sprintf("ds-%04d", i)})),
+			env.makeRecord(seq+1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "live", "title": fmt.Sprint(i)})),
+			env.makeRecord(seq+2, models.NewPublicFeedObject(map[string]string{"kind": "stage_updated", "dataset_id": "live", "event_id": fmt.Sprintf("event-%04d", i)})),
+		}
+		batch := env.buildBatch(records, previous)
+		require.NoError(t, env.mirror.acceptBatch(ctx, batch))
+		previous = batch.ContentHash
+	}
+	mirror := env.reopenMirror()
+	bootstrap, err := mirror.currentBootstrap(ctx, env.sourceID)
+	require.NoError(t, err)
+	assert.Len(t, bootstrap.RecentProjections, publicMirrorReadPageRecords+2+constants.PublicFeedSSEReplayMaxRecords)
+	// Even a row with a self-consistent hash must match the signed record.
+	raw := `{"kind":"catalog_snapshot","dataset_id":"ds-0256","title":"forged"}`
+	digest := sha256.Sum256([]byte(raw))
+	_, err = mirror.store.db.ExecWithRetry(ctx, `UPDATE snapshot_records SET record_bytes = ?, record_hash = ? WHERE dataset_id = ?`, raw, hex.EncodeToString(digest[:]), "ds-0256")
+	require.NoError(t, err)
+	state, err := mirror.store.loadState(ctx)
+	require.NoError(t, err)
+	require.ErrorIs(t, mirror.store.verifyPublicSnapshots(ctx, state.keys), constants.ErrPublicFeedMirrorStoreCorrupt)
+}
+
+func TestPublicMirrorStore_VerifiesFeedAcrossPages(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := t.Context()
+	previous := constants.PublicFeedZeroHashHex
+	for i := range publicMirrorVerifyPageBatches + 1 {
+		seq := int64(i + 1)
+		record := env.makeRecord(seq, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "live", "title": fmt.Sprint(i)}))
+		batch := env.buildBatch([]models.PublicFeedRecord{record}, previous)
+		require.NoError(t, env.mirror.acceptBatch(ctx, batch))
+		previous = batch.ContentHash
+	}
+	require.NoError(t, env.store.verify(ctx))
+	for _, seq := range []int64{publicMirrorReadPageRecords, publicMirrorReadPageRecords + 1, publicMirrorVerifyPageBatches + 1} {
+		records, err := env.store.recordsInRange(ctx, env.sourceID, seq, seq)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		_, err = env.store.db.ExecWithRetry(ctx, `DELETE FROM records WHERE source_id = ? AND sequence = ?`, env.sourceID, seq)
+		require.NoError(t, err)
+		require.ErrorIs(t, env.store.verify(ctx), constants.ErrPublicFeedMirrorStoreCorrupt)
+		r := records[0]
+		_, err = env.store.db.ExecWithRetry(ctx, `INSERT INTO records (source_id, sequence, record_type, record_hash, record_bytes) VALUES (?, ?, ?, ?, ?)`, env.sourceID, r.Sequence, r.RecordType, r.RecordHash, r.RecordBytes)
+		require.NoError(t, err)
+	}
 }

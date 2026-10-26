@@ -809,8 +809,12 @@ restart.`,
 
 			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
-				if running {
-					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
+				// Only identity detection changed the requested configuration.
+				// Retrying identical settings with the same executable repeats
+				// verification; it cannot restore the previously running binary.
+				if running && profile.Config.CertIdentityMode != previousConfig.CertIdentityMode && cmd.Context().Err() == nil {
+					cmd.Println("Restoring the previous certificate configuration with the current executable...")
+					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig, Notices: cmd.ErrOrStderr()}
 					if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 						return fmt.Errorf("%w: restart: %w; rollback: %w", constants.ErrProcessStartFailed, err, rollbackErr)
 					}
@@ -826,7 +830,7 @@ restart.`,
 					return fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
 				}
 				if running {
-					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
+					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig, Notices: cmd.ErrOrStderr()}
 					if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 						return fmt.Errorf("%w: persist launch profile: %w; rollback: %w", constants.ErrInternal, err, rollbackErr)
 					}

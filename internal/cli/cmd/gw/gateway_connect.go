@@ -391,7 +391,7 @@ func connectRestartGateway(
 		// Rollback: attempt to restore the previously validated profile.
 		cmd.Printf("Failed to start Gateway with new configuration: %v\n", err)
 		cmd.Println("Attempting rollback to the previous configuration...")
-		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
+		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
 		if rbErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rbErr != nil {
 			return fmt.Errorf("%w: start failed: %w; rollback also failed: %w", constants.ErrProcessStartFailed, err, rbErr)
 		}
@@ -405,7 +405,7 @@ func connectRestartGateway(
 		if stopErr := pm.StopOperator(); stopErr != nil {
 			return fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
 		}
-		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
+		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
 		if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 			return fmt.Errorf("%w: persist launch profile: %w; rollback: %w", constants.ErrInternal, err, rollbackErr)
 		}

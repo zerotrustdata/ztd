@@ -531,6 +531,9 @@ func (pm *ProcessManager) StartOperator(ctx context.Context, opts *OperatorStart
 	cmd.Stderr = logHandle
 	setProcessGroup(cmd)
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, errors.Join(err, logHandle.Close()))
+	}
 	if err := cmd.Start(); err != nil {
 		if closeErr := logHandle.Close(); closeErr != nil {
 			return fmt.Errorf("%w: start: %w; close log: %w", constants.ErrProcessStartFailed, err, closeErr)
@@ -608,8 +611,12 @@ func (pm *ProcessManager) StartOperator(ctx context.Context, opts *OperatorStart
 	if opts.PublicSpectatorEnabled && pm.maxHealthChecks <= 0 {
 		budget += constants.PublicMirrorVerificationTimeout
 	}
-	healthCtx, cancelHealth := context.WithTimeout(ctx, budget)
-	defer func() { cancelHealth() }()
+	healthCtx, cancelHealth := context.WithCancelCause(ctx)
+	deadlineTimer := time.AfterFunc(budget, func() { cancelHealth(context.DeadlineExceeded) })
+	defer func() {
+		deadlineTimer.Stop()
+		cancelHealth(nil)
+	}()
 	started := time.Now()
 	approvalPending := false
 healthLoop:
@@ -623,23 +630,30 @@ healthLoop:
 		}
 		req, err := http.NewRequestWithContext(healthCtx, http.MethodGet, healthURL, nil)
 		if err != nil {
-			return fmt.Errorf("%w: health request: %w", constants.ErrProcessStartFailed, err)
+			cleanupErr := errors.Join(stopChild(false), pm.deletePID(constants.OperatorPIDFilename))
+			return fmt.Errorf("%w: health request: %w", constants.ErrProcessStartFailed, errors.Join(err, cleanupErr))
 		}
 		resp, err := client.Do(req)
 		if err == nil {
 			healthy := resp.StatusCode == http.StatusOK &&
 				healthResponseIsFromChild(resp.Body, cmd.Process.Pid)
 			_ = resp.Body.Close()
-			if healthy {
+			if healthy && healthCtx.Err() == nil {
 				return nil
 			}
 		}
 		// Key store approval has its own bounded allowance, followed by
 		// the ordinary startup budget for verification and health.
 		if !approvalPending && pm.childLogContains(logStartOffset, constants.KeyStoreAwaitingApprovalLog) {
+			// Never extend a deadline that has already fired. One context
+			// owns both phases; resetting its timer keeps cancellation and
+			// cleanup independent of which phase is active.
+			if !deadlineTimer.Stop() {
+				cancelHealth(context.DeadlineExceeded)
+				break healthLoop
+			}
 			approvalPending = true
-			cancelHealth()
-			healthCtx, cancelHealth = context.WithTimeout(ctx, constants.KeyStoreApprovalTimeout+budget)
+			deadlineTimer.Reset(constants.KeyStoreApprovalTimeout + budget)
 			if opts.Notices != nil {
 				_, _ = fmt.Fprintln(opts.Notices, keyStoreApprovalNotice)
 			}
@@ -665,9 +679,9 @@ healthLoop:
 		reason += ": " + diagnostic
 	}
 	if cleanupErr != nil {
-		return fmt.Errorf("%w: %s: %w (full log: %s); cleanup: %w", constants.ErrProcessStartFailed, reason, healthCtx.Err(), logPath, cleanupErr)
+		return fmt.Errorf("%w: %s: %w (full log: %s); cleanup: %w", constants.ErrProcessStartFailed, reason, context.Cause(healthCtx), logPath, cleanupErr)
 	}
-	return fmt.Errorf("%w: %s: %w (full log: %s)", constants.ErrProcessStartFailed, reason, healthCtx.Err(), logPath)
+	return fmt.Errorf("%w: %s: %w (full log: %s)", constants.ErrProcessStartFailed, reason, context.Cause(healthCtx), logPath)
 }
 
 // spectatorListenerPort is one fixed loopback listener the Gateway child binds
@@ -773,7 +787,7 @@ func (pm *ProcessManager) childLogContains(startOffset int64, marker string) boo
 
 // diagnosticFromChildOutput prefers the last ERROR record: its message plus the
 // structured error field name the cause. Otherwise it falls back to the last
-// non-empty line, which is how plain stderr output (no logger) reports.
+// record with its progress fields, or the last plain stderr line.
 func diagnosticFromChildOutput(output string) string {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -794,7 +808,11 @@ func diagnosticFromChildOutput(output string) string {
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		if line := strings.TrimSpace(lines[i]); line != "" {
-			return line
+			start := i
+			for start > 0 && strings.HasPrefix(lines[start], "  - ") {
+				start--
+			}
+			return strings.TrimSpace(strings.Join(lines[start:i+1], "\n"))
 		}
 	}
 	return ""

@@ -17,6 +17,14 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
+func TestDiagnosticFromChildOutput_PreservesVerificationProgress(t *testing.T) {
+	output := "2026-10-26T12:00:00Z INFO: Public mirror verification progress\n  - stage: snapshots\n  - batches: 42\n  - elapsed: 2s\n"
+	diagnostic := diagnosticFromChildOutput(output)
+	assert.Contains(t, diagnostic, "Public mirror verification progress")
+	assert.Contains(t, diagnostic, "stage: snapshots")
+	assert.Contains(t, diagnostic, "batches: 42")
+}
+
 func TestDiagnosticFromChildOutput_PrefersErrorRecordCause(t *testing.T) {
 	output := `2026-10-12T13:54:23.121-07:00 INFO: Gateway servers starting
   - component: gateway

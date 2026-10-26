@@ -51,6 +51,44 @@ type launchProfileWriteFailingFileSvc struct {
 	failErr error
 }
 
+type countingStartFileSvc struct {
+	fs.RuntimeFileService
+	starts int
+}
+
+func (w *countingStartFileSvc) WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error {
+	if relPath == filepath.Join(constants.PidDirname, constants.OperatorPIDFilename) {
+		w.starts++
+	}
+	return w.RuntimeFileService.WriteFile(ctx, relPath, data, mode)
+}
+
+func TestGatewayRestart_FailedUnchangedLaunchDoesNotRetry(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	withServeReExec(t, fileSvc)
+	startZombieReaper(t)
+	pm, err := platform.NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	opts := platform.OperatorStartOptions{GatewayConfig: serve.GatewayConfig{
+		Posture: constants.PostureDoctrine, LogLevel: constants.LogLevelInfo, CertIdentityMode: "localhost",
+	}}
+	require.NoError(t, pm.StartOperator(t.Context(), &opts))
+	require.NoError(t, serve.WriteLaunchProfile(fileSvc, opts.GatewayConfig))
+	t.Setenv(testReexecEnv, "exit")
+	counted := &countingStartFileSvc{RuntimeFileService: fileSvc}
+	cmd := gatewayRestartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(counted))
+	cmd.SetContext(t.Context())
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	err = cmd.RunE(cmd, nil)
+	require.ErrorIs(t, err, constants.ErrProcessStartFailed)
+	assert.Equal(t, 1, counted.starts, "restoring identical configuration with the same executable repeats the failed launch")
+	profile, err := serve.ReadLaunchProfile(fileSvc)
+	require.NoError(t, err)
+	assert.Equal(t, opts.GatewayConfig, profile.Config)
+}
+
 func (w *launchProfileWriteFailingFileSvc) WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error {
 	launchProfileRelPath := filepath.Join(constants.PidDirname, constants.OperatorLaunchProfileFilename)
 	if relPath == launchProfileRelPath {

@@ -52,11 +52,11 @@ function Shell() {
       <header className="app-header">
         <div className="header-primary">
           <div className="header-leading">
+            <NavDrawer />
             <Link className="header-brand" to="/" aria-label="OpenDevOps.ai home">
               <img className="header-brand-wordmark" src={brandWordmarkUrl} alt="" />
               <img className="header-brand-logo" src={brandLogoUrl} alt="" />
             </Link>
-            <NavDrawer />
           </div>
           <div className="header-campaign-slot">
             <ActiveCampaignBar />
