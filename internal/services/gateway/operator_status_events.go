@@ -368,12 +368,8 @@ func ownerConnectedWebSessionIDs(ctx context.Context, docStore *DocumentStoreSer
 
 // decodeWebSession decodes a stored web session document.
 func decodeWebSession(doc *models.Document) (models.WebSession, error) {
-	wire, err := json.Marshal(doc.ForWire())
-	if err != nil {
-		return models.WebSession{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
 	var session models.WebSession
-	if err := json.Unmarshal(wire, &session); err != nil {
+	if err := doc.DecodeWire(&session); err != nil {
 		return models.WebSession{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalDocument, err)
 	}
 	return session, nil

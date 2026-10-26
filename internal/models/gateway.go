@@ -31,7 +31,18 @@ type Document struct {
 // DecodeData decodes the document's Data fields into target, a typed struct.
 // Data is a field map, not raw JSON, so it is re-serialized once before decoding.
 func (d *Document) DecodeData(target any) error {
-	b, err := json.Marshal(d.Data)
+	return decodeDocumentFields(d.Data, target)
+}
+
+// DecodeWire decodes the document's ForWire view (Data plus the id, created_at
+// and updated_at system fields) into target, for records whose typed model
+// carries those fields.
+func (d *Document) DecodeWire(target any) error {
+	return decodeDocumentFields(d.ForWire(), target)
+}
+
+func decodeDocumentFields(fields map[string]json.RawMessage, target any) error {
+	b, err := json.Marshal(fields)
 	if err != nil {
 		return fmt.Errorf("marshal document data: %w", err)
 	}

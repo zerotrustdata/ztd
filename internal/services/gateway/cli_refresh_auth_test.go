@@ -399,11 +399,9 @@ func TestHandleCLIRefreshAuth_ServerInvalidSessionStates_Admitted(t *testing.T) 
 			require.NoError(t, err)
 			require.NotNil(t, doc)
 			var session models.CLISession
-			data, err := json.Marshal(doc.Data)
-			require.NoError(t, err)
-			require.NoError(t, json.Unmarshal(data, &session))
+			require.NoError(t, doc.DecodeData(&session))
 			tt.mutate(&session)
-			data, err = json.Marshal(session)
+			data, err := json.Marshal(session)
 			require.NoError(t, err)
 			require.NoError(t, auth.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, data))
 
@@ -435,11 +433,9 @@ func TestHandleCLIAuth_ServerInvalidSessionStatesOnNonRefreshEndpoint_FailClosed
 			require.NoError(t, err)
 			require.NotNil(t, doc)
 			var session models.CLISession
-			data, err := json.Marshal(doc.Data)
-			require.NoError(t, err)
-			require.NoError(t, json.Unmarshal(data, &session))
+			require.NoError(t, doc.DecodeData(&session))
 			tt.mutate(&session)
-			data, err = json.Marshal(session)
+			data, err := json.Marshal(session)
 			require.NoError(t, err)
 			require.NoError(t, auth.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, data))
 

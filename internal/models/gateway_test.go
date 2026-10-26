@@ -156,6 +156,58 @@ func TestDocumentForWire_SystemFieldsOverrideDataFieldsWithSameKey(t *testing.T)
 	assert.Equal(t, "doc-7", idVal)
 }
 
+func TestDocumentDecodeData_ExcludesSystemFields(t *testing.T) {
+	t.Parallel()
+
+	d := &Document{
+		ID:        "doc-8",
+		Data:      map[string]json.RawMessage{"name": json.RawMessage(`"test"`)},
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	var got struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		CreatedAt string `json:"created_at"`
+	}
+	require.NoError(t, d.DecodeData(&got))
+	assert.Equal(t, "test", got.Name)
+	assert.Empty(t, got.ID)
+	assert.Empty(t, got.CreatedAt)
+}
+
+func TestDocumentDecodeWire_IncludesSystemFields(t *testing.T) {
+	t.Parallel()
+
+	d := &Document{
+		ID:        "doc-9",
+		Data:      map[string]json.RawMessage{"name": json.RawMessage(`"test"`)},
+		CreatedAt: time.Date(2026, 1, 15, 14, 30, 45, 123456789, time.UTC),
+	}
+
+	var got struct {
+		ID        string    `json:"id"`
+		Name      string    `json:"name"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	require.NoError(t, d.DecodeWire(&got))
+	assert.Equal(t, "doc-9", got.ID)
+	assert.Equal(t, "test", got.Name)
+	assert.Equal(t, time.Date(2026, 1, 15, 14, 30, 45, 123456000, time.UTC), got.CreatedAt)
+}
+
+func TestDocumentDecodeData_RejectsMismatchedField(t *testing.T) {
+	t.Parallel()
+
+	d := &Document{Data: map[string]json.RawMessage{"name": json.RawMessage(`42`)}}
+
+	var got struct {
+		Name string `json:"name"`
+	}
+	var typeErr *json.UnmarshalTypeError
+	require.ErrorAs(t, d.DecodeData(&got), &typeErr)
+}
+
 func TestHealthConsensusDescribe(t *testing.T) {
 	bound := HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 5, Ready: true}
 	notReady := HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 2, Ready: false}

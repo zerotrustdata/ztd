@@ -22,7 +22,7 @@ func TestMarshalResult_PreservesEncodingFailure(t *testing.T) {
 	result, err := marshalResult(constants.MCPToolNetEndpointPing, NetEndpointPingResult{LatencyMs: math.Inf(1)})
 	require.ErrorIs(t, err, constants.ErrMCPMarshalResult)
 	var encodingErr *json.UnsupportedValueError
-	assert.ErrorAs(t, err, &encodingErr)
+	require.ErrorAs(t, err, &encodingErr)
 	assert.Empty(t, result.Content)
 	assert.Contains(t, err.Error(), constants.MCPToolNetEndpointPing)
 }

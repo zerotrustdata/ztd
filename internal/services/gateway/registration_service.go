@@ -688,13 +688,7 @@ func (s *RegistrationService) BindOperators(ctx context.Context, req models.Bind
 			}
 		} else {
 			var bDoc models.BoundSessionsDocumentGo
-			b, err := json.Marshal(existingDoc.ForWire())
-			if err != nil {
-				failed = append(failed, opID)
-				lastErr = fmt.Errorf("%w: %w", constants.ErrRegistrationFailedToMarshalExistingDocument, err)
-				continue
-			}
-			if err := json.Unmarshal(b, &bDoc); err != nil {
+			if err := existingDoc.DecodeWire(&bDoc); err != nil {
 				failed = append(failed, opID)
 				lastErr = fmt.Errorf("%w: %w", constants.ErrRegistrationFailedToUnmarshalBoundSessions, err)
 				continue
@@ -866,12 +860,7 @@ func (s *RegistrationService) UnbindOperators(ctx context.Context, req models.Un
 		}
 		if existingDoc != nil {
 			var bDoc models.BoundSessionsDocumentGo
-			b, err := json.Marshal(existingDoc.ForWire())
-			if err != nil {
-				s.logger.Warn("[REGISTRATION] Failed to marshal existing document", "error", err)
-				continue
-			}
-			if err := json.Unmarshal(b, &bDoc); err != nil {
+			if err := existingDoc.DecodeWire(&bDoc); err != nil {
 				s.logger.Warn("[REGISTRATION] Failed to unmarshal bound sessions document", "error", err)
 				continue
 			}

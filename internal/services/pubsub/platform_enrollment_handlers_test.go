@@ -624,10 +624,8 @@ func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
 	doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
-	data, err := json.Marshal(doc.Data)
-	require.NoError(t, err)
 	var policy models.ConsensusPolicy
-	require.NoError(t, json.Unmarshal(data, &policy))
+	require.NoError(t, doc.DecodeData(&policy))
 	require.Equal(t, "reviewer-a", policy.AppID)
 	require.Equal(t, "reviewer-a", policy.PrimaryAppID())
 	require.Equal(t, []string{"reviewer-b", "reviewer-a", "reviewer-c"}, policy.MemberAppIDs)
@@ -692,10 +690,8 @@ func readConsensusBinding(t *testing.T, env *enrollTestEnv) *models.ConsensusPol
 	if doc == nil {
 		return nil
 	}
-	data, err := json.Marshal(doc.Data)
-	require.NoError(t, err)
 	var policy models.ConsensusPolicy
-	require.NoError(t, json.Unmarshal(data, &policy))
+	require.NoError(t, doc.DecodeData(&policy))
 	return &policy
 }
 
@@ -1695,10 +1691,8 @@ func TestHandlePersistPolicy_WritesLeastPrivilegePolicyDocument(t *testing.T) {
 	policyColl := marshaler.CollectionName(constants.CollectionAppPolicies)
 	doc := env.store.docs[policyColl][enrollTestAppPolicyDocument]
 	require.NotNil(t, doc)
-	raw, err := json.Marshal(doc.Data)
-	require.NoError(t, err)
 	var policy models.AppPolicy
-	require.NoError(t, json.Unmarshal(raw, &policy))
+	require.NoError(t, doc.DecodeData(&policy))
 	assert.Equal(t, enrollTestAppPolicyDocument, policy.AppID)
 	assert.Equal(t, enrollTestOwnerID, policy.OwnerUserID)
 	assert.Equal(t, enrollTestOwnerID, policy.ApprovedByUserID)

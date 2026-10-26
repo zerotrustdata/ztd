@@ -71,10 +71,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 
 		// Unmarshal to verify field values
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		stored.ID = doc.ID // Set ID from document
 
 		assert.Equal(t, cliSessionID, stored.ID)
@@ -121,10 +118,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.OperatorSessionID)
 	})
 
@@ -139,10 +133,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.UserID)
 	})
 
@@ -157,10 +148,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.LoginMethod)
 	})
 
@@ -195,10 +183,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, string(constants.SessionTypeCLI), stored.SessionType)
 	})
@@ -212,10 +197,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.True(t, stored.IsActive)
 	})
@@ -229,10 +211,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		// All three expiry timestamps should be the same (1 hour from creation)
 		assert.Equal(t, stored.ExpiresAt, stored.AbsoluteExpiresAt)
@@ -248,10 +227,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		// CreatedAt should be before ExpiresAt
 		assert.True(t, stored.ExpiresAt.After(stored.CreatedAt) || stored.ExpiresAt.Equal(stored.CreatedAt))
@@ -273,10 +249,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, "operator-session-2", stored.OperatorSessionID)
 		assert.Equal(t, "user-2", stored.UserID)
@@ -299,10 +272,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, specialSystemFP, stored.SystemFingerprint)
 		assert.Equal(t, specialCertFP, stored.CertFingerprint)
@@ -323,10 +293,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.CLISession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, longString, stored.SystemFingerprint)
 		assert.Equal(t, longString, stored.CertFingerprint)

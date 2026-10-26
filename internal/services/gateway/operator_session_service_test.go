@@ -73,10 +73,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.Contains(t, doc.Data, "login_method")
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		stored.ID = doc.ID
 
 		assert.Equal(t, operatorSessionID, stored.ID)
@@ -98,10 +95,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, string(constants.SessionTypeOperator), stored.SessionType)
 	})
@@ -116,10 +110,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.True(t, stored.IsActive)
 	})
@@ -134,10 +125,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		created := doc.CreatedAt
 		absExpiry, err := time.Parse(time.RFC3339, stored.AbsoluteExpiresAt)
@@ -166,10 +154,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, stored.AbsoluteExpiresAt, stored.IdleExpiresAt)
 	})
@@ -215,10 +200,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.UserID)
 	})
 
@@ -233,10 +215,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.OrganizationID)
 	})
 
@@ -251,10 +230,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.OperatorID)
 	})
 
@@ -269,10 +245,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		assert.Empty(t, stored.LoginMethod)
 	})
 
@@ -310,10 +283,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, "user-2", stored.UserID)
 		assert.Equal(t, "org-2", stored.OrganizationID)
@@ -343,10 +313,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, specialUserID, stored.UserID)
 		assert.Equal(t, specialOrgID, stored.OrganizationID)
@@ -368,10 +335,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, longVal, stored.UserID)
 		assert.Equal(t, longVal, stored.OrganizationID)
@@ -391,10 +355,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 			require.NotNil(t, doc)
 
 			var stored models.OperatorSession
-			dataBytes, err := json.Marshal(doc.Data)
-			require.NoError(t, err)
-			err = json.Unmarshal(dataBytes, &stored)
-			require.NoError(t, err)
+			require.NoError(t, doc.DecodeData(&stored))
 
 			assert.Equal(t, "user-"+sid, stored.UserID)
 			assert.Equal(t, "org-"+sid, stored.OrganizationID)
@@ -443,10 +404,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 
 		assert.Equal(t, "passkey", stored.LoginMethod)
 	})

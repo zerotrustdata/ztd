@@ -414,7 +414,7 @@ func decodeAgentToolRequest(spec agentToolSpec, declared bool, raw string) agent
 	if request.Failure != nil || spec.Name != constants.MCPToolRunShellCommand {
 		return request
 	}
-	shell, err := decodeRunShellCommandRequest(request.Arguments)
+	shell, err := decodeRunShellCommandRequest(raw)
 	if err != nil {
 		request.Failure = &agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("invalid %s request: %v", spec.Name, err)}
 		return request
@@ -424,13 +424,14 @@ func decodeAgentToolRequest(spec agentToolSpec, declared bool, raw string) agent
 	return request
 }
 
-func decodeRunShellCommandRequest(args agentToolArguments) (models.RunShellCommandRequest, error) {
+// decodeRunShellCommandRequest decodes the raw arguments that parseAgentToolArguments
+// already validated. Empty arguments yield the zero request.
+func decodeRunShellCommandRequest(raw string) (models.RunShellCommandRequest, error) {
 	var request models.RunShellCommandRequest
-	encoded, err := json.Marshal(args.Values())
-	if err != nil {
-		return request, fmt.Errorf("evaluation: encode %s arguments: %w", constants.MCPToolRunShellCommand, err)
+	if strings.TrimSpace(raw) == "" {
+		return request, nil
 	}
-	if err := json.Unmarshal(encoded, &request); err != nil {
+	if err := json.Unmarshal([]byte(raw), &request); err != nil {
 		return request, fmt.Errorf("evaluation: decode %s arguments: %w", constants.MCPToolRunShellCommand, err)
 	}
 	return request, nil

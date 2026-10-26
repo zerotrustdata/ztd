@@ -442,13 +442,8 @@ func (s *UserService) WaitForAnyUser(ctx context.Context) error {
 
 // docToUser converts a Document to a User model.
 func (s *UserService) docToUser(doc *models.Document) (*models.User, error) {
-	data, err := json.Marshal(doc.ForWire())
-	if err != nil {
-		return nil, fmt.Errorf("user service: failed to marshal user document: %w", err)
-	}
-
 	var user models.User
-	if err := json.Unmarshal(data, &user); err != nil {
+	if err := doc.DecodeWire(&user); err != nil {
 		return nil, fmt.Errorf("user service: failed to unmarshal user document: %w", err)
 	}
 	user.ID = doc.ID
@@ -590,13 +585,8 @@ func (s *PersonaService) MapRolesToPersona(ctx context.Context, roles []string) 
 
 // docToPersona converts a Document to a Persona model.
 func (s *PersonaService) docToPersona(doc *models.Document) (*models.Persona, error) {
-	data, err := json.Marshal(doc.ForWire())
-	if err != nil {
-		return nil, fmt.Errorf("persona service: failed to marshal persona document: %w", err)
-	}
-
 	var persona models.Persona
-	if err := json.Unmarshal(data, &persona); err != nil {
+	if err := doc.DecodeWire(&persona); err != nil {
 		return nil, fmt.Errorf("persona service: failed to unmarshal persona document: %w", err)
 	}
 	persona.ID = doc.ID

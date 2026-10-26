@@ -63,13 +63,8 @@ func (s *ConsensusStoreService) GetConsensus(ctx context.Context, id string) (*m
 		return nil, nil
 	}
 
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-
 	var policy models.ConsensusPolicy
-	if err := json.Unmarshal(data, &policy); err != nil {
+	if err := doc.DecodeData(&policy); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 	policy.ID = doc.ID

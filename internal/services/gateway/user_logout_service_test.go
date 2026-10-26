@@ -152,9 +152,7 @@ func revocationReason(t *testing.T, infra *TestInfrastructure, serial string) st
 	require.NoError(t, err)
 	require.NotNil(t, doc, "serial %s should be revoked", serial)
 	var rev revocationDocument
-	wire, err := json.Marshal(doc.ForWire())
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(wire, &rev))
+	require.NoError(t, doc.DecodeWire(&rev))
 	return rev.Reason
 }
 

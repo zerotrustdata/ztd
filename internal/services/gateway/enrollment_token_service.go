@@ -179,14 +179,8 @@ func (s *EnrollmentTokenService) loadAndCheckToken(ctx context.Context, token st
 		return nil, constants.ErrEnrollmentTokenInvalid
 	}
 
-	dataBytes, err := json.Marshal(doc.Data)
-	if err != nil {
-		s.logger.Error("Failed to marshal enrollment token document", "error", err, "token_prefix", tokenPrefix)
-		return nil, constants.ErrEnrollmentTokenInvalid
-	}
-
 	var enrollmentToken models.EnrollmentToken
-	if err := json.Unmarshal(dataBytes, &enrollmentToken); err != nil {
+	if err := doc.DecodeData(&enrollmentToken); err != nil {
 		s.logger.Error("Failed to unmarshal enrollment token", "error", err, "token_prefix", tokenPrefix)
 		return nil, constants.ErrEnrollmentTokenInvalid
 	}

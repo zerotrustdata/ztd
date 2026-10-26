@@ -141,11 +141,7 @@ func (c *SSEController) authorizeSSERoute(route SSERoute, r *http.Request) (stri
 			return "", &sseAuthError{status: http.StatusForbidden, message: "cli session not found"}
 		}
 		var cliSess models.CLISession
-		b, err := json.Marshal(doc.ForWire())
-		if err != nil {
-			return "", &sseAuthError{status: http.StatusInternalServerError, message: "failed to verify cli session"}
-		}
-		if err := json.Unmarshal(b, &cliSess); err != nil {
+		if err := doc.DecodeWire(&cliSess); err != nil {
 			return "", &sseAuthError{status: http.StatusInternalServerError, message: "failed to verify cli session"}
 		}
 		if cliSess.UserID != route.UserID {

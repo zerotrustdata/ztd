@@ -271,10 +271,8 @@ func expireCLISessionForApprovalTest(t *testing.T, f *fixtures.GatewayFixture, c
 	doc, err := store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
 	require.NoError(t, err)
 	require.NotNil(t, doc)
-	raw, err := json.Marshal(doc.Data)
-	require.NoError(t, err)
 	var session models.CLISession
-	require.NoError(t, json.Unmarshal(raw, &session))
+	require.NoError(t, doc.DecodeData(&session))
 	past := time.Now().UTC().Add(-time.Hour)
 	session.ExpiresAt = past
 	session.AbsoluteExpiresAt = past

@@ -182,10 +182,7 @@ func TestAdminControllerHandleAppPolicySigner(t *testing.T) {
 		assert.Equal(t, "test-app-id", signerDoc.ID)
 
 		var signer models.TrustedSigner
-		signerJSON, err := json.Marshal(signerDoc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(signerJSON, &signer)
-		require.NoError(t, err)
+		require.NoError(t, signerDoc.DecodeData(&signer))
 		assert.Equal(t, validPubKeyHex, signer.PublicKey)
 		assert.True(t, signer.Enabled)
 	})

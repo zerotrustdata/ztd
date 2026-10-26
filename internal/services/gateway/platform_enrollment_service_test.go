@@ -465,10 +465,8 @@ func TestPlatformEnrollmentService_DashboardIssuanceProducesDualSANAndOwnershipP
 	policyDoc, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionAppPolicies), "spiffe://ztd.local/app/ztdd")
 	require.NoError(t, err)
 	require.NotNil(t, policyDoc)
-	dataBytes, err := json.Marshal(policyDoc.Data)
-	require.NoError(t, err)
 	var policy models.AppPolicy
-	require.NoError(t, json.Unmarshal(dataBytes, &policy))
+	require.NoError(t, policyDoc.DecodeData(&policy))
 	assert.Equal(t, "spiffe://ztd.local/app/ztdd", policy.AppID)
 	assert.Equal(t, env.ownerID, policy.OwnerUserID)
 	assert.Equal(t, env.ownerID, policy.ApprovedByUserID)
@@ -556,18 +554,14 @@ func TestPlatformEnrollmentService_RevokeOperatorDisablesBothCertificatesAndSess
 
 	cliDoc, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), resp.Operator.CLISessionID)
 	require.NoError(t, err)
-	cliBytes, err := json.Marshal(cliDoc.Data)
-	require.NoError(t, err)
 	var cli models.CLISession
-	require.NoError(t, json.Unmarshal(cliBytes, &cli))
+	require.NoError(t, cliDoc.DecodeData(&cli))
 	assert.False(t, cli.IsActive)
 
 	opSessionDoc, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), resp.Operator.OperatorSessionID)
 	require.NoError(t, err)
-	opSessionBytes, err := json.Marshal(opSessionDoc.Data)
-	require.NoError(t, err)
 	var opSession models.OperatorSession
-	require.NoError(t, json.Unmarshal(opSessionBytes, &opSession))
+	require.NoError(t, opSessionDoc.DecodeData(&opSession))
 	assert.False(t, opSession.IsActive)
 }
 
@@ -659,20 +653,16 @@ func TestPlatformEnrollmentService_OperatorIssuanceSignsBothCSRsAndPersistsOpera
 	cliDoc, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), resp.Operator.CLISessionID)
 	require.NoError(t, err)
 	require.NotNil(t, cliDoc)
-	cliBytes, err := json.Marshal(cliDoc.Data)
-	require.NoError(t, err)
 	var cliSession models.CLISession
-	require.NoError(t, json.Unmarshal(cliBytes, &cliSession))
+	require.NoError(t, cliDoc.DecodeData(&cliSession))
 	assert.Equal(t, env.ownerID, cliSession.UserID, "CLI session must carry the approving owner's user_id")
 
 	// Verify the operator session is bound to the approving owner's user_id.
 	opSessDoc, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), resp.Operator.OperatorSessionID)
 	require.NoError(t, err)
 	require.NotNil(t, opSessDoc)
-	opSessBytes, err := json.Marshal(opSessDoc.Data)
-	require.NoError(t, err)
 	var opSession models.OperatorSession
-	require.NoError(t, json.Unmarshal(opSessBytes, &opSession))
+	require.NoError(t, opSessDoc.DecodeData(&opSession))
 	assert.Equal(t, env.ownerID, opSession.UserID, "operator session must carry the approving owner's user_id")
 	assert.Equal(t, owner.OrganizationID, opSession.OrganizationID, "operator session must carry the approving owner's organization_id")
 
@@ -797,9 +787,7 @@ func TestPlatformEnrollmentService_ReEnrollmentSupersedesPriorOperatorLease(t *t
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 		var session models.OperatorSession
-		raw, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		require.NoError(t, json.Unmarshal(raw, &session))
+		require.NoError(t, doc.DecodeData(&session))
 		assert.Equal(t, want, session.IsActive)
 	}
 	assertOperatorSessionActive(oldSessionID, false)

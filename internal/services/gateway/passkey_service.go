@@ -388,8 +388,8 @@ func (s *PasskeyService) GenerateRegistrationChallenge(ctx context.Context, user
 }
 
 // VerifyRegistration verifies a registration response.
-// It accepts the raw JSON of the WebAuthn response.
-func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, responseJSON []byte) (*models.PasskeyCredential, error) {
+// It accepts the flat WebAuthn attestation response.
+func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, att *models.WebAuthnAttestationResponse) (*models.PasskeyCredential, error) {
 	user, err := s.getUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -403,14 +403,13 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 		return nil, err
 	}
 
-	// The flat WebAuthnAttestationResponse JSON must be re-serialized into the
-	// nested CredentialCreationResponse format expected by go-webauthn:
-	//   {"id":"...","type":"public-key","rawId":"...","response":{"clientDataJSON":"...","attestationObject":"...","transports":[...]}}
-	var att models.WebAuthnAttestationResponse
-	if err := json.Unmarshal(responseJSON, &att); err != nil {
-		return nil, fmt.Errorf("failed to parse attestation response: %w", err)
+	if att == nil {
+		return nil, fmt.Errorf("failed to parse attestation response: %w", constants.ErrMissingRequiredField)
 	}
 
+	// The flat WebAuthnAttestationResponse must be re-serialized into the
+	// nested CredentialCreationResponse format expected by go-webauthn:
+	//   {"id":"...","type":"public-key","rawId":"...","response":{"clientDataJSON":"...","attestationObject":"...","transports":[...]}}
 	creationResponse := struct {
 		ID       string                             `json:"id"`
 		Type     string                             `json:"type"`
@@ -420,7 +419,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 		ID:       att.ID,
 		Type:     "public-key",
 		RawID:    att.RawID,
-		Response: att,
+		Response: *att,
 	}
 
 	nestedJSON, err := json.Marshal(creationResponse)

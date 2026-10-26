@@ -69,13 +69,8 @@ func (s *SignerStoreService) GetTrustedSigner(ctx context.Context, keyID string)
 		return nil, nil
 	}
 
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-
 	var signer models.TrustedSigner
-	if err := json.Unmarshal(data, &signer); err != nil {
+	if err := doc.DecodeData(&signer); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 
@@ -125,13 +120,8 @@ func (s *SignerStoreService) ListTrustedSigners(ctx context.Context) ([]models.T
 
 	results := make([]models.TrustedSigner, 0, len(docs))
 	for _, doc := range docs {
-		data, err := json.Marshal(doc.Data)
-		if err != nil {
-			s.logger.Warn("failed to marshal signer document", "error", err)
-			continue
-		}
 		var signer models.TrustedSigner
-		if err := json.Unmarshal(data, &signer); err != nil {
+		if err := doc.DecodeData(&signer); err != nil {
 			s.logger.Warn("failed to unmarshal signer document", "error", err)
 			continue
 		}
