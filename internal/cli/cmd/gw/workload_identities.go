@@ -25,6 +25,7 @@ func reportWorkloadIdentities(cmd *cobra.Command) {
 		Directory  string                       `json:"directory"`
 	}
 	var workloads []workload
+	// This launcher registry is project-local (.local.dev/), outside runtime state.
 	if data, err := os.ReadFile(constants.LocalDevFullWorkloadsRegistryPath); err == nil {
 		if err := json.Unmarshal(data, &workloads); err != nil {
 			cmd.PrintErrln("Could not read local workload registry; workload identities may require reset after gateway cleanup.")

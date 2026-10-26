@@ -65,15 +65,7 @@ func (t *NetHTTPProbeTool) Execute(ctx context.Context, args json.RawMessage) (C
 		result := NetHTTPProbeResult{
 			Error: fmt.Sprintf("URL validation failed: %v", err),
 		}
-		resultJSON, _ := json.Marshal(result)
-		return CallToolResult{
-			Content: []TextContent{
-				{
-					Type: "text",
-					Text: string(resultJSON),
-				},
-			},
-		}, nil
+		return marshalResult(t.Name(), result)
 	}
 
 	method := req.Method
@@ -121,18 +113,7 @@ func (t *NetHTTPProbeTool) Execute(ctx context.Context, args json.RawMessage) (C
 			Error:     err.Error(),
 			LatencyMs: latency,
 		}
-		resultJSON, err := json.Marshal(result)
-		if err != nil {
-			return CallToolResult{}, fmt.Errorf("net_http_probe: failed to marshal result: %w", err)
-		}
-		return CallToolResult{
-			Content: []TextContent{
-				{
-					Type: "text",
-					Text: string(resultJSON),
-				},
-			},
-		}, nil
+		return marshalResult(t.Name(), result)
 	}
 	defer resp.Body.Close()
 
@@ -148,17 +129,5 @@ func (t *NetHTTPProbeTool) Execute(ctx context.Context, args json.RawMessage) (C
 		Headers:    headers,
 		LatencyMs:  latency,
 	}
-	resultJSON, err := json.Marshal(result)
-	if err != nil {
-		return CallToolResult{}, fmt.Errorf("net_http_probe: failed to marshal result: %w", err)
-	}
-
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
+	return marshalResult(t.Name(), result)
 }

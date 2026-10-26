@@ -640,6 +640,9 @@ const (
 	ReleaseEvidenceCSVSuffix      = "-compliance-evidence.csv"
 )
 
+// EvaluationFormationCatalogPath is relative to the project root, outside runtime state.
+const EvaluationFormationCatalogPath = EvaluationDirname + "/formation-catalog.json"
+
 // Evidence verifier identities, reference prefixes, collection limits, and
 // attestation metadata. These describe runtime evidence handling, distinct
 // from the ComplianceBundle* constants which describe the generated report

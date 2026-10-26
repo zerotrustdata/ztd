@@ -1039,7 +1039,6 @@ var (
 	ErrMCPK8sKubectlNotFound      = errors.New("kubectl not found in PATH")
 	ErrMCPK8sNameRequired         = errors.New("name is required")
 	ErrMCPK8sUnsupportedOperation = errors.New("unsupported k8s operation")
-	ErrMCPK8sMarshalResult        = errors.New("failed to marshal k8s result")
 	ErrMCPK8sGetPods              = errors.New("failed to get pods")
 	ErrMCPK8sParsePods            = errors.New("failed to parse pods")
 	ErrMCPK8sGetNodes             = errors.New("failed to get nodes")

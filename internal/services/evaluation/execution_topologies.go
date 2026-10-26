@@ -308,8 +308,7 @@ func NewExecutionTopologies() (*ExecutionTopologies, error) {
 	var formations []Formation
 
 	// Try to load from checked-in catalog file first
-	catalogPath := "eval/formation-catalog.json"
-	if data, err := os.ReadFile(catalogPath); err == nil {
+	if data, err := os.ReadFile(constants.EvaluationFormationCatalogPath); err == nil {
 		var catalogData persistedFormationCatalogOverlay
 		if err := json.Unmarshal(data, &catalogData); err == nil {
 			formations = make([]Formation, 0, len(catalogData.Formations))

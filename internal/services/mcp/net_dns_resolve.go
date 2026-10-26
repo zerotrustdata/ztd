@@ -119,19 +119,7 @@ func (t *NetDNSResolveTool) Execute(ctx context.Context, args json.RawMessage) (
 		}
 	}
 
-	resultJSON, marshalErr := json.Marshal(result)
-	if marshalErr != nil {
-		return CallToolResult{}, fmt.Errorf("failed to marshal result: %w", marshalErr)
-	}
-
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
+	return marshalResult(t.Name(), result)
 }
 
 func resolveA(resolver dnsResolver, ctx context.Context, hostname string) (NetDNSResolveResult, error) {

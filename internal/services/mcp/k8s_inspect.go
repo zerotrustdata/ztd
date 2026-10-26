@@ -104,16 +104,7 @@ func (t *K8sInspectTool) Execute(ctx context.Context, args json.RawMessage) (Cal
 				Namespace: req.Namespace,
 				Error:     err.Error(),
 			}
-			resultJSON, _ := json.Marshal(result)
-			//nolint:nilerr // intentional fallback: validation error formatted into CallToolResult payload
-			return CallToolResult{
-				Content: []TextContent{
-					{
-						Type: "text",
-						Text: string(resultJSON),
-					},
-				},
-			}, nil
+			return marshalResult(t.Name(), result)
 		}
 	}
 
@@ -153,16 +144,7 @@ func (t *K8sInspectTool) Execute(ctx context.Context, args json.RawMessage) (Cal
 				Namespace: namespace,
 				Error:     err.Error(),
 			}
-			resultJSON, _ := json.Marshal(result)
-			//nolint:nilerr // intentional fallback: validation error formatted into CallToolResult payload
-			return CallToolResult{
-				Content: []TextContent{
-					{
-						Type: "text",
-						Text: string(resultJSON),
-					},
-				},
-			}, nil
+			return marshalResult(t.Name(), result)
 		}
 		result, err = k8sPodLogs(ctx, namespace, req.Name, runner)
 	case "pod_describe":
@@ -175,16 +157,7 @@ func (t *K8sInspectTool) Execute(ctx context.Context, args json.RawMessage) (Cal
 				Namespace: namespace,
 				Error:     err.Error(),
 			}
-			resultJSON, _ := json.Marshal(result)
-			//nolint:nilerr // intentional fallback: validation error formatted into CallToolResult payload
-			return CallToolResult{
-				Content: []TextContent{
-					{
-						Type: "text",
-						Text: string(resultJSON),
-					},
-				},
-			}, nil
+			return marshalResult(t.Name(), result)
 		}
 		result, err = k8sPodDescribe(ctx, namespace, req.Name, runner)
 	default:
@@ -199,19 +172,7 @@ func (t *K8sInspectTool) Execute(ctx context.Context, args json.RawMessage) (Cal
 		}
 	}
 
-	resultJSON, marshalErr := json.Marshal(result)
-	if marshalErr != nil {
-		return CallToolResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sMarshalResult, marshalErr)
-	}
-
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
+	return marshalResult(t.Name(), result)
 }
 
 func runKubectlCommand(ctx context.Context, args ...string) (string, error) {

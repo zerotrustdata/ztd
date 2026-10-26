@@ -110,19 +110,7 @@ func (t *NetSocketAuditTool) Execute(ctx context.Context, args json.RawMessage) 
 	result := NetSocketAuditResult{
 		Sockets: sockets,
 	}
-	resultJSON, err := json.Marshal(result)
-	if err != nil {
-		return CallToolResult{}, fmt.Errorf("net_socket_audit: marshal result: %w", err)
-	}
-
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
+	return marshalResult(t.Name(), result)
 }
 
 // getProcNetPath returns the /proc/net path for a given protocol.

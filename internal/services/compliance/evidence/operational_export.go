@@ -42,7 +42,9 @@ type OperationalExportRequest struct {
 	WindowStart          time.Time
 	WindowEnd            time.Time
 	MaxRows              int
-	OutputDir            string
+	// OutputDir is the caller-selected source-package destination, independent
+	// of the runtime whose evidence was captured in the read-only snapshot.
+	OutputDir string
 }
 
 type OperationalSourceInventory struct {
