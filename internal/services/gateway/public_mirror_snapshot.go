@@ -63,11 +63,6 @@ func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, id
 	return string(encoded), id, event, nil
 }
 
-func snapshotRecordIdentity(record models.PublicFeedRecord) (key, dataset string, event bool, err error) {
-	key, id, event, err := parseSnapshotRecordIdentity(record)
-	return key, id.DatasetID, event, err
-}
-
 func snapshotLifecycleCompanionKey(identity publicSnapshotIdentity) string {
 	if identity.Kind == "PublicAssignmentResultProjection" {
 		parts := []string{"PublicAssignmentLifecycleRecord", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
