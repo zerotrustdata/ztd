@@ -325,7 +325,7 @@ func connectStoppedGateway(
 
 	cmd.Println("[ztd] Starting ztd Gateway service...")
 	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg, Notices: cmd.ErrOrStderr()}
-	if err := pm.StartOperator(&startOpts); err != nil {
+	if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 	}
 	connectCfg = startOpts.GatewayConfig
@@ -387,12 +387,12 @@ func connectRestartGateway(
 
 	cmd.Println("Starting ztd Gateway with updated configuration...")
 	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg, Notices: cmd.ErrOrStderr()}
-	if err := pm.StartOperator(&startOpts); err != nil {
+	if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 		// Rollback: attempt to restore the previously validated profile.
 		cmd.Printf("Failed to start Gateway with new configuration: %v\n", err)
 		cmd.Println("Attempting rollback to the previous configuration...")
 		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
-		if rbErr := pm.StartOperator(&rollbackOpts); rbErr != nil {
+		if rbErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rbErr != nil {
 			return fmt.Errorf("%w: start failed: %w; rollback also failed: %w", constants.ErrProcessStartFailed, err, rbErr)
 		}
 		cmd.Println("Rollback successful. The previous configuration is active.")
@@ -406,7 +406,7 @@ func connectRestartGateway(
 			return fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
 		}
 		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
-		if rollbackErr := pm.StartOperator(&rollbackOpts); rollbackErr != nil {
+		if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 			return fmt.Errorf("%w: persist launch profile: %w; rollback: %w", constants.ErrInternal, err, rollbackErr)
 		}
 		return fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)

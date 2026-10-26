@@ -150,7 +150,7 @@ func TestConnectRestartGateway_ProfileWriteFailureRollsBackToPreviousConfig(t *t
 		PasskeyRpName:    "ztd",
 	}
 	oldStartOpts := platform.OperatorStartOptions{GatewayConfig: oldCfg}
-	require.NoError(t, pm.StartOperator(&oldStartOpts))
+	require.NoError(t, pm.StartOperator(t.Context(), &oldStartOpts))
 
 	// Persist the old launch profile so connectRestartGateway can read it.
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, oldCfg))

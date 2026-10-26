@@ -572,7 +572,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
 			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
-			if err := pm.StartOperator(&startOpts); err != nil {
+			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 				return err
 			}
 			gatewayCfg = startOpts.GatewayConfig
@@ -808,10 +808,10 @@ restart.`,
 			profile.Config.CertIdentityMode = identityResult.CertMode
 
 			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
-			if err := pm.StartOperator(&startOpts); err != nil {
+			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 				if running {
 					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
-					if rollbackErr := pm.StartOperator(&rollbackOpts); rollbackErr != nil {
+					if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 						return fmt.Errorf("%w: restart: %w; rollback: %w", constants.ErrProcessStartFailed, err, rollbackErr)
 					}
 				}
@@ -827,7 +827,7 @@ restart.`,
 				}
 				if running {
 					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
-					if rollbackErr := pm.StartOperator(&rollbackOpts); rollbackErr != nil {
+					if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 						return fmt.Errorf("%w: persist launch profile: %w; rollback: %w", constants.ErrInternal, err, rollbackErr)
 					}
 				}

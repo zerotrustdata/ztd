@@ -58,3 +58,7 @@ const (
 	KeyStoreApprovalTimeout     = 5 * time.Minute
 	KeyStoreAwaitingApprovalLog = "[Keystore] Waiting for approval to read the master key from the OS key store"
 )
+
+// PublicMirrorVerificationTimeout bounds verification before public content
+// can be served. Managed starts allow this budget in addition to health polling.
+const PublicMirrorVerificationTimeout = 5 * time.Minute

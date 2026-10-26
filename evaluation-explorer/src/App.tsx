@@ -21,6 +21,8 @@ import { TasksView } from './views/TasksView';
 import { ThemeToggle } from './components/ThemeToggle';
 import { NavDrawer } from './components/NavDrawer';
 import { AppFooter } from './components/AppFooter';
+import brandWordmarkUrl from './assets/brand/opendevops-logo-plus-title-text.png';
+import brandLogoUrl from './assets/brand/opendevops-logo-only.png';
 
 function Shell() {
   const feedStatus = useFeedStatus();
@@ -49,7 +51,13 @@ function Shell() {
       </a>
       <header className="app-header">
         <div className="header-primary">
-          <NavDrawer />
+          <div className="header-leading">
+            <Link className="header-brand" to="/" aria-label="OpenDevOps.ai home">
+              <img className="header-brand-wordmark" src={brandWordmarkUrl} alt="" />
+              <img className="header-brand-logo" src={brandLogoUrl} alt="" />
+            </Link>
+            <NavDrawer />
+          </div>
           <div className="header-campaign-slot">
             <ActiveCampaignBar />
           </div>

@@ -413,7 +413,10 @@ func healthResponseIsFromChild(body io.Reader, childPID int) bool {
 	return hr.PID != 0 && hr.PID == childPID
 }
 
-func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
+func (pm *ProcessManager) StartOperator(ctx context.Context, opts *OperatorStartOptions) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
+	}
 	if err := pm.CreateDirectories(); err != nil {
 		return err
 	}
@@ -601,16 +604,28 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 
 	healthURL := fmt.Sprintf("http://%s:%d%s", constants.LocalhostIP, availableHTTPPort, constants.APIPaths.Health)
 	client := &http.Client{Timeout: checkInterval}
-	// A child waiting on the user to approve OS key store access keeps the
-	// start alive until KeyStoreApprovalTimeout instead of the health budget.
-	var approvalDeadline time.Time
-	for i := 0; i < maxChecks || time.Now().Before(approvalDeadline); i++ {
+	budget := checkInterval * time.Duration(maxChecks)
+	if opts.PublicSpectatorEnabled && pm.maxHealthChecks <= 0 {
+		budget += constants.PublicMirrorVerificationTimeout
+	}
+	healthCtx, cancelHealth := context.WithTimeout(ctx, budget)
+	defer func() { cancelHealth() }()
+	started := time.Now()
+	approvalPending := false
+healthLoop:
+	for {
 		select {
 		case <-waitCh:
 			return failStart()
+		case <-healthCtx.Done():
+			break healthLoop
 		default:
 		}
-		resp, err := client.Get(healthURL)
+		req, err := http.NewRequestWithContext(healthCtx, http.MethodGet, healthURL, nil)
+		if err != nil {
+			return fmt.Errorf("%w: health request: %w", constants.ErrProcessStartFailed, err)
+		}
+		resp, err := client.Do(req)
 		if err == nil {
 			healthy := resp.StatusCode == http.StatusOK &&
 				healthResponseIsFromChild(resp.Body, cmd.Process.Pid)
@@ -619,28 +634,40 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 				return nil
 			}
 		}
-		if approvalDeadline.IsZero() && pm.childLogContains(logStartOffset, constants.KeyStoreAwaitingApprovalLog) {
-			approvalDeadline = time.Now().Add(constants.KeyStoreApprovalTimeout)
+		// Key store approval has its own bounded allowance, followed by
+		// the ordinary startup budget for verification and health.
+		if !approvalPending && pm.childLogContains(logStartOffset, constants.KeyStoreAwaitingApprovalLog) {
+			approvalPending = true
+			cancelHealth()
+			healthCtx, cancelHealth = context.WithTimeout(ctx, constants.KeyStoreApprovalTimeout+budget)
 			if opts.Notices != nil {
 				_, _ = fmt.Fprintln(opts.Notices, keyStoreApprovalNotice)
 			}
 		}
+		timer := time.NewTimer(checkInterval)
 		select {
 		case <-waitCh:
+			timer.Stop()
 			return failStart()
-		case <-time.After(checkInterval):
+		case <-healthCtx.Done():
+			timer.Stop()
+			break healthLoop
+		case <-timer.C:
 		}
 	}
 
-	reason := "gateway did not become healthy"
-	if !approvalDeadline.IsZero() {
-		reason = fmt.Sprintf("gateway did not become healthy: OS key store access was not approved within %v", constants.KeyStoreApprovalTimeout)
+	reason := fmt.Sprintf("gateway did not become healthy after %v", time.Since(started).Round(time.Millisecond))
+	if approvalPending {
+		reason += ": OS key store approval or subsequent startup did not complete"
 	}
 	cleanupErr := errors.Join(stopChild(false), pm.deletePID(constants.OperatorPIDFilename))
-	if cleanupErr != nil {
-		return fmt.Errorf("%w: %s, check %s: cleanup: %w", constants.ErrProcessStartFailed, reason, logPath, cleanupErr)
+	if diagnostic := pm.startupDiagnostic(logStartOffset); diagnostic != "" {
+		reason += ": " + diagnostic
 	}
-	return fmt.Errorf("%w: %s, check %s", constants.ErrProcessStartFailed, reason, logPath)
+	if cleanupErr != nil {
+		return fmt.Errorf("%w: %s: %w (full log: %s); cleanup: %w", constants.ErrProcessStartFailed, reason, healthCtx.Err(), logPath, cleanupErr)
+	}
+	return fmt.Errorf("%w: %s: %w (full log: %s)", constants.ErrProcessStartFailed, reason, healthCtx.Err(), logPath)
 }
 
 // spectatorListenerPort is one fixed loopback listener the Gateway child binds
@@ -715,7 +742,11 @@ func (pm *ProcessManager) startupDiagnostic(startOffset int64) string {
 		return ""
 	}
 	defer handle.Close()
-	if _, err := handle.Seek(startOffset, io.SeekStart); err != nil {
+	end, err := handle.Seek(0, io.SeekEnd)
+	if err != nil {
+		return ""
+	}
+	if _, err := handle.Seek(max(startOffset, end-maxStartupDiagnosticBytes), io.SeekStart); err != nil {
 		return ""
 	}
 	data, err := io.ReadAll(io.LimitReader(handle, maxStartupDiagnosticBytes))

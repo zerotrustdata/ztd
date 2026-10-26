@@ -60,6 +60,9 @@ func TestMain(m *testing.M) {
 			serveHealth()
 		case "hold":
 			time.Sleep(5 * time.Second)
+		case "verification":
+			_, _ = fmt.Fprintln(os.Stderr, "public mirror verification stage=snapshots batches=42")
+			time.Sleep(30 * time.Second)
 		case "error":
 			_, _ = fmt.Fprintln(os.Stderr, "gateway child startup diagnostic")
 			os.Exit(1)

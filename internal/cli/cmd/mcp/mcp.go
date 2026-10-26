@@ -1020,7 +1020,7 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 		posture = gatewayCfg.Posture
 		fmt.Fprintf(os.Stderr, "[ztd] Starting gateway (posture: %s)...\n", posture)
 		startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: os.Stderr}
-		if err := pm.StartOperator(&startOpts); err != nil {
+		if err := pm.StartOperator(context.Background(), &startOpts); err != nil {
 			return "", fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 		}
 		if err := serve.WriteLaunchProfile(fileSvc, startOpts.GatewayConfig); err != nil {

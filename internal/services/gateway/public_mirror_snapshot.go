@@ -177,6 +177,7 @@ func (s *PublicMirrorStore) snapshotRecords(ctx context.Context, sourceID string
 // initializePublicSnapshots upgrades verified retained history once. Existing
 // snapshots are verified, never silently rebuilt over corruption or data loss.
 func (s *PublicMirrorStore) initializePublicSnapshots(ctx context.Context) error {
+	s.logger.Info("Public mirror verification stage", "stage", "snapshots")
 	var version int
 	if err := s.db.QueryRowWithRetry(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return err
@@ -244,85 +245,159 @@ func (s *PublicMirrorStore) initializePublicSnapshots(ctx context.Context) error
 	return nil
 }
 
+// Snapshot verification retains identities and authenticated hashes, never the
+// payload history. SQL pages are fully closed before the next query.
 func (s *PublicMirrorStore) verifyPublicSnapshots(ctx context.Context, keys PublicMirrorKeys) error {
-	type identity struct{ source, key string }
+	sources, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT source_id FROM snapshot_batches UNION SELECT source_id FROM snapshot_records`, nil, func(rows *sql.Rows) (string, error) {
+		var source string
+		return source, rows.Scan(&source)
+	})
+	if err != nil {
+		return fmt.Errorf("mirror snapshot: read sources: %w", err)
+	}
+	for _, source := range sources {
+		if err := s.verifyPublicSnapshot(ctx, source, keys); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *PublicMirrorStore) verifyPublicSnapshot(ctx context.Context, source string, keys PublicMirrorKeys) error {
 	type projection struct {
-		identity
-		dataset string
-		event   bool
-		first   int64
-		record  models.PublicFeedRecord
+		key, dataset, recordHash string
+		recordType               models.PublicFeedRecordType
+		event                    bool
+		first, sequence          int64
 	}
-	expected := make(map[identity]projection)
-	batches, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT source_id, first_sequence, batch_json FROM snapshot_batches`, nil, func(rows *sql.Rows) (models.PublicFeedBatch, error) {
-		var source, raw string
-		var first int64
-		var batch models.PublicFeedBatch
-		if err := rows.Scan(&source, &first, &raw); err != nil {
-			return batch, err
+	expected := make(map[string]projection)
+	events := make(map[string]projection)
+	var after int64
+	firstPage := true
+	started := time.Now()
+	lastProgress := started
+	verified := 0
+	for {
+		query := `SELECT source_id, first_sequence, batch_json FROM snapshot_batches WHERE source_id = ?`
+		args := []interface{}{source}
+		if !firstPage {
+			query += ` AND first_sequence > ?`
+			args = append(args, after)
 		}
-		if err := decodePublicMirrorJSON(raw, &batch); err != nil {
-			return batch, err
-		}
-		if batch.SourceID != source || batch.FirstSequence != first {
-			return batch, publicMirrorCorrupt("snapshot batch identity mismatch")
-		}
-		return batch, nil
-	})
-	if err != nil {
-		return publicMirrorCorrupt("read signed snapshot: %v", err)
-	}
-	for _, batch := range batches {
-		key, found := keys.Registry[publicMirrorKeyRegistryID(batch.SourceID, batch.SigningKeyID)]
-		if !found || verifyBatchSignature(batch, key) != nil || len(batch.Records) != len(batch.RecordHashes) || int64(len(batch.Records)) != batch.LastSequence-batch.FirstSequence+1 {
-			return publicMirrorCorrupt("invalid signed snapshot batch %s@%d", batch.SourceID, batch.FirstSequence)
-		}
-		for i, record := range batch.Records {
-			hash := sha256.Sum256([]byte(record.RecordBytes))
-			if record.RecordHash != hex.EncodeToString(hash[:]) || record.RecordHash != batch.RecordHashes[i] || record.Sequence != batch.FirstSequence+int64(i) {
-				return publicMirrorCorrupt("invalid snapshot record")
+		query += ` ORDER BY first_sequence LIMIT ?`
+		args = append(args, publicMirrorVerifySnapshotPageBatches)
+		batches, err := sqliteutil.MaterializeRows(ctx, s.db, query, args, func(rows *sql.Rows) (models.PublicFeedBatch, error) {
+			var storedSource, raw string
+			var first int64
+			var batch models.PublicFeedBatch
+			if err := rows.Scan(&storedSource, &first, &raw); err != nil {
+				return batch, err
 			}
-			key, dataset, event, err := snapshotRecordIdentity(record)
-			if err != nil {
-				return publicMirrorCorrupt("decode signed snapshot identity: %v", err)
+			if err := decodePublicMirrorJSON(raw, &batch); err != nil {
+				return batch, err
 			}
-			if key == "" {
-				continue
+			if batch.SourceID != storedSource || batch.FirstSequence != first {
+				return batch, publicMirrorCorrupt("snapshot batch identity mismatch")
 			}
-			id := identity{batch.SourceID, key}
-			if prior, found := expected[id]; !found || record.Sequence > prior.record.Sequence {
-				expected[id] = projection{id, dataset, event, batch.FirstSequence, record}
+			return batch, nil
+		})
+		if err != nil {
+			return fmt.Errorf("%w: read signed snapshot: %w", constants.ErrPublicFeedMirrorStoreCorrupt, err)
+		}
+		if len(batches) == 0 {
+			break
+		}
+		for _, batch := range batches {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			key, found := keys.Registry[publicMirrorKeyRegistryID(batch.SourceID, batch.SigningKeyID)]
+			if !found || verifyBatchSignature(batch, key) != nil || len(batch.Records) != len(batch.RecordHashes) || int64(len(batch.Records)) != batch.LastSequence-batch.FirstSequence+1 {
+				return publicMirrorCorrupt("invalid signed snapshot batch %s@%d", batch.SourceID, batch.FirstSequence)
+			}
+			for i, record := range batch.Records {
+				hash := sha256.Sum256([]byte(record.RecordBytes))
+				if record.RecordHash != hex.EncodeToString(hash[:]) || record.RecordHash != batch.RecordHashes[i] || record.Sequence != batch.FirstSequence+int64(i) {
+					return publicMirrorCorrupt("invalid snapshot record")
+				}
+				key, dataset, event, err := snapshotRecordIdentity(record)
+				if err != nil {
+					return publicMirrorCorrupt("decode signed snapshot identity: %v", err)
+				}
+				if key == "" {
+					continue
+				}
+				current := expected
+				if event {
+					current = events
+				}
+				if prior, found := current[key]; !found || record.Sequence > prior.sequence {
+					current[key] = projection{key, dataset, record.RecordHash, record.RecordType, event, batch.FirstSequence, record.Sequence}
+				}
 			}
 		}
-	}
-	// A retained signed batch may also contain older events. Derive the same
-	// bounded per-source tail as ingest before checking every materialized row.
-	events := make(map[string][]projection)
-	for _, p := range expected {
-		if p.event {
-			events[p.source] = append(events[p.source], p)
+		// A retained batch also carries superseded activity. Keep only the
+		// same per-source event tail that ingest retains, across page edges.
+		tail := make([]projection, 0, len(events))
+		for _, p := range events {
+			tail = append(tail, p)
 		}
-	}
-	for _, tail := range events {
-		sort.Slice(tail, func(i, j int) bool { return tail[i].record.Sequence > tail[j].record.Sequence })
+		sort.Slice(tail, func(i, j int) bool { return tail[i].sequence > tail[j].sequence })
 		for _, old := range tail[min(len(tail), constants.PublicFeedSSEReplayMaxRecords):] {
-			delete(expected, old.identity)
+			delete(events, old.key)
+		}
+		after = batches[len(batches)-1].FirstSequence
+		firstPage = false
+		verified += len(batches)
+		if time.Since(lastProgress) >= time.Second {
+			s.logger.Info("Public mirror verification progress", "stage", "snapshots", "batches", verified, "elapsed", time.Since(started))
+			lastProgress = time.Now()
 		}
 	}
-	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT source_id, record_key, dataset_id, is_event, first_sequence, sequence, record_type, record_hash, record_bytes FROM snapshot_records`, nil, func(rows *sql.Rows) (projection, error) {
-		var p projection
-		err := rows.Scan(&p.source, &p.key, &p.dataset, &p.event, &p.first, &p.record.Sequence, &p.record.RecordType, &p.record.RecordHash, &p.record.RecordBytes)
-		return p, err
-	})
-	if err != nil {
-		return err
+	for key, p := range events {
+		expected[key] = p
 	}
-	for _, p := range records {
-		want, found := expected[p.identity]
-		if !found || want != p {
-			return publicMirrorCorrupt("snapshot row differs from signed current state")
+	var afterKey string
+	firstPage = true
+	for {
+		query := `SELECT record_key, dataset_id, is_event, first_sequence, sequence, record_type, record_hash, record_bytes FROM snapshot_records WHERE source_id = ?`
+		args := []interface{}{source}
+		if !firstPage {
+			query += ` AND record_key > ?`
+			args = append(args, afterKey)
 		}
-		delete(expected, p.identity)
+		query += ` ORDER BY record_key LIMIT ?`
+		args = append(args, publicMirrorReadPageRecords)
+		records, err := sqliteutil.MaterializeRows(ctx, s.db, query, args, func(rows *sql.Rows) (projection, error) {
+			var p projection
+			var raw string
+			if err := rows.Scan(&p.key, &p.dataset, &p.event, &p.first, &p.sequence, &p.recordType, &p.recordHash, &raw); err != nil {
+				return p, err
+			}
+			// The expected digest came from verified signed bytes. Hash the
+			// unsigned row too: trusting its record_hash column would miss
+			// payload-only tampering.
+			hash := sha256.Sum256([]byte(raw))
+			if p.recordHash != hex.EncodeToString(hash[:]) {
+				return p, publicMirrorCorrupt("snapshot row hash mismatch")
+			}
+			return p, nil
+		})
+		if err != nil {
+			return err
+		}
+		if len(records) == 0 {
+			break
+		}
+		for _, p := range records {
+			want, found := expected[p.key]
+			if !found || want != p {
+				return publicMirrorCorrupt("snapshot row differs from signed current state")
+			}
+			delete(expected, p.key)
+		}
+		afterKey = records[len(records)-1].key
+		firstPage = false
 	}
 	if len(expected) != 0 {
 		return publicMirrorCorrupt("snapshot current records missing")
