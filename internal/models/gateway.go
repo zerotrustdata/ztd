@@ -452,6 +452,13 @@ type ActuatorPublicKeyExport struct {
 	Algorithm string `json:"algorithm"`
 }
 
+// AuditorPublicKeyExport is the typed JSON structure for exporting the Auditor's public key.
+type AuditorPublicKeyExport struct {
+	KeyID     string `json:"key_id"`
+	PublicKey string `json:"public_key"`
+	Algorithm string `json:"algorithm"`
+}
+
 // PKIFingerprintResponse is the typed response for GET /.well-known/ztd/pki/fingerprint.
 type PKIFingerprintResponse struct {
 	RootCA string `json:"root_ca"`

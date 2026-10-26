@@ -62,8 +62,11 @@ func TestValidatePlatformEnrollmentRequestRejectsDuplicateOperatorKeys(t *testin
 		Hostname:          "operator.local",
 		SystemFingerprint: "fingerprint",
 		Operator: &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: csr,
-			CLICSRPEM:      csr,
+			OperatorCSRPEM:    csr,
+			CLICSRPEM:         csr,
+			ActuatorPublicKey: strings.Repeat("ab", 32),
+			AuditorPublicKey:  strings.Repeat("cd", 32),
+			AuditorKeyID:      strings.Repeat("cd", 32),
 		},
 	}
 
@@ -109,8 +112,11 @@ func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
 		ComponentKind: models.PlatformComponentOperator,
 		InstanceID:    "operator-1",
 		Operator: &models.PlatformOperatorCSRPayload{
-			OperatorCSRPEM: operatorCSR,
-			CLICSRPEM:      cliCSR,
+			OperatorCSRPEM:    operatorCSR,
+			CLICSRPEM:         cliCSR,
+			ActuatorPublicKey: strings.Repeat("ab", 32),
+			AuditorPublicKey:  strings.Repeat("cd", 32),
+			AuditorKeyID:      strings.Repeat("cd", 32),
 		},
 	}
 	fingerprints, err := validatePlatformEnrollmentRequest(models.PlatformEnrollmentCreateRequest{
@@ -122,6 +128,10 @@ func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
 		Operator:          request.Operator,
 	})
 	require.NoError(t, err)
+	auditorPub, err := request.Operator.AuditorKey()
+	require.NoError(t, err)
+	auditorDigest := sha256.Sum256(auditorPub)
+	assert.Equal(t, hex.EncodeToString(auditorDigest[:]), fingerprints.AuditorKey)
 	request.Fingerprints = fingerprints
 	transcript, err := platformEnrollmentCompletionTranscript(request)
 	require.NoError(t, err)

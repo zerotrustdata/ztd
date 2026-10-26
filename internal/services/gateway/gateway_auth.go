@@ -317,6 +317,105 @@ type PrivilegedRouteRegistry struct {
 	prefixes map[string]struct{}
 }
 
+type mtlsIdentityClass uint8
+
+const (
+	mtlsIdentityApp mtlsIdentityClass = iota + 1
+	mtlsIdentityOperator
+)
+
+// mtlsIdentityRouteAllowed is the HTTP boundary for non-human workload
+// certificates. The route is admitted only when both its method and path are
+// explicitly listed for that certificate class; unknown methods and paths
+// fail closed.
+func mtlsIdentityRouteAllowed(identity mtlsIdentityClass, method, path string) bool {
+	switch identity {
+	case mtlsIdentityApp:
+		switch {
+		case method == http.MethodPost && (path == constants.APIPaths.MCPEndpoint || path == constants.APIPaths.A2ACall || path == constants.APIPaths.GovernanceEnvelopes || path == constants.APIPaths.GovernanceDeliberations || path == constants.APIPaths.OperatorsIntents || path == constants.APIPaths.InferenceDispatch || path == constants.APIPaths.ObserveProducerAgentState || path == constants.APIPaths.ObserveProducerRunState || path == constants.APIPaths.ObserveProducerStop):
+			return true
+		case method == http.MethodGet && path == constants.APIPaths.AuditEventReceipts:
+			return true
+		case method == http.MethodGet && isGovernanceSignerReadPath(path):
+			return true
+		case method == http.MethodGet && path == constants.APIPaths.DataSettings:
+			return true
+		case method == http.MethodGet && isDataDocumentPath(path):
+			return true
+		case method == http.MethodPost && isDataQueryPath(path):
+			return true
+		case method == http.MethodGet && isInferenceObservationReadPath(path):
+			return true
+		case method == http.MethodGet && isEvalCampaignPublicationStatePath(path):
+			return true
+		default:
+			return false
+		}
+	case mtlsIdentityOperator:
+		switch {
+		case method == http.MethodPost && (path == constants.APIPaths.OperatorsValidate || path == constants.APIPaths.OperatorsTarget):
+			return true
+		case method == http.MethodGet && path == constants.APIPaths.PubSubStream:
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func isInferenceObservationReadPath(path string) bool {
+	for _, prefix := range []string{constants.APIPaths.InferenceProviderObservations, constants.APIPaths.InferenceModelProvenanceAttestations} {
+		suffix := strings.TrimPrefix(path, prefix)
+		if suffix != path && suffix != "" && !strings.Contains(suffix, "/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isEvalCampaignPublicationStatePath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.EvalCampaignPublicationStateByRun) || !strings.HasSuffix(path, constants.EvalCampaignPublicationStateSuffix) {
+		return false
+	}
+	runID := strings.TrimSuffix(strings.TrimPrefix(path, constants.APIPaths.EvalCampaignPublicationStateByRun), constants.EvalCampaignPublicationStateSuffix)
+	return runID != "" && !strings.Contains(runID, "/")
+}
+
+func isGovernanceSignerReadPath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.GovernanceSignersByID) {
+		return false
+	}
+	signerID := strings.TrimPrefix(path, constants.APIPaths.GovernanceSignersByID)
+	return signerID != "" && !strings.Contains(signerID, "/")
+}
+
+func isDataDocumentPath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.DataPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, constants.APIPaths.DataPrefix), "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] != "" && parts[1] != "_query"
+}
+
+func isDataQueryPath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.DataPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, constants.APIPaths.DataPrefix), "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] == "_query"
+}
+
+func (s *AuthService) denyDisallowedMTLSIdentityRoute(w http.ResponseWriter, r *http.Request, identity mtlsIdentityClass) bool {
+	if mtlsIdentityRouteAllowed(identity, r.Method, r.URL.Path) {
+		return false
+	}
+	s.logger.Warn("gateway: auth: mTLS identity route denied", "identity_class", identity, "method", r.Method, "path", r.URL.Path)
+	s.responder.Error(w, http.StatusForbidden, constants.ErrPrivilegedEndpointAccess.Error())
+	return true
+}
+
 // NewPrivilegedRouteRegistry creates a registry with the canonical privileged routes.
 func NewPrivilegedRouteRegistry() *PrivilegedRouteRegistry {
 	r := &PrivilegedRouteRegistry{
@@ -724,6 +823,9 @@ func (s *AuthService) handleOperatorAuth(w http.ResponseWriter, r *http.Request,
 				return
 			}
 		}
+		if s.denyDisallowedMTLSIdentityRoute(w, r, mtlsIdentityOperator) {
+			return
+		}
 
 		// Stamp context with user_id and operator session info
 		ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, op.UserId)
@@ -992,6 +1094,9 @@ func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next
 					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
 					return true
 				}
+				if s.denyDisallowedMTLSIdentityRoute(w, r, mtlsIdentityApp) {
+					return true
+				}
 
 				if s.privilegedRoutes.IsPrivileged(r.URL.Path) {
 					s.responder.Error(w, http.StatusForbidden, constants.ErrPrivilegedEndpointAccess.Error())
@@ -1067,10 +1172,9 @@ func (s *AuthService) enforceAppPolicy(r *http.Request, policy *models.AppPolicy
 		}
 	}
 
-	// Check collection access for /_query paths (already blocked, but for future-proofing)
-	if strings.HasPrefix(r.URL.Path, constants.APIPaths.QueryPrefix) {
-		// Extract collection from query parameters
-		collection := r.URL.Query().Get("collection")
+	// Check collection access for read-only data queries.
+	if isDataQueryPath(r.URL.Path) {
+		collection := strings.Split(strings.TrimPrefix(r.URL.Path, constants.APIPaths.DataPrefix), "/")[0]
 		if collection != "" && len(policy.AllowedCollections) > 0 {
 			allowed := false
 			for _, allowedCol := range policy.AllowedCollections {

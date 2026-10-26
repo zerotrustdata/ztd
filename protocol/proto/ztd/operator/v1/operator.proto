@@ -501,6 +501,12 @@ message OperatorDocument {
   string actuator_public_key = 36;
   // actuator_key_id equals actuator_public_key (key_id == hex(pub)).
   string actuator_key_id = 37;
+  // auditor_public_key is the hex Ed25519 public key of this Operator's
+  // Auditor, bound once at enrollment. Auditor attestations verify only
+  // against this key.
+  string auditor_public_key = 38;
+  // auditor_key_id equals auditor_public_key (key_id == hex(pub)).
+  string auditor_key_id = 39;
 }
 
 message ShutdownRequested {

@@ -2539,6 +2539,8 @@ persists it; every other component reads it through this contract.
 | stale_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Instant after which an active remote Operator that stays silent reads as stale: its last sign of life plus the stale window for its declared heartbeat interval. The Gateway derives it on every read and never stores it; it is unset for an Operator that cannot read as stale. |
 | actuator_public_key | [string](#string) |  | actuator_public_key is the hex Ed25519 public key of this Operator&#39;s L5 Actuator, bound once at enrollment over the authenticated bootstrap channel. Receipts executed by this Operator verify only against this key. |
 | actuator_key_id | [string](#string) |  | actuator_key_id equals actuator_public_key (key_id == hex(pub)). |
+| auditor_public_key | [string](#string) |  | auditor_public_key is the hex Ed25519 public key of this Operator&#39;s Auditor, bound once at enrollment. Auditor attestations verify only against this key. |
+| auditor_key_id | [string](#string) |  | auditor_key_id equals auditor_public_key (key_id == hex(pub)). |
 
 
 

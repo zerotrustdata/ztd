@@ -887,6 +887,8 @@ var (
 	ErrTrustedSignerKeyNotFound             = errors.New("trusted signer public key not found")
 	ErrOperatorActuatorKeyInvalid           = errors.New("operator actuator public key invalid")
 	ErrOperatorActuatorKeyChanged           = errors.New("operator actuator public key differs from bound key")
+	ErrOperatorAuditorKeyInvalid            = errors.New("operator auditor public key invalid")
+	ErrOperatorAuditorKeyChanged            = errors.New("operator auditor public key differs from bound key")
 	ErrReceiptSignerNotBound                = errors.New("receipt signer is not the executing operator's bound actuator key")
 	ErrL5ActuatorRehydrate                  = errors.New("L5Actuator: failed to rehydrate payload")
 	ErrPKICSRSignatureCheck                 = errors.New("pki: CSR signature check failed")

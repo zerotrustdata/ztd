@@ -19,6 +19,12 @@
       "category": "test",
       "description": "Comma-separated owner Operator session identities selecting the live E2E fleet; unset selects the entire remote registry"
     },
+    "TestReexec": {
+      "_go_const": "EnvVar.TestReexec",
+      "value": "ZTD_TEST_REEXEC",
+      "category": "test",
+      "description": "Selects the test-binary behavior when re-executed as a Gateway child by process-lifecycle integration tests"
+    },
     "E2ERuntimeRoot": {
       "_go_const": "EnvVar.E2ERuntimeRoot",
       "value": "ZTD_E2E_RUNTIME_ROOT",

@@ -107,11 +107,13 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 
 	return &integrationEvaluatorFixture{
 		deps: EvaluatorDeps{
-			Audit:       eventsStore,
-			Ledger:      ledger,
-			Commitments: commitments,
-			History:     history,
-			Graders:     graders,
+			AuditorTrust:  governance.NewPinnedSignerSource(privKey.Public().(ed25519.PublicKey)),
+			ActuatorTrust: governance.NewPinnedSignerSource(privKey.Public().(ed25519.PublicKey)),
+			Audit:         eventsStore,
+			Ledger:        ledger,
+			Commitments:   commitments,
+			History:       history,
+			Graders:       graders,
 		},
 		eventsStore: eventsStore,
 		ledger:      ledger,

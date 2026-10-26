@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // startReexecChild starts this test binary in the gateway child mode, which
@@ -24,7 +25,7 @@ import (
 func startReexecChild(t *testing.T, mode string) *exec.Cmd {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "gw")
-	cmd.Env = append(os.Environ(), testReexecEnv+"="+mode)
+	cmd.Env = append(os.Environ(), string(constants.EnvVar.TestReexec)+"="+mode)
 	require.NoError(t, cmd.Start())
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()

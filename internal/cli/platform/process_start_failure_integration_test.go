@@ -139,7 +139,7 @@ func TestStartOperator_ProcessDeathDuringHealthCheckRemovesPIDFile(t *testing.T)
 // diagnostic emitted by this start attempt instead of only telling the user
 // to inspect the log manually.
 func TestStartOperator_ProcessDeathReturnsChildDiagnostic(t *testing.T) {
-	t.Setenv(testReexecEnv, "error")
+	t.Setenv(string(constants.EnvVar.TestReexec), "error")
 	fileSvc := newStartFailureFileSvc(t)
 
 	pm, err := NewProcessManager(fileSvc)
@@ -154,7 +154,7 @@ func TestStartOperator_ProcessDeathReturnsChildDiagnostic(t *testing.T) {
 }
 
 func TestStartOperator_TimeoutReturnsChildDiagnostic(t *testing.T) {
-	t.Setenv(testReexecEnv, "verification")
+	t.Setenv(string(constants.EnvVar.TestReexec), "verification")
 	fileSvc := newStartFailureFileSvc(t)
 	pm, err := NewProcessManager(fileSvc)
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func (s *cancelAfterPIDWriteFileSvc) WriteFile(ctx context.Context, relPath stri
 }
 
 func TestStartOperator_CancellationStopsChild(t *testing.T) {
-	t.Setenv(testReexecEnv, "hold")
+	t.Setenv(string(constants.EnvVar.TestReexec), "hold")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	fileSvc := &cancelAfterPIDWriteFileSvc{RuntimeFileService: newStartFailureFileSvc(t), cancel: cancel}
@@ -215,7 +215,7 @@ func TestStartupDiagnostic_ReadsTailOfCurrentAttempt(t *testing.T) {
 // for a rebuilt binary) is not killed when the normal health budget runs out:
 // the user is told what to approve, and the start waits for the child.
 func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
-	t.Setenv(testReexecEnv, "keystore-approval")
+	t.Setenv(string(constants.EnvVar.TestReexec), "keystore-approval")
 	fileSvc := newStartFailureFileSvc(t)
 
 	pm, err := NewProcessManager(fileSvc)
@@ -342,7 +342,7 @@ func TestStartOperator_ForeignHealthServerAfterChildExitIsRejected(t *testing.T)
 // foreign server claims it, and its health response must not satisfy the
 // start health check.
 func TestStartOperator_ForeignHealthServerWhileChildAliveIsRejected(t *testing.T) {
-	t.Setenv(testReexecEnv, "hold")
+	t.Setenv(string(constants.EnvVar.TestReexec), "hold")
 	fileSvc := newStartFailureFileSvc(t)
 	opts := startOptsOnFreePorts(t)
 	httpPort := opts.HTTPPort

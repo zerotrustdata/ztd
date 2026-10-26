@@ -526,6 +526,8 @@ func enrollTestOperatorRequest(state models.PlatformEnrollmentState) models.Plat
 			OperatorCSRPEM:    "operator-csr",
 			CLICSRPEM:         "cli-csr",
 			ActuatorPublicKey: strings.Repeat("ab", 32),
+			AuditorPublicKey:  strings.Repeat("cd", 32),
+			AuditorKeyID:      strings.Repeat("cd", 32),
 		},
 	}
 }

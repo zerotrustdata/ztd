@@ -10,6 +10,7 @@ package reporting
 import (
 	"context"
 	"encoding/csv"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,9 @@ func setupReportingEnv(t *testing.T, seed bool) Options {
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
+	for _, name := range []string{constants.SecretsFileActuatorSigningKey, constants.SecretsFileAuditorSigningKey} {
+		require.NoError(t, ks.EncryptSecret(name, hex.EncodeToString(make([]byte, 32))))
+	}
 
 	vaultKey, err := ks.LoadVaultKey()
 	require.NoError(t, err)

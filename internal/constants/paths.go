@@ -348,6 +348,7 @@ const (
 	// Gateway-specific filenames
 	GatewayIDFilename       = "gateway-id"
 	ActuatorPubJSONFilename = "Actuator_pub.json"
+	AuditorPubJSONFilename  = "Auditor_pub.json"
 	NetworkIdentityFilename = "network-identity.json"
 
 	// Operator-specific filenames

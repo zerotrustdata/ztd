@@ -1358,5 +1358,6 @@ func payloadFingerprints(fp models.PlatformEnrollmentCSRFingerprints) *commonv1.
 		Operator:   fp.Operator,
 		Cli:        fp.CLI,
 		SigningKey: fp.SigningKey,
+		AuditorKey: fp.AuditorKey,
 	}
 }

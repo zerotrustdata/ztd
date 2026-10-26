@@ -123,3 +123,12 @@ func TestValidateEnvRegistries_FailsOnUnregisteredEnvExampleKey(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ZTD_NOT_REGISTERED is not in")
 }
+
+func TestValidateEnvRegistries_FailsOnUnregisteredTestEnvExampleKey(t *testing.T) {
+	root := newEnvFixture(t)
+	mutateFixture(t, root, relPathEnvExample,
+		"# ZTD_EXAMPLE_TOKEN=example-token\n", "# ZTD_EXAMPLE_TOKEN=example-token\nZTD_TEST_UNREGISTERED=serve\n")
+	err := validateEnvRegistries(root)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ZTD_TEST_UNREGISTERED is not in")
+}

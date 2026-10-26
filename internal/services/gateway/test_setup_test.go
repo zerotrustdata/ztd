@@ -94,6 +94,7 @@ func newTestScrubber(t *testing.T) *scrubbing.ScrubbingService {
 // testActuatorPublicKeyHex is a well-formed hex Ed25519 Actuator public key for
 // Operator enrollment payloads; issuance binds it and rejects a missing key.
 const testActuatorPublicKeyHex = "abababababababababababababababababababababababababababababababab"
+const testAuditorPublicKeyHex = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
 
 // openTestDB wraps OpenCanonicalDBService for tests, creating a keystore
 // with an in-memory keyring so callers don't need to manage a keystore.

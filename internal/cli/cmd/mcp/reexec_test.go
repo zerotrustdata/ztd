@@ -11,10 +11,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest/reexec"
 )
 
 func TestMain(m *testing.M) {
-	cmdtest.ReexecGatewayIfRequested()
+	reexec.IfRequested()
 	os.Exit(m.Run())
 }

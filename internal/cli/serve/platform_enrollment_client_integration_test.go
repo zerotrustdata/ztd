@@ -246,6 +246,7 @@ func newTestBootstrapClient(t *testing.T, mg *mockBootstrapGateway, launchID str
 		Deployment:        deployment,
 		Logger:            testLogger(),
 		ActuatorPublicKey: strings.Repeat("ab", 32),
+		AuditorPublicKey:  strings.Repeat("cd", 32),
 	})
 	require.NoError(t, err)
 	return client, fileSvc
@@ -402,6 +403,7 @@ func TestOperatorBootstrap_WSSVerifiesTheGatewayAgainstThePinnedBundle(t *testin
 			Deployment:        deployment,
 			Logger:            testLogger(),
 			ActuatorPublicKey: strings.Repeat("ab", 32),
+			AuditorPublicKey:  strings.Repeat("cd", 32),
 		})
 		require.NoError(t, err)
 		return client

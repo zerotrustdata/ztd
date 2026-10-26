@@ -14,6 +14,7 @@ type EnvVarKey string
 var EnvVar = struct {
 	OllamaEndpoint        EnvVarKey
 	E2EFleetSessions      EnvVarKey
+	TestReexec            EnvVarKey
 	E2ERuntimeRoot        EnvVarKey
 	E2EFleetSize          EnvVarKey
 	E2EFleetBin           EnvVarKey
@@ -46,6 +47,7 @@ var EnvVar = struct {
 }{
 	OllamaEndpoint:        EnvVarKey("ZTD_OLLAMA_ENDPOINT"),
 	E2EFleetSessions:      EnvVarKey("ZTD_E2E_FLEET_SESSIONS"),
+	TestReexec:            EnvVarKey("ZTD_TEST_REEXEC"),
 	E2ERuntimeRoot:        EnvVarKey("ZTD_E2E_RUNTIME_ROOT"),
 	E2EFleetSize:          EnvVarKey("ZTD_E2E_FLEET_SIZE"),
 	E2EFleetBin:           EnvVarKey("ZTD_E2E_FLEET_BIN"),

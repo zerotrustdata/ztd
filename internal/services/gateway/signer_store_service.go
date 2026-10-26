@@ -43,6 +43,13 @@ type ReceiptSignerResolver interface {
 	ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.EventReceipt) (ed25519.PublicKey, error)
 }
 
+// OperatorAuditorSignerResolver resolves the Operator-bound Auditor key for
+// signed auditor evidence. It is intentionally distinct from receipt signer
+// resolution, which accepts only the L5 Actuator key.
+type OperatorAuditorSignerResolver interface {
+	GetOperatorAuditorSigner(ctx context.Context, operatorID, keyID string) (ed25519.PublicKey, error)
+}
+
 // NewSignerStoreService creates a new signer store service.
 // docSvc is the shared DocumentStoreService instance from CanonicalDBService.
 // embeddedActuatorPub and embeddedActuatorKeyID are the Gateway's Actuator
@@ -166,6 +173,21 @@ func (s *SignerStoreService) ReceiptSignerKey(ctx context.Context, operatorID st
 	return boundPub, nil
 }
 
+// GetOperatorAuditorSigner resolves an Auditor key bound to the named
+// Operator. Auditor key IDs are matched against the bound lowercase hex public
+// key; the requested key ID is never decoded into a trusted key.
+func (s *SignerStoreService) GetOperatorAuditorSigner(ctx context.Context, operatorID, keyID string) (ed25519.PublicKey, error) {
+	boundPub, boundKeyID, err := s.boundAuditorKey(ctx, operatorID)
+	if err != nil {
+		return nil, fmt.Errorf("signer store: operator auditor signer: %w", err)
+	}
+	if keyID != boundKeyID {
+		return nil, fmt.Errorf("signer store: operator auditor signer: %w: signer %q, bound %q",
+			constants.ErrTrustedSignerKeyNotFound, keyID, boundKeyID)
+	}
+	return boundPub, nil
+}
+
 // boundActuatorKey returns the Actuator public key and key id bound to the
 // Operator identified by operatorID.
 func (s *SignerStoreService) boundActuatorKey(ctx context.Context, operatorID string) (ed25519.PublicKey, string, error) {
@@ -198,4 +220,29 @@ func (s *SignerStoreService) boundActuatorKey(ctx context.Context, operatorID st
 		return nil, "", fmt.Errorf("operator %s: %w: key id does not match bound key", operatorID, constants.ErrReceiptSignerNotBound)
 	}
 	return pub, operatorDoc.GetActuatorKeyId(), nil
+}
+
+func (s *SignerStoreService) boundAuditorKey(ctx context.Context, operatorID string) (ed25519.PublicKey, string, error) {
+	doc, err := s.docSvc.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), operatorID)
+	if err != nil {
+		return nil, "", fmt.Errorf("load operator %s: %w", operatorID, err)
+	}
+	if doc == nil {
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrTrustedSignerKeyNotFound)
+	}
+	operatorDoc, err := models.OperatorDocumentFromStore(doc)
+	if err != nil {
+		return nil, "", fmt.Errorf("decode operator %s: %w", operatorID, err)
+	}
+	if operatorDoc.GetAuditorPublicKey() == "" || operatorDoc.GetAuditorKeyId() == "" {
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrTrustedSignerKeyNotFound)
+	}
+	pub, err := models.DecodeAuditorPublicKey(operatorDoc.GetAuditorPublicKey())
+	if err != nil {
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, err)
+	}
+	if hex.EncodeToString(pub) != operatorDoc.GetAuditorKeyId() {
+		return nil, "", fmt.Errorf("operator %s: %w: key id does not match bound key", operatorID, constants.ErrTrustedSignerKeyNotFound)
+	}
+	return pub, operatorDoc.GetAuditorKeyId(), nil
 }

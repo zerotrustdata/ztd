@@ -27,15 +27,34 @@ import (
 
 // seedOperatorDocument stores an OperatorDocument carrying the given bound
 // Actuator key. An empty key stores an Operator with no bound key.
-func seedOperatorDocument(t *testing.T, svc *SignerStoreService, operatorID, actuatorKeyHex string) {
+func seedOperatorDocument(t *testing.T, svc *SignerStoreService, operatorID, actuatorKeyHex string, auditorKeyHex ...string) {
 	t.Helper()
-	raw, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{
-		Id:                operatorID,
-		ActuatorPublicKey: actuatorKeyHex,
-		ActuatorKeyId:     actuatorKeyHex,
-	})
+	doc := &operatorv1.OperatorDocument{Id: operatorID, ActuatorPublicKey: actuatorKeyHex, ActuatorKeyId: actuatorKeyHex}
+	if len(auditorKeyHex) > 0 {
+		doc.AuditorPublicKey, doc.AuditorKeyId = auditorKeyHex[0], auditorKeyHex[0]
+	}
+	raw, err := models.MarshalOperatorDocument(doc)
 	require.NoError(t, err)
 	require.NoError(t, svc.docSvc.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), operatorID, raw))
+}
+
+func TestGetOperatorAuditorSignerResolvesOnlyTheBoundKey(t *testing.T) {
+	svc := setupSignerStore(t)
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	other, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	keyID := hex.EncodeToString(pub)
+	seedOperatorDocument(t, svc, "operator-auditor", "", keyID)
+
+	got, err := svc.GetOperatorAuditorSigner(t.Context(), "operator-auditor", keyID)
+	require.NoError(t, err)
+	assert.Equal(t, pub, got)
+
+	_, err = svc.GetOperatorAuditorSigner(t.Context(), "operator-auditor", hex.EncodeToString(other))
+	require.ErrorIs(t, err, constants.ErrTrustedSignerKeyNotFound)
+	_, err = svc.GetOperatorAuditorSigner(t.Context(), "operator-missing", keyID)
+	assert.ErrorIs(t, err, constants.ErrTrustedSignerKeyNotFound)
 }
 
 func TestReceiptSignerKey_OutboundOperatorResolvesToBoundKey(t *testing.T) {

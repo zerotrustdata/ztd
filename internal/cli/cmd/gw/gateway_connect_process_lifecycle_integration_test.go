@@ -74,7 +74,7 @@ func TestGatewayRestart_FailedUnchangedLaunchDoesNotRetry(t *testing.T) {
 	}}
 	require.NoError(t, pm.StartOperator(t.Context(), &opts))
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, opts.GatewayConfig))
-	t.Setenv(testReexecEnv, "exit")
+	t.Setenv(string(constants.EnvVar.TestReexec), "exit")
 	counted := &countingStartFileSvc{RuntimeFileService: fileSvc}
 	cmd := gatewayRestartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(counted))
 	cmd.SetContext(t.Context())

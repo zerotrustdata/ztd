@@ -10,86 +10,15 @@
 package platform
 
 import (
-	"fmt"
-	"net/http"
 	"os"
-	"strconv"
 	"testing"
-	"time"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest/reexec"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest/reexec/serve"
 )
 
-// TestMain detects when the test binary is re-executed by StartOperator as a
-// Gateway subprocess (via "gw start --follow ..."). In that case the first
-// positional argument is "gw", which never happens during a normal test run.
-//
-// testReexecEnv selects the re-exec mode for the test-binary Gateway child. It is
-// test-only and deliberately absent from the production env registry.
-const testReexecEnv = "ZTD_TEST_REEXEC"
-
-// Two re-exec modes are supported, selected by the ZTD_TEST_REEXEC environment
-// variable (inherited by the child process):
-//
-//   - "exit" (default, or unset): the subprocess exits immediately. This lets
-//     start-failure tests (PID-write failure, process death during health
-//     check) exercise cleanup paths without a real Gateway binary.
-//   - "serve": the subprocess parses --http-port from the re-exec args and
-//     starts a minimal HTTP server that responds to /api/v1/health with 200.
-//     This lets process-lifecycle tests exercise paths that require a
-//     successful StartOperator (profile-write failure, restart rollback,
-//     resolved-port persistence, stopped-gateway manual trust, IDNA RP
-//     override).
-//   - "hold": the subprocess stays alive without serving health. This lets
-//     tests prove that a foreign health response on the selected port is
-//     rejected even while the child process is still running.
-//   - "error": the subprocess writes a startup error to stderr and exits.
-//     This lets tests prove that StartOperator returns the child diagnostic
-//     instead of hiding it behind a log-file pointer.
-//   - "keystore-approval": the subprocess logs that it is waiting for OS key
-//     store approval, holds past the health budget, then reports a denied
-//     approval and exits. This lets tests prove that StartOperator keeps
-//     waiting for the user and tells them why.
-//
-// During normal test runs TestMain delegates to the default test runner.
 func TestMain(m *testing.M) {
-	if len(os.Args) > 1 && os.Args[1] == "gw" {
-		mode := os.Getenv(testReexecEnv)
-		switch mode {
-		case "serve":
-			serveHealth()
-		case "hold":
-			time.Sleep(5 * time.Second)
-		case "verification":
-			_, _ = fmt.Fprintln(os.Stderr, "public mirror verification stage=snapshots batches=42")
-			time.Sleep(30 * time.Second)
-		case "error":
-			_, _ = fmt.Fprintln(os.Stderr, "gateway child startup diagnostic")
-			os.Exit(1)
-		case "keystore-approval":
-			_, _ = fmt.Fprintln(os.Stderr, constants.KeyStoreAwaitingApprovalLog)
-			time.Sleep(20 * time.Second)
-			_, _ = fmt.Fprintln(os.Stderr, "key store approval denied")
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
+	serve.IfRequested()
+	reexec.IfRequested()
 	os.Exit(m.Run())
-}
-
-// serveHealth parses --http-port from os.Args and starts a minimal HTTP server
-// that responds to /api/v1/health with 200. The server runs until the process
-// is killed by StopOperator.
-func serveHealth() {
-	port := parseHTTPPortFromArgs(os.Args)
-	if port == 0 {
-		return
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, `{"status":"ok","mode":"gateway","posture":"doctrine","pid":%d}`, os.Getpid())
-	})
-	_ = http.ListenAndServe("127.0.0.1:"+strconv.Itoa(port), mux)
 }

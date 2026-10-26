@@ -202,6 +202,8 @@ func createAndApproveRequestWithFingerprint(t *testing.T, env *platformEnrollmen
 			OperatorCSRPEM:    operatorCSR,
 			CLICSRPEM:         cliCSR,
 			ActuatorPublicKey: actuatorKey,
+			AuditorPublicKey:  testAuditorPublicKeyHex,
+				AuditorKeyID:     testAuditorPublicKeyHex,
 		}
 	}
 
@@ -647,6 +649,8 @@ func TestPlatformEnrollmentService_OperatorIssuanceSignsBothCSRsAndPersistsOpera
 	assert.Equal(t, owner.OrganizationID, op.OrganizationId, "operator doc must carry the approving owner's organization_id")
 	assert.False(t, op.IsSlot, "platform-enrolled operators are not slots")
 	assert.Equal(t, string(constants.OperatorStatusOffline), op.Status, "enrolled but not yet subscribed to its command channel")
+	assert.Equal(t, testAuditorPublicKeyHex, op.GetAuditorPublicKey())
+	assert.Equal(t, testAuditorPublicKeyHex, op.GetAuditorKeyId())
 	assert.True(t, op.Claimed)
 
 	// Verify the CLI session is bound to the approving owner's user_id.
@@ -1062,6 +1066,8 @@ func TestPlatformEnrollmentService_FullPlatformOperatorsAwaitApproval(t *testing
 				OperatorCSRPEM:    operatorCSR,
 				CLICSRPEM:         cliCSR,
 				ActuatorPublicKey: testActuatorPublicKeyHex,
+				AuditorPublicKey:  testAuditorPublicKeyHex,
+				AuditorKeyID:     testAuditorPublicKeyHex,
 			},
 		}
 		response, err := createPlatformEnrollmentRequest(t, env.enrollSvc, context.Background(), req, "https://gateway.local/console")
@@ -1093,6 +1099,8 @@ func TestPlatformEnrollmentService_FullPlatformOperatorsAwaitApproval(t *testing
 			OperatorCSRPEM:    operatorCSR,
 			CLICSRPEM:         cliCSR,
 			ActuatorPublicKey: testActuatorPublicKeyHex,
+			AuditorPublicKey:  testAuditorPublicKeyHex,
+			AuditorKeyID:      testAuditorPublicKeyHex,
 		},
 	}, "https://gateway.local/console")
 	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentQuotaExceeded)
@@ -1781,7 +1789,7 @@ func TestPlatformEnrollmentService_AppWithOperatorPayloadFails(t *testing.T) {
 		InstanceID:    "dashboard-1",
 		Hostname:      "dashboard.local",
 		App:           &models.PlatformAppCSRPayload{CSRPEM: appCSR},
-		Operator:      &models.PlatformOperatorCSRPayload{OperatorCSRPEM: opCSR, CLICSRPEM: cliCSR},
+		Operator:      &models.PlatformOperatorCSRPayload{OperatorCSRPEM: opCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: testActuatorPublicKeyHex, AuditorPublicKey: testAuditorPublicKeyHex, AuditorKeyID: testAuditorPublicKeyHex},
 	}, "https://gateway.local/console")
 	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidPayload)
 }

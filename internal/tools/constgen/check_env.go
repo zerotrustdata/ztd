@@ -26,7 +26,7 @@ import (
 //     secret and user_endpoint key must appear as a commented assignment with
 //     Purpose, Consumer, and Required-for-default-flow lines above it and a
 //     non-empty example value. Every ZTD_* key named in .env.example must be a
-//     JSON key or a ZTD_TEST_* key.
+//     JSON key.
 
 const (
 	relPathEnvVars    = "protocol/constants/env_vars.json"
@@ -115,10 +115,7 @@ func checkEnvExample(root string, byValue map[string]envRegistryEntry) []string 
 		if _, ok := byValue[key]; ok {
 			continue
 		}
-		if strings.HasPrefix(key, "ZTD_TEST_") {
-			continue
-		}
-		problems = append(problems, fmt.Sprintf("%s: %s is not in %s and is not a ZTD_TEST_* key", relPathEnvExample, key, relPathEnvVars))
+		problems = append(problems, fmt.Sprintf("%s: %s is not in %s", relPathEnvExample, key, relPathEnvVars))
 	}
 
 	for value, entry := range byValue {

@@ -241,6 +241,7 @@ func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
 		Deployment:        deployment,
 		Logger:            testLogger(),
 		ActuatorPublicKey: strings.Repeat("ab", 32),
+		AuditorPublicKey:  strings.Repeat("cd", 32),
 	}
 	client, err := NewOperatorBootstrapClient(valid)
 	require.NoError(t, err)

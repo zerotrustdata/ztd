@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/compliance"
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
@@ -238,6 +239,17 @@ func openEvaluatorDeps(fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (co
 	}
 	cleanups = append(cleanups, vaultCleanup)
 
+	auditorKey, err := ks.SigningPublicKey(constants.SecretsFileAuditorSigningKey)
+	if err != nil {
+		runCleanups(cleanups)
+		return compliance.EvaluatorDeps{}, nil, fmt.Errorf("compliance: auditor trust anchor: %w", err)
+	}
+	actuatorKey, err := ks.SigningPublicKey(constants.SecretsFileActuatorSigningKey)
+	if err != nil {
+		runCleanups(cleanups)
+		return compliance.EvaluatorDeps{}, nil, fmt.Errorf("compliance: actuator trust anchor: %w", err)
+	}
+
 	eventsStore, auditCleanup, ok := openEventsStore(fileSvc, v)
 	if !ok {
 		runCleanups(cleanups)
@@ -254,10 +266,12 @@ func openEvaluatorDeps(fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (co
 	cleanups = append(cleanups, ledgerCleanup)
 
 	return compliance.EvaluatorDeps{
-		Audit:       eventsStore,
-		Ledger:      ledger,
-		Commitments: cl,
-		History:     newKSIHistoryStore(fileSvc),
+		AuditorTrust:  governance.NewPinnedSignerSource(auditorKey),
+		ActuatorTrust: governance.NewPinnedSignerSource(actuatorKey),
+		Audit:         eventsStore,
+		Ledger:        ledger,
+		Commitments:   cl,
+		History:       newKSIHistoryStore(fileSvc),
 	}, func() { runCleanups(cleanups) }, nil
 }
 

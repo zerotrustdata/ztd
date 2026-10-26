@@ -109,3 +109,21 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 		}
 	})
 }
+
+func TestAuditorPublicKeyExport(t *testing.T) {
+	tmpDir := testutil.TempDir(t)
+	fileSvc, err := fs.NewRuntimeFileService(tmpDir, testutil.NewTestLogger())
+	require.NoError(t, err)
+	pubKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	keyID := hex.EncodeToString(pubKey)
+
+	require.NoError(t, ExportAuditorPublicKey(fileSvc, pubKey, keyID, nil))
+	body, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.PkiDirname, constants.AuditorPubJSONFilename))
+	require.NoError(t, err)
+	var parsed models.AuditorPublicKeyExport
+	require.NoError(t, json.Unmarshal(body, &parsed))
+	assert.Equal(t, keyID, parsed.KeyID)
+	assert.Equal(t, keyID, parsed.PublicKey)
+	assert.Equal(t, "ed25519", parsed.Algorithm)
+}

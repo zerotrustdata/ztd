@@ -260,7 +260,7 @@ The mirror owns one durable current read model per source. The evaluation projec
 ### Storage and atomicity
 
 - `snapshot_records` keeps the newest accepted record for each catalog, model and role, suite, run, and assignment identity. A separate bounded tail within the snapshot keeps recent activity. Source and dataset identity participate in every index key.
-- Each current record references its original signed batch in `snapshot_batches`. `snapshot_heads` records the accepted cursor; schema initialization uses SQLite `user_version` 1. The mirror preserves that batch while the current state references it, including after replay-history retention prunes the batch from `/history`. Replacing a record releases its old batch only after no current record references it.
+- Each current record references its original signed batch in `snapshot_batches`. `snapshot_heads` records the accepted cursor. Startup validates the current schema and snapshot state without versioned migrations or backfills. The mirror preserves that batch while the current state references it, including after replay-history retention prunes the batch from `/history`. Replacing a record releases its old batch only after no current record references it.
 - One SQLite transaction appends accepted feed records, updates the current read model, and advances the snapshot cursor. Snapshot reads capture records, proof summary, withdrawals, and the cursor under the same mutation lock; the lock is released before response encoding or network writes. Failed ingest exposes none of its partial state.
 - Snapshot initialization and live deltas use the same identity and replacement rules. Counts and byte totals use deltas; routine publication does not scan all retained artifacts or revisions. Proof bytes remain content-addressed and are fetched on demand.
 
@@ -272,11 +272,11 @@ The snapshot payload grows with current entities rather than historical revision
 
 ### Upgrade and verification
 
-The migration preserves existing tables, signed records, source identity, proof log, and artifact bytes. It builds the initial read model only from verified retained history. Records already lost to prior retention require explicit republication from the authoritative evaluation store; the migration cannot reconstruct them or claim completeness. A durable initialization marker prevents an absent or corrupt snapshot from being silently treated as an empty new installation.
+An existing mirror without the current snapshot schema or initialization marker fails closed with `ErrPublicFeedMirrorStoreCorrupt`. There is no in-place migration or history backfill. Archive the disposable mirror projection with its SQLite sidecars while the Gateway is stopped, start with a fresh mirror, and republish from the authoritative evaluation store with `ztd eval runs publish --all` or `ztd public restore --queue --force`. Keep the source signing generation and authoritative evaluation files intact. A rebuild cannot recover evaluation evidence that has already been deleted.
 
 Startup verifies retained snapshot batch signatures, exact record membership and bytes, record identity columns, snapshot cursor, and source binding before serving. A snapshot must never be accepted solely because its unsigned rows contain self-consistent hashes. Withdrawn datasets are excluded from the current read model and subsequent bootstrap responses.
 
-`TestMirror_BootstrapKeepsCurrentStateAcrossRetention` checks pruning and restart, `TestMirror_SnapshotRetainsCurrentEntitiesInsteadOfRevisions` checks compaction and withdrawals, and the snapshot upgrade/corruption/rollback tests check migration and atomicity. Explorer startup takes one runtime-config request and one bootstrap request before SSE. Browser tests cover Runs values across SSE and snapshot reloads; assignment result publication carries the canonical run summary in the same signed batch for the normal run update.
+`TestMirror_BootstrapKeepsCurrentStateAcrossRetention` checks pruning and restart, `TestMirror_SnapshotRetainsCurrentEntitiesInsteadOfRevisions` checks compaction and withdrawals, and the snapshot corruption, missing-marker, and rollback tests check fail-closed startup and atomicity. Explorer startup takes one runtime-config request and one bootstrap request before SSE. Browser tests cover Runs values across SSE and snapshot reloads; assignment result publication carries the canonical run summary in the same signed batch for the normal run update.
 
 ## Relationship to Platform Architecture
 

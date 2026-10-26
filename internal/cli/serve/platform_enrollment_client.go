@@ -79,6 +79,9 @@ type OperatorBootstrapClientConfig struct {
 	// ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5
 	// Actuator. The Gateway binds it to the Operator at enrollment.
 	ActuatorPublicKey string
+	// AuditorPublicKey is the hex Ed25519 public key of this Operator's
+	// Auditor. The Gateway binds it to the Operator at enrollment.
+	AuditorPublicKey string
 	// TrustBundlePEM, when set, is the owner-supplied CA a wss:// bootstrap
 	// URL must chain to; otherwise the system roots apply.
 	TrustBundlePEM []byte
@@ -105,6 +108,9 @@ func NewOperatorBootstrapClient(cfg OperatorBootstrapClientConfig) (*OperatorBoo
 	}
 	if _, err := models.DecodeActuatorPublicKey(cfg.ActuatorPublicKey); err != nil {
 		return nil, fmt.Errorf("operator bootstrap: actuator key: %w", err)
+	}
+	if _, err := models.DecodeAuditorPublicKey(cfg.AuditorPublicKey); err != nil {
+		return nil, fmt.Errorf("operator bootstrap: auditor key: %w", err)
 	}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 	if len(cfg.TrustBundlePEM) > 0 {
@@ -212,6 +218,8 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 					OperatorCSRPEM:    operatorCSR,
 					CLICSRPEM:         cliCSR,
 					ActuatorPublicKey: c.cfg.ActuatorPublicKey,
+					AuditorPublicKey:  c.cfg.AuditorPublicKey,
+					AuditorKeyID:     c.cfg.AuditorPublicKey,
 				},
 			},
 			RuntimeConfig: c.cfg.RuntimeConfig,

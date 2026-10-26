@@ -358,6 +358,11 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		return nil, "", "", "", "", "", fmt.Errorf("operator actuator key: %w", err)
 	}
 	actuatorKeyHex := hex.EncodeToString(actuatorPub)
+	auditorPub, err := req.Operator.AuditorKey()
+	if err != nil {
+		return nil, "", "", "", "", "", fmt.Errorf("operator auditor key: %w", err)
+	}
+	auditorKeyHex := hex.EncodeToString(auditorPub)
 	if err := h.refuseActuatorKeyChange(ctx, operatorID, actuatorKeyHex); err != nil {
 		return nil, "", "", "", "", "", err
 	}
@@ -404,6 +409,10 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		// verify against it alone (SignerStoreService.ReceiptSignerKey in the Gateway).
 		ActuatorPublicKey: actuatorKeyHex,
 		ActuatorKeyId:     actuatorKeyHex,
+		AuditorPublicKey:  auditorKeyHex,
+		AuditorKeyID:      auditorKeyHex,
+				AuditorKeyID:     auditorKeyHex,
+		AuditorKeyId:      auditorKeyHex,
 		Claimed:           true,
 		ClaimedAt:         timestamppb.New(now),
 		CreatedAt:         timestamppb.New(now),

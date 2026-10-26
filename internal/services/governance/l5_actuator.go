@@ -854,14 +854,6 @@ func (w *L5Actuator) signReceiptPersistenceAttestation(receipt *operatorv1.Event
 	return attestation, nil
 }
 
-func SignerPublicKey(keyID string) (ed25519.PublicKey, error) {
-	decoded, err := hex.DecodeString(keyID)
-	if err != nil || len(decoded) != ed25519.PublicKeySize {
-		return nil, constants.ErrTrustedSignerKeyNotFound
-	}
-	return ed25519.PublicKey(decoded), nil
-}
-
 func DeterministicStageActionType(receipt *operatorv1.EventReceipt) (string, error) {
 	if receipt == nil {
 		return "", fmt.Errorf("%w: event receipt is nil", constants.ErrEvidenceArtifactMalformed)

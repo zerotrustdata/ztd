@@ -20,6 +20,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
@@ -67,6 +68,15 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	v, err := openVault(opts.Keystore)
 	if err != nil {
 		return RunResult{}, err
+	}
+
+	auditorKey, err := opts.Keystore.SigningPublicKey(constants.SecretsFileAuditorSigningKey)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("report: auditor trust anchor: %w", err)
+	}
+	actuatorKey, err := opts.Keystore.SigningPublicKey(constants.SecretsFileActuatorSigningKey)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("report: actuator trust anchor: %w", err)
 	}
 
 	// Open ztd.db once; the local-first events store and its commitment ledger share the pool.
@@ -142,7 +152,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	// Verification pass.
 	var failCount int
 	if ctx.Err() == nil {
-		verRes, vr, verErr := reportVerification(ctx, opts.OutDir, eventsStore, cl, ledger)
+		verRes, vr, verErr := reportVerification(ctx, opts.OutDir, eventsStore, cl, ledger, governance.NewPinnedSignerSource(auditorKey), governance.NewPinnedSignerSource(actuatorKey))
 		if verErr != nil {
 			logger.Warn("Verification reporter failed", "error", verErr)
 		} else {

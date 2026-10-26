@@ -9,6 +9,8 @@ package gateway
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -163,6 +165,30 @@ func (s *RegistrationService) RecordEmbeddedActuatorKey(ctx context.Context, key
 	}
 	if _, err := s.docStore.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator), updateBytes); err != nil {
 		return fmt.Errorf("record embedded actuator key: %w", err)
+	}
+	return nil
+}
+
+// RecordEmbeddedAuditorKey binds the Gateway's Auditor public key, which signs
+// embedded Operator attestations, on the embedded Operator document.
+func (s *RegistrationService) RecordEmbeddedAuditorKey(ctx context.Context, keyID string) error {
+	if keyID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	pub, err := models.DecodeAuditorPublicKey(keyID)
+	if err != nil || hex.EncodeToString(pub) != keyID {
+		return constants.ErrOperatorAuditorKeyInvalid
+	}
+	updateBytes, err := json.Marshal(struct {
+		AuditorPublicKey string    `json:"auditor_public_key"`
+		AuditorKeyID     string    `json:"auditor_key_id"`
+		UpdatedAt        time.Time `json:"updated_at"`
+	}{AuditorPublicKey: keyID, AuditorKeyID: keyID, UpdatedAt: time.Now().UTC()})
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+	if _, err := s.docStore.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator), updateBytes); err != nil {
+		return fmt.Errorf("record embedded auditor key: %w", err)
 	}
 	return nil
 }

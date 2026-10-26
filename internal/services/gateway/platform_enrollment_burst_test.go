@@ -115,6 +115,7 @@ func runPlatformEnrollmentBurst(t *testing.T, n int, scenario burstScenario) {
 	workers := make([]*burstWorker, n)
 	for i := range workers {
 		operatorCSR, operatorKey, cliCSR, cliKey := generateOperatorCSRsAndKeys(t)
+		auditorKeyHex := hex.EncodeToString(generateTestPublicKey(t))
 		token, tokenHash := newPlatformEnrollmentTestToken(t)
 		workers[i] = &burstWorker{
 			token: token,
@@ -124,7 +125,7 @@ func runPlatformEnrollmentBurst(t *testing.T, n int, scenario burstScenario) {
 				InstanceID:        fmt.Sprintf("burst-%04d", i),
 				Hostname:          "burst.local",
 				SystemFingerprint: fmt.Sprintf("burst-host-%04d", i),
-				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: hex.EncodeToString(generateTestPublicKey(t))},
+				Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: hex.EncodeToString(generateTestPublicKey(t)), AuditorPublicKey: auditorKeyHex, AuditorKeyID: auditorKeyHex},
 			},
 			operatorKey: operatorKey,
 			cliKey:      cliKey,

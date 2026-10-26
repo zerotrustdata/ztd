@@ -244,6 +244,13 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 	if err := govsvc.ExportActuatorPublicKey(fileSvc, actuatorPub, actuatorKeyID, logger); err != nil {
 		return fmt.Errorf("gateway: export actuator public key: %w", err)
 	}
+	auditorPriv, auditorKeyID, err := sm.GetAuditorKey()
+	if err != nil {
+		return fmt.Errorf("gateway: load auditor signing key: %w", err)
+	}
+	if err := govsvc.ExportAuditorPublicKey(fileSvc, auditorPriv.Public().(ed25519.PublicKey), auditorKeyID, logger); err != nil {
+		return fmt.Errorf("gateway: export auditor public key: %w", err)
+	}
 
 	cmdSvc := svc.GetCommandService()
 	if cmdSvc == nil {

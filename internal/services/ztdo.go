@@ -279,6 +279,9 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
 	}
+	if err := governance.ExportAuditorPublicKey(vs.fileSvc, auditorPriv.Public().(ed25519.PublicKey), auditorKeyID, vs.logger); err != nil {
+		return fmt.Errorf("ztdo: export auditor public key: %w", err)
+	}
 
 	handlers, err := pubsub.NewCapabilityHandlers(vs.config, vs.logger, vs.fileSvc, scrubbingService, vs.pubSubResults, inferenceProvider)
 	if err != nil {

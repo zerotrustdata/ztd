@@ -17,7 +17,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,10 +116,6 @@ func TestUserEndpointEnvVars_MatchRegistryUserEndpoints(t *testing.T) {
 	assert.ElementsMatch(t, want, got)
 }
 
-// testHarnessEnvPrefix names in-process test re-exec markers (for example
-// ZTD_TEST_REEXEC), which are exempt from the registry as in check_env.go.
-const testHarnessEnvPrefix = "ZTD_TEST_"
-
 // TestProductionGoEnvReads_UseRegistryKeys asserts no production Go code, and
 // no E2E harness code under test/, reads the environment through a raw string
 // literal or a locally declared string constant; every key goes through the
@@ -219,9 +214,6 @@ func rawEnvReads(t *testing.T, path, root string, consts map[string]string) []st
 			}
 			key = value
 		default:
-			return true
-		}
-		if strings.HasPrefix(key, testHarnessEnvPrefix) {
 			return true
 		}
 		rel, relErr := filepath.Rel(root, path)

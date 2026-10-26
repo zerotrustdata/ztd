@@ -200,6 +200,12 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err))
 	}
 	actuatorPublicKeyHex := hex.EncodeToString(actuatorPriv.Public().(ed25519.PublicKey))
+	auditorPriv, _, err := canonicalDB.GetSecretManager().GetAuditorKey()
+	if err != nil {
+		logger.Error("Failed to read Auditor key", string(constants.ConnectionStateError), err)
+		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err))
+	}
+	auditorPublicKeyHex := hex.EncodeToString(auditorPriv.Public().(ed25519.PublicKey))
 
 	// An owner-supplied CA is read, never persisted, and wins over the
 	// trust delivered in the bundle.
@@ -212,7 +218,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		}
 	}
 
-	identity, err := enrollOperator(ctx, opts, cfg, operatorEndpoint, effectiveWorkDir, explicitTrust, actuatorPublicKeyHex, deployment, logger)
+	identity, err := enrollOperator(ctx, opts, cfg, operatorEndpoint, effectiveWorkDir, explicitTrust, actuatorPublicKeyHex, auditorPublicKeyHex, deployment, logger)
 	if err != nil {
 		logger.Error("Operator enrollment failed", string(constants.ConnectionStateError), err)
 		fmt.Fprintf(os.Stderr, "Enrollment failed: %v\n", err)
@@ -305,7 +311,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 // bootstrap websocket. Every start enrolls: no identity survives the process.
 // actuatorPublicKeyHex is the hex Ed25519 key of this Operator's Actuator, which
 // the Gateway binds to the Operator at enrollment.
-func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.Config, endpoint, workDir string, explicitTrust []byte, actuatorPublicKeyHex string, deployment *OperatorDeploymentRecorder, logger *slog.Logger) (*OperatorIdentity, error) {
+func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.Config, endpoint, workDir string, explicitTrust []byte, actuatorPublicKeyHex, auditorPublicKeyHex string, deployment *OperatorDeploymentRecorder, logger *slog.Logger) (*OperatorIdentity, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("resolve hostname: %w", err)
@@ -321,6 +327,7 @@ func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.
 		RuntimeConfig:      runtimeConfig,
 		FingerprintOptions: operatorFingerprintOptions(opts, workDir, auth.ResolveCurrentAccount()),
 		ActuatorPublicKey:  actuatorPublicKeyHex,
+		AuditorPublicKey:   auditorPublicKeyHex,
 		TrustBundlePEM:     explicitTrust,
 		TLSServerName:      cfg.TLSServerName,
 		Deployment:         deployment,

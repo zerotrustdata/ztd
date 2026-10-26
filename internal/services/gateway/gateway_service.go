@@ -347,6 +347,9 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: load auditor signing key: %w", err)
 	}
+	if err := reg.RecordEmbeddedAuditorKey(ctx, auditorKeyID); err != nil {
+		return nil, fmt.Errorf("gateway: embedded auditor key: %w", err)
+	}
 
 	// --- Consensus bootstrap (C2 inverted order: before pubsub and mcpGateway) ---
 	// The router reads the binding provider per envelope; its Tribunal vote

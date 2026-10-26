@@ -4526,6 +4526,12 @@ type OperatorDocument struct {
 	ActuatorPublicKey string `protobuf:"bytes,36,opt,name=actuator_public_key,json=actuatorPublicKey,proto3" json:"actuator_public_key,omitempty"`
 	// actuator_key_id equals actuator_public_key (key_id == hex(pub)).
 	ActuatorKeyId string `protobuf:"bytes,37,opt,name=actuator_key_id,json=actuatorKeyId,proto3" json:"actuator_key_id,omitempty"`
+	// auditor_public_key is the hex Ed25519 public key of this Operator's
+	// Auditor, bound once at enrollment. Auditor attestations verify only
+	// against this key.
+	AuditorPublicKey string `protobuf:"bytes,38,opt,name=auditor_public_key,json=auditorPublicKey,proto3" json:"auditor_public_key,omitempty"`
+	// auditor_key_id equals auditor_public_key (key_id == hex(pub)).
+	AuditorKeyId  string `protobuf:"bytes,39,opt,name=auditor_key_id,json=auditorKeyId,proto3" json:"auditor_key_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4794,6 +4800,20 @@ func (x *OperatorDocument) GetActuatorPublicKey() string {
 func (x *OperatorDocument) GetActuatorKeyId() string {
 	if x != nil {
 		return x.ActuatorKeyId
+	}
+	return ""
+}
+
+func (x *OperatorDocument) GetAuditorPublicKey() string {
+	if x != nil {
+		return x.AuditorPublicKey
+	}
+	return ""
+}
+
+func (x *OperatorDocument) GetAuditorKeyId() string {
+	if x != nil {
+		return x.AuditorKeyId
 	}
 	return ""
 }
@@ -14378,7 +14398,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x1binference_llamacpp_endpoint\x18\x18 \x01(\tR\x19inferenceLlamacppEndpoint\x12A\n" +
 	"\x1dinference_llamacpp_model_root\x18\x19 \x01(\tR\x1ainferenceLlamacppModelRoot\x12V\n" +
 	"(provenance_operator_model_storage_format\x18\x1a \x01(\tR$provenanceOperatorModelStorageFormatJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
-	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x15local_storage_enabledR\x11inference_enabledR\"provider_boundary_observer_enabledR\x1bprovenance_operator_enabledR\x06no_git\"\xa9\f\n" +
+	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x15local_storage_enabledR\x11inference_enabledR\"provider_boundary_observer_enabledR\x1bprovenance_operator_enabledR\x06no_git\"\xfd\f\n" +
 	"\x10OperatorDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12'\n" +
@@ -14420,7 +14440,9 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x12termination_reason\x18\" \x01(\tR\x11terminationReason\x125\n" +
 	"\bstale_at\x18# \x01(\v2\x1a.google.protobuf.TimestampR\astaleAt\x12.\n" +
 	"\x13actuator_public_key\x18$ \x01(\tR\x11actuatorPublicKey\x12&\n" +
-	"\x0factuator_key_id\x18% \x01(\tR\ractuatorKeyIdJ\x04\b\x0f\x10\x10J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13R\rcloud_subtypeR\x12created_at_unix_msR\x12updated_at_unix_ms\"+\n" +
+	"\x0factuator_key_id\x18% \x01(\tR\ractuatorKeyId\x12,\n" +
+	"\x12auditor_public_key\x18& \x01(\tR\x10auditorPublicKey\x12$\n" +
+	"\x0eauditor_key_id\x18' \x01(\tR\fauditorKeyIdJ\x04\b\x0f\x10\x10J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13R\rcloud_subtypeR\x12created_at_unix_msR\x12updated_at_unix_ms\"+\n" +
 	"\x11ShutdownRequested\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\"~\n" +
 	"\x13EvalAnswerRequested\x12\x1b\n" +
