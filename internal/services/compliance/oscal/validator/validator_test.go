@@ -326,6 +326,26 @@ func TestValidator_DuplicateUUID_FailsSemantic(t *testing.T) {
 	assert.True(t, hasSemanticFailure(result.SemanticFailures, SemanticUUIDDuplicate))
 }
 
+func TestValidateUUIDs_UnknownBranchReportsDuplicatePointer(t *testing.T) {
+	// Start with the checked-in valid shape, then add an extension-shaped
+	// branch to exercise the UUID tree walk without a closed document struct.
+	var document map[string]any
+	require.NoError(t, json.Unmarshal([]byte(minimalValidOSCAL), &document))
+	assessmentResults, ok := document["assessment-results"].(map[string]any)
+	require.True(t, ok)
+	assessmentResults["vendor-extension"] = map[string]any{
+		"nested": []any{map[string]any{"uuid": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"}},
+	}
+
+	v, err := NewValidator()
+	require.NoError(t, err)
+	collector := &semanticCollector{}
+	v.validateUUIDs(assessmentResults, "/assessment-results", collector)
+	require.Len(t, collector.failures, 1)
+	assert.Equal(t, SemanticUUIDDuplicate, collector.failures[0].Reason)
+	assert.Equal(t, "/assessment-results/vendor-extension/nested/0/uuid", collector.failures[0].InstancePtr)
+}
+
 func TestValidator_UnresolvedEvidenceRef_FailsSemantic(t *testing.T) {
 	v, err := NewValidator()
 	require.NoError(t, err)

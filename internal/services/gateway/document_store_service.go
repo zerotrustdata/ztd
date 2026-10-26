@@ -524,6 +524,9 @@ func (s *DocumentStoreService) GetField(ctx context.Context, collection, id, fie
 		if doc == nil {
 			return mcp.FieldValue{}, constants.ErrNotFound
 		}
+		// SQLite needs JSON text for extraction. Encode the overlaid field map
+		// so nested paths use the same SQL semantics as other collections and
+		// include observed telemetry that is absent from the stored document.
 		data, err := json.Marshal(doc.Data)
 		if err != nil {
 			return mcp.FieldValue{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)

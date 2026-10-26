@@ -50,8 +50,9 @@ func (s *DocumentStoreService) RecordOperatorHeartbeat(ctx context.Context, oper
 
 // overlayOperatorHeartbeats merges each Operator document's observed heartbeat
 // telemetry into its data, so every reader sees the same document shape as
-// before telemetry left the bound document. It is a no-op for every other
-// collection.
+// before telemetry left the bound document. Document.Data is a JSON field map
+// and KV values are JSON records, so the overlay decodes that record into the
+// field map at this storage boundary. It is a no-op for every other collection.
 func (s *DocumentStoreService) overlayOperatorHeartbeats(ctx context.Context, docs ...*models.Document) {
 	if len(docs) == 0 || docs[0].Collection != marshaler.CollectionName(constants.CollectionOperators) {
 		return

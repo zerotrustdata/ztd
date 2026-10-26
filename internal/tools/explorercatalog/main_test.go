@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,18 @@ func TestGenerate_EmitsEveryCatalogScenarioWithoutHintValues(t *testing.T) {
 	// Hint arguments publish where a value comes from, never the value itself.
 	assert.NotContains(t, text, `"value":`)
 	assert.Contains(t, text, `"source": "workspace"`)
+
+	// The generated task is a public view of the canonical fixture body. Read
+	// the value from that body so this guards the projection without asserting a
+	// second serialization of the fixture artifact itself.
+	catalog, artifacts, err := evaluation.BuildScenarioCatalog()
+	require.NoError(t, err)
+	scenario := catalog.GetScenarios()[0]
+	var input evaluation.ScenarioInputFixture
+	require.NoError(t, json.Unmarshal(artifacts[scenario.GetScenarioId()].Input.Body, &input))
+	quotedPrompt, err := json.Marshal(input.UserPrompt)
+	require.NoError(t, err)
+	assert.Contains(t, text, `"userPrompt": `+string(quotedPrompt))
 }
 
 func TestGenerate_KeepsLicenseHeader(t *testing.T) {

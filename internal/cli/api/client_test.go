@@ -309,12 +309,12 @@ func TestDecodeGatewayError_PreservesRecoveryErrorIdentity(t *testing.T) {
 		t.Run(sentinel.Error(), func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{"error":%q}`, sentinel.Error()+": details"))
 			err := fmt.Errorf("gateway operation: %w", DecodeGatewayError(http.StatusConflict, body))
-			assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
-			assert.ErrorIs(t, err, sentinel)
+			require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+			require.ErrorIs(t, err, sentinel)
 			assert.NotErrorIs(t, DecodeGatewayError(http.StatusConflict, []byte(fmt.Sprintf(`{"error":%q}`, "unrelated: "+sentinel.Error()))), sentinel)
 		})
 	}
-	assert.ErrorIs(t, DecodeGatewayError(http.StatusNotFound, nil), constants.ErrNotFound)
+	require.ErrorIs(t, DecodeGatewayError(http.StatusNotFound, nil), constants.ErrNotFound)
 	assert.NotErrorIs(t, DecodeGatewayError(http.StatusServiceUnavailable, []byte(`{"error":"status 404"}`)), constants.ErrNotFound)
 }
 

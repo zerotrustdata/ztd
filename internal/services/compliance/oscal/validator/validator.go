@@ -155,6 +155,10 @@ func (v *Validator) Validate(data []byte) (*ValidationResult, error) {
 	}
 
 	// Stage 2: Semantic validation (OSCAL-specific)
+	// Keep the validated source as a generic JSON tree. Semantic checks must
+	// inspect every branch, including fields they do not otherwise interpret;
+	// a closed Go struct would discard those fields and prevent complete UUID
+	// uniqueness checks and source JSON Pointer reporting.
 	var doc map[string]any
 	if err := json.Unmarshal(data, &doc); err != nil {
 		// This should not happen since structural validation passed,

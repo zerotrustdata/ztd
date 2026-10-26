@@ -149,6 +149,8 @@ Gateway API clients decode failed responses with `api.DecodeGatewayError`, which
 | INV-TYPE-05 | A non-protobuf HTTP surface MUST use named request and response structs. |
 | INV-TYPE-06 | Runtime Go constants live under `internal/constants/`. External registries and schemas live under `protocol/constants/`, `protocol/models/`, and `protocol/schemas/`. When a public registry has both a Go and a JSON representation, MUST update both through the established owner and run owning contract or conformance tests. |
 
+Keep JSON encoding at boundaries that consume JSON bytes. Examples include a `structpb.Struct` decoded into a typed message through `protojson`, document-store field maps supplied to a protobuf decoder or SQLite `json_extract`, and canonical artifact bodies. A validator inspecting arbitrary source fields needs a JSON tree to retain unknown fields and report source paths; an allowlist validator over archived records may use `json.RawMessage` to preserve accepted value types. Composing a protobuf JSON object with named extensions may use raw field maps to detect key collisions without replacing protobuf encoding. Document the reason at the conversion site and test the observable boundary behavior. Do not introduce JSON serialization merely to copy fields between known models.
+
 ### Runtime files (`INV-FS`)
 
 | ID | Rule |

@@ -49,6 +49,8 @@ func UnmarshalOperatorDocument(data []byte) (*operatorv1.OperatorDocument, error
 
 // OperatorDocumentFromStore decodes a document-store row into an OperatorDocument.
 func OperatorDocumentFromStore(doc *Document) (*operatorv1.OperatorDocument, error) {
+	// Document stores fields as json.RawMessage values; encode the wire view once
+	// so the protobuf-owned document can be decoded with protojson.
 	raw, err := json.Marshal(doc.ForWire())
 	if err != nil {
 		return nil, fmt.Errorf("encode stored operator document: %w", err)

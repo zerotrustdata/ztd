@@ -187,6 +187,9 @@ func generate() ([]byte, error) {
 		if !ok {
 			return nil, fmt.Errorf("scenario %s has no fixture artifacts", scenario.GetScenarioId())
 		}
+		// These bodies are canonical, content-addressed fixture artifacts. Decode
+		// their typed fields only to project the public task view; never re-marshal
+		// a fixture as a replacement artifact or derive its identity from a view.
 		var input evaluation.ScenarioInputFixture
 		if err := json.Unmarshal(pair.Input.Body, &input); err != nil {
 			return nil, fmt.Errorf("decode input fixture for %s: %w", scenario.GetScenarioId(), err)

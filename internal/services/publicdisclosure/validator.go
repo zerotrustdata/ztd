@@ -97,6 +97,9 @@ func validateResult(version string, raw json.RawMessage) error {
 	if err != nil {
 		return schemaError(err.Error())
 	}
+	// These named public extensions predate the protobuf projection. Keep their
+	// raw JSON out of the typed protobuf decode while preserving the closed
+	// allowlist for every other field.
 	extensions := make(map[string]json.RawMessage)
 	for _, key := range []string{"benchmark_observations", "resource_summary", "model_response", "failure_output", "role_transcripts"} {
 		if value, ok := fields[key]; ok {
@@ -465,6 +468,8 @@ func decodeStrict(data []byte, target any) error {
 }
 
 func decodeObject(data []byte) (map[string]json.RawMessage, error) {
+	// RawMessage values are intentional here: allowlist validation often closes
+	// field names while preserving historical field types and values.
 	var fields map[string]json.RawMessage
 	if err := decodeStrict(data, &fields); err != nil {
 		return nil, err

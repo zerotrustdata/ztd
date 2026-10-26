@@ -796,6 +796,7 @@ var (
 	ErrDocumentStoreParseUpdatedAt      = errors.New("failed to parse updated_at timestamp")
 	ErrOperatorStalenessDerive          = errors.New("failed to derive operator heartbeat staleness")
 	ErrOperatorHeartbeatIntervalInvalid = errors.New("invalid operator heartbeat interval")
+	ErrHeartbeatIdentityMismatch        = errors.New("heartbeat operator identity does not match envelope identity")
 	ErrOperatorGatewayPortInvalid       = errors.New("operator gateway port must be between 0 (default) and 65535")
 	ErrOperatorStatusEventUnsupported   = errors.New("operator status has no status.updated event")
 	ErrOperatorStatusObserverNil        = errors.New("operator status observer binding cannot be nil")

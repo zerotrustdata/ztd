@@ -225,6 +225,7 @@ The canonical `system_fingerprint` is a SHA-256 hash combining immutable host at
 
 - **Heartbeat Transmission**: Outbound Operators publish heartbeat frames every 30 seconds (configurable via `--heartbeat-interval 0-300`) to the Gateway pub/sub broker. Heartbeats are observed-tier telemetry that do not alter the Bound State Merkle root.
 - **Requested Heartbeats**: Governed heartbeat requests dispatch through the `HEARTBEAT` action handler. Heartbeat result events are telemetry and are rejected on the command dispatch path.
+- **Heartbeat Decoding**: The Gateway decodes binary heartbeat payloads first, using `protojson` for `intent_data` when payload bytes are absent. A nonempty result `operator_id` must match the envelope `operator_id`; a conflicting result is rejected before telemetry is stored.
 - **Staleness Window**: Twice the declared interval (`constants.OperatorHeartbeatStaleMultiplier`), with a floor of 60 seconds and a ceiling of 10 minutes.
 - **On-Read Derivation**: Staleness is computed dynamically during `DocGet`, `DocList`, or `DocQuery` calls via `deriveOperatorStaleness`. Silent Operators return `status: stale` without modifying persisted database rows.
 - **Recovery**: Receiving a fresh heartbeat immediately restores derived status to `active`. Heartbeats cannot revive `stopped` or `terminated` Operators.

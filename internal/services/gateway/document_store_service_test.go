@@ -475,6 +475,36 @@ func TestGetField_Success(t *testing.T) {
 	}
 }
 
+func TestGetField_OperatorHeartbeatOverlayUsesSQLitePaths(t *testing.T) {
+	svc := newTestDB(t).GetDocStore()
+	ctx := testutil.Context(t)
+	collection := string(constants.CollectionOperators)
+	require.NoError(t, svc.DocSet(ctx, collection, "op-field", json.RawMessage(`{"name":"stored-name","current_hostname":"stored-host","latest_heartbeat_snapshot":{"system_identity":{"hostname":"stored-host"}}}`)))
+	require.NoError(t, svc.RecordOperatorHeartbeat(ctx, "op-field", heartbeatUpdate{
+		LastHeartbeatAt:         time.Now().UTC(),
+		CurrentHostname:         "observed-host",
+		LatestHeartbeatSnapshot: json.RawMessage(`{"system_identity":{"hostname":"observed-host"},"labels":["first","second"],"a.b":"quoted-key"}`),
+	}))
+
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{"name", "stored-name"},
+		{"current_hostname", "observed-host"},
+		{"latest_heartbeat_snapshot.system_identity.hostname", "observed-host"},
+		{"latest_heartbeat_snapshot.labels[1]", "second"},
+		{`latest_heartbeat_snapshot."a.b"`, "quoted-key"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			field, err := svc.GetField(ctx, collection, "op-field", tc.path)
+			require.NoError(t, err)
+			require.NotNil(t, field.Str)
+			assert.Equal(t, tc.want, *field.Str)
+		})
+	}
+}
+
 func TestGetField_NotFound(t *testing.T) {
 	svc := newDocumentStoreService(t)
 

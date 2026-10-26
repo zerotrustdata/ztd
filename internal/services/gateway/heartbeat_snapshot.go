@@ -37,6 +37,9 @@ func heartbeatResultFromEnvelope(env *commonv1.GovernanceEnvelope) (*operatorv1.
 		if proto.Size(heartbeat) == 0 {
 			return nil, fmt.Errorf("heartbeat payload is empty: %w", constants.ErrTxPayloadMissing)
 		}
+		if err := validateHeartbeatEnvelopeIdentity(env, heartbeat); err != nil {
+			return nil, err
+		}
 		return heartbeat, nil
 	}
 
@@ -44,6 +47,8 @@ func heartbeatResultFromEnvelope(env *commonv1.GovernanceEnvelope) (*operatorv1.
 		return nil, fmt.Errorf("heartbeat envelope has no payload: %w", constants.ErrTxPayloadMissing)
 	}
 
+	// IntentData is a protobuf Struct rather than a HeartbeatResult. protojson
+	// is the canonical bridge between those protobuf-owned shapes.
 	intentJSON, err := protojson.Marshal(env.IntentData)
 	if err != nil {
 		return nil, fmt.Errorf("heartbeat intent_data marshal failed: %w", err)
@@ -54,7 +59,18 @@ func heartbeatResultFromEnvelope(env *commonv1.GovernanceEnvelope) (*operatorv1.
 	if proto.Size(heartbeat) == 0 {
 		return nil, fmt.Errorf("heartbeat intent_data is empty: %w", constants.ErrTxPayloadMissing)
 	}
+	if err := validateHeartbeatEnvelopeIdentity(env, heartbeat); err != nil {
+		return nil, err
+	}
 	return heartbeat, nil
+}
+
+func validateHeartbeatEnvelopeIdentity(env *commonv1.GovernanceEnvelope, heartbeat *operatorv1.HeartbeatResult) error {
+	if heartbeat.GetOperatorId() != "" && heartbeat.GetOperatorId() != env.GetOperatorId() {
+		return fmt.Errorf("heartbeat operator id %q does not match envelope operator id %q: %w",
+			heartbeat.GetOperatorId(), env.GetOperatorId(), constants.ErrHeartbeatIdentityMismatch)
+	}
+	return nil
 }
 
 func marshalHeartbeatSnapshot(heartbeat *operatorv1.HeartbeatResult) (json.RawMessage, error) {
