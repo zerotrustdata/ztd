@@ -440,7 +440,7 @@ func (s *ConsensusStoreService) ListConsensus(ctx context.Context) ([]models.Con
 	results := make([]models.ConsensusPolicy, 0, len(docs))
 	for _, doc := range docs {
 		var policy models.ConsensusPolicy
-		if err := unmarshalDocData(doc, &policy); err != nil {
+		if err := doc.DecodeData(&policy); err != nil {
 			s.logger.Warn("failed to decode consensus document", "error", err)
 			continue
 		}

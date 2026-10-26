@@ -82,7 +82,7 @@ func (s *EvalCampaignPublicationService) Get(ctx context.Context, runID string) 
 		}, nil
 	}
 	state := &models.EvalCampaignPublicationState{}
-	if err := unmarshalDocData(doc, state); err != nil {
+	if err := doc.DecodeData(state); err != nil {
 		return nil, fmt.Errorf("eval campaign publication: decode: %w", err)
 	}
 	if state.SchemaVersion == "" {

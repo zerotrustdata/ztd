@@ -494,7 +494,7 @@ func isTerminalState(state models.CLIRecoveryState) bool {
 // decodeCLIRecoveryRequest deserializes a Document into a CLIRecoveryRequest.
 func decodeCLIRecoveryRequest(doc *models.Document) (*models.CLIRecoveryRequest, error) {
 	var req models.CLIRecoveryRequest
-	if err := unmarshalDocData(doc, &req); err != nil {
+	if err := doc.DecodeData(&req); err != nil {
 		return nil, fmt.Errorf("decode recovery request: %w", err)
 	}
 	return &req, nil

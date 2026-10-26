@@ -1125,7 +1125,7 @@ func TestExportBatch_NeverMutatesAuthoritativeReports(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 	var afterProj evalProjection
-	require.NoError(t, unmarshalDocData(doc, &afterProj))
+	require.NoError(t, doc.DecodeData(&afterProj))
 	assert.Equal(t, originalProj.RunID, afterProj.RunID)
 	assert.Equal(t, originalProj.Status, afterProj.Status)
 }

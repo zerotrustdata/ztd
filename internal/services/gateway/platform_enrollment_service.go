@@ -702,7 +702,7 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 		return nil, fmt.Errorf("read bound consensus: %w", err)
 	}
 	var policy models.ConsensusPolicy
-	if err := unmarshalDocData(boundDoc, &policy); err != nil {
+	if err := boundDoc.DecodeData(&policy); err != nil {
 		return nil, fmt.Errorf("unmarshal bound consensus: %w", err)
 	}
 	policy.ID = boundDoc.ID
@@ -1272,7 +1272,7 @@ func platformEnrollmentCollectionName() string {
 // PlatformEnrollmentRequest.
 func decodePlatformEnrollmentRequest(doc *models.Document) (*models.PlatformEnrollmentRequest, error) {
 	var req models.PlatformEnrollmentRequest
-	if err := unmarshalDocData(doc, &req); err != nil {
+	if err := doc.DecodeData(&req); err != nil {
 		return nil, fmt.Errorf("unmarshal platform enrollment request: %w", err)
 	}
 	req.CreatedAt = doc.CreatedAt

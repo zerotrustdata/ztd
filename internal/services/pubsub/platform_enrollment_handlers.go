@@ -684,12 +684,8 @@ func (h *PlatformEnrollmentHandler) persistAppSigningKey(ctx context.Context, re
 		return fmt.Errorf("platform enrollment: read signing key: %w", err)
 	}
 	if existing != nil {
-		data, err := json.Marshal(existing.Data)
-		if err != nil {
-			return fmt.Errorf("platform enrollment: marshal existing signing key: %w", err)
-		}
 		var signer models.TrustedSigner
-		if err := json.Unmarshal(data, &signer); err != nil {
+		if err := existing.DecodeData(&signer); err != nil {
 			return fmt.Errorf("platform enrollment: decode existing signing key: %w", err)
 		}
 		if signer.PublicKey != hex.EncodeToString(key) || !signer.Enabled {
@@ -751,11 +747,7 @@ func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSu
 		}
 		if boundDoc != nil {
 			var boundPolicy models.ConsensusPolicy
-			bData, err := json.Marshal(boundDoc.Data)
-			if err != nil {
-				return "", fmt.Errorf("platform enrollment: marshal consensus binding for revocation: %w", err)
-			}
-			if err := json.Unmarshal(bData, &boundPolicy); err != nil {
+			if err := boundDoc.DecodeData(&boundPolicy); err != nil {
 				return "", fmt.Errorf("platform enrollment: decode consensus binding for revocation: %w", err)
 			}
 			isMember := false
@@ -972,12 +964,8 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		if appDoc == nil {
 			return "", constants.ErrConsensusAppNotEnrolled
 		}
-		policyData, err := json.Marshal(appDoc.Data)
-		if err != nil {
-			return "", fmt.Errorf("platform enrollment: marshal app policy: %w", err)
-		}
 		var appPolicy models.AppPolicy
-		if err := json.Unmarshal(policyData, &appPolicy); err != nil {
+		if err := appDoc.DecodeData(&appPolicy); err != nil {
 			return "", fmt.Errorf("platform enrollment: decode app policy: %w", err)
 		}
 		if appPolicy.OwnerUserID != actorUserID {
@@ -990,12 +978,8 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		if signerDoc == nil {
 			return "", constants.ErrConsensusAppMissingSignerKey
 		}
-		signerData, err := json.Marshal(signerDoc.Data)
-		if err != nil {
-			return "", fmt.Errorf("platform enrollment: marshal trusted signer: %w", err)
-		}
 		var signer models.TrustedSigner
-		if err := json.Unmarshal(signerData, &signer); err != nil {
+		if err := signerDoc.DecodeData(&signer); err != nil {
 			return "", fmt.Errorf("platform enrollment: decode trusted signer: %w", err)
 		}
 		key, err := hex.DecodeString(signer.PublicKey)

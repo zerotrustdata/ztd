@@ -114,7 +114,7 @@ func (s *dbUserStore) GetUser(ctx context.Context, userID string) (*models.User,
 	}
 
 	var user models.User
-	if err := unmarshalDocData(doc, &user); err != nil {
+	if err := doc.DecodeData(&user); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
 	}
 	user.ID = doc.ID
@@ -189,7 +189,7 @@ func (s *dbWebAuthnCeremonyStore) GetCeremony(ctx context.Context, userID string
 	}
 
 	var session webauthn.SessionData
-	if err := unmarshalDocData(doc, &session); err != nil {
+	if err := doc.DecodeData(&session); err != nil {
 		return nil, err
 	}
 

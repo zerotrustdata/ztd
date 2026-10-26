@@ -64,21 +64,6 @@ func decodeCursor(s string) (observeCursor, error) {
 	return c, nil
 }
 
-// unmarshalDocData re-serializes a Document's Data map (map[string]json.RawMessage)
-// to JSON bytes and unmarshals into target. Document.Data is a field map, not
-// raw JSON, so it must be marshaled back to bytes before decoding into a typed
-// struct.
-func unmarshalDocData(doc *models.Document, target any) error {
-	b, err := json.Marshal(doc.Data)
-	if err != nil {
-		return fmt.Errorf("observe: marshal document data: %w", err)
-	}
-	if err := json.Unmarshal(b, target); err != nil {
-		return fmt.Errorf("observe: unmarshal document data: %w", err)
-	}
-	return nil
-}
-
 // runProjection is the persisted run projection document. It contains the
 // user_id ownership field plus all fields needed to derive both RunSummary
 // (list endpoint) and RunDetail (detail endpoint). Phase 3 producers write
@@ -406,7 +391,7 @@ func (s *ObserveService) listAgentStates(ctx context.Context, userID string) ([]
 	agents := make([]models.AgentStateProjection, 0, len(docs))
 	for _, doc := range docs {
 		var proj agentStateProjection
-		if err := unmarshalDocData(doc, &proj); err != nil {
+		if err := doc.DecodeData(&proj); err != nil {
 			s.logger.Warn("observe: unmarshal agent state projection", "error", err, "doc_id", doc.ID)
 			continue
 		}
@@ -431,7 +416,7 @@ func (s *ObserveService) listRuns(ctx context.Context, userID string, cursor obs
 	projections := make([]runProjection, 0, len(docs))
 	for _, doc := range docs {
 		var proj runProjection
-		if err := unmarshalDocData(doc, &proj); err != nil {
+		if err := doc.DecodeData(&proj); err != nil {
 			s.logger.Warn("observe: unmarshal run projection", "error", err, "doc_id", doc.ID)
 			continue
 		}
@@ -472,7 +457,7 @@ func (s *ObserveService) listEvals(ctx context.Context, userID string, cursor ob
 	projections := make([]evalProjection, 0, len(docs))
 	for _, doc := range docs {
 		var proj evalProjection
-		if err := unmarshalDocData(doc, &proj); err != nil {
+		if err := doc.DecodeData(&proj); err != nil {
 			s.logger.Warn("observe: unmarshal eval projection", "error", err, "doc_id", doc.ID)
 			continue
 		}
@@ -513,7 +498,7 @@ func (s *ObserveService) listDownloads(ctx context.Context, userID string, curso
 	projections := make([]downloadProjection, 0, len(docs))
 	for _, doc := range docs {
 		var proj downloadProjection
-		if err := unmarshalDocData(doc, &proj); err != nil {
+		if err := doc.DecodeData(&proj); err != nil {
 			s.logger.Warn("observe: unmarshal download projection", "error", err, "doc_id", doc.ID)
 			continue
 		}
@@ -551,7 +536,7 @@ func (s *ObserveService) getRunProjection(ctx context.Context, userID, runID str
 		return nil, nil
 	}
 	var proj runProjection
-	if err := unmarshalDocData(doc, &proj); err != nil {
+	if err := doc.DecodeData(&proj); err != nil {
 		return nil, fmt.Errorf("observe: unmarshal run %s: %w", runID, err)
 	}
 	if proj.UserID != userID {
@@ -572,7 +557,7 @@ func (s *ObserveService) getEvalProjection(ctx context.Context, userID, runID st
 		return nil, nil
 	}
 	var proj evalProjection
-	if err := unmarshalDocData(doc, &proj); err != nil {
+	if err := doc.DecodeData(&proj); err != nil {
 		return nil, fmt.Errorf("observe: unmarshal eval %s: %w", runID, err)
 	}
 	if proj.UserID != userID {
@@ -593,7 +578,7 @@ func (s *ObserveService) getDownloadProjection(ctx context.Context, userID, arti
 		return nil, nil
 	}
 	var proj downloadProjection
-	if err := unmarshalDocData(doc, &proj); err != nil {
+	if err := doc.DecodeData(&proj); err != nil {
 		return nil, fmt.Errorf("observe: unmarshal download %s: %w", artifactID, err)
 	}
 	if proj.UserID != userID {

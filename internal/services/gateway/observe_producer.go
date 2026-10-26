@@ -249,7 +249,7 @@ func (s *ObserveProducerService) UpdateAgentState(ctx context.Context, userID st
 	}
 	if existing != nil {
 		var proj agentStateProjection
-		if err := unmarshalDocData(existing, &proj); err != nil {
+		if err := existing.DecodeData(&proj); err != nil {
 			return fmt.Errorf("observe producer: update agent state: unmarshal existing: %w", err)
 		}
 		if proj.UserID != userID {
@@ -343,7 +343,7 @@ func (s *ObserveProducerService) updateRunState(ctx context.Context, userID stri
 	var existingProj *runProjection
 	if existing != nil {
 		var proj runProjection
-		if err := unmarshalDocData(existing, &proj); err != nil {
+		if err := existing.DecodeData(&proj); err != nil {
 			return fmt.Errorf("observe producer: update run state: unmarshal existing: %w", err)
 		}
 		if proj.UserID != userID {
@@ -444,7 +444,7 @@ func (s *ObserveProducerService) StreamDownload(ctx context.Context, userID, art
 		return fmt.Errorf("observe producer: stream download: %w: %s", constants.ErrObserveDownloadNotFound, artifactID)
 	}
 	var proj downloadProjection
-	if err := unmarshalDocData(doc, &proj); err != nil {
+	if err := doc.DecodeData(&proj); err != nil {
 		return fmt.Errorf("observe producer: stream download: unmarshal projection: %w", err)
 	}
 	if proj.UserID != userID {

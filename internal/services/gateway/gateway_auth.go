@@ -560,7 +560,7 @@ func (s *AuthService) ValidateOperatorCLISessionBinding(ctx context.Context, ope
 		return nil, &AuthError{Message: constants.ErrCLISessionNotFound.Error(), Status: http.StatusUnauthorized}
 	}
 	var cliSession models.CLISession
-	if err := unmarshalDocData(doc, &cliSession); err != nil {
+	if err := doc.DecodeData(&cliSession); err != nil {
 		return nil, fmt.Errorf("gateway: auth: decode CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
@@ -781,7 +781,7 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 		}
 
 		var cliSession models.CLISession
-		if err := unmarshalDocData(cliDoc, &cliSession); err != nil {
+		if err := cliDoc.DecodeData(&cliSession); err != nil {
 			s.logger.Error("gateway: auth: decode CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode CLI session %s: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed))
 			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
 			return true
@@ -987,7 +987,7 @@ func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next
 				}
 
 				var policy models.AppPolicy
-				if err := unmarshalDocData(doc, &policy); err != nil {
+				if err := doc.DecodeData(&policy); err != nil {
 					s.logger.Error("gateway: auth: decode app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode app policy %s: %w: %w", appID, err, constants.ErrResponseParseFailed))
 					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
 					return true
@@ -1120,7 +1120,7 @@ func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*ur
 		return false, nil
 	}
 	var cliSession models.CLISession
-	if err := unmarshalDocData(doc, &cliSession); err != nil {
+	if err := doc.DecodeData(&cliSession); err != nil {
 		return false, fmt.Errorf("gateway: auth: decode CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
@@ -1154,7 +1154,7 @@ func (s *AuthService) ValidateWebSessionCookie(r *http.Request) (webSessionID, u
 	}
 
 	var webSession models.WebSession
-	if err := unmarshalDocData(doc, &webSession); err != nil {
+	if err := doc.DecodeData(&webSession); err != nil {
 		s.logger.Error("gateway: auth: decode web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode web session %s: %w: %w", webSessionID, err, constants.ErrResponseParseFailed))
 		return "", "", constants.ErrSessionParseFailed
 	}
