@@ -606,14 +606,6 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
 }
 
-func resolveCampaignOllamaEndpoint(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (string, error) {
-	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(operators, inferenceSessionID)
-	if err != nil {
-		return "", fmt.Errorf("evaluation: run execute: %w", err)
-	}
-	return endpoint, nil
-}
-
 // reconcileStopRequest reads the run's lease and marks the watcher requested when
 // a cancel is recorded there. The stream runs it on every connection, so a stop
 // sent while the stream was down is still seen. A lease that cannot be read may

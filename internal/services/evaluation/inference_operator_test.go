@@ -67,6 +67,28 @@ func TestGovernedInferenceOllamaEndpoint_RejectsMissingOperatorEndpoint(t *testi
 	require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
 }
 
+func TestGovernedInferenceOllamaEndpoint_RejectsLlamaCppOperator(t *testing.T) {
+	t.Parallel()
+	operators := []*operatorv1.OperatorDocument{
+		{
+			Id:                "inf-1",
+			OperatorSessionId: "sess-inf-1",
+			Status:            string(constants.OperatorStatusActive),
+			OperatorType:      string(constants.OperatorTypeRemote),
+			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
+				Capabilities:              []string{string(constants.OperatorCapabilityInference)},
+				InferenceLlamacppEndpoint: "http://192.168.1.2:8080",
+			},
+		},
+	}
+	selected, err := SelectInferenceOperator(operators, "sess-inf-1")
+	require.NoError(t, err)
+	assert.Equal(t, constants.InferenceProviderLlamaCpp, selected.Provider)
+	assert.Equal(t, "http://192.168.1.2:8080", selected.ProviderEndpoint)
+	_, err = GovernedInferenceOllamaEndpoint(operators, "sess-inf-1")
+	require.ErrorIs(t, err, constants.ErrInferenceProviderOllamaRequired)
+}
+
 func TestSelectInferenceOperator_FailsClosedOnAmbiguity(t *testing.T) {
 	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{

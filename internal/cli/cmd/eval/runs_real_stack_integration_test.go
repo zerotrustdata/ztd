@@ -361,7 +361,7 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	// Neither the strict-run preflight residency read nor the typed release is
 	// a state change, so under consensus neither runs a Tribunal vote round.
 	require.NoError(t, releaseProviderModels(cmd, run.deps, runExecuteOptions{RunID: "tribunal-release"}, run.cfg, authContext,
-		inferenceWorkload.OperatorSessionID, run.stack.Provider.Endpoint(), "resident", nil))
+		inferenceWorkload.OperatorSessionID, "resident", nil))
 	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "residency and release must not add Tribunal vote inferences")
 
 	provider, err := inference.NewOllamaBackend(run.stack.Provider.Endpoint(), slog.Default())

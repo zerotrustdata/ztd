@@ -1386,6 +1386,7 @@ var (
 	ErrInferenceJSONNonCanonical          = errors.New("inference: JSON value is not canonical")
 	ErrInferenceToolSchemaInvalid         = errors.New("inference: tool schema invalid")
 	ErrInferenceEndpointInvalid           = errors.New("inference: provider endpoint invalid")
+	ErrInferenceProviderOllamaRequired    = errors.New("inference: Ollama model pull requires an Inference Operator serving Ollama")
 	ErrInferenceProviderResponseInvalid   = errors.New("inference: provider response invalid")
 	ErrInferenceGenerationOptionsInvalid  = errors.New("inference: generation options invalid")
 	ErrInferenceCapabilityUnsupported     = errors.New("inference: requested capability unsupported")

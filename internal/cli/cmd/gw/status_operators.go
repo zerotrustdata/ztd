@@ -108,9 +108,13 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 		row.Port = int(rc.HttpPort)
 	}
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
-	row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
-	row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
-	row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
+	// An Inference Operator serves exactly one provider; list only its flags.
+	if rc.InferenceLlamacppEndpoint != "" {
+		row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
+		row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
+	} else {
+		row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
+	}
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
 	// Operators resolve these to non-empty defaults before reporting; empty
 	// means an Operator that predates reporting them, so leave them unknown.

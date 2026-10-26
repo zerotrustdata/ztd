@@ -14,6 +14,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -43,12 +44,14 @@ func ValidateConsensusProviderIsolation(binding *models.ConsensusPolicy, operato
 	if binding.AllowHosted {
 		a, err = canonicalInferenceEndpoint("https://api.typesafe.ai")
 	} else {
-		a, err = canonicalInferenceEndpoint(consensus.GetRuntimeConfig().GetInferenceOllamaEndpoint())
+		_, endpoint := operatorcapability.InferenceProvider(consensus.GetRuntimeConfig())
+		a, err = canonicalInferenceEndpoint(endpoint)
 	}
 	if err != nil {
 		return invalid()
 	}
-	b, err := canonicalInferenceEndpoint(campaign.GetRuntimeConfig().GetInferenceOllamaEndpoint())
+	_, campaignEndpoint := operatorcapability.InferenceProvider(campaign.GetRuntimeConfig())
+	b, err := canonicalInferenceEndpoint(campaignEndpoint)
 	if err != nil || a == b {
 		return invalid()
 	}

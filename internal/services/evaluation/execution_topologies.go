@@ -180,20 +180,26 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 	}
 	switch model.Trust {
 	case FormationTrustSovereign:
-		if model.ProviderClass != "ollama" || model.Quantization == "" {
-			return fmt.Errorf("formation role %s: sovereign model must use Ollama and declare quantization: %w", role, constants.ErrFormationInvalid)
+		if !isLocalProviderClass(model.ProviderClass) || model.Quantization == "" {
+			return fmt.Errorf("formation role %s: sovereign model must use a local provider (ollama or llamacpp) and declare quantization: %w", role, constants.ErrFormationInvalid)
 		}
 		if !isSupportedLocalQuantization(model.Quantization) {
 			return fmt.Errorf("formation role %s: unsupported local quantization %q: %w", role, model.Quantization, constants.ErrFormationInvalid)
 		}
 	case FormationTrustDelegated:
-		if model.ProviderClass == "ollama" || model.Quantization != "" || model.EstimatedModelVRAMMiB != 0 {
+		if isLocalProviderClass(model.ProviderClass) || model.Quantization != "" || model.EstimatedModelVRAMMiB != 0 {
 			return fmt.Errorf("formation role %s: delegated model cannot declare local allocation: %w", role, constants.ErrFormationInvalid)
 		}
 	default:
 		return fmt.Errorf("formation role %s: unknown trust class %q: %w", role, model.Trust, constants.ErrFormationInvalid)
 	}
 	return nil
+}
+
+// isLocalProviderClass reports whether class names a provider serving weights
+// the deployment holds, the only providers a sovereign role may use.
+func isLocalProviderClass(class string) bool {
+	return class == constants.InferenceProviderOllama || class == constants.InferenceProviderLlamaCpp
 }
 
 // missingFields names the absent fields, sorted, or returns "" when none are.
@@ -543,7 +549,7 @@ func defaultExecutionTopologies() []Formation {
 func formationModel(variantID, displayName, provider, family, tag string, parameters uint64, quantization string, modelVRAMMiB, cacheMiB uint64) FormationModel {
 	return FormationModel{
 		VariantID: variantID, DisplayName: displayName, Provider: provider, Family: family,
-		ProviderClass: "ollama", ServedModelTag: tag, Trust: FormationTrustSovereign,
+		ProviderClass: constants.InferenceProviderOllama, ServedModelTag: tag, Trust: FormationTrustSovereign,
 		Quantization: quantization, ParameterCount: parameters, EstimatedModelVRAMMiB: modelVRAMMiB,
 		EstimatedKVCacheMiB: cacheMiB,
 	}

@@ -124,7 +124,7 @@ func BuildModelVariantsFromProviderInventory(ctx context.Context, entries []infe
 func modelVariantFromProviderEntry(entry inference.ProviderModelInventoryEntry) *evalv1.ModelVariant {
 	providerClass := entry.ProviderClass
 	if providerClass == "" {
-		providerClass = "ollama"
+		providerClass = constants.InferenceProviderOllama
 	}
 	return &evalv1.ModelVariant{
 		VariantId:            inference.NormalizeProviderModelVariantID(entry.ServedModelTag),
@@ -378,7 +378,7 @@ func AddOrUpdateModelVariant(freeze *ModelInventoryFreeze, variant *evalv1.Model
 		variant.VariantId = inference.NormalizeProviderModelVariantID(variant.GetServedModelTag())
 	}
 	if variant.GetProviderClass() == "" {
-		variant.ProviderClass = "ollama"
+		variant.ProviderClass = constants.InferenceProviderOllama
 	}
 
 	variants := make([]*evalv1.ModelVariant, 0, len(freeze.Variants)+1)
@@ -433,7 +433,7 @@ func MergeModelVariants(targetFreeze *ModelInventoryFreeze, sourceVariants []*ev
 			v.VariantId = inference.NormalizeProviderModelVariantID(v.GetServedModelTag())
 		}
 		if v.GetProviderClass() == "" {
-			v.ProviderClass = "ollama"
+			v.ProviderClass = constants.InferenceProviderOllama
 		}
 		byTag[v.GetServedModelTag()] = v
 	}
