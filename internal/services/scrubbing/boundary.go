@@ -493,6 +493,12 @@ func (s *ScrubbingService) tokenizeSensitivePairs(line string, tokenize func(str
 // It uses word boundaries and exact matches where possible to avoid false positives.
 func (s *ScrubbingService) isLikelySensitiveKey(key string) bool {
 	lower := strings.ToLower(strings.TrimSpace(key))
+	// Authority identifies the source of evidence, not an authentication
+	// credential. Its values still pass through every content scrubber; only
+	// the broad "auth" key heuristic must not tokenize this metadata whole.
+	if lower == "authority" {
+		return false
+	}
 
 	// Exact matches for highest precision
 	exactMatches := map[string]bool{

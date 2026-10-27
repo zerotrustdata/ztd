@@ -198,48 +198,57 @@ func (d *judgeRequestInference) DispatchInference(ctx context.Context, req *oper
 // the judge's served tag under a judge-only registry, the Inference Operator
 // admits it, and every grade the run verifier checks names the judge.
 func TestRealStackJudge_PinnedJudgeScoresUnderItsOwnRegistry(t *testing.T) {
-	ctx := t.Context()
-	pinned := &evalv1.ModelVariant{
-		VariantId: "gemma4-e4b", ProviderClass: "ollama",
-		ServedModelTag: evaluation.DefaultJudgeServedModelTag,
-		ModelDigest:    fixtures.ScriptedModelDigest(t, evaluation.DefaultJudgeServedModelTag),
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus} {
+		for _, tag := range []struct{ id, served string }{
+			{"gemma4-e4b", evaluation.DefaultJudgeServedModelTag},
+			{"hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m", "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"},
+		} {
+			t.Run(string(posture)+"/"+tag.id, func(t *testing.T) {
+				ctx := t.Context()
+				pinned := &evalv1.ModelVariant{
+					VariantId: tag.id, ProviderClass: "ollama",
+					ServedModelTag: tag.served,
+					ModelDigest:    fixtures.ScriptedModelDigest(t, tag.served),
+				}
+				env := newRealStackAgentRun(t, realStackOptions{
+					posture: posture, singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-pinned",
+					replies:   judgeReplies(fixtures.OllamaReply{Content: judgeScoreFour}),
+					modelTags: []string{tag.served},
+					request: func(req *evaluation.CampaignInitRequest, _ string) {
+						req.Judge = pinned
+					},
+				})
+				inference := &judgeRequestInference{realStackInference: env.inference}
+
+				res := executeNextWithInference(t, env, inference)
+				require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+
+				require.Len(t, inference.requests, judgeJudgeTurn, "the agent answer and the judge each take one governed inference")
+				agentRequest, judgeRequest := inference.requests[0], inference.requests[judgeJudgeTurn-1]
+				assert.Equal(t, realStackModelTag, agentRequest.GetModel(), "the scored model answers")
+				assert.Equal(t, tag.served, judgeRequest.GetModel(), "the pinned judge scores")
+				wantRegistry, wantDigest, err := evaluation.JudgeModelRegistry(env.req.CampaignID, pinned)
+				require.NoError(t, err)
+				assert.Equal(t, wantDigest, judgeRequest.GetModelRegistryDigest())
+				require.Len(t, judgeRequest.GetModelRegistry(), 1, "the judge dispatches under a registry of the judge alone")
+				assert.True(t, proto.Equal(wantRegistry[0], judgeRequest.GetModelRegistry()[0]))
+				assert.NotEqual(t, agentRequest.GetModelRegistryDigest(), judgeRequest.GetModelRegistryDigest(), "the judge registry is not the scored registry")
+
+				grade := diagnosisQualityGrade(res)
+				require.NotNil(t, grade)
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), grade.GetDetail())
+				assert.Equal(t, pinned.GetVariantId(), grade.GetJudgeVariantId())
+				require.NotEmpty(t, res.GetGraderCalls())
+				for _, call := range res.GetGraderCalls() {
+					assert.Equal(t, pinned.GetVariantId(), call.GetJudgeVariantId())
+				}
+
+				report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+				require.NoError(t, err)
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+			})
+		}
 	}
-	env := newRealStackAgentRun(t, realStackOptions{
-		singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-pinned",
-		replies:   judgeReplies(fixtures.OllamaReply{Content: judgeScoreFour}),
-		modelTags: []string{evaluation.DefaultJudgeServedModelTag},
-		request: func(req *evaluation.CampaignInitRequest, _ string) {
-			req.Judge = pinned
-		},
-	})
-	inference := &judgeRequestInference{realStackInference: env.inference}
-
-	res := executeNextWithInference(t, env, inference)
-	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
-
-	require.Len(t, inference.requests, judgeJudgeTurn, "the agent answer and the judge each take one governed inference")
-	agentRequest, judgeRequest := inference.requests[0], inference.requests[judgeJudgeTurn-1]
-	assert.Equal(t, realStackModelTag, agentRequest.GetModel(), "the scored model answers")
-	assert.Equal(t, evaluation.DefaultJudgeServedModelTag, judgeRequest.GetModel(), "the pinned judge scores")
-	wantRegistry, wantDigest, err := evaluation.JudgeModelRegistry(env.req.CampaignID, pinned)
-	require.NoError(t, err)
-	assert.Equal(t, wantDigest, judgeRequest.GetModelRegistryDigest())
-	require.Len(t, judgeRequest.GetModelRegistry(), 1, "the judge dispatches under a registry of the judge alone")
-	assert.True(t, proto.Equal(wantRegistry[0], judgeRequest.GetModelRegistry()[0]))
-	assert.NotEqual(t, agentRequest.GetModelRegistryDigest(), judgeRequest.GetModelRegistryDigest(), "the judge registry is not the scored registry")
-
-	grade := diagnosisQualityGrade(res)
-	require.NotNil(t, grade)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), grade.GetDetail())
-	assert.Equal(t, pinned.GetVariantId(), grade.GetJudgeVariantId())
-	require.NotEmpty(t, res.GetGraderCalls())
-	for _, call := range res.GetGraderCalls() {
-		assert.Equal(t, pinned.GetVariantId(), call.GetJudgeVariantId())
-	}
-
-	report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
-	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
 }
 
 func TestRealStackJudge_FailureReportedSeparately(t *testing.T) {

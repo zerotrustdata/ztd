@@ -71,6 +71,20 @@ func lenientConfig() *Config {
 	return &Config{Enabled: true, StrictMode: false, RequirePersistence: true}
 }
 
+func TestScrubbingService_LedgerAuthorityIsMetadata(t *testing.T) {
+	service := newTestService(t, DefaultConfig())
+	assertPreserved(t, service,
+		`{"receipts":[],"count":0,"operator_id":"embedded-operator","authority":"operator_local_ledger","investigation_id":"investigation-example"}`,
+		"authority: operator_local_ledger",
+	)
+	// Classifying the metadata key must not exempt its value from ordinary
+	// secret detection or weaken credential-bearing auth keys.
+	assertTokenized(t, service, `{"authority":"password=hunter2"}`, "hunter2")
+	for _, key := range []string{"auth", "authorization", "authentication", "auth_token", "client_auth"} {
+		assertTokenized(t, service, fmt.Sprintf(`{"%s":"private-credential"}`, key), "private-credential")
+	}
+}
+
 // failingTokenStore persists the owner namespace but fails every token write.
 type failingTokenStore struct{ *storagetest.TestTokenStore }
 

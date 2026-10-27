@@ -22,6 +22,18 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+func TestParseFinalDiagnosisSections_UnicodeSummaryHeadings(t *testing.T) {
+	for _, dash := range []string{"-", "‑", "–", "—"} {
+		t.Run(dash, func(t *testing.T) {
+			output := "**Diagnosis**\nObserved timeouts.\n**Confidence**\nModerate.\n**Recommended action**\nInspect telemetry.\n**Customer" + dash + "safe summary**\nCustomers cannot complete checkout."
+			sections := parseFinalDiagnosisSections(output)
+			assert.Equal(t, "Customers cannot complete checkout.", sections["summary"])
+			assert.Equal(t, "Inspect telemetry.", sections["action"])
+		})
+	}
+	assert.Empty(t, parseFinalDiagnosisSections("Customer-safe summaryish: not a section")["summary"])
+}
+
 func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *testing.T) {
 	blueprint := recoveryErrorGuidedRetry()
 	blueprint.Input.ScenarioID = blueprint.ScenarioID

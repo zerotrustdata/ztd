@@ -96,7 +96,7 @@ func TestEvalStackUsesDistinctOutboundOperatorRoots(t *testing.T) {
 // identity enrolls through production app enrollment under every posture the
 // rig supports, with the authenticated owner's CLI approving the request.
 func TestEvalStackEnrollsEvalAppIdentity(t *testing.T) {
-	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureRatify, constants.PostureNotary} {
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
 			stack := NewEvalStack(t, EvalStackOptions{Posture: posture})
 			logger := testutil.NewTestLogger()

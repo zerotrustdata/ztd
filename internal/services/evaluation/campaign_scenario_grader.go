@@ -854,14 +854,14 @@ func parseFinalDiagnosisSections(output string) map[string]string {
 }
 
 func finalDiagnosisSection(label string) string {
-	switch label {
+	switch foldContentTerm(label) {
 	case "diagnosis", "assessment", "root cause":
 		return "diagnosis"
 	case "confidence", "certainty":
 		return "confidence"
 	case "recommended action", "next step", "next steps", "action":
 		return "action"
-	case "customer-safe summary", "customer summary", "customer update", "summary":
+	case "customer safe summary", "customer summary", "customer update", "summary":
 		return "summary"
 	default:
 		return ""
