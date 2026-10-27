@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -703,6 +704,19 @@ func TestExecutionService_FinalizeResult(t *testing.T) {
 
 	assert.False(t, result.EndTime.IsZero())
 	assert.Greater(t, result.DurationSeconds, 1.0)
+}
+
+func TestErrorToReturnCode_UsesTypedErrors(t *testing.T) {
+	t.Parallel()
+	svc := &ExecutionService{}
+
+	assert.Equal(t, constants.ExitCodeSuccess, svc.errorToReturnCode(nil))
+	assert.Equal(t, constants.ExitCodeCommandNotFound, svc.errorToReturnCode(fmt.Errorf("execution: start: %w", exec.ErrNotFound)))
+	assert.Equal(t, constants.ExitCodeCommandNotFound, svc.errorToReturnCode(fmt.Errorf("execution: start: %w", os.ErrNotExist)))
+	assert.Equal(t, constants.ExitCodeCannotExecute, svc.errorToReturnCode(fmt.Errorf("execution: start: %w", os.ErrPermission)))
+	assert.Equal(t, constants.ExitCodeCannotExecute, svc.errorToReturnCode(fmt.Errorf("execution: start: %w", &os.PathError{Op: "fork/exec", Path: "secret-bin", Err: syscall.EACCES})))
+	assert.Equal(t, constants.ExitCodeGeneral, svc.errorToReturnCode(fmt.Errorf("script printed command not found: %w", constants.ErrInternal)))
+	assert.Equal(t, constants.ExitCodeGeneral, svc.errorToReturnCode(fmt.Errorf("note: permission denied in the script text: %w", constants.ErrInternal)))
 }
 
 func TestGovernedEnviron_WithholdsRegistrySecrets(t *testing.T) {

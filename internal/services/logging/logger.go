@@ -120,6 +120,18 @@ func ErrorKindValue(err error) string {
 	return kind
 }
 
+// IsTransportDown reports whether err is a refused connection, a reset
+// connection, or EOF, including when a URL or net error wraps that cause.
+// A rendered message that only mentions those words does not match.
+func IsTransportDown(err error) bool {
+	switch ErrorKindValue(err) {
+	case errorKindRefused, errorKindReset, errorKindEOF, errorKindUnexpectedEOF:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsClientDisconnect reports whether err is a client-initiated disconnect or
 // cancellation on a response write (broken pipe, connection reset/abort,
 // closed network connection, or context cancellation).

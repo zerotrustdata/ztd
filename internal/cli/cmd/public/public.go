@@ -993,7 +993,7 @@ func publicRotateKeyCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 			if rotation == nil {
 				publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 				if err != nil {
-					return fmt.Errorf("%w: %v", constants.ErrPublicFeedKeyGenFailed, err)
+					return fmt.Errorf("%w: %w", constants.ErrPublicFeedKeyGenFailed, err)
 				}
 				digest := sha256.Sum256(publicKey)
 				newKeyID := hex.EncodeToString(digest[:])

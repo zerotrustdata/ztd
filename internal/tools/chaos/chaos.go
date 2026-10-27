@@ -27,6 +27,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -866,29 +867,34 @@ func (b *batchEventWriter) flush() {
 	}
 }
 
+// classifyRejection buckets a warden rejection for the chaos summary by
+// governance sentinel identity (INV-ERR-06). ErrTxReplayStoreMissing stays
+// REJECTED: it is a missing dependency. Hash-missing is HASH_FAIL even
+// though the shared classifier files it under a malformed envelope.
 func classifyRejection(err error) string {
 	if err == nil {
 		return "EXECUTED"
 	}
-	msg := err.Error()
-	switch {
-	case contains(msg, "TX_L1_FAILED") || contains(msg, "TX_DOCTRINE_L1_FAILED"):
+	switch governance.ClassifyGovernanceRejection(err) {
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE:
 		return "L1_BLOCKED"
-	case contains(msg, "TX_HASH_MISMATCH") || contains(msg, "TX_HASH_MISSING"):
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH:
 		return "HASH_FAIL"
-	case contains(msg, "TX_L2"):
-		return "L2_REJECTED"
-	case contains(msg, "TX_EXPIRED"):
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED:
 		return "EXPIRED"
-	case contains(msg, "TX_REPLAY"):
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_REPLAY:
 		return "REPLAY"
-	default:
-		return "REJECTED"
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN:
+		return "L2_REJECTED"
 	}
-}
-
-func contains(s, sub string) bool {
-	return strings.Contains(s, sub)
+	if errors.Is(err, constants.ErrTxTransactionHashMissing) {
+		return "HASH_FAIL"
+	}
+	return "REJECTED"
 }
 
 func categoryName(c category) string {

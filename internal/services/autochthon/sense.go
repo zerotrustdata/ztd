@@ -119,7 +119,7 @@ func termUnit(term string) float32 {
 }
 
 func readLoadavg() (load, procs float32) {
-	b, err := os.ReadFile("/proc/loadavg")
+	b, err := os.ReadFile(constants.PathProcLoadAvg)
 	if err != nil {
 		return 0, 0
 	}
@@ -146,7 +146,7 @@ func loadSense(l float64, cpus int) float32 {
 }
 
 func readMemInUse() float32 {
-	b, err := os.ReadFile("/proc/meminfo")
+	b, err := os.ReadFile(constants.PathProcMemInfo)
 	if err != nil {
 		return 0
 	}

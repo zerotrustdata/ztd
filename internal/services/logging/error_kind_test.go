@@ -20,6 +20,15 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
+func TestIsTransportDown_IgnoresRenderedTransportWords(t *testing.T) {
+	assert.True(t, IsTransportDown(fmt.Errorf("read tcp 127.0.0.1:1->127.0.0.1:8443: %w", syscall.ECONNRESET)))
+	assert.True(t, IsTransportDown(fmt.Errorf("dial: %w", syscall.ECONNREFUSED)))
+	assert.True(t, IsTransportDown(fmt.Errorf("failed to execute HTTP request: %w", io.EOF)))
+	assert.True(t, IsTransportDown(fmt.Errorf("response: %w", io.ErrUnexpectedEOF)))
+	assert.False(t, IsTransportDown(fmt.Errorf("public-feed: mirror rejected proof package")))
+	assert.False(t, IsTransportDown(fmt.Errorf("proof package EOF marker in digest: %w", constants.ErrInternal)))
+}
+
 func TestErrorKind_ClassifiesWrappedProviderFailuresWithoutContent(t *testing.T) {
 	for _, test := range []struct {
 		name string

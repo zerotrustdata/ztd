@@ -434,33 +434,43 @@ func TestClassifyRejection(t *testing.T) {
 		},
 		{
 			name: "L1 failure",
-			err:  errors.New("TX_L1_FAILED: forbidden pattern"),
+			err:  fmt.Errorf("warden: %w", constants.ErrTxL1ValidationFailed),
 			want: "L1_BLOCKED",
 		},
 		{
 			name: "hash mismatch",
-			err:  errors.New("TX_HASH_MISMATCH: corrupted hash"),
+			err:  constants.ErrTxTransactionHashMismatch,
 			want: "HASH_FAIL",
 		},
 		{
 			name: "hash missing",
-			err:  errors.New("TX_HASH_MISSING: no hash"),
+			err:  fmt.Errorf("verify: %w", constants.ErrTxTransactionHashMissing),
 			want: "HASH_FAIL",
 		},
 		{
 			name: "L2 rejection",
-			err:  errors.New("TX_L2_REJECTED: invalid signature"),
+			err:  constants.ErrTxL2SignatureInvalid,
 			want: "L2_REJECTED",
 		},
 		{
 			name: "expired",
-			err:  errors.New("TX_EXPIRED: transaction too old"),
+			err:  constants.ErrTxTransactionExpired,
 			want: "EXPIRED",
 		},
 		{
 			name: "replay",
-			err:  errors.New("TX_REPLAY: nonce already used"),
+			err:  constants.ErrTxTransactionReplay,
 			want: "REPLAY",
+		},
+		{
+			name: "replay store missing is not a replay",
+			err:  constants.ErrTxReplayStoreMissing,
+			want: "REJECTED",
+		},
+		{
+			name: "rendered TX_REPLAY text is not the sentinel",
+			err:  errors.New("TX_REPLAY: nonce already used"),
+			want: "REJECTED",
 		},
 		{
 			name: "unknown error",
@@ -473,54 +483,6 @@ func TestClassifyRejection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := classifyRejection(tt.err); got != tt.want {
 				t.Errorf("classifyRejection() = %s, want %s", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestContains(t *testing.T) {
-	tests := []struct {
-		name string
-		s    string
-		sub  string
-		want bool
-	}{
-		{
-			name: "substring present",
-			s:    "hello world",
-			sub:  "world",
-			want: true,
-		},
-		{
-			name: "substring not present",
-			s:    "hello world",
-			sub:  "goodbye",
-			want: false,
-		},
-		{
-			name: "empty substring",
-			s:    "hello world",
-			sub:  "",
-			want: true,
-		},
-		{
-			name: "empty string",
-			s:    "",
-			sub:  "test",
-			want: false,
-		},
-		{
-			name: "case sensitive",
-			s:    "Hello World",
-			sub:  "hello",
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := contains(tt.s, tt.sub); got != tt.want {
-				t.Errorf("contains() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1051,7 +1013,7 @@ func TestRecordRejection(t *testing.T) {
 			TargetResource:    "/test",
 		}
 
-		reason := classifyRejection(errors.New("TX_L1_FAILED: forbidden pattern"))
+		reason := classifyRejection(fmt.Errorf("doctrine: %w", constants.ErrTxL1ValidationFailed))
 		event := &storagetest.ChaosEvent{
 			OperatorSessionID: env.OperatorSessionId,
 			Timestamp:         time.Now(),
@@ -1077,11 +1039,11 @@ func TestRecordRejection(t *testing.T) {
 			err  error
 			want string
 		}{
-			{errors.New("TX_L1_FAILED: test"), "L1_BLOCKED"},
-			{errors.New("TX_HASH_MISMATCH: test"), "HASH_FAIL"},
-			{errors.New("TX_L2_REJECTED: test"), "L2_REJECTED"},
-			{errors.New("TX_EXPIRED: test"), "EXPIRED"},
-			{errors.New("TX_REPLAY: test"), "REPLAY"},
+			{constants.ErrTxL1ValidationFailed, "L1_BLOCKED"},
+			{constants.ErrTxTransactionHashMismatch, "HASH_FAIL"},
+			{constants.ErrTxL2QuorumNotMet, "L2_REJECTED"},
+			{constants.ErrTxTransactionExpired, "EXPIRED"},
+			{constants.ErrTxTransactionReplay, "REPLAY"},
 			{errors.New("other error"), "REJECTED"},
 		}
 

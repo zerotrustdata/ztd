@@ -446,6 +446,17 @@ func (s *ConsensusStoreService) DeleteConsensus(ctx context.Context, id string) 
 	return s.docSvc.DocDeleteWithResult(ctx, marshaler.CollectionName(constants.CollectionConsensus), id)
 }
 
+// ClearConsensusBinding removes a ConsensusPolicy binding from the database.
+// If id is empty, it defaults to the bound consensus document (DocIDConsensusBinding).
+func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, id string) error {
+	target := id
+	if target == "" {
+		target = string(constants.DocIDConsensusBinding)
+	}
+	_, err := s.docSvc.DocDeleteWithResult(ctx, marshaler.CollectionName(constants.CollectionConsensus), target)
+	return err
+}
+
 // isValidConsensusID validates that a consensus ID contains only allowed characters.
 // Allowed: letters, digits, hyphens, and underscores. Must be non-empty.
 func isValidConsensusID(id string) bool {

@@ -37,7 +37,7 @@ func (s *Store) SaveCampaignSpec(ctx context.Context, spec *evalv1.EvaluationCam
 		return fmt.Errorf("%w: unsupported campaign spec schema version", constants.ErrEvaluationReportPersistFailed)
 	}
 	if err := ValidateCampaignSpecDigest(spec); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	body, err := evalv1.MarshalCanonical(spec)
 	if err != nil {
@@ -64,13 +64,13 @@ func (s *Store) LoadCampaignSpec(ctx context.Context, campaignID string) (*evalv
 	}
 	spec := &evalv1.EvaluationCampaignSpec{}
 	if err := evalv1.UnmarshalCanonical(body, spec); err != nil {
-		return nil, fmt.Errorf("%w: canonical campaign spec: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: canonical campaign spec: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if spec.GetCampaignId() != campaignID {
 		return nil, fmt.Errorf("%w: campaign spec ID does not match requested campaign", constants.ErrEvidenceScopeMismatch)
 	}
 	if err := ValidateCampaignSpecDigest(spec); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	return spec, nil
 }
@@ -87,7 +87,7 @@ func (s *Store) SaveScenarioCatalog(ctx context.Context, campaignID string, cata
 		return fmt.Errorf("%w: unsupported scenario catalog schema version", constants.ErrEvaluationReportPersistFailed)
 	}
 	if err := ValidateScenarioCatalogDigest(catalog); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	body, err := evalv1.MarshalCanonical(catalog)
 	if err != nil {
@@ -114,10 +114,10 @@ func (s *Store) LoadScenarioCatalog(ctx context.Context, campaignID string) (*ev
 	}
 	catalog := &evalv1.EvaluationScenarioCatalog{}
 	if err := evalv1.UnmarshalCanonical(body, catalog); err != nil {
-		return nil, fmt.Errorf("%w: canonical scenario catalog: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: canonical scenario catalog: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if err := ValidateScenarioCatalogDigest(catalog); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	return catalog, nil
 }
@@ -252,7 +252,7 @@ func validateFrozenScenarioArtifact(reference *compliancev1.ComplianceEvidenceRe
 		return fmt.Errorf("%w: frozen scenario artifact binding is invalid", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := complianceevidence.ValidateCanonicalJSON(body); err != nil {
-		return fmt.Errorf("%w: frozen scenario artifact is not canonical: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return fmt.Errorf("%w: frozen scenario artifact is not canonical: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	return nil
 }
@@ -308,7 +308,7 @@ func (s *Store) LoadRun(ctx context.Context, runID string) (*evalv1.EvaluationRu
 	}
 	run := &evalv1.EvaluationRun{}
 	if err := evalv1.UnmarshalCanonical(body, run); err != nil {
-		return nil, fmt.Errorf("%w: canonical run: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: canonical run: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if run.GetRunId() != runID {
 		return nil, fmt.Errorf("%w: run ID does not match requested run", constants.ErrEvidenceScopeMismatch)
@@ -453,7 +453,7 @@ func (s *Store) SaveAssignment(ctx context.Context, assignment *evalv1.Evaluatio
 	}
 	identity, err := ComputeAssignmentDeterministicIdentity(assignment)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	if assignment.GetDeterministicIdentity() != "" && assignment.GetDeterministicIdentity() != identity {
 		return fmt.Errorf("%w: assignment deterministic identity mismatch", constants.ErrEvaluationReportPersistFailed)
@@ -484,14 +484,14 @@ func (s *Store) LoadAssignment(ctx context.Context, runID, assignmentID string) 
 	}
 	assignment := &evalv1.EvaluationAssignment{}
 	if err := evalv1.UnmarshalCanonical(body, assignment); err != nil {
-		return nil, fmt.Errorf("%w: canonical assignment: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: canonical assignment: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if assignment.GetRunId() != runID || assignment.GetAssignmentId() != assignmentID {
 		return nil, fmt.Errorf("%w: assignment binding does not match requested run/assignment", constants.ErrEvidenceScopeMismatch)
 	}
 	expected, err := ComputeAssignmentDeterministicIdentity(assignment)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if assignment.GetDeterministicIdentity() != expected {
 		return nil, fmt.Errorf("%w: assignment deterministic identity mismatch", constants.ErrEvidenceArtifactMalformed)
@@ -511,7 +511,7 @@ func (s *Store) SaveAssignmentResult(ctx context.Context, result *evalv1.Evaluat
 		return fmt.Errorf("%w: unsupported assignment result schema version", constants.ErrEvaluationReportPersistFailed)
 	}
 	if err := ValidateAssignmentResultDigest(result); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	body, err := evalv1.MarshalCanonical(result)
 	if err != nil {
@@ -538,13 +538,13 @@ func (s *Store) LoadAssignmentResult(ctx context.Context, runID, assignmentID st
 	}
 	result := &evalv1.EvaluationAssignmentResult{}
 	if err := evalv1.UnmarshalCanonical(body, result); err != nil {
-		return nil, fmt.Errorf("%w: canonical assignment result: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: canonical assignment result: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if result.GetRunId() != runID || result.GetAssignmentId() != assignmentID {
 		return nil, fmt.Errorf("%w: assignment result binding does not match requested run/assignment", constants.ErrEvidenceScopeMismatch)
 	}
 	if err := ValidateAssignmentResultDigest(result); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	return result, nil
 }
@@ -759,7 +759,7 @@ func (s *Store) SaveHeterogeneousStackSet(ctx context.Context, campaignID string
 		return err
 	}
 	if err := ValidateHeterogeneousStackSet(stackSet); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	body, err := marshalHeterogeneousStackSet(stackSet)
 	if err != nil {
@@ -786,13 +786,13 @@ func (s *Store) LoadHeterogeneousStackSet(ctx context.Context, campaignID string
 	}
 	stackSet, err := unmarshalHeterogeneousStackSet(body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: canonical heterogeneous stack set: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: canonical heterogeneous stack set: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if stackSet.CampaignID != campaignID {
 		return nil, fmt.Errorf("%w: heterogeneous stack set campaign ID does not match requested campaign", constants.ErrEvidenceScopeMismatch)
 	}
 	if err := ValidateHeterogeneousStackSet(stackSet); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	return stackSet, nil
 }

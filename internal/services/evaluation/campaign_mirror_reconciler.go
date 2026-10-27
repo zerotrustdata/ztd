@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -159,7 +160,7 @@ func (r *CampaignMirrorReconciler) reconcileRuns(ctx context.Context, runIDs []s
 		if err != nil {
 			result.FailedRuns[runID] = err.Error()
 			update(CampaignMirrorReconcileFailed, published, err)
-			if campaignMirrorGatewayUnreachable(err) {
+			if logging.IsTransportDown(err) {
 				for _, remainingRunID := range runIDs[index+1:] {
 					result.FailedRuns[remainingRunID] = "skipped after gateway publication failure"
 				}
