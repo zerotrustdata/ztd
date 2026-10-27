@@ -29,6 +29,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -606,7 +607,10 @@ func (pm *ProcessManager) StartOperator(ctx context.Context, opts *OperatorStart
 	}
 
 	healthURL := fmt.Sprintf("http://%s:%d%s", constants.LocalhostIP, availableHTTPPort, constants.APIPaths.Health)
-	client := &http.Client{Timeout: checkInterval}
+	client := &http.Client{
+		Transport: httpclient.NewIPv4Transport(nil),
+		Timeout:   checkInterval,
+	}
 	budget := checkInterval * time.Duration(maxChecks)
 	if opts.PublicSpectatorEnabled && pm.maxHealthChecks <= 0 {
 		budget += constants.PublicMirrorVerificationTimeout

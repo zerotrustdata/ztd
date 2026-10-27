@@ -16,9 +16,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 )
 
 const cloudflareAPIBase = "https://api.cloudflare.com/client/v4"
@@ -38,7 +38,7 @@ func NewClient(token string) (*Client, error) {
 	return &Client{
 		token: token,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: httpclient.DefaultTimeout,
 		},
 	}, nil
 }

@@ -55,4 +55,5 @@ func TestWebSocketDialerWithTLS(t *testing.T) {
 
 	assert.Equal(t, customTLS, dialer.TLSClientConfig)
 	assert.Equal(t, DefaultTLSTimeout, dialer.HandshakeTimeout)
+	assert.NotNil(t, dialer.NetDialContext)
 }

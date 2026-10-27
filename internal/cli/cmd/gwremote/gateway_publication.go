@@ -26,6 +26,7 @@ import (
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -150,8 +151,11 @@ func IsGatewayHealthy() bool {
 		return GatewayHealthCheck()
 	}
 	healthURL := fmt.Sprintf("http://127.0.0.1:%d/api/v1/health", constants.Ports.OperatorHttp)
-	client := &http.Client{Timeout: 2 * time.Second} //nolint:gosec
-	resp, err := client.Get(healthURL)               //nolint:noctx
+	client := &http.Client{
+		Timeout:   2 * time.Second,
+		Transport: httpclient.NewIPv4Transport(nil),
+	} //nolint:gosec
+	resp, err := client.Get(healthURL) //nolint:noctx
 	if err != nil {
 		return false
 	}
@@ -179,7 +183,10 @@ type httpCampaignMirrorProbe struct {
 }
 
 func NewHTTPCampaignMirrorProbe(ctx context.Context) evaluation.CampaignMirrorProbe {
-	return &httpCampaignMirrorProbe{client: &http.Client{Timeout: 5 * time.Second}} //nolint:gosec
+	return &httpCampaignMirrorProbe{client: &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: httpclient.NewIPv4Transport(nil),
+	}} //nolint:gosec
 }
 
 // DatasetPresent asks the mirror's active source for one catalog snapshot of
@@ -220,7 +227,10 @@ func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID
 	query.Set("kind", "catalog_snapshot")
 	req.URL.RawQuery = query.Encode()
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second} //nolint:gosec
+		client = &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: httpclient.NewIPv4Transport(nil),
+		} //nolint:gosec
 	}
 	resp, err := doPublicMirrorRead(ctx, client, req, "public mirror history")
 	if err != nil {
@@ -238,7 +248,10 @@ func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID
 }
 
 func FetchPublicMirrorBootstrap(ctx context.Context) (models.PublicFeedBootstrap, error) {
-	return fetchPublicMirrorBootstrapWithClient(ctx, &http.Client{Timeout: 5 * time.Second}) //nolint:gosec
+	return fetchPublicMirrorBootstrapWithClient(ctx, &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: httpclient.NewIPv4Transport(nil),
+	}) //nolint:gosec
 }
 
 func fetchPublicMirrorBootstrapWithClient(ctx context.Context, client *http.Client) (models.PublicFeedBootstrap, error) {

@@ -35,6 +35,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
@@ -1558,7 +1559,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 			return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 		}
 
-		client := &http.Client{Timeout: 30 * time.Second}
+		client := &http.Client{Timeout: httpclient.DefaultTimeout}
 		resp, err := client.Post(g.downstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 		if err != nil {
 			g.recordFailure()
@@ -1669,7 +1670,7 @@ func (g *GatewayService) DispatchToA2ADownstream(ctx context.Context, skillName 
 		return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: httpclient.DefaultTimeout}
 	resp, err := client.Post(g.a2aDownstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 	if err != nil {
 		g.recordFailure()

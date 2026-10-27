@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 )
 
 // EventHandler receives parsed SSE events. The eventType is the value from the
@@ -50,7 +51,10 @@ type Client struct {
 // client with no timeout is used (suitable for context-controlled cancellation).
 func NewClient(url string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 0}
+		httpClient = &http.Client{
+			Timeout:   0,
+			Transport: httpclient.NewIPv4Transport(nil),
+		}
 	}
 	return &Client{
 		url:     url,

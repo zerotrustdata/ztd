@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/assignmentaudit"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -716,7 +717,7 @@ func (s *PublicPublisherService) sendToMirror(ctx context.Context, origin, inges
 		req.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+ingestAuthToken)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: httpclient.DefaultTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
@@ -1072,7 +1073,7 @@ func (s *PublicPublisherService) registerRotatedKey(ctx context.Context, newKeyI
 	if token != "" {
 		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
-	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpRequest)
+	response, err := (&http.Client{Timeout: httpclient.DefaultTimeout}).Do(httpRequest)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
@@ -1268,7 +1269,7 @@ func (s *PublicPublisherService) fetchMirrorProofRoot(ctx context.Context) (mode
 	if token != "" {
 		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
-	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpRequest)
+	response, err := (&http.Client{Timeout: httpclient.DefaultTimeout}).Do(httpRequest)
 	if err != nil {
 		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}

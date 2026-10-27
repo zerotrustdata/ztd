@@ -39,6 +39,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
@@ -329,7 +330,7 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 	session := &gatewayConn{
 		openBrowser: platform.OpenBrowser,
 		client: &http.Client{
-			Transport: &http.Transport{TLSClientConfig: tlsCfg},
+			Transport: httpclient.NewIPv4Transport(tlsCfg),
 			Timeout:   gatewayCallTimeout,
 		},
 		gatewayURL: gatewayURL,
@@ -1034,7 +1035,10 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 		// mTLS certs do not exist yet at this stage, so HTTP is the only
 		// option. HTTP is only ever used here for this bootstrap health check.
 		healthURL := network.LocalhostHTTPURL(startOpts.HTTPPort) + constants.APIPaths.Health
-		plainClient := &http.Client{Timeout: 2 * time.Second}
+		plainClient := &http.Client{
+			Transport: httpclient.NewIPv4Transport(nil),
+			Timeout:   2 * time.Second,
+		}
 		const (
 			maxAttempts  = 30
 			pollInterval = 500 * time.Millisecond

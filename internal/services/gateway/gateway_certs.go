@@ -539,7 +539,7 @@ func (pki *PKIAuthority) NewConsensusAppHTTPClient(appID string) (*http.Client, 
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsCfg
-	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
+	return &http.Client{Transport: transport, Timeout: httpclient.DefaultTimeout}, nil
 }
 
 // RevokeCertificate adds a certificate serial to the revocation list.

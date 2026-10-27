@@ -220,7 +220,7 @@ type ConsensusAppDeliberator struct {
 // NewConsensusAppDeliberator creates a new deliberator backed by the bound consensus app.
 func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Client) mcp.L2ConsensusDeliberator {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = &http.Client{Timeout: httpclient.DefaultTimeout}
 	}
 	return &ConsensusAppDeliberator{
 		store:      s,

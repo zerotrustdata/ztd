@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -625,7 +626,11 @@ func checkHTTPReachable(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout:   httpclient.DefaultTimeout,
+		Transport: httpclient.NewIPv4Transport(nil),
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
