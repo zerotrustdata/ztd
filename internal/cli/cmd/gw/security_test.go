@@ -9,17 +9,97 @@ package gw
 
 import (
 	"bytes"
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-	"github.com/zerotrustdata/ztd/internal/constants"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+type securityRecordingFiles struct {
+	fs.RuntimeFileService
+	existsPaths []string
+	readPaths   []string
+	pathErr     error
+}
+
+func (f *securityRecordingFiles) Rel(path string) (string, error) {
+	if f.pathErr != nil {
+		return "", f.pathErr
+	}
+	return f.RuntimeFileService.Rel(path)
+}
+
+func (f *securityRecordingFiles) FileExists(_ context.Context, path string) (bool, error) {
+	f.existsPaths = append(f.existsPaths, path)
+	return true, nil
+}
+
+func (f *securityRecordingFiles) ReadFile(_ context.Context, path string) ([]byte, error) {
+	f.readPaths = append(f.readPaths, path)
+	return nil, constants.ErrFileReadFailed
+}
+
+func TestSecurityValidateExplicitRuntimePathsUseFileService(t *testing.T) {
+	for _, relative := range []bool{false, true} {
+		t.Run(map[bool]string{false: "absolute", true: "working-directory-relative"}[relative], func(t *testing.T) {
+			baseDir := testutil.TempDir(t)
+			t.Chdir(baseDir)
+			local, err := fs.NewRuntimeFileService(baseDir, slog.Default())
+			require.NoError(t, err)
+			files := &securityRecordingFiles{RuntimeFileService: local}
+			cmd := securityValidateCmdWithConfig(func(string, *slog.Logger) (fs.RuntimeFileService, error) {
+				return files, nil
+			})
+			pkiDir := local.Resolve(constants.PkiDirname)
+			secretsDir := local.Resolve(constants.SecretsDirname)
+			if relative {
+				pkiDir, err = filepath.Rel(baseDir, pkiDir)
+				require.NoError(t, err)
+				secretsDir, err = filepath.Rel(baseDir, secretsDir)
+				require.NoError(t, err)
+			}
+			require.NoError(t, cmd.Flags().Set("pki-dir", pkiDir))
+			require.NoError(t, cmd.Flags().Set("secrets-dir", secretsDir))
+			var output bytes.Buffer
+			cmd.SetOut(&output)
+			cmd.SetErr(&output)
+
+			require.ErrorIs(t, cmd.RunE(cmd, nil), constants.ErrValidationFailed)
+			assert.ElementsMatch(t, []string{
+				filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCA),
+				filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCAKey),
+				filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle),
+				filepath.Join(constants.PkiDirname, constants.PkiFileWardenPub),
+				filepath.Join(constants.SecretsDirname, constants.SecretsFileActuatorSigningKey),
+				filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest),
+			}, files.existsPaths)
+			assert.ElementsMatch(t, []string{
+				filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCA),
+				filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle),
+			}, files.readPaths)
+			assert.Contains(t, output.String(), "failed to read root_ca.crt")
+			assert.Contains(t, output.String(), "failed to read trust bundle")
+
+			files.pathErr = constants.ErrPathValidation
+			files.existsPaths = nil
+			files.readPaths = nil
+			err = cmd.RunE(cmd, nil)
+			require.ErrorIs(t, err, constants.ErrValidationFailed)
+			require.ErrorIs(t, err, constants.ErrPathValidation)
+			assert.Empty(t, files.existsPaths)
+			assert.Empty(t, files.readPaths)
+		})
+	}
+}
 
 func TestSecurityCmd(t *testing.T) {
 	t.Run("security command has correct use and description", func(t *testing.T) {

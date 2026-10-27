@@ -199,11 +199,42 @@ func resolveRequestMirrorOrigin(r *http.Request, configuredOrigin string) string
 	if configuredOrigin != "" {
 		if configuredHost := publicURLHost(configuredOrigin); configuredHost != "" {
 			if requestHost := requestHostname(r.Host); strings.EqualFold(requestHost, configuredHost) {
-				return configuredOrigin
+				cfgPort := publicURLPort(configuredOrigin)
+				reqPort := requestPort(r)
+				if cfgPort == "" || cfgPort == reqPort {
+					return configuredOrigin
+				}
 			}
 		}
 	}
 	return requestOrigin
+}
+
+func publicURLPort(origin string) string {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	_, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		return ""
+	}
+	return port
+}
+
+func requestPort(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host := strings.TrimSpace(r.Host)
+	if forwardedHost := strings.TrimSpace(r.Header.Get(constants.HeaderXForwardedHost)); forwardedHost != "" {
+		host = strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
+	}
+	_, port, err := net.SplitHostPort(host)
+	if err != nil {
+		return ""
+	}
+	return port
 }
 
 func fallbackMirrorOrigin(configuredOrigin string) string {

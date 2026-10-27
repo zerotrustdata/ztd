@@ -99,18 +99,27 @@ func ValidatePublicMirrorOrigin(origin string) error {
 }
 
 // ValidatePublicMirrorListenAddresses enforces loopback-only private/public
-// mirror listeners with distinct addresses. When allowContainerBind is true,
-// 0.0.0.0 is also accepted so a container network can reach the listener.
+// mirror listeners with distinct addresses. The private ingest listener is
+// unconditionally restricted to loopback (INV-SPEC-ISO-03). When
+// allowContainerBind is true, 0.0.0.0 is accepted only for the public read
+// listener so an external network or container can reach it.
 func ValidatePublicMirrorListenAddresses(privateAddress, publicAddress string, allowContainerBind bool) error {
-	for _, address := range []string{privateAddress, publicAddress} {
-		host, _, err := net.SplitHostPort(address)
-		if err != nil {
-			return fmt.Errorf("%w: %q: %v", constants.ErrPublicFeedListenAddress, address, err)
-		}
-		if !isAllowedPublicMirrorListenHost(host, allowContainerBind) {
-			return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, address)
-		}
+	privateHost, _, err := net.SplitHostPort(privateAddress)
+	if err != nil {
+		return fmt.Errorf("%w: %q: %w", constants.ErrPublicFeedListenAddress, privateAddress, err)
 	}
+	if !isAllowedPublicMirrorListenHost(privateHost, false) {
+		return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, privateAddress)
+	}
+
+	publicHost, _, err := net.SplitHostPort(publicAddress)
+	if err != nil {
+		return fmt.Errorf("%w: %q: %w", constants.ErrPublicFeedListenAddress, publicAddress, err)
+	}
+	if !isAllowedPublicMirrorListenHost(publicHost, allowContainerBind) {
+		return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, publicAddress)
+	}
+
 	if _, port, err := net.SplitHostPort(privateAddress); err == nil && port != "0" && sameListenAddress(privateAddress, publicAddress) {
 		return fmt.Errorf("%w: duplicate address %q", constants.ErrPublicFeedListenAddress, privateAddress)
 	}
@@ -145,7 +154,7 @@ func ValidatePublicExplorerListenAddress(explorerAddress, privateAddress, public
 	}
 	host, _, err := net.SplitHostPort(explorerAddress)
 	if err != nil {
-		return fmt.Errorf("%w: %q: %v", constants.ErrPublicFeedListenAddress, explorerAddress, err)
+		return fmt.Errorf("%w: %q: %w", constants.ErrPublicFeedListenAddress, explorerAddress, err)
 	}
 	if !isAllowedPublicMirrorListenHost(host, allowContainerBind) {
 		return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, explorerAddress)

@@ -385,7 +385,11 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 // readCABundle reads a CA bundle from a path, preferring fileSvc.ReadFile when the
 // path is under the .ztd/ runtime root, falling back to os.ReadFile for external paths.
 func readCABundle(fileSvc fs.RuntimeFileService, caPath string) ([]byte, error) {
-	if rel, err := fileSvc.Rel(caPath); err == nil {
+	rel, inRuntime, err := fs.RuntimeRelativePath(fileSvc, caPath)
+	if err != nil {
+		return nil, err
+	}
+	if inRuntime {
 		return fileSvc.ReadFile(context.Background(), rel)
 	}
 	return os.ReadFile(caPath)

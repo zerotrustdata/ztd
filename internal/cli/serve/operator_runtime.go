@@ -211,8 +211,11 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	// trust delivered in the bundle.
 	var explicitTrust []byte
 	if opts.TrustBundlePath != "" {
-		explicitTrust, err = os.ReadFile(opts.TrustBundlePath)
-		if err != nil || !x509.NewCertPool().AppendCertsFromPEM(explicitTrust) {
+		explicitTrust, err = readTrustBundleFromPath(ctx, fileSvc, opts.TrustBundlePath)
+		if err != nil {
+			return nil, startFailure(constants.ExitConfigError, fmt.Errorf("%w: read explicit trust bundle: %w", constants.ErrCAParseFailed, err))
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(explicitTrust) {
 			logger.Error("Invalid explicit trust bundle", "path", opts.TrustBundlePath)
 			return nil, startFailure(constants.ExitConfigError, fmt.Errorf("%w: invalid explicit trust bundle %s", constants.ErrCAParseFailed, opts.TrustBundlePath))
 		}
@@ -305,6 +308,20 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	}()
 
 	return rt, nil
+}
+
+func readTrustBundleFromPath(ctx context.Context, fileSvc fs.RuntimeFileService, path string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rel, inRuntime, err := fs.RuntimeRelativePath(fileSvc, path)
+	if err != nil {
+		return nil, err
+	}
+	if inRuntime {
+		return fileSvc.ReadFile(ctx, rel)
+	}
+	return os.ReadFile(path)
 }
 
 // enrollOperator obtains the Operator's in-memory identity over the Gateway

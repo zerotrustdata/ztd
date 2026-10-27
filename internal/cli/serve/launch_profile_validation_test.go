@@ -231,3 +231,51 @@ func TestWriteLaunchProfile_RejectsInvalidConfigWithoutWriting(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateLaunchProfile_PublicSpectatorListenAddresses(t *testing.T) {
+	t.Run("rejects non-loopback private ingest", func(t *testing.T) {
+		p := validProfile()
+		p.Config.PublicSpectatorEnabled = true
+		p.Config.PublicSpectatorPrivateAddr = "0.0.0.0:8081"
+		p.Config.PublicSpectatorPublicAddr = "0.0.0.0:8082"
+		p.Config.PublicSpectatorAllowContainerBind = true
+
+		err := ValidateLaunchProfile(p)
+		require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+		assert.Contains(t, err.Error(), "public spectator listen addresses")
+	})
+
+	t.Run("rejects container bind when not allowed", func(t *testing.T) {
+		p := validProfile()
+		p.Config.PublicSpectatorEnabled = true
+		p.Config.PublicSpectatorPrivateAddr = "127.0.0.1:8081"
+		p.Config.PublicSpectatorPublicAddr = "0.0.0.0:8082"
+		p.Config.PublicSpectatorAllowContainerBind = false
+
+		err := ValidateLaunchProfile(p)
+		require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	})
+
+	t.Run("accepts container bind when allowed", func(t *testing.T) {
+		p := validProfile()
+		p.Config.PublicSpectatorEnabled = true
+		p.Config.PublicSpectatorPrivateAddr = "127.0.0.1:8081"
+		p.Config.PublicSpectatorPublicAddr = "0.0.0.0:8082"
+		p.Config.PublicSpectatorAllowContainerBind = true
+
+		require.NoError(t, ValidateLaunchProfile(p))
+	})
+
+	t.Run("rejects explorer container bind when not allowed", func(t *testing.T) {
+		p := validProfile()
+		p.Config.PublicSpectatorEnabled = true
+		p.Config.PublicSpectatorPrivateAddr = "127.0.0.1:8081"
+		p.Config.PublicSpectatorPublicAddr = "127.0.0.1:8082"
+		p.Config.EvalExplorerAddr = "0.0.0.0:8083"
+		p.Config.PublicSpectatorAllowContainerBind = false
+
+		err := ValidateLaunchProfile(p)
+		require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+		assert.Contains(t, err.Error(), "eval explorer listen address")
+	})
+}

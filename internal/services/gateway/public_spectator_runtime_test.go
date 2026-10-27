@@ -156,10 +156,16 @@ func TestValidatePublicMirrorListenAddresses_RejectsDuplicate(t *testing.T) {
 }
 
 func TestValidatePublicMirrorListenAddresses_AllowsContainerBind(t *testing.T) {
+	// Private ingest is unconditionally restricted to loopback (INV-SPEC-ISO-03)
 	err := ValidatePublicMirrorListenAddresses("0.0.0.0:8081", "0.0.0.0:8082", true)
+	require.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
+
+	// Public address accepts 0.0.0.0 only when allowContainerBind is true
+	err = ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "0.0.0.0:8082", false)
+	require.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
+
+	err = ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "0.0.0.0:8082", true)
 	require.NoError(t, err)
-	err = ValidatePublicMirrorListenAddresses("0.0.0.0:8081", "0.0.0.0:8082", false)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
 }
 
 // getSpectatorBody issues one GET against a listener PublicSpectatorRuntime.Start

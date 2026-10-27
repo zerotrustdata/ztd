@@ -63,17 +63,30 @@ var rawFilepathFuncs = map[string]bool{
 }
 
 // runtimeStateConstants are the internal/constants names that denote .ztd/
-// runtime directories and database files. Sourced from internal/constants/paths.go:
-// RuntimeDirname, DataDirname, VaultDirname, SecretsDirname, PkiDirname, and
-// every database filename (*DbFilename, *DBFilename).
+// runtime directories, database paths, and protected key files. Sourced from
+// internal/constants/paths.go.
 var runtimeStateConstants = map[string]bool{
-	"RuntimeDirname":  true,
-	"DataDirname":     true,
-	"VaultDirname":    true,
-	"SecretsDirname":  true,
-	"PkiDirname":      true,
-	"DbFilename":      true,
-	"ChaosDBFilename": true,
+	"RuntimeDirname":            true,
+	"DataDirname":               true,
+	"VaultDirname":              true,
+	"SecretsDirname":            true,
+	"PkiDirname":                true,
+	"DbFilename":                true,
+	"ChaosDBFilename":           true,
+	"CanonicalDBRelPath":        true,
+	"ChaosDBRelPath":            true,
+	"VaultHeaderFilename":       true,
+	"VaultHeaderRelPath":        true,
+	"VaultKeyRelPath":           true,
+	"MasterKeyDPAPIFilename":    true,
+	"MasterKeySSHAgentFilename": true,
+	"MasterKeyDPAPIRelPath":     true,
+	"MasterKeySSHAgentRelPath":  true,
+	"LedgerDirname":             true,
+	"PidDirname":                true,
+	"LogDirname":                true,
+	"TmpDirname":                true,
+	"OperatorsDirname":          true,
 }
 
 // rawOSRuntimeAccessAllowlist maps a repository-relative source file to the
@@ -404,6 +417,20 @@ func TestRawOSRuntimeAccessScanner_DetectsForbiddenPatterns(t *testing.T) {
 		{name: "sql.Open on DSN", body: `_, _ = sql.Open("sqlite", paths.Infra.DbPath)`, want: 1, wantCall: "sql.Open"},
 		{name: "filepath.WalkDir on paths.Infra", body: `_ = filepath.WalkDir(paths.Infra.DataDir, func(string, os.DirEntry, error) error { return nil })`, want: 1, wantCall: "filepath.WalkDir"},
 		{name: "os.DirFS on constant", body: `_ = os.DirFS(filepath.Join(constants.RuntimeDirname, "x"))`, want: 1, wantCall: "os.DirFS"},
+		{name: "canonical database relative path", body: `_, _ = sql.Open("sqlite", constants.CanonicalDBRelPath)`, want: 1, wantCall: "sql.Open"},
+		{name: "chaos database relative path", body: `_, _ = os.Open(constants.ChaosDBRelPath)`, want: 1, wantCall: "os.Open"},
+		{name: "vault header filename", body: `_, _ = os.ReadFile(constants.VaultHeaderFilename)`, want: 1, wantCall: "os.ReadFile"},
+		{name: "vault header relative path", body: `_, _ = os.ReadFile(constants.VaultHeaderRelPath)`, want: 1, wantCall: "os.ReadFile"},
+		{name: "vault key relative path", body: `_, _ = os.ReadFile(constants.VaultKeyRelPath)`, want: 1, wantCall: "os.ReadFile"},
+		{name: "DPAPI master key filename", body: `_, _ = os.Open(constants.MasterKeyDPAPIFilename)`, want: 1, wantCall: "os.Open"},
+		{name: "SSH agent master key filename", body: `_, _ = os.Open(constants.MasterKeySSHAgentFilename)`, want: 1, wantCall: "os.Open"},
+		{name: "DPAPI master key relative path", body: `_, _ = os.ReadFile(constants.MasterKeyDPAPIRelPath)`, want: 1, wantCall: "os.ReadFile"},
+		{name: "SSH agent master key relative path", body: `_, _ = os.ReadFile(constants.MasterKeySSHAgentRelPath)`, want: 1, wantCall: "os.ReadFile"},
+		{name: "ledger directory", body: `_, _ = os.ReadDir(constants.LedgerDirname)`, want: 1, wantCall: "os.ReadDir"},
+		{name: "PID directory", body: `_, _ = os.ReadDir(constants.PidDirname)`, want: 1, wantCall: "os.ReadDir"},
+		{name: "log directory", body: `_, _ = os.ReadDir(constants.LogDirname)`, want: 1, wantCall: "os.ReadDir"},
+		{name: "scratch directory", body: `_, _ = os.ReadDir(constants.TmpDirname)`, want: 1, wantCall: "os.ReadDir"},
+		{name: "operators directory", body: `_, _ = os.ReadDir(constants.OperatorsDirname)`, want: 1, wantCall: "os.ReadDir"},
 		{name: "direct assignment then os call", body: "p := paths.Infra.DbPath\n\t_ = os.Remove(p)", want: 1, wantCall: "os.Remove"},
 		{name: "var assignment then os call", body: "var p = filepath.Join(paths.Infra.SecretsDir, \"k\")\n\t_, _ = os.ReadFile(p)", want: 1, wantCall: "os.ReadFile"},
 		{name: "multi-value assignment then os call", body: "p, err := f(constants.SecretsDirname)\n\t_ = err\n\t_, _ = os.Stat(p)", want: 1, wantCall: "os.Stat"},

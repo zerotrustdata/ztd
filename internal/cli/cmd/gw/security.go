@@ -8,7 +8,6 @@
 package gw
 
 import (
-	"context"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -17,10 +16,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -61,7 +59,7 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			// Check PKI directory structure
 			cmd.Println("\n=== PKI Directory Structure ===")
@@ -86,6 +84,14 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 				}
 			}
 			for _, entry := range pkiEntries {
+				if entry.relPath == "" {
+					entry.relPath, _, err = fs.RuntimeRelativePath(fileSvc, entry.displayPath)
+					if err != nil {
+						cmd.Printf("  [FAIL] %s: %v\n", entry.displayPath, err)
+						failed = true
+						continue
+					}
+				}
 				var exists bool
 				if entry.relPath != "" {
 					exists, err = fileSvc.FileExists(ctx, entry.relPath)
@@ -121,6 +127,14 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 				}
 			}
 			for _, entry := range secretEntries {
+				if entry.relPath == "" {
+					entry.relPath, _, err = fs.RuntimeRelativePath(fileSvc, entry.displayPath)
+					if err != nil {
+						cmd.Printf("  [FAIL] %s: %v\n", entry.displayPath, err)
+						failed = true
+						continue
+					}
+				}
 				var exists bool
 				if entry.relPath != "" {
 					exists, err = fileSvc.FileExists(ctx, entry.relPath)
@@ -150,6 +164,10 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 				rootCADisplayPath = fileSvc.Resolve(rootCARelPath)
 			} else {
 				rootCADisplayPath = filepath.Join(pkiDir, constants.PkiSubdirRoot, constants.PkiFileRootCA)
+				rootCARelPath, _, err = fs.RuntimeRelativePath(fileSvc, rootCADisplayPath)
+				if err != nil {
+					return fmt.Errorf("security: root CA path: %w: %w", constants.ErrValidationFailed, err)
+				}
 			}
 			var certData []byte
 			if rootCARelPath != "" {
@@ -201,6 +219,10 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 				trustBundleDisplayPath = fileSvc.Resolve(trustBundleRelPath)
 			} else {
 				trustBundleDisplayPath = filepath.Join(pkiDir, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
+				trustBundleRelPath, _, err = fs.RuntimeRelativePath(fileSvc, trustBundleDisplayPath)
+				if err != nil {
+					return fmt.Errorf("security: trust bundle path: %w: %w", constants.ErrValidationFailed, err)
+				}
 			}
 			var trustData []byte
 			if trustBundleRelPath != "" {

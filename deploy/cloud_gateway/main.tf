@@ -21,15 +21,15 @@ resource "google_compute_address" "gateway_ip" {
   description = "Static external IPv4 for ztd Gateway PDP and Operator mTLS transport"
 }
 
-# Ingress Firewall Rule: Permits SSH (22), HTTP Discovery (8080), and HTTPS mTLS (8443)
+# Ingress Firewall Rule: Permits SSH (22), HTTP Discovery (8080), HTTPS mTLS (8443), and Public Mirror Read (8082)
 resource "google_compute_firewall" "allow_gateway" {
   name        = "allow-${var.instance_name}"
   network     = "default"
-  description = "Permit SSH, HTTP bootstrap, and HTTPS mTLS for ztd Gateway per INV-DEPLOY-NET-01"
+  description = "Permit SSH, HTTP bootstrap, HTTPS mTLS, and Public Mirror Read per INV-DEPLOY-NET-01"
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "8080", "8443"]
+    ports    = ["22", "8080", "8443", "8082"]
   }
 
   allow {

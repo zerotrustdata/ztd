@@ -136,7 +136,7 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().BoolVar(&f.PublicSpectatorEnabled, "public-spectator", true, "Start the in-process public mirror and evaluation explorer listeners")
 	cmd.Flags().StringVar(&f.PublicSpectatorPrivateAddr, "public-spectator-private-listen", "", fmt.Sprintf("Loopback address for authenticated public mirror ingest (default: 127.0.0.1:%d)", constants.PublicSpectatorPrivatePort))
 	cmd.Flags().StringVar(&f.PublicSpectatorPublicAddr, "public-spectator-public-listen", "", fmt.Sprintf("Loopback address for anonymous public mirror reads (default: 127.0.0.1:%d)", constants.PublicSpectatorPublicPort))
-	cmd.Flags().BoolVar(&f.PublicSpectatorAllowContainerBind, "public-spectator-allow-container-bind", false, "Allow the public mirror and explorer listeners to bind 0.0.0.0 so a container network can reach them (set only inside a container deployment)")
+	cmd.Flags().BoolVar(&f.PublicSpectatorAllowContainerBind, "public-spectator-allow-container-bind", false, "Allow the public mirror read and evaluation explorer listeners to bind 0.0.0.0 for container or direct cloud VM ingress (private ingest always remains loopback-only)")
 	cmd.Flags().StringVar(&f.EvalExplorerAddr, "eval-explorer-listen", "", fmt.Sprintf("Loopback address for the evaluation explorer SPA (default: 127.0.0.1:%d)", constants.EvalExplorerDefaultPort))
 	cmd.Flags().StringVar(&f.EvalExplorerRoot, "eval-explorer-root", "", "Directory containing the built evaluation explorer dist assets")
 	cmd.Flags().StringArrayVar(&f.PublicSpectatorTrustedProxyCIDRs, "public-spectator-trusted-proxy-cidr", nil, "Trusted proxy CIDR allowed to provide exactly one CF-Connecting-IP address (repeatable)")

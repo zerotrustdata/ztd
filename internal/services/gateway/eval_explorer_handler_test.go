@@ -104,6 +104,12 @@ func TestResolveRequestMirrorOrigin_PublicHostUsesConfiguredOrigin(t *testing.T)
 	assert.Equal(t, "https://opendevops.ai", resolveRequestMirrorOrigin(req, "https://opendevops.ai"))
 }
 
+func TestResolveRequestMirrorOrigin_DoesNotConflateGatewayPort(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/runtime.json", nil)
+	req.Host = "34.135.10.20:8082"
+	assert.Equal(t, "http://34.135.10.20:8082", resolveRequestMirrorOrigin(req, "https://34.135.10.20:8443"))
+}
+
 func TestEvalExplorerHandler_DedicatedPortUsesConfiguredMirrorOrigin(t *testing.T) {
 	handler, err := NewEvalExplorerHandler("", "http://127.0.0.1:8082", true)
 	require.NoError(t, err)

@@ -53,7 +53,7 @@ EXEC_START="/usr/local/bin/ztd gw start --follow --listen-host 0.0.0.0 --http-po
 if [ -n "$PUBLIC_BASE_ARG" ]; then
     EXEC_START="${EXEC_START} ${PUBLIC_BASE_ARG}"
 fi
-EXEC_START="${EXEC_START} --posture doctrine"
+EXEC_START="${EXEC_START} --public-spectator=true --public-spectator-public-listen 0.0.0.0:8082 --public-spectator-private-listen 127.0.0.1:8081 --public-spectator-allow-container-bind --posture doctrine"
 
 # 5. Install self-healing systemd service
 echo "[ztd-init] Writing systemd unit /etc/systemd/system/ztd-gateway.service..."

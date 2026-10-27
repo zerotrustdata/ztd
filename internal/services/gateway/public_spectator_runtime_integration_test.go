@@ -72,7 +72,7 @@ func TestPublicSpectatorRuntime_StartsDedicatedExplorerListener(t *testing.T) {
 func TestNewPublicSpectatorRuntime_ContainerBindRequiresExplicitConfig(t *testing.T) {
 	cfg := PublicSpectatorConfig{
 		Enabled:               true,
-		PrivateListenAddress:  "0.0.0.0:0",
+		PrivateListenAddress:  "127.0.0.1:0",
 		PublicListenAddress:   "0.0.0.0:0",
 		ExplorerListenAddress: "",
 	}
@@ -87,4 +87,9 @@ func TestNewPublicSpectatorRuntime_ContainerBindRequiresExplicitConfig(t *testin
 	cfg.AllowContainerBind = true
 	_, err = NewPublicSpectatorRuntime(cfg, fileSvc, ks, logger)
 	require.NoError(t, err)
+
+	// Verify private address cannot bind 0.0.0.0 even with AllowContainerBind
+	cfg.PrivateListenAddress = "0.0.0.0:0"
+	_, err = NewPublicSpectatorRuntime(cfg, fileSvc, ks, logger)
+	require.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
 }

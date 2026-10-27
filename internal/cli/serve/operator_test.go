@@ -10,6 +10,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,8 +21,80 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+type trustBundleFiles struct {
+	fs.RuntimeFileService
+	readPath string
+	err      error
+	pathErr  error
+}
+
+func (f *trustBundleFiles) Rel(path string) (string, error) {
+	if f.pathErr != nil {
+		return "", f.pathErr
+	}
+	return f.RuntimeFileService.Rel(path)
+}
+
+func (f *trustBundleFiles) ReadFile(ctx context.Context, path string) ([]byte, error) {
+	f.readPath = path
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return []byte("runtime trust bundle"), f.err
+}
+
+func TestReadTrustBundleFromPath(t *testing.T) {
+	for _, relative := range []bool{false, true} {
+		t.Run(map[bool]string{false: "absolute", true: "working-directory-relative"}[relative], func(t *testing.T) {
+			baseDir := testutil.TempDir(t)
+			t.Chdir(baseDir)
+			local, err := fs.NewRuntimeFileService(baseDir, testLogger())
+			require.NoError(t, err)
+			files := &trustBundleFiles{RuntimeFileService: local}
+			rel := filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
+			path := local.Resolve(rel)
+			if relative {
+				path, err = filepath.Rel(baseDir, path)
+				require.NoError(t, err)
+			}
+			data, err := readTrustBundleFromPath(t.Context(), files, path)
+			require.NoError(t, err)
+			assert.Equal(t, "runtime trust bundle", string(data))
+			assert.Equal(t, rel, files.readPath)
+
+			files.err = constants.ErrFileReadFailed
+			_, err = readTrustBundleFromPath(t.Context(), files, path)
+			require.ErrorIs(t, err, constants.ErrFileReadFailed)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			_, err = readTrustBundleFromPath(ctx, files, path)
+			require.ErrorIs(t, err, context.Canceled)
+
+			files.pathErr = constants.ErrPathValidation
+			_, err = readTrustBundleFromPath(t.Context(), files, path)
+			require.ErrorIs(t, err, constants.ErrPathValidation)
+		})
+	}
+}
+
+func TestReadTrustBundleFromExternalPath(t *testing.T) {
+	baseDir := testutil.TempDir(t)
+	t.Chdir(baseDir)
+	local, err := fs.NewRuntimeFileService(baseDir, testLogger())
+	require.NoError(t, err)
+	files := &trustBundleFiles{RuntimeFileService: local}
+	path := "external-ca.pem"
+	require.NoError(t, os.WriteFile(path, []byte("external trust bundle"), constants.PermFilePrivate))
+	data, err := readTrustBundleFromPath(t.Context(), files, path)
+	require.NoError(t, err)
+	assert.Equal(t, "external trust bundle", string(data))
+	assert.Empty(t, files.readPath)
+}
 
 func TestNewOperatorRuntimeFileServiceUsesWorkingDir(t *testing.T) {
 	workingDir := testutil.TempDir(t)
