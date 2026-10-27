@@ -98,7 +98,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
 	cfg := sqliteutil.DefaultDBConfig(dbPath)
 
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDatabaseLocked, err)
 	}

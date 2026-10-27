@@ -64,7 +64,7 @@ func newPersistingActuator(t *testing.T) (*L5Actuator, *storage.LocalFirstEvents
 	require.NoError(t, testVault.Unlock(privKey))
 	t.Cleanup(func() { require.NoError(t, testVault.Close()) })
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), slog.Default())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), slog.Default())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	eventsStore, err := storage.NewLocalFirstEventsStore(&storage.LocalFirstEventsStoreConfig{

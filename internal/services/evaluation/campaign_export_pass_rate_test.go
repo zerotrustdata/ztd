@@ -11,7 +11,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/csv"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -76,8 +76,11 @@ func TestCampaignExporter_PassRatesExcludeUnjudgedFailuresInCSVAndSQLite(t *test
 					assert.Equal(t, "1.000000", rows[1][i], "coverage still counts all terminal assignments")
 				}
 			}
-			sqlitePath := filepath.Join(testutil.TempDir(t), constants.EvaluationCampaignExportSQLiteFilename)
-			require.NoError(t, NewCampaignExporter(nil).writeSQLiteExport(context.Background(), sqlitePath,
+			fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+			require.NoError(t, err)
+			require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+			sqlitePath := fileSvc.Resolve(constants.EvaluationCampaignExportSQLiteFilename)
+			require.NoError(t, NewCampaignExporter(nil).writeSQLiteExport(context.Background(), fileSvc, sqlitePath,
 				&evalv1.EvaluationRun{RunId: "run"}, &evalv1.EvaluationCampaignSpec{}, CampaignRelease{Basis: ReleaseBasisUnknown}, &evalv1.EvaluationScenarioCatalog{}, archiveTestNow,
 				&CampaignPopulationReport{}, nil, state, nil))
 			db, err := sql.Open("sqlite", sqlitePath)

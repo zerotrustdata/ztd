@@ -11,7 +11,6 @@ package sqliteutil
 
 import (
 	"context"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,7 +25,8 @@ import (
 // TestWriterGate_FIFOHandoff verifies that writers queueing for the writer gate
 // acquire it in first-in, first-out (FIFO) order.
 func TestWriterGate_FIFOHandoff(t *testing.T) {
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "fifo.db")), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("fifo.db")), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
@@ -75,7 +75,8 @@ func TestWriterGate_FIFOHandoff(t *testing.T) {
 // TestWriterGate_ContextCancellationWhileQueued verifies that context cancellation
 // unblocks a queued writer with ctx.Err() without leaking or poisoning the gate.
 func TestWriterGate_ContextCancellationWhileQueued(t *testing.T) {
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "cancel.db")), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("cancel.db")), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
@@ -110,7 +111,8 @@ func TestWriterGate_ContextCancellationWhileQueued(t *testing.T) {
 // TestWriterGate_NoPooledConnectionHeldWhileQueued verifies that a writer waiting
 // on the writer gate channel does NOT hold or check out any pooled database connection.
 func TestWriterGate_NoPooledConnectionHeldWhileQueued(t *testing.T) {
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "no_conn.db")), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("no_conn.db")), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

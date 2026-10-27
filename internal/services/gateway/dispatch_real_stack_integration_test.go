@@ -142,7 +142,7 @@ func readDataCommitments(t *testing.T, fileSvc fs.RuntimeFileService, keyring ke
 	localVault, err := vault.NewVault(&vault.VaultConfig{FileSvc: fileSvc, Logger: logger})
 	require.NoError(t, err)
 	require.NoError(t, localVault.Unlock(vaultKey))
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	storeConfig := storage.DefaultLocalFirstEventsStoreConfig()

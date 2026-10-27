@@ -10,7 +10,6 @@
 package sqliteutil
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,10 +20,11 @@ import (
 // Hold connections concurrently so each probe exercises a different physical
 // connection, including connections opened after the initial Ping.
 func TestOpenDB_SettingsApplyToEveryConnection(t *testing.T) {
-	cfg := DefaultDBConfig(filepath.Join(testutil.TempDir(t), "connections.db"))
+	fileSvc := newTestRuntimeFiles(t)
+	cfg := DefaultDBConfig(fileSvc.Resolve("connections.db"))
 	cfg.BusyTimeoutMs = 1234
 	cfg.CacheSizeMB = 8
-	db, err := OpenDB(cfg, testutil.NewTestLogger())
+	db, err := OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	for i := 0; i < 3; i++ {
@@ -53,9 +53,10 @@ func TestOpenDB_SettingsApplyToEveryConnection(t *testing.T) {
 }
 
 func TestOpenReadOnlyDB_SettingsApplyToEveryConnection(t *testing.T) {
-	cfg := DefaultDBConfig(filepath.Join(testutil.TempDir(t), "readonly.db"))
+	fileSvc := newTestRuntimeFiles(t)
+	cfg := DefaultDBConfig(fileSvc.Resolve("readonly.db"))
 	cfg.BusyTimeoutMs = 1234
-	db, err := OpenDB(cfg, testutil.NewTestLogger())
+	db, err := OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 	require.NoError(t, err)
 	_, err = db.ExecContext(t.Context(), "CREATE TABLE records(id INTEGER PRIMARY KEY)")
 	require.NoError(t, err)

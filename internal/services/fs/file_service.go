@@ -116,6 +116,15 @@ type RuntimeFileService interface {
 	// EnforceFilePermissions enforces file permissions on a single file.
 	EnforceFilePermissions(ctx context.Context, relPath string, mode os.FileMode) error
 
+	// CreateOrRestrictFile creates an empty file if absent or restricts an
+	// existing file's permissions. The path is opened relative to the runtime
+	// root, so symlinks cannot redirect the operation outside that root.
+	CreateOrRestrictFile(ctx context.Context, relPath string, mode os.FileMode) error
+
+	// RestrictFileIfExists restricts an existing file's permissions and reports
+	// whether the file existed. The path is opened relative to the runtime root.
+	RestrictFileIfExists(ctx context.Context, relPath string, mode os.FileMode) (bool, error)
+
 	// Resolve converts a relative path within .ztd/ to an absolute path.
 	Resolve(relPath string) string
 
@@ -180,6 +189,17 @@ func (fs *localFS) Rel(absPath string) (string, error) {
 	}
 	if !fs.isWithinRuntimeDir(absPath) {
 		return "", fmt.Errorf("%w: %s is outside runtime dir %s", constants.ErrPathValidation, absPath, fs.runtimeDir)
+	}
+	resolvedRoot, err := ResolveExistingPath(fs.runtimeDir)
+	if err != nil {
+		return "", fmt.Errorf("%w: resolve runtime root %s: %w", constants.ErrPathValidation, fs.runtimeDir, err)
+	}
+	resolvedPath, err := ResolveExistingPath(absPath)
+	if err != nil {
+		return "", fmt.Errorf("%w: resolve runtime path %s: %w", constants.ErrPathValidation, absPath, err)
+	}
+	if !withinPath(resolvedRoot, resolvedPath) {
+		return "", fmt.Errorf("%w: %s resolves outside runtime dir %s", constants.ErrPathValidation, absPath, fs.runtimeDir)
 	}
 	return rel, nil
 }

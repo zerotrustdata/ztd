@@ -9,8 +9,6 @@ package evidence
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -559,31 +557,26 @@ func analysisContentAddress(analysis *compliancev1.ComplianceAnalysis) (string, 
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256(canonical)
-	return "compliance-analysis:sha256:" + hex.EncodeToString(digest[:]), nil
+	return ContentReferenceForBody("compliance-analysis", canonical), nil
 }
 
 func gapID(scopeID, assertionRef, frameworkRef, controlID string) string {
 	identity := strings.Join([]string{scopeID, assertionRef, frameworkRef, controlID}, "\x00")
-	digest := sha256.Sum256([]byte(identity))
-	return "compliance-gap:sha256:" + hex.EncodeToString(digest[:])
+	return ContentReferenceForBody("compliance-gap", []byte(identity))
 }
 
 func findingID(scopeID, assertionRef, controlRef string) string {
 	identity := strings.Join([]string{scopeID, assertionRef, controlRef}, "\x00")
-	digest := sha256.Sum256([]byte(identity))
-	return "compliance-finding:sha256:" + hex.EncodeToString(digest[:])
+	return ContentReferenceForBody("compliance-finding", []byte(identity))
 }
 
 func remediationID(findingRef string) string {
-	digest := sha256.Sum256([]byte(findingRef))
-	return "compliance-remediation:sha256:" + hex.EncodeToString(digest[:])
+	return ContentReferenceForBody("compliance-remediation", []byte(findingRef))
 }
 
 func sectionID(scopeID, key string) string {
 	identity := strings.Join([]string{scopeID, key}, "\x00")
-	digest := sha256.Sum256([]byte(identity))
-	return "control-section:sha256:" + hex.EncodeToString(digest[:])
+	return ContentReferenceForBody("control-section", []byte(identity))
 }
 
 func gapDescription(status, failureReason, subjectID string) string {

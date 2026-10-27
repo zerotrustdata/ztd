@@ -27,7 +27,7 @@ import (
 func newObserveProducerLiveTestEnv(t *testing.T) (*ObserveProducerService, *DocumentStoreService, *SSEEventService) {
 	t.Helper()
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)
@@ -737,7 +737,7 @@ func TestDuplicateEventIDSuppression(t *testing.T) {
 func TestPersistBeforeEvent_NoSSEOnPersistenceFailure(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 
 	_, err = db.Exec(gatewaySchema)

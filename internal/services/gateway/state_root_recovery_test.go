@@ -18,6 +18,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -26,12 +27,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 const (
-	stateRootCrashDBEnv    = "ZTD_STATE_ROOT_CRASH_DB"
+	stateRootCrashBaseEnv  = "ZTD_STATE_ROOT_CRASH_BASE"
 	stateRootCrashPointEnv = "ZTD_STATE_ROOT_CRASH_POINT"
 	stateRootCrashMarker   = "state-root-crash-child: killing"
 
@@ -66,7 +68,7 @@ func TestStateRootService_CrashRecovery(t *testing.T) {
 			treeBefore := committedBoundTreeRoot(t, db.db)
 			db.Close()
 
-			runStateRootCrashChild(t, fileSvc.Resolve(constants.CanonicalDBRelPath), point)
+			runStateRootCrashChild(t, filepath.Dir(fileSvc.Resolve("")), point)
 
 			reopened, err := OpenCanonicalDBService(logger, ks, fileSvc)
 			require.NoError(t, err)
@@ -89,12 +91,16 @@ func TestStateRootService_CrashRecovery(t *testing.T) {
 // TestStateRootService_CrashRecovery. It opens the database file directly, as a
 // second runtime would, and is skipped in normal runs.
 func TestStateRootService_CrashChild(t *testing.T) {
-	dbPath := os.Getenv(stateRootCrashDBEnv)
-	if dbPath == "" {
+	baseDir := os.Getenv(stateRootCrashBaseEnv)
+	if baseDir == "" {
 		t.Skip("helper process for TestStateRootService_CrashRecovery")
 	}
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), logger)
+	fileSvc, err := fs.NewRuntimeFileService(baseDir, logger)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), logger)
 	require.NoError(t, err)
 
 	require.NoError(t, db.ExecInTxWithRetry(t.Context(), func(tx *sql.Tx) error {
@@ -128,13 +134,13 @@ func TestStateRootService_CrashChild(t *testing.T) {
 	t.Fatal("crash child was not killed")
 }
 
-func runStateRootCrashChild(t *testing.T, dbPath, point string) {
+func runStateRootCrashChild(t *testing.T, baseDir, point string) {
 	t.Helper()
 	executable, err := os.Executable()
 	require.NoError(t, err)
 	// #nosec G204 -- re-executes this test binary with a fixed test selector.
 	child := exec.Command(executable, "-test.run=^TestStateRootService_CrashChild$", "-test.count=1")
-	child.Env = append(os.Environ(), stateRootCrashDBEnv+"="+dbPath, stateRootCrashPointEnv+"="+point)
+	child.Env = append(os.Environ(), stateRootCrashBaseEnv+"="+baseDir, stateRootCrashPointEnv+"="+point)
 	out, err := child.CombinedOutput()
 	var exitErr *exec.ExitError
 	require.ErrorAs(t, err, &exitErr, "crash child must not exit cleanly: %s", out)

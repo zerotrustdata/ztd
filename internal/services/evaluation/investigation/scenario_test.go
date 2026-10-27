@@ -66,6 +66,13 @@ func checkFailures(f FileState, content string, found bool) []string {
 	return f.Check(content, found)
 }
 
+func TestFileStateCheckInvalidRegexDoesNotPanic(t *testing.T) {
+	failures := (FileState{NotMatches: []string{"("}}).Check("anything", true)
+	if len(failures) != 1 || failures[0] != "not_matches (" {
+		t.Fatalf("Check() = %v, want [not_matches (]", failures)
+	}
+}
+
 func TestGovernedProbe_Run(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 

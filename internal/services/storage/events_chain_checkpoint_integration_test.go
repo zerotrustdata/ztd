@@ -38,7 +38,7 @@ func newTestEventsStoreWithAuditor(t *testing.T) *LocalFirstEventsStore {
 	require.NoError(t, err)
 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
@@ -351,7 +351,7 @@ func TestAuditChainCheckpoint_LegacySchemaRejected(t *testing.T) {
 	testVault := CreateTestVault(t, fileSvc, vaultPriv)
 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	defer db.Close()
 

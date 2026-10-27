@@ -30,7 +30,7 @@ func setupEncryptedKVTest(t *testing.T) (*KVStoreService, *vault.Vault) {
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 	logger := testutil.NewTestLogger()
 
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.TestGatewayDatabaseFilename)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.TestGatewayDatabaseFilename)), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

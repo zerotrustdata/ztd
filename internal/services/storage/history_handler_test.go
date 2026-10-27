@@ -51,7 +51,7 @@ func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *LocalFirstEventsSt
 		EncryptionVault:      testVault,
 	}
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

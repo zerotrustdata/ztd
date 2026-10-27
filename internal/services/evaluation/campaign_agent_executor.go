@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -1025,7 +1024,7 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, request agentToolRequest) (AgentToolCall, error) {
 	tool, args := record.ToolName, request.Arguments
 	if tool == constants.MCPToolEventReceiptList {
-		r.injectEventReceiptListDefaults(args)
+		r.injectEventReceiptListDefaults(&args)
 	}
 	var argsJSON []byte
 	if request.Shell != nil {
@@ -1048,11 +1047,11 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		}
 		argsJSON = []byte(shellReq.CanonicalJSON())
 	} else {
-		var err error
-		argsJSON, err = json.Marshal(args.Values())
+		canonical, err := args.CanonicalJSON()
 		if err != nil {
 			return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
 		}
+		argsJSON = []byte(canonical)
 	}
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
 		ToolName:      tool,
@@ -1078,11 +1077,14 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: message})
 	}
 	if tool == constants.MCPToolEventReceiptList {
-		limit := args.Int("limit", agentToolDefaultHistoryLimit)
+		queryArgs, ok := args.EventReceiptList()
+		if !ok {
+			return AgentToolCall{}, fmt.Errorf("evaluation: decode %s typed arguments: %w", tool, constants.ErrEvaluationDispatchFailed)
+		}
 		query := mcp.EventReceiptListRequest{
-			InvestigationID:          args.String("investigation_id"),
-			Limit:                    limit,
-			ExcludeEventReceiptReads: args.Bool("exclude_event_receipt_reads"),
+			InvestigationID:          queryArgs.InvestigationID,
+			Limit:                    queryArgs.Limit,
+			ExcludeEventReceiptReads: queryArgs.ExcludeEventReceiptReads,
 		}
 		result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
 		if err != nil {
@@ -1127,16 +1129,10 @@ type agentToolTextResult struct {
 	Result string `json:"result"`
 }
 
-func (r *agentRun) injectEventReceiptListDefaults(args agentToolArguments) {
-	if args.String("investigation_id") == "" {
-		args.Set("investigation_id", r.trace.InvestigationID)
-	}
+func (r *agentRun) injectEventReceiptListDefaults(args *agentToolArguments) {
 	// The model cannot turn the audit-read exclusion off: a context query must
 	// never return the earlier audit reads of its own investigation.
-	args.Set("exclude_event_receipt_reads", true)
-	if args.Int("limit", 0) <= 0 {
-		args.Set("limit", json.Number(strconv.Itoa(agentToolDefaultHistoryLimit)))
-	}
+	args.SetEventReceiptListDefaults(r.trace.InvestigationID)
 }
 
 // dispatch submits one governed action and records its policy decision. It

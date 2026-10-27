@@ -67,7 +67,7 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 			if strings.TrimSpace(sourceID) == "" {
 				return constants.ErrPublicFeedSourceIDRequired
 			}
-			if err := validatePublicMirrorOrigin(mirrorOrigin); err != nil {
+			if err := gateway.ValidatePublicMirrorOrigin(mirrorOrigin); err != nil {
 				return err
 			}
 			cfg, err := configLoader("")
@@ -79,58 +79,14 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			for _, relPath := range []string{constants.PublicFeedExportConfigPath, constants.PublicFeedSigningKeyPath, constants.PublicFeedIngestTokenPath} {
-				exists, existsErr := fileSvc.FileExists(ctx, relPath)
-				if existsErr != nil {
-					return fmt.Errorf("public-feed: inspect initialization path: %w", existsErr)
-				}
-				if exists {
-					return constants.ErrPublicFeedConfigExists
-				}
-			}
-			if err := fileSvc.MkdirAll(ctx, constants.PublicFeedDirname, constants.PermDirPrivate); err != nil {
-				return fmt.Errorf("public-feed: create runtime directory: %w", err)
-			}
-			createdPaths := make([]string, 0, 3)
-			rollback := func(cause error) error {
-				result := cause
-				for index := len(createdPaths) - 1; index >= 0; index-- {
-					if removeErr := fileSvc.Remove(ctx, createdPaths[index]); removeErr != nil {
-						result = errors.Join(result, fmt.Errorf("public-feed: roll back initialization path %s: %w", createdPaths[index], removeErr))
-					}
-				}
-				return result
-			}
-			publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrPublicFeedKeyGenFailed, err)
-			}
-			token := make([]byte, constants.PublicFeedIngestTokenBytes)
-			if _, err := rand.Read(token); err != nil {
-				return fmt.Errorf("public-feed: generate ingest token: %w", err)
-			}
-			keyDigest := sha256.Sum256(publicKey)
-			exportConfig := models.DefaultPublicExportConfig()
-			exportConfig.Enabled = true
-			exportConfig.SourceID = sourceID
-			exportConfig.MirrorOrigin = mirrorOrigin
-			exportConfig.SigningKeyID = hex.EncodeToString(keyDigest[:])
 			ks, err := publicKeystore(fileSvc)
 			if err != nil {
 				return err
 			}
-			if err := gateway.WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedSigningKeyPath, privateKey); err != nil {
-				return fmt.Errorf("public-feed: write signing key: %w", err)
+			_, err = gateway.InitializeLocalPublicFeed(ctx, fileSvc, ks, sourceID, mirrorOrigin)
+			if err != nil {
+				return err
 			}
-			createdPaths = append(createdPaths, constants.PublicFeedSigningKeyPath)
-			if err := gateway.WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedIngestTokenPath, token); err != nil {
-				return rollback(fmt.Errorf("public-feed: write ingest token: %w", err))
-			}
-			createdPaths = append(createdPaths, constants.PublicFeedIngestTokenPath)
-			if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
-				return rollback(err)
-			}
-			createdPaths = append(createdPaths, constants.PublicFeedExportConfigPath)
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Public feed initialized for source %s\n", sourceID)
 			return err
 		},
@@ -159,7 +115,7 @@ func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			exportConfig, err := readPublicExportConfig(ctx, fileSvc)
+			exportConfig, err := gateway.ReadPublicExportConfig(ctx, fileSvc)
 			if err != nil {
 				return err
 			}
@@ -169,10 +125,10 @@ func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 			if cmd.Flags().Changed("enabled") {
 				exportConfig.Enabled = enabled
 			}
-			if err := validatePublicExportConfig(exportConfig); err != nil {
+			if err := gateway.ValidatePublicExportConfig(exportConfig); err != nil {
 				return err
 			}
-			if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
+			if err := gateway.WritePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Public feed configuration updated")
@@ -220,66 +176,6 @@ func publicSourceTransitionCmdWithConfig(configLoader publicConfigLoader, fileSv
 	cmd.Flags().StringVar(&sourceID, "source-id", "", "New public source deployment pseudonym")
 	cmd.Flags().BoolVar(&confirmed, "yes", false, "Confirm archival of the current publisher state and creation of a fresh source")
 	return cmd
-}
-
-func readPublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService) (models.PublicExportConfig, error) {
-	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedExportConfigPath)
-	if err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedConfigRequired, err)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var exportConfig models.PublicExportConfig
-	if err := decoder.Decode(&exportConfig); err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: decode: %w", constants.ErrPublicFeedConfigRequired, err)
-	}
-	if err := rejectTrailingPublicJSON(decoder); err != nil {
-		return models.PublicExportConfig{}, err
-	}
-	if err := validatePublicExportConfig(exportConfig); err != nil {
-		return models.PublicExportConfig{}, err
-	}
-	return exportConfig, nil
-}
-
-func writePublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService, exportConfig models.PublicExportConfig) error {
-	if err := validatePublicExportConfig(exportConfig); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(exportConfig, "", "  ")
-	if err != nil {
-		return fmt.Errorf("public-feed: encode export config: %w", err)
-	}
-	data = append(data, '\n')
-	if err := fileSvc.WriteFile(ctx, constants.PublicFeedExportConfigPath, data, constants.PermFilePrivate); err != nil {
-		return fmt.Errorf("public-feed: write export config: %w", err)
-	}
-	return nil
-}
-
-func validatePublicExportConfig(exportConfig models.PublicExportConfig) error {
-	if strings.TrimSpace(exportConfig.SourceID) == "" {
-		return constants.ErrPublicFeedSourceIDRequired
-	}
-	if strings.TrimSpace(exportConfig.SigningKeyID) == "" {
-		return constants.ErrPublicFeedSigningKeyIDRequired
-	}
-	if exportConfig.BatchMaxRecords <= 0 || exportConfig.BatchMaxRecords > constants.PublicFeedBatchMaxRecords || exportConfig.BatchMaxBytes <= 0 || exportConfig.BatchMaxBytes > constants.PublicFeedBatchMaxBytes || exportConfig.RetryMaxAttempts <= 0 || exportConfig.RetryInitialBackoffSecs < 0 || exportConfig.RetryMaxBackoffSecs < exportConfig.RetryInitialBackoffSecs || exportConfig.AckWindowSecs <= 0 {
-		return constants.ErrPublicFeedConfigRequired
-	}
-	return validatePublicMirrorOrigin(exportConfig.MirrorOrigin)
-}
-
-func validatePublicMirrorOrigin(origin string) error {
-	return gateway.ValidatePublicMirrorOrigin(origin)
-}
-
-func rejectTrailingPublicJSON(decoder *json.Decoder) error {
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return fmt.Errorf("%w: trailing JSON", constants.ErrPublicFeedConfigRequired)
-	}
-	return nil
 }
 
 func Cmd() *cobra.Command {
@@ -627,7 +523,7 @@ func loadPublicCommandRuntimeUnchecked(cmd *cobra.Command, configLoader publicCo
 	if err != nil {
 		return nil, models.PublicExportConfig{}, fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
-	exportConfig, err := readPublicExportConfig(shared.CommandContext(cmd), fileSvc)
+	exportConfig, err := gateway.ReadPublicExportConfig(shared.CommandContext(cmd), fileSvc)
 	if err != nil {
 		return nil, models.PublicExportConfig{}, err
 	}
@@ -963,7 +859,7 @@ func finalizePublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileServic
 		return fmt.Errorf("public-feed: persist rotated signing key: %w", err)
 	}
 	exportConfig.SigningKeyID = rotation.NewKeyID
-	if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
+	if err := gateway.WritePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
 		return err
 	}
 	if err := fileSvc.Remove(ctx, constants.PublicFeedKeyRotationPath); err != nil {

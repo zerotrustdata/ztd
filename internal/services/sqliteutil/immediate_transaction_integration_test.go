@@ -12,7 +12,6 @@ package sqliteutil
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,7 +19,8 @@ import (
 )
 
 func TestImmediateTransactionCanceledCommitReleasesPooledConnection(t *testing.T) {
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "transaction.db")), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("transaction.db")), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	db.SetMaxOpenConns(1)

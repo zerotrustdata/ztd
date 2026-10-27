@@ -75,19 +75,19 @@ func (c *Capability) Dissolve() {
 // the execution was properly authorized.
 func (c *Capability) Verify(actionType constants.ActionType, txHash string, now time.Time) error {
 	if c == nil {
-		return fmt.Errorf("capability: nil capability")
+		return constants.ErrL5CapabilityNil
 	}
 	if c.IsDissolved() {
-		return fmt.Errorf("capability: dissolved")
+		return constants.ErrL5CapabilityDissolved
 	}
 	if c.IsExpired(now) {
-		return fmt.Errorf("capability: expired")
+		return constants.ErrL5CapabilityExpired
 	}
 	if c.ActionType != actionType {
-		return fmt.Errorf("capability: action type mismatch (have %s, want %s)", c.ActionType, actionType)
+		return fmt.Errorf("%w (have %s, want %s)", constants.ErrL5CapabilityActionMismatch, c.ActionType, actionType)
 	}
 	if c.TransactionHash != txHash {
-		return fmt.Errorf("capability: transaction hash mismatch")
+		return constants.ErrL5CapabilityHashMismatch
 	}
 	return nil
 }

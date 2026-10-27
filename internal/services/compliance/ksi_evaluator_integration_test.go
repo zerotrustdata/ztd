@@ -80,7 +80,7 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirStandard))
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), logger)
+	mainDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { mainDB.Close() })
 

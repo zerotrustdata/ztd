@@ -236,7 +236,7 @@ func TestLocalFirstEventsStore_NilFileSvc(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	fileSvc := newTestFileSvc(t, tempDir)
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), logger)
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestLocalFirstEventsStore_NilEncryptionVault(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), logger)
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}

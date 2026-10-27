@@ -132,7 +132,7 @@ func loadCertFromFile(path string) (*x509.Certificate, error) {
 
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, fmt.Errorf("tls_cert_inspect: failed to decode PEM block")
+		return nil, fmt.Errorf("tls_cert_inspect: %w", constants.ErrPEMDecodeFailed)
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)

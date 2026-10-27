@@ -35,7 +35,7 @@ func setupTestCommitmentLedger(t *testing.T) (*CommitmentLedger, *sqliteutil.DB)
 	t.Helper()
 
 	// Use in-memory database for fast, isolated unit tests
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
 	require.NoError(t, err)
 
 	// Create the commitment_ledger table

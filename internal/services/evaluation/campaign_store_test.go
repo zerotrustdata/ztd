@@ -193,6 +193,17 @@ func (m *campaignMemoryFileService) EnforceDirPermissions(context.Context, strin
 func (m *campaignMemoryFileService) EnforceFilePermissions(context.Context, string, os.FileMode) error {
 	return nil
 }
+func (m *campaignMemoryFileService) CreateOrRestrictFile(_ context.Context, relPath string, _ os.FileMode) error {
+	key := filepath.ToSlash(relPath)
+	if _, exists := m.files[key]; !exists {
+		m.files[key] = nil
+	}
+	return nil
+}
+func (m *campaignMemoryFileService) RestrictFileIfExists(_ context.Context, relPath string, _ os.FileMode) (bool, error) {
+	_, exists := m.files[filepath.ToSlash(relPath)]
+	return exists, nil
+}
 func (m *campaignMemoryFileService) Rel(string) (string, error)        { return "", nil }
 func (m *campaignMemoryFileService) RelFromAbs(string) (string, error) { return "", nil }
 func (m *campaignMemoryFileService) OpenFileEditTarget(context.Context, string, string) (*ztdfs.FileEditTarget, error) {

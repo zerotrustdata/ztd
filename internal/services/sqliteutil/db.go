@@ -21,6 +21,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // DefaultBusyTimeoutMs bounds the uninterruptible driver busy wait. Longer
@@ -99,8 +100,9 @@ type DB struct {
 // OpenDB opens (or creates) a SQLite database with best-practice settings.
 // The database file is created 0600, and SQLite gives its WAL and shared-memory
 // files the same mode; an existing database and its sidecars are tightened to
-// 0600. Callers own the parent directory and its mode.
-func OpenDB(cfg DBConfig, logger *slog.Logger) (*DB, error) {
+// 0600. Callers own the parent directory and its mode. File databases must
+// resolve through fileSvc; nil is accepted only for SQLite in-memory paths.
+func OpenDB(fileSvc fs.RuntimeFileService, cfg DBConfig, logger *slog.Logger) (*DB, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("sqliteutil: database path is required: %w", constants.ErrMissingRequiredField)
 	}
@@ -108,7 +110,10 @@ func OpenDB(cfg DBConfig, logger *slog.Logger) (*DB, error) {
 		logger = slog.Default()
 	}
 
-	if err := securePrivateDatabaseFiles(cfg.Path); err != nil {
+	if !isMemoryDatabasePath(cfg.Path) && fileSvc == nil {
+		return nil, fmt.Errorf("sqliteutil: runtime file service is required for file database: %w", constants.ErrMissingRequiredField)
+	}
+	if err := securePrivateDatabaseFiles(fileSvc, cfg.Path); err != nil {
 		return nil, err
 	}
 

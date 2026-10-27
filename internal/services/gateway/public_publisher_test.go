@@ -42,7 +42,7 @@ func newPublicPublisherTestEnv(t *testing.T) (*PublicPublisherService, *Document
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -772,7 +772,7 @@ func TestRecoverOutbox_UsesRuntimeFileStateAfterDatabaseReplacement(t *testing.T
 	require.NoError(t, err)
 
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)
@@ -831,7 +831,7 @@ func TestRecoverOutbox_RejectsSnapshotEquivocationAtHighWater(t *testing.T) {
 func TestExportBatch_DisabledReturnsError(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)

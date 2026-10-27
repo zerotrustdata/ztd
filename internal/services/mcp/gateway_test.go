@@ -794,7 +794,7 @@ func TestGatewayService_RunMaintenance_AuditsExpiredTransactions(t *testing.T) {
 
 	// Create local-first events store
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -1198,7 +1198,7 @@ func TestGatewayService_StoreSuspendedTransaction(t *testing.T) {
 
 		// Create local-first events store
 		dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-		db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+		db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 		require.NoError(t, err)
 		defer db.Close()
 

@@ -63,7 +63,7 @@ func setupReportingEnv(t *testing.T, seed bool) Options {
 
 	// Open ztd.db once; the local-first events store and its commitment ledger share the pool.
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirStandard))
-	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(filepath.Join(dataDir, constants.DbFilename)), testutil.NewTestLogger())
+	mainDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(filepath.Join(dataDir, constants.DbFilename)), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { mainDB.Close() })
 

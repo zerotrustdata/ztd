@@ -45,11 +45,12 @@ func TestNewPruner_RespectsPositiveInterval(t *testing.T) {
 
 func TestPruner_InvokesFnOnTick(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "pruner.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -107,11 +108,12 @@ func TestPruner_Stop_BeforeStart_LeavesPrunerStartable(t *testing.T) {
 
 func TestPruner_Stop_HaltsInvocations(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "halt.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -138,11 +140,12 @@ func TestPruner_Stop_HaltsInvocations(t *testing.T) {
 
 func TestPruner_FnReceivesCorrectLogger(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "logarg.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -173,11 +176,12 @@ func TestPruner_FnReceivesCorrectLogger(t *testing.T) {
 
 func TestPruner_StartAfterStop_DoesNotInvokeFn(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "postStop.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -207,11 +211,12 @@ func TestPruner_StartAfterStop_DoesNotInvokeFn(t *testing.T) {
 
 func TestPruner_FnReceivesCorrectDB(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "dbarg.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

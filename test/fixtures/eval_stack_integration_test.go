@@ -59,7 +59,7 @@ func TestEvalStackUsesDistinctOutboundOperatorRoots(t *testing.T) {
 	require.NotEqual(t, gatewayDB, inferenceDB)
 	require.NotEqual(t, dataDB, inferenceDB)
 	logger := testutil.NewTestLogger()
-	dataSQLDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dataDB), logger)
+	dataSQLDB, err := sqliteutil.OpenDB(dataFS, sqliteutil.DefaultDBConfig(dataDB), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if err := dataSQLDB.Close(); err != nil {

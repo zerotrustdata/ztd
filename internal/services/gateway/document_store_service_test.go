@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/timesvc"
@@ -28,10 +29,12 @@ import (
 // for unit testing DocumentStoreService without pulling in the full CanonicalDBService.
 func newDocumentStoreTestDB(t *testing.T) *sqliteutil.DB {
 	t.Helper()
-	tmpDir := testutil.TempDir(t)
-	dbPath := filepath.Join(tmpDir, "document_store_test.db")
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+	dbPath := fileSvc.Resolve(filepath.Join(constants.DataDirname, "document_store_test.db"))
 	cfg := sqliteutil.DefaultDBConfig(dbPath)
-	db, err := sqliteutil.OpenDB(cfg, testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

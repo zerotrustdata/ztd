@@ -1068,6 +1068,12 @@ func (r *explicitSourceReader) EnforceDirPermissions(context.Context, string, os
 func (r *explicitSourceReader) EnforceFilePermissions(context.Context, string, os.FileMode) error {
 	return constants.ErrReadOnlyEvidenceSource
 }
+func (r *explicitSourceReader) CreateOrRestrictFile(context.Context, string, os.FileMode) error {
+	return constants.ErrReadOnlyEvidenceSource
+}
+func (r *explicitSourceReader) RestrictFileIfExists(context.Context, string, os.FileMode) (bool, error) {
+	return false, constants.ErrReadOnlyEvidenceSource
+}
 func (r *explicitSourceReader) Resolve(sourcePath string) string             { return sourcePath }
 func (r *explicitSourceReader) Rel(sourcePath string) (string, error)        { return sourcePath, nil }
 func (r *explicitSourceReader) RelFromAbs(sourcePath string) (string, error) { return sourcePath, nil }

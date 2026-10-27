@@ -152,9 +152,20 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	}
 
 	privateMirrorOrigin := "http://" + runtime.cfg.PrivateListenAddress
-	exportConfig, err := EnsureLocalPublicFeed(ctx, runtime.fileSvc, runtime.keystore, runtime.cfg.SourceID, privateMirrorOrigin)
+	exportConfig, err := ReadPublicExportConfig(ctx, runtime.fileSvc)
+	if errors.Is(err, constants.ErrPublicFeedConfigRequired) && errors.Is(err, constants.ErrNotFound) {
+		sourceID := strings.TrimSpace(runtime.cfg.SourceID)
+		if sourceID == "" {
+			sourceID = defaultPublicSpectatorSourceID
+		}
+		origin := strings.TrimSpace(privateMirrorOrigin)
+		if origin == "" {
+			origin = fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPrivatePort)
+		}
+		exportConfig, err = InitializeLocalPublicFeed(ctx, runtime.fileSvc, runtime.keystore, sourceID, origin)
+	}
 	if err != nil {
-		return fmt.Errorf("public spectator: ensure feed: %w", err)
+		return fmt.Errorf("public spectator: load or initialize feed: %w", err)
 	}
 	if exportConfig.MirrorOrigin == "" {
 		exportConfig.MirrorOrigin = "http://" + runtime.cfg.PrivateListenAddress

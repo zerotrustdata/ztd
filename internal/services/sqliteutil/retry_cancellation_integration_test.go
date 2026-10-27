@@ -13,7 +13,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -56,7 +55,8 @@ func TestRetryHelpersCancellationWaitingForConnection(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "pool.db")), testutil.NewTestLogger())
+			fileSvc := newTestRuntimeFiles(t)
+			db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("pool.db")), testutil.NewTestLogger())
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, db.Close()) })
 			db.SetMaxOpenConns(1)
@@ -93,13 +93,14 @@ func TestRetryHelpersBusyCancellationAndExhaustion(t *testing.T) {
 			},
 		} {
 			t.Run(name+map[bool]string{false: "/cancel", true: "/exhaust"}[exhausted], func(t *testing.T) {
-				cfg := DefaultDBConfig(filepath.Join(testutil.TempDir(t), "busy.db"))
+				fileSvc := newTestRuntimeFiles(t)
+				cfg := DefaultDBConfig(fileSvc.Resolve("busy.db"))
 				cfg.BusyTimeoutMs = 1
 				cfg.RetryBaseDelayMs = 1000
 				if exhausted {
 					cfg.MaxRetries = 1
 				}
-				db, err := OpenDB(cfg, testutil.NewTestLogger())
+				db, err := OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 				require.NoError(t, err)
 				t.Cleanup(func() { require.NoError(t, db.Close()) })
 				_, err = db.Exec("CREATE TABLE records(id INTEGER PRIMARY KEY)")
@@ -147,7 +148,8 @@ func TestRetryHelpersBusyCancellationAndExhaustion(t *testing.T) {
 // interrupt it. This test uses the production default busy timeout and proves
 // the deadline is honored while another connection holds the write lock.
 func TestRetryHelpersDeadlineDuringDriverBusyWait(t *testing.T) {
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "driver-busy.db")), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("driver-busy.db")), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	_, err = db.Exec("CREATE TABLE records(id INTEGER PRIMARY KEY)")
@@ -174,7 +176,8 @@ func TestRetryHelpersDeadlineDuringDriverBusyWait(t *testing.T) {
 }
 
 func TestBusyErrorClassificationUsesSQLiteCodes(t *testing.T) {
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "codes.db")), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	db, err := OpenDB(fileSvc, DefaultDBConfig(fileSvc.Resolve("codes.db")), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	_, err = db.Exec("CREATE TABLE records(id INTEGER PRIMARY KEY)")

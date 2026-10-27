@@ -88,7 +88,7 @@ type FileState struct {
 	SHA256      string   `json:"sha256,omitempty"` // exact content
 	Contains    []string `json:"contains,omitempty"`
 	NotContains []string `json:"not_contains,omitempty"`
-	NotMatches  []string `json:"not_matches,omitempty"` // RE2, compiled at load
+	NotMatches  []string `json:"not_matches,omitempty"` // RE2; Validate rejects an expression that does not compile
 	Absent      bool     `json:"absent,omitempty"`      // the file must not exist
 }
 
@@ -121,7 +121,8 @@ func (f FileState) Check(content string, found bool) []string {
 		}
 	}
 	for _, expr := range f.NotMatches {
-		if regexp.MustCompile(expr).MatchString(content) {
+		re, err := regexp.Compile(expr)
+		if err != nil || re.MatchString(content) {
 			failures = append(failures, "not_matches "+expr)
 		}
 	}

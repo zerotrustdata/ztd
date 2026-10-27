@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -27,13 +26,14 @@ import (
 )
 
 func TestCommitmentLedger_ConcurrentLedgerInstancesBuildAgainstUniqueHeads(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), constants.TestCommitmentLedgerDBFilename)
-	firstDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
+	dbPath := fileSvc.Resolve(constants.TestCommitmentLedgerDBFilename)
+	firstDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, firstDB.Close()) })
 	_, err = firstDB.Exec(eventsStoreSchema)
 	require.NoError(t, err)
-	secondDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	secondDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, secondDB.Close()) })
 	commitmentVault := newCommitmentTestVault(t)

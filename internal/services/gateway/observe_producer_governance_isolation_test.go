@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS events (
 func newEventReceiptsDB(t *testing.T) *sqliteutil.DB {
 	t.Helper()
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.ExecWithRetry(t.Context(), auditEventReceiptSchema)

@@ -512,6 +512,7 @@ func (e *CampaignExporter) ExportRun(
 	}
 	if err := e.writeSQLiteExport(
 		ctx,
+		exportFiles,
 		exportFiles.Resolve(sqlitePath),
 		run,
 		spec,
@@ -995,6 +996,7 @@ func formatTimestamp(ts *timestamppb.Timestamp) string {
 
 func (e *CampaignExporter) writeSQLiteExport(
 	ctx context.Context,
+	fileSvc fs.RuntimeFileService,
 	path string,
 	run *evalv1.EvaluationRun,
 	spec *evalv1.EvaluationCampaignSpec,
@@ -1006,7 +1008,7 @@ func (e *CampaignExporter) writeSQLiteExport(
 	aggregate *runAggregateState,
 	modelSummaries [][]byte,
 ) (err error) {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(path), slog.Default())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(path), slog.Default())
 	if err != nil {
 		return fmt.Errorf("evaluation: export campaign run: open sqlite: %w", err)
 	}

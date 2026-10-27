@@ -33,7 +33,7 @@ func newSuspendedStoreWithVault(t *testing.T) (*SuspendedTransactionService, *sq
 	require.NoError(t, err)
 	testVault := CreateTestVault(t, fileSvc, privKey)
 
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -26,10 +27,12 @@ import (
 // newTestDocumentStoreService creates a DocumentStoreService with a test DB.
 func newTestDocumentStoreService(t *testing.T) *DocumentStoreService {
 	t.Helper()
-	tmpDir := testutil.TempDir(t)
-	dbPath := filepath.Join(tmpDir, "user_service_test.db")
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+	dbPath := fileSvc.Resolve(filepath.Join(constants.DataDirname, "user_service_test.db"))
 	cfg := sqliteutil.DefaultDBConfig(dbPath)
-	db, err := sqliteutil.OpenDB(cfg, testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

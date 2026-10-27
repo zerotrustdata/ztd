@@ -32,7 +32,7 @@ func TestLocalFirstEventsStore_InitDatabase_CommitmentLedgerWardenIntentColumn(t
 	testVault := CreateTestVault(t, fileSvc, privKey)
 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

@@ -319,7 +319,7 @@ func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault, auditorKey e
 	if err := fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return nil, nil, false
 	}
-	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), complianceLogger())
+	mainDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), complianceLogger())
 	if err != nil {
 		return nil, nil, false
 	}

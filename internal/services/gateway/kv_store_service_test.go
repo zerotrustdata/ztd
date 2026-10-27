@@ -16,16 +16,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func setupKVStore(t *testing.T) *KVStoreService {
 	t.Helper()
-	dir := testutil.TempDir(t)
 	logger := testutil.NewTestLogger()
-	cfg := sqliteutil.DefaultDBConfig(filepath.Join(dir, "test.db"))
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), logger)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+	cfg := sqliteutil.DefaultDBConfig(fileSvc.Resolve(filepath.Join(constants.DataDirname, "test.db")))
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

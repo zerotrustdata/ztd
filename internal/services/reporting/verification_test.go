@@ -54,7 +54,7 @@ func setupTestEventsStoreWithDB(t *testing.T) (*storage.LocalFirstEventsStore, *
 	testVault := createTestVault(t, fileSvc, privKey)
 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -96,7 +96,7 @@ func createTestVault(t *testing.T, fileSvc fs.RuntimeFileService, privateKey []b
 // Returns both the CommitmentLedger and the underlying DB for direct SQL access.
 func setupTestCommitmentLedger(t *testing.T) (*storage.CommitmentLedger, *sqliteutil.DB, *vault.Vault) {
 	t.Helper()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
 	require.NoError(t, err)
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS commitment_ledger (

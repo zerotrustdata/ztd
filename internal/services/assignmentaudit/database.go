@@ -72,7 +72,7 @@ func BuildDatabase(ctx context.Context, fileSvc fs.RuntimeFileService, header He
 	defer removeScratch(fileSvc, scratchDir)
 
 	dbRelPath := filepath.Join(scratchDir, databaseFilename)
-	if err := writeDatabase(ctx, fileSvc.Resolve(dbRelPath), header, records); err != nil {
+	if err := writeDatabase(ctx, fileSvc, fileSvc.Resolve(dbRelPath), header, records); err != nil {
 		return nil, err
 	}
 	data, err := fileSvc.ReadFile(ctx, dbRelPath)
@@ -115,8 +115,8 @@ func VerifyDatabase(ctx context.Context, image []byte) (Header, []models.PublicF
 // event rows in one transaction. It then switches the file to rollback-journal
 // mode so the file alone holds every committed page, with no WAL or SHM
 // sidecar left to be read alongside it.
-func writeDatabase(ctx context.Context, path string, header Header, records []models.PublicFeedRecord) error {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(path), slog.Default())
+func writeDatabase(ctx context.Context, fileSvc fs.RuntimeFileService, path string, header Header, records []models.PublicFeedRecord) error {
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(path), slog.Default())
 	if err != nil {
 		return fmt.Errorf("assignmentaudit: build database: open: %w", err)
 	}

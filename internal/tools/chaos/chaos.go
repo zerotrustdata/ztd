@@ -479,7 +479,7 @@ func Run(cfg Config) error {
 	// Constructed the way the Gateway constructs it: the canonical ztd.db is opened
 	// by the caller, and the store shares it. Defers run in reverse order, so the
 	// store closes before the database it writes through.
-	auditDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
+	auditDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open audit database: %w", err)
 	}

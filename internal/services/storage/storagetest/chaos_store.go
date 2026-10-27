@@ -60,7 +60,7 @@ func OpenChaosEventStore(fileSvc fs.RuntimeFileService, logger *slog.Logger) (*C
 	if err := fileSvc.MkdirAll(ctx, constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
 	}
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.ChaosDBRelPath)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.ChaosDBRelPath)), logger)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreOpenDBFailed, err)
 	}

@@ -183,7 +183,7 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 }
 
 func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicMirrorStore, error) {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.PublicMirrorDBPath)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.PublicMirrorDBPath)), logger)
 	if err != nil {
 		return nil, fmt.Errorf("public mirror store: open %s: %w", constants.PublicMirrorDBPath, err)
 	}
