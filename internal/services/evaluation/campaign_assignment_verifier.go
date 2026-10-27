@@ -224,9 +224,9 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 		}
 		resolved = map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{target.GetDesignatedRole(): target.GetCandidateVariant()}
 	}
-	designated := req.Assignment.GetHomogeneous().GetDesignatedRole()
-	if system {
-		designated = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	designated, err := AssignmentDesignatedRole(req.Assignment)
+	if err != nil {
+		return err
 	}
 	variant := resolved[designated]
 	label, err := modelCampaignRoleLabel(designated)

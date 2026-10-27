@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -122,6 +124,113 @@ func TestCampaignAgentExecutor_JudgeFailsClosedOnUnresolvableAssignment(t *testi
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Nil(t, grades)
 	assert.Nil(t, scores)
+}
+
+// TestJudgeVariant_FailsClosedWhenVariantUnresolved: ResolveAssignmentModels
+// never yields an unresolved designated variant, so the judge guard is exercised
+// on the resolved map directly. Each case must fail, never skip the judge.
+func TestJudgeVariant_FailsClosedWhenVariantUnresolved(t *testing.T) {
+	primary := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	assignment := &evalv1.EvaluationAssignment{Target: &evalv1.EvaluationAssignment_Homogeneous{
+		Homogeneous: &evalv1.HomogeneousAssignmentTarget{DesignatedRole: primary},
+	}}
+	for _, tc := range []struct {
+		name     string
+		resolved map[evalv1.ModelCampaignRole]*evalv1.ModelVariant
+		want     error
+	}{
+		{"nil variant", map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{}, constants.ErrFormationRegistryBinding},
+		{"empty served tag", map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{primary: {VariantId: "v", ModelDigest: "sha256:a"}}, constants.ErrMissingRequiredField},
+		{"empty model digest", map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{primary: {VariantId: "v", ServedModelTag: "m"}}, constants.ErrMissingRequiredField},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			variant, err := judgeVariant(AssignmentExecutionRequest{Assignment: assignment}, tc.resolved)
+			require.ErrorIs(t, err, tc.want)
+			assert.Nil(t, variant)
+		})
+	}
+	resolved := map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{primary: {VariantId: "v", ServedModelTag: "m", ModelDigest: "sha256:a"}}
+	variant, err := judgeVariant(AssignmentExecutionRequest{Assignment: assignment}, resolved)
+	require.NoError(t, err)
+	assert.Equal(t, "v", variant.GetVariantId())
+}
+
+// heterogeneousLiteRequest is a SYSTEM-lane stack assignment whose designated
+// role is Lite. The topology is anchored as enrollment anchors it, and the
+// working directory is set so the attempt workspace resolves without touching
+// the filesystem.
+func heterogeneousLiteRequest(t *testing.T) AssignmentExecutionRequest {
+	t.Helper()
+	req := heterogeneousAssignmentExecutionRequest(t, mustHeterogeneousStack(t), testHeterogeneousVariants())
+	req.Assignment.GetHeterogeneous().DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+	signer := oracletest.NewSigner(t)
+	req.Binding.Topology.Inference.Anchor = signer.Anchor(req.Binding.Topology.Inference.OperatorID)
+	req.Binding.Topology.Data.Anchor = signer.Anchor(req.Binding.Topology.Data.OperatorID)
+	req.Binding.Topology.DataWorkingDirectory = agentTestWorkingDirectory
+	return req
+}
+
+func TestCampaignAgentExecutor_HeterogeneousLiteRunsUnderLiteRole(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	executor := &CampaignAgentExecutor{catalog: catalog, newID: func(prefix string) string { return prefix + "-test" }}
+	req := heterogeneousLiteRequest(t)
+	lite := req.Assignment.GetHeterogeneous().GetStack().GetLiteSlot()
+
+	run, err := executor.newRun(req)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, run.designated)
+	assert.Equal(t, "lite", run.trace.DesignatedRole)
+	assert.Equal(t, lite.GetVariantId(), run.variant.GetVariantId())
+
+	messages, err := run.conversation()
+	require.NoError(t, err)
+	prompt := messages[0].GetParts()[0].GetText()
+	assert.Contains(t, prompt, "You are the lightweight")
+	assert.NotContains(t, prompt, "You are Sage,")
+}
+
+func TestCampaignAgentExecutor_HeterogeneousLiteRejectsTools(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	executor := &CampaignAgentExecutor{catalog: catalog, newID: func(prefix string) string { return prefix + "-test" }}
+	req := heterogeneousLiteRequest(t)
+	req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}}
+
+	run, err := executor.newRun(req)
+	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	assert.Nil(t, run)
+}
+
+// inferenceUnavailable records each governed dispatch and fails it, so a test can
+// inspect the variant bound to the dispatch without a live Gateway.
+type inferenceUnavailable struct {
+	AgentInferenceDispatcher
+	dispatched int
+}
+
+func (d *inferenceUnavailable) DispatchInference(context.Context, *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	d.dispatched++
+	return nil, errors.New("test: inference unavailable")
+}
+
+func TestCampaignAgentExecutor_HeterogeneousLiteDispatchesLiteVariant(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	inference := &inferenceUnavailable{}
+	executor := &CampaignAgentExecutor{inference: inference, catalog: catalog, newID: func(prefix string) string { return prefix + "-test" }}
+	req := heterogeneousLiteRequest(t)
+	lite := req.Assignment.GetHeterogeneous().GetStack().GetLiteSlot()
+
+	run, err := executor.newRun(req)
+	require.NoError(t, err)
+	messages, err := run.conversation()
+	require.NoError(t, err)
+	_, call, err := run.dispatchInference(t.Context(), AgentModelCall{Purpose: agentModelCallPurposeTurn}, messages, nil)
+	require.Error(t, err)
+	assert.Equal(t, 1, inference.dispatched)
+	assert.Equal(t, lite.GetVariantId(), call.ModelVariantID)
+	assert.Equal(t, run.variant.GetServedModelTag(), call.ServedModelTag)
 }
 
 func TestModelInferenceRecords_FailsClosedOnUnresolvableAssignment(t *testing.T) {

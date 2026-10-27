@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -200,7 +201,7 @@ func verifiedGradingRequest(trace *AgentTrace, players *ScenarioPlayerExpectatio
 		Binding: CampaignExecutionBinding{
 			ModelRegistryDigest: trace.ModelRegistryDigest,
 			ModelVariants:       []*evalv1.ModelVariant{candidate},
-			ModelRegistry: []*operatorv1.InferenceModelVariant{{Model: trace.ServedModelTag, Digest: trace.ModelDigest}},
+			ModelRegistry:       []*operatorv1.InferenceModelVariant{{Model: trace.ServedModelTag, Digest: trace.ModelDigest}},
 		},
 		Assignment: &evalv1.EvaluationAssignment{
 			AssignmentId: trace.AssignmentID,

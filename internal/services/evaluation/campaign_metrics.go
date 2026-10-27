@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -37,9 +38,12 @@ const (
 //  4. diagnosis_correctness: deterministic content correctness (1.0 or 0.0).
 //  5. evidence_backed_conclusion: claims in the diagnosis are traceable to
 //     observations from this run or to retrieved receipts (1.0 or 0.0).
-func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold ScenarioGoldCriteria, contentPassed bool, input ScenarioInputFixture) []*evalv1.DecomposedScoreRecord {
+//
+// It returns an error wrapping constants.ErrMissingRequiredField when the
+// assignment ID or the trace is absent.
+func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold ScenarioGoldCriteria, contentPassed bool, input ScenarioInputFixture) ([]*evalv1.DecomposedScoreRecord, error) {
 	if assignmentID == "" || trace == nil {
-		return nil
+		return nil, fmt.Errorf("evaluation: compute investigation metrics: assignment and trace: %w", constants.ErrMissingRequiredField)
 	}
 
 	retrievalHitRate := computeRetrievalHitRate(trace, gold.GoldEvidenceReferences, input)
@@ -92,7 +96,7 @@ func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold Sc
 			Direction:         evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER,
 			MissingDataPolicy: evalv1.EvaluationMissingDataPolicy_EVALUATION_MISSING_DATA_POLICY_FAIL,
 		},
-	}
+	}, nil
 }
 
 func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenceReference, input ScenarioInputFixture) float64 {

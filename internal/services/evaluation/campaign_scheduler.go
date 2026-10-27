@@ -122,16 +122,23 @@ func assignmentExecutionLess(left, right *evalv1.EvaluationAssignment, scenarioO
 		}
 		return l < r
 	}
-	if leftTarget != nil {
-		if l, r := leftTarget.GetDesignatedRole(), rightTarget.GetDesignatedRole(); l != r {
-			return l < r
-		}
+	if l, r := assignmentDesignatedRole(left), assignmentDesignatedRole(right); l != r {
+		return l < r
 	}
 	if l, r := left.GetRepetition(), right.GetRepetition(); l != r {
 		return l < r
 	}
 
 	return left.GetDeterministicIdentity() < right.GetDeterministicIdentity()
+}
+
+// assignmentDesignatedRole returns the role an assignment runs as: the model
+// role for a homogeneous target, the stack role for a heterogeneous target.
+func assignmentDesignatedRole(assignment *evalv1.EvaluationAssignment) evalv1.ModelCampaignRole {
+	if homogeneous := assignment.GetHomogeneous(); homogeneous != nil {
+		return homogeneous.GetDesignatedRole()
+	}
+	return assignment.GetHeterogeneous().GetDesignatedRole()
 }
 
 func buildHomogeneousAssignment(campaignID, runID string, scenario *evalv1.EvaluationScenarioDefinition, variant *evalv1.ModelVariant, role evalv1.ModelCampaignRole, repetition uint32, queuedAt time.Time) (*evalv1.EvaluationAssignment, error) {
@@ -214,7 +221,8 @@ func ModelRoleMatrixSize(catalog *evalv1.EvaluationScenarioCatalog, modelCount u
 }
 
 // FormationMatrixSize returns the assignment count of a system-lane run over
-// catalog: one assignment per formation per scenario.
+// catalog: formations × (scenario, eligible role) cells, the same cell rule the
+// model-role lane uses. Zero stacks size as zero.
 func FormationMatrixSize(catalog *evalv1.EvaluationScenarioCatalog, formationCount uint64) uint64 {
-	return formationCount * uint64(len(catalog.GetScenarios()))
+	return formationCount * CatalogModelRoleCells(catalog)
 }

@@ -1235,6 +1235,7 @@ EvaluationVerificationReport independently verifies one run or assignment.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | stack | [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition) |  |  |
+| designated_role | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  | Stack role this assignment executes as. |
 
 
 

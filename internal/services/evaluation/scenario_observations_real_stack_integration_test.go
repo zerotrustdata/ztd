@@ -163,7 +163,7 @@ func TestRealStackScenarioObservation_LiteReceivesCaseMemoryWithoutTools(t *test
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 	assert.Equal(t, "lite", trace.DesignatedRole)
 	require.NotEmpty(t, trace.Input.Messages)
-	assert.True(t, traceInputContains(trace, "daily app-report job must be preserved"))
+	assert.True(t, traceInputContains(trace, "daily app-report job runs at 03:00 and must be preserved"))
 	assert.Empty(t, trace.Input.Tools)
 	assert.Empty(t, executorChatBodies(t, env)[0].Tools)
 	assert.Empty(t, trace.ToolCalls)
@@ -190,9 +190,9 @@ func TestRealStackScenarioObservation_SignedResultCannotBePoisonedAfterReseal(t 
 	require.NotNil(t, requestTamper.Observations[successIndex].Call.RequestEnvelope)
 	require.NotNil(t, requestTamper.Observations[successIndex].Call.RequestEnvelope.GovernanceEnvelope)
 	requestTamper.Observations[successIndex].Call.RequestEnvelope.GovernanceEnvelope.Payload = []byte("forged request payload")
-	assert.Error(t, evaluation.VerifyAgentTraceEvidence(requestTamper), "the request envelope is bound to the signed transaction hash")
+	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(requestTamper), constants.ErrEvaluationEvidenceTraceMismatch, "the request envelope is bound to the signed transaction hash")
 	trace.Observations[successIndex].Call.ResultJSON = `{}`
-	assert.Error(t, evaluation.VerifyAgentTraceEvidence(trace), "the altered result no longer matches its signed receipt")
+	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch, "the altered result no longer matches its signed receipt")
 
 	body, err := evaluation.SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -231,7 +231,7 @@ func TestRealStackScenarioObservation_SignedFailedResultCannotBePoisonedAfterRes
 	require.NotNil(t, call.Receipt)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, call.Receipt.GetStatus(), "the signed command result carries a native execution error")
 	call.ResultJSON = `{"success":true}`
-	assert.Error(t, evaluation.VerifyAgentTraceEvidence(trace), "the altered error result no longer matches its signed receipt")
+	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch, "the altered error result no longer matches its signed receipt")
 
 	body, err := evaluation.SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -275,7 +275,7 @@ func TestRealStackModelToolResultAndRequestCannotBePoisonedAfterReseal(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			tampered := cloneScenarioObservationTrace(t, trace)
 			tc.change(&tampered.ToolCalls[0])
-			require.Error(t, evaluation.VerifyAgentTraceEvidence(tampered), "the resealed trace must remain inconsistent with its signed evidence")
+			require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(tampered), constants.ErrEvaluationEvidenceTraceMismatch, "the resealed trace must remain inconsistent with its signed evidence")
 
 			body, err := evaluation.SealAgentTrace(tampered)
 			require.NoError(t, err)

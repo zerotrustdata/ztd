@@ -1779,22 +1779,29 @@ func variantIDForAssignmentModelRole(assignment *evalv1.EvaluationAssignment, ro
 	return "", fmt.Errorf("evaluation: assignment model role lookup: %w", constants.ErrMissingRequiredField)
 }
 
-func primaryVariantIDForAssignment(assignment *evalv1.EvaluationAssignment) (string, error) {
+// designatedVariantIDForAssignment is the frozen variant the assignment's verdict
+// grades: the designated role's slot for a heterogeneous stack, or the candidate
+// for a homogeneous target.
+func designatedVariantIDForAssignment(assignment *evalv1.EvaluationAssignment) (string, error) {
+	role, err := AssignmentDesignatedRole(assignment)
+	if err != nil {
+		return "", err
+	}
 	if IsHeterogeneousAssignment(assignment) {
-		return variantIDForAssignmentModelRole(assignment, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+		return variantIDForAssignmentModelRole(assignment, role)
 	}
 	variantID, _, err := homogeneousVariantRole(assignment)
 	return variantID, err
 }
 
-// designatedRoleLabelForAssignment is the role the assignment's verdict grades:
-// the homogeneous target's designated role, or primary for a heterogeneous stack.
+// designatedRoleLabelForAssignment is the role the assignment's verdict grades,
+// as its public label. A missing designated role fails closed.
 func designatedRoleLabelForAssignment(assignment *evalv1.EvaluationAssignment) (string, error) {
-	if IsHeterogeneousAssignment(assignment) {
-		return modelCampaignRoleLabel(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+	role, err := AssignmentDesignatedRole(assignment)
+	if err != nil {
+		return "", err
 	}
-	_, role, err := homogeneousVariantRole(assignment)
-	return role, err
+	return modelCampaignRoleLabel(role)
 }
 
 func variantRoleAggregateFor(state *runAggregateState, variantID, role string) *variantRoleAggregate {

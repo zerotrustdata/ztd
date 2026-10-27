@@ -35,12 +35,35 @@ var scenarioEvidenceTypes = map[string]struct{}{
 	"final_response":    {},
 }
 
+// scenarioFailure builds a scenario failure carrying its sentinel class. When
+// cause is non-nil it is wrapped with %w, so errors.Is and errors.As reach it
+// through the returned error's Unwrap chain.
+func scenarioFailure(sentinel error, blueprint ScenarioBlueprint, cause error, format string, args ...any) error {
+	message := fmt.Sprintf(format, args...)
+	if cause == nil {
+		return fmt.Errorf("evaluation: scenario %s: %w: %s", blueprint.ScenarioID, sentinel, message)
+	}
+	return fmt.Errorf("evaluation: scenario %s: %w: %s: %w", blueprint.ScenarioID, sentinel, message, cause)
+}
+
 func scenarioContractError(blueprint ScenarioBlueprint, format string, args ...any) error {
-	return fmt.Errorf("evaluation: scenario %s: %w: %s", blueprint.ScenarioID, constants.ErrEvaluationScenarioContractInvalid, fmt.Sprintf(format, args...))
+	return scenarioFailure(constants.ErrEvaluationScenarioContractInvalid, blueprint, nil, format, args...)
+}
+
+// scenarioContractErrorWithCause is scenarioContractError for a failure that
+// has an underlying cause, which stays reachable with errors.Is/errors.As.
+func scenarioContractErrorWithCause(blueprint ScenarioBlueprint, cause error, format string, args ...any) error {
+	return scenarioFailure(constants.ErrEvaluationScenarioContractInvalid, blueprint, cause, format, args...)
 }
 
 func scenarioUnanswerableError(blueprint ScenarioBlueprint, format string, args ...any) error {
-	return fmt.Errorf("evaluation: scenario %s: %w: %s", blueprint.ScenarioID, constants.ErrEvaluationPromptUnanswerable, fmt.Sprintf(format, args...))
+	return scenarioFailure(constants.ErrEvaluationPromptUnanswerable, blueprint, nil, format, args...)
+}
+
+// scenarioUnanswerableErrorWithCause is scenarioUnanswerableError for a failure
+// that has an underlying cause, which stays reachable with errors.Is/errors.As.
+func scenarioUnanswerableErrorWithCause(blueprint ScenarioBlueprint, cause error, format string, args ...any) error {
+	return scenarioFailure(constants.ErrEvaluationPromptUnanswerable, blueprint, cause, format, args...)
 }
 
 // validateScenarioContract fails closed on any breach of the scenario
@@ -57,7 +80,7 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 		return err
 	}
 	if _, err := investigation.ValidateFileStates(blueprint.Gold.FileState); err != nil {
-		return fmt.Errorf("evaluation: scenario %s: %w: invalid final file-state objective: %w", blueprint.ScenarioID, constants.ErrEvaluationScenarioContractInvalid, err)
+		return scenarioContractErrorWithCause(blueprint, err, "invalid final file-state objective")
 	}
 	if probe := blueprint.Gold.GovernedProbe; probe != nil && !models.ValidExecutableName(probe.Command) {
 		return scenarioContractError(blueprint, "verification probe must name one executable")
@@ -405,7 +428,7 @@ func validateWorkspaceFiles(blueprint ScenarioBlueprint) error {
 	}
 	for _, file := range files {
 		if err := validateWorkspaceRelPath(file.RelPath); err != nil {
-			return fmt.Errorf("evaluation: scenario %s: %w: %w", blueprint.ScenarioID, constants.ErrEvaluationScenarioContractInvalid, err)
+			return scenarioContractErrorWithCause(blueprint, err, "workspace file %q is not a clean relative path", file.RelPath)
 		}
 		if _, dup := seen[file.RelPath]; dup {
 			return scenarioContractError(blueprint, "duplicate workspace file %q", file.RelPath)

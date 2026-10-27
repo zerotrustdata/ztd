@@ -528,7 +528,7 @@ func toolArgShellCommand() ScenarioBlueprint {
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"HEALTHY"}}}
 	gold.PromptHint = hint([]string{constants.MCPToolRunShellCommand},
-		hintArg(constants.MCPToolRunShellCommand, "command", sourceWorkspace, ScenarioWorkspaceToken+"/status/health.txt"),
+		hintArg(constants.MCPToolRunShellCommand, "command", sourcePrompt, "cat"),
 	)
 	gold.ArgumentValidators = []ToolArgumentValidator{{
 		ToolName: constants.MCPToolRunShellCommand,
@@ -550,7 +550,7 @@ func toolArgShellCommand() ScenarioBlueprint {
 		ExpectedTools:     []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-arguments", "governed-command"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Run one read-only command on the operator that prints " + ScenarioWorkspaceToken + "/status/health.txt, and tell me the health marker.",
+			UserPrompt: "Run one read-only command on the operator, using the executable cat on " + ScenarioWorkspaceToken + "/status/health.txt, and tell me the health marker.",
 			WorkspaceFiles: []ScenarioWorkspaceFile{
 				workspaceFile("health-marker", "status/health.txt", "HEALTHY", false),
 			},
@@ -630,7 +630,7 @@ func techConfigDiff() ScenarioBlueprint {
 		"Heterogeneous lane verifies the final config comparison.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"first config", "first configuration"}, {"30"}}, ForbiddenTerms: []string{"service-a", "service-b"}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"first config", "first configuration", "first service config", "first service configuration"}, {"30"}}, ForbiddenTerms: []string{"service-a", "service-b"}}
 	return ScenarioBlueprint{
 		ScenarioID: "tech-config-diff", ScenarioVersion: scenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
@@ -653,7 +653,7 @@ func techConfigDiff() ScenarioBlueprint {
 
 func techErrorDiagnosis() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer states the command failed because deploy-healthcheck was not found.",
+		"The answer states the command failed because the masked command name deploy-h… was not found.",
 		"Primary diagnoses the missing command in the designated role.",
 		"Assistant diagnoses the missing command without inventing permission failures.",
 		"Lite diagnoses the missing command or retains the actual incorrect outcome.",
@@ -663,7 +663,7 @@ func techErrorDiagnosis() ScenarioBlueprint {
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
 		RequiredTerms: [][]string{
-			{"deploy-healthcheck"},
+			{"deploy-h…"},
 			{"not found", "not installed", "missing", "does not exist", "doesn't exist", "no such", "not on the path", "not in path"},
 		},
 		ForbiddenTerms: []string{"permission denied"},
@@ -689,7 +689,7 @@ func techErrorDiagnosis() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"error-diagnosis"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Explain why the command output below exited with code 127.",
+			UserPrompt: "Explain why the command output below exited with code 127. Partially mask the command name as `deploy-h…`; do not repeat the full name.",
 			InlineContext: []ScenarioInlineContent{
 				inlineEvidence("log", "command-output", "sh: deploy-healthcheck: not found\nexit_code=127"),
 			},

@@ -348,7 +348,7 @@ func buildAssignmentPassMetricSignal(
 		status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE {
 		return PublicMetricAvailabilitySignal{}, false, nil
 	}
-	variantID, err := primaryVariantIDForAssignment(assignment)
+	variantID, err := designatedVariantIDForAssignment(assignment)
 	if err != nil {
 		return PublicMetricAvailabilitySignal{}, false, fmt.Errorf("evaluation: build assignment pass metric signal: %w", err)
 	}

@@ -66,7 +66,8 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		},
 	}
 
-	scores := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	scores, err := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	require.NoError(t, err)
 	require.Len(t, scores, 5)
 
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
@@ -131,7 +132,8 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 		},
 	}
 
-	scores := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	scores, err := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	require.NoError(t, err)
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
 	for _, s := range scores {
 		scoreMap[s.Dimension] = s
@@ -161,7 +163,8 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 		},
 	}
 
-	scores := ComputeInvestigationMetrics("test-assignment-shell", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	scores, err := ComputeInvestigationMetrics("test-assignment-shell", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	require.NoError(t, err)
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
 	for _, s := range scores {
 		scoreMap[s.Dimension] = s
@@ -189,7 +192,8 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 		ToolCalls:  []AgentToolCall{},
 	}
 
-	scores := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	scores, err := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	require.NoError(t, err)
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
 	for _, s := range scores {
 		scoreMap[s.Dimension] = s
@@ -198,6 +202,18 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 	// Because "unsupported-cause-dns-failure" was never in evidence, evidence backed conclusion is 0.0
 	require.Contains(t, scoreMap, MetricEvidenceBackedConclusion)
 	assert.InDelta(t, 0.0, scoreMap[MetricEvidenceBackedConclusion].Value, 0)
+}
+
+func TestComputeInvestigationMetrics_RejectsMissingInput(t *testing.T) {
+	trace := &AgentTrace{ModelCalls: []AgentModelCall{{LoopTurn: 1}}}
+
+	scores, err := ComputeInvestigationMetrics("", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Nil(t, scores)
+
+	scores, err = ComputeInvestigationMetrics("test-assignment-nil-trace", nil, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Nil(t, scores)
 }
 
 func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {

@@ -46,7 +46,9 @@ func newAgentGradingView(trace *AgentTrace) (agentGradingView, error) {
 	}, nil
 }
 
-func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws ScenarioWorkspace) (bool, string) {
+// validateToolCall reports whether call satisfies its argument validators. On
+// failure the typed toolArgumentFailure names the argument and the rule it broke.
+func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws ScenarioWorkspace) (bool, toolArgumentFailure) {
 	var targetValidator *ToolArgumentValidator
 	for i := range validators {
 		if validators[i].ToolName == call.ToolName {
@@ -55,28 +57,28 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 		}
 	}
 	if targetValidator == nil {
-		return true, ""
+		return true, toolArgumentFailure{}
 	}
 
 	var rawArgs map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(call.ArgumentsJSON), &rawArgs); err != nil {
-		return false, fmt.Sprintf("invalid arguments json: %v", err)
+		return false, toolArgumentFailure{Rule: fmt.Sprintf("invalid arguments json: %v", err)}
 	}
 
 	for _, c := range targetValidator.Arguments {
 		rawVal, ok := rawArgs[c.Name]
 		if !ok {
-			return false, fmt.Sprintf("argument %q is missing", c.Name)
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("argument %q is missing", c.Name)}
 		}
 		strVal, err := toolArgumentValue(call, c.Name, rawVal)
 		if err != nil {
-			return false, err.Error()
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: err.Error()}
 		}
 
 		if c.Equals != "" {
 			rendered := ws.Render(c.Equals)
 			if strVal != rendered {
-				return false, fmt.Sprintf("argument %q: equals %q failed, got %q", c.Name, rendered, strVal)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("equals %q failed, got %q", rendered, strVal)}
 			}
 		}
 
@@ -89,7 +91,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 				}
 			}
 			if !matched {
-				return false, fmt.Sprintf("argument %q: %q not in %v", c.Name, strVal, c.OneOf)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("%q not in %v", strVal, c.OneOf)}
 			}
 		}
 
@@ -97,7 +99,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			resolved := ws.Resolve(strVal)
 			expected := ws.Resolve(ws.Render(c.PathEquals))
 			if resolved != expected {
-				return false, fmt.Sprintf("argument %q: resolved path %q != %q", c.Name, resolved, expected)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q != %q", resolved, expected)}
 			}
 		}
 
@@ -105,23 +107,23 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			resolved := ws.Resolve(strVal)
 			expectedUnder := ws.Resolve(ws.Render(c.PathUnder))
 			if !pathWithin(resolved, expectedUnder) {
-				return false, fmt.Sprintf("argument %q: resolved path %q not under %q", c.Name, resolved, expectedUnder)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q not under %q", resolved, expectedUnder)}
 			}
 		}
 
 		if len(c.RegexMatches) > 0 || len(c.RegexRejects) > 0 {
 			re, err := regexp.Compile(strVal)
 			if err != nil {
-				return false, fmt.Sprintf("argument %q: regex compilation failed: %v", c.Name, err)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("regex compilation failed: %v", err)}
 			}
 			for _, sample := range c.RegexMatches {
 				if !re.MatchString(sample) {
-					return false, fmt.Sprintf("argument %q: pattern %q does not match %q", c.Name, strVal, sample)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q does not match %q", strVal, sample)}
 				}
 			}
 			for _, sample := range c.RegexRejects {
 				if re.MatchString(sample) {
-					return false, fmt.Sprintf("argument %q: pattern %q unexpectedly matched %q", c.Name, strVal, sample)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q unexpectedly matched %q", strVal, sample)}
 				}
 			}
 		}
@@ -137,7 +139,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 					}
 				}
 				if !hit {
-					return false, fmt.Sprintf("argument %q: missing required term from group %v", c.Name, group)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("missing required term from group %v", group)}
 				}
 			}
 		}
@@ -147,13 +149,13 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			for _, term := range c.ForbiddenTerms {
 				rendered := ws.Render(term)
 				if strings.Contains(valLower, strings.ToLower(rendered)) {
-					return false, fmt.Sprintf("argument %q: contains forbidden term %q", c.Name, rendered)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("contains forbidden term %q", rendered)}
 				}
 			}
 		}
 	}
 
-	return true, ""
+	return true, toolArgumentFailure{}
 }
 
 // toolArgumentValue returns the string a constraint on argument name checks.
@@ -163,7 +165,7 @@ func toolArgumentValue(call AgentToolCall, name string, raw json.RawMessage) (st
 	if call.ToolName == constants.MCPToolRunShellCommand && name == agentToolArgCommand {
 		var request models.RunShellCommandRequest
 		if err := json.Unmarshal([]byte(call.ArgumentsJSON), &request); err != nil {
-			return "", fmt.Errorf("argument %q: invalid %s request: %w", name, call.ToolName, err)
+			return "", fmt.Errorf("invalid %s request: %w", call.ToolName, err)
 		}
 		return request.CommandLine(), nil
 	}
@@ -174,16 +176,23 @@ func toolArgumentValue(call AgentToolCall, name string, raw json.RawMessage) (st
 	return value, nil
 }
 
+// toolArgumentFailure is the typed reason a tool call broke an argument
+// validator. FailedArg names the argument and is empty when the failure is not
+// attributable to one argument. Rule is the validator's rule text.
+type toolArgumentFailure struct {
+	FailedArg string
+	Rule      string
+}
+
 type trajectoryResult struct {
-	Outcome        evalv1.EvaluationTrajectoryOutcome
-	Passed         bool
-	GuidedRetries  uint32
-	FirstWrongTool string
-	FailedArgument string
-	FailedRule     string
-	DeniedTool     string
-	CircumventTool string
-	LastFailedCall *AgentToolCall
+	Outcome         evalv1.EvaluationTrajectoryOutcome
+	Passed          bool
+	GuidedRetries   uint32
+	FirstWrongTool  string
+	ArgumentFailure toolArgumentFailure
+	DeniedTool      string
+	CircumventTool  string
+	LastFailedCall  *AgentToolCall
 }
 
 func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, view agentGradingView) trajectoryResult {
@@ -257,14 +266,14 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			}
 		}
 		var failedCount uint32
-		var failedArgument, failedRule string
+		var argFailure toolArgumentFailure
 		expectedCalled := false
 		for _, call := range calls {
 			if !slices.Contains(expectedTools, call.ToolName) {
 				continue
 			}
 			expectedCalled = true
-			valid, detail := validateToolCall(call, validators, ws)
+			valid, failure := validateToolCall(call, validators, ws)
 			observed := call.Success && !call.IsDenied()
 			if gold.RecoveryExpectation.Kind == recoveryKindMissingResource {
 				// This task deliberately requests an absent file and asks for a
@@ -279,8 +288,8 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 				return trajectoryResult{Outcome: outcome, Passed: true, GuidedRetries: failedCount}
 			}
 			failedCount++
-			if !valid && failedArgument == "" {
-				failedArgument, failedRule = parseFailedArgAndRule(detail)
+			if !valid && argFailure.FailedArg == "" {
+				argFailure = failure
 			}
 		}
 		for i, failed := range calls {
@@ -293,8 +302,8 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 				}
 			}
 		}
-		if failedArgument != "" {
-			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS, FailedArgument: failedArgument, FailedRule: failedRule}
+		if argFailure.FailedArg != "" {
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS, ArgumentFailure: argFailure}
 		}
 		if expectedCalled {
 			last := calls[len(calls)-1]
@@ -365,25 +374,6 @@ func firstCalledTool(calls []AgentToolCall, tools []string) string {
 		}
 	}
 	return ""
-}
-
-func parseFailedArgAndRule(detail string) (string, string) {
-	if detail == "" {
-		return "", ""
-	}
-	if strings.HasPrefix(detail, "argument ") {
-		rest := strings.TrimPrefix(detail, "argument ")
-		if idx := strings.Index(rest, ": "); idx != -1 {
-			argName := strings.Trim(rest[:idx], "\"")
-			rule := rest[idx+2:]
-			return argName, rule
-		}
-		fields := strings.Fields(rest)
-		if len(fields) > 0 {
-			return strings.Trim(fields[0], "\""), detail
-		}
-	}
-	return "", detail
 }
 
 func trajectoryOutcomeName(outcome evalv1.EvaluationTrajectoryOutcome) string {
@@ -467,8 +457,8 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			// The rule text quotes validator samples, resolved paths under the
 			// attempt-scoped workspace, and the model's own argument value, so
 			// only the private sentence carries it (R7).
-			privMid = fmt.Sprintf("The model called `%s` but argument `%s` failed: %s.", expectedTool, traj.FailedArgument, traj.FailedRule)
-			pubMid = fmt.Sprintf("The model called `%s` but argument `%s` failed validation.", expectedTool, traj.FailedArgument)
+			privMid = fmt.Sprintf("The model called `%s` but argument `%s` failed: %s.", expectedTool, traj.ArgumentFailure.FailedArg, traj.ArgumentFailure.Rule)
+			pubMid = fmt.Sprintf("The model called `%s` but argument `%s` failed validation.", expectedTool, traj.ArgumentFailure.FailedArg)
 		case evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE:
 			toolName := ""
 			errText := ""

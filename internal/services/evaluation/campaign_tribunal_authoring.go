@@ -58,9 +58,6 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		}
 	}
 	tier := r.designated
-	if IsHeterogeneousAssignment(r.req.Assignment) {
-		tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
-	}
 	prefix := r.executor.newID("tribunal-inference")
 	probe, err := r.bindInference(&AgentModelCall{}, tier, prefix, nil, nil)
 	if err != nil {
@@ -92,7 +89,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	}
 	record.ConsensusInferences = governance.WrapConsensusInferences(result.GetConsensusInferences())
 	if failure := r.recordMemberCalls(record, tier, result.GetMemberCalls()); failure != "" {
-		if failure == tribunalGovernanceRejected {
+		if failure == modelCallGovernanceRejected {
 			record.PolicyDecision = agentPolicyDecisionDeny
 			r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
 			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: "SECURITY VIOLATION: Tribunal inference was rejected by required governance"})
@@ -187,7 +184,7 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 				if call.Receipt != nil {
 					r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 				}
-				return tribunalGovernanceRejected
+				return modelCallGovernanceRejected
 			}
 			r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 			r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
@@ -203,8 +200,6 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 	}
 	return ""
 }
-
-const tribunalGovernanceRejected = "governance_rejected"
 
 // isL2GovernanceDenial recognizes only the typed inference rejection
 // represented by a signed failed INFERENCE receipt for a required L2 quorum

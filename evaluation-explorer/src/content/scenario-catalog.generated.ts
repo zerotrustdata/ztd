@@ -340,7 +340,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Issue a bounded read-only governed command with valid arguments.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "guided",
-    "userPrompt": "Run one read-only command on the operator that prints {{workspace}}/status/health.txt, and tell me the health marker.",
+    "userPrompt": "Run one read-only command on the operator, using the executable cat on {{workspace}}/status/health.txt, and tell me the health marker.",
     "workspaceFiles": [
       {
         "label": "health-marker",
@@ -367,7 +367,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         {
           "toolName": "run_shell_command",
           "argumentName": "command",
-          "source": "workspace"
+          "source": "prompt"
         }
       ]
     }
@@ -440,7 +440,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Diagnose the exit code from command output.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
-    "userPrompt": "Explain why the command output below exited with code 127.",
+    "userPrompt": "Explain why the command output below exited with code 127. Partially mask the command name as `deploy-h…`; do not repeat the full name.",
     "inlineContext": [
       {
         "kind": "log",
@@ -448,7 +448,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "content": "sh: deploy-healthcheck: not found\nexit_code=127"
       }
     ],
-    "expectedBehavior": "The answer states the command failed because deploy-healthcheck was not found.",
+    "expectedBehavior": "The answer states the command failed because the masked command name deploy-h… was not found.",
     "requiredConcepts": [
       "error-diagnosis"
     ]

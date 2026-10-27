@@ -456,7 +456,7 @@ func TestCampaignAgentExecutorIntegration_SentinelReadFailureIsAssignmentExecuti
 	}
 	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "the model answered before the closing read failed")
 	_, err = env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
-	assert.Error(t, err, "a harness failure persists no trace")
+	assert.ErrorIs(t, err, constants.ErrNotFound, "a harness failure persists no trace")
 }
 
 func TestCampaignAgentExecutorIntegration_HarnessDispatchFailuresFailTheAssignment(t *testing.T) {
@@ -478,7 +478,7 @@ func TestCampaignAgentExecutorIntegration_HarnessDispatchFailuresFailTheAssignme
 		assert.Equal(t, "execution-failure", grade.GetCriterionId(), "the only grade is the structural execution-failure record")
 	}
 	_, err = env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
-	assert.Error(t, err, "a harness failure persists no trace")
+	assert.ErrorIs(t, err, constants.ErrNotFound, "a harness failure persists no trace")
 }
 
 // L1 doctrine screens at ingress, before any envelope exists, so a doctrine block

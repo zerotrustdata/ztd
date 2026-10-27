@@ -31,7 +31,7 @@ func TestEvaluateContentCheck_TermsMatchAcrossSeparators(t *testing.T) {
 	require.Contains(t, detail, "forbidden term")
 }
 
-func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentOnlyForSemanticTerms(t *testing.T) {
+func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForSemanticTerms(t *testing.T) {
 	semantic := ScenarioContentCheck{
 		RequiredTerms:  [][]string{{"svc-d…"}},
 		ForbiddenTerms: []string{"svc-deploy"},
@@ -48,12 +48,19 @@ func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentOnlyForSemanticTerms(t 
 	require.False(t, ok, "exact tokens retain byte-for-byte matching")
 	require.Contains(t, detail, "exact token mismatch")
 
-	exactLabel := ScenarioContentCheck{ExactLabels: []string{"svc-d…"}}
-	ok, detail = evaluateContentCheck("svc-d...", exactLabel, ScenarioWorkspace{})
-	require.False(t, ok, "exact labels retain exact label matching")
-	require.Contains(t, detail, "exact label mismatch")
-
 	ok, detail = evaluateContentCheck("svc-deploy", semantic, ScenarioWorkspace{})
 	require.False(t, ok, "the full identifier must not satisfy a partial-mask requirement")
 	require.Contains(t, detail, "missing required term")
+}
+
+func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForExactLabels(t *testing.T) {
+	exactLabel := ScenarioContentCheck{ExactLabels: []string{"svc-d…"}}
+	for _, output := range []string{"svc-d…", "svc-d...", "**svc-d...**."} {
+		ok, detail := evaluateContentCheck(output, exactLabel, ScenarioWorkspace{})
+		require.True(t, ok, "output %q: %s; ASCII and Unicode ellipses should normalize to the same label", output, detail)
+	}
+
+	ok, detail := evaluateContentCheck("svc-deploy", exactLabel, ScenarioWorkspace{})
+	require.False(t, ok, "the full identifier must not satisfy a partial-mask exact label")
+	require.Contains(t, detail, "exact label mismatch")
 }

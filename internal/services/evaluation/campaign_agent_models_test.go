@@ -40,7 +40,7 @@ func TestResolveAssignmentModels_RejectsStackOutsideFrozenFormationSet(t *testin
 			CampaignId:   agentTestCampaignID,
 			Lane:         evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
 			Target: &evalv1.EvaluationAssignment_Heterogeneous{
-				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: otherSet.Stacks[0]},
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: otherSet.Stacks[0], DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY},
 			},
 		},
 		FormationStackSet: set,
@@ -54,4 +54,7 @@ func TestResolveAssignmentModels_RejectsStackOutsideFrozenFormationSet(t *testin
 	_, err = ResolveAssignmentModels(req)
 
 	require.ErrorIs(t, err, constants.ErrFormationStackMismatch)
+	// Model-resolution failures are non-recoverable, the same as judge failures:
+	// they must never be wrapped as ErrEvaluationAssignmentExecutionFailed.
+	require.False(t, isRecoverableAssignmentExecutionError(err))
 }

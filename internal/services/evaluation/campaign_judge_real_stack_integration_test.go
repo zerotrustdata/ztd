@@ -377,7 +377,7 @@ func TestRealStackRunVerifier_RejectsInputsOutsideFrozenCatalog(t *testing.T) {
 		artifact.Gold.Body = []byte(`{"scenario_id":"forged"}`)
 		artifacts[id] = artifact
 		_, err := evaluation.NewCampaignRunVerifier(nil).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, artifacts)
-		require.Error(t, err)
+		require.ErrorIs(t, err, constants.ErrChecksumMismatch)
 	})
 }
 

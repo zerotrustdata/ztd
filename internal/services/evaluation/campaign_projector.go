@@ -70,12 +70,16 @@ func BuildAssignmentLifecycleProjection(assignment *evalv1.EvaluationAssignment,
 		if stack := heterogeneous.Heterogeneous.GetStack(); stack != nil {
 			record.StackId = stack.GetStackId()
 		}
-		variantID, err := primaryVariantIDForAssignment(assignment)
+		variantID, err := designatedVariantIDForAssignment(assignment)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: build assignment lifecycle projection: %w", err)
+		}
+		role, err := AssignmentDesignatedRole(assignment)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: build assignment lifecycle projection: %w", err)
 		}
 		record.VariantId = variantID
-		record.DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+		record.DesignatedRole = role
 	}
 	return record, nil
 }
@@ -123,12 +127,16 @@ func BuildAssignmentResultProjection(assignment *evalv1.EvaluationAssignment, re
 		}
 	}
 	if heterogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Heterogeneous); ok && heterogeneous.Heterogeneous != nil {
-		variantID, err := primaryVariantIDForAssignment(assignment)
+		variantID, err := designatedVariantIDForAssignment(assignment)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: build assignment result projection: %w", err)
+		}
+		role, err := AssignmentDesignatedRole(assignment)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: build assignment result projection: %w", err)
 		}
 		projection.VariantId = variantID
-		projection.DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+		projection.DesignatedRole = role
 	}
 	projection.UnavailableMetricReasons = collectUnavailableMetricReasons(result)
 	return projection, nil

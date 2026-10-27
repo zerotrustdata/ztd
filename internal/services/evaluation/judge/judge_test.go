@@ -432,8 +432,7 @@ func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {
 			value, _, err := decodeJudgment(result)
 
 			if tc.wantErr {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+				require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
 				return
 			}
 			require.NoError(t, err)

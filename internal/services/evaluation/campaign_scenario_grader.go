@@ -199,7 +199,10 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			return nil, err
 		}
 		if len(scores) > 0 {
-			metricScores := ComputeInvestigationMetrics(g.assignmentID, trace, g.req.ScenarioGold, contentPassed, g.req.ScenarioInput)
+			metricScores, err := ComputeInvestigationMetrics(g.assignmentID, trace, g.req.ScenarioGold, contentPassed, g.req.ScenarioInput)
+			if err != nil {
+				return nil, fmt.Errorf("evaluation: grade scenario %s: investigation metrics: %w", g.req.ScenarioInput.ScenarioID, err)
+			}
 			scores = append(scores, metricScores...)
 		}
 	}

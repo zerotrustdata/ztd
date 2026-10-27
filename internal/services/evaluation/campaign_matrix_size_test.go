@@ -48,8 +48,18 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	assert.Equal(t, wantCells, CatalogModelRoleCells(small))
 	assert.Equal(t, wantCells*2*4, ModelRoleMatrixSize(small, 2, 4))
 	assert.Equal(t, wantCells, ModelRoleMatrixSize(small, 1, 0), "zero repetitions count as one")
-	assert.Equal(t, uint64(5*3), FormationMatrixSize(small, 5))
-	assert.Equal(t, uint64(5*35), FormationMatrixSize(catalog, 5))
+	assert.Equal(t, uint64(5)*wantCells, FormationMatrixSize(small, 5), "a formation runs each scenario once per eligible role")
+	assert.Equal(t, uint64(5)*wantFullCells(catalog), FormationMatrixSize(catalog, 5))
+	assert.Equal(t, FormationMatrixSize(catalog, 5), uint64(5)*CatalogModelRoleCells(catalog))
+}
+
+// wantFullCells counts eligible (scenario, role) cells straight from the catalog.
+func wantFullCells(catalog *evalv1.EvaluationScenarioCatalog) uint64 {
+	var cells uint64
+	for _, scenario := range catalog.GetScenarios() {
+		cells += uint64(len(scenario.GetEligibleRoles()))
+	}
+	return cells
 }
 
 func TestCampaignControllerRunSummaryExpectsTheFrozenCatalogMatrix(t *testing.T) {

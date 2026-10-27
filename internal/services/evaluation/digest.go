@@ -190,10 +190,10 @@ func ComputeAssignmentDeterministicIdentity(assignment *evalv1.EvaluationAssignm
 		}
 		parts = append(parts, "homogeneous", target.Homogeneous.GetCandidateVariant().GetVariantId(), target.Homogeneous.GetDesignatedRole().String())
 	case *evalv1.EvaluationAssignment_Heterogeneous:
-		if target.Heterogeneous == nil || target.Heterogeneous.GetStack() == nil || target.Heterogeneous.GetStack().GetStackId() == "" {
+		if target.Heterogeneous == nil || target.Heterogeneous.GetStack() == nil || target.Heterogeneous.GetStack().GetStackId() == "" || target.Heterogeneous.GetDesignatedRole() == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED {
 			return "", fmt.Errorf("evaluation: compute assignment identity: %w", constants.ErrMissingRequiredField)
 		}
-		parts = append(parts, "heterogeneous", target.Heterogeneous.GetStack().GetStackId())
+		parts = append(parts, "heterogeneous", target.Heterogeneous.GetStack().GetStackId(), target.Heterogeneous.GetDesignatedRole().String())
 	default:
 		return "", fmt.Errorf("evaluation: compute assignment identity: target binding: %w", constants.ErrMissingRequiredField)
 	}

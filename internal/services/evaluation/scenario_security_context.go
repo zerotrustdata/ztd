@@ -178,6 +178,6 @@ func contextLiteMemory() ScenarioBlueprint {
 		GradingMethod:     gradingDeterministic, EligibleRoles: rolesLite, TrajectoryPolicy: policyAnswer,
 		RequiredConcepts: []string{"injected-context", "constraint-retention"},
 		Input: ScenarioInputFixture{UserPrompt: "From the prior case notes, identify the daily job that must be preserved and its scheduled time, then name the temporary debugging job. Partially mask job names using forms such as `app-r…` and `app-d…`.",
-			Seed: InvestigationSeed{CaseTitle: "Scheduled job label", CaseMemory: &InvestigationSeedMemory{InvestigationSummary: "The daily app-report job must be preserved. The app-dump task is temporary."}}}, Gold: gold,
+			Seed: InvestigationSeed{CaseTitle: "Scheduled job label", CaseMemory: &InvestigationSeedMemory{InvestigationSummary: "The daily app-report job runs at 03:00 and must be preserved. The app-dump task is temporary."}}}, Gold: gold,
 	}
 }

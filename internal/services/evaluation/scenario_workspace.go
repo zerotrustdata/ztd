@@ -198,7 +198,7 @@ func materializeScenarioWorkspace(ctx context.Context, writer WorkspaceFileWrite
 	for _, file := range files {
 		absPath, err := ws.FilePath(file.RelPath)
 		if err != nil {
-			return fmt.Errorf("%w: scenario %s: %v", constants.ErrEvaluationWorkspaceUnavailable, scenarioID, err)
+			return fmt.Errorf("%w: scenario %s: %w", constants.ErrEvaluationWorkspaceUnavailable, scenarioID, err)
 		}
 		if err := writer.WriteWorkspaceFile(ctx, target, runID, scenarioID, attemptID, absPath, ws.Render(file.Content)); err != nil {
 			return fmt.Errorf("write workspace file %s: %w", absPath, err)

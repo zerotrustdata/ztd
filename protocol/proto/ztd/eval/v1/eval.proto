@@ -667,6 +667,8 @@ message HomogeneousAssignmentTarget {
 
 message HeterogeneousAssignmentTarget {
   HeterogeneousStackDefinition stack = 1;
+  // Stack role this assignment executes as.
+  ModelCampaignRole designated_role = 2;
 }
 
 // ProviderBoundaryHardwareSample is one timestamped read-only hardware

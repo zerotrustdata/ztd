@@ -243,16 +243,9 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: score with judge: resolve assignment models: %w", err)
 	}
-	role := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
-	if homogeneous := req.Assignment.GetHomogeneous(); homogeneous != nil {
-		role = homogeneous.GetDesignatedRole()
-	}
-	variant := resolved[role]
-	if variant == nil {
-		return nil, nil, nil
-	}
-	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" {
-		return nil, nil, nil
+	variant, err := judgeVariant(req, resolved)
+	if err != nil {
+		return nil, nil, err
 	}
 	cfg := judge.Config{
 		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
@@ -393,6 +386,24 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	return semanticGrades, decomposedScores, nil
 }
 
+// judgeVariant returns the frozen variant the judge scores under: the
+// assignment's designated role. An unresolved or unservable variant fails the
+// assignment; the judge is never skipped silently.
+func judgeVariant(req AssignmentExecutionRequest, resolved map[evalv1.ModelCampaignRole]*evalv1.ModelVariant) (*evalv1.ModelVariant, error) {
+	role, err := AssignmentDesignatedRole(req.Assignment)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: score with judge: %w", err)
+	}
+	variant := resolved[role]
+	if variant == nil {
+		return nil, fmt.Errorf("evaluation: score with judge: role %s variant: %w", role, constants.ErrFormationRegistryBinding)
+	}
+	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" {
+		return nil, fmt.Errorf("evaluation: score with judge: role %s served tag and digest: %w", role, constants.ErrMissingRequiredField)
+	}
+	return variant, nil
+}
+
 func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRun, error) {
 	if e == nil {
 		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", constants.ErrMissingRequiredField)
@@ -402,9 +413,9 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	if err != nil {
 		return nil, err
 	}
-	designated := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
-	if homogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous); ok {
-		designated = homogeneous.Homogeneous.GetDesignatedRole()
+	designated, err := AssignmentDesignatedRole(assignment)
+	if err != nil {
+		return nil, err
 	}
 	variant := resolved[designated]
 	if variant == nil {
@@ -924,9 +935,6 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	purpose, turn := call.Purpose, call.LoopTurn
 	modelRole := r.designated
-	if IsHeterogeneousAssignment(r.req.Assignment) {
-		modelRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
-	}
 	probe, err := r.bindInference(&call, modelRole, r.executor.newID("agent-inference"), messages, tools)
 	if err != nil {
 		return nil, call, err

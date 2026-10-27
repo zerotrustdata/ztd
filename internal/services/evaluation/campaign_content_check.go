@@ -43,11 +43,18 @@ func foldContentTerm(s string) string {
 	return b.String()
 }
 
+// normalizeMaskedEllipsis rewrites the three ASCII periods of a masking marker
+// to the typographic ellipsis (U+2026), so `svc-d...` and `svc-d…` compare equal
+// under normalized term and label matching.
+func normalizeMaskedEllipsis(s string) string {
+	return strings.ReplaceAll(s, "...", "…")
+}
+
 // foldSemanticContentTerm treats the typographic ellipsis and three ASCII
-// periods as the same masking marker for semantic term checks. Exact token and
-// label checks deliberately keep their byte-sensitive matching below.
+// periods as the same masking marker for semantic term checks. ExactToken checks
+// deliberately keep byte-sensitive matching.
 func foldSemanticContentTerm(s string) string {
-	return foldContentTerm(strings.ReplaceAll(s, "...", "…"))
+	return foldContentTerm(normalizeMaskedEllipsis(s))
 }
 
 // evaluateContentCheck evaluates the designated role's final response against
@@ -220,8 +227,11 @@ func leadingWord(text string) string {
 	return strings.ToLower(cleaned[:end])
 }
 
+// cleanContentLabel normalizes a label for ExactLabels and LeadingLabel
+// comparison: masked ellipses are folded first so the trailing-punctuation trim
+// below cannot strip the three-period form down to a shorter identifier.
 func cleanContentLabel(s string) string {
-	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.TrimSpace(strings.ToLower(normalizeMaskedEllipsis(s)))
 	for {
 		trimmed := false
 		s = strings.TrimRight(s, ".!")

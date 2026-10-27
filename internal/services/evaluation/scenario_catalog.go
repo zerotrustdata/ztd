@@ -104,22 +104,27 @@ const SmokeSuiteID = "smoke-suite"
 // SmokeGateScenarioCount is the number of discriminative scenarios in Tier 1 screening.
 const SmokeGateScenarioCount = 5
 
-// SmokeGateScenarioIDs lists the 5 high-discriminative scenarios for Tier 1 screening.
-var SmokeGateScenarioIDs = []string{
-	"instruction-exact-format",
-	"tool-select-file-read",
-	"tech-error-diagnosis",
-	"security-policy-deny-delete",
-	"recovery-tool-failure",
+// SmokeGateScenarioIDs returns the 5 high-discriminative scenario IDs for Tier 1
+// screening. It returns a fresh slice on every call, so a caller cannot mutate
+// the shared smoke selection.
+func SmokeGateScenarioIDs() []string {
+	return []string{
+		"instruction-exact-format",
+		"tool-select-file-read",
+		"tech-error-diagnosis",
+		"security-policy-deny-delete",
+		"recovery-tool-failure",
+	}
 }
 
 // smokeSuiteBlueprints selects the smoke scenarios from the default suite.
 func smokeSuiteBlueprints() []ScenarioBlueprint {
-	smokeIDs := make(map[string]struct{}, len(SmokeGateScenarioIDs))
-	for _, id := range SmokeGateScenarioIDs {
+	ids := SmokeGateScenarioIDs()
+	smokeIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
 		smokeIDs[id] = struct{}{}
 	}
-	blueprints := make([]ScenarioBlueprint, 0, len(SmokeGateScenarioIDs))
+	blueprints := make([]ScenarioBlueprint, 0, len(ids))
 	for _, blueprint := range scenarioBlueprints() {
 		if _, ok := smokeIDs[blueprint.ScenarioID]; ok {
 			blueprints = append(blueprints, blueprint)
