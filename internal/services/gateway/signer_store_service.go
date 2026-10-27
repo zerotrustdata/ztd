@@ -43,13 +43,6 @@ type ReceiptSignerResolver interface {
 	ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.EventReceipt) (ed25519.PublicKey, error)
 }
 
-// OperatorAuditorSignerResolver resolves the Operator-bound Auditor key for
-// signed auditor evidence. It is intentionally distinct from receipt signer
-// resolution, which accepts only the L5 Actuator key.
-type OperatorAuditorSignerResolver interface {
-	GetOperatorAuditorSigner(ctx context.Context, operatorID, keyID string) (ed25519.PublicKey, error)
-}
-
 // NewSignerStoreService creates a new signer store service.
 // docSvc is the shared DocumentStoreService instance from CanonicalDBService.
 // embeddedActuatorPub and embeddedActuatorKeyID are the Gateway's Actuator
@@ -175,7 +168,8 @@ func (s *SignerStoreService) ReceiptSignerKey(ctx context.Context, operatorID st
 
 // GetOperatorAuditorSigner resolves an Auditor key bound to the named
 // Operator. Auditor key IDs are matched against the bound lowercase hex public
-// key; the requested key ID is never decoded into a trusted key.
+// key; the requested key ID is never decoded into a trusted key. It is distinct
+// from receipt signer resolution, which accepts only the L5 Actuator key.
 func (s *SignerStoreService) GetOperatorAuditorSigner(ctx context.Context, operatorID, keyID string) (ed25519.PublicKey, error) {
 	boundPub, boundKeyID, err := s.boundAuditorKey(ctx, operatorID)
 	if err != nil {

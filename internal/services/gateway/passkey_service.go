@@ -357,13 +357,6 @@ func (h *PasskeyHandler) MaxPayloadBytes() int64 {
 	return h.maxPayload
 }
 
-// ChallengeData stores a pending challenge for registration or authentication.
-type ChallengeData struct {
-	Challenge string `json:"challenge"`
-	CreatedAt int64  `json:"created_at"`
-	Purpose   string `json:"purpose"` // "register" or "auth"
-}
-
 // GenerateRegistrationChallenge creates a registration challenge for a user.
 func (s *PasskeyService) GenerateRegistrationChallenge(ctx context.Context, userID, userName string) (*protocol.CredentialCreation, error) {
 	user, err := s.getUser(ctx, userID)

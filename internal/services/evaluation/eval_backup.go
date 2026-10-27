@@ -81,6 +81,7 @@ type EvalRestoreReport struct {
 	Snapshots int
 	Restored  []EvalBackupFile
 	Unchanged []EvalBackupFile
+	Skipped   []EvalBackupFile
 }
 
 // evalBackupSource is one file to restore, where its verified content is
@@ -741,9 +742,8 @@ func snapshotSources(snapshotDir string, manifest *EvalBackupManifest) []evalBac
 	return sources
 }
 
-// Restore restores one snapshot into the runtime tree. Existing files with
-// identical content are left alone; differing ones fail the restore before any
-// write unless overwrite is set.
+// Restore restores one snapshot into the runtime tree. Existing files are
+// skipped by default; differing ones are replaced when overwrite is set.
 func (b *EvalBackup) Restore(ctx context.Context, snapshotDir string, overwrite bool) (*EvalRestoreReport, error) {
 	snapshotDir, err := filepath.Abs(snapshotDir)
 	if err != nil {
@@ -772,7 +772,8 @@ func (b *EvalBackup) Restore(ctx context.Context, snapshotDir string, overwrite 
 // snapshot no longer lists (lost in a wipe after an older snapshot, say) is
 // still recovered, and the work is one pass over the merged set rather than
 // one restore per snapshot. Evidence removed by a Deleter is purged from the
-// backups too, so it is never restored.
+// backups too, so it is never restored. Existing files are skipped by default;
+// differing ones are replaced when overwrite is set.
 func (b *EvalBackup) RestoreAll(ctx context.Context, backupDir string, overwrite bool) (*EvalRestoreReport, error) {
 	held, err := b.sharedLock(ctx)
 	if err != nil {
@@ -859,21 +860,19 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 	if err != nil {
 		return nil, err
 	}
-	if !overwrite && len(plan.conflicts) > 0 {
-		conflictFiles := make([]EvalBackupFile, 0, len(plan.conflicts))
-		for _, source := range plan.conflicts {
-			conflictFiles = append(conflictFiles, source.file)
-		}
-		return nil, evalBackupConflictError(conflictFiles)
-	}
 	pending := make([]evalBackupSource, 0, len(plan.wouldRestore)+len(plan.conflicts))
 	pending = append(pending, plan.wouldRestore...)
+	report := &EvalRestoreReport{
+		Unchanged: plan.unchanged,
+	}
 	if overwrite {
 		pending = append(pending, plan.conflicts...)
 		sort.Slice(pending, func(i, j int) bool { return pending[i].file.Path < pending[j].file.Path })
-	}
-	report := &EvalRestoreReport{
-		Unchanged: plan.unchanged,
+	} else if len(plan.conflicts) > 0 {
+		for _, source := range plan.conflicts {
+			report.Skipped = append(report.Skipped, source.file)
+		}
+		sort.Slice(report.Skipped, func(i, j int) bool { return report.Skipped[i].Path < report.Skipped[j].Path })
 	}
 	for _, source := range pending {
 		if err := ctx.Err(); err != nil {
@@ -983,15 +982,6 @@ func (b *EvalBackup) matchesExisting(ctx context.Context, relPath string, want e
 		return false, true, fmt.Errorf("evaluation: restore: read existing %s: %w", relPath, err)
 	}
 	return bytes.Equal(current, want.data), true, nil
-}
-
-func evalBackupConflictError(conflicts []EvalBackupFile) error {
-	paths := make([]string, 0, len(conflicts))
-	for _, file := range conflicts {
-		paths = append(paths, file.Path)
-	}
-	return fmt.Errorf("evaluation: restore: %d file(s) differ from the backup (%s); pass --overwrite to replace them: %w",
-		len(conflicts), evalBackupPathSample(paths), constants.ErrEvaluationBackupConflict)
 }
 
 // evalBackupPathSample names the first evalBackupConflictSample paths and

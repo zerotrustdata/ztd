@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -52,10 +53,10 @@ func ValidateAssertionCatalog(catalog *compliancev1.ControlAssertionCatalog) err
 			return fmt.Errorf("%w: duplicate assertion %s", constants.ErrInvalidEvidenceGraph, key)
 		}
 		seen[key] = struct{}{}
-		if !contains(responsibilities, assertion.Responsibility) || !contains(evidenceLevels, assertion.MinimumEvidenceLevel) || !contains(validationCycles, assertion.ValidationCycle) || !contains(missingEvidencePolicies, assertion.MissingEvidencePolicy) {
+		if !slices.Contains(responsibilities, assertion.Responsibility) || !slices.Contains(evidenceLevels, assertion.MinimumEvidenceLevel) || !slices.Contains(validationCycles, assertion.ValidationCycle) || !slices.Contains(missingEvidencePolicies, assertion.MissingEvidencePolicy) {
 			return fmt.Errorf("%w: assertion %s has invalid semantics", constants.ErrInvalidEvidenceGraph, key)
 		}
-		if len(assertion.ComponentScope) == 0 || len(assertion.ApplicableActionClasses) == 0 || len(assertion.ApplicableArms) == 0 || len(assertion.RequiredEvidenceTypes) == 0 || len(assertion.RequiredGraderRefs) == 0 || len(assertion.RequiredVerifierRefs) == 0 || !contains(assertionPassingRules, assertion.PassingRule) {
+		if len(assertion.ComponentScope) == 0 || len(assertion.ApplicableActionClasses) == 0 || len(assertion.ApplicableArms) == 0 || len(assertion.RequiredEvidenceTypes) == 0 || len(assertion.RequiredGraderRefs) == 0 || len(assertion.RequiredVerifierRefs) == 0 || !slices.Contains(assertionPassingRules, assertion.PassingRule) {
 			return fmt.Errorf("%w: assertion %s has incomplete evaluation requirements", constants.ErrInvalidEvidenceGraph, key)
 		}
 		stringLists := []struct {
@@ -74,12 +75,12 @@ func ValidateAssertionCatalog(catalog *compliancev1.ControlAssertionCatalog) err
 			}
 		}
 		for _, component := range assertion.ComponentScope {
-			if !contains(constants.ComplianceComponentScopes, component) {
+			if !slices.Contains(constants.ComplianceComponentScopes, component) {
 				return fmt.Errorf("%w: assertion %s has unsupported component scope %q", constants.ErrInvalidEvidenceGraph, key, component)
 			}
 		}
 		for _, evidenceType := range assertion.RequiredEvidenceTypes {
-			if !contains(assertionEvidenceTypes, evidenceType) {
+			if !slices.Contains(assertionEvidenceTypes, evidenceType) {
 				return fmt.Errorf("%w: assertion %s has unsupported evidence type %s", constants.ErrInvalidEvidenceGraph, key, evidenceType)
 			}
 		}
@@ -90,12 +91,12 @@ func ValidateAssertionCatalog(catalog *compliancev1.ControlAssertionCatalog) err
 			return fmt.Errorf("%w: assertion %s verifier references: %v", constants.ErrInvalidEvidenceGraph, key, err)
 		}
 		for _, reference := range assertion.RequiredGraderRefs {
-			if !contains(supportedGraders, referenceKey(reference)) {
+			if !slices.Contains(supportedGraders, referenceKey(reference)) {
 				return fmt.Errorf("%w: %s", constants.ErrUnsupportedGrader, referenceKey(reference))
 			}
 		}
 		for _, reference := range assertion.RequiredVerifierRefs {
-			if !contains(supportedVerifiers, referenceKey(reference)) {
+			if !slices.Contains(supportedVerifiers, referenceKey(reference)) {
 				return fmt.Errorf("%w: %s", constants.ErrUnsupportedVerifier, referenceKey(reference))
 			}
 		}
@@ -136,7 +137,7 @@ func ValidateFrameworkDefinition(framework *compliancev1.FrameworkDefinition) er
 	}
 	seen := make(map[string]struct{}, len(framework.Controls))
 	for _, control := range framework.Controls {
-		if control == nil || control.ControlId == "" || control.Title == "" || control.Description == "" || control.SourceReference == "" || control.SupportRationale == "" || !contains(responsibilities, control.Responsibility) || !contains(supportStatuses, control.SupportStatus) {
+		if control == nil || control.ControlId == "" || control.Title == "" || control.Description == "" || control.SourceReference == "" || control.SupportRationale == "" || !slices.Contains(responsibilities, control.Responsibility) || !slices.Contains(supportStatuses, control.SupportStatus) {
 			return fmt.Errorf("%w: framework %s has an invalid control", constants.ErrInvalidEvidenceGraph, framework.FrameworkId)
 		}
 		if _, exists := seen[control.ControlId]; exists {
@@ -170,7 +171,7 @@ func ValidateCatalogSet(assertions *compliancev1.ControlAssertionCatalog, framew
 			return fmt.Errorf("%w: duplicate crosswalk %s", constants.ErrInvalidEvidenceGraph, key)
 		}
 		seen[key] = struct{}{}
-		if !contains(mappingTypes, mapping.MappingType) || !contains(responsibilities, mapping.Responsibility) || !contains(evidenceLevels, mapping.RequiredEvidenceLevel) {
+		if !slices.Contains(mappingTypes, mapping.MappingType) || !slices.Contains(responsibilities, mapping.Responsibility) || !slices.Contains(evidenceLevels, mapping.RequiredEvidenceLevel) {
 			return fmt.Errorf("%w: crosswalk %s has invalid semantics", constants.ErrInvalidEvidenceGraph, key)
 		}
 		if mapping.ReviewedAt == nil || mapping.ReviewedAt.CheckValid() != nil {
@@ -368,10 +369,10 @@ func ValidateAssertionAssessment(assessment *compliancev1.ControlAssertionAssess
 	if assertion == nil {
 		return fmt.Errorf("%w: %s", constants.ErrUnsupportedAssertion, referenceKey(assessment.AssertionRef))
 	}
-	if !contains(supportedVerifiers, referenceKey(assessment.VerifierRef)) {
+	if !slices.Contains(supportedVerifiers, referenceKey(assessment.VerifierRef)) {
 		return fmt.Errorf("%w: %s", constants.ErrUnsupportedVerifier, referenceKey(assessment.VerifierRef))
 	}
-	if !contains(assessmentStatuses, assessment.Status) || !contains(evidenceLevels, assessment.EvidenceLevel) || !contains(freshnessStatuses, assessment.FreshnessStatus) {
+	if !slices.Contains(assessmentStatuses, assessment.Status) || !slices.Contains(evidenceLevels, assessment.EvidenceLevel) || !slices.Contains(freshnessStatuses, assessment.FreshnessStatus) {
 		return fmt.Errorf("%w: assertion assessment has invalid semantics", constants.ErrInvalidEvidenceGraph)
 	}
 	if assessment.Status == "satisfied" && evidenceLevelIndex(assessment.EvidenceLevel) < evidenceLevelIndex(assertion.MinimumEvidenceLevel) {
@@ -428,7 +429,7 @@ func ValidateControlAssessment(assessment *compliancev1.FrameworkControlAssessme
 			return fmt.Errorf("%w: satisfied control assessment evidence level is below crosswalk requirement", constants.ErrInvalidEvidenceGraph)
 		}
 	}
-	if !contains(assessmentStatuses, assessment.Status) || !contains(responsibilities, assessment.Responsibility) || !contains(evidenceLevels, assessment.EvidenceLevel) {
+	if !slices.Contains(assessmentStatuses, assessment.Status) || !slices.Contains(responsibilities, assessment.Responsibility) || !slices.Contains(evidenceLevels, assessment.EvidenceLevel) {
 		return fmt.Errorf("%w: control assessment has invalid semantics", constants.ErrInvalidEvidenceGraph)
 	}
 	if err := validateUniqueStrings(assessment.AssertionAssessmentRefs); err != nil {
@@ -627,7 +628,7 @@ func ValidateReportSignature(signature *compliancev1.ReportSignature) error {
 	if signature == nil || signature.KeyId == "" || signature.Algorithm == "" || signature.Signature == "" {
 		return fmt.Errorf("%w: report signature is incomplete", constants.ErrReportSignatureFailed)
 	}
-	if !contains(signatureAlgorithms, signature.Algorithm) {
+	if !slices.Contains(signatureAlgorithms, signature.Algorithm) {
 		return fmt.Errorf("%w: unsupported signature algorithm %s", constants.ErrReportSignatureFailed, signature.Algorithm)
 	}
 	if err := validateSHA256(signature.SignedSha256); err != nil {
@@ -640,7 +641,7 @@ func ValidateVerificationReport(report *compliancev1.ComplianceVerificationRepor
 	if report == nil || report.ReportId == "" || report.VerifiedAt == nil || report.VerifiedAt.CheckValid() != nil || report.VerifierId == "" || report.VerifierVersion == "" {
 		return fmt.Errorf("%w: verification report is incomplete", constants.ErrReportVerificationFailed)
 	}
-	if !contains(supportedVerifiers, versionedKey(report.VerifierId, report.VerifierVersion)) {
+	if !slices.Contains(supportedVerifiers, versionedKey(report.VerifierId, report.VerifierVersion)) {
 		return fmt.Errorf("%w: %s", constants.ErrUnsupportedVerifier, versionedKey(report.VerifierId, report.VerifierVersion))
 	}
 	if err := validateSHA256(report.ReproducedChecksumRoot); err != nil {
@@ -834,15 +835,6 @@ func validateUniqueStrings(values []string) error {
 		seen[value] = struct{}{}
 	}
 	return nil
-}
-
-func contains(values []string, candidate string) bool {
-	for _, value := range values {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
 }
 
 func evidenceLevelIndex(level string) int {

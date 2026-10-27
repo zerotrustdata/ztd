@@ -41,32 +41,7 @@ func approvePlatformEnrollmentCmd() *cobra.Command {
 }
 
 func denyPlatformEnrollmentCmd() *cobra.Command {
-	return platformEnrollmentDecisionCmdWithConfig(
-		platformEnrollmentDecisionSpec{
-			verb:       "deny",
-			promptVerb: "Deny",
-			decision:   models.PlatformEnrollmentDecisionDeny,
-			short:      "Deny pending platform workload enrollment requests via mTLS",
-			long: `Deny one or more pending platform workload enrollment requests (dashboard,
-application, or operator) from the authenticated CLI identity (mTLS).
-
-Selectors work as in ztd auth enroll approve: space-separated request IDs,
-instance IDs, or hostnames, or --all for every pending request. Every selector
-must match a pending request or nothing is denied.
-
-The command fetches the pending list to display the component kind, hostname,
-instance ID, CSR fingerprints, creation time, and expiry of every matched
-request, then asks for a single confirmation before posting one atomic batch decision,
-unless --yes is supplied for non-interactive automation. The approver must hold
-a valid, non-revoked CLI certificate bound to the active first user (the
-persistent owner); the gateway enforces this server-side.
-
-Use --reason to attach an optional bounded denial note (max ` + fmt.Sprintf("%d", constants.PlatformEnrollmentMaxReasonBytes) + ` bytes).
-
-The request body binds the selected request IDs, displayed fingerprints, typed
-decision, and optional reason — never a user ID or requester token. The requester token is held only by
-the requesting workload and is never exposed through this command.`,
-		},
+	return denyPlatformEnrollmentCmdWithConfig(
 		shared.LoadConfig, DefaultAPIClientFactory, shared.NewFileSvc,
 	)
 }
@@ -344,8 +319,26 @@ func denyPlatformEnrollmentCmdWithConfig(
 			verb:       "deny",
 			promptVerb: "Deny",
 			decision:   models.PlatformEnrollmentDecisionDeny,
-			short:      "Deny a pending platform workload enrollment request via mTLS",
-			long:       "Deny a pending platform workload enrollment request via mTLS.",
+			short:      "Deny pending platform workload enrollment requests via mTLS",
+			long: `Deny one or more pending platform workload enrollment requests (dashboard,
+application, or operator) from the authenticated CLI identity (mTLS).
+
+Selectors work as in ztd auth enroll approve: space-separated request IDs,
+instance IDs, or hostnames, or --all for every pending request. Every selector
+must match a pending request or nothing is denied.
+
+The command fetches the pending list to display the component kind, hostname,
+instance ID, CSR fingerprints, creation time, and expiry of every matched
+request, then asks for a single confirmation before posting one atomic batch decision,
+unless --yes is supplied for non-interactive automation. The approver must hold
+a valid, non-revoked CLI certificate bound to the active first user (the
+persistent owner); the gateway enforces this server-side.
+
+Use --reason to attach an optional bounded denial note (max ` + fmt.Sprintf("%d", constants.PlatformEnrollmentMaxReasonBytes) + ` bytes).
+
+The request body binds the selected request IDs, displayed fingerprints, typed
+decision, and optional reason — never a user ID or requester token. The requester token is held only by
+the requesting workload and is never exposed through this command.`,
 		},
 		configLoader, clientFactory, fileSvcFactory,
 	)

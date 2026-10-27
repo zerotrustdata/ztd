@@ -176,7 +176,7 @@ func TestRunsResume_MissingRunDoesNotBackUpOtherEvidence(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(env.root, "eval", "backups"))
 }
 
-func TestRestore_RejectsConflictingEvidenceWithoutOverwrite(t *testing.T) {
+func TestRestore_SkipsExistingByDefaultAndIsIdempotent(t *testing.T) {
 	env := newStoreRunEnv(t)
 	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	backupRoot := filepath.Join(testutil.TempDir(t), "backups")
@@ -184,11 +184,32 @@ func TestRestore_RejectsConflictingEvidenceWithoutOverwrite(t *testing.T) {
 	require.NoError(t, env.runJSON(t, &created, "backup", "--output-dir", backupRoot))
 	require.NoError(t, env.fileSvc(t).WriteFile(context.Background(), created.Files[0].Path, []byte("diverged"), constants.PermFilePrivate))
 
-	_, err := env.run(t, "restore", created.SnapshotDir)
-	require.ErrorIs(t, err, constants.ErrEvaluationBackupConflict)
+	// By default, restore does not fail or require --overwrite; it skips existing differing files.
+	var restored evalRestoreJSON
+	require.NoError(t, env.runJSON(t, &restored, "restore", created.SnapshotDir))
+	assert.Empty(t, restored.Restored)
+	assert.NotEmpty(t, restored.Skipped)
+	assert.Equal(t, created.Files[0].Path, restored.Skipped[0].Path)
 
-	_, err = env.run(t, "restore", created.SnapshotDir, "--overwrite")
+	got, err := env.fileSvc(t).ReadFile(context.Background(), created.Files[0].Path)
 	require.NoError(t, err)
+	assert.Equal(t, "diverged", string(got), "existing file must remain untouched by default")
+
+	// Idempotent: repeating restore does not fail.
+	var again evalRestoreJSON
+	require.NoError(t, env.runJSON(t, &again, "restore", created.SnapshotDir))
+	assert.Empty(t, again.Restored)
+	assert.NotEmpty(t, again.Skipped)
+
+	// With --overwrite, the snapshot version replaces the diverged file.
+	var overwritten evalRestoreJSON
+	require.NoError(t, env.runJSON(t, &overwritten, "restore", created.SnapshotDir, "--overwrite"))
+	assert.NotEmpty(t, overwritten.Restored)
+	assert.Empty(t, overwritten.Skipped)
+
+	got, err = env.fileSvc(t).ReadFile(context.Background(), created.Files[0].Path)
+	require.NoError(t, err)
+	assert.NotEqual(t, "diverged", string(got), "file must be overwritten with snapshot content")
 }
 
 func TestBackup_StatusCompareCompactAndRestoreVerify(t *testing.T) {

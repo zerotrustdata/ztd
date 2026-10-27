@@ -9,6 +9,7 @@ package eval
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -39,6 +40,7 @@ type evalRestoreJSON struct {
 	SnapshotCount int                         `json:"snapshot_count"`
 	Restored      []evaluation.EvalBackupFile `json:"restored"`
 	Unchanged     []evaluation.EvalBackupFile `json:"unchanged"`
+	Skipped       []evaluation.EvalBackupFile `json:"skipped"`
 }
 
 func backupEvalCmd(deps nativeEvalDeps) *cobra.Command {
@@ -231,8 +233,9 @@ manifests, open each snapshot's vault from the key chain it carries with this
 host's key store, then write the evidence back into .ztd/ sealed under the
 current runtime vault. A snapshot whose vault the key store cannot open
 restores nothing, and a sealed file its snapshot's vault cannot open fails the
-restore before anything is written. Files already present with identical content are skipped.
-If any existing file differs, nothing is written unless --overwrite is passed.
+restore before anything is written. Files already present are skipped by default,
+leaving existing evidence untouched. Pass --overwrite to replace existing files
+whose content differs from the backup.
 
 Pass --verify to confirm full cryptographic and structural restorability
 (manifest schema, object SHA-256 digests, key-chain access through the host key
@@ -294,10 +297,24 @@ ztd public restore --queue`,
 					SnapshotCount: report.Snapshots,
 					Restored:      nonNilBackupFiles(report.Restored),
 					Unchanged:     nonNilBackupFiles(report.Unchanged),
+					Skipped:       nonNilBackupFiles(report.Skipped),
 				})
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Restored %d file(s) from %d snapshot(s) in %s (%d already identical)\n",
-				len(report.Restored), report.Snapshots, report.SnapshotDir, len(report.Unchanged))
+			var details []string
+			if len(report.Unchanged) > 0 {
+				details = append(details, fmt.Sprintf("%d already identical", len(report.Unchanged)))
+			}
+			if len(report.Skipped) > 0 {
+				details = append(details, fmt.Sprintf("%d existing skipped", len(report.Skipped)))
+			}
+			detailStr := ""
+			if len(details) > 0 {
+				detailStr = fmt.Sprintf(" (%s)", strings.Join(details, ", "))
+			} else {
+				detailStr = " (0 already identical)"
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Restored %d file(s) from %d snapshot(s) in %s%s\n",
+				len(report.Restored), report.Snapshots, report.SnapshotDir, detailStr)
 			return err
 		},
 	}

@@ -667,66 +667,6 @@ func TestMaterializeRows_QueryError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestContains_EmptyString(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("", "test"))
-}
-
-func TestContains_EmptySubstring(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("test", ""))
-}
-
-func TestContains_ExactMatch(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("test", "test"))
-}
-
-func TestContains_SubstringPresent(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("hello world", "world"))
-}
-
-func TestContains_SubstringAbsent(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("hello world", "xyz"))
-}
-
-func TestContains_SubstringLongerThanString(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("hi", "hello"))
-}
-
-func TestFindSubstring_Found(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("hello world", "world"))
-}
-
-func TestFindSubstring_NotFound(t *testing.T) {
-	t.Parallel()
-	assert.False(t, findSubstring("hello world", "xyz"))
-}
-
-func TestFindSubstring_EmptySubstring(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("test", ""))
-}
-
-func TestFindSubstring_AtStart(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("hello world", "hello"))
-}
-
-func TestFindSubstring_AtEnd(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("hello world", "world"))
-}
-
-func TestFindSubstring_SingleChar(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("abc", "b"))
-}
-
 // Tier 1 Unit Tests (no external dependencies - mocks/stubs only)
 
 func TestDefaultDBConfig_Tier1_SetsAllDefaults(t *testing.T) {
@@ -794,11 +734,13 @@ func TestIsUniqueConstraintError_Tier1_ErrAlreadyExists(t *testing.T) {
 	assert.True(t, IsUniqueConstraintError(err))
 }
 
-func TestIsUniqueConstraintError_Tier1_ContainsUniqueConstraintFailed(t *testing.T) {
+func TestIsUniqueConstraintError_Tier1_RenderedMessageNotUnique(t *testing.T) {
 	t.Parallel()
-	// Wrap with a message containing the unique constraint error string
 	customErr := fmt.Errorf("UNIQUE constraint failed: test_column")
-	assert.True(t, IsUniqueConstraintError(customErr))
+	assert.False(t, IsUniqueConstraintError(customErr))
+
+	lowercaseErr := fmt.Errorf("unique constraint failed: column")
+	assert.False(t, IsUniqueConstraintError(lowercaseErr))
 }
 
 func TestIsUniqueConstraintError_Tier1_GenericError(t *testing.T) {
@@ -807,10 +749,41 @@ func TestIsUniqueConstraintError_Tier1_GenericError(t *testing.T) {
 	assert.False(t, IsUniqueConstraintError(err))
 }
 
-func TestIsUniqueConstraintError_Tier1_CaseSensitive(t *testing.T) {
+func TestIsUniqueConstraintError_Tier1_SQLiteDriver(t *testing.T) {
 	t.Parallel()
-	lowercaseErr := fmt.Errorf("unique constraint failed: column")
-	assert.False(t, IsUniqueConstraintError(lowercaseErr), "should be case-sensitive")
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
+	logger := testutil.NewTestLogger()
+	cfg := DefaultDBConfig(filepath.Join(dir, "unique_err.db"))
+
+	db, err := OpenDB(fileSvc, cfg, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	ctx := t.Context()
+	_, err = db.ExecContext(ctx, "CREATE TABLE unique_test (email TEXT UNIQUE)")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "INSERT INTO unique_test (email) VALUES ('a@example.com')")
+	require.NoError(t, err)
+
+	_, uniqueErr := db.ExecContext(ctx, "INSERT INTO unique_test (email) VALUES ('a@example.com')")
+	require.Error(t, uniqueErr)
+	assert.True(t, IsUniqueConstraintError(uniqueErr))
+	assert.True(t, IsUniqueConstraintError(fmt.Errorf("wrap: %w", uniqueErr)))
+
+	_, err = db.ExecContext(ctx, "CREATE TABLE pk_test (id TEXT PRIMARY KEY)")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "INSERT INTO pk_test (id) VALUES ('nonce')")
+	require.NoError(t, err)
+	_, pkErr := db.ExecContext(ctx, "INSERT INTO pk_test (id) VALUES ('nonce')")
+	require.Error(t, pkErr)
+	assert.True(t, IsUniqueConstraintError(pkErr))
+
+	_, err = db.ExecContext(ctx, "CREATE TABLE notnull_test (id INTEGER NOT NULL)")
+	require.NoError(t, err)
+	_, notNullErr := db.ExecContext(ctx, "INSERT INTO notnull_test (id) VALUES (NULL)")
+	require.Error(t, notNullErr)
+	assert.False(t, IsUniqueConstraintError(notNullErr))
 }
 
 func TestIsBusyError_Tier1_NilError(t *testing.T) {
@@ -849,95 +822,6 @@ func TestIsBusyError_Tier1_ContainsInMessage(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("some error: database is locked: more context")
 	assert.False(t, IsBusyError(err))
-}
-
-func TestContains_Tier1_EmptyString(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("", "test"))
-}
-
-func TestContains_Tier1_EmptySubstring(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("test", ""))
-}
-
-func TestContains_Tier1_ExactMatch(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("test", "test"))
-}
-
-func TestContains_Tier1_SubstringPresent(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("hello world", "world"))
-}
-
-func TestContains_Tier1_SubstringAbsent(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("hello world", "xyz"))
-}
-
-func TestContains_Tier1_SubstringLongerThanString(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("hi", "hello"))
-}
-
-func TestContains_Tier1_CaseSensitive(t *testing.T) {
-	t.Parallel()
-	assert.False(t, contains("Hello World", "world"))
-	assert.True(t, contains("Hello World", "World"))
-}
-
-func TestContains_Tier1_SpecialCharacters(t *testing.T) {
-	t.Parallel()
-	assert.True(t, contains("test-string", "-"))
-	assert.True(t, contains("test.string", "."))
-	assert.True(t, contains("test string", " "))
-}
-
-func TestFindSubstring_Tier1_Found(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("hello world", "world"))
-}
-
-func TestFindSubstring_Tier1_NotFound(t *testing.T) {
-	t.Parallel()
-	assert.False(t, findSubstring("hello world", "xyz"))
-}
-
-func TestFindSubstring_Tier1_EmptySubstring(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("test", ""))
-}
-
-func TestFindSubstring_Tier1_AtStart(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("hello world", "hello"))
-}
-
-func TestFindSubstring_Tier1_AtEnd(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("hello world", "world"))
-}
-
-func TestFindSubstring_Tier1_SingleChar(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("abc", "b"))
-}
-
-func TestFindSubstring_Tier1_MultipleOccurrences(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("ababa", "aba"))
-}
-
-func TestFindSubstring_Tier1_CaseSensitive(t *testing.T) {
-	t.Parallel()
-	assert.False(t, findSubstring("Hello World", "world"))
-	assert.True(t, findSubstring("Hello World", "World"))
-}
-
-func TestFindSubstring_Tier1_Overlapping(t *testing.T) {
-	t.Parallel()
-	assert.True(t, findSubstring("aaa", "aa"))
 }
 
 func TestDB_Tier1_StructFieldsAccessible(t *testing.T) {

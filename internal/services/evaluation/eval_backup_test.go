@@ -445,26 +445,36 @@ func TestEvalBackup_RestoreIsIdempotent(t *testing.T) {
 	assert.Equal(t, report.Files, restored.Unchanged)
 }
 
-func TestEvalBackup_RestoreConflictWritesNothingUnlessOverwrite(t *testing.T) {
+func TestEvalBackup_RestoreSkipsExistingByDefaultAndIsIdempotent(t *testing.T) {
 	f := newEvalBackupFixture(t)
 	report := f.create(t)
 	ctx := context.Background()
 	f.write(t, backupRunReportPath, `{"run":"changed"}`)
 	require.NoError(t, f.files.Remove(ctx, backupCampaignPath))
 
-	_, err := f.backup.Restore(ctx, report.SnapshotDir, false)
-
-	require.ErrorIs(t, err, constants.ErrEvaluationBackupConflict)
-	assert.Contains(t, err.Error(), backupRunReportPath)
+	// By default, restore skips existing differing files without error,
+	// leaving the existing runtime file untouched and restoring only missing files.
+	restored, err := f.backup.Restore(ctx, report.SnapshotDir, false)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{backupCampaignPath}, reportPaths(restored.Restored))
+	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(restored.Skipped))
 	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath)) //nolint:testifylint // exact bytes, not JSON equivalence
 	campaignExists, err := f.files.FileExists(ctx, backupCampaignPath)
 	require.NoError(t, err)
-	assert.False(t, campaignExists, "a refused restore must not write the files that were not in conflict")
+	assert.True(t, campaignExists, "missing file must be restored")
 
-	restored, err := f.backup.Restore(ctx, report.SnapshotDir, true)
-
+	// Restore is idempotent: re-running when all files exist restores nothing, skips existing, and succeeds.
+	again, err := f.backup.Restore(ctx, report.SnapshotDir, false)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{backupRunReportPath, backupCampaignPath}, reportPaths(restored.Restored))
+	assert.Empty(t, again.Restored)
+	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(again.Skipped))
+	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath))
+
+	// With overwrite, the snapshot version replaces the diverged runtime file.
+	overwritten, err := f.backup.Restore(ctx, report.SnapshotDir, true)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(overwritten.Restored))
+	assert.Empty(t, overwritten.Skipped)
 	assert.Equal(t, `{"run":1}`, f.read(t, backupRunReportPath))
 }
 
@@ -683,23 +693,34 @@ func TestEvalBackup_RestoreAllMergesSnapshotsNewestWins(t *testing.T) {
 	assert.Len(t, again.Unchanged, len(older.Files))
 }
 
-func TestEvalBackup_RestoreAllConflictWritesNothingUnlessOverwrite(t *testing.T) {
+func TestEvalBackup_RestoreAllSkipsExistingByDefaultAndIsIdempotent(t *testing.T) {
 	f := newEvalBackupFixture(t)
 	ctx := context.Background()
 	f.create(t)
 	f.write(t, backupRunReportPath, `{"run":"changed"}`)
 	require.NoError(t, f.files.Remove(ctx, backupCampaignPath))
 
-	_, err := f.backup.RestoreAll(ctx, f.outRoot, false)
-
-	require.ErrorIs(t, err, constants.ErrEvaluationBackupConflict)
+	// By default, RestoreAll skips existing differing files without error and restores missing files.
+	restored, err := f.backup.RestoreAll(ctx, f.outRoot, false)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{backupCampaignPath}, reportPaths(restored.Restored))
+	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(restored.Skipped))
+	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath))
 	campaignExists, err := f.files.FileExists(ctx, backupCampaignPath)
 	require.NoError(t, err)
-	assert.False(t, campaignExists)
+	assert.True(t, campaignExists, "missing file must be restored")
 
-	_, err = f.backup.RestoreAll(ctx, f.outRoot, true)
-
+	// Idempotent: re-running RestoreAll restores nothing and succeeds cleanly.
+	again, err := f.backup.RestoreAll(ctx, f.outRoot, false)
 	require.NoError(t, err)
+	assert.Empty(t, again.Restored)
+	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(again.Skipped))
+
+	// With overwrite, the snapshot version replaces the diverged runtime file.
+	overwritten, err := f.backup.RestoreAll(ctx, f.outRoot, true)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(overwritten.Restored))
+	assert.Empty(t, overwritten.Skipped)
 	assert.Equal(t, `{"run":1}`, f.read(t, backupRunReportPath))
 }
 

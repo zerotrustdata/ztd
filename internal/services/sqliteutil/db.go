@@ -479,7 +479,10 @@ func IsBusyError(err error) bool {
 	return errors.As(err, &sqliteErr) && sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
-// IsUniqueConstraintError checks if an error is a UNIQUE constraint violation.
+// IsUniqueConstraintError reports a uniqueness violation from the SQLite driver.
+// A PRIMARY KEY collision is SQLITE_CONSTRAINT_PRIMARYKEY; a separate UNIQUE
+// column or index is SQLITE_CONSTRAINT_UNIQUE. Nonce reservation and document
+// create hit the primary-key code. NOT NULL and CHECK constraints do not match.
 func IsUniqueConstraintError(err error) bool {
 	if err == nil {
 		return false
@@ -487,7 +490,16 @@ func IsUniqueConstraintError(err error) bool {
 	if errors.Is(err, constants.ErrAlreadyExists) {
 		return true
 	}
-	return contains(err.Error(), "UNIQUE constraint failed")
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	switch sqliteErr.Code() {
+	case int(sqlite3.SQLITE_CONSTRAINT_UNIQUE), int(sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY):
+		return true
+	default:
+		return false
+	}
 }
 
 // backoff implements exponential backoff with jitter to avoid thundering herd.
@@ -508,21 +520,6 @@ func (db *DB) backoff(ctx context.Context, attempt int) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-// contains is a simple string contains helper to avoid importing strings.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-// findSubstring checks if substr exists in s.
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // ExecInTxWithRetry executes a function within a transaction with automatic retry on SQLITE_BUSY.

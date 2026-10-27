@@ -53,14 +53,6 @@ type ScenarioToolExpectations struct {
 	TribunalCommands bool
 }
 
-// CampaignChatGradingContext carries private grading inputs for one assignment.
-type CampaignChatGradingContext struct {
-	GradingMethod    evalv1.EvaluationGradingMethod
-	ScenarioGold     ScenarioGoldCriteria
-	ScenarioTools    ScenarioToolExpectations
-	RequiredConcepts []string
-}
-
 // AssignmentExecutionRequest carries one resumable controller execution attempt.
 type AssignmentExecutionRequest struct {
 	Assignment *evalv1.EvaluationAssignment

@@ -55,12 +55,6 @@ type TextContent struct {
 // SuspendedTransaction is an alias for the shared models type.
 type SuspendedTransaction = models.SuspendedTransaction
 
-// ListResourcesRequest is the params for the "resources/list" method.
-type ListResourcesRequest struct {
-	// Optional cursor for pagination
-	Cursor *string `json:"cursor,omitempty"`
-}
-
 // Resource represents an MCP resource.
 type Resource struct {
 	URI         string    `json:"uri"`
@@ -79,12 +73,6 @@ type ReadResourceRequest struct {
 type ReadResourceResult struct {
 	Contents []TextContent `json:"contents"`
 	MIMEType string        `json:"mimeType,omitempty"`
-}
-
-// ListPromptsRequest is the params for the "prompts/list" method.
-type ListPromptsRequest struct {
-	// Optional cursor for pagination
-	Cursor *string `json:"cursor,omitempty"`
 }
 
 // Prompt represents an MCP prompt template.
@@ -204,11 +192,6 @@ type FieldReadRequest struct {
 	DocumentID        string `json:"document_id"`
 	FieldPath         string `json:"field_path"`
 	OperatorSessionID string `json:"operator_session_id"`
-}
-
-// FieldReadResult is the result for the "read_field" tool.
-type FieldReadResult struct {
-	Value FieldValue `json:"value"`
 }
 
 // FieldValue represents a typed field value from document storage.
