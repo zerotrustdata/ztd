@@ -36,6 +36,12 @@ const (
 // L2 refused its inference (isL2GovernanceDenial): the provider never ran.
 const modelCallGovernanceRejected = "governance_rejected"
 
+// formationTribunalRole is the stack slot every Tribunal call of a system-lane
+// assignment runs on, whatever the assignment's designated role
+// (INV-EVAL-CAMP-02). Authoring, the trace evidence check, and the assignment
+// verifier bind to it; ValidateFormationTribunal checks the same Lite slot.
+const formationTribunalRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+
 // runTribunal routes one run_shell_command proposal through Tribunal authoring
 // on the Gateway (POST /api/v1/operators/intents). The Gateway
 // deliberates over governed member inferences and dispatches only an approved
@@ -59,7 +65,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	}
 	tier := r.designated
 	if IsHeterogeneousAssignment(r.req.Assignment) {
-		tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+		tier = formationTribunalRole
 	}
 	prefix := r.executor.newID("tribunal-inference")
 	probe, err := r.bindInference(&AgentModelCall{}, tier, prefix, nil, nil)

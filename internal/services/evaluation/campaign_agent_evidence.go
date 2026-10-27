@@ -390,10 +390,10 @@ func verifyV7ModelCallIdentity(trace *AgentTrace, call AgentModelCall, outcome o
 		if call.ServedModelTag != trace.ServedModelTag || call.ModelDigest != trace.ModelDigest {
 			return fail("per-call designated variant identity differs from the trace identity")
 		}
-	} else if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) || call.ModelRole != operatorv1.ModelRole_MODEL_ROLE_ASSISTANT.String() {
-		// A heterogeneous system assignment can dispatch Tribunal calls to its
-		// assistant slot while the trace-level identity names the designated
-		// primary slot. Exact variant-to-slot binding is checked against the
+	} else if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) || campaignRoleFromInferenceString(call.ModelRole) != formationTribunalRole {
+		// A heterogeneous system assignment dispatches Tribunal calls to its
+		// formationTribunalRole slot while the trace-level identity names the
+		// designated role. Exact variant-to-slot binding is checked against the
 		// frozen assignment by the campaign verifier.
 		return fail("model role differs from the designated campaign role")
 	}

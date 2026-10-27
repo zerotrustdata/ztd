@@ -138,6 +138,7 @@ func createPublicationCampaignOn(t *testing.T, run *realStackRun, campaignID str
 			InvestigationId: campaignID + "-investigation",
 			DataOperatorId:  dataWorkload.OperatorID,
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 }

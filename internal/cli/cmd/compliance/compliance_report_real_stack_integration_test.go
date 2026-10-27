@@ -192,6 +192,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 		RepetitionCount:            1,
 		InferenceOperatorSessionID: inferenceWorkload.OperatorSessionID,
 		DataOperatorSessionID:      dataWorkload.OperatorSessionID,
+		Judge:                      &evalv1.ModelVariant{VariantId: "gemma4-e4b", ProviderClass: "ollama", ServedModelTag: evaluation.DefaultJudgeServedModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, evaluation.DefaultJudgeServedModelTag)},
 	}
 	binding := evaluation.CampaignExecutionBinding{
 		Topology:            topology,

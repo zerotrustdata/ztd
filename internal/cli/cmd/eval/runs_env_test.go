@@ -137,6 +137,17 @@ func testQwenVariant() *evalv1.ModelVariant {
 	}
 }
 
+// testJudgeVariant is the registry's default judge, frozen into every test
+// campaign that is not scored on a real stack.
+func testJudgeVariant() *evalv1.ModelVariant {
+	return &evalv1.ModelVariant{
+		VariantId:      "gemma4-e4b",
+		ServedModelTag: evaluation.DefaultJudgeServedModelTag,
+		ModelDigest:    "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+		ProviderClass:  "ollama",
+	}
+}
+
 // runEnv is one project root with a frozen model registry and a deterministic
 // process-control boundary. Gateway tests install the real stack explicitly.
 type runEnv struct {
@@ -185,7 +196,7 @@ func (e *runEnv) runJSON(t *testing.T, payload any, args ...string) error {
 	cmdErr := rootCmd.ExecuteContext(testVersionContext())
 	if out.Len() > 0 {
 		decoder := json.NewDecoder(&out)
-		require.NoError(t, decoder.Decode(payload), out.String())
+		require.NoError(t, decoder.Decode(payload), out.String()+errOut.String())
 	}
 	if cmdErr != nil {
 		return cmdErr
@@ -226,6 +237,7 @@ func (e *runEnv) createSuiteCampaign(t *testing.T, campaignID, suiteID string) {
 		Repetitions:   1,
 		SuiteID:       suiteID,
 		Investigation: investigation,
+		Judge:         testJudgeVariant(),
 	})
 	require.NoError(t, err)
 }

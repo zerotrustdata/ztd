@@ -41,6 +41,12 @@ func EvaluationTestCampaignInitRequest(t *testing.T) evaluation.CampaignInitRequ
 		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0"},
 		InferenceOperatorSessionID: "inf-session",
 		DataOperatorSessionID:      "data-session",
+		Judge: &evalv1.ModelVariant{
+			VariantId:      "gemma4-e4b",
+			ServedModelTag: evaluation.DefaultJudgeServedModelTag,
+			ModelDigest:    "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+			ProviderClass:  "ollama",
+		},
 		Governance: evaluation.RunGovernance{
 			Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 			Consensus: &evalv1.EvaluationConsensusIdentity{},

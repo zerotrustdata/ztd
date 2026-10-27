@@ -64,7 +64,7 @@ func BuildInitCampaignQueue(inventoryRelDir string, entries []CampaignQueueModel
 		inventoryRelDir = DefaultCampaignInventoryRelDirname
 	}
 	return &CampaignQueue{
-		Pattern:         "eval-init-<variant_id> (legacy init-campaign for gemma4:e4b)",
+		Pattern:         InitCampaignIDPrefix + "<variant_id> (legacy " + LegacyInitCampaignID + " for " + LegacyInitCampaignServedModelTag + ")",
 		CellsPerRun:     ComputeHomogeneousMatrixSize(1),
 		InventoryDir:    filepath.ToSlash(inventoryRelDir),
 		GenerateCommand: rolloutQueueGenerateCommand,

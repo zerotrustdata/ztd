@@ -95,6 +95,7 @@ func TestCampaignControllerRejectsInvestigationIdentityConflict(t *testing.T) {
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
+		Judge:             req.Judge,
 	})
 	require.NoError(t, err)
 	require.Equal(t, evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH, first.GetInvestigation().GetMode())
@@ -106,6 +107,7 @@ func TestCampaignControllerRejectsInvestigationIdentityConflict(t *testing.T) {
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
+		Judge:             req.Judge,
 		Investigation: &evalv1.EvaluationInvestigation{
 			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
 			InvestigationId: "checkout-incident",
@@ -168,6 +170,7 @@ func TestCampaignControllerKeepsLegacyMissingInvestigationUnchanged(t *testing.T
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
+		Judge:             req.Judge,
 	})
 	require.NoError(t, err)
 	spec.Investigation = nil

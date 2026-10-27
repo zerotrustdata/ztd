@@ -38,6 +38,8 @@ type CampaignInitRequest struct {
 	Lane                       evalv1.EvaluationLane
 	FormationStackSet          *HeterogeneousStackSet
 	Governance                 RunGovernance
+	// Judge is the campaign's pinned judge; see CampaignCreateRequest.Judge.
+	Judge *evalv1.ModelVariant
 }
 
 // CampaignRunSummary reports resumable controller state for one run.
@@ -127,6 +129,9 @@ type CampaignCreateRequest struct {
 	// FormationCatalog is the catalog used to materialize and verify new stacks.
 	// Nil selects the built-in defaults; execution uses only the frozen stack set.
 	FormationCatalog *ExecutionTopologies
+	// Judge is the registry model, resolved by ResolveCampaignJudge, that
+	// scores every judged criterion of the campaign. Required.
+	Judge *evalv1.ModelVariant
 }
 
 // RunStartRequest binds one new run to an existing campaign.
@@ -157,10 +162,14 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	if req.CampaignID == "" || req.Catalog == nil || req.Inventory == nil {
 		return nil, fmt.Errorf("evaluation: create campaign: %w", constants.ErrMissingRequiredField)
 	}
+	if err := ValidateCampaignJudge(req.Judge); err != nil {
+		return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, err)
+	}
 	spec, err := MaterializeCampaignSpecWithInvestigation(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform, req.Investigation)
 	if err != nil {
 		return nil, err
 	}
+	spec.JudgeVariant = proto.Clone(req.Judge).(*evalv1.ModelVariant)
 	if req.FormationStackSet != nil {
 		if spec.GetRepetitionCount() != 1 || spec.GetHoldContext() {
 			return nil, fmt.Errorf("evaluation: formation campaigns support one repetition: %w", constants.ErrEvaluationFlagsInvalid)
@@ -197,6 +206,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 			existing.GetHoldContext() != spec.GetHoldContext() ||
 			existing.GetFormationStackSetDigest() != spec.GetFormationStackSetDigest() ||
 			!proto.Equal(existing.GetInvestigation(), spec.GetInvestigation()) ||
+			!proto.Equal(existing.GetJudgeVariant(), spec.GetJudgeVariant()) ||
 			(existing.GetPlatformRelease() != "" && existing.GetPlatformRelease() != spec.GetPlatformRelease()) {
 			return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, constants.ErrEvaluationCampaignConflict)
 		}
@@ -346,6 +356,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		Platform:          req.Platform,
 		Investigation:     req.Investigation,
 		FormationStackSet: req.FormationStackSet,
+		Judge:             req.Judge,
 	}); err != nil {
 		return nil, err
 	}
@@ -726,6 +737,7 @@ func (c *CampaignController) frozenAssignmentRequest(ctx context.Context, spec *
 	req.Binding.ModelVariants = spec.GetModelRegistry()
 	req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(spec.GetModelRegistry())
 	req.Binding.FormationStackSetDigest = spec.GetFormationStackSetDigest()
+	req.Binding.JudgeVariant = spec.GetJudgeVariant()
 	return req, nil
 }
 

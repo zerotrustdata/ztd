@@ -208,6 +208,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 		RepetitionCount:            1,
 		InferenceOperatorSessionID: inferenceWorkload.OperatorSessionID,
 		DataOperatorSessionID:      dataWorkload.OperatorSessionID,
+		Judge:                      &evalv1.ModelVariant{VariantId: "gemma4-e4b", ProviderClass: "ollama", ServedModelTag: evaluation.DefaultJudgeServedModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, evaluation.DefaultJudgeServedModelTag)},
 	}
 
 	clock := func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }

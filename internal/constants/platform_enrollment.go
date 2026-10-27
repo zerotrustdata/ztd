@@ -14,11 +14,11 @@ type PlatformEnrollmentGovernanceAction string
 type PlatformEnrollmentGovernanceIntent string
 
 const (
-	PlatformEnrollmentActionCreate        PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_CREATE"
-	PlatformEnrollmentActionDecide        PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_DECIDE"
-	PlatformEnrollmentActionIssue         PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_ISSUE"
-	PlatformEnrollmentActionPersistPolicy PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_PERSIST_POLICY"
-	PlatformEnrollmentActionCreateSession PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_CREATE_SESSION"
+	PlatformEnrollmentActionCreate          PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_CREATE"
+	PlatformEnrollmentActionDecide          PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_DECIDE"
+	PlatformEnrollmentActionIssue           PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_ISSUE"
+	PlatformEnrollmentActionPersistPolicy   PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_PERSIST_POLICY"
+	PlatformEnrollmentActionCreateSession   PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_CREATE_SESSION"
 	PlatformEnrollmentActionRevoke          PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_REVOKE"
 	PlatformEnrollmentActionBindConsensus   PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
 	PlatformEnrollmentActionUnbindConsensus PlatformEnrollmentGovernanceAction = "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS"

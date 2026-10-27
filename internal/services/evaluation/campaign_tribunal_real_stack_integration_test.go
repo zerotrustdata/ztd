@@ -654,8 +654,8 @@ func tribunalVariantByID(t *testing.T, variants []*evalv1.ModelVariant, id strin
 }
 
 // The system lane runs the primary turn on the stack's primary model and the
-// Tribunal on the assistant tier. The member calls go to the assistant tag, and
-// the second member fails, so the deliberation stops with one answer recorded.
+// Tribunal on the lite tier. The member calls go to the lite tag, and the
+// second member fails, so the deliberation stops with one answer recorded.
 func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRoles(t *testing.T) {
 	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
@@ -665,11 +665,12 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 	require.Len(t, set.Stacks, 1)
 	stack := set.Stacks[0]
 	primary := tribunalVariantByID(t, variants, stack.GetPrimarySlot().GetVariantId())
-	assistant := tribunalVariantByID(t, variants, stack.GetAssistantSlot().GetVariantId())
+	lite := tribunalVariantByID(t, variants, stack.GetLiteSlot().GetVariantId())
+	require.NotEqual(t, stack.GetAssistantSlot().GetVariantId(), lite.GetVariantId(), "the formation must distinguish the Assistant and Lite slots")
 
 	env := newRealStackAgentRun(t, realStackOptions{
 		suffix: "system-lane",
-		replies: append(append(tribunalIntent("call-1"), tribunalTurn("assistant tribunal answer")...),
+		replies: append(append(tribunalIntent("call-1"), tribunalTurn("lite tribunal answer")...),
 			fixtures.OllamaReply{Failure: "provider unreachable"}),
 		scenario:  tribunalScenario,
 		modelTags: evaluation.FormationCatalogServedTags(),
@@ -685,25 +686,25 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 	res := env.executeNext(t)
 
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
-	assert.Equal(t, []string{primary.GetServedModelTag(), assistant.GetServedModelTag(), assistant.GetServedModelTag()}, tribunalWireModels(t, env),
-		"the turn runs on the primary tag; every Tribunal member runs on the assistant tag")
+	assert.Equal(t, []string{primary.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag()}, tribunalWireModels(t, env),
+		"the turn runs on the primary tag; every Tribunal member runs on the lite tag")
 	bodies := executorChatBodies(t, env)
 	require.Len(t, bodies, 3)
 	assert.Contains(t, bodies[0].Messages[0].Content, "You are Sage,")
 	assert.Contains(t, bodies[0].Messages[0].Content, "F7 | Privilege escalation")
 	for _, body := range bodies[1:] {
 		assert.Contains(t, body.Messages[0].Content, "You are a member of the Tribunal")
-		assert.NotContains(t, body.Messages[0].Content, "You are Dash,", "Assistant-tier Tribunal calls retain their member persona")
+		assert.NotContains(t, body.Messages[0].Content, "You are Dash,", "Lite-tier Tribunal calls retain their member persona")
 	}
 	trace := executorLoadTrace(t, env, res)
 	require.Len(t, trace.ModelCalls, 3)
 	assert.Equal(t, primary.GetVariantId(), trace.ModelCalls[0].ModelVariantID)
 	assert.Equal(t, primary.GetServedModelTag(), trace.ModelCalls[0].ServedModelTag)
-	assert.Equal(t, "MODEL_ROLE_PRIMARY", trace.ModelCalls[0].ModelRole)
-	assert.Equal(t, assistant.GetVariantId(), trace.ModelCalls[1].ModelVariantID)
-	assert.Equal(t, assistant.GetServedModelTag(), trace.ModelCalls[1].ServedModelTag)
-	assert.Equal(t, assistant.GetModelDigest(), trace.ModelCalls[1].ModelDigest)
-	assert.Equal(t, "MODEL_ROLE_ASSISTANT", trace.ModelCalls[1].ModelRole)
-	assert.Equal(t, "assistant tribunal answer", trace.ModelCalls[1].Text)
+	assert.Equal(t, operatorv1.ModelRole_MODEL_ROLE_PRIMARY.String(), trace.ModelCalls[0].ModelRole)
+	assert.Equal(t, lite.GetVariantId(), trace.ModelCalls[1].ModelVariantID)
+	assert.Equal(t, lite.GetServedModelTag(), trace.ModelCalls[1].ServedModelTag)
+	assert.Equal(t, lite.GetModelDigest(), trace.ModelCalls[1].ModelDigest)
+	assert.Equal(t, operatorv1.ModelRole_MODEL_ROLE_LITE.String(), trace.ModelCalls[1].ModelRole)
+	assert.Equal(t, "lite tribunal answer", trace.ModelCalls[1].Text)
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }

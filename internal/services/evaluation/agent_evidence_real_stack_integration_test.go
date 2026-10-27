@@ -402,6 +402,8 @@ func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
 		RepetitionCount:            repetitions,
 		InferenceOperatorSessionID: env.inferenceSessionID,
 		DataOperatorSessionID:      env.dataSessionID,
+		// The rig's stack serves one scripted model, so it also judges.
+		Judge: variant,
 	}
 	if plan.request != nil {
 		plan.request(&req, env.dataOperatorID)

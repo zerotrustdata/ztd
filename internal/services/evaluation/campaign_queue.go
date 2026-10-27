@@ -35,6 +35,14 @@ const (
 	DefaultRolloutIntakePriorityRelPath   = "eval/rollout-intake-priority.json"
 	DefaultFormationCatalogOverlayRelPath = "eval/formation-catalog-overlay.json"
 	DefaultGenesisHomogeneousCampaignID   = "eval-genesis-homogeneous"
+
+	// Rollout campaign IDs. Every model's campaign is InitCampaignIDPrefix plus
+	// its variant ID, except the first model rolled out, whose campaign predates
+	// the pattern and keeps its frozen ID. That model is a scored subject here;
+	// it is unrelated to DefaultJudgeServedModelTag.
+	InitCampaignIDPrefix             = "eval-init-"
+	LegacyInitCampaignID             = "init-campaign"
+	LegacyInitCampaignServedModelTag = "gemma4:e4b"
 )
 
 // campaignInventoryPath returns the runtime-relative frozen inventory path for campaignID.
@@ -246,10 +254,10 @@ func CampaignIDForVariant(variant *evalv1.ModelVariant) string {
 	if variant == nil {
 		return ""
 	}
-	if variant.GetServedModelTag() == "gemma4:e4b" {
-		return "init-campaign"
+	if variant.GetServedModelTag() == LegacyInitCampaignServedModelTag {
+		return LegacyInitCampaignID
 	}
-	return "eval-init-" + variant.GetVariantId()
+	return InitCampaignIDPrefix + variant.GetVariantId()
 }
 
 func marshalModelInventoryFreeze(freeze *ModelInventoryFreeze) ([]byte, error) {

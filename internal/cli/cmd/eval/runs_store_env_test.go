@@ -31,7 +31,7 @@ import (
 func newStoreRunEnv(t *testing.T) *runEnv {
 	t.Helper()
 	root := testutil.TempDir(t)
-	writeTestFrozenInventory(t, root, testQwenVariant())
+	writeTestFrozenInventory(t, root, testQwenVariant(), testJudgeVariant())
 	files, err := fs.NewRuntimeFileService(root, slog.Default())
 	if err != nil {
 		t.Fatalf("create runtime file service: %v", err)

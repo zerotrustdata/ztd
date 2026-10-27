@@ -43,6 +43,7 @@ func TestCampaignControllerCreateCampaignIsIdempotentForTheSameFrozenSpec(t *tes
 		Inventory:         f.req.Inventory,
 		ScenarioArtifacts: f.req.ScenarioArtifacts,
 		RepetitionCount:   f.req.RepetitionCount,
+		Judge:             f.req.Judge,
 	}
 
 	first, err := f.controller.CreateCampaign(ctx, create)
@@ -63,6 +64,7 @@ func TestCampaignControllerCreateCampaignRejectsADifferentSpecUnderTheSameID(t *
 		Catalog:           f.req.Catalog,
 		Inventory:         other,
 		ScenarioArtifacts: f.req.ScenarioArtifacts,
+		Judge:             f.req.Judge,
 	})
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 }
@@ -89,6 +91,7 @@ func TestCampaignControllerCreateCampaignFreezesNoPosture(t *testing.T) {
 		Inventory:         f.req.Inventory,
 		ScenarioArtifacts: f.req.ScenarioArtifacts,
 		RepetitionCount:   f.req.RepetitionCount,
+		Judge:             f.req.Judge,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, spec.GetGovernancePosture())
@@ -189,6 +192,7 @@ func createMultiModelCampaign(t *testing.T, f *archiveFixture, campaignID string
 		Inventory:         inventory,
 		ScenarioArtifacts: f.req.ScenarioArtifacts,
 		FormationStackSet: formationSet,
+		Judge:             f.req.Judge,
 	})
 	require.NoError(t, err)
 }

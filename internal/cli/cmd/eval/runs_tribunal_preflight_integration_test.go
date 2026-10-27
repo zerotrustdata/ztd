@@ -37,6 +37,7 @@ func TestRunsStart_AllowsSharedRuntimeUnderTribunalConsensus(t *testing.T) {
 			InvestigationId: "shared-tribunal-investigation",
 			DataOperatorId:  data.OperatorID,
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 

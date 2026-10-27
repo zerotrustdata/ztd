@@ -207,7 +207,8 @@ type rolloutGateRunner func(cmd *cobra.Command, entry evaluation.CampaignQueueMo
 type rolloutGateFactory func(fileSvc fs.RuntimeFileService, registry []*evalv1.ModelVariant) rolloutGateRunner
 
 // productionRolloutGates creates each gate's campaign from the entry's registry
-// model and starts a run of it with strict witness verification.
+// model, judged by the registry's default judge, and starts a run of it with
+// strict witness verification.
 func productionRolloutGates(deps nativeEvalDeps) rolloutGateFactory {
 	return func(fileSvc fs.RuntimeFileService, registry []*evalv1.ModelVariant) rolloutGateRunner {
 		return func(cmd *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
@@ -215,7 +216,11 @@ func productionRolloutGates(deps nativeEvalDeps) rolloutGateFactory {
 			if variant == nil {
 				return nil, fmt.Errorf("model %q is not in the registry\nImport it with:\nztd eval models import %s\n%w", entry.VariantID, entry.ServedModelTag, constants.ErrInferenceModelNotFound)
 			}
-			return runRolloutGate(cmd, deps, fileSvc, variant, entry, gate)
+			judge, err := evaluation.ResolveCampaignJudge(registry, evaluation.DefaultJudgeServedModelTag)
+			if err != nil {
+				return nil, fmt.Errorf("default judge %q must be in the registry\nImport it with:\nztd eval models import %s\n%w", evaluation.DefaultJudgeServedModelTag, evaluation.DefaultJudgeServedModelTag, err)
+			}
+			return runRolloutGate(cmd, deps, fileSvc, variant, judge, entry, gate)
 		}
 	}
 }
@@ -416,7 +421,7 @@ func qualifyRolloutEntry(cmd *cobra.Command, fileSvc fs.RuntimeFileService, runG
 // runRolloutGate creates the campaign for one gate of one model and starts a
 // run of it with strict witness verification. The returned run is non-nil
 // whenever a run was started, including when it then failed.
-func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, variant *evalv1.ModelVariant, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
+func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, variant, judge *evalv1.ModelVariant, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
 	campaignID := entry.CampaignID
 	suiteID := evaluation.DefaultSuiteID
 	if gate == rolloutGateSmoke {
@@ -430,6 +435,7 @@ func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeF
 		SuiteID:                suiteID,
 		VersionOnCatalogChange: true,
 		Platform:               platformIdentity(cmd),
+		Judge:                  judge,
 	})
 	if err != nil {
 		return nil, err

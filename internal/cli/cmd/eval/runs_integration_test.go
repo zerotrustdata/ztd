@@ -297,6 +297,7 @@ func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
 			InvestigationId: "checkout-incident",
 			DataOperatorId:  env.dataOperatorID,
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 
@@ -326,6 +327,7 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 			InvestigationId: "checkout-incident",
 			DataOperatorId:  "operator-offline",
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 
@@ -879,6 +881,7 @@ func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 		CampaignID:  "eval-b",
 		Variants:    []*evalv1.ModelVariant{other},
 		Repetitions: 1,
+		Judge:       testJudgeVariant(),
 	})
 	require.NoError(t, err)
 	env.startStoredRun(t, "eval-b", "run-b-1")

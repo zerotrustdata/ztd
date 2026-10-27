@@ -37,7 +37,7 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, set.Stacks, 1)
 
-	// The primary turn, five Tribunal candidates on the assistant tier, the
+	// The primary turn, five Tribunal candidates on the lite tier, the
 	// risk check, the audit, and the closing turn.
 	replies := slices.Concat(
 		tribunalIntent("call-1"),
@@ -68,7 +68,7 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, persisted.GetModelInferences(), 9)
 	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, persisted.GetModelInferences()[0].GetModelRole())
-	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, persisted.GetModelInferences()[1].GetModelRole())
+	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, persisted.GetModelInferences()[1].GetModelRole())
 	assignment, err := env.store.LoadAssignment(ctx, env.req.RunID, res.GetAssignmentId())
 	require.NoError(t, err)
 
@@ -113,6 +113,9 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	}{
 		{"substitute trace variant ID", func(req *evaluation.CampaignAssignmentVerificationRequest) {
 			req.AgentTrace.ModelCalls[1].ModelVariantID = set.Stacks[0].GetPrimarySlot().GetVariantId()
+		}},
+		{"attribute Tribunal call to the assistant slot", func(req *evaluation.CampaignAssignmentVerificationRequest) {
+			req.AgentTrace.ModelCalls[1].ModelVariantID = set.Stacks[0].GetAssistantSlot().GetVariantId()
 		}},
 		{"substitute result variant", func(req *evaluation.CampaignAssignmentVerificationRequest) {
 			req.Result.ModelInferences[1].ModelVariant = req.Result.ModelInferences[0].ModelVariant

@@ -89,6 +89,7 @@ type campaignShowJSON struct {
 	Condition         string                      `json:"condition"`
 	Suite             string                      `json:"suite"`
 	Models            []string                    `json:"models"`
+	Judge             string                      `json:"judge,omitempty"`
 	Runs              []runRow                    `json:"runs"`
 	MetricsCurve      []runMetricsCurveJSON       `json:"metrics_curve,omitempty"`
 	Archive           *evaluation.ArchiveManifest `json:"archive,omitempty"`
@@ -311,6 +312,7 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				},
 				Condition:         evaluation.CampaignCondition(spec),
 				Suite:             spec.GetCatalogRef().GetId() + "@" + spec.GetCatalogRef().GetVersion(),
+				Judge:             spec.GetJudgeVariant().GetServedModelTag(),
 				Runs:              runRows,
 				MetricsCurve:      extractCampaignMetricsCurve(cmd.Context(), store, runIDs),
 				CellsPer:          campaignCells(catalog, spec, lane, stacks),
@@ -335,6 +337,9 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
 			if payload.InvestigationID != "" {
 				_, _ = fmt.Fprintf(out, "Investigation ID: %s\nData Operator ID: %s\n", payload.InvestigationID, payload.DataOperatorID)
+			}
+			if payload.Judge != "" {
+				_, _ = fmt.Fprintf(out, "Judge: %s\n", payload.Judge)
 			}
 			if stacks > 0 {
 				_, _ = fmt.Fprintf(out, "Stacks: %d\n", stacks)
@@ -453,6 +458,9 @@ type campaignCreateSpec struct {
 	VersionOnCatalogChange bool
 	// Platform is the build identity the campaign freezes under.
 	Platform evaluation.PlatformIdentity
+	// Judge is the registry model, resolved by evaluation.ResolveCampaignJudge,
+	// that scores the campaign's judged criteria.
+	Judge *evalv1.ModelVariant
 }
 
 type campaignCreateResult struct {
@@ -530,6 +538,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 		Investigation:     spec.Investigation,
 		FormationStackSet: stackSet,
 		FormationCatalog:  spec.FormationCatalog,
+		Judge:             spec.Judge,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
@@ -558,6 +567,7 @@ type campaignCreateJSON struct {
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
 	StackCount          int    `json:"stack_count,omitempty"`
+	Judge               string `json:"judge"`
 }
 
 func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
@@ -565,6 +575,7 @@ func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var holdContext bool
 	var condition string
 	var suite string
+	var judgeTag string
 	var investigationMode string
 	var dataOperatorID string
 	var formationIDs []string
@@ -596,6 +607,10 @@ condition selects a persistent investigation and therefore also requires
 
 With --reps greater than 1, repetitions run sequentially. Pass --hold-context
 to carry the previous repetition's conversation into the prompt.
+
+--judge names the registry model that scores every judged criterion, whatever
+model or formation an assignment executes, so no subject grades itself. Its
+digest is frozen from the model registry into the campaign.
 
 A model-role campaign takes a model selector (positional models, --family,
 --max-params, or --all) and freezes exactly one model. A system campaign takes
@@ -659,7 +674,11 @@ Examples:
 			if len(registry) == 0 {
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
-			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation}
+			judge, err := evaluation.ResolveCampaignJudge(registry, judgeTag)
+			if err != nil {
+				return fmt.Errorf("evaluation: campaigns create: --judge: %w", err)
+			}
+			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation, Judge: judge}
 			if formationsSet {
 				create.FormationCatalog, err = newFormationCatalog(cfg.ProjectRoot).topologies()
 				if err != nil {
@@ -691,13 +710,14 @@ Examples:
 				ModelRegistryDigest: result.Spec.GetModelRegistryDigest(),
 				CatalogDigest:       result.Spec.GetCatalogDigest(),
 				StackCount:          stackCount,
+				Judge:               result.Spec.GetJudgeVariant().GetServedModelTag(),
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
-				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
+			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nJudge: %s\nModel registry digest: %s\nCatalog digest: %s\n",
+				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.Judge, payload.ModelRegistryDigest, payload.CatalogDigest)
 			if stackCount > 0 {
 				_, _ = fmt.Fprintf(out, "Formation stacks: %d\n", stackCount)
 			}
@@ -712,6 +732,7 @@ Examples:
 	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
 	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
 	cmd.Flags().StringSliceVar(&formationIDs, "formations", nil, "Create a system-lane campaign from catalog formation IDs (comma-separated or repeat the flag)")
+	cmd.Flags().StringVar(&judgeTag, "judge", evaluation.DefaultJudgeServedModelTag, "Registry model (served tag) that judges every assignment in the campaign")
 	selector.bindFlags(cmd)
 	return cmd
 }

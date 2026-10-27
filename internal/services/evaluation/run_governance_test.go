@@ -133,17 +133,19 @@ func TestValidateRunGovernance_RejectsARunThatFrozeNoBinding(t *testing.T) {
 	assert.Equal(t, "consensus | consensus not frozen", DescribeRunGovernance(legacy))
 }
 
-func TestValidateFormationTribunal_RequiresTheAssistantSlotToBeTheBoundVoteModel(t *testing.T) {
+func TestValidateFormationTribunal_RequiresTheLiteSlotToBeTheBoundVoteModel(t *testing.T) {
 	variants := []*evalv1.ModelVariant{
 		{VariantId: "v-primary", ServedModelTag: "qwen3:8b", ModelDigest: repeatHex('a')},
-		{VariantId: "v-assistant", ServedModelTag: "sam860/LFM2:700m", ModelDigest: repeatHex('d')},
-		{VariantId: "v-other", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('e')},
+		{VariantId: "v-assistant", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('b')},
+		{VariantId: "v-lite", ServedModelTag: "sam860/LFM2:700m", ModelDigest: repeatHex('d')},
+		{VariantId: "v-other", ServedModelTag: "gemma4:e4b", ModelDigest: repeatHex('e')},
 	}
-	stacks := func(assistant string) *HeterogeneousStackSet {
+	stacks := func(lite string) *HeterogeneousStackSet {
 		return &HeterogeneousStackSet{Stacks: []*evalv1.HeterogeneousStackDefinition{{
 			StackId:       "s1",
 			PrimarySlot:   &evalv1.RoleAssignment{VariantId: "v-primary"},
-			AssistantSlot: &evalv1.RoleAssignment{VariantId: assistant},
+			AssistantSlot: &evalv1.RoleAssignment{VariantId: "v-assistant"},
+			LiteSlot:      &evalv1.RoleAssignment{VariantId: lite},
 		}}}
 	}
 	generative := testTribunalBinding()
@@ -151,14 +153,14 @@ func TestValidateFormationTribunal_RequiresTheAssistantSlotToBeTheBoundVoteModel
 	governance, err := NewRunGovernance(consensusPosture, generative)
 	require.NoError(t, err)
 
-	require.NoError(t, governance.ValidateFormationTribunal(stacks("v-assistant"), variants))
-	require.ErrorIs(t, governance.ValidateFormationTribunal(stacks("v-other"), variants), constants.ErrEvaluationTribunalNotAssistant)
+	require.NoError(t, governance.ValidateFormationTribunal(stacks("v-lite"), variants))
+	require.ErrorIs(t, governance.ValidateFormationTribunal(stacks("v-other"), variants), constants.ErrEvaluationTribunalNotLite)
 	require.ErrorIs(t, governance.ValidateFormationTribunal(stacks("v-missing"), variants), constants.ErrFormationRegistryBinding)
 
 	decision, err := NewRunGovernance(consensusPosture, testTribunalBinding())
 	require.NoError(t, err)
-	require.ErrorIs(t, decision.ValidateFormationTribunal(stacks("v-assistant"), variants), constants.ErrEvaluationTribunalNotAssistant,
-		"decision votes run on a separate provider, never on the Assistant slot")
+	require.ErrorIs(t, decision.ValidateFormationTribunal(stacks("v-lite"), variants), constants.ErrEvaluationTribunalNotLite,
+		"decision votes run on a separate provider, never on the Lite slot")
 
 	ratify, err := NewRunGovernance(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, generative)
 	require.NoError(t, err)

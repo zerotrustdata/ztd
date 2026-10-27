@@ -335,6 +335,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ModelRegistryDigest: spec.GetModelRegistryDigest(),
 		ModelRegistry:       evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
 		ModelVariants:       spec.GetModelRegistry(),
+		JudgeVariant:        spec.GetJudgeVariant(),
 	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)

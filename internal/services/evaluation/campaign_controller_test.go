@@ -67,7 +67,37 @@ func testCampaignInitRequest(t *testing.T) CampaignInitRequest {
 		RepetitionCount:            1,
 		InferenceOperatorSessionID: "inf-session",
 		DataOperatorSessionID:      "data-session",
+		Judge:                      testJudgeRegistryVariant("gemma4-e4b", DefaultJudgeServedModelTag),
 	}
+}
+
+// TestCampaignControllerCreateCampaign_FreezesThePinnedJudge: the judge is part
+// of the frozen spec and its digest; a campaign without one, or with a judge
+// that differs from the one it froze, never freezes.
+func TestCampaignControllerCreateCampaign_FreezesThePinnedJudge(t *testing.T) {
+	controller := NewCampaignController(NewStore(newCampaignMemoryFileService()), nil, nil, nil)
+	req := testCampaignInitRequest(t)
+	create := CampaignCreateRequest{
+		CampaignID: req.CampaignID, Catalog: req.Catalog, Inventory: req.Inventory,
+		ScenarioArtifacts: req.ScenarioArtifacts, RepetitionCount: req.RepetitionCount, Platform: req.Platform,
+	}
+
+	_, err := controller.CreateCampaign(context.Background(), create)
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignJudgeInvalid, "a campaign with no judge fails closed")
+
+	create.Judge = req.Judge
+	spec, err := controller.CreateCampaign(context.Background(), create)
+	require.NoError(t, err)
+	assert.Equal(t, req.Judge.GetVariantId(), spec.GetJudgeVariant().GetVariantId())
+	assert.Equal(t, req.Judge.GetModelDigest(), spec.GetJudgeVariant().GetModelDigest())
+	require.NoError(t, ValidateCampaignSpecDigest(spec))
+	unjudged := proto.Clone(spec).(*evalv1.EvaluationCampaignSpec)
+	unjudged.JudgeVariant = nil
+	require.Error(t, ValidateCampaignSpecDigest(unjudged), "the judge is covered by campaign_digest")
+
+	create.Judge = testJudgeRegistryVariant("qwen3-4b", "qwen3:4b")
+	_, err = controller.CreateCampaign(context.Background(), create)
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 }
 
 func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
@@ -226,6 +256,7 @@ func TestCampaignControllerCreateCampaign_IdempotencyAndParameterConflict(t *tes
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
+		Judge:             req.Judge,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, spec)
@@ -238,6 +269,7 @@ func TestCampaignControllerCreateCampaign_IdempotencyAndParameterConflict(t *tes
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
 		Platform:          req.Platform,
+		Judge:             req.Judge,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, spec.GetCampaignDigest(), recreated.GetCampaignDigest())
@@ -250,6 +282,7 @@ func TestCampaignControllerCreateCampaign_IdempotencyAndParameterConflict(t *tes
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount + 1,
 		Platform:          req.Platform,
+		Judge:             req.Judge,
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)

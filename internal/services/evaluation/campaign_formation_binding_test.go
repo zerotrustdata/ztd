@@ -38,6 +38,7 @@ func createBoundSystemCampaign(t *testing.T, fixture *archiveFixture, campaignID
 		Inventory:         inventory,
 		ScenarioArtifacts: fixture.req.ScenarioArtifacts,
 		FormationStackSet: stackSet,
+		Judge:             fixture.req.Judge,
 	})
 	require.NoError(t, err)
 	return inventory, stackSet
@@ -49,7 +50,7 @@ func TestCampaignFormationBinding_RejectsMultipleModelsWithoutFormations(t *test
 	require.NoError(t, err)
 	_, err = f.controller.CreateCampaign(t.Context(), CampaignCreateRequest{
 		CampaignID: "invalid-multi", Catalog: f.req.Catalog, Inventory: inventory,
-		Platform: testPlatform, ScenarioArtifacts: f.req.ScenarioArtifacts,
+		Platform: testPlatform, ScenarioArtifacts: f.req.ScenarioArtifacts, Judge: f.req.Judge,
 	})
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid)
 	_, err = f.store.LoadCampaignSpec(t.Context(), "invalid-multi")
@@ -179,6 +180,7 @@ func TestCampaignFormationBinding_ValidatesFrozenHistoricalStackWithoutLiveCatal
 		Inventory:         inventory,
 		ScenarioArtifacts: fixture.req.ScenarioArtifacts,
 		FormationStackSet: historical,
+		Judge:             fixture.req.Judge,
 	})
 	require.ErrorIs(t, err, constants.ErrFormationInvalid, "new campaign creation must still use the current formation catalog")
 }

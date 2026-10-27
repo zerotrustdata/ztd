@@ -239,20 +239,20 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil {
 		return nil, nil, nil
 	}
-	resolved, err := ResolveAssignmentModels(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("evaluation: score with judge: resolve assignment models: %w", err)
-	}
-	variant, err := judgeVariant(req, resolved)
+	variant, err := judgeVariant(req)
 	if err != nil {
 		return nil, nil, err
+	}
+	judgeRegistry, judgeRegistryDigest, err := JudgeModelRegistry(req.Assignment.GetCampaignId(), variant)
+	if err != nil {
+		return nil, nil, fmt.Errorf("evaluation: score with judge: %w", err)
 	}
 	cfg := judge.Config{
 		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
 		Variant:             variant,
 		CampaignID:          req.Assignment.GetCampaignId(),
-		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
-		ModelRegistry:       req.Binding.ModelRegistry,
+		ModelRegistryDigest: judgeRegistryDigest,
+		ModelRegistry:       judgeRegistry,
 		RunID:               req.Assignment.GetRunId(),
 		AssignmentID:        req.Assignment.GetAssignmentId(),
 		ScenarioID:          req.Assignment.GetScenarioId(),
@@ -386,22 +386,15 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	return semanticGrades, decomposedScores, nil
 }
 
-// judgeVariant returns the frozen variant the judge scores under: the
-// assignment's designated role. An unresolved or unservable variant fails the
-// assignment; the judge is never skipped silently.
-func judgeVariant(req AssignmentExecutionRequest, resolved map[evalv1.ModelCampaignRole]*evalv1.ModelVariant) (*evalv1.ModelVariant, error) {
-	role, err := AssignmentDesignatedRole(req.Assignment)
-	if err != nil {
+// judgeVariant returns the campaign's frozen judge, the same model for every
+// assignment whatever model or formation it executes, so no subject grades
+// itself. A campaign frozen without a valid judge fails the assignment; the
+// judge is never skipped silently and never falls back to the subject.
+func judgeVariant(req AssignmentExecutionRequest) (*evalv1.ModelVariant, error) {
+	if err := ValidateCampaignJudge(req.Binding.JudgeVariant); err != nil {
 		return nil, fmt.Errorf("evaluation: score with judge: %w", err)
 	}
-	variant := resolved[role]
-	if variant == nil {
-		return nil, fmt.Errorf("evaluation: score with judge: role %s variant: %w", role, constants.ErrFormationRegistryBinding)
-	}
-	if variant.GetServedModelTag() == "" || variant.GetModelDigest() == "" {
-		return nil, fmt.Errorf("evaluation: score with judge: role %s served tag and digest: %w", role, constants.ErrMissingRequiredField)
-	}
-	return variant, nil
+	return req.Binding.JudgeVariant, nil
 }
 
 func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRun, error) {

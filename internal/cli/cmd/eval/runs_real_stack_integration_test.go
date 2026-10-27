@@ -160,6 +160,7 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 			InvestigationId: "real-stack-investigation",
 			DataOperatorId:  dataWorkload.OperatorID,
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 	return run
@@ -211,7 +212,7 @@ func newRealStackEnvironment(t *testing.T, opts fixtures.EvalStackOptions, runCo
 	cfg, err := cfgLoader(root)
 	require.NoError(t, err)
 	stack.Identity.InstallCLIRuntime(t, stack.Gateway, fileSvc, cfg)
-	writeTestFrozenInventory(t, root, testQwenVariant())
+	writeTestFrozenInventory(t, root, testQwenVariant(), testJudgeVariant())
 	evidenceFiles, err := deps.fileSvcFactory(root, slog.Default())
 	require.NoError(t, err)
 	return &realStackRun{ctx: ctx, root: root, stack: stack, deps: deps, cfg: cfg, fileSvc: evidenceFiles}

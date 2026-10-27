@@ -110,49 +110,20 @@ func TestAgentCallContext_DrainsDeadlineButHonorsCancellation(t *testing.T) {
 	}
 }
 
-// unresolvableAssignmentInference is never dispatched to: the judge must fail
-// before inference, so the nil embedded interface panics if it is reached.
-type unresolvableAssignmentInference struct{ AgentInferenceDispatcher }
+// unjudgedCampaignInference is never dispatched to: the judge must fail before
+// inference, so the nil embedded interface panics if it is reached.
+type unjudgedCampaignInference struct{ AgentInferenceDispatcher }
 
-func TestCampaignAgentExecutor_JudgeFailsClosedOnUnresolvableAssignment(t *testing.T) {
-	executor := &CampaignAgentExecutor{inference: unresolvableAssignmentInference{}}
+func TestCampaignAgentExecutor_JudgeFailsClosedWithoutAFrozenJudge(t *testing.T) {
+	executor := &CampaignAgentExecutor{inference: unjudgedCampaignInference{}}
 	req := AssignmentExecutionRequest{
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE,
 		Assignment:    &evalv1.EvaluationAssignment{},
 	}
 	grades, scores, err := executor.scoreWithJudge(context.Background(), req, &AgentTrace{})
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignJudgeInvalid)
 	assert.Nil(t, grades)
 	assert.Nil(t, scores)
-}
-
-// TestJudgeVariant_FailsClosedWhenVariantUnresolved: ResolveAssignmentModels
-// never yields an unresolved designated variant, so the judge guard is exercised
-// on the resolved map directly. Each case must fail, never skip the judge.
-func TestJudgeVariant_FailsClosedWhenVariantUnresolved(t *testing.T) {
-	primary := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
-	assignment := &evalv1.EvaluationAssignment{Target: &evalv1.EvaluationAssignment_Homogeneous{
-		Homogeneous: &evalv1.HomogeneousAssignmentTarget{DesignatedRole: primary},
-	}}
-	for _, tc := range []struct {
-		name     string
-		resolved map[evalv1.ModelCampaignRole]*evalv1.ModelVariant
-		want     error
-	}{
-		{"nil variant", map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{}, constants.ErrFormationRegistryBinding},
-		{"empty served tag", map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{primary: {VariantId: "v", ModelDigest: "sha256:a"}}, constants.ErrMissingRequiredField},
-		{"empty model digest", map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{primary: {VariantId: "v", ServedModelTag: "m"}}, constants.ErrMissingRequiredField},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			variant, err := judgeVariant(AssignmentExecutionRequest{Assignment: assignment}, tc.resolved)
-			require.ErrorIs(t, err, tc.want)
-			assert.Nil(t, variant)
-		})
-	}
-	resolved := map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{primary: {VariantId: "v", ServedModelTag: "m", ModelDigest: "sha256:a"}}
-	variant, err := judgeVariant(AssignmentExecutionRequest{Assignment: assignment}, resolved)
-	require.NoError(t, err)
-	assert.Equal(t, "v", variant.GetVariantId())
 }
 
 // heterogeneousLiteRequest is a SYSTEM-lane stack assignment whose designated
