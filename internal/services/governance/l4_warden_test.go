@@ -157,10 +157,17 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 		constants.ActionTypePlatformEnrollmentPersistPolicy,
 		constants.ActionTypePlatformEnrollmentCreateSession,
 		constants.ActionTypePlatformEnrollmentRevoke,
-		constants.ActionTypePlatformEnrollmentBindConsensus:
+		constants.ActionTypePlatformEnrollmentBindConsensus,
+		constants.ActionTypePlatformEnrollmentUnbindConsensus:
 		msg = &commonv1.PlatformEnrollmentGovernancePayload{
 			Action:    string(actionType),
 			RequestId: "test-request",
+		}
+	case constants.ActionTypeOperatorL2TrustRefresh:
+		msg = &operatorv1.OperatorL2TrustRefreshRequested{
+			BindingVersion: 1,
+			ConsensusSetId: "test-set",
+			Quorum:         1,
 		}
 	default:
 		t.Fatalf("unsupported action type: %v", actionType)

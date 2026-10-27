@@ -513,6 +513,14 @@ func (c *PlatformEnrollmentController) handlePlatformEnrollmentConsensus(w http.
 		}
 		c.responder.JSON(w, http.StatusOK, policy)
 
+	case http.MethodDelete:
+		policy, err := c.enrollSvc.UnbindConsensusApplication(r.Context(), userID)
+		if err != nil {
+			c.writeEnrollmentError(w, err)
+			return
+		}
+		c.responder.JSON(w, http.StatusOK, policy)
+
 	default:
 		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
 	}

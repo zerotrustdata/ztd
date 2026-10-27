@@ -2912,6 +2912,39 @@
       ],
       "persistence": "gateway.docstore"
     },
+    "PlatformEnrollmentUnbindConsensusRequested": {
+      "_go_const": "EventPlatformEnrollmentUnbindConsensusRequested",
+      "value": "ztd.v1.platform.enrollment.unbind_consensus.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway"
+      ],
+      "persistence": "gateway.docstore"
+    },
+    "OperatorL2TrustRefreshRequested": {
+      "_go_const": "EventOperatorL2TrustRefreshRequested",
+      "value": "ztd.v1.operator.l2_trust_refresh.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OPERATOR_L2_TRUST_REFRESH",
+        "payload": "ztd.operator.v1.OperatorL2TrustRefreshRequested"
+      },
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "ephemeral"
+    },
     "PlatformExternalServiceConfigured": {
       "_go_const": "EventPlatformExternalServiceConfigured",
       "value": "ztd.v1.platform.external.service.configured",

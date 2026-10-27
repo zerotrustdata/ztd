@@ -77,19 +77,6 @@ func (s *ConsensusStoreService) GetBoundConsensusApp(ctx context.Context) (*mode
 	return s.GetConsensus(ctx, string(constants.DocIDConsensusBinding))
 }
 
-// ClearConsensusBinding removes the bound consensus app if it matches appID (or if appID is empty).
-func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, appID string) error {
-	bound, err := s.GetBoundConsensusApp(ctx)
-	if err != nil || bound == nil {
-		return err
-	}
-	if appID == "" || bound.PrimaryAppID() == appID {
-		_, err := s.DeleteConsensus(ctx, string(constants.DocIDConsensusBinding))
-		return err
-	}
-	return nil
-}
-
 // GetConsensusPolicy implements governance.L2ConsensusPolicyStore by loading
 // the ConsensusPolicy via GetConsensus (or GetBoundConsensusApp) and adapting it to the generic
 // L2ConsensusPolicy struct.
@@ -126,10 +113,18 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 	} else {
 		policy, err = s.GetBoundConsensusApp(ctx)
 	}
-	if err != nil || policy == nil || !policy.Enabled {
+	if err != nil || policy == nil {
 		return nil, err
 	}
+	if !policy.Enabled {
+		return &models.OperatorL2Trust{
+			BindingVersion: policy.BindingVersion,
+			ConsensusSetID: policy.ID,
+			Enabled:        false,
+		}, nil
+	}
 	trust := &models.OperatorL2Trust{
+		BindingVersion:  policy.BindingVersion,
 		ConsensusSetID:  policy.ID,
 		MemberKeyIDs:    policy.MemberAppIDs,
 		Quorum:          policy.Quorum,

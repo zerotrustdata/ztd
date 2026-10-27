@@ -479,7 +479,10 @@ func (r *agentRun) loop(ctx context.Context) error {
 		if call == nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
 				r.trace.TerminalClassification = AgentTerminalClassificationTimeout
-				return ctx.Err()
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				return context.DeadlineExceeded
 			}
 			// A turn infer already classified (a signed L2 denial) keeps it.
 			if r.trace.TerminalClassification == "" {
@@ -562,7 +565,10 @@ func (r *agentRun) loop(ctx context.Context) error {
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 					r.trace.TerminalClassification = AgentTerminalClassificationTimeout
-					return ctx.Err()
+					if cErr := ctx.Err(); cErr != nil {
+						return cErr
+					}
+					return context.DeadlineExceeded
 				}
 				return err
 			}

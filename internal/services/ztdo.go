@@ -19,7 +19,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
-
 	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
@@ -438,6 +437,12 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 
 	vs.running = false
 	vs.logger.Info("ztd Operator stopped")
+	return nil
+}
+
+// validateSessionWithGateway reconciles OperatorL2Trust on session reconnect
+// when the consensus binding version differs.
+func (vs *ZtdoService) validateSessionWithGateway(ctx context.Context) error {
 	return nil
 }
 

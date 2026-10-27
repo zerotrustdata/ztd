@@ -138,12 +138,12 @@ func (pm *ProcessManager) checkPortAvailable(port int, name string) error {
 func (pm *ProcessManager) findAvailablePort(startPort int, name string) (int, error) {
 	pid, err := pm.readPID(constants.OperatorPIDFilename)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %v", constants.ErrPIDReadFailed, err)
+		return 0, fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
 	}
 
 	if pid != 0 && !pm.isProcessRunning(pid) {
 		if err := pm.deletePID(constants.OperatorPIDFilename); err != nil {
-			return 0, fmt.Errorf("%w: pid %d: %v", constants.ErrPathValidation, pid, err)
+			return 0, fmt.Errorf("%w: pid %d: %w", constants.ErrPathValidation, pid, err)
 		}
 	}
 
@@ -839,7 +839,7 @@ func (pm *ProcessManager) StopOperator() error {
 	}
 
 	if err := pm.stopProcess(pid, "operator"); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrProcessStopFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrProcessStopFailed, err)
 	}
 
 	if err := pm.deletePID(constants.OperatorPIDFilename); err != nil {
@@ -886,7 +886,7 @@ func (pm *ProcessManager) GetLogPath() string {
 // when there was no runtime directory to archive.
 func (pm *ProcessManager) Clean() (string, error) {
 	if err := pm.StopOperator(); err != nil {
-		return "", fmt.Errorf("%w: %v", constants.ErrProcessStopFailed, err)
+		return "", fmt.Errorf("%w: %w", constants.ErrProcessStopFailed, err)
 	}
 
 	archived, err := pm.fileSvc.ArchiveRuntime(context.Background(), time.Now())
@@ -904,10 +904,10 @@ func (pm *ProcessManager) Clean() (string, error) {
 func TailLog(r io.ReadSeeker, follow bool) error {
 	// Print existing content
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("%w: seek to start: %v", constants.ErrDirectoryRead, err)
+		return fmt.Errorf("%w: seek to start: %w", constants.ErrDirectoryRead, err)
 	}
 	if _, err := io.Copy(os.Stdout, r); err != nil {
-		return fmt.Errorf("%w: print content: %v", constants.ErrDirectoryRead, err)
+		return fmt.Errorf("%w: print content: %w", constants.ErrDirectoryRead, err)
 	}
 
 	if !follow {
@@ -916,7 +916,7 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 
 	// Follow mode: seek to end and watch for new content
 	if _, err := r.Seek(0, io.SeekEnd); err != nil {
-		return fmt.Errorf("%w: seek to end: %v", constants.ErrDirectoryRead, err)
+		return fmt.Errorf("%w: seek to end: %w", constants.ErrDirectoryRead, err)
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -942,7 +942,7 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 						time.Sleep(100 * time.Millisecond)
 						continue
 					}
-					errChan <- fmt.Errorf("%w: read line: %v", constants.ErrDirectoryRead, err)
+					errChan <- fmt.Errorf("%w: read line: %w", constants.ErrDirectoryRead, err)
 					return
 				}
 				lineChan <- line

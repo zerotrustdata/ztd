@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/cli/stream"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/ollama"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -131,7 +132,10 @@ func operatorModelPullCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("operator: pull model: %w", err)
 			}
-			client := ollama.NewClient(base, &http.Client{Timeout: inference.ProviderRequestTimeout})
+			client := ollama.NewClient(base, &http.Client{
+				Timeout:   inference.ProviderRequestTimeout,
+				Transport: httpclient.NewIPv4Transport(nil),
+			})
 			if err := client.Pull(cmd.Context(), args[0], nil); err != nil {
 				return fmt.Errorf("operator: pull model: %w", err)
 			}
@@ -154,7 +158,10 @@ func operatorModelCopyCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("operator: copy model: %w", err)
 			}
-			client := ollama.NewClient(base, &http.Client{Timeout: inference.ProviderRequestTimeout})
+			client := ollama.NewClient(base, &http.Client{
+				Timeout:   inference.ProviderRequestTimeout,
+				Transport: httpclient.NewIPv4Transport(nil),
+			})
 			if err := client.Copy(cmd.Context(), args[0], args[1]); err != nil {
 				return fmt.Errorf("operator: copy model: %w", err)
 			}

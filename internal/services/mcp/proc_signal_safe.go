@@ -53,7 +53,7 @@ func (t *ProcSignalSafeTool) InputSchema() *InputSchema {
 func (t *ProcSignalSafeTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
 	var req ProcSignalSafeRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return CallToolResult{}, fmt.Errorf("%w: %v", constants.ErrMCPUnmarshalArguments, err)
+		return CallToolResult{}, fmt.Errorf("%w: %w", constants.ErrMCPUnmarshalArguments, err)
 	}
 
 	if req.PID <= 0 || req.Signal == "" {

@@ -302,6 +302,7 @@ type PublicPublisherService struct {
 	highWaterSeq  int64
 	feedChainHash string
 	batchCount    int
+	httpClient    *http.Client
 }
 
 // NewPublicPublisherService creates a new PublicPublisherService backed by
@@ -322,6 +323,29 @@ func NewPublicPublisherService(docStore *DocumentStoreService, fileSvc fs.Runtim
 		mirrorOrigin:    cfg.MirrorOrigin,
 		batchMaxRecords: cfg.BatchMaxRecords,
 		feedChainHash:   constants.PublicFeedZeroHashHex,
+		httpClient: &http.Client{
+			Timeout:   httpclient.DefaultTimeout,
+			Transport: httpclient.NewIPv4Transport(nil),
+		},
+	}
+}
+
+// SetHTTPClient overrides the HTTP client used for mirror communications.
+func (s *PublicPublisherService) SetHTTPClient(client *http.Client) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.httpClient = client
+}
+
+func (s *PublicPublisherService) getHTTPClient() *http.Client {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.httpClient != nil {
+		return s.httpClient
+	}
+	return &http.Client{
+		Timeout:   httpclient.DefaultTimeout,
+		Transport: httpclient.NewIPv4Transport(nil),
 	}
 }
 
@@ -717,8 +741,7 @@ func (s *PublicPublisherService) sendToMirror(ctx context.Context, origin, inges
 		req.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+ingestAuthToken)
 	}
 
-	client := &http.Client{Timeout: httpclient.DefaultTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.getHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
@@ -1073,7 +1096,7 @@ func (s *PublicPublisherService) registerRotatedKey(ctx context.Context, newKeyI
 	if token != "" {
 		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
-	response, err := (&http.Client{Timeout: httpclient.DefaultTimeout}).Do(httpRequest)
+	response, err := s.getHTTPClient().Do(httpRequest)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
@@ -1269,7 +1292,7 @@ func (s *PublicPublisherService) fetchMirrorProofRoot(ctx context.Context) (mode
 	if token != "" {
 		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
-	response, err := (&http.Client{Timeout: httpclient.DefaultTimeout}).Do(httpRequest)
+	response, err := s.getHTTPClient().Do(httpRequest)
 	if err != nil {
 		return models.PublicProofRootResponse{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}
@@ -1376,7 +1399,7 @@ func (s *PublicPublisherService) postProofIngest(ctx context.Context, segment mo
 	if token != "" {
 		httpRequest.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+token)
 	}
-	response, err := (&http.Client{Timeout: 10 * time.Minute}).Do(httpRequest)
+	response, err := httpclient.WithTimeout(s.getHTTPClient(), 10*time.Minute).Do(httpRequest)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrPublicFeedMirrorUnreachable, err)
 	}

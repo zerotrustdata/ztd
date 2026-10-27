@@ -62,7 +62,7 @@ func (t *NetSocketAuditTool) InputSchema() *InputSchema {
 func (t *NetSocketAuditTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
 	var req NetSocketAuditRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return CallToolResult{}, fmt.Errorf("%w: %v", constants.ErrMCPUnmarshalArguments, err)
+		return CallToolResult{}, fmt.Errorf("%w: %w", constants.ErrMCPUnmarshalArguments, err)
 	}
 
 	// Use default file opener if not set

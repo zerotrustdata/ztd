@@ -831,7 +831,7 @@ func evaluationCandidateInWindow(ctx context.Context, store *evaluation.Store, c
 		}
 		record := &evalv1.ConformanceRunRecord{}
 		if err := evalv1.UnmarshalCanonical(raw, record); err != nil {
-			return false, false, fmt.Errorf("%w: decode conformance eval candidate %s: %v", constants.ErrEvidenceArtifactMalformed, candidate.RunID, err)
+			return false, false, fmt.Errorf("%w: decode conformance eval candidate %s: %w", constants.ErrEvidenceArtifactMalformed, candidate.RunID, err)
 		}
 		started, completed = record.GetStartedAt(), record.GetFinishedAt()
 	case evaluation.RunKindCampaign:

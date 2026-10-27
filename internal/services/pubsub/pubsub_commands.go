@@ -473,6 +473,7 @@ func (rs *OperatorPubSubService) registerPlatformEnrollmentHandlers() {
 	rs.actionHandlers[constants.ActionTypePlatformEnrollmentCreateSession] = rs.platformEnrollment.HandleCreateSession
 	rs.actionHandlers[constants.ActionTypePlatformEnrollmentRevoke] = rs.platformEnrollment.HandleRevoke
 	rs.actionHandlers[constants.ActionTypePlatformEnrollmentBindConsensus] = rs.platformEnrollment.HandleBindConsensus
+	rs.actionHandlers[constants.ActionTypePlatformEnrollmentUnbindConsensus] = rs.platformEnrollment.HandleUnbindConsensus
 }
 
 func (rs *OperatorPubSubService) buildGatewayHandlers() {

@@ -144,6 +144,7 @@ const EventOperatorIntentGranted EventType = "ztd.v1.operator.intent.granted"
 const EventOperatorIntentRequested EventType = "ztd.v1.operator.intent.requested"
 const EventOperatorIntentRevokeRequested EventType = "ztd.v1.operator.intent.revoke.requested"
 const EventOperatorIntentRevoked EventType = "ztd.v1.operator.intent.revoked"
+const EventOperatorL2TrustRefreshRequested EventType = "ztd.v1.operator.l2_trust_refresh.requested"
 const EventOperatorLogsFetchCompleted EventType = "ztd.v1.operator.logs.fetch.completed"
 const EventOperatorLogsFetchFailed EventType = "ztd.v1.operator.logs.fetch.failed"
 const EventOperatorLogsFetchReceived EventType = "ztd.v1.operator.logs.fetch.received"
@@ -223,6 +224,7 @@ const EventPlatformEnrollmentDecideRequested EventType = "ztd.v1.platform.enroll
 const EventPlatformEnrollmentIssueRequested EventType = "ztd.v1.platform.enrollment.issue.requested"
 const EventPlatformEnrollmentPersistPolicyRequested EventType = "ztd.v1.platform.enrollment.persist_policy.requested"
 const EventPlatformEnrollmentRevokeRequested EventType = "ztd.v1.platform.enrollment.revoke.requested"
+const EventPlatformEnrollmentUnbindConsensusRequested EventType = "ztd.v1.platform.enrollment.unbind_consensus.requested"
 const EventPlatformExternalServiceConfigured EventType = "ztd.v1.platform.external.service.configured"
 const EventPlatformNotification EventType = "ztd.v1.platform.notification.sent"
 const EventPlatformSseConnectionClosed EventType = "ztd.v1.platform.sse.connection.closed"
@@ -1305,6 +1307,15 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:   []string{"operator"},
 		Persistence: "ephemeral",
 	},
+	EventOperatorL2TrustRefreshRequested: {
+		Key:               "OperatorL2TrustRefreshRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"gateway"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeOperatorL2TrustRefresh,
+		GovernancePayload: "ztd.operator.v1.OperatorL2TrustRefreshRequested",
+	},
 	EventOperatorLogsFetchCompleted: {
 		Key:         "OperatorLogsFetchCompleted",
 		Kind:        EventKindOutcome,
@@ -1952,6 +1963,15 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		GovernanceAction:  ActionTypePlatformEnrollmentRevoke,
 		GovernancePayload: "ztd.common.v1.PlatformEnrollmentGovernancePayload",
 	},
+	EventPlatformEnrollmentUnbindConsensusRequested: {
+		Key:               "PlatformEnrollmentUnbindConsensusRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "gateway"},
+		Persistence:       "gateway.docstore",
+		GovernanceAction:  ActionTypePlatformEnrollmentUnbindConsensus,
+		GovernancePayload: "ztd.common.v1.PlatformEnrollmentGovernancePayload",
+	},
 	EventPlatformExternalServiceConfigured: {
 		Key:         "PlatformExternalServiceConfigured",
 		Kind:        EventKindOutcome,
@@ -2222,6 +2242,7 @@ var EventTransportRegistry = map[EventType][]string{
 	EventOperatorIntentRequested:                         []string{"pubsub"},
 	EventOperatorIntentRevokeRequested:                   []string{"pubsub"},
 	EventOperatorIntentRevoked:                           []string{"pubsub"},
+	EventOperatorL2TrustRefreshRequested:                 []string{"governed"},
 	EventOperatorLogsFetchCompleted:                      []string{"pubsub"},
 	EventOperatorLogsFetchFailed:                         []string{"pubsub"},
 	EventOperatorLogsFetchReceived:                       []string{"pubsub"},
@@ -2301,6 +2322,7 @@ var EventTransportRegistry = map[EventType][]string{
 	EventPlatformEnrollmentIssueRequested:                []string{"governed"},
 	EventPlatformEnrollmentPersistPolicyRequested:        []string{"governed"},
 	EventPlatformEnrollmentRevokeRequested:               []string{"governed"},
+	EventPlatformEnrollmentUnbindConsensusRequested:      []string{"governed"},
 	EventPlatformExternalServiceConfigured:               []string{"sse"},
 	EventPlatformNotification:                            []string{"sse"},
 	EventPlatformSseConnectionClosed:                     []string{"sse"},

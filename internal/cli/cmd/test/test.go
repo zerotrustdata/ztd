@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,11 +21,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 )
+
+type fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)
 
 func Cmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -365,14 +369,18 @@ func testLintCmd() *cobra.Command {
 }
 
 func testSummaryCmd() *cobra.Command {
+	return testSummaryCmdWithConfig(shared.NewFileSvc)
+}
+
+func testSummaryCmdWithConfig(newFileSvc fileSvcFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "summary",
 		Short: "View chaos test summary from test vault",
 		Long:  `View aggregated chaos test results from the test vault database. This queries the chaos_events table across all test runs in the test vault directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fileSvc, err := fs.NewRuntimeFileService("", nil)
+			fileSvc, err := newFileSvc("", nil)
 			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			testVaultRelDir := constants.TestVaultDirname
 			exists, err := fileSvc.FileExists(cmd.Context(), testVaultRelDir)
@@ -408,9 +416,9 @@ func testSummaryCmd() *cobra.Command {
 			latestRun := testRuns[len(testRuns)-1]
 			// Each chaos run is its own runtime root; read its audit DB through the
 			// storagetest owner that created it.
-			runFileSvc, err := fs.NewRuntimeFileService(fileSvc.Resolve(latestRun), nil)
+			runFileSvc, err := newFileSvc(fileSvc.Resolve(latestRun), nil)
 			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			exists, err = storagetest.ChaosRunDatabaseExists(cmd.Context(), runFileSvc)
 			if err != nil {

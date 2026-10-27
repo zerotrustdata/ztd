@@ -62,11 +62,11 @@ The generated documentation includes:
 			// Ensure paths are absolute
 			absSearchDir, err := shared.AbsUnderSourceRoot(searchDir)
 			if err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPathValidation, err)
+				return fmt.Errorf("%w: %w", constants.ErrPathValidation, err)
 			}
 			absOutputDir, err := shared.AbsUnderSourceRoot(outputDir)
 			if err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPathValidation, err)
+				return fmt.Errorf("%w: %w", constants.ErrPathValidation, err)
 			}
 
 			// Check if swag is available
@@ -85,7 +85,7 @@ The generated documentation includes:
 				swagCmd.Stdout = cmd.OutOrStdout()
 				swagCmd.Stderr = cmd.ErrOrStderr()
 				if err := swagCmd.Run(); err != nil {
-					return fmt.Errorf("%w: %v", constants.ErrProcessStartFailed, err)
+					return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 				}
 			}
 
@@ -130,7 +130,7 @@ https://localhost:8443/swagger/index.html`,
 			docsPath := "internal/services/gateway/docs"
 			absDocsPath, err := shared.AbsUnderSourceRoot(docsPath)
 			if err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPathValidation, err)
+				return fmt.Errorf("%w: %w", constants.ErrPathValidation, err)
 			}
 
 			// Check if swagger.json exists
@@ -179,7 +179,7 @@ If no validation tool is installed, the command will suggest installing one of:
 
 			absSpecFile, err := shared.AbsUnderSourceRoot(specFile)
 			if err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPathValidation, err)
+				return fmt.Errorf("%w: %w", constants.ErrPathValidation, err)
 			}
 
 			// Check if file exists
@@ -193,7 +193,7 @@ If no validation tool is installed, the command will suggest installing one of:
 				validateCmd.Stdout = cmd.OutOrStdout()
 				validateCmd.Stderr = cmd.ErrOrStderr()
 				if err := validateCmd.Run(); err != nil {
-					return fmt.Errorf("%w: %v", constants.ErrValidationFailed, err)
+					return fmt.Errorf("%w: %w", constants.ErrValidationFailed, err)
 				}
 				cmd.Println("Swagger specification is valid!")
 				return nil

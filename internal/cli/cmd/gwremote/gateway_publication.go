@@ -146,15 +146,21 @@ func isPublicFeedSnapshotNotFound(err error) bool {
 	return errors.Is(err, constants.ErrPublicFeedSnapshotNotFound)
 }
 
+var defaultMirrorHTTPTransport = httpclient.NewIPv4Transport(nil)
+
+func newMirrorHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: defaultMirrorHTTPTransport,
+	}
+}
+
 func IsGatewayHealthy() bool {
 	if GatewayHealthCheck != nil {
 		return GatewayHealthCheck()
 	}
 	healthURL := fmt.Sprintf("http://127.0.0.1:%d/api/v1/health", constants.Ports.OperatorHttp)
-	client := &http.Client{
-		Timeout:   2 * time.Second,
-		Transport: httpclient.NewIPv4Transport(nil),
-	} //nolint:gosec
+	client := newMirrorHTTPClient(2 * time.Second)
 	resp, err := client.Get(healthURL) //nolint:noctx
 	if err != nil {
 		return false
@@ -183,10 +189,7 @@ type httpCampaignMirrorProbe struct {
 }
 
 func NewHTTPCampaignMirrorProbe(ctx context.Context) evaluation.CampaignMirrorProbe {
-	return &httpCampaignMirrorProbe{client: &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: httpclient.NewIPv4Transport(nil),
-	}} //nolint:gosec
+	return &httpCampaignMirrorProbe{client: newMirrorHTTPClient(5 * time.Second)}
 }
 
 // DatasetPresent asks the mirror's active source for one catalog snapshot of
@@ -227,10 +230,7 @@ func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID
 	query.Set("kind", "catalog_snapshot")
 	req.URL.RawQuery = query.Encode()
 	if client == nil {
-		client = &http.Client{
-			Timeout:   5 * time.Second,
-			Transport: httpclient.NewIPv4Transport(nil),
-		} //nolint:gosec
+		client = newMirrorHTTPClient(5 * time.Second)
 	}
 	resp, err := doPublicMirrorRead(ctx, client, req, "public mirror history")
 	if err != nil {
@@ -248,10 +248,7 @@ func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID
 }
 
 func FetchPublicMirrorBootstrap(ctx context.Context) (models.PublicFeedBootstrap, error) {
-	return fetchPublicMirrorBootstrapWithClient(ctx, &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: httpclient.NewIPv4Transport(nil),
-	}) //nolint:gosec
+	return fetchPublicMirrorBootstrapWithClient(ctx, newMirrorHTTPClient(5 * time.Second))
 }
 
 func fetchPublicMirrorBootstrapWithClient(ctx context.Context, client *http.Client) (models.PublicFeedBootstrap, error) {

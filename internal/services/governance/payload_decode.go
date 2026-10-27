@@ -105,14 +105,18 @@ func DecodePayloadForAction(actionType constants.ActionType, payload []byte) (pr
 		constants.ActionTypePlatformEnrollmentPersistPolicy,
 		constants.ActionTypePlatformEnrollmentCreateSession,
 		constants.ActionTypePlatformEnrollmentRevoke,
-		constants.ActionTypePlatformEnrollmentBindConsensus:
-		// All six platform enrollment actions share the same
+		constants.ActionTypePlatformEnrollmentBindConsensus,
+		constants.ActionTypePlatformEnrollmentUnbindConsensus:
+		// All platform enrollment actions share the same
 		// PlatformEnrollmentGovernancePayload proto. The action field
 		// inside the payload distinguishes them; L1 doctrine validates
 		// the payload shape and the handler layer enforces per-action
 		// semantics. CSR PEM, token hashes, and private keys are never
 		// placed in the audited envelope payload.
 		msg = &commonv1.PlatformEnrollmentGovernancePayload{}
+
+	case constants.ActionTypeOperatorL2TrustRefresh:
+		msg = &operatorv1.OperatorL2TrustRefreshRequested{}
 
 	default:
 		return nil, fmt.Errorf("%w: %q", constants.ErrTxPayloadDecoderMissing, actionType)

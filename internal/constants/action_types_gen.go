@@ -13,43 +13,45 @@ package constants
 type ActionType string
 
 const (
-	ActionTypeA2aCall                         ActionType = "A2A_CALL"
-	ActionTypeCancel                          ActionType = "CANCEL"
-	ActionTypeDocumentDelete                  ActionType = "DOCUMENT_DELETE"
-	ActionTypeDocumentUpdate                  ActionType = "DOCUMENT_UPDATE"
-	ActionTypeEvalAnswer                      ActionType = "EVAL_ANSWER"
-	ActionTypeEvalWorkspaceSeed               ActionType = "EVAL_WORKSPACE_SEED"
-	ActionTypeExecuteBash                     ActionType = "EXECUTE_BASH"
-	ActionTypeFetchFileDiff                   ActionType = "FETCH_FILE_DIFF"
-	ActionTypeFetchFileHistory                ActionType = "FETCH_FILE_HISTORY"
-	ActionTypeFetchHistory                    ActionType = "FETCH_HISTORY"
-	ActionTypeFetchLogs                       ActionType = "FETCH_LOGS"
-	ActionTypeFileEdit                        ActionType = "FILE_EDIT"
-	ActionTypeFsGrep                          ActionType = "FS_GREP"
-	ActionTypeFsList                          ActionType = "FS_LIST"
-	ActionTypeFsRead                          ActionType = "FS_READ"
-	ActionTypeHeartbeat                       ActionType = "HEARTBEAT"
-	ActionTypeInference                       ActionType = "INFERENCE"
-	ActionTypeMcpCall                         ActionType = "MCP_CALL"
-	ActionTypeMcpPromptGet                    ActionType = "MCP_PROMPT_GET"
-	ActionTypeMcpPromptList                   ActionType = "MCP_PROMPT_LIST"
-	ActionTypeMcpResourceList                 ActionType = "MCP_RESOURCE_LIST"
-	ActionTypeMcpResourceRead                 ActionType = "MCP_RESOURCE_READ"
-	ActionTypeModelProvenanceObservation      ActionType = "MODEL_PROVENANCE_OBSERVATION"
-	ActionTypeOllamaModelInventory            ActionType = "OLLAMA_MODEL_INVENTORY"
-	ActionTypeOllamaModelRelease              ActionType = "OLLAMA_MODEL_RELEASE"
-	ActionTypeOllamaModelResidency            ActionType = "OLLAMA_MODEL_RESIDENCY"
-	ActionTypePlatformEnrollmentBindConsensus ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
-	ActionTypePlatformEnrollmentCreate        ActionType = "PLATFORM_ENROLLMENT_CREATE"
-	ActionTypePlatformEnrollmentCreateSession ActionType = "PLATFORM_ENROLLMENT_CREATE_SESSION"
-	ActionTypePlatformEnrollmentDecide        ActionType = "PLATFORM_ENROLLMENT_DECIDE"
-	ActionTypePlatformEnrollmentIssue         ActionType = "PLATFORM_ENROLLMENT_ISSUE"
-	ActionTypePlatformEnrollmentPersistPolicy ActionType = "PLATFORM_ENROLLMENT_PERSIST_POLICY"
-	ActionTypePlatformEnrollmentRevoke        ActionType = "PLATFORM_ENROLLMENT_REVOKE"
-	ActionTypePortCheck                       ActionType = "PORT_CHECK"
-	ActionTypeProviderBoundaryObservation     ActionType = "PROVIDER_BOUNDARY_OBSERVATION"
-	ActionTypeRestoreFile                     ActionType = "RESTORE_FILE"
-	ActionTypeShutdown                        ActionType = "SHUTDOWN"
+	ActionTypeA2aCall                           ActionType = "A2A_CALL"
+	ActionTypeCancel                            ActionType = "CANCEL"
+	ActionTypeDocumentDelete                    ActionType = "DOCUMENT_DELETE"
+	ActionTypeDocumentUpdate                    ActionType = "DOCUMENT_UPDATE"
+	ActionTypeEvalAnswer                        ActionType = "EVAL_ANSWER"
+	ActionTypeEvalWorkspaceSeed                 ActionType = "EVAL_WORKSPACE_SEED"
+	ActionTypeExecuteBash                       ActionType = "EXECUTE_BASH"
+	ActionTypeFetchFileDiff                     ActionType = "FETCH_FILE_DIFF"
+	ActionTypeFetchFileHistory                  ActionType = "FETCH_FILE_HISTORY"
+	ActionTypeFetchHistory                      ActionType = "FETCH_HISTORY"
+	ActionTypeFetchLogs                         ActionType = "FETCH_LOGS"
+	ActionTypeFileEdit                          ActionType = "FILE_EDIT"
+	ActionTypeFsGrep                            ActionType = "FS_GREP"
+	ActionTypeFsList                            ActionType = "FS_LIST"
+	ActionTypeFsRead                            ActionType = "FS_READ"
+	ActionTypeHeartbeat                         ActionType = "HEARTBEAT"
+	ActionTypeInference                         ActionType = "INFERENCE"
+	ActionTypeMcpCall                           ActionType = "MCP_CALL"
+	ActionTypeMcpPromptGet                      ActionType = "MCP_PROMPT_GET"
+	ActionTypeMcpPromptList                     ActionType = "MCP_PROMPT_LIST"
+	ActionTypeMcpResourceList                   ActionType = "MCP_RESOURCE_LIST"
+	ActionTypeMcpResourceRead                   ActionType = "MCP_RESOURCE_READ"
+	ActionTypeModelProvenanceObservation        ActionType = "MODEL_PROVENANCE_OBSERVATION"
+	ActionTypeOllamaModelInventory              ActionType = "OLLAMA_MODEL_INVENTORY"
+	ActionTypeOllamaModelRelease                ActionType = "OLLAMA_MODEL_RELEASE"
+	ActionTypeOllamaModelResidency              ActionType = "OLLAMA_MODEL_RESIDENCY"
+	ActionTypeOperatorL2TrustRefresh            ActionType = "OPERATOR_L2_TRUST_REFRESH"
+	ActionTypePlatformEnrollmentBindConsensus   ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
+	ActionTypePlatformEnrollmentCreate          ActionType = "PLATFORM_ENROLLMENT_CREATE"
+	ActionTypePlatformEnrollmentCreateSession   ActionType = "PLATFORM_ENROLLMENT_CREATE_SESSION"
+	ActionTypePlatformEnrollmentDecide          ActionType = "PLATFORM_ENROLLMENT_DECIDE"
+	ActionTypePlatformEnrollmentIssue           ActionType = "PLATFORM_ENROLLMENT_ISSUE"
+	ActionTypePlatformEnrollmentPersistPolicy   ActionType = "PLATFORM_ENROLLMENT_PERSIST_POLICY"
+	ActionTypePlatformEnrollmentRevoke          ActionType = "PLATFORM_ENROLLMENT_REVOKE"
+	ActionTypePlatformEnrollmentUnbindConsensus ActionType = "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS"
+	ActionTypePortCheck                         ActionType = "PORT_CHECK"
+	ActionTypeProviderBoundaryObservation       ActionType = "PROVIDER_BOUNDARY_OBSERVATION"
+	ActionTypeRestoreFile                       ActionType = "RESTORE_FILE"
+	ActionTypeShutdown                          ActionType = "SHUTDOWN"
 )
 
 // AllActionTypes is the canonical slice of all valid action types.
@@ -80,6 +82,7 @@ var AllActionTypes = []ActionType{
 	ActionTypeOllamaModelInventory,
 	ActionTypeOllamaModelRelease,
 	ActionTypeOllamaModelResidency,
+	ActionTypeOperatorL2TrustRefresh,
 	ActionTypePlatformEnrollmentBindConsensus,
 	ActionTypePlatformEnrollmentCreate,
 	ActionTypePlatformEnrollmentCreateSession,
@@ -87,6 +90,7 @@ var AllActionTypes = []ActionType{
 	ActionTypePlatformEnrollmentIssue,
 	ActionTypePlatformEnrollmentPersistPolicy,
 	ActionTypePlatformEnrollmentRevoke,
+	ActionTypePlatformEnrollmentUnbindConsensus,
 	ActionTypePortCheck,
 	ActionTypeProviderBoundaryObservation,
 	ActionTypeRestoreFile,
@@ -106,12 +110,14 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeInference,
 		ActionTypeMcpCall,
 		ActionTypeOllamaModelRelease,
+		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy,
 		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentUnbindConsensus,
 		ActionTypeRestoreFile,
 		ActionTypeShutdown:
 		return true
@@ -123,13 +129,15 @@ func (a ActionType) IsMutation() bool {
 // IsBootstrapAction returns true for platform enrollment bootstrap actions.
 func (a ActionType) IsBootstrapAction() bool {
 	switch a {
-	case ActionTypePlatformEnrollmentBindConsensus,
+	case ActionTypeOperatorL2TrustRefresh,
+		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreate,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy,
-		ActionTypePlatformEnrollmentRevoke:
+		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentUnbindConsensus:
 		return true
 	default:
 		return false
@@ -141,7 +149,8 @@ func (a ActionType) IsBootstrapAction() bool {
 // L3 proof of their own; their handler requires the committed decision.
 func (a ActionType) AuthorizedByDecision() bool {
 	switch a {
-	case ActionTypePlatformEnrollmentCreateSession,
+	case ActionTypeOperatorL2TrustRefresh,
+		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy:
 		return true
@@ -161,12 +170,14 @@ func (a ActionType) IsStateChange() bool {
 		ActionTypeExecuteBash,
 		ActionTypeFileEdit,
 		ActionTypeMcpCall,
+		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy,
 		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentUnbindConsensus,
 		ActionTypeRestoreFile,
 		ActionTypeShutdown:
 		return true

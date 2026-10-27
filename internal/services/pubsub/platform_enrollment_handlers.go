@@ -995,9 +995,19 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		}
 	}
 
+	var bindingVersion int64 = 1
+	existingDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err == nil && existingDoc != nil {
+		var prevPolicy models.ConsensusPolicy
+		if err := existingDoc.DecodeData(&prevPolicy); err == nil && prevPolicy.BindingVersion > 0 {
+			bindingVersion = prevPolicy.BindingVersion + 1
+		}
+	}
+
 	now := time.Now().UTC()
 	consensusDoc := models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
+		BindingVersion:  bindingVersion,
 		AppID:           appID,
 		MemberAppIDs:    append([]string(nil), spec.MemberAppIDs...),
 		Quorum:          spec.Quorum,
@@ -1028,6 +1038,55 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		return fmt.Sprintf("platform enrollment bind_consensus provider=%s app_id=%s quorum=%d actor=%s", spec.Provider, appID, spec.Quorum, actorUserID), nil
 	}
 	return fmt.Sprintf("platform enrollment bind_consensus provider=%s app_id=%s endpoint=%s actor=%s", spec.Provider, appID, spec.EndpointURL, actorUserID), nil
+}
+
+// HandleUnbindConsensus clears the Gateway consensus application binding.
+func (h *PlatformEnrollmentHandler) HandleUnbindConsensus(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("platform enrollment: unbind consensus context: %w", err)
+	}
+	payload, err := h.decodePayload(msg)
+	if err != nil {
+		return "", err
+	}
+	actorUserID := strings.TrimSpace(payload.GetActorUserId())
+	if actorUserID == "" {
+		return "", constants.ErrPlatformEnrollmentInvalidDecision
+	}
+
+	existingDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: check existing consensus: %w", err)
+	}
+	if existingDoc == nil {
+		return "", constants.ErrConsensusBindingNotFound
+	}
+	var existingPolicy models.ConsensusPolicy
+	if err := existingDoc.DecodeData(&existingPolicy); err != nil {
+		return "", fmt.Errorf("platform enrollment: decode existing consensus: %w", err)
+	}
+	if !existingPolicy.Enabled {
+		return "", constants.ErrConsensusBindingNotFound
+	}
+
+	now := time.Now().UTC()
+	existingPolicy.Enabled = false
+	existingPolicy.BindingVersion = existingPolicy.BindingVersion + 1
+	existingPolicy.UpdatedAt = now
+
+	data, err := json.Marshal(existingPolicy)
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: marshal consensus unbind: %w", err)
+	}
+	if err := h.deps.DocStore.DocSet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding), data); err != nil {
+		return "", fmt.Errorf("platform enrollment: persist consensus unbind: %w", err)
+	}
+
+	h.logger.Info("platform enrollment consensus unbound",
+		"actor_user_id", actorUserID,
+		"binding_version", existingPolicy.BindingVersion)
+	return fmt.Sprintf("platform enrollment unbind_consensus app_id=%s version=%d actor=%s",
+		existingPolicy.PrimaryAppID(), existingPolicy.BindingVersion, actorUserID), nil
 }
 
 // sessionExists reports whether a session document is already persisted.

@@ -709,6 +709,65 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	return &policy, nil
 }
 
+// UnbindConsensusApplication clears the bound Gateway consensus application through governance.
+func (s *PlatformEnrollmentService) UnbindConsensusApplication(ctx context.Context, actorUserID string) (*models.ConsensusPolicy, error) {
+	user, err := s.userSvc.GetByID(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: authorize consensus unbinding: %w", err)
+	}
+	if user == nil || !user.IsActive() {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+	isFirst, err := s.userSvc.IsFirstUser(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: authorize consensus unbinding: %w", err)
+	}
+	if !isFirst {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+
+	boundDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil {
+		return nil, fmt.Errorf("read bound consensus: %w", err)
+	}
+	if boundDoc == nil {
+		return nil, constants.ErrConsensusBindingNotFound
+	}
+	var existingPolicy models.ConsensusPolicy
+	if err := boundDoc.DecodeData(&existingPolicy); err != nil {
+		return nil, fmt.Errorf("unmarshal bound consensus: %w", err)
+	}
+	if !existingPolicy.Enabled {
+		return nil, constants.ErrConsensusBindingNotFound
+	}
+
+	payload := &commonv1.PlatformEnrollmentGovernancePayload{
+		Action:        string(constants.PlatformEnrollmentActionUnbindConsensus),
+		ComponentKind: commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
+		InstanceId:    existingPolicy.PrimaryAppID(),
+		ActorUserId:   actorUserID,
+	}
+	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionUnbindConsensus, payload)
+	if err != nil {
+		var l3Err *models.PlatformEnrollmentL3RequiredError
+		if errors.As(err, &l3Err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("platform enrollment: unbind consensus envelope: %w", err)
+	}
+
+	unboundDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil || unboundDoc == nil {
+		return nil, fmt.Errorf("read unbound consensus: %w", err)
+	}
+	var updated models.ConsensusPolicy
+	if err := unboundDoc.DecodeData(&updated); err != nil {
+		return nil, fmt.Errorf("unmarshal unbound consensus: %w", err)
+	}
+	updated.ID = unboundDoc.ID
+	return &updated, nil
+}
+
 // ListEnrolled returns owner-visible metadata for completed and revoked
 // platform enrollment requests. The response never includes token hashes,
 // CSR PEM, certificates, or raw tokens. The caller must be authenticated as
@@ -1052,6 +1111,8 @@ func platformEnrollmentRequestEvent(action constants.PlatformEnrollmentGovernanc
 		return constants.EventPlatformEnrollmentRevokeRequested
 	case constants.PlatformEnrollmentActionBindConsensus:
 		return constants.EventPlatformEnrollmentBindConsensusRequested
+	case constants.PlatformEnrollmentActionUnbindConsensus:
+		return constants.EventPlatformEnrollmentUnbindConsensusRequested
 	default:
 		return ""
 	}

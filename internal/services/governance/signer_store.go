@@ -53,9 +53,10 @@ type L2TrustStore struct {
 
 // l2Trust is one decoded, immutable L2 trust; Replace swaps it whole.
 type l2Trust struct {
-	policy  *L2ConsensusPolicy
-	setID   string
-	signers map[string]ed25519.PublicKey
+	bindingVersion int64
+	policy         *L2ConsensusPolicy
+	setID          string
+	signers        map[string]ed25519.PublicKey
 }
 
 // NewL2TrustStore decodes the bundle's L2 trust. A nil trust yields the empty
@@ -77,14 +78,27 @@ func (s *L2TrustStore) Replace(trust *models.OperatorL2Trust) error {
 		return err
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if trust != nil && trust.BindingVersion > 0 && trust.BindingVersion < s.trust.bindingVersion {
+		return fmt.Errorf("l2 trust: binding version %d regresses current version %d: %w", trust.BindingVersion, s.trust.bindingVersion, constants.ErrValidationFailed)
+	}
 	s.trust = decoded
-	s.mu.Unlock()
 	return nil
+}
+
+// BindingVersion returns the version of the currently loaded L2 trust.
+func (s *L2TrustStore) BindingVersion() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.trust.bindingVersion
 }
 
 func decodeL2Trust(trust *models.OperatorL2Trust) (l2Trust, error) {
 	if trust == nil {
 		return l2Trust{}, nil
+	}
+	if !trust.Enabled {
+		return l2Trust{bindingVersion: trust.BindingVersion}, nil
 	}
 	if trust.ConsensusSetID == "" || trust.Quorum < 1 || trust.Quorum > len(trust.MemberKeyIDs) {
 		return l2Trust{}, fmt.Errorf("l2 trust: consensus set %q quorum %d of %d members: %w",
@@ -109,6 +123,7 @@ func decodeL2Trust(trust *models.OperatorL2Trust) (l2Trust, error) {
 		signers[signer.KeyID] = ed25519.PublicKey(pub)
 	}
 	return l2Trust{
+		bindingVersion: trust.BindingVersion,
 		policy: &L2ConsensusPolicy{
 			MemberKeyIDs:    append([]string(nil), trust.MemberKeyIDs...),
 			Quorum:          trust.Quorum,

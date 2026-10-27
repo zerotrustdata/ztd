@@ -170,7 +170,7 @@ func (pm *ProcessManager) stopProcess(pid int, name string) error {
 	// Force kill if graceful shutdown failed
 	cmd = executor.Command("taskkill", "/F", "/PID", fmt.Sprintf("%d", pid), "/T")
 	if err := executor.Run(cmd); err != nil {
-		return fmt.Errorf("process_manager: %w: %v", constants.ErrProcessStopFailed, err)
+		return fmt.Errorf("process_manager: %w: %w", constants.ErrProcessStopFailed, err)
 	}
 
 	// Wait for process to actually exit and release file handles

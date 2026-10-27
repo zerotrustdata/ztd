@@ -120,7 +120,6 @@ type cachedBootstrapSnapshot struct {
 	proofRoot        string
 	proofGeneratedAt time.Time
 	etag             string
-	bootstrap        models.PublicFeedBootstrap
 	jsonBytes        []byte
 	gzipBytes        []byte
 }
@@ -683,10 +682,32 @@ func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 
 type gzipResponseWriter struct {
 	http.ResponseWriter
-	writer *gzip.Writer
+	writer      *gzip.Writer
+	statusCode  int
+	wroteHeader bool
 }
 
-func (w gzipResponseWriter) Write(body []byte) (int, error) {
+func (w *gzipResponseWriter) WriteHeader(code int) {
+	if w.wroteHeader {
+		return
+	}
+	w.statusCode = code
+	w.wroteHeader = true
+	if code == http.StatusNotModified || code == http.StatusNoContent {
+		w.Header().Del("Content-Encoding")
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *gzipResponseWriter) Write(body []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.statusCode == http.StatusNotModified || w.statusCode == http.StatusNoContent {
+		return 0, nil
+	}
 	return w.writer.Write(body)
 }
 
@@ -699,9 +720,12 @@ func (m *PublicMirrorServer) withGzip(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Content-Encoding", "gzip")
 		writer := gzip.NewWriter(w)
-		next.ServeHTTP(gzipResponseWriter{ResponseWriter: w, writer: writer}, r)
-		if err := writer.Close(); err != nil {
-			m.logResponseError("mirror: close gzip response", err)
+		gw := &gzipResponseWriter{ResponseWriter: w, writer: writer}
+		next.ServeHTTP(gw, r)
+		if gw.statusCode != http.StatusNotModified && gw.statusCode != http.StatusNoContent {
+			if err := writer.Close(); err != nil {
+				m.logResponseError("mirror: close gzip response", err)
+			}
 		}
 	})
 }
@@ -1284,7 +1308,11 @@ func (m *PublicMirrorServer) currentBootstrap(ctx context.Context, requestedSour
 	if err != nil {
 		return models.PublicFeedBootstrap{}, err
 	}
-	return cached.bootstrap, nil
+	var bootstrap models.PublicFeedBootstrap
+	if err := json.Unmarshal(cached.jsonBytes, &bootstrap); err != nil {
+		return models.PublicFeedBootstrap{}, fmt.Errorf("mirror: decode cached bootstrap: %w", err)
+	}
+	return bootstrap, nil
 }
 
 // currentBootstrapCached captures a coherent mirror version while mutations
@@ -1415,7 +1443,6 @@ func buildCachedBootstrap(bootstrap models.PublicFeedBootstrap, sourceID string,
 		proofByteSize:    proofSummary.TotalByteSize,
 		proofRoot:        proofSummary.ProofRootSHA256,
 		proofGeneratedAt: proofSummary.GeneratedAt,
-		bootstrap:        bootstrap,
 		jsonBytes:        jsonBytes,
 		gzipBytes:        gzipBuffer.Bytes(),
 	}

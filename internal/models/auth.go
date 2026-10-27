@@ -111,9 +111,10 @@ type OperatorSessionValidationRequest struct {
 }
 
 type OperatorSessionValidationResponse struct {
-	Valid      bool   `json:"valid"`
-	OperatorID string `json:"operator_id"`
-	UserID     string `json:"user_id"`
+	Valid      bool             `json:"valid"`
+	OperatorID string           `json:"operator_id"`
+	UserID     string           `json:"user_id"`
+	L2Trust    *OperatorL2Trust `json:"l2_trust,omitempty"`
 }
 
 type OperatorResponse struct {
@@ -592,6 +593,7 @@ type ConsensusPolicy struct {
 	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
 
 	ID              string    `json:"id"`                     // consensus name/id
+	BindingVersion  int64     `json:"binding_version,omitempty"` // monotonic version incremented on each bind/unbind
 	AppID           string    `json:"app_id,omitempty"`       // primary bound consensus application identity
 	MemberAppIDs    []string  `json:"member_app_ids"`         // == TrustedSigner.ID per member
 	Quorum          int       `json:"quorum"`                 // K affirmative distinct signers required

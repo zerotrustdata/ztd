@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -2709,6 +2710,24 @@ func TestMirror_Bootstrap_ETagInvalidatesFreshnessAndProofChanges(t *testing.T) 
 		assert.Equal(t, 1, finalBody.ProofCatalogSummary.ArtifactCount)
 		assert.Equal(t, int64(len(largerContent)), finalBody.ProofCatalogSummary.TotalByteSize)
 	})
+}
+
+func TestPublicMirror_WithGzip_SuppressesEmptyBodyStatusCodes(t *testing.T) {
+	m := &PublicMirrorServer{logger: slog.Default()}
+	for _, status := range []int{http.StatusNotModified, http.StatusNoContent} {
+		handler := m.withGzip(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+		}))
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, status, rec.Code)
+		assert.Empty(t, rec.Header().Get("Content-Encoding"), "Content-Encoding must not be set on empty-body status %d", status)
+		assert.Empty(t, rec.Body.Bytes(), "Body must be empty on empty-body status %d", status)
+	}
 }
 
 func bootstrapResponse(t *testing.T, env *mirrorTestEnv, etag string) *http.Response {

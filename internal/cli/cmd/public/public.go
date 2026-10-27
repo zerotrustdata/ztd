@@ -103,7 +103,7 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 			}
 			publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 			if err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPublicFeedKeyGenFailed, err)
+				return fmt.Errorf("%w: %w", constants.ErrPublicFeedKeyGenFailed, err)
 			}
 			token := make([]byte, constants.PublicFeedIngestTokenBytes)
 			if _, err := rand.Read(token); err != nil {
@@ -225,13 +225,13 @@ func publicSourceTransitionCmdWithConfig(configLoader publicConfigLoader, fileSv
 func readPublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService) (models.PublicExportConfig, error) {
 	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedExportConfigPath)
 	if err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedConfigRequired, err)
+		return models.PublicExportConfig{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedConfigRequired, err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var exportConfig models.PublicExportConfig
 	if err := decoder.Decode(&exportConfig); err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: decode: %v", constants.ErrPublicFeedConfigRequired, err)
+		return models.PublicExportConfig{}, fmt.Errorf("%w: decode: %w", constants.ErrPublicFeedConfigRequired, err)
 	}
 	if err := rejectTrailingPublicJSON(decoder); err != nil {
 		return models.PublicExportConfig{}, err
@@ -343,7 +343,7 @@ func loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath string) (publicPro
 		}
 		var rawMap map[string]string
 		if err := json.Unmarshal(regData, &rawMap); err != nil {
-			return nil, fmt.Errorf("%w: decode key registry: %v", constants.ErrPublicFeedProofSegmentInvalid, err)
+			return nil, fmt.Errorf("%w: decode key registry: %w", constants.ErrPublicFeedProofSegmentInvalid, err)
 		}
 		for k, hexStr := range rawMap {
 			pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(hexStr))
@@ -374,7 +374,7 @@ func readPublicProofSegments(segmentsPath string) ([]models.PublicProofManifestS
 		decoder := json.NewDecoder(strings.NewReader(line))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&seg); err != nil {
-			return nil, fmt.Errorf("%w: segment line %d: %v", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
+			return nil, fmt.Errorf("%w: segment line %d: %w", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
 		}
 		var trailing json.RawMessage
 		if err := decoder.Decode(&trailing); err != io.EOF {
@@ -880,13 +880,13 @@ func readPublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileService, k
 	}
 	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedKeyRotationPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: read state: %v", constants.ErrPublicFeedKeyRotationPending, err)
+		return nil, nil, fmt.Errorf("%w: read state: %w", constants.ErrPublicFeedKeyRotationPending, err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var state models.PublicKeyRotationState
 	if err := decoder.Decode(&state); err != nil {
-		return nil, nil, fmt.Errorf("%w: decode state: %v", constants.ErrPublicFeedKeyRotationPending, err)
+		return nil, nil, fmt.Errorf("%w: decode state: %w", constants.ErrPublicFeedKeyRotationPending, err)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
@@ -894,7 +894,7 @@ func readPublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileService, k
 	}
 	privateKeyHex, err := ks.Decrypt(publicKeyRotationBinding(state.NewKeyID), state.SealedNewPrivateKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: unseal new signing key: %v", constants.ErrPublicFeedKeyRotationPending, err)
+		return nil, nil, fmt.Errorf("%w: unseal new signing key: %w", constants.ErrPublicFeedKeyRotationPending, err)
 	}
 	privateKey, err := hex.DecodeString(privateKeyHex)
 	if err != nil || len(privateKey) != ed25519.PrivateKeySize || state.SourceID == "" || state.OldKeyID == "" || state.NewKeyID == "" || state.OldKeyID == state.NewKeyID {
@@ -936,11 +936,11 @@ func publicKeyRotationOutboxStatus(ctx context.Context, fileSvc fs.RuntimeFileSe
 		}
 		var entry models.PublicOutboxEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
-			return false, false, fmt.Errorf("%w: rotation outbox line %d: %v", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+			return false, false, fmt.Errorf("%w: rotation outbox line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
 		}
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return false, false, fmt.Errorf("%w: rotation batch line %d: %v", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+			return false, false, fmt.Errorf("%w: rotation batch line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
 		}
 		for _, record := range batch.Records {
 			if record.RecordType != models.PublicFeedRecordTypeKeyRevocation {
@@ -948,7 +948,7 @@ func publicKeyRotationOutboxStatus(ctx context.Context, fileSvc fs.RuntimeFileSe
 			}
 			var revocation models.PublicKeyRevocationRecord
 			if err := json.Unmarshal([]byte(record.RecordBytes), &revocation); err != nil {
-				return false, false, fmt.Errorf("%w: rotation record line %d: %v", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+				return false, false, fmt.Errorf("%w: rotation record line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
 			}
 			if revocation.SourceID == rotation.SourceID && revocation.RevokedKeyID == rotation.OldKeyID && revocation.NewKeyID == rotation.NewKeyID {
 				return true, entry.Status == models.PublicFeedOutboxStatusAcknowledged, nil

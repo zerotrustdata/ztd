@@ -134,6 +134,7 @@ type GatewayService struct {
 	auditLogger            AuditLogger
 	l2ConsensusDeliberator L2ConsensusDeliberator
 	embeddedSession        EmbeddedSessionResolver
+	httpClient             *http.Client
 
 	// Circuit breaker state
 	mu               sync.RWMutex
@@ -241,6 +242,7 @@ type Dependencies struct {
 	SessionValidator       SessionValidator
 	AuditLogger            AuditLogger
 	L2ConsensusDeliberator L2ConsensusDeliberator
+	HTTPClient             *http.Client
 }
 
 func NewGatewayService(deps Dependencies) (*GatewayService, error) {
@@ -291,6 +293,14 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		subprocessDownstream = NewSubprocessDownstream(deps.DownstreamCmd, deps.DownstreamArgs, deps.Logger)
 	}
 
+	httpClient := deps.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{
+			Transport: httpclient.NewIPv4Transport(nil),
+			Timeout:   httpclient.DefaultTimeout,
+		}
+	}
+
 	g := &GatewayService{
 		logger:                 deps.Logger,
 		responder:              deps.Responder,
@@ -322,8 +332,19 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		auditLogger:            deps.AuditLogger,
 		l2ConsensusDeliberator: deps.L2ConsensusDeliberator,
 		embeddedSession:        deps.EmbeddedSession,
+		httpClient:             httpClient,
 	}
 	return g, nil
+}
+
+func (g *GatewayService) getHTTPClient() *http.Client {
+	if g.httpClient != nil {
+		return g.httpClient
+	}
+	return &http.Client{
+		Transport: httpclient.NewIPv4Transport(nil),
+		Timeout:   httpclient.DefaultTimeout,
+	}
 }
 
 // runMaintenanceSweep performs a single maintenance sweep to audit and delete expired transactions.
@@ -1559,8 +1580,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 			return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 		}
 
-		client := &http.Client{Timeout: httpclient.DefaultTimeout}
-		resp, err := client.Post(g.downstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
+		resp, err := g.getHTTPClient().Post(g.downstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 		if err != nil {
 			g.recordFailure()
 			return "", fmt.Errorf("gateway: %w", constants.ErrGatewayDownstreamUnavailable)
@@ -1670,8 +1690,7 @@ func (g *GatewayService) DispatchToA2ADownstream(ctx context.Context, skillName 
 		return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	client := &http.Client{Timeout: httpclient.DefaultTimeout}
-	resp, err := client.Post(g.a2aDownstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
+	resp, err := g.getHTTPClient().Post(g.a2aDownstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 	if err != nil {
 		g.recordFailure()
 		return "", fmt.Errorf("gateway: %w", constants.ErrGatewayDownstreamUnavailable)

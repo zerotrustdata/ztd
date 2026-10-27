@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
@@ -428,8 +429,7 @@ func (g *GatewayService) proxyMCPMethod(ctx context.Context, method string, para
 	}
 	httpReq.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
+	resp, err := httpclient.WithTimeout(g.getHTTPClient(), 10*time.Second).Do(httpReq)
 	if err != nil {
 		g.recordFailure()
 		return nil, fmt.Errorf("mcp_endpoint: query downstream MCP server: %w: %w", constants.ErrGatewayDownstreamUnavailable, err)

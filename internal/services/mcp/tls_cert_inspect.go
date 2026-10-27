@@ -81,7 +81,7 @@ func (t *TLSCertInspectTool) InputSchema() *InputSchema {
 func (t *TLSCertInspectTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
 	var req TLSCertInspectRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return CallToolResult{}, fmt.Errorf("%w: %v", constants.ErrMCPUnmarshalArguments, err)
+		return CallToolResult{}, fmt.Errorf("%w: %w", constants.ErrMCPUnmarshalArguments, err)
 	}
 
 	var cert *x509.Certificate

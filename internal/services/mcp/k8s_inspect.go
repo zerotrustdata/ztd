@@ -81,7 +81,7 @@ func (t *K8sInspectTool) InputSchema() *InputSchema {
 func (t *K8sInspectTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
 	var req K8sInspectRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return CallToolResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sUnmarshalArguments, err)
+		return CallToolResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sUnmarshalArguments, err)
 	}
 
 	if req.Operation == "" {
@@ -179,7 +179,7 @@ func runKubectlCommand(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("%w: %v", constants.ErrMCPK8sCommandFailed, err)
+		return string(output), fmt.Errorf("%w: %w", constants.ErrMCPK8sCommandFailed, err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }
@@ -208,7 +208,7 @@ func k8sListPods(ctx context.Context, namespace string, limit int, runner kubect
 		output, err = runKubectlCommand(ctx, args...)
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetPods, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetPods, err)
 	}
 
 	var podList struct {
@@ -223,7 +223,7 @@ func k8sListPods(ctx context.Context, namespace string, limit int, runner kubect
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(output), &podList); err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sParsePods, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sParsePods, err)
 	}
 
 	var pods []K8sPodInfo
@@ -253,7 +253,7 @@ func k8sListNodes(ctx context.Context, limit int, runner kubectlRunner) (K8sInsp
 		output, err = runKubectlCommand(ctx, args...)
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetNodes, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetNodes, err)
 	}
 
 	var nodeList struct {
@@ -270,7 +270,7 @@ func k8sListNodes(ctx context.Context, limit int, runner kubectlRunner) (K8sInsp
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(output), &nodeList); err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sParseNodes, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sParseNodes, err)
 	}
 
 	var nodes []K8sNodeInfo
@@ -305,7 +305,7 @@ func k8sListServices(ctx context.Context, namespace string, limit int, runner ku
 		output, err = runKubectlCommand(ctx, args...)
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetServices, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetServices, err)
 	}
 
 	var svcList struct {
@@ -320,7 +320,7 @@ func k8sListServices(ctx context.Context, namespace string, limit int, runner ku
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(output), &svcList); err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sParseServices, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sParseServices, err)
 	}
 
 	var services []K8sServiceInfo
@@ -350,7 +350,7 @@ func k8sListDeployments(ctx context.Context, namespace string, limit int, runner
 		output, err = runKubectlCommand(ctx, args...)
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetDeployments, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetDeployments, err)
 	}
 
 	var deployList struct {
@@ -370,7 +370,7 @@ func k8sListDeployments(ctx context.Context, namespace string, limit int, runner
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(output), &deployList); err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sParseDeployments, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sParseDeployments, err)
 	}
 
 	var deployments []K8sDeploymentInfo
@@ -406,7 +406,7 @@ func k8sListNamespaces(ctx context.Context, runner kubectlRunner) (K8sInspectRes
 		output, err = runKubectlCommand(ctx, "get", "namespaces", "-o", "json")
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetNamespaces, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetNamespaces, err)
 	}
 
 	var nsList struct {
@@ -420,7 +420,7 @@ func k8sListNamespaces(ctx context.Context, runner kubectlRunner) (K8sInspectRes
 		} `json:"items"`
 	}
 	if err := json.Unmarshal([]byte(output), &nsList); err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sParseNamespaces, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sParseNamespaces, err)
 	}
 
 	var namespaces []K8sNamespaceInfo
@@ -447,7 +447,7 @@ func k8sClusterInfo(ctx context.Context, runner kubectlRunner) (K8sInspectResult
 		version, err = runKubectlCommand(ctx, "version", "--short", "-o", "json")
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetVersion, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetVersion, err)
 	}
 
 	var versionInfo struct {
@@ -456,7 +456,7 @@ func k8sClusterInfo(ctx context.Context, runner kubectlRunner) (K8sInspectResult
 		} `json:"serverVersion"`
 	}
 	if err := json.Unmarshal([]byte(version), &versionInfo); err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sParseVersion, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sParseVersion, err)
 	}
 
 	contextName := "unknown"
@@ -504,7 +504,7 @@ func k8sPodLogs(ctx context.Context, namespace string, name string, runner kubec
 		output, err = runKubectlCommand(ctx, args...)
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sGetPodLogs, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sGetPodLogs, err)
 	}
 
 	lines := strings.Split(output, "\n")
@@ -536,7 +536,7 @@ func k8sPodDescribe(ctx context.Context, namespace string, name string, runner k
 		output, err = runKubectlCommand(ctx, args...)
 	}
 	if err != nil {
-		return K8sInspectResult{}, fmt.Errorf("%w: %v", constants.ErrMCPK8sDescribePod, err)
+		return K8sInspectResult{}, fmt.Errorf("%w: %w", constants.ErrMCPK8sDescribePod, err)
 	}
 
 	return K8sInspectResult{

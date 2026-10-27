@@ -4,7 +4,7 @@ title: Cloud VM Deployment Guide
 audience: maintainers and coding agents
 status: current
 version: v1.4.2
-last_updated: 2026-10-26
+last_updated: 2026-10-27
 owners:
   - deploy/cloud_gateway/
   - internal/cli/cmd/gw/
@@ -70,7 +70,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | :--- | :--- |
 | INV-DEPLOY-NET-01 | Cloud VM firewall rules MUST allow inbound ingress on TCP port 8080 (HTTP discovery, health probes, PKI bootstrap) and TCP port 8443 (HTTPS API, Console web UI, MCP, and mTLS pub/sub streams). Port 22 (SSH) MUST be restricted or protected according to organizational security policy. |
 | INV-DEPLOY-NET-02 | When using third-party DNS management (such as Cloudflare DNS), the Gateway record MUST be configured in DNS-only mode (unproxied / grey cloud). Upstream TLS-terminating reverse proxies MUST NOT terminate client connections on port 8443, as this strips the client certificates required for mutual TLS (mTLS) authentication between Governed Operators and the Gateway. |
-| INV-DEPLOY-NET-03 | When deploying with a public IP or custom domain, `ztd gw start` MUST be invoked with `--listen-host 0.0.0.0` and `--cert-identity-mode full` (or an explicit `--public-base-url`) to guarantee that the Gateway's serving certificate includes all routable public IP and DNS Subject Alternative Names (SANs). |
+| INV-DEPLOY-NET-03 | When deploying with a public IP or custom domain, `ztd gw start` MUST be invoked with `--listen-host 0.0.0.0` and `--cert-mode full` (or an explicit `--public-base-url`) to guarantee that the Gateway's serving certificate includes all routable public IP and DNS Subject Alternative Names (SANs). |
 | INV-DEPLOY-NET-04 | When hosting the public spectator mirror on a cloud VM, the private ingest listener (`127.0.0.1:8081`) MUST remain loopback-isolated (`INV-SPEC-ISO-03`), while the public read listener (`127.0.0.1:8082`) MAY be proxied via an edge tunnel (such as `cloudflared`) to provide public CDN caching and DDoS mitigation without compromising the Gateway's direct unproxied mTLS port (`8443`). |
 
 ## Owned surfaces
@@ -105,6 +105,7 @@ The recommended production approach defines infrastructure declaratively in `dep
    - Firewall rules allowing SSH (22), HTTP (8080), and HTTPS (8443).
    - Compute Engine Debian 12 instance configured with a startup script (`startup.sh`).
    - Automated systemd service configuration with self-healing keystore SSH agent initialization.
+   - The startup script records the GCP metadata external IP in `/etc/hosts` as `ztd-gateway-public` and passes `--public-base-url https://<ip>:8443`. Compute Engine NAT addresses are not on a local interface, so `cert-mode full` would otherwise omit the public IP from the serving certificate and HTTP redirects would fall back to localhost.
 
 3. **Deploy the Gateway Binary**:
    ```bash
@@ -209,7 +210,10 @@ RuntimeDirectory=ztd
 
 # Ensure host identity exists and launch dedicated ssh-agent socket for keystore seal
 ExecStartPre=/bin/sh -c 'if [ ! -f /root/.ssh/id_ed25519 ]; then ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "ztd-gateway-keystore"; fi'
-ExecStartPre=/bin/sh -c 'pkill -u root -f "ssh-agent -a /run/ztd/ssh-agent.sock" || true; rm -f /run/ztd/ssh-agent.sock && ssh-agent -a /run/ztd/ssh-agent.sock && SSH_AUTH_SOCK=/run/ztd/ssh-agent.sock ssh-add /root/.ssh/id_ed25519'
+# pkill runs alone. The agent command also contains the socket path, and a
+# combined command line matches the pattern and SIGTERMs this script.
+ExecStartPre=/bin/sh -c 'pkill -u root -f "ssh-agent -a /run/ztd/ssh-agent.soc[k]" || true; rm -f /run/ztd/ssh-agent.sock'
+ExecStartPre=/bin/sh -c 'ssh-agent -a /run/ztd/ssh-agent.sock && SSH_AUTH_SOCK=/run/ztd/ssh-agent.sock ssh-add /root/.ssh/id_ed25519'
 
 ExecStart=/usr/local/bin/ztd gw start \
     --follow \
@@ -217,7 +221,7 @@ ExecStart=/usr/local/bin/ztd gw start \
     --http-port 8080 \
     --https-port 8443 \
     --public-base-url https://<GATEWAY_DOMAIN_OR_PUBLIC_IP>:8443 \
-    --cert-identity-mode full \
+    --cert-mode full \
     --posture doctrine
 
 Restart=always
@@ -318,7 +322,7 @@ All command dispatches, health heartbeats, and signed event receipts flow across
 - **Enabling Edge Proxying (Orange Cloud) on Port 8443**: Terminating TLS at an upstream CDN/edge proxy breaks end-to-end mTLS authentication for Governed Operators and CLIs.
 - **Neglecting Headless Keystore Initialization**: Running `ztd gw` on a headless Linux host without `ssh-agent` or with missing SSH identity causes immediate startup failure with `ErrKeyStoreOSKeyringRequired`.
 - **Conflating Gateway Ingress with Mirror Ingress**: Exposing port 8443 through an ingress proxy strips mTLS, but exposing the anonymous public mirror port 8082 via Cloudflare Tunnel is recommended for CDN caching and DDoS mitigation.
-- **Hardcoding Loopback in Public Deployments**: Omitting `--listen-host 0.0.0.0` or using `--cert-identity-mode localhost` on a public server prevents remote Operators from establishing secure TLS connections.
+- **Hardcoding Loopback in Public Deployments**: Omitting `--listen-host 0.0.0.0` or using `--cert-mode localhost` on a public server prevents remote Operators from establishing secure TLS connections.
 
 ## Links out
 
