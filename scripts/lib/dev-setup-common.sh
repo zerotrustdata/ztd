@@ -213,6 +213,14 @@ ztd_check_go() {
     fi
     if ztd_version_ge "$version" "$ZTD_GO_MIN"; then
         ztd_ui_ok "go $version (need >= $ZTD_GO_MIN)"
+        # Inside the repo, go.mod may auto-switch to a managed toolchain while
+        # the system go (what tools and other shells see) is older.
+        local base_version
+        base_version="$(ztd_extract_version "$(cd "${TMPDIR:-/tmp}" && GOTOOLCHAIN=local go version 2>/dev/null)")"
+        if [[ -n "$base_version" ]] && ! ztd_version_ge "$base_version" "$ZTD_GO_MIN"; then
+            ztd_ui_warn "system go is $base_version; ztd uses a managed go $version toolchain from the Go module cache"
+            ztd_ui_warn "to make it your default: export PATH=\"$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go${version}.$(go env GOOS)-$(go env GOARCH)/bin:\$PATH\""
+        fi
         return 0
     fi
     ztd_ui_fail "go: $version is older than $ZTD_GO_MIN required by go.mod"
@@ -445,9 +453,11 @@ ztd_dev_tool_if_needed() {
     echo "  installing $bin ($pkg; $reason)..."
     # `go install pkg@version` resolves the toolchain from the tool's go.mod, not
     # ours, so GOTOOLCHAIN=auto would build with an older local Go. Require ours.
+    # An exact version (not "+auto", which only sets a minimum) so an older
+    # system go cannot pick the tool's own go.mod toolchain instead.
     local toolchain="${GOTOOLCHAIN:-auto}"
     if [[ -n "$min_go" ]]; then
-        toolchain="go${min_go}+auto"
+        toolchain="go${min_go}"
     fi
     GOTOOLCHAIN="$toolchain" go install "$pkg" || return 1
     hash -d "$bin" 2>/dev/null || hash -r 2>/dev/null || true
@@ -484,6 +494,9 @@ ztd_dev_tool_if_needed() {
     if [[ "$is_stale" == true ]]; then
         echo "FATAL: after installing $pkg, PATH resolves $bin to '$resolved' (version ${post_mod:-unknown}, built with go ${post_go:-unknown})." >&2
         echo "The resolved binary is stale (pinned $pinned, need go >= $min_go)." >&2
+        if [[ -n "$min_go" && "$post_go" != "unknown" ]] && ! ztd_version_ge "$post_go" "$min_go"; then
+            echo "It was built with an older Go toolchain. Retry with: GOTOOLCHAIN=go${min_go} go install $pkg" >&2
+        fi
         shopt -s nocasematch 2>/dev/null
         if [[ "$resolved" != "$gobin"/* ]]; then
             echo "A stale copy outside GOBIN ($gobin) is shadowing the installed tool." >&2
