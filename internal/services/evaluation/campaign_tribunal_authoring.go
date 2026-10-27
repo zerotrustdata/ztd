@@ -58,6 +58,9 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		}
 	}
 	tier := r.designated
+	if IsHeterogeneousAssignment(r.req.Assignment) {
+		tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+	}
 	prefix := r.executor.newID("tribunal-inference")
 	probe, err := r.bindInference(&AgentModelCall{}, tier, prefix, nil, nil)
 	if err != nil {
