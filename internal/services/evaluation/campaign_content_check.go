@@ -20,14 +20,16 @@ import (
 	"unicode"
 )
 
-// foldContentTerm lowercases s and collapses every run of whitespace, '-' and
-// '_' to one space, so a term naming an identifier ("checkout-api") matches its
-// prose spelling ("checkout API") in a final response.
+// foldContentTerm lowercases s and collapses every run of whitespace, dashes
+// (ASCII '-' and every Unicode dash punctuation, such as the non-breaking
+// hyphen U+2011 models emit) and '_' to one space, so a term naming an
+// identifier ("checkout-api") matches its prose spelling ("checkout API") in a
+// final response.
 func foldContentTerm(s string) string {
 	var b strings.Builder
 	separator := false
 	for _, r := range strings.ToLower(s) {
-		if unicode.IsSpace(r) || r == '-' || r == '_' {
+		if unicode.IsSpace(r) || r == '_' || unicode.Is(unicode.Pd, r) {
 			separator = true
 			continue
 		}

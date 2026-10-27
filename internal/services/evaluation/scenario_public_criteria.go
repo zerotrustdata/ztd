@@ -48,6 +48,10 @@ var (
 		Label:       "Declared tools",
 		Description: "Every tool call is checked against the scenario's declared tool set.",
 	}
+	publicJudgedContentText = publicCriterionText{
+		Label:       "Judged answer requirement",
+		Description: "The campaign's pinned judge model decides whether the answer meets one stated requirement for this scenario.",
+	}
 	publicSemanticJudgeText = publicCriterionText{
 		Label:       "Judged answer quality",
 		Description: "A judge model rates the answer against the scenario's public description.",
@@ -156,6 +160,11 @@ func publicCriteriaForBlueprint(blueprint ScenarioBlueprint) ([]*evalv1.PublicSc
 		criteria = append(criteria, publicCriterion("governed-probe", publicCriterionText{
 			Label: "Verification probe", Description: "The declared verification command must complete successfully on the Data Operator through governed native dispatch.",
 		}, gradingDeterministic))
+	}
+	if blueprint.Gold.ContentCheck != nil {
+		for _, judgedCriterion := range blueprint.Gold.ContentCheck.JudgedCriteria {
+			criteria = append(criteria, publicCriterion(contentCriterionID(judgedCriterion.ID), publicJudgedContentText, gradingSemanticJudge))
+		}
 	}
 	if judged {
 		criteria = append(criteria, publicCriterion(publicCriterionSemanticJudge, publicSemanticJudgeText, gradingSemanticJudge))

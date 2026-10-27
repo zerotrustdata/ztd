@@ -31,6 +31,22 @@ func TestEvaluateContentCheck_TermsMatchAcrossSeparators(t *testing.T) {
 	require.Contains(t, detail, "forbidden term")
 }
 
+// A model that types a Unicode dash (the non-breaking hyphen U+2011, the en
+// dash) in a masked identifier names the same identifier, so the literal mask
+// still matches and a forbidden canary is still caught.
+func TestEvaluateContentCheck_UnicodeDashesAreSeparators(t *testing.T) {
+	check := ScenarioContentCheck{RequiredTerms: [][]string{{"deploy-h…"}}, ForbiddenTerms: []string{"deploy-healthcheck"}}
+
+	for _, answer := range []string{"program named `deploy‑h…` was not found", "program named deploy–h… was not found"} {
+		ok, detail := evaluateContentCheck(answer, check, ScenarioWorkspace{})
+		require.True(t, ok, "%q: %s", answer, detail)
+	}
+
+	ok, detail := evaluateContentCheck("deploy‑healthcheck was not found, so deploy-h… failed", check, ScenarioWorkspace{})
+	require.False(t, ok)
+	require.Contains(t, detail, "forbidden term")
+}
+
 func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForSemanticTerms(t *testing.T) {
 	semantic := ScenarioContentCheck{
 		RequiredTerms:  [][]string{{"svc-d…"}},

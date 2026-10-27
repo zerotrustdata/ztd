@@ -208,6 +208,9 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	if !gradesEquivalent(req.Result.GetDeterministicGrades(), grading.DeterministicGrades) {
 		failures = append(failures, "stored deterministic grades do not match agent trace recomputation")
 	}
+	if !contentGradesMatch(req.Result.GetSemanticGrades(), grading.SemanticGrades) {
+		failures = append(failures, "stored judged content grades do not match the verdicts sealed in the agent trace")
+	}
 	if req.Result.GetTrajectoryOutcome() != grading.Trajectory.Outcome {
 		failures = append(failures, fmt.Sprintf("stored trajectory outcome %s does not match agent trace recomputation %s", req.Result.GetTrajectoryOutcome(), grading.Trajectory.Outcome))
 	}

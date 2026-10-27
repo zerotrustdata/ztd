@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import {
   verifyAgentTraceArtifact,
   type AgentTrace,
+  type AgentTraceContentJudgment,
   type AgentTraceHeldContext,
   type AgentTraceModelCall,
   type AgentTraceObservation,
@@ -182,6 +183,37 @@ function HarnessObservations({ observations }: { observations: AgentTraceObserva
   );
 }
 
+function ContentJudgments({ judgments }: { judgments: AgentTraceContentJudgment[] }) {
+  if (judgments.length === 0) return null;
+  return (
+    <div className="model-response-block">
+      <div className="model-response-header"><span className="model-response-label">Content judgments ({judgments.length})</span></div>
+      <p className="task-section-note">
+        Verdicts of the pinned judge on each judged content criterion, recorded after the run. They are not scored model turns.
+      </p>
+      <table className="agent-trace-judgments">
+        <thead>
+          <tr><th scope="col">Verdict</th><th scope="col">Criterion</th><th scope="col">Judge</th><th scope="col">Rationale</th></tr>
+        </thead>
+        <tbody>
+          {judgments.map((judgment, index) => (
+            <tr key={`${judgment.criterion_id}-${index}`}>
+              <td>
+                <span className={`transcript-outcome ${judgment.met ? 'tone-ok' : 'tone-critical'}`}>
+                  <span aria-hidden="true">{judgment.met ? '✓' : '✕'}</span> {judgment.met ? 'MET' : 'NOT MET'}
+                </span>
+              </td>
+              <td><code>{judgment.criterion_id}</code></td>
+              <td><code>{judgment.served_model_tag}</code></td>
+              <td>{judgment.rationale}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Runtime({ title, runtime }: { title: string; runtime: AgentTraceRuntime }) {
   return (
     <div className="agent-trace-runtime">
@@ -309,6 +341,8 @@ function TraceBody({ trace }: { trace: AgentTrace }) {
           />
         ) : null}
       </div>
+
+      {trace.content_judgments ? <ContentJudgments judgments={trace.content_judgments} /> : null}
 
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Runtimes</span></div>

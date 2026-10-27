@@ -44,6 +44,12 @@ var (
 	sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
+// ValidID reports whether id is a lowercase kebab-case identifier, the shape
+// every investigation and evaluation fixture ID must take.
+func ValidID(id string) bool {
+	return idPattern.MatchString(id)
+}
+
 type Scenario struct {
 	SchemaVersion string          `json:"schema_version"`
 	ID            string          `json:"id"`
@@ -167,7 +173,7 @@ func (s *Scenario) Validate() error {
 	if s.SchemaVersion != ScenarioSchemaVersion {
 		return invalid("schema_version %q, want %s", s.SchemaVersion, ScenarioSchemaVersion)
 	}
-	if !idPattern.MatchString(s.ID) {
+	if !ValidID(s.ID) {
 		return invalid("id %q must match %s", s.ID, idPattern)
 	}
 	required := []struct{ field, value string }{

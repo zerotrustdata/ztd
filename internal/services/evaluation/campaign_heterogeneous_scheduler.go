@@ -56,9 +56,6 @@ func BuildHeterogeneousAssignmentMatrix(req HeterogeneousScheduleRequest) ([]*ev
 				return nil, fmt.Errorf("evaluation: build heterogeneous assignment matrix: %w", err)
 			}
 			for _, role := range roles {
-				if role != evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY {
-					continue
-				}
 				assignment, err := buildHeterogeneousAssignment(req.CampaignID, req.RunID, scenario, stack, role, queuedAt)
 				if err != nil {
 					return nil, err

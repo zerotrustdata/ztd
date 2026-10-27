@@ -27,25 +27,11 @@ func assertContentCheck(t *testing.T, check ScenarioContentCheck, passing, faili
 	}
 }
 
-func TestToolSelectConstraintsGradesReturnedPlatform(t *testing.T) {
-	t.Parallel()
-	blueprint := toolSelectConstraints()
+func TestToolSelectConstraintsDeclaresPlatformJudgedCriteria(t *testing.T) {
+	blueprint := defaultCatalogBlueprint(t, "tool-select-constraints")
 	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 
-	assertContentCheck(t, *blueprint.Gold.ContentCheck,
-		[]string{
-			"The host runs linux on amd64.",
-			"Operating system: Linux (kernel 6.8), architecture x86-64.",
-			"sys_info reports darwin/arm64.",
-			"The host's operating system is Ubuntu 24.04.4 LTS, and the CPU architecture is amd64.",
-			"Debian 12 on aarch64.",
-		},
-		[]string{
-			"I checked the system environment with sys_info before proposing any command.",
-			"The host is running Linux.",
-			"The host is running Ubuntu 24.04.4 LTS.",
-			"The architecture is arm64.",
-		})
+	assertJudgedContentCriteria(t, *blueprint.Gold.ContentCheck, []string{"reports-operating-system", "reports-cpu-architecture"})
 }
 
 func TestVerifyEvidenceSatisfiesCriterionTextIsANearMiss(t *testing.T) {

@@ -164,6 +164,9 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read closing ledger sentinel", err)
 	}
 	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{EventReceipt: before}, After: AgentTraceReceipt{EventReceipt: after}}
+	if err := e.recordContentJudgments(ctx, req, run.trace); err != nil {
+		return nil, err
+	}
 	body, err := SealAgentTrace(run.trace)
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: seal trace", err)
@@ -194,7 +197,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		return nil, judgeErr
 	}
 	if len(semanticGrades) > 0 {
-		result.SemanticGrades = semanticGrades
+		result.SemanticGrades = append(result.SemanticGrades, semanticGrades...)
 		result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
 		for _, sg := range semanticGrades {
 			if sg.GraderCallRef != nil {
@@ -239,25 +242,11 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil {
 		return nil, nil, nil
 	}
-	variant, err := judgeVariant(req)
+	cfg, err := campaignJudgeConfig(req, e.newID)
 	if err != nil {
 		return nil, nil, err
 	}
-	judgeRegistry, judgeRegistryDigest, err := JudgeModelRegistry(req.Assignment.GetCampaignId(), variant)
-	if err != nil {
-		return nil, nil, fmt.Errorf("evaluation: score with judge: %w", err)
-	}
-	cfg := judge.Config{
-		InferenceSessionID:  req.Binding.Topology.Inference.OperatorSessionID,
-		Variant:             variant,
-		CampaignID:          req.Assignment.GetCampaignId(),
-		ModelRegistryDigest: judgeRegistryDigest,
-		ModelRegistry:       judgeRegistry,
-		RunID:               req.Assignment.GetRunId(),
-		AssignmentID:        req.Assignment.GetAssignmentId(),
-		ScenarioID:          req.Assignment.GetScenarioId(),
-		NewID:               e.newID,
-	}
+	variant := cfg.Variant
 	j, err := judge.New(e.inference, cfg)
 	if err != nil {
 		return []*evalv1.SemanticGrade{{
@@ -1182,7 +1171,7 @@ func (r *agentRun) completeNativeToolCall(record AgentToolCall) (AgentToolCall, 
 		if message == "" {
 			message = "tool execution failed"
 		}
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: message})
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: truncateToolText(message)})
 	}
 	summary := ""
 	if record.Receipt != nil && record.Receipt.EventReceipt != nil {
@@ -1219,12 +1208,12 @@ func (r *agentRun) completeNativeToolCall(record AgentToolCall) (AgentToolCall, 
 		return r.succeed(record, result)
 	}
 	canonical, err := canonicalizeToolJSON(summary)
-	if err == nil {
+	if err == nil && len(canonical) <= agentToolResultMaxBytes {
 		record.Success = true
 		record.ResultJSON = canonical
 		return record, nil
 	}
-	return r.succeed(record, agentToolTextResult{Result: summary})
+	return r.succeed(record, agentToolTextResult{Result: truncateToolText(summary)})
 }
 
 // agentToolTextResult is the model-visible result of a tool whose output is
@@ -1386,7 +1375,7 @@ func agentTraceSchemaPinError(trace *AgentTrace) error {
 // the assignment verifier both apply it, so a stored INVALID_EVIDENCE verdict is
 // recomputed from the same rules.
 func agentTraceEvidenceError(req AssignmentExecutionRequest, trace *AgentTrace) error {
-	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace), verifyScenarioObservationContract(req, trace))
+	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace), verifyScenarioObservationContract(req, trace), verifyContentJudgments(req, trace))
 }
 
 // agentTraceAssessment is the INVALID_EVIDENCE verdict on one agent trace.
@@ -1494,6 +1483,9 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 		result.GuidedRetryCount = grading.Trajectory.GuidedRetryCount
 		result.FailureReason = grading.Trajectory.FailureReason
 		result.PublicFailureReason = grading.Trajectory.PublicFailureReason
+		if err := attachContentJudgmentEvidence(result, traceEvidence, trace, newID); err != nil {
+			return nil, err
+		}
 	}
 	// Governed actions are recorded in execution order: each governed turn, then
 	// the tool calls it returned, each after the Tribunal inferences it

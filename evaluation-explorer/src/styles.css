@@ -3083,6 +3083,10 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 .agent-trace-runtimes,
 .agent-trace-bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .agent-trace-bracket { margin-top: 12px; }
+.agent-trace-judgments { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
+.agent-trace-judgments th, .agent-trace-judgments td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.agent-trace-judgments th { color: var(--fg-dim); font-weight: 500; }
+.agent-trace-judgments code { font-family: var(--mono); overflow-wrap: anywhere; }
 /* ===== end full agent trace ===== */
 
 .assignment-json,

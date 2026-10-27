@@ -30,7 +30,9 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v9
+// agentTraceSchemaVersion is the version every new trace is sealed with. v10
+// records each pinned-judge verdict on a judged content criterion with its
+// dispatched prompt and signed inference result; v9
 // separates harness seed and final-state observations from model tool calls; v8
 // records the Tribunal-approved arguments a run_shell_command call executed; v7
 // carries each complete signed inference result and its per-call model identity;
@@ -40,7 +42,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v9"
+	agentTraceSchemaVersion   = "agent-trace.v10"
+	agentTraceSchemaVersionV9 = "agent-trace.v9"
 	agentTraceSchemaVersionV8 = "agent-trace.v8"
 	agentTraceSchemaVersionV7 = "agent-trace.v7"
 	agentTraceSchemaVersionV6 = "agent-trace.v6"
@@ -265,6 +268,30 @@ type AgentTrace struct {
 	// Observations are harness-owned governed calls, excluded from model tool
 	// scores and conversation continuation. Their receipts join the ledger bracket.
 	Observations []AgentScenarioObservation `json:"observations,omitempty"`
+	// ContentJudgments are the pinned judge's verdicts on the scenario's judged
+	// content criteria, in criterion order, recorded after the closing bracket
+	// and before sealing so the grader stays a pure function of the trace.
+	ContentJudgments []AgentContentJudgment `json:"content_judgments,omitempty"`
+}
+
+// AgentContentJudgment is one governed judge dispatch on one judged content
+// criterion: the exact prompt sent, the verdict decoded from the signed
+// inference result, and the receipt that binds the result to the Inference
+// Operator. The verifier re-renders the prompt and re-decodes the verdict, so a
+// recorded verdict cannot disagree with what the judge returned.
+type AgentContentJudgment struct {
+	CriterionID       string                     `json:"criterion_id"`
+	ProviderAttemptID string                     `json:"provider_attempt_id"`
+	TransactionID     string                     `json:"transaction_id"`
+	JudgeVariantID    string                     `json:"judge_variant_id"`
+	ServedModelTag    string                     `json:"served_model_tag"`
+	ModelDigest       string                     `json:"model_digest"`
+	RubricVersion     string                     `json:"rubric_version"`
+	Messages          []AgentTraceMessage        `json:"messages"`
+	Met               bool                       `json:"met"`
+	Rationale         string                     `json:"rationale"`
+	InferenceResult   *AgentTraceInferenceResult `json:"inference_result"`
+	Receipt           *AgentTraceReceipt         `json:"receipt"`
 }
 
 // AgentTraceInput is the rendered conversation and the complete tool
@@ -421,22 +448,33 @@ func (m AgentTraceContextMessage) inferenceMessage() (*operatorv1.InferenceMessa
 // newAgentTraceInput records the dispatched first-turn input. Only text
 // parts occur in it; any other part is a harness defect.
 func newAgentTraceInput(messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*AgentTraceInput, error) {
-	input := &AgentTraceInput{Messages: make([]AgentTraceMessage, 0, len(messages)), Tools: make([]AgentTraceTool, 0, len(tools))}
+	recorded, err := agentTraceMessages(messages)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: record agent trace input: %w", err)
+	}
+	input := &AgentTraceInput{Messages: recorded, Tools: make([]AgentTraceTool, 0, len(tools))}
+	for _, tool := range tools {
+		input.Tools = append(input.Tools, AgentTraceTool{Name: tool.GetName(), Description: tool.GetDescription(), JSONSchema: tool.GetJsonSchema()})
+	}
+	return input, nil
+}
+
+// agentTraceMessages records dispatched text messages exactly as sent. Only
+// text parts occur in a recorded prompt; any other part is a harness defect.
+func agentTraceMessages(messages []*operatorv1.InferenceMessage) ([]AgentTraceMessage, error) {
+	recorded := make([]AgentTraceMessage, 0, len(messages))
 	for _, message := range messages {
 		var text strings.Builder
 		for _, part := range message.GetParts() {
 			value, ok := part.GetPart().(*operatorv1.InferenceMessagePart_Text)
 			if !ok {
-				return nil, fmt.Errorf("evaluation: record agent trace input: non-text input part: %w", constants.ErrEvidenceArtifactMalformed)
+				return nil, fmt.Errorf("non-text message part: %w", constants.ErrEvidenceArtifactMalformed)
 			}
 			text.WriteString(value.Text)
 		}
-		input.Messages = append(input.Messages, AgentTraceMessage{Role: message.GetRole().String(), Text: text.String()})
+		recorded = append(recorded, AgentTraceMessage{Role: message.GetRole().String(), Text: text.String()})
 	}
-	for _, tool := range tools {
-		input.Tools = append(input.Tools, AgentTraceTool{Name: tool.GetName(), Description: tool.GetDescription(), JSONSchema: tool.GetJsonSchema()})
-	}
-	return input, nil
+	return recorded, nil
 }
 
 // AgentTraceRuntime is one Operator runtime a role executed on, with its
@@ -460,7 +498,13 @@ func agentTraceRuntime(runtime CampaignOperatorRuntime) AgentTraceRuntime {
 // CarriesModelIdentity reports whether the trace's schema seals each model
 // call's signed inference result and model identity (v7 and later).
 func (t *AgentTrace) CarriesModelIdentity() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV8 || t.SchemaVersion == agentTraceSchemaVersionV7)
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV9 || t.SchemaVersion == agentTraceSchemaVersionV8 || t.SchemaVersion == agentTraceSchemaVersionV7)
+}
+
+// carriesObservationEvidence reports whether the trace's schema records
+// harness observations and native tool request evidence (v9 and later).
+func (t *AgentTrace) carriesObservationEvidence() bool {
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV9)
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -743,7 +787,7 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -760,17 +804,20 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	default:
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
 	}
-	if trace.SchemaVersion != agentTraceSchemaVersion && len(trace.Observations) > 0 {
+	if trace.SchemaVersion != agentTraceSchemaVersion && len(trace.ContentJudgments) > 0 {
+		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	if !trace.carriesObservationEvidence() && len(trace.Observations) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries scenario observations: %w", constants.ErrEvidenceArtifactMalformed)
 	}
-	if trace.SchemaVersion != agentTraceSchemaVersion {
+	if !trace.carriesObservationEvidence() {
 		for _, call := range trace.ToolCalls {
 			if call.RequestEnvelope != nil || call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
 				return fmt.Errorf("evaluation: validate agent trace: historical trace carries v9 tool evidence: %w", constants.ErrEvidenceArtifactMalformed)
 			}
 		}
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion || trace.SchemaVersion == agentTraceSchemaVersionV8 {
+	if trace.carriesObservationEvidence() || trace.SchemaVersion == agentTraceSchemaVersionV8 {
 		if err := rejectShellTextSteps(trace.Steps); err != nil {
 			return fmt.Errorf("evaluation: validate agent trace: %w", err)
 		}

@@ -78,7 +78,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 	}
 	for _, call := range trace.ToolCalls {
-		if trace.SchemaVersion == agentTraceSchemaVersion && call.Receipt != nil && !call.IsDenied() {
+		if trace.carriesObservationEvidence() && call.Receipt != nil && !call.IsDenied() {
 			if err := verifyNativeToolCallRequest(trace, call); err != nil {
 				return agentEvidenceError("tool call "+call.CallID+" request", err)
 			}

@@ -105,6 +105,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
 		return err
 	}
+	if err := validateJudgedCriteria(blueprint, blueprint.Gold.ContentCheck); err != nil {
+		return err
+	}
 	if err := validateArgumentValidators(blueprint, catalog); err != nil {
 		return err
 	}
@@ -161,6 +164,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Command != nil && players.Command.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
+	if players.Command != nil && (len(players.Command.JudgedCriteria) > 0 || players.Command.RefusalCriterion != "") {
+		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
+	}
 	if marshal := players.Marshal; marshal != nil {
 		if len(marshal.Risk) == 0 {
 			return scenarioContractError(blueprint, "marshal expectation accepts no risk level")
@@ -176,6 +182,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	}
 	if players.Codex != nil && players.Codex.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
+	}
+	if players.Codex != nil && (len(players.Codex.JudgedCriteria) > 0 || players.Codex.RefusalCriterion != "") {
+		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
 	}
 	return nil
 }
@@ -299,7 +308,44 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 	}
 	return check.ExactToken != "" || len(check.ExactLabels) > 0 || check.LeadingLabel != "" || check.WordCount > 0 ||
 		check.MaxSentences > 0 || len(check.RequiredTerms) > 0 || len(check.ForbiddenTerms) > 0 ||
-		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != ""
+		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != "" ||
+		len(check.JudgedCriteria) > 0
+}
+
+// validateJudgedCriteria fails closed on a judged criterion the judge could not
+// decide or the grader could not attribute: an ID that is not kebab-case or is
+// repeated, an empty statement, or a refusal criterion that names no criterion.
+// A scenario that grades a policy decision must judge refusal, because a
+// refusal is otherwise unobservable and would read as "did not refuse".
+func validateJudgedCriteria(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
+	refusalRequired := slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "policy_decision")
+	if check == nil {
+		if refusalRequired {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "scenario has no content check")
+		}
+		return nil
+	}
+	seen := make(map[string]struct{}, len(check.JudgedCriteria))
+	for _, criterion := range check.JudgedCriteria {
+		if !investigation.ValidID(criterion.ID) {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "criterion ID %q is not lowercase kebab-case", criterion.ID)
+		}
+		if _, dup := seen[criterion.ID]; dup {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "criterion %q is repeated", criterion.ID)
+		}
+		seen[criterion.ID] = struct{}{}
+		if strings.TrimSpace(criterion.Statement) == "" {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "criterion %q has no statement", criterion.ID)
+		}
+	}
+	if check.RefusalCriterion != "" {
+		if _, ok := seen[check.RefusalCriterion]; !ok {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "refusal criterion %q is not a judged criterion", check.RefusalCriterion)
+		}
+	} else if refusalRequired {
+		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "no refusal criterion is declared")
+	}
+	return nil
 }
 
 func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {

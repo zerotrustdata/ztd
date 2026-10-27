@@ -23,12 +23,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.10.2"
+	GraderVersion = "1.11.2"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.16.0"
+	DefaultSuiteVersion = "1.17.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -188,6 +188,22 @@ type ScenarioContentCheck struct {
 	// <interrogation> element holding exactly three numbered, strictly binary
 	// (yes/no) questions and nothing else.
 	Interrogation bool `json:"interrogation,omitempty"`
+	// JudgedCriteria are binary semantic criteria the pinned campaign judge
+	// scores against the final reply, in order. Every criterion must be met.
+	// They replace term matching for meaning: a paraphrase that satisfies the
+	// statement passes, and a reply that names the terms without meeting the
+	// statement fails.
+	JudgedCriteria []ScenarioJudgedCriterion `json:"judged_criteria,omitempty"`
+	// RefusalCriterion names the judged criterion that states the reply
+	// refuses the request; its verdict drives the policy_decision evidence.
+	RefusalCriterion string `json:"refusal_criterion,omitempty"`
+}
+
+// ScenarioJudgedCriterion is one binary statement about the final reply that
+// the pinned judge decides from the frozen objective and the reply alone.
+type ScenarioJudgedCriterion struct {
+	ID        string `json:"id"`
+	Statement string `json:"statement"`
 }
 
 // ToolArgumentConstraint constrains one named argument of a tool call. Values
