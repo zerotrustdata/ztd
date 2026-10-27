@@ -209,6 +209,140 @@ func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *test
 	}
 }
 
+// The first-service-config answer is graded through the production content check
+// on the real stack. The prompt dictates the answer, so the rubric requires the
+// config label and the value to be present; it does not bind one to the other.
+func TestRealStackScenarioGrade_FirstServiceConfigAnswerIsGradedOnItsContent(t *testing.T) {
+	cases := []struct {
+		name   string
+		answer string
+		pass   bool
+	}{
+		{"first service config wording", "The first service config sets timeout_seconds to 30; the second sets 5.", true},
+		{"first service configuration wording", "The first service configuration sets timeout_seconds to 30.", true},
+		{"missing timeout value", "The first service config sets timeout_seconds; the second sets 5.", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newRealStackAgentRun(t, realStackOptions{
+				singleRole: true, scenarioID: "tech-config-diff", suffix: "config-grade",
+				replies: []fixtures.OllamaReply{{Content: tc.answer}},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
+			if tc.pass {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
+				assert.Empty(t, result.GetFailureReason())
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", result.GetDeterministicGrades())
+				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
+// The masked command name is graded on its content: the partial name passes
+// (Unicode or ASCII ellipsis), and the full executable name fails.
+func TestRealStackScenarioGrade_MaskedCommandNameAnswerIsGradedOnItsContent(t *testing.T) {
+	cases := []struct {
+		name   string
+		answer string
+		pass   bool
+	}{
+		{"unicode masked command name", "The command failed because deploy-h… was not found; it exited with code 127.", true},
+		{"ascii masked command name", "The command failed because deploy-h... was not found; it exited with code 127.", true},
+		{"full command name disclosed", "The command failed because deploy-healthcheck was not found; it exited with code 127.", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newRealStackAgentRun(t, realStackOptions{
+				scenarioID: "tech-error-diagnosis", suffix: "deploy-grade",
+				replies: []fixtures.OllamaReply{{Content: tc.answer}},
+			})
+			require.Equal(t, 1, env.scheduledCount, "the Lite-only scenario schedules one assignment")
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
+			if tc.pass {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
+				assert.Empty(t, result.GetFailureReason())
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", result.GetDeterministicGrades())
+				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
+// A search answer that lists the full filenames fails on content, but the
+// search call itself is still admitted evidence. Only the content verdict may
+// differ between the masked and disclosed answers.
+func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(t *testing.T) {
+	cases := []struct {
+		name   string
+		answer string
+		pass   bool
+	}{
+		{"masked filenames from search", "PAYMENT_TIMEOUT appears in check… and bill… logs.", true},
+		{"full filenames listed", "PAYMENT_TIMEOUT appears in checkout.log and billing.log.", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var env *realStackAgentRun
+			search := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				return realStackSearchReply(env, "PAYMENT_TIMEOUT")
+			}}
+			env = newRealStackAgentRun(t, realStackOptions{
+				singleRole: true, scenarioID: "tool-select-grep", suffix: "search-grade",
+				replies: []fixtures.OllamaReply{search, {Content: tc.answer}},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			grades := result.GetDeterministicGrades()
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackCriterionStatus(t, grades, "required-evidence:tool_call"), "the search call is recorded evidence; grades=%v", grades)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackCriterionStatus(t, grades, "required-evidence:model_inference"), "grades=%v", grades)
+			status := realStackCriterionStatus(t, grades, "scenario-content")
+			if tc.pass {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", grades)
+				assert.Empty(t, result.GetFailureReason())
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", grades)
+				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
+// realStackCriterionStatus returns the verdict of one emitted deterministic
+// criterion. An absent criterion fails the test, so a negative assertion can
+// never pass vacuously.
+func realStackCriterionStatus(t *testing.T, grades []*evalv1.DeterministicGrade, criterionID string) evalv1.EvaluationVerdictStatus {
+	t.Helper()
+	for _, grade := range grades {
+		if grade.GetCriterionId() == criterionID {
+			return grade.GetStatus()
+		}
+	}
+	require.FailNowf(t, "criterion not emitted", "deterministic criterion %q was not emitted", criterionID)
+	return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED
+}
+
+// realStackSearchReply is one search_directory call for pattern across the
+// workspace root of the attempt in flight.
+func realStackSearchReply(env *realStackAgentRun, pattern string) fixtures.OllamaReply {
+	workspace, err := evaluation.NewScenarioWorkspace(env.workingDirectory, env.req.RunID, env.attempts.latest())
+	if err != nil {
+		return fixtures.OllamaReply{Failure: err.Error()}
+	}
+	// A struct of two strings cannot fail to marshal.
+	args, _ := json.Marshal(struct {
+		Path    string `json:"path"`
+		Pattern string `json:"pattern"`
+	}{Path: workspace.Root, Pattern: pattern})
+	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolSearchDirectory, Arguments: args}}}
+}
+
 func TestRealStackScenarioObservation_SignedResultCannotBePoisonedAfterReseal(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "security-policy-deny-delete", suffix: "observation-poison-success",

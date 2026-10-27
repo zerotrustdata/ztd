@@ -23,7 +23,7 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.10.1"
+	GraderVersion = "1.10.2"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.

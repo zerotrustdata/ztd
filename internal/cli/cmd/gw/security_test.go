@@ -78,7 +78,7 @@ func TestSecurityValidateExplicitRuntimePathsUseFileService(t *testing.T) {
 				filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCA),
 				filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCAKey),
 				filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle),
-				filepath.Join(constants.PkiDirname, constants.PkiFileWardenPub),
+				filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename),
 				filepath.Join(constants.SecretsDirname, constants.SecretsFileActuatorSigningKey),
 				filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest),
 			}, files.existsPaths)
@@ -142,9 +142,8 @@ func TestSecurityValidateWithTestEnvironment(t *testing.T) {
 
 		// Create dummy files
 		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.crt"), []byte("dummy cert"), 0644))
-		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.key"), []byte("dummy key"), 0600))
 		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "trust", "ztdg-ca-bundle.pem"), []byte("dummy bundle"), 0644))
-		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, constants.ActuatorPubJSONFilename), []byte("{}"), 0644))
 
 		// Create secrets
 		require.NoError(t, os.MkdirAll(secretsDir, 0700))
@@ -204,5 +203,35 @@ func TestSecurityValidateWithTestEnvironment(t *testing.T) {
 		err := cmd.RunE(cmd, []string{})
 		// Should fail due to missing secrets
 		require.Error(t, err)
+	})
+
+	t.Run("validate fails when root_ca.key exists on disk (unsealed key anti-pattern)", func(t *testing.T) {
+		tmpDir := testutil.TempDir(t)
+		pkiDir := filepath.Join(tmpDir, "pki")
+		secretsDir := filepath.Join(tmpDir, "secrets")
+
+		require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "root"), 0755))
+		require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "trust"), 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.crt"), []byte("dummy cert"), 0644))
+		// Writing root_ca.key must trigger failure: unsealed private key on disk
+		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.key"), []byte("dummy key"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "trust", "ztdg-ca-bundle.pem"), []byte("dummy bundle"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(pkiDir, constants.ActuatorPubJSONFilename), []byte("{}"), 0644))
+
+		require.NoError(t, os.MkdirAll(secretsDir, 0700))
+		require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(secretsDir, "bootstrap_digest.json"), []byte("{}"), 0644))
+
+		cmd := securityValidateCmdWithConfig(shared.NewFileSvc)
+		cmd.Flags().Set("pki-dir", pkiDir)
+		cmd.Flags().Set("secrets-dir", secretsDir)
+
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+
+		err := cmd.RunE(cmd, []string{})
+		require.Error(t, err)
+		assert.Contains(t, buf.String(), "exists unsealed on disk")
 	})
 }

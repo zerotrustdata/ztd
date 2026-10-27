@@ -37,12 +37,13 @@ func generateTestPEMCert(t *testing.T) []byte {
 	require.NoError(t, err)
 
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "test-root"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageCertSign,
-		IsCA:         true,
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-root"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
@@ -64,9 +65,8 @@ func TestSecurityValidateCmd_API_ValidPEMSuccess(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "root"), 0755))
 	require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "trust"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.crt"), validCert, 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.key"), []byte("dummy key"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "trust", "ztdg-ca-bundle.pem"), validCert, 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, constants.ActuatorPubJSONFilename), []byte("{}"), 0644))
 
 	require.NoError(t, os.MkdirAll(secretsDir, 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
@@ -94,9 +94,8 @@ func TestSecurityValidateCmd_API_InvalidPEM(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "root"), 0755))
 	require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "trust"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.crt"), []byte("not a cert"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.key"), []byte("dummy key"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "trust", "ztdg-ca-bundle.pem"), []byte("not a bundle"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, constants.ActuatorPubJSONFilename), []byte("{}"), 0644))
 
 	require.NoError(t, os.MkdirAll(secretsDir, 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
@@ -126,9 +125,8 @@ func TestSecurityValidateCmd_API_PortCheckOutput(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "root"), 0755))
 	require.NoError(t, os.MkdirAll(filepath.Join(pkiDir, "trust"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.crt"), validCert, 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "root", "root_ca.key"), []byte("dummy key"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "trust", "ztdg-ca-bundle.pem"), validCert, 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, "warden_pub.pem"), []byte("dummy warden"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(pkiDir, constants.ActuatorPubJSONFilename), []byte("{}"), 0644))
 
 	require.NoError(t, os.MkdirAll(secretsDir, 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey), []byte("dummy key"), 0600))
