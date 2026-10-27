@@ -20,7 +20,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
@@ -37,6 +36,7 @@ func PublicRestoreCmdWithConfig(configLoader func(string) (*config.Config, error
 	var force bool
 	var runTimeout time.Duration
 	var projectRoot string
+	var mirrorOrigin string
 	cmd := &cobra.Command{
 		Use:   "restore [run-id]",
 		Short: "Restore missing campaign datasets to the public mirror",
@@ -61,16 +61,14 @@ func PublicRestoreCmdWithConfig(configLoader func(string) (*config.Config, error
 			if err := fileSvc.CreateRuntimeTree(shared.CommandContext(cmd)); err != nil {
 				return fmt.Errorf("public restore: create runtime tree: %w", err)
 			}
-			publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+			publication, err := NewCampaignPublicationCoordinatorWithMirrorOrigin(cmd, fileSvc, cfg, mirrorOrigin)
 			if err != nil {
 				return fmt.Errorf("public restore: %w", err)
 			}
-			mirrorProbe := gwremote.NewHTTPCampaignMirrorProbe(cmd.Context())
-			publication.WithMirrorProbe(mirrorProbe)
 			reconciler := evaluation.NewCampaignMirrorReconciler(
 				publication,
 				evaluation.NewStore(fileSvc),
-				mirrorProbe,
+				publication.MirrorProbe(),
 			)
 			if queue {
 				result, err := ReconcileVerifiedCampaignMirrorQueue(cmd.Context(), cfg.ProjectRoot, reconciler, runTimeout, force, func(progress evaluation.CampaignMirrorReconcileProgress) {
@@ -118,6 +116,7 @@ func PublicRestoreCmdWithConfig(configLoader func(string) (*config.Config, error
 	cmd.Flags().BoolVar(&queue, "queue", false, "Restore completed, passing verified runs from the campaign queue")
 	cmd.Flags().BoolVar(&force, "force", false, "Clear host publication idempotency before restoring missing datasets; with --run-id, also republish when already present")
 	cmd.Flags().StringVar(&runID, "run-id", "", "Restore one canonical campaign run")
+	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Override the public mirror read origin (default: derived from --endpoint or http://127.0.0.1:8082)")
 	cmd.Flags().DurationVar(&runTimeout, "run-timeout", evaluation.CampaignMirrorDefaultRunTimeout, "Base per-run timeout; scales up with assignment count during restore")
 	cmd.Flags().StringVar(&projectRoot, "project-root", "", "Override the repository root (defaults to cwd)")
 	return cmd

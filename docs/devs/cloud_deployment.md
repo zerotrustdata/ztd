@@ -68,10 +68,10 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-DEPLOY-NET-01 | Cloud VM firewall rules MUST allow inbound ingress on TCP port 8080 (HTTP discovery, health probes, PKI bootstrap) and TCP port 8443 (HTTPS API, Console web UI, MCP, and mTLS pub/sub streams). Port 22 (SSH) MUST be restricted or protected according to organizational security policy. |
+| INV-DEPLOY-NET-01 | Cloud VM firewall rules MUST allow inbound ingress on TCP port 8080 (HTTP discovery, health probes, PKI bootstrap), TCP port 8443 (HTTPS API, Console web UI, MCP, and mTLS pub/sub streams), and TCP port 8082 (anonymous public mirror read and Evaluation Explorer SPA when direct ingress is enabled). Port 22 (SSH) MUST be restricted or protected according to organizational security policy. |
 | INV-DEPLOY-NET-02 | When using third-party DNS management (such as Cloudflare DNS), the Gateway record MUST be configured in DNS-only mode (unproxied / grey cloud). Upstream TLS-terminating reverse proxies MUST NOT terminate client connections on port 8443, as this strips the client certificates required for mutual TLS (mTLS) authentication between Governed Operators and the Gateway. |
 | INV-DEPLOY-NET-03 | When deploying with a public IP or custom domain, `ztd gw start` MUST be invoked with `--listen-host 0.0.0.0` and `--cert-mode full` (or an explicit `--public-base-url`) to guarantee that the Gateway's serving certificate includes all routable public IP and DNS Subject Alternative Names (SANs). |
-| INV-DEPLOY-NET-04 | When hosting the public spectator mirror on a cloud VM, the private ingest listener (`127.0.0.1:8081`) MUST remain loopback-isolated (`INV-SPEC-ISO-03`), while the public read listener (`127.0.0.1:8082`) MAY be proxied via an edge tunnel (such as `cloudflared`) to provide public CDN caching and DDoS mitigation without compromising the Gateway's direct unproxied mTLS port (`8443`). |
+| INV-DEPLOY-NET-04 | When hosting the public spectator mirror on a cloud VM, the private ingest listener (`127.0.0.1:8081`) MUST remain unconditionally loopback-isolated (`INV-SPEC-ISO-03`), while the public read listener (`:8082`) MAY be exposed directly via direct network ingress (`0.0.0.0:8082` with `--public-spectator-allow-container-bind`) or proxied via an edge tunnel (such as `cloudflared`) to provide CDN caching and DDoS mitigation without compromising the Gateway's direct unproxied mTLS port (`8443`). |
 
 ## Owned surfaces
 
@@ -102,7 +102,7 @@ The recommended production approach defines infrastructure declaratively in `dep
    ```
    This automatically creates:
    - Reserved static external IPv4 address (prevents SAN and DNS drift).
-   - Firewall rules allowing SSH (22), HTTP (8080), and HTTPS (8443).
+   - Firewall rules allowing SSH (22), HTTP (8080), HTTPS (8443), and Public Mirror Read (8082).
    - Compute Engine Debian 12 instance configured with a startup script (`startup.sh`).
    - Automated systemd service configuration with self-healing keystore SSH agent initialization.
    - The startup script records the GCP metadata external IP in `/etc/hosts` as `ztd-gateway-public` and passes `--public-base-url https://<ip>:8443`. Compute Engine NAT addresses are not on a local interface, so `cert-mode full` would otherwise omit the public IP from the serving certificate and HTTP redirects would fall back to localhost.
@@ -142,10 +142,10 @@ The Gateway exposes a consolidated two-port topology: HTTP port 8080 and HTTPS p
 gcloud compute firewall-rules create allow-ztd-gateway \
     --project="${PROJECT_ID}" \
     --network=default \
-    --allow=tcp:22,tcp:8080,tcp:8443,icmp \
+    --allow=tcp:22,tcp:8080,tcp:8443,tcp:8082,icmp \
     --source-ranges=0.0.0.0/0 \
     --target-tags=ztd-gateway \
-    --description="Allow SSH and ztd Gateway ports 8080 and 8443"
+    --description="Allow SSH, ztd Gateway discovery/mTLS (8080, 8443), and Public Mirror Read (8082)"
 ```
 
 ### Headless Linux Keystore and Master Key Initialization
@@ -222,6 +222,10 @@ ExecStart=/usr/local/bin/ztd gw start \
     --https-port 8443 \
     --public-base-url https://<GATEWAY_DOMAIN_OR_PUBLIC_IP>:8443 \
     --cert-mode full \
+    --public-spectator=true \
+    --public-spectator-public-listen 0.0.0.0:8082 \
+    --public-spectator-private-listen 127.0.0.1:8081 \
+    --public-spectator-allow-container-bind \
     --posture doctrine
 
 Restart=always
@@ -259,8 +263,8 @@ curl -k https://<GATEWAY_DOMAIN_OR_PUBLIC_IP>:8443/healthz
 ### Public Mirror and Spectator Ingress
 
 The cloud Gateway hosts the public mirror and Evaluation Explorer in-process (`--public-spectator` enabled by default):
-- **Private Ingest**: `127.0.0.1:8081` (authenticated local ingestion)
-- **Public Read & Evaluation Explorer SPA**: `127.0.0.1:8082` (anonymous read API + web UI)
+- **Private Ingest**: `127.0.0.1:8081` (authenticated loopback-only ingestion per `INV-SPEC-ISO-03`)
+- **Public Read & Evaluation Explorer SPA**: `0.0.0.0:8082` (anonymous read API + web UI via direct VM ingress or edge tunnel per `INV-DEPLOY-NET-04`)
 
 #### Ingress Topology
 
@@ -272,27 +276,30 @@ POST https://<GATEWAY_PUBLIC_IP>:8443/api/v1/public-feed/batches
        │
        ▼
 Cloud VM Gateway Process
- ├─ Private Ingest (127.0.0.1:8081)
- └─ Public Read (127.0.0.1:8082)
+ ├─ Private Ingest: 127.0.0.1:8081 (Strict Loopback Only)
+ └─ Public Read:   0.0.0.0:8082 (Direct Ingress or Optional Tunnel)
        ▲
-       │ loopback HTTP
- host cloudflared tunnel
-       ▲
-       │ HTTPS
- Cloudflare Edge (CDN / Caching / DDoS mitigation)
-       ▲
+       │ Direct TCP Ingress (:8082) or Optional Tunnel
        │
- Public Anonymous Browser (explorer.zerotrustdata.io)
+ Public Anonymous Browser & Remote Mirror Probes
+ http://<GATEWAY_PUBLIC_IP>:8082
 ```
 
 1. **Exposing the Public Mirror**:
-   Run `cloudflared` on the VM pointing an external domain (e.g. `mirror.zerotrustdata.io` or `explorer.zerotrustdata.io`) to `http://127.0.0.1:8082`. This leverages Cloudflare edge caching and DDoS protection while keeping the local mirror port strictly loopback-bound (`INV-DEPLOY-NET-04`).
-2. **Publishing Runs from Local Workstations**:
-   Campaigns run on local development machines publish batches over mTLS to the cloud Gateway:
+   - **Direct Cloud VM Ingress (Default)**: Pass `--public-spectator-public-listen 0.0.0.0:8082 --public-spectator-allow-container-bind` and permit TCP `8082` in cloud firewall rules (`allow-ztd-gateway`). Browsers and remote CLI commands query `http://<GATEWAY_PUBLIC_IP>:8082` directly. Private ingest remains strictly bound to `127.0.0.1:8081`.
+   - **Optional Edge Tunnel**: Point `cloudflared` to `http://127.0.0.1:8082` if edge DDoS mitigation or custom CDN caching is desired (`INV-DEPLOY-NET-04`).
+2. **Publishing Runs and Restoring from Local Workstations**:
+   Campaigns run on local development machines publish batches over mTLS and verify public mirror status using the `-e / --endpoint` flag:
    ```bash
-   ztd public publish --gateway https://<GATEWAY_DOMAIN_OR_PUBLIC_IP>:8443 evidence.jsonl
+   # Status probing against remote Cloud Gateway
+   ztd -e <GATEWAY_PUBLIC_IP> public status
+
+   # Public restore against remote Cloud Gateway
+   ztd -e <GATEWAY_PUBLIC_IP> public restore --queue
+
+   # Override public mirror read origin explicitly if fronted by a domain
+   ztd -e <GATEWAY_PUBLIC_IP> public restore --queue --mirror-origin http://<GATEWAY_PUBLIC_IP>:8082
    ```
-   The cloud Gateway ingests the batch, verifies signatures, and updates the public mirror SQLite store (`.ztd/public-mirror/mirror.db`) on the VM.
 
 ### DNS and Edge Routing (Cloudflare Unproxied)
 

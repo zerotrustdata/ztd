@@ -290,6 +290,9 @@ type PublicPublisherService struct {
 	proofMu    sync.Mutex
 	proofIndex *publicProofIndex
 
+	// exportMu serializes batch exports, outbox append, and transmission.
+	exportMu sync.Mutex
+
 	mu              sync.Mutex
 	mirrorOrigin    string
 	ingestAuthToken string
@@ -559,6 +562,9 @@ func (s *PublicPublisherService) ExportBatch(ctx context.Context, records []mode
 	if len(records) > s.batchMaxRecords {
 		return constants.ErrPublicFeedBatchOversized
 	}
+
+	s.exportMu.Lock()
+	defer s.exportMu.Unlock()
 
 	err := s.exportBatchOnce(ctx, records)
 	if err == nil {

@@ -47,6 +47,14 @@ type campaignFeedPublishRequest struct {
 	Body           []byte
 }
 
+type cachedRunAggregateState struct {
+	runID       string
+	run         *evalv1.EvaluationRun
+	assignments []*evalv1.EvaluationAssignment
+	results     map[string]*evalv1.EvaluationAssignmentResult
+	state       *runAggregateState
+}
+
 // CampaignPublicationCoordinator projects canonical campaign state into typed
 // public records and coordinates idempotent publisher export.
 type CampaignPublicationCoordinator struct {
@@ -57,8 +65,12 @@ type CampaignPublicationCoordinator struct {
 	proofPublisher         CampaignProofPublisher
 	mirrorProbe            CampaignMirrorProbe
 	deferProofMirrorPush   bool
+	deferProofCatalogFlush bool
 	pendingProofMirrorPush bool
+	skipMirrorProbeRunID   string
 	publicationStateCache  *CampaignPublicationState
+	aggregateCacheEnabled  bool
+	cachedAggregate        *cachedRunAggregateState
 	leaseLiveness          LeaseLiveness
 }
 
@@ -85,6 +97,22 @@ func (c *CampaignPublicationCoordinator) WithMirrorProbe(probe CampaignMirrorPro
 		c.mirrorProbe = probe
 	}
 	return c
+}
+
+// MirrorProbe returns the configured mirror probe, if any.
+func (c *CampaignPublicationCoordinator) MirrorProbe() CampaignMirrorProbe {
+	if c == nil {
+		return nil
+	}
+	return c.mirrorProbe
+}
+
+// NoteDatasetAbsent informs the coordinator that the dataset for runID is known
+// to be absent from the public mirror, skipping redundant probe calls.
+func (c *CampaignPublicationCoordinator) NoteDatasetAbsent(runID string) {
+	if c != nil {
+		c.skipMirrorProbeRunID = runID
+	}
 }
 
 // WithProofPublisher attaches an optional proof-catalog publisher used to ingest
@@ -401,9 +429,13 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 		if !ok {
 			return 0, fmt.Errorf("evaluation: publish run verification: resolve scenario context: %w", constants.ErrEvidenceScopeMismatch)
 		}
-		// The republish sends each proof's request again before any verified
-		// record is built, so every record binds the digest the Gateway answers.
-		proofs, err := c.republishAuditProofs(ctx, assignments, results, artifacts)
+		publicationState, err := c.loadPublicationState(ctx, runID)
+		if err != nil {
+			return 0, err
+		}
+		// The republish reuses catalogued proof packages when available, or ingests
+		// missing proofs before any verified record is built.
+		proofs, err := c.republishAuditProofs(ctx, assignments, results, artifacts, publicationState)
 		if err != nil {
 			return 0, err
 		}
@@ -593,18 +625,30 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUpWithVerification(ctx c
 		}
 		report = bound
 	}
+	c.deferProofCatalogFlush = true
+	c.aggregateCacheEnabled = true
+	defer func() {
+		c.deferProofCatalogFlush = false
+		c.aggregateCacheEnabled = false
+		c.cachedAggregate = nil
+		c.clearPublicationStateCache()
+	}()
 	published, err := c.PublishRunCatchUp(ctx, runID)
 	if err != nil {
 		return published, err
 	}
-	if report == nil || report.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED {
-		return published, nil
+	if report != nil && report.GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED {
+		verificationCount, err := c.PublishRunVerification(ctx, runID, report)
+		if err != nil {
+			return published, err
+		}
+		published += verificationCount
 	}
-	verificationCount, err := c.PublishRunVerification(ctx, runID, report)
-	if err != nil {
+	c.deferProofCatalogFlush = false
+	if err := c.flushProofCatalog(ctx); err != nil {
 		return published, err
 	}
-	return published + verificationCount, nil
+	return published, nil
 }
 
 // loadBoundRunVerification resolves the persisted run-level verification report
@@ -702,7 +746,7 @@ func (c *CampaignPublicationCoordinator) PruneRunProofCatalog(ctx context.Contex
 }
 
 func (c *CampaignPublicationCoordinator) flushProofCatalog(ctx context.Context) error {
-	if c == nil || c.proofPublisher == nil {
+	if c == nil || c.proofPublisher == nil || c.deferProofCatalogFlush {
 		return nil
 	}
 	if !c.pendingProofMirrorPush {
@@ -718,6 +762,7 @@ func (c *CampaignPublicationCoordinator) flushProofCatalog(ctx context.Context) 
 func (c *CampaignPublicationCoordinator) clearPublicationStateCache() {
 	if c != nil {
 		c.publicationStateCache = nil
+		c.cachedAggregate = nil
 	}
 }
 
@@ -782,8 +827,11 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 		return 0, fmt.Errorf("evaluation: publish run catch-up: %w", constants.ErrMissingRequiredField)
 	}
 	c.deferProofMirrorPush = true
+	c.aggregateCacheEnabled = true
 	defer func() {
 		c.deferProofMirrorPush = false
+		c.aggregateCacheEnabled = false
+		c.cachedAggregate = nil
 		c.clearPublicationStateCache()
 	}()
 	resetRequired, err := c.mirrorCatchUpResetRequired(ctx, runID)
@@ -877,12 +925,14 @@ func (c *CampaignPublicationCoordinator) mirrorCatchUpResetRequired(ctx context.
 	if c == nil || c.mirrorProbe == nil || runID == "" {
 		return false, nil
 	}
-	present, err := c.mirrorProbe.DatasetPresent(ctx, CampaignDatasetID(runID))
-	if err != nil {
-		return false, fmt.Errorf("evaluation: publish run catch-up: mirror probe: %w", err)
-	}
-	if present {
-		return false, nil
+	if c.skipMirrorProbeRunID != runID {
+		present, err := c.mirrorProbe.DatasetPresent(ctx, CampaignDatasetID(runID))
+		if err != nil {
+			return false, fmt.Errorf("evaluation: publish run catch-up: mirror probe: %w", err)
+		}
+		if present {
+			return false, nil
+		}
 	}
 	state, err := c.publicationState.Load(ctx, runID)
 	if err != nil {
@@ -892,6 +942,9 @@ func (c *CampaignPublicationCoordinator) mirrorCatchUpResetRequired(ctx context.
 }
 
 func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Context, runID string) (*evalv1.EvaluationRun, []*evalv1.EvaluationAssignment, map[string]*evalv1.EvaluationAssignmentResult, *runAggregateState, error) {
+	if c.aggregateCacheEnabled && c.cachedAggregate != nil && c.cachedAggregate.runID == runID {
+		return c.cachedAggregate.run, c.cachedAggregate.assignments, c.cachedAggregate.results, c.cachedAggregate.state, nil
+	}
 	run, err := c.store.LoadRun(ctx, runID)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -945,6 +998,15 @@ func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Conte
 		}
 		if state.ProviderEnvironment, err = reader.ObservedProviderEnvironment(ctx, results); err != nil {
 			return nil, nil, nil, nil, err
+		}
+	}
+	if c.aggregateCacheEnabled {
+		c.cachedAggregate = &cachedRunAggregateState{
+			runID:       runID,
+			run:         run,
+			assignments: assignments,
+			results:     results,
+			state:       state,
 		}
 	}
 	return run, assignments, results, state, nil
@@ -1027,14 +1089,25 @@ func (c *CampaignPublicationCoordinator) exportFeedRecords(ctx context.Context, 
 }
 
 func (c *CampaignPublicationCoordinator) exportFeedRecordsInBatches(ctx context.Context, records []CampaignPublicFeedRecord) error {
-	for start := 0; start < len(records); start += constants.PublicFeedBatchMaxRecords {
-		end := start + constants.PublicFeedBatchMaxRecords
-		if end > len(records) {
-			end = len(records)
+	if len(records) == 0 {
+		return nil
+	}
+	start := 0
+	for start < len(records) {
+		end := start
+		currentBytes := 0
+		for end < len(records) && (end-start) < constants.PublicFeedBatchMaxRecords {
+			recordBytes := len(records[end].RecordBytes)
+			if end > start && (currentBytes+recordBytes > constants.PublicFeedBatchMaxBytes) {
+				break
+			}
+			currentBytes += recordBytes
+			end++
 		}
 		if err := c.exporter.ExportBatch(ctx, records[start:end]); err != nil {
 			return err
 		}
+		start = end
 	}
 	return nil
 }

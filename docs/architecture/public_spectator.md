@@ -111,39 +111,38 @@ ztd strictly separates browser observation into two non-interchangeable modes:
 ```
 
 - **Owner-Local Observe Mode**: An authenticated operator connects to the private Gateway (`https://<gw>:8443/console/`). The browser authenticates via WebAuthn passkeys, receiving a secure session cookie.
-- **Public Spectator Mode**: Anonymous internet visitors connect via HTTPS to an external domain routed through Cloudflare to a local `cloudflared` tunnel, which dials the loopback-only public mirror listener (`127.0.0.1:8082`). No credentials are sent, and these requests reach only the mirror's public read surface, not the private Gateway API.
+- **Public Spectator Mode**: Anonymous internet visitors connect via HTTP or HTTPS directly to the public mirror listener (`0.0.0.0:8082` on cloud VM deployments with `--public-spectator-allow-container-bind`), or through an external domain routed via a `cloudflared` tunnel or reverse proxy. No credentials are sent, and these requests reach only the mirror's public read surface, not the private Gateway API.
 
 ## Network Path and Listener Isolation
 
 The Gateway process hosts the `PublicSpectatorRuntime` (`internal/services/gateway/public_spectator_runtime.go`), which binds the private ingest and public read listeners, and an explorer listener when explorer assets are available:
 
 ```text
-Campaign Host                     Gateway Process                      Public Edge
-─────────────                     ───────────────                      ───────────
+Campaign Host                     Gateway Process                      Public Ingress
+─────────────                     ───────────────                      ──────────────
 Canonical Eval Runs
        │
        ▼ (owner mTLS)
 POST /api/v1/public-feed/batches ──► PublicSpectatorRuntime
                                       ├─ Private Ingest Listener (:8081)
-                                      │  (authenticated POST /ingest)
+                                      │  (authenticated POST /ingest, loopback only)
                                       │
                                       └─ Public Read Listener (:8082)
                                          (GET /bootstrap, /snapshot, /history, /stream)
+                                                      ▲
+                                                      │ Direct TCP Ingress (:8082)
+                                                      │ or loopback tunnel (cloudflared)
                                                       │
-                                                      ▼ loopback 127.0.0.1:8082
-                                                host cloudflared ──tunnel──► Cloudflare Edge
-                                                                                   │
-                                                                                   ▼ HTTPS
-                                                                             Public Browser
+                                               Public Browser & Probes
 ```
 
-1. **Private Ingest Listener**: Serves ingest routes only (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`), each of which requires the ingest bearer token. It is built from `PublicMirrorServer.IngestHandler()` and mounts no anonymous read route: a read path such as `GET /snapshot` returns 404 here. No external path reaches it because `cloudflared` dials only the Public Read Listener.
+1. **Private Ingest Listener**: Serves ingest routes only (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`), each of which requires the ingest bearer token. It is built from `PublicMirrorServer.IngestHandler()` and mounts no anonymous read route: a read path such as `GET /snapshot` returns 404 here. It is unconditionally restricted to loopback (`127.0.0.1`, `localhost`, `::1`) per `INV-SPEC-ISO-03`.
 2. **Public Read Listener**: Serves anonymous read endpoints only (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-head`, `GET /proof-segments`, `GET /proofs/<id>`). It is built from `PublicMirrorServer.PublicHandler()` and mounts no ingest or mutation route: `POST /ingest` and the other ingest paths return 404 here, regardless of credentials. Unknown paths and mutation methods are rejected. The JSON read endpoints (`/bootstrap`, `/snapshot`, `/history`, `/proof-catalog`, `/proof-head`, `/proof-segments`) are gzip-compressed when the request accepts it; `/stream` and `/proofs/<id>` are not. `/history` takes optional `kind` and `dataset` parameters that keep only records whose top-level `kind` and `dataset_id` match, applied before pagination. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
 
-The two handlers are separate by construction; there is no combined mirror handler. The publisher's mirror origin is the private ingest listener, and Gateway-side read probes (`gwremote` publication status and history/bootstrap reads) resolve against the public read listener on `127.0.0.1:8082`.
+The two handlers are separate by construction; there is no combined mirror handler. The publisher's mirror origin is the private ingest listener, and Gateway-side read probes (`gwremote` publication status and history/bootstrap reads) resolve against the public read listener.
 3. **Explorer Listener**: When explorer assets are available and `ExplorerListenAddress` differs from the public listener, the runtime binds it as a dedicated listener for the same explorer host. The default address is `127.0.0.1:5173`; `--eval-explorer-listen` overrides it.
 
-4. **Loopback Binding**: Listeners bind only to loopback interfaces unless the explicit `--public-spectator-allow-container-bind` gateway flag is set. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
+4. **Loopback Binding**: Listeners bind only to loopback interfaces by default. When `--public-spectator-allow-container-bind` is set, the public read listener and evaluation explorer may bind `0.0.0.0` for direct cloud VM ingress or container routing. The private ingest listener remains strictly loopback-bound across all configurations (`INV-SPEC-ISO-03`). When fronted by a proxy, only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
 
 ## Closed Allowlist and Data Classification
 

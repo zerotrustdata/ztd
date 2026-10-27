@@ -17,8 +17,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
 )
 
 // campaignPublicationAPIClientTimeout covers bulk mirror restore work such as
@@ -44,6 +47,7 @@ type remoteGatewayCampaignFeedExporter struct {
 	client    authcmd.APIClient
 	highWater int64
 	mu        sync.Mutex
+	exportMu  sync.Mutex
 }
 
 func (e *remoteGatewayCampaignFeedExporter) HighWaterSequence(ctx context.Context) (int64, error) {
@@ -57,6 +61,9 @@ func (e *remoteGatewayCampaignFeedExporter) HighWaterSequence(ctx context.Contex
 }
 
 func (e *remoteGatewayCampaignFeedExporter) ExportBatch(ctx context.Context, records []evaluation.CampaignPublicFeedRecord) error {
+	e.exportMu.Lock()
+	defer e.exportMu.Unlock()
+
 	err := e.exportBatchOnce(records)
 	if err == nil || !isPublicFeedPublicationRetryable(err) {
 		return err
@@ -169,6 +176,41 @@ func IsGatewayHealthy() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return strings.HasPrefix(strings.ToLower(host), "127.")
+	}
+}
+
+// ResolvePublicMirrorOrigin returns the public mirror read origin based on explicit
+// override, test override, active gateway endpoint, or default loopback.
+func ResolvePublicMirrorOrigin(cfg *config.Config, mirrorOriginOverride string) (string, error) {
+	if trimmed := strings.TrimSpace(mirrorOriginOverride); trimmed != "" {
+		trimmed = strings.TrimRight(trimmed, "/")
+		if err := gateway.ValidatePublicMirrorOrigin(trimmed); err != nil {
+			return "", err
+		}
+		return trimmed, nil
+	}
+	if PublicMirrorOrigin != "" {
+		return PublicMirrorOrigin, nil
+	}
+	if cfg != nil {
+		if rawURL := cfg.OperatorHTTPURL(); rawURL != "" {
+			if parsed, err := url.Parse(rawURL); err == nil && parsed.Hostname() != "" {
+				host := parsed.Hostname()
+				if !isLoopbackHost(host) {
+					return fmt.Sprintf("http://%s:%d", host, constants.PublicSpectatorPublicPort), nil
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPublicPort), nil
+}
+
 // PublicMirrorOrigin overrides the default public mirror origin in tests.
 var PublicMirrorOrigin string
 
@@ -185,11 +227,26 @@ func publicMirrorOrigin() string {
 var GatewayHealthCheck func() bool
 
 type httpCampaignMirrorProbe struct {
+	origin string
 	client *http.Client
 }
 
 func NewHTTPCampaignMirrorProbe(ctx context.Context) evaluation.CampaignMirrorProbe {
-	return &httpCampaignMirrorProbe{client: newMirrorHTTPClient(5 * time.Second)}
+	return &httpCampaignMirrorProbe{
+		origin: publicMirrorOrigin(),
+		client: newMirrorHTTPClient(5 * time.Second),
+	}
+}
+
+func NewHTTPCampaignMirrorProbeWithOrigin(origin string) (evaluation.CampaignMirrorProbe, error) {
+	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	if err := gateway.ValidatePublicMirrorOrigin(origin); err != nil {
+		return nil, fmt.Errorf("campaign mirror probe: %w", err)
+	}
+	return &httpCampaignMirrorProbe{
+		origin: origin,
+		client: newMirrorHTTPClient(5 * time.Second),
+	}, nil
 }
 
 // DatasetPresent asks the mirror's active source for one catalog snapshot of
@@ -200,7 +257,11 @@ func (p *httpCampaignMirrorProbe) DatasetPresent(ctx context.Context, datasetID 
 	if p == nil || datasetID == "" {
 		return false, fmt.Errorf("campaign mirror probe: dataset id: %w", constants.ErrMissingRequiredField)
 	}
-	page, err := fetchPublicMirrorHistory(ctx, p.client, "", datasetID, "", 1)
+	origin := p.origin
+	if origin == "" {
+		origin = publicMirrorOrigin()
+	}
+	page, err := fetchPublicMirrorHistoryWithOrigin(ctx, p.client, origin, "", datasetID, "", 1)
 	if err != nil {
 		return false, fmt.Errorf("campaign mirror probe: %w", err)
 	}
@@ -210,7 +271,14 @@ func (p *httpCampaignMirrorProbe) DatasetPresent(ctx context.Context, datasetID 
 // fetchPublicMirrorHistory reads one page of catalog snapshots from the
 // mirror's history, optionally narrowed to one source and one dataset.
 func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID, datasetID, cursor string, limit int) (models.PublicFeedCursorPage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/history", nil)
+	return fetchPublicMirrorHistoryWithOrigin(ctx, client, publicMirrorOrigin(), sourceID, datasetID, cursor, limit)
+}
+
+func fetchPublicMirrorHistoryWithOrigin(ctx context.Context, client *http.Client, origin, sourceID, datasetID, cursor string, limit int) (models.PublicFeedCursorPage, error) {
+	if origin == "" {
+		origin = publicMirrorOrigin()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/history", nil)
 	if err != nil {
 		return models.PublicFeedCursorPage{}, err
 	}
@@ -248,11 +316,25 @@ func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID
 }
 
 func FetchPublicMirrorBootstrap(ctx context.Context) (models.PublicFeedBootstrap, error) {
-	return fetchPublicMirrorBootstrapWithClient(ctx, newMirrorHTTPClient(5 * time.Second))
+	return FetchPublicMirrorBootstrapWithOrigin(ctx, publicMirrorOrigin())
+}
+
+func FetchPublicMirrorBootstrapWithOrigin(ctx context.Context, origin string) (models.PublicFeedBootstrap, error) {
+	if origin == "" {
+		origin = publicMirrorOrigin()
+	}
+	return fetchPublicMirrorBootstrapWithClientAndOrigin(ctx, newMirrorHTTPClient(5*time.Second), origin)
 }
 
 func fetchPublicMirrorBootstrapWithClient(ctx context.Context, client *http.Client) (models.PublicFeedBootstrap, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/bootstrap", nil)
+	return fetchPublicMirrorBootstrapWithClientAndOrigin(ctx, client, publicMirrorOrigin())
+}
+
+func fetchPublicMirrorBootstrapWithClientAndOrigin(ctx context.Context, client *http.Client, origin string) (models.PublicFeedBootstrap, error) {
+	if origin == "" {
+		origin = publicMirrorOrigin()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/bootstrap", nil)
 	if err != nil {
 		return models.PublicFeedBootstrap{}, err
 	}
@@ -462,16 +544,34 @@ func isHostPublicFeedConfigured(ctx context.Context, fileSvc fs.RuntimeFileServi
 	return err == nil && exists
 }
 
+func ShouldPublishViaConfiguredGateway(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) bool {
+	if isHostPublicFeedConfigured(ctx, fileSvc) {
+		return false
+	}
+	if cfg != nil {
+		return isConfiguredGatewayHealthy(fileSvc, cfg)
+	}
+	return IsGatewayHealthy()
+}
+
 func ShouldPublishViaGateway(ctx context.Context, fileSvc fs.RuntimeFileService) bool {
-	return !isHostPublicFeedConfigured(ctx, fileSvc) && IsGatewayHealthy()
+	return ShouldPublishViaConfiguredGateway(ctx, fileSvc, nil)
 }
 
 func GatewayPublisherStatus(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (models.PublicPublisherStatus, error) {
+	return GatewayPublisherStatusWithOrigin(ctx, fileSvc, cfg, "")
+}
+
+func GatewayPublisherStatusWithOrigin(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, mirrorOrigin string) (models.PublicPublisherStatus, error) {
+	resolvedOrigin, err := ResolvePublicMirrorOrigin(cfg, mirrorOrigin)
+	if err != nil {
+		return models.PublicPublisherStatus{}, err
+	}
 	exporter, err := NewCampaignFeedExporter(ctx, fileSvc, cfg)
 	if err != nil {
 		return models.PublicPublisherStatus{}, err
 	}
-	bootstrap, err := FetchPublicMirrorBootstrap(ctx)
+	bootstrap, err := FetchPublicMirrorBootstrapWithOrigin(ctx, resolvedOrigin)
 	if err != nil {
 		return models.PublicPublisherStatus{}, err
 	}
@@ -481,7 +581,7 @@ func GatewayPublisherStatus(ctx context.Context, fileSvc fs.RuntimeFileService, 
 	}
 	return models.PublicPublisherStatus{
 		Enabled:           true,
-		MirrorOrigin:      publicMirrorOrigin(),
+		MirrorOrigin:      resolvedOrigin,
 		SourceID:          bootstrap.Snapshot.SourceID,
 		HighWaterSequence: highWater,
 		FeedChainHash:     bootstrap.Snapshot.FeedChainHash,

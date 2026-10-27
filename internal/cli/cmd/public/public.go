@@ -579,7 +579,7 @@ func publicPublishCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory 
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
 				count, err := gwremote.PublishJSONLViaGateway(ctx, fileSvc, cfg, args[0])
 				if err != nil {
 					return err
@@ -640,7 +640,7 @@ func publicRepairOutboxCmdWithConfig(configLoader publicConfigLoader, fileSvcFac
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
 				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Gateway-owned public mirror outbox is managed by the Gateway")
 				return err
 			}
@@ -675,7 +675,7 @@ func publicPushCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
 				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Gateway-owned public mirror is already synchronized")
 				return err
 			}
@@ -700,7 +700,8 @@ func publicPushCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 }
 
 func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
-	return &cobra.Command{
+	var mirrorOrigin string
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show public-feed publication state",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -713,8 +714,8 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
-				status, err := gwremote.GatewayPublisherStatus(ctx, fileSvc, cfg)
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
+				status, err := gwremote.GatewayPublisherStatusWithOrigin(ctx, fileSvc, cfg, mirrorOrigin)
 				if err != nil {
 					return err
 				}
@@ -728,6 +729,12 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 			fileSvc, exportConfig, err := loadPublicCommandRuntime(cmd, configLoader, fileSvcFactory)
 			if err != nil {
 				return err
+			}
+			if mirrorOrigin != "" {
+				if err := gateway.ValidatePublicMirrorOrigin(mirrorOrigin); err != nil {
+					return err
+				}
+				exportConfig.MirrorOrigin = mirrorOrigin
 			}
 			publisher, err := newPublicPublisherForCommand(cmd, fileSvc, exportConfig)
 			if err != nil {
@@ -756,6 +763,8 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Override the public mirror read origin (default: derived from --endpoint or http://127.0.0.1:8082)")
+	return cmd
 }
 
 // publicKeyRotationBinding binds the sealed rotation key to the key ID its
