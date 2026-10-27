@@ -96,6 +96,11 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	}
 	opts.HTTPPort = httpPort
 	operatorEndpoint := config.GatewayDialHost(gatewayHost)
+	probePort := httpPort
+	if probePort == 0 {
+		probePort = constants.Ports.OperatorHttp
+	}
+	operatorEndpoint = defaultGatewayDiscovery().discoverImplicitGatewayHost(ctx, opts.Endpoint != "", operatorEndpoint, probePort, logger)
 	if opts.Endpoint != "" {
 		opts.Endpoint = operatorEndpoint
 	}
