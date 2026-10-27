@@ -83,21 +83,39 @@ captured() {
 
 gateway_online() {
   captured gw status || return 1
-  awk '$1 == "Gateway" && $2 == "online" { found = 1 } END { exit !found }' "$log"
+  # "online" once the health API answers (signed-in CLI); "running" when only
+  # the PID is alive, e.g. a Gateway left by a run that stopped before sign-in.
+  awk '$1 == "Gateway" && ($2 == "online" || $2 == "running") { found = 1 } END { exit !found }' "$log"
 }
 
 # Explains the two failures a first Gateway start commonly hits on a new host.
 gateway_start_hint() {
   if grep -qiE 'key ?store|keyring|secret service|ssh-agent|master key' "$log"; then
     echo >&2
-    warn "No usable OS key store for the Gateway vault master key. Start an ssh-agent with a key loaded:"
-    echo "      eval \"\$(ssh-agent)\" && ssh-add    # then rerun the start command" >&2
-    echo "    No SSH key yet? Create one first with: ssh-keygen -t ed25519" >&2
-  elif grep -qi 'address already in use' "$log"; then
+    case "$(uname -s)" in
+      Darwin)
+        warn "macOS Keychain did not release the Gateway vault master key."
+        echo "    Rerun in a GUI terminal session and approve the Keychain prompt for ztd (Always Allow)." >&2
+        echo "    No GUI session (SSH/container)? The Keychain prompt cannot be shown there; sign in from the GUI session first." >&2
+        ;;
+      *)
+        warn "No usable OS key store for the Gateway vault master key. Start an ssh-agent with a key loaded:"
+        echo "      eval \"\$(ssh-agent)\" && ssh-add    # then rerun the start command" >&2
+        echo "    No SSH key yet? Create one first with: ssh-keygen -t ed25519" >&2
+        ;;
+    esac
+  elif grep -qiE 'address already in use|port unavailable|port [0-9]+ .*in use' "$log"; then
     echo >&2
     warn "A port the Gateway needs is in use, usually by a Gateway started from another directory."
     echo "    Stop it from its own directory with ./ztd gw stop, then rerun the start command." >&2
+    echo "    On macOS, find the holder with: lsof -nP -iTCP:8080 -sTCP:LISTEN" >&2
   fi
+}
+
+# Surfaces Gateway notices (Keychain wait, shifted ports) that a captured
+# start would otherwise swallow on the success path.
+gateway_start_notices() {
+  grep -E 'Waiting for access|listens on HTTP|Port [0-9]+ is held' "$log" 2>/dev/null | sed 's/^/  /' || true
 }
 
 main() {
@@ -158,12 +176,13 @@ main() {
   if gateway_online; then
     ok "already running — reusing it"
   else
-    info "starting on https://localhost:8443 (doctrine posture, embedded data Operator, loopback only)..."
+    info "starting Gateway (doctrine posture, embedded data Operator, loopback only)..."
     if ! captured gw start; then
       show_log
       gateway_start_hint
       fail "the Gateway did not start"
     fi
+    gateway_start_notices
     ok "Gateway online"
   fi
 

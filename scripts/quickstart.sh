@@ -72,7 +72,7 @@ ztd_quickstart_run() {
 ztd_gateway_online() {
     local status
     status="$(ztd_cli gw status 2>/dev/null)" || return 1
-    grep -Eq '^Gateway[[:space:]]+online' <<<"$status"
+    grep -Eq '^Gateway[[:space:]]+(online|running)' <<<"$status"
 }
 
 ztd_ui_title "ztd quickstart"
@@ -94,17 +94,28 @@ ztd_ui_step 2 4 "Gateway"
 if ztd_gateway_online; then
     ztd_ui_ok "already running — reusing it"
 else
-    ztd_ui_info "starting on https://localhost:8443 (doctrine posture, embedded data Operator)..."
+    ztd_ui_info "starting Gateway (doctrine posture, embedded data Operator)..."
     if ! ztd_quickstart_run "Gateway start" ztd_cli gw start --capabilities data ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
         if grep -qiE 'keyring|keystore|secret service|ssh-agent|master key' "$LOG"; then
             echo >&2
-            ztd_ui_warn "No usable key store for the vault master key. Start an ssh-agent with a key loaded:" >&2
-            echo "      ssh-keygen -t ed25519                # skip if you already have an Ed25519 key" >&2
-            echo "      eval \"\$(ssh-agent)\" && ssh-add" >&2
-            echo "    Then rerun make quickstart." >&2
+            if [[ "$(uname -s)" == Darwin ]]; then
+                ztd_ui_warn "macOS Keychain did not release the vault master key." >&2
+                echo "    Rerun in a GUI terminal session and approve the Keychain prompt for ztd (Always Allow)." >&2
+                echo "    Then rerun make quickstart." >&2
+            else
+                ztd_ui_warn "No usable key store for the vault master key. Start an ssh-agent with a key loaded:" >&2
+                echo "      ssh-keygen -t ed25519                # skip if you already have an Ed25519 key" >&2
+                echo "      eval \"\$(ssh-agent)\" && ssh-add" >&2
+                echo "    Then rerun make quickstart." >&2
+            fi
+        elif grep -qiE 'address already in use|port unavailable' "$LOG"; then
+            echo >&2
+            ztd_ui_warn "A port the Gateway needs is in use, usually by a Gateway started from another directory." >&2
+            echo "    Stop it from its own directory with ./ztd gw stop, then rerun make quickstart." >&2
         fi
         exit 1
     fi
+    grep -E 'Waiting for access|listens on HTTP|Port [0-9]+ is held' "$LOG" 2>/dev/null | sed 's/^/  /' || true
     ztd_ui_ok "Gateway online"
 fi
 

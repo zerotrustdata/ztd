@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -70,6 +71,16 @@ func (execRunner) Run(ctx context.Context, env map[string]string, name string, a
 		cmd.Env = merged
 	}
 	return cmd.CombinedOutput()
+}
+
+// trustCmdError wraps a failed OS trust command, keeping its combined
+// output so callers see why (e.g. sudo declining) instead of a bare
+// "exit status 1".
+func trustCmdError(out []byte, err error) error {
+	if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
+		return fmt.Errorf("%w: %s: %w", constants.ErrSystemTrustInstallFailed, trimmed, err)
+	}
+	return fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
 }
 
 // SystemTrustInstaller installs a gateway root CA anchor into the host OS

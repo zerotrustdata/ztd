@@ -295,6 +295,27 @@ test('a Gateway with no usable key store explains the ssh-agent remedy and stops
   assertClean(fixture);
 });
 
+test('on macOS a key store failure explains the Keychain remedy, not ssh-agent', (t) => {
+  const fixture = setup(t, { os: 'Darwin', env: { ZTD_FAKE_START_ERROR: 'an OS-protected master key store is required but none is available' } });
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /macOS Keychain did not release/);
+  assert.match(result.stderr, /Always Allow/);
+  assert.doesNotMatch(result.stderr, /ssh-agent/, 'macOS users are not sent to ssh-agent');
+  assert.match(result.stderr, /the Gateway did not start/);
+});
+
+test('a Gateway port failure in ztd wording (port unavailable) gets the port hint', (t) => {
+  const fixture = setup(t, { env: { ZTD_FAKE_START_ERROR: 'process start failed: port unavailable: HTTP port: port unavailable: starting from 8080 after 100 attempts' } });
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /A port the Gateway needs is in use/);
+  assert.match(result.stderr, /\.\/ztd gw stop/);
+  assert.match(result.stderr, /lsof -nP -iTCP:8080/);
+});
+
 test('a Gateway port conflict points at the Gateway already running elsewhere', (t) => {
   const fixture = setup(t, { env: { ZTD_FAKE_START_ERROR: 'listen tcp :8081: bind: address already in use' } });
   const result = runPiped(fixture);

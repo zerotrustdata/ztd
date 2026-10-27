@@ -736,11 +736,12 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
-<span class="p">$ </span>bash scripts/linux-setup.sh --build-only
-<span class="p">$ </span>make quickstart
-<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span>
-<span class="c"># Windows (PowerShell 7): pwsh scripts/windows-setup.ps1 --build-only</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
+<span class="c"># macOS:</span>
+<span class="p">$ </span>bash scripts/macos-setup.sh --build-only
+<span class="c"># Linux: bash scripts/linux-setup.sh --build-only</span>
+<span class="c"># Windows (PowerShell 7): pwsh scripts/windows-setup.ps1 --build-only</span>
+<span class="p">$ </span>make quickstart</pre>
+        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;if [ &quot;$(uname)&quot; = &quot;Darwin&quot; ]; then bash scripts/macos-setup.sh --build-only; else bash scripts/linux-setup.sh --build-only; fi&#10;make quickstart">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-2" aria-labelledby="tb-2" hidden>
 <pre><span class="c"># sign in as the owner with a passkey, then approve workloads</span>
