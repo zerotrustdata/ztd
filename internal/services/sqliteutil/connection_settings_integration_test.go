@@ -41,6 +41,7 @@ func TestOpenDB_SettingsApplyToEveryConnection(t *testing.T) {
 			{"cache_size", -cfg.CacheSizeMB * 1024},
 			{"temp_store", 2},
 			{"auto_vacuum", 2},
+			{"wal_autocheckpoint", 0},
 		} {
 			var got int
 			require.NoError(t, conn.QueryRowContext(t.Context(), "PRAGMA "+setting.name).Scan(&got))

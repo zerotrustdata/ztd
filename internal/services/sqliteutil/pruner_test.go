@@ -308,6 +308,7 @@ func TestPruner_Start_Tier1_Idempotent(t *testing.T) {
 	p := NewPruner(nil, logger, time.Hour, nil)
 
 	p.Start()
+	t.Cleanup(p.Stop)
 	assert.True(t, p.started)
 
 	p.Start()
@@ -344,6 +345,7 @@ func TestPruner_Start_Tier1_SetsStartedFlag(t *testing.T) {
 
 	assert.False(t, p.started)
 	p.Start()
+	t.Cleanup(p.Stop)
 	assert.True(t, p.started)
 }
 
@@ -467,5 +469,6 @@ func TestPruner_Tier1_MutexProtectsStartedFlag(t *testing.T) {
 
 	<-done
 	<-done
+	t.Cleanup(p.Stop)
 	assert.True(t, p.started)
 }

@@ -321,7 +321,7 @@ func (ass *LocalFirstEventsStore) initDatabase() error {
 		return err
 	}
 
-	if _, err := ass.db.Exec(eventsStoreSchema); err != nil {
+	if _, err := ass.db.ExecWithRetry(context.Background(), eventsStoreSchema); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreInitSchemaFailed, err)
 	}
 

@@ -271,7 +271,7 @@ func (s *PlatformEnrollmentService) CreateRequest(ctx context.Context, req model
 	if err != nil {
 		// The response was not returned, so the requester still holds its token
 		// and can resubmit the same request after the failed audit.
-		_, cleanupErr := s.db.db.ExecContext(context.WithoutCancel(ctx),
+		_, cleanupErr := s.db.db.ExecWithRetry(context.WithoutCancel(ctx),
 			`DELETE FROM documents WHERE collection = ? AND id = ? AND json_extract(data, '$.state') = ? AND json_extract(data, '$.token_hash') = ?`,
 			platformEnrollmentCollectionName(), requestID, models.PlatformEnrollmentStatePending, req.TokenHash)
 		if cleanupErr != nil {
