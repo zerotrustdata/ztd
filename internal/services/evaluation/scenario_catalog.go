@@ -155,7 +155,7 @@ func ValidateSmokeGateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog,
 		return fmt.Errorf("evaluation: validate smoke scenario catalog: catalog identity: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	if len(catalog.GetScenarios()) != SmokeGateScenarioCount {
-		return fmt.Errorf("evaluation: validate smoke scenario catalog: expected %d scenarios, got %d", SmokeGateScenarioCount, len(catalog.GetScenarios()))
+		return fmt.Errorf("evaluation: validate smoke scenario catalog: %w: expected %d scenarios, got %d", constants.ErrEvaluationScenarioContractInvalid, SmokeGateScenarioCount, len(catalog.GetScenarios()))
 	}
 	return ValidateScenarioCatalog(catalog, artifacts)
 }
@@ -205,30 +205,30 @@ func ValidateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog, artifact
 		}
 		key := scenario.GetScenarioId() + "@" + scenario.GetScenarioVersion()
 		if _, exists := seen[key]; exists {
-			return fmt.Errorf("evaluation: validate scenario catalog: duplicate scenario %s", key)
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: duplicate scenario %s", constants.ErrEvaluationScenarioContractInvalid, key)
 		}
 		seen[key] = struct{}{}
 		if scenario.GetCategory() == evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_UNSPECIFIED {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s has unspecified category", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s has unspecified category", constants.ErrEvaluationScenarioContractInvalid, scenario.GetScenarioId())
 		}
 		if scenario.GetPublicDescription() == "" {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s missing public description", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s missing public description", constants.ErrEvaluationScenarioContractInvalid, scenario.GetScenarioId())
 		}
 		if scenario.GetGradingMethod() == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_UNSPECIFIED {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s has unspecified grading method", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s has unspecified grading method", constants.ErrEvaluationScenarioContractInvalid, scenario.GetScenarioId())
 		}
 		if err := validatePublicScenarioCriteria(scenario); err != nil {
-			return fmt.Errorf("evaluation: validate scenario catalog: %w: %v", constants.ErrEvaluationScenarioContractInvalid, err)
+			return fmt.Errorf("evaluation: validate scenario catalog: %w", err)
 		}
 		if scenario.GetInputFixtureRef() == nil || scenario.GetGoldCriteriaRef() == nil {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s missing fixture references", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s missing fixture references", constants.ErrMissingRequiredField, scenario.GetScenarioId())
 		}
 		if _, err := scenarioEligibleRoles(scenario); err != nil {
 			return fmt.Errorf("evaluation: validate scenario catalog: %w", err)
 		}
 		pair, ok := artifacts[scenario.GetScenarioId()]
 		if !ok {
-			return fmt.Errorf("evaluation: validate scenario catalog: missing artifacts for scenario %s", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: missing artifacts for scenario %s", constants.ErrMissingRequiredField, scenario.GetScenarioId())
 		}
 		if err := validateScenarioArtifactBinding(scenario.GetInputFixtureRef(), pair.Input); err != nil {
 			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s input fixture: %w", scenario.GetScenarioId(), err)
@@ -333,7 +333,7 @@ func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDe
 	}
 	for category, want := range expected {
 		if counts[category] != want {
-			return fmt.Errorf("evaluation: validate scenario catalog: category %s expected %d scenarios, got %d", category.String(), want, counts[category])
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: category %s expected %d scenarios, got %d", constants.ErrEvaluationScenarioContractInvalid, category.String(), want, counts[category])
 		}
 	}
 	return nil

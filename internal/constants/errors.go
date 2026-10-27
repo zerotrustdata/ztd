@@ -1511,6 +1511,7 @@ var (
 	ErrEvaluationInferenceCasesFailed      = errors.New("evaluation: inference acceptance cases failed")
 	ErrEvaluationLiveEventProgressInvalid  = errors.New("evaluation: live event progress is invalid")
 	ErrEvaluationFlagsInvalid              = errors.New("evaluation: invalid flag combination or value")
+	ErrEvaluationParameterCountNegative    = errors.New("evaluation: parameter count must be non-negative")
 	ErrEvaluationLifecycleUnknown          = errors.New("evaluation: assignment lifecycle has no terminal outcome")
 	ErrEvaluationDigestComputeFailed       = errors.New("evaluation: digest computation failed")
 	ErrEvaluationTargetKindMismatch        = errors.New("evaluation: assignment target kind does not match the executor")

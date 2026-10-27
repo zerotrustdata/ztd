@@ -68,19 +68,24 @@ func TestScenarioObservationEvidenceRejectsFinalReadBeforeAgentActivity(t *testi
 }
 
 func TestAgentTraceHistoricalVersionRejectsNewToolEvidenceFields(t *testing.T) {
-	for _, refusal := range []bool{false, true} {
+	t.Run("request envelope field on v8 trace", func(t *testing.T) {
 		trace, _ := validEvidenceTrace(t)
 		trace.SchemaVersion = agentTraceSchemaVersionV8
-		if refusal {
-			trace.ToolCalls[0].IngressRefusalCode = operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE
-		} else {
-			trace.ToolCalls[0].RequestEnvelope = &AgentTraceEnvelope{GovernanceEnvelope: &commonv1.GovernanceEnvelope{Id: "new-field"}}
-		}
+		trace.ToolCalls[0].RequestEnvelope = &AgentTraceEnvelope{GovernanceEnvelope: &commonv1.GovernanceEnvelope{Id: "new-field"}}
 		var err error
 		trace.EvidenceDigest, err = ComputeAgentTraceDigest(trace)
 		require.NoError(t, err)
 		require.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed)
-	}
+	})
+	t.Run("ingress refusal code on v8 trace", func(t *testing.T) {
+		trace, _ := validEvidenceTrace(t)
+		trace.SchemaVersion = agentTraceSchemaVersionV8
+		trace.ToolCalls[0].IngressRefusalCode = operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE
+		var err error
+		trace.EvidenceDigest, err = ComputeAgentTraceDigest(trace)
+		require.NoError(t, err)
+		require.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed)
+	})
 }
 
 func TestToolEvidenceCannotClaimSuccessWithoutAnExecutedReceipt(t *testing.T) {
@@ -139,4 +144,11 @@ func TestScenarioObservationContractRequiresFrozenSeedsAndFinalChecks(t *testing
 	}
 	seed := recoveryErrorGuidedRetry()
 	require.ErrorIs(t, verifyScenarioObservationContract(AssignmentExecutionRequest{ScenarioInput: seed.Input}, &AgentTrace{}), constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
+func TestAgentRunCaseMemoryPath_IsInsideSeededWorkspace(t *testing.T) {
+	run := &agentRun{workspace: ScenarioWorkspace{Root: "/work/ws/"}}
+	got, err := run.caseMemoryPath()
+	require.NoError(t, err)
+	require.Equal(t, "/work/ws/"+scenarioCaseMemoryFile, got)
 }

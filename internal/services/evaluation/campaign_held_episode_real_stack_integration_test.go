@@ -13,7 +13,6 @@
 package evaluation_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -61,9 +61,8 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "clarify",
 		replies: []fixtures.OllamaReply{
-			// The interrogation hand-off drops the pending tool call.
-			// The hand-off drops this pending call, so the call names no fixture: its
-			// prompt renders no workspace path.
+			// The interrogation hand-off drops this pending call, so the call names
+			// no fixture: its prompt renders no workspace path.
 			{Content: realStackInterrogation, ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("echo", "pending")}}},
 			{Content: realStackDiagnosis},
 			// The scenario's diagnosis rubric has the judge score the final reply.
@@ -319,8 +318,7 @@ func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing
 	replacement := env.stack.Witness.LaunchOperator(t, fixtures.NewOperatorHost(t), fixtures.OperatorProcessOptions{
 		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
 	})
-	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	t.Cleanup(cancel)
+	startCtx := testutil.ContextWithTimeout(t, 30*time.Second)
 	require.NoError(t, replacement.AwaitStarted(startCtx))
 	_, err := replacement.AwaitHeartbeat(startCtx)
 	require.NoError(t, err)

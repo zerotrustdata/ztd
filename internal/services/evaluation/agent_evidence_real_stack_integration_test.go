@@ -122,12 +122,9 @@ func realStackReadFileReply(env *realStackAgentRun, relPath string) fixtures.Oll
 	args, _ := json.Marshal(struct {
 		Path string `json:"path"`
 	}{Path: path})
-	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: "read_file", Arguments: args}}}
+	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolReadFile, Arguments: args}}}
 }
 
-// shellReplies is the frozen provider script for one answer-free tool turn: the
-// model runs run_shell_command on the health fixture its prompt names, then
-// answers from the output.
 // shellRepliesForTwoAssignments scripts a shell turn pair for two assignments:
 // every assignment consumes its own tool call and final answer.
 func shellRepliesForTwoAssignments() []fixtures.OllamaReply {
@@ -138,6 +135,9 @@ func shellRepliesForTwoAssignments() []fixtures.OllamaReply {
 	return replies
 }
 
+// shellReplies is the frozen provider script for one answer-free tool turn: the
+// model runs run_shell_command on the health fixture its prompt names, then
+// answers from the output.
 func shellReplies() []fixtures.OllamaReply {
 	return []fixtures.OllamaReply{
 		{Respond: realStackHealthCatReply},
@@ -451,7 +451,7 @@ func TestAgentEvidenceIntegration_SharedRuntimeEmbeddedOperator(t *testing.T) {
 
 		trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 		require.NoError(t, err)
-		assert.Equal(t, "agent-trace.v9", trace.SchemaVersion)
+		assert.Equal(t, evaluation.ExportedAgentTraceSchemaVersion, trace.SchemaVersion)
 		require.NotNil(t, trace.Input, "a v4 trace records the exact model input")
 		assert.NotEmpty(t, trace.Input.Messages)
 		assert.True(t, trace.SharedRuntime(), "shared runtime trace must report SharedRuntime() == true")
@@ -481,7 +481,7 @@ func TestAgentEvidenceIntegration_DistinctRuntimes(t *testing.T) {
 
 		trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 		require.NoError(t, err)
-		assert.Equal(t, "agent-trace.v9", trace.SchemaVersion)
+		assert.Equal(t, evaluation.ExportedAgentTraceSchemaVersion, trace.SchemaVersion)
 		require.NotNil(t, trace.Input, "a v4 trace records the exact model input")
 		assert.NotEmpty(t, trace.Input.Messages)
 		assert.False(t, trace.SharedRuntime(), "distinct runtimes must report SharedRuntime() == false")

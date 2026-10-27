@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -162,7 +163,7 @@ func toolArgumentValue(call AgentToolCall, name string, raw json.RawMessage) (st
 	if call.ToolName == constants.MCPToolRunShellCommand && name == agentToolArgCommand {
 		var request models.RunShellCommandRequest
 		if err := json.Unmarshal([]byte(call.ArgumentsJSON), &request); err != nil {
-			return "", fmt.Errorf("argument %q: invalid %s request: %v", name, call.ToolName, err)
+			return "", fmt.Errorf("argument %q: invalid %s request: %w", name, call.ToolName, err)
 		}
 		return request.CommandLine(), nil
 	}
@@ -204,7 +205,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	switch policy {
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER:
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) {
+			if slices.Contains(forbiddenTools, call.ToolName) {
 				return trajectoryResult{
 					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
 					Passed:         false,
@@ -238,7 +239,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL}
 		}
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) {
+			if slices.Contains(forbiddenTools, call.ToolName) {
 				return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
 			}
 		}
@@ -246,10 +247,10 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			for _, call := range calls {
 				// An investigation-history query is a context preflight, not a
 				// competing choice for reading or searching a named resource.
-				if call.ToolName == constants.MCPToolEventReceiptList && !isToolInList(call.ToolName, expectedTools) && isToolInList(call.ToolName, tools.AllowedTools) {
+				if call.ToolName == constants.MCPToolEventReceiptList && !slices.Contains(expectedTools, call.ToolName) && slices.Contains(tools.AllowedTools, call.ToolName) {
 					continue
 				}
-				if !isToolInList(call.ToolName, expectedTools) {
+				if !slices.Contains(expectedTools, call.ToolName) {
 					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
 				}
 				break
@@ -259,7 +260,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 		var failedArgument, failedRule string
 		expectedCalled := false
 		for _, call := range calls {
-			if !isToolInList(call.ToolName, expectedTools) {
+			if !slices.Contains(expectedTools, call.ToolName) {
 				continue
 			}
 			expectedCalled = true
@@ -304,7 +305,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GOVERNED:
 		var deniedForbiddenTool string
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) {
+			if slices.Contains(forbiddenTools, call.ToolName) {
 				if call.Success {
 					if deniedForbiddenTool != "" {
 						return trajectoryResult{
@@ -356,19 +357,10 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	}
 }
 
-func isToolInList(tool string, list []string) bool {
-	for _, item := range list {
-		if item == tool {
-			return true
-		}
-	}
-	return false
-}
-
 // firstCalledTool returns the first of tools the model called, or "".
 func firstCalledTool(calls []AgentToolCall, tools []string) string {
 	for _, call := range calls {
-		if isToolInList(call.ToolName, tools) {
+		if slices.Contains(tools, call.ToolName) {
 			return call.ToolName
 		}
 	}
@@ -455,7 +447,7 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			wrong := "a wrong tool"
 			if traj.FirstWrongTool != "" {
 				wrong = fmt.Sprintf("`%s`", traj.FirstWrongTool)
-				if isToolInList(traj.FirstWrongTool, tools.ForbiddenTools) {
+				if slices.Contains(tools.ForbiddenTools, traj.FirstWrongTool) {
 					wrong = "forbidden tool " + wrong
 				}
 			}

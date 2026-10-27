@@ -783,7 +783,7 @@ type dispatchResultRouter struct {
 func (r *dispatchResultRouter) handle(_ string, data []byte) {
 	resultEnv := &commonv1.GovernanceEnvelope{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, resultEnv); err != nil {
-		r.logger.Warn("dispatch: failed to unmarshal result envelope", "error", err)
+		r.logger.Warn("dispatch: failed to unmarshal result envelope", logging.ErrorKind(err))
 		return
 	}
 	if resultEnv.Id != r.txHash {
@@ -797,7 +797,7 @@ func (r *dispatchResultRouter) handle(_ string, data []byte) {
 		constants.EventType(resultEnv.GetEventType()),
 		constants.ActionType(resultEnv.GetActionType()),
 	); err != nil {
-		r.logger.Warn("dispatch: reject result envelope", "error", err, "transaction_id", r.txHash)
+		r.logger.Warn("dispatch: reject result envelope", logging.ErrorKind(err), "transaction_id", r.txHash)
 		return
 	}
 	if r.isEmbedded {
@@ -904,7 +904,7 @@ func (d *DispatchService) verifiedTransactionEventReceipt(ctx context.Context, r
 		return nil, transactionEventReceiptNone
 	}
 	if err := d.verifyBoundReceipt(ctx, operatorID, receipt); err != nil {
-		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), "error", err)
+		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), logging.ErrorKind(err))
 		return nil, transactionEventReceiptNone
 	}
 	return receipt, kind
@@ -958,7 +958,7 @@ func decodeInferenceProgressEnvelope(env *commonv1.GovernanceEnvelope) (*operato
 func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv, resultEnv *commonv1.GovernanceEnvelope) (*DispatchResult, error) {
 	completion := &operatorv1.InferenceCompletion{}
 	if err := proto.Unmarshal(resultEnv.Payload, completion); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceResultDecode, err)
+		return nil, fmt.Errorf("dispatch: %w: %w", constants.ErrInferenceResultDecode, err)
 	}
 
 	receipt := completion.GetReceipt()
@@ -973,7 +973,7 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 		return nil, fmt.Errorf("dispatch: %w: receipt signer store not configured", constants.ErrInferenceReceiptVerify)
 	}
 	if err := d.verifyBoundReceipt(ctx, cmdEnv.GetOperatorId(), receipt); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
+		return nil, fmt.Errorf("dispatch: %w: %w", constants.ErrInferenceReceiptVerify, err)
 	}
 
 	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
@@ -996,7 +996,7 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	}
 	request := &operatorv1.InferenceRequested{}
 	if err := proto.Unmarshal(cmdEnv.Payload, request); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceResultDecode, err)
+		return nil, fmt.Errorf("dispatch: %w: %w", constants.ErrInferenceResultDecode, err)
 	}
 	if err := models.ValidateDecisionCompletion(request.GetDecision(), result); err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)

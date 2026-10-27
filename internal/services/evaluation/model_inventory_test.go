@@ -9,26 +9,15 @@ package evaluation
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
-
-type modelInventoryFreezePayload struct {
-	CampaignID          string            `json:"campaign_id"`
-	ModelRegistryDigest string            `json:"model_registry_digest"`
-	Variants            []json.RawMessage `json:"variants"`
-}
 
 func TestComputeHomogeneousMatrixSize(t *testing.T) {
 	t.Parallel()
@@ -60,43 +49,39 @@ func TestBuildModelVariantsFromProviderInventory_RejectsDuplicateTags(t *testing
 	}
 	_, err := BuildModelVariantsFromProviderInventory(context.Background(), entries, ModelInventoryOptions{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "duplicate served tag")
+	require.ErrorIs(t, err, constants.ErrInferenceModelRegistryInvalid)
 }
 
-func TestLoadModelInventoryFreezeFile_RoundTrip(t *testing.T) {
+func TestModelInventoryRejectsDuplicateVariantIDs(t *testing.T) {
 	t.Parallel()
-	freeze, err := MaterializeModelRegistry("campaign-1", []*evalv1.ModelVariant{testModelVariant()})
-	require.NoError(t, err)
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "inventory.json")
-	rawVariants := make([]json.RawMessage, 0, len(freeze.Variants))
-	for _, variant := range freeze.Variants {
-		body, err := protojson.Marshal(variant)
-		require.NoError(t, err)
-		rawVariants = append(rawVariants, body)
+	entries := []inference.ProviderModelInventoryEntry{
+		{ServedModelTag: "a:7b", ModelDigest: repeatHex('a')},
+		{ServedModelTag: "a-7b", ModelDigest: repeatHex('b')},
 	}
-	payload, err := json.Marshal(modelInventoryFreezePayload{
-		CampaignID:          freeze.CampaignID,
-		ModelRegistryDigest: freeze.RegistryDigest,
-		Variants:            rawVariants,
-	})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, payload, constants.PermFilePublic))
-
-	loaded, err := LoadModelInventoryFreezeFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, freeze.RegistryDigest, loaded.RegistryDigest)
-	assert.Equal(t, freeze.HomogeneousCellCount, loaded.HomogeneousCellCount)
-	require.NoError(t, ValidateModelRegistry(loaded))
+	_, err := BuildModelVariantsFromProviderInventory(context.Background(), entries, ModelInventoryOptions{})
+	require.ErrorIs(t, err, constants.ErrInferenceModelRegistryInvalid)
 }
 
-func TestLoadModelInventoryFreezeFile_RejectsMissingDigest(t *testing.T) {
+func TestModelInventoryValidateRejectsDuplicateRegistryEntries(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
-	path := filepath.Join(dir, "inventory.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"campaign_id":"c1","variants":[]}`), constants.PermFilePublic))
-	_, err := LoadModelInventoryFreezeFile(path)
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	cases := map[string][]*evalv1.ModelVariant{
+		"duplicate served tag": {
+			{VariantId: "dup-7b-a", ProviderClass: "ollama", ServedModelTag: "dup:7b", ModelDigest: repeatHex('a')},
+			{VariantId: "dup-7b-b", ProviderClass: "ollama", ServedModelTag: "dup:7b", ModelDigest: repeatHex('b')},
+		},
+		"duplicate variant_id": {
+			{VariantId: "same", ProviderClass: "ollama", ServedModelTag: "one:7b", ModelDigest: repeatHex('a')},
+			{VariantId: "same", ProviderClass: "ollama", ServedModelTag: "two:7b", ModelDigest: repeatHex('b')},
+		},
+	}
+	for name, variants := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			freeze, err := MaterializeModelRegistry("campaign-1", variants)
+			require.NoError(t, err)
+			require.ErrorIs(t, ValidateModelRegistry(freeze), constants.ErrInferenceModelRegistryInvalid)
+		})
+	}
 }
 
 func TestBuildModelVariantsFromProviderInventory_RequiresGovernedProbeRunnerWhenRequested(t *testing.T) {
@@ -113,13 +98,6 @@ func TestBuildModelVariantsFromProviderInventory_RejectsEmptyInventory(t *testin
 	t.Parallel()
 	_, err := BuildModelVariantsFromProviderInventory(context.Background(), nil, ModelInventoryOptions{})
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-}
-
-func TestLoadModelInventoryFreezeFile_WrapsReadErrors(t *testing.T) {
-	t.Parallel()
-	_, err := LoadModelInventoryFreezeFile(filepath.Join(testutil.TempDir(t), "missing.json"))
-	require.Error(t, err)
-	assert.NotErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestParseParameterCount(t *testing.T) {
@@ -141,14 +119,22 @@ func TestParseParameterCount(t *testing.T) {
 		{"-5b", 0, true},
 	}
 	for _, tc := range cases {
-		val, err := ParseParameterCount(tc.input)
-		if tc.wantErr {
-			assert.Error(t, err, "input: %s", tc.input)
-		} else {
-			require.NoError(t, err, "input: %s", tc.input)
-			assert.Equal(t, tc.expected, val, "input: %s", tc.input)
-		}
+		t.Run(tc.input, func(t *testing.T) {
+			val, err := ParseParameterCount(tc.input)
+			if tc.wantErr {
+				assert.Error(t, err, "input: %s", tc.input)
+			} else {
+				require.NoError(t, err, "input: %s", tc.input)
+				assert.Equal(t, tc.expected, val, "input: %s", tc.input)
+			}
+		})
 	}
+}
+
+func TestParseParameterCount_RejectsNegative(t *testing.T) {
+	t.Parallel()
+	_, err := ParseParameterCount("-5b")
+	require.ErrorIs(t, err, constants.ErrEvaluationParameterCountNegative)
 }
 
 func TestFormatParameterCount(t *testing.T) {

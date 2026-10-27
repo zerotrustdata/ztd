@@ -138,7 +138,10 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		FormationStackSet: req.FormationStackSet,
 	}
 	if trace.CarriesModelIdentity() {
-		expected, _ := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
+		expected, _, err := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
+		if err != nil {
+			return append(failures, "agent trace model inference records failed: "+err.Error())
+		}
 		if len(expected) != len(req.Result.GetModelInferences()) {
 			failures = append(failures, "result inference count does not match agent trace")
 		} else {

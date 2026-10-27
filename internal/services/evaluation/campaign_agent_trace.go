@@ -841,7 +841,7 @@ func (s *Store) SaveAssignmentAgentTrace(ctx context.Context, runID, assignmentI
 		return err
 	}
 	if err := complianceevidence.ValidateCanonicalJSON(body); err != nil {
-		return fmt.Errorf("%w: assignment agent trace is not canonical JSON: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return fmt.Errorf("%w: assignment agent trace is not canonical JSON: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	path := s.layout.assignmentAgentTracePath(runID, assignmentID)
 	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
@@ -895,7 +895,7 @@ func loadAssignmentAgentTrace(ctx context.Context, reader complianceevidence.Art
 // and evidence digest.
 func DecodeAgentTrace(body []byte) (*AgentTrace, error) {
 	if err := complianceevidence.ValidateCanonicalJSON(body); err != nil {
-		return nil, fmt.Errorf("evaluation: decode agent trace: %w: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("evaluation: decode agent trace: %w: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	trace := &AgentTrace{}
 	if err := json.Unmarshal(body, trace); err != nil {

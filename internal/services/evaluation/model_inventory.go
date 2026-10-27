@@ -98,12 +98,12 @@ func BuildModelVariantsFromProviderInventory(ctx context.Context, entries []infe
 			return nil, fmt.Errorf("evaluation: build model variants: %w", constants.ErrMissingRequiredField)
 		}
 		if _, exists := seenTags[entry.ServedModelTag]; exists {
-			return nil, fmt.Errorf("evaluation: build model variants: duplicate served tag %q", entry.ServedModelTag)
+			return nil, fmt.Errorf("evaluation: build model variants: duplicate served tag %q: %w", entry.ServedModelTag, constants.ErrInferenceModelRegistryInvalid)
 		}
 		seenTags[entry.ServedModelTag] = struct{}{}
 		variant := modelVariantFromProviderEntry(entry)
 		if _, exists := seenIDs[variant.GetVariantId()]; exists {
-			return nil, fmt.Errorf("evaluation: build model variants: duplicate variant_id %q", variant.GetVariantId())
+			return nil, fmt.Errorf("evaluation: build model variants: duplicate variant_id %q: %w", variant.GetVariantId(), constants.ErrInferenceModelRegistryInvalid)
 		}
 		seenIDs[variant.GetVariantId()] = struct{}{}
 		if opts.RunCapabilityProbes {
@@ -185,10 +185,10 @@ func ValidateModelRegistry(freeze *ModelInventoryFreeze) error {
 			return fmt.Errorf("evaluation: validate model registry: %w", constants.ErrMissingRequiredField)
 		}
 		if _, exists := seenTags[variant.GetServedModelTag()]; exists {
-			return fmt.Errorf("evaluation: validate model registry: duplicate served tag %q", variant.GetServedModelTag())
+			return fmt.Errorf("evaluation: validate model registry: duplicate served tag %q: %w", variant.GetServedModelTag(), constants.ErrInferenceModelRegistryInvalid)
 		}
 		if _, exists := seenIDs[variant.GetVariantId()]; exists {
-			return fmt.Errorf("evaluation: validate model registry: duplicate variant_id %q", variant.GetVariantId())
+			return fmt.Errorf("evaluation: validate model registry: duplicate variant_id %q: %w", variant.GetVariantId(), constants.ErrInferenceModelRegistryInvalid)
 		}
 		seenTags[variant.GetServedModelTag()] = struct{}{}
 		seenIDs[variant.GetVariantId()] = struct{}{}
@@ -275,7 +275,7 @@ func ParseParameterCount(raw string) (uint64, error) {
 		return 0, fmt.Errorf("evaluation: parse parameter count %q: %w", raw, err)
 	}
 	if val < 0 {
-		return 0, fmt.Errorf("evaluation: parse parameter count %q: must be non-negative", raw)
+		return 0, fmt.Errorf("evaluation: parse parameter count %q: %w", raw, constants.ErrEvaluationParameterCountNegative)
 	}
 	return uint64(math.Round(val * multiplier)), nil
 }

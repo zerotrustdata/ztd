@@ -29,6 +29,6 @@ func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededReceipts(t *tes
 		"The payment service timed out after 30 seconds.",
 	} {
 		result := accuracyGrade(t, blueprint, output, nil)
-		assert.False(t, gradePassed(result.DeterministicGrades, "scenario-content"), "without a native successful history observation, output %q cannot pass", output)
+		assert.False(t, gradePassed(t, result.DeterministicGrades, "scenario-content"), "without a native successful history observation, output %q cannot pass", output)
 	}
 }

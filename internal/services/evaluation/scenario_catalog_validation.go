@@ -57,7 +57,7 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 		return err
 	}
 	if _, err := investigation.ValidateFileStates(blueprint.Gold.FileState); err != nil {
-		return scenarioContractError(blueprint, "invalid final file-state objective: %v", err)
+		return fmt.Errorf("evaluation: scenario %s: %w: invalid final file-state objective: %w", blueprint.ScenarioID, constants.ErrEvaluationScenarioContractInvalid, err)
 	}
 	if probe := blueprint.Gold.GovernedProbe; probe != nil && !models.ValidExecutableName(probe.Command) {
 		return scenarioContractError(blueprint, "verification probe must name one executable")
@@ -405,7 +405,7 @@ func validateWorkspaceFiles(blueprint ScenarioBlueprint) error {
 	}
 	for _, file := range files {
 		if err := validateWorkspaceRelPath(file.RelPath); err != nil {
-			return scenarioContractError(blueprint, "%v", err)
+			return fmt.Errorf("evaluation: scenario %s: %w: %w", blueprint.ScenarioID, constants.ErrEvaluationScenarioContractInvalid, err)
 		}
 		if _, dup := seen[file.RelPath]; dup {
 			return scenarioContractError(blueprint, "duplicate workspace file %q", file.RelPath)
@@ -457,7 +457,7 @@ func stringSet(values []string) map[string]struct{} {
 
 func validateWorkspaceRelPath(relPath string) error {
 	if relPath == "" || path.IsAbs(relPath) || path.Clean(relPath) != relPath || relPath == "." || strings.HasPrefix(relPath, "../") || strings.Contains(relPath, "\x00") {
-		return fmt.Errorf("evaluation: workspace file path %q must be a clean relative path inside the workspace", relPath)
+		return fmt.Errorf("evaluation: workspace file path %q must be a clean relative path inside the workspace: %w", relPath, constants.ErrPathValidation)
 	}
 	return nil
 }

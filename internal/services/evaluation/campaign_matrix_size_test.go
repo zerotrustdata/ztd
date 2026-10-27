@@ -8,13 +8,13 @@
 package evaluation
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -58,12 +58,13 @@ func TestCampaignControllerRunSummaryExpectsTheFrozenCatalogMatrix(t *testing.T)
 	req := testCampaignInitRequest(t)
 	req.Catalog = truncatedCatalog(t, req.Catalog, 3)
 
-	_, err := controller.InitializeCampaign(context.Background(), req)
+	ctx := testutil.Context(t)
+	_, err := controller.InitializeCampaign(ctx, req)
 	require.NoError(t, err)
-	scheduled, err := controller.ScheduleRun(context.Background(), req.RunID)
+	scheduled, err := controller.ScheduleRun(ctx, req.RunID)
 	require.NoError(t, err)
 
-	summary, err := controller.RunSummary(context.Background(), req.RunID)
+	summary, err := controller.RunSummary(ctx, req.RunID)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(scheduled), summary.ExpectedAssignment, "expected must equal what the frozen catalog schedules")
 	assert.NotEqual(t, ComputeHomogeneousMatrixSize(1), summary.ExpectedAssignment, "a three-scenario suite must not expect the default suite's matrix")

@@ -224,8 +224,8 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 			grading, err := GradeHomogeneousScenario(req, trace,
 				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "scenario-content"))
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
 }
@@ -268,8 +268,8 @@ func TestGradeHomogeneousScenario_ScenarioIDWithoutDiagnosisRubricUsesItsGoldChe
 	grading, err := GradeHomogeneousScenario(req, trace,
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)
-	assert.True(t, gradePassed(grading.DeterministicGrades, "scenario-content"))
-	assert.True(t, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+	assert.True(t, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+	assert.True(t, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 }
 
 func TestGradeHomogeneousScenario_UnknownDiagnosisRubricFailsClosed(t *testing.T) {
@@ -293,8 +293,8 @@ func TestGradeHomogeneousScenario_UnknownDiagnosisRubricFailsClosed(t *testing.T
 	grading, err := GradeHomogeneousScenario(req, trace,
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)
-	assert.False(t, gradePassed(grading.DeterministicGrades, "scenario-content"))
-	assert.False(t, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+	assert.False(t, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+	assert.False(t, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 }
 
 func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAndTrajectory(t *testing.T) {
@@ -344,17 +344,22 @@ func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAn
 			grading, err := GradeHomogeneousScenario(req, trace,
 				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			assert.Equal(t, test.wantEvidence, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+			assert.Equal(t, test.wantEvidence, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
 }
 
-func gradePassed(grades []*evalv1.DeterministicGrade, criterionID string) bool {
+// gradePassed reports whether the named deterministic criterion was emitted
+// with PASS. An absent criterion fails the test, so a negative assertion can
+// never pass vacuously; tests that expect absence must assert it explicitly.
+func gradePassed(t testing.TB, grades []*evalv1.DeterministicGrade, criterionID string) bool {
+	t.Helper()
 	for _, grade := range grades {
 		if grade.GetCriterionId() == criterionID {
 			return grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 		}
 	}
+	t.Fatalf("deterministic criterion %q was not emitted", criterionID)
 	return false
 }
 
@@ -404,8 +409,8 @@ func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T)
 				ScenarioInput: blueprint.Input, ScenarioGold: blueprint.Gold,
 			}, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "scenario-content"))
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
 }

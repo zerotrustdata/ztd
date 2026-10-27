@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
@@ -23,7 +24,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		GoldEvidenceReferences: []ScenarioGoldEvidenceReference{
 			{
 				ReferenceID:    "ref-log-port",
-				ActionType:     "MCP_CALL",
+				ActionType:     string(constants.ActionTypeMcpCall),
 				TargetResource: "history_trail",
 			},
 			{
@@ -41,11 +42,11 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		},
 	}
 	trace := &AgentTrace{
-		Input:      &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "checkout-api timeout rate 18 percent"}}},
+		Input:      &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "checkout-api timeout rate 18 percent"}}},
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2}, {Purpose: agentModelCallPurposeTribunalPrefix + "generate", LoopTurn: 2}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "event_receipt_list",
+				ToolName: constants.MCPToolEventReceiptList,
 				Success:  true,
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
@@ -57,7 +58,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 				ResultJSON: `{"action_type": "MCP_CALL", "target": "history_trail", "summary": "upstream health check expects port 8080"}`,
 			},
 			{
-				ToolName:      "read_file",
+				ToolName:      constants.MCPToolReadFile,
 				Success:       true,
 				ArgumentsJSON: `{"path": "app/service.conf"}`,
 				ResultJSON:    `{"path":"app/service.conf","content":"listen_port = 8081"}`,
@@ -110,7 +111,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "event_receipt_list",
+				ToolName: constants.MCPToolEventReceiptList,
 				Success:  true,
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
@@ -123,7 +124,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 			},
 			{
 				// Redundant read: app/service.conf was already in retrieved receipts!
-				ToolName:      "read_file",
+				ToolName:      constants.MCPToolReadFile,
 				ArgumentsJSON: `{"path": "app/service.conf"}`,
 				ResultJSON:    "listen_port = 8081",
 			},
@@ -146,17 +147,17 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName:   "event_receipt_list",
+				ToolName:   constants.MCPToolEventReceiptList,
 				Success:    true,
 				Retrieval:  &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "rcpt-1"}}},
 				ResultJSON: `{"receipts": [{"command": "df -h"}]}`,
 			},
 			{
 				// The command line, not any one argument, was already retrieved.
-				ToolName:      "run_shell_command",
+				ToolName:      constants.MCPToolRunShellCommand,
 				ArgumentsJSON: `{"command": "df", "args": ["-h"]}`,
 			},
-			{ToolName: "run_shell_command", ArgumentsJSON: `{"command": "uptime"}`},
+			{ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command": "uptime"}`},
 		},
 	}
 
@@ -202,12 +203,12 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
 	refs := []ScenarioGoldEvidenceReference{{
 		ReferenceID:    "ref-history-trail-query",
-		ActionType:     "MCP_CALL",
+		ActionType:     string(constants.ActionTypeMcpCall),
 		TargetResource: constants.MCPToolEventReceiptList,
 	}}
 	call := AgentToolCall{
 		ToolName:   constants.MCPToolEventReceiptList,
-		ActionType: "MCP_CALL",
+		ActionType: string(constants.ActionTypeMcpCall),
 		Success:    true,
 		Retrieval:  &AgentContextRetrieval{},
 		ResultJSON: `{"receipts": []}`,
@@ -231,7 +232,7 @@ func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
 			{Content: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"},
 		},
 	}
-	trace := &AgentTrace{Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"}}}}
+	trace := &AgentTrace{Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"}}}}
 	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, input), 0)
 
 	// A content-only reference the input never carried is still a miss.

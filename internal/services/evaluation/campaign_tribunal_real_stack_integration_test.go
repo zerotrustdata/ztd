@@ -231,7 +231,7 @@ func TestCampaignTribunalIntegration_TribunalCommandsWithoutRunCommandsFailsClos
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, suffix: "tribunal-no-run", replies: tribunalTurn("unused"),
 		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
-			scenario.AllowedTools = []string{"read_file"}
+			scenario.AllowedTools = []string{constants.MCPToolReadFile}
 			scenario.ForbiddenTools = nil
 			scenario.TribunalCommands = true
 			scenario.ExpectedTools = nil

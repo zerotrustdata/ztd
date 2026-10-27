@@ -49,7 +49,8 @@ func TestAgentConversation_LiteReceivesSeedMemoryAsEvidence(t *testing.T) {
 			}},
 		}},
 	}
-	messages := run.conversation()
+	messages, err := run.conversation()
+	require.NoError(t, err)
 	var evidence strings.Builder
 	for _, msg := range messages[1:] {
 		for _, part := range msg.GetParts() {

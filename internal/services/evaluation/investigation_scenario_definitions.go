@@ -120,7 +120,7 @@ var investigationRequiredConcepts = map[string][]string{
 // to a ScenarioBlueprint with gold criteria, gold evidence references, and scripted follow-ups.
 func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBlueprint, error) {
 	if s == nil {
-		return ScenarioBlueprint{}, fmt.Errorf("evaluation: nil investigation scenario")
+		return ScenarioBlueprint{}, fmt.Errorf("evaluation: nil investigation scenario: %w", constants.ErrMissingRequiredField)
 	}
 
 	workspaceFiles := make([]ScenarioWorkspaceFile, 0, len(s.Workspace))

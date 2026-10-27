@@ -13,7 +13,6 @@
 package evaluation_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -27,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/protocol"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -271,7 +271,7 @@ func TestCampaignAgentExecutorIntegration_DeclaresScenarioAllowedAndForbiddenToo
 		singleRole: true, suffix: "declared-tools",
 		replies: []fixtures.OllamaReply{{Content: "HEALTHY"}},
 		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
-			scenario.AllowedTools = []string{constants.MCPToolRunShellCommand, "read_file"}
+			scenario.AllowedTools = []string{constants.MCPToolRunShellCommand, constants.MCPToolReadFile}
 			scenario.ForbiddenTools = []string{"fs_disk_profile"}
 			scenario.TribunalCommands = true
 			scenario.ExpectedTools = nil
@@ -281,7 +281,7 @@ func TestCampaignAgentExecutorIntegration_DeclaresScenarioAllowedAndForbiddenToo
 	res := env.executeNext(t)
 
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
-	want := []string{"fs_disk_profile", "read_file", constants.MCPToolRunShellCommand}
+	want := []string{"fs_disk_profile", constants.MCPToolReadFile, constants.MCPToolRunShellCommand}
 	bodies := executorChatBodies(t, env)
 	require.Len(t, bodies, 1)
 	assert.Equal(t, want, executorToolNames(bodies[0]), "forbidden tools stay declared so restraint is observable")
@@ -325,7 +325,7 @@ func TestCampaignAgentExecutorIntegration_UndeclaredToolCallFailsWithoutDispatch
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, suffix: "undeclared", replies: shellReplies(),
 		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
-			scenario.AllowedTools = []string{"read_file"}
+			scenario.AllowedTools = []string{constants.MCPToolReadFile}
 			scenario.ExpectedTools = nil
 		},
 	})
@@ -381,13 +381,13 @@ func TestCampaignAgentExecutorIntegration_TraceRecordsExactInputThinkingAndProvi
 
 func TestCampaignAgentExecutorIntegration_MissingRequiredArgumentFailsValidationWithoutDispatch(t *testing.T) {
 	replies := []fixtures.OllamaReply{
-		{ToolCalls: []fixtures.OllamaToolCall{{ID: "empty-read", Name: "read_file", Arguments: json.RawMessage(`{"offset": 10}`)}}},
+		{ToolCalls: []fixtures.OllamaToolCall{{ID: "empty-read", Name: constants.MCPToolReadFile, Arguments: json.RawMessage(`{"offset": 10}`)}}},
 		{Content: "No file read."},
 	}
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, suffix: "missing-arg", replies: replies,
 		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
-			scenario.AllowedTools = []string{"read_file"}
+			scenario.AllowedTools = []string{constants.MCPToolReadFile}
 			scenario.ExpectedTools = nil
 		},
 	})
@@ -631,7 +631,7 @@ func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerif
 	for _, shared := range []bool{false, true} {
 		for _, providerFails := range []bool{false, true} {
 			t.Run(fmt.Sprintf("shared=%t/providerFails=%t", shared, providerFails), func(t *testing.T) {
-				var ctx context.Context
+				ctx := testutil.ContextWithTimeout(t, 5*time.Second)
 				env := newRealStackAgentRun(t, realStackOptions{
 					shared: shared, singleRole: true, suffix: "timeout-bracket",
 					replies: []fixtures.OllamaReply{
@@ -648,8 +648,6 @@ func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerif
 					},
 				})
 
-				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-				defer cancel()
 				res, ok, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
 				require.NoError(t, err)
 				require.True(t, ok)

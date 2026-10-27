@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestMetricsUseDispatchedEvidenceAndSuccessfulResultsOnly(t *testing.T) {
@@ -21,7 +22,7 @@ func TestMetricsUseDispatchedEvidenceAndSuccessfulResultsOnly(t *testing.T) {
 	require.Zero(t, computeRetrievalHitRate(trace, ref, fixture), "authored case memory was not dispatched for this role")
 	require.Zero(t, computeEvidenceBackedConclusion(trace, ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"preserve app-report"}}}}, true, fixture), "arguments and fixture-only case memory are not evidence")
 
-	trace.Input = &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "preserve app-report"}}}
+	trace.Input = &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "preserve app-report"}}}
 	require.Equal(t, 1.0, computeRetrievalHitRate(trace, ref, fixture), "actual dispatched input counts as available evidence")
 	require.Equal(t, 1.0, computeEvidenceBackedConclusion(trace, ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"preserve app-report"}}}}, true, fixture))
 
@@ -36,16 +37,16 @@ func TestMetricsIgnoreAssistantClaimsAsEvidence(t *testing.T) {
 	ref := []ScenarioGoldEvidenceReference{{ReferenceID: "claim", ExpectedContent: "port 8081"}}
 	criteria := ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"port 8081"}}}}
 	trace := &AgentTrace{
-		Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_SYSTEM", Text: "port 8081"}}},
+		Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String(), Text: "port 8081"}}},
 		HeldContext: &AgentTraceHeldContext{Messages: []AgentTraceContextMessage{
-			{Role: "INFERENCE_MESSAGE_ROLE_ASSISTANT", Text: "The config uses port 8081."},
+			{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String(), Text: "The config uses port 8081."},
 		}},
 	}
 	require.Zero(t, computeRetrievalHitRate(trace, ref, ScenarioInputFixture{}), "system and previous assistant prose are claims, not evidence")
 	require.Zero(t, computeEvidenceBackedConclusion(trace, criteria, true, ScenarioInputFixture{}))
 
 	trace.HeldContext.Messages = append(trace.HeldContext.Messages, AgentTraceContextMessage{
-		Role: "INFERENCE_MESSAGE_ROLE_TOOL", ToolResult: &AgentTraceContextToolResult{Name: constants.MCPToolReadFile, ResultJSON: `{"content":"port 8081"}`},
+		Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String(), ToolResult: &AgentTraceContextToolResult{Name: constants.MCPToolReadFile, ResultJSON: `{"content":"port 8081"}`},
 	})
 	require.Equal(t, 1.0, computeRetrievalHitRate(trace, ref, ScenarioInputFixture{}), "tool result carried in verified held conversation is evidence")
 	require.Equal(t, 1.0, computeEvidenceBackedConclusion(trace, criteria, true, ScenarioInputFixture{}))

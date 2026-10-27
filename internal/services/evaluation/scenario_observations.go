@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -378,6 +377,10 @@ func renderedCaseMemory(memory *InvestigationSeedMemory, ws ScenarioWorkspace) s
 
 // caseMemoryPath is always inside the seeded workspace and is exposed only to
 // responders with read_file. Lite receives its case notes directly.
-func (r *agentRun) caseMemoryPath() string {
-	return strings.TrimSuffix(r.workspace.Root, "/") + "/" + scenarioCaseMemoryFile
+func (r *agentRun) caseMemoryPath() (string, error) {
+	filePath, err := r.workspace.FilePath(scenarioCaseMemoryFile)
+	if err != nil {
+		return "", fmt.Errorf("evaluation: case memory path: %w", err)
+	}
+	return filePath, nil
 }

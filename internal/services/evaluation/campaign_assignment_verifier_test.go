@@ -97,6 +97,7 @@ func verifyStoredHomogeneous(t *testing.T, req AssignmentExecutionRequest, trace
 		GradingMethod: req.GradingMethod,
 		AgentTrace:    trace,
 		CatalogRef:    catalog,
+		Binding:       req.Binding,
 	})
 	require.NoError(t, err)
 	return report
@@ -157,7 +158,7 @@ func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVers
 	// The v7 trace imports COMPLETED while it is the sealed version.
 	result := storedHomogeneousResult(t, req, trace)
 	completed := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
-	require.Equal(t, completed, result.GetLifecycleStatus(), "premise: the v7 trace imports COMPLETED")
+	require.Equal(t, completed, result.GetLifecycleStatus(), "premise: the v7 trace imports COMPLETED: %s", result.GetInvalidEvidenceDetail())
 
 	// Relabel the persisted trace and re-bind the stored result to its relabelled body,
 	// as a stored result is sealed against the persisted body.

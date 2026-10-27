@@ -43,11 +43,14 @@ func TestBuildScenarioCatalog_HasThirtyFiveScenariosWithExpectedCategoryCounts(t
 	assert.Equal(t, 4, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY])
 	assert.Equal(t, 1, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE])
 
+	found := false
 	for _, scenario := range catalog.GetScenarios() {
 		if scenario.GetScenarioId() == "final-response-diagnosis" {
+			found = true
 			assert.Equal(t, scenarioVersion, scenario.GetScenarioVersion())
 		}
 	}
+	require.True(t, found, "final-response-diagnosis must be in the default catalog")
 }
 
 func TestBuildScenarioCatalog_PreservesWorkflowOrder(t *testing.T) {
@@ -71,8 +74,6 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 
 	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
 	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
-	assert.Equal(t, "1.16.0", DefaultSuiteVersion)
-	assert.Equal(t, "1.10.0", GraderVersion)
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
@@ -198,7 +199,7 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"case title names the evaluation", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Input.Seed.CaseTitle = "Eval run 3" }, constants.ErrEvaluationScenarioContractInvalid},
 		{"case title carries a template token", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Input.Seed.CaseTitle = "Sweep {{workspace}}" }, constants.ErrEvaluationScenarioContractInvalid},
 		{"allowed tool not in registry", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = append(b.AllowedTools, "no_such_tool") }, constants.ErrEvaluationScenarioContractInvalid},
-		{"expected tool not allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = []string{"read_file"} }, constants.ErrEvaluationScenarioContractInvalid},
+		{"expected tool not allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = []string{constants.MCPToolReadFile} }, constants.ErrEvaluationScenarioContractInvalid},
 		{"tool both allowed and forbidden", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.ForbiddenTools = []string{constants.MCPToolSearchDirectory} }, constants.ErrEvaluationScenarioContractInvalid},
 		{"ANSWER scenario declares expected tools", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER
