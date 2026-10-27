@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -28,8 +29,8 @@ const (
 // for one assignment run:
 //
 //  1. retrieval_hit_rate: the fraction of the scenario's gold evidence references
-//     the agent had: supplied in the scenario input, retrieved through context
-//     tools, or observed through direct tool calls.
+//     the agent had in the dispatched conversation or retrieved through a
+//     successful tool call.
 //  2. redundant_command_rate: commands or queries whose outcome was already
 //     present in retrieved history.
 //  3. steps_to_diagnosis: model turns and governed actions before the terminal response.
@@ -98,7 +99,7 @@ func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenc
 	if len(references) == 0 {
 		return 1.0
 	}
-	supplied := suppliedEvidence(input)
+	supplied := suppliedEvidence(trace)
 	hitCount := 0
 	for _, ref := range references {
 		if referenceSupplied(ref, supplied) {
@@ -115,18 +116,33 @@ func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenc
 	return float64(hitCount) / float64(len(references))
 }
 
-// suppliedEvidence returns the folded evidence the scenario input hands the
-// agent before it acts: inline context, case memory, and seeded turns.
-func suppliedEvidence(input ScenarioInputFixture) []string {
+// suppliedEvidence returns folded text from the exact conversation dispatched
+// to the model, including held conversation context.
+func suppliedEvidence(trace *AgentTrace) []string {
 	var corpus []string
-	for _, inline := range input.InlineContext {
-		corpus = append(corpus, foldContentTerm(inline.Content))
+	if trace == nil {
+		return corpus
 	}
-	if input.Seed.CaseMemory != nil {
-		corpus = append(corpus, foldContentTerm(input.Seed.CaseMemory.InvestigationSummary))
+	if trace.HeldContext != nil {
+		for _, message := range trace.HeldContext.Messages {
+			if message.Role == "INFERENCE_MESSAGE_ROLE_USER" && message.Text != "" {
+				corpus = append(corpus, foldContentTerm(message.Text))
+			} else if message.Role == "INFERENCE_MESSAGE_ROLE_TOOL" {
+				if message.Text != "" {
+					corpus = append(corpus, foldContentTerm(message.Text))
+				}
+				if message.ToolResult != nil && message.ToolResult.ResultJSON != "" {
+					corpus = append(corpus, foldContentTerm(message.ToolResult.ResultJSON))
+				}
+			}
+		}
 	}
-	for _, turn := range input.Seed.Turns {
-		corpus = append(corpus, foldContentTerm(turn.Content))
+	if trace.Input != nil {
+		for _, message := range trace.Input.Messages {
+			if (message.Role == "INFERENCE_MESSAGE_ROLE_USER" || message.Role == "INFERENCE_MESSAGE_ROLE_TOOL") && message.Text != "" {
+				corpus = append(corpus, foldContentTerm(message.Text))
+			}
+		}
 	}
 	return corpus
 }
@@ -151,9 +167,12 @@ func referenceSupplied(ref ScenarioGoldEvidenceReference, supplied []string) boo
 // context retrieval receipts, or directly through the resource, tool, or
 // command the reference names.
 func referenceObserved(ref ScenarioGoldEvidenceReference, call AgentToolCall) bool {
+	if !call.Success || call.ResultJSON == "" {
+		return false
+	}
 	resLower := strings.ToLower(call.ResultJSON)
-	argsLower := strings.ToLower(call.ArgumentsJSON)
-	cmdLower := strings.ToLower(call.Command)
+	command, _ := investigationCommand(call)
+	cmdLower := strings.ToLower(command)
 
 	if call.Retrieval != nil && len(call.Retrieval.Receipts) > 0 {
 		refMatches := true
@@ -174,21 +193,50 @@ func referenceObserved(ref ScenarioGoldEvidenceReference, call AgentToolCall) bo
 		}
 	}
 
-	contentSeen := ref.ExpectedContent == "" || strings.Contains(resLower, strings.ToLower(ref.ExpectedContent))
-	switch {
-	case ref.TargetResource != "" && strings.Contains(argsLower, strings.ToLower(ref.TargetResource)):
-		return contentSeen
-	// A reference whose target is a tool is observed by a successful call to
-	// it, even when the query it answered came back empty.
-	case ref.TargetResource != "" && call.Success && call.ToolName == ref.TargetResource &&
-		(ref.ActionType == "" || strings.EqualFold(call.ActionType, ref.ActionType)):
-		return contentSeen
-	case ref.CommandPattern != "" && (strings.Contains(cmdLower, strings.ToLower(ref.CommandPattern)) || strings.Contains(argsLower, strings.ToLower(ref.CommandPattern))):
-		return contentSeen
-	case ref.ExpectedContent != "":
-		return strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) || strings.Contains(argsLower, strings.ToLower(ref.ExpectedContent))
+	if ref.ActionType != "" && !strings.EqualFold(call.ActionType, ref.ActionType) {
+		return false
 	}
-	return false
+	if ref.TargetResource != "" {
+		if ref.TargetResource != call.ToolName {
+			requestPath, ok := toolRequestPath(call)
+			if !ok || !resourceRequestMatches(call.ToolName, requestPath, ref.TargetResource) || !strings.Contains(resLower, strings.ToLower(filepath.ToSlash(filepath.Clean(ref.TargetResource)))) {
+				return false
+			}
+		}
+	}
+	if ref.CommandPattern != "" && !strings.Contains(cmdLower, strings.ToLower(ref.CommandPattern)) {
+		return false
+	}
+	return ref.ExpectedContent == "" || strings.Contains(resLower, strings.ToLower(ref.ExpectedContent))
+}
+
+func toolRequestPath(call AgentToolCall) (string, bool) {
+	var request struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(call.ArgumentsJSON), &request); err != nil || request.Path == "" {
+		return "", false
+	}
+	return request.Path, true
+}
+
+func resourceRequestMatches(tool, requestPath, target string) bool {
+	requestPath = filepath.ToSlash(filepath.Clean(requestPath))
+	target = filepath.ToSlash(filepath.Clean(target))
+	if requestPath == target || strings.HasSuffix(requestPath, "/"+target) {
+		return true
+	}
+	if tool != constants.MCPToolSearchDirectory || filepath.IsAbs(target) {
+		return false
+	}
+	if requestPath == "." || requestPath == "" {
+		return true
+	}
+	if filepath.IsAbs(requestPath) {
+		return strings.HasSuffix(requestPath, "/"+target)
+	}
+	relative, err := filepath.Rel(requestPath, target)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
 
 func computeRedundantCommandRate(trace *AgentTrace) float64 {
@@ -286,10 +334,11 @@ func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteri
 	}
 
 	// Collect all evidence sources available to the agent
-	evidenceCorpus := suppliedEvidence(input)
+	evidenceCorpus := suppliedEvidence(trace)
 	for _, call := range trace.ToolCalls {
-		evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ResultJSON))
-		evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ArgumentsJSON))
+		if call.Success && call.ResultJSON != "" {
+			evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ResultJSON))
+		}
 	}
 	for _, clarification := range trace.Clarifications {
 		evidenceCorpus = append(evidenceCorpus, foldContentTerm(clarification.UserResponse))

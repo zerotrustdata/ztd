@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -235,6 +236,17 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 				},
 			}),
 		}},
+		Observations: []AgentScenarioObservation{{Kind: scenarioObservationSeed, Call: AgentToolCall{
+			CallID: "scenario-observation-1", ToolName: "event_receipt_list", ArgumentsJSON: `{"limit":20}`,
+			ResultJSON: `{"receipts":[]}`, Success: true, IsOperatorTool: true, ActionType: "MCP_CALL", TransactionID: "scenario-observation-1",
+			RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: &commonv1.GovernanceEnvelope{
+				Id: "scenario-observation-1", EventType: "ztd.v1.operator.command.requested", ActionType: "MCP_CALL", TransactionHash: strings.Repeat("f", 64),
+			}},
+			Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{
+				TransactionId: "scenario-observation-1", TransactionHash: strings.Repeat("f", 64), ActionType: "MCP_CALL",
+				Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: `{"receipts":[]}`,
+			}},
+		}}},
 		FinalOutput: "Read complete.",
 	}
 	body, err := SealAgentTrace(trace)

@@ -41,10 +41,12 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		},
 	}
 	trace := &AgentTrace{
+		Input:      &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "checkout-api timeout rate 18 percent"}}},
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2}, {Purpose: agentModelCallPurposeTribunalPrefix + "generate", LoopTurn: 2}},
 		ToolCalls: []AgentToolCall{
 			{
 				ToolName: "event_receipt_list",
+				Success:  true,
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -56,8 +58,9 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 			},
 			{
 				ToolName:      "read_file",
+				Success:       true,
 				ArgumentsJSON: `{"path": "app/service.conf"}`,
-				ResultJSON:    "listen_port = 8081",
+				ResultJSON:    `{"path":"app/service.conf","content":"listen_port = 8081"}`,
 			},
 		},
 	}
@@ -108,6 +111,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 		ToolCalls: []AgentToolCall{
 			{
 				ToolName: "event_receipt_list",
+				Success:  true,
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -143,6 +147,7 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 		ToolCalls: []AgentToolCall{
 			{
 				ToolName:   "event_receipt_list",
+				Success:    true,
 				Retrieval:  &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "rcpt-1"}}},
 				ResultJSON: `{"receipts": [{"command": "df -h"}]}`,
 			},
@@ -226,7 +231,7 @@ func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
 			{Content: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"},
 		},
 	}
-	trace := &AgentTrace{}
+	trace := &AgentTrace{Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"}}}}
 	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, input), 0)
 
 	// A content-only reference the input never carried is still a miss.

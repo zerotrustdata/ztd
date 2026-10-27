@@ -32,7 +32,7 @@ func TestInvestigationCatalog_LoadsAndValidatesAllPlantedFaultScenarios(t *testi
 	for i, expectedID := range expectedIDs {
 		scenario := catalog.GetScenarios()[i]
 		assert.Equal(t, expectedID, scenario.GetScenarioId())
-		assert.Equal(t, "1.2.0", scenario.GetScenarioVersion())
+		assert.Equal(t, "2.0.0", scenario.GetScenarioVersion())
 		assert.NotEmpty(t, scenario.GetPublicDescription())
 		assert.Equal(t, evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS, scenario.GetCategory())
 
@@ -55,6 +55,7 @@ func TestInvestigationBlueprint_CarriesFileStateGovernedProbeAndToolCallEvidence
 	require.Len(t, blueprints, 3)
 
 	for _, bp := range blueprints {
+		assert.Equal(t, []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}, bp.EligibleRoles, "scenario %s is scored only for Primary", bp.ScenarioID)
 		assert.NotEmpty(t, bp.Gold.FileState, "scenario %s must have FileState", bp.ScenarioID)
 		assert.NotNil(t, bp.Gold.GovernedProbe, "scenario %s must have GovernedProbe", bp.ScenarioID)
 		assert.NotEmpty(t, bp.Gold.GovernedProbe.Command, "scenario %s probe command must be non-empty", bp.ScenarioID)
@@ -107,7 +108,7 @@ func TestInvestigationGrading_ZeroToolCallsFailsTrajectoryWithNoToolCall(t *test
 	assert.False(t, gradePassed(grading.DeterministicGrades, "primary-responsibility"))
 }
 
-func TestInvestigationGrading_FixedWorkspacePassesFileStateAndGovernedProbe(t *testing.T) {
+func TestInvestigationGrading_LocalFilesystemChangesCannotReplaceSignedObservations(t *testing.T) {
 	blueprints, err := InvestigationScenarioBlueprints()
 	require.NoError(t, err)
 	var bp ScenarioBlueprint
@@ -168,10 +169,12 @@ func TestInvestigationGrading_FixedWorkspacePassesFileStateAndGovernedProbe(t *t
 	fixedContent := "# service configuration\nname = inventory-api\nlisten_port = 8080\nlog_file = app/logs/service.log\n"
 	require.NoError(t, os.WriteFile(serviceConf, []byte(fixedContent), 0o644))
 
-	// Now re-grade: file-state, governed-probe, and primary-responsibility should all pass!
+	// Host-side writes alter the fixture but do not create native Operator
+	// observations. Grading must still reject the file state and probe.
 	gradingFixed, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)
-	assert.True(t, gradePassed(gradingFixed.DeterministicGrades, "file-state"))
-	assert.True(t, gradePassed(gradingFixed.DeterministicGrades, "governed-probe"))
-	assert.True(t, gradePassed(gradingFixed.DeterministicGrades, "primary-responsibility"))
+	assert.Empty(t, trace.Observations, "local filesystem changes do not create governed evidence")
+	assert.False(t, gradePassed(gradingFixed.DeterministicGrades, "file-state"))
+	assert.False(t, gradePassed(gradingFixed.DeterministicGrades, "governed-probe"))
+	assert.False(t, gradePassed(gradingFixed.DeterministicGrades, "primary-responsibility"))
 }

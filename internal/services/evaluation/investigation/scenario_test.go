@@ -19,7 +19,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 var builtinIDs = []string{"cron-disk-fill", "wrong-path-check-script", "wrong-port-config"}
@@ -71,45 +70,6 @@ func TestFileStateCheckInvalidRegexDoesNotPanic(t *testing.T) {
 	if len(failures) != 1 || failures[0] != "not_matches (" {
 		t.Fatalf("Check() = %v, want [not_matches (]", failures)
 	}
-}
-
-func TestGovernedProbe_Run(t *testing.T) {
-	tempDir := testutil.TempDir(t)
-
-	t.Run("nil probe returns success", func(t *testing.T) {
-		var p *GovernedProbe
-		passed, out := p.Run(tempDir)
-		if !passed || out != "" {
-			t.Fatalf("expected true, empty; got %v, %q", passed, out)
-		}
-	})
-
-	t.Run("empty command returns success", func(t *testing.T) {
-		p := &GovernedProbe{}
-		passed, out := p.Run(tempDir)
-		if !passed || out != "" {
-			t.Fatalf("expected true, empty; got %v, %q", passed, out)
-		}
-	})
-
-	t.Run("successful probe execution", func(t *testing.T) {
-		p := &GovernedProbe{Command: "echo", Args: []string{"probe-ok"}}
-		passed, out := p.Run(tempDir)
-		if !passed || out != "probe-ok" {
-			t.Fatalf("expected true, probe-ok; got %v, %q", passed, out)
-		}
-	})
-
-	t.Run("failed probe execution", func(t *testing.T) {
-		p := &GovernedProbe{Command: "sh", Args: []string{"-c", "echo probe-failed; exit 1"}}
-		passed, out := p.Run(tempDir)
-		if passed {
-			t.Fatalf("expected false; got %v, %q", passed, out)
-		}
-		if !strings.Contains(out, "probe-failed") {
-			t.Fatalf("expected error output to contain probe-failed; got %q", out)
-		}
-	})
 }
 
 func TestBuiltinLoadsSortedScenarios(t *testing.T) {

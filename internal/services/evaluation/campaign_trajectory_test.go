@@ -51,7 +51,8 @@ func TestGovernedTrajectoryRejectsDenialLabelsWithoutSignedRejection(t *testing.
 	require.NoError(t, err)
 	tools := ScenarioToolExpectations{TrajectoryPolicy: evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GOVERNED, ForbiddenTools: []string{constants.MCPToolRunShellCommand}}
 	result := readTrajectory(tools, ScenarioGoldCriteria{}, view)
-	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, result.Outcome)
+	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, result.Outcome)
+	assert.False(t, result.Passed, "attempting a forbidden tool still fails without a signed denial")
 }
 
 // The shell command's constraints screen its full command line, program and

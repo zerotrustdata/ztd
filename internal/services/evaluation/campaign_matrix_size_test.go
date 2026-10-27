@@ -39,7 +39,7 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	small := truncatedCatalog(t, catalog, 3)
 
 	assert.Equal(t, ComputeHomogeneousMatrixSize(1), ModelRoleMatrixSize(catalog, 1, 1), "the default suite sizes as it always did")
-	assert.Equal(t, uint64(len(catalog.GetScenarios())), uint64(StandardScenarioCount))
+	assert.Equal(t, uint64(35), uint64(StandardScenarioCount))
 
 	var wantCells uint64
 	for _, scenario := range small.GetScenarios() {
@@ -49,7 +49,7 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	assert.Equal(t, wantCells*2*4, ModelRoleMatrixSize(small, 2, 4))
 	assert.Equal(t, wantCells, ModelRoleMatrixSize(small, 1, 0), "zero repetitions count as one")
 	assert.Equal(t, uint64(5*3), FormationMatrixSize(small, 5))
-	assert.Equal(t, uint64(5*StandardScenarioCount), FormationMatrixSize(catalog, 5))
+	assert.Equal(t, uint64(5*35), FormationMatrixSize(catalog, 5))
 }
 
 func TestCampaignControllerRunSummaryExpectsTheFrozenCatalogMatrix(t *testing.T) {

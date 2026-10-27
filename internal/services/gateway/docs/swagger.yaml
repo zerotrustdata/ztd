@@ -253,6 +253,7 @@ definitions:
     - OLLAMA_MODEL_INVENTORY
     - OLLAMA_MODEL_RELEASE
     - OLLAMA_MODEL_RESIDENCY
+    - OPERATOR_L2_TRUST_REFRESH
     - PLATFORM_ENROLLMENT_BIND_CONSENSUS
     - PLATFORM_ENROLLMENT_CREATE
     - PLATFORM_ENROLLMENT_CREATE_SESSION
@@ -260,6 +261,7 @@ definitions:
     - PLATFORM_ENROLLMENT_ISSUE
     - PLATFORM_ENROLLMENT_PERSIST_POLICY
     - PLATFORM_ENROLLMENT_REVOKE
+    - PLATFORM_ENROLLMENT_UNBIND_CONSENSUS
     - PORT_CHECK
     - PROVIDER_BOUNDARY_OBSERVATION
     - RESTORE_FILE
@@ -292,6 +294,7 @@ definitions:
     - ActionTypeOllamaModelInventory
     - ActionTypeOllamaModelRelease
     - ActionTypeOllamaModelResidency
+    - ActionTypeOperatorL2TrustRefresh
     - ActionTypePlatformEnrollmentBindConsensus
     - ActionTypePlatformEnrollmentCreate
     - ActionTypePlatformEnrollmentCreateSession
@@ -299,6 +302,7 @@ definitions:
     - ActionTypePlatformEnrollmentIssue
     - ActionTypePlatformEnrollmentPersistPolicy
     - ActionTypePlatformEnrollmentRevoke
+    - ActionTypePlatformEnrollmentUnbindConsensus
     - ActionTypePortCheck
     - ActionTypeProviderBoundaryObservation
     - ActionTypeRestoreFile
@@ -435,6 +439,7 @@ definitions:
     - ztd.v1.operator.intent.requested
     - ztd.v1.operator.intent.revoke.requested
     - ztd.v1.operator.intent.revoked
+    - ztd.v1.operator.l2_trust_refresh.requested
     - ztd.v1.operator.logs.fetch.completed
     - ztd.v1.operator.logs.fetch.failed
     - ztd.v1.operator.logs.fetch.received
@@ -514,6 +519,7 @@ definitions:
     - ztd.v1.platform.enrollment.issue.requested
     - ztd.v1.platform.enrollment.persist_policy.requested
     - ztd.v1.platform.enrollment.revoke.requested
+    - ztd.v1.platform.enrollment.unbind_consensus.requested
     - ztd.v1.platform.external.service.configured
     - ztd.v1.platform.notification.sent
     - ztd.v1.platform.sse.connection.closed
@@ -664,6 +670,7 @@ definitions:
     - EventOperatorIntentRequested
     - EventOperatorIntentRevokeRequested
     - EventOperatorIntentRevoked
+    - EventOperatorL2TrustRefreshRequested
     - EventOperatorLogsFetchCompleted
     - EventOperatorLogsFetchFailed
     - EventOperatorLogsFetchReceived
@@ -743,6 +750,7 @@ definitions:
     - EventPlatformEnrollmentIssueRequested
     - EventPlatformEnrollmentPersistPolicyRequested
     - EventPlatformEnrollmentRevokeRequested
+    - EventPlatformEnrollmentUnbindConsensusRequested
     - EventPlatformExternalServiceConfigured
     - EventPlatformNotification
     - EventPlatformSseConnectionClosed
@@ -1664,6 +1672,27 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.OperatorL2Trust:
+    properties:
+      binding_version:
+        type: integer
+      consensus_set_id:
+        type: string
+      enabled:
+        type: boolean
+      member_key_ids:
+        items:
+          type: string
+        type: array
+      quorum:
+        type: integer
+      require_distinct:
+        type: boolean
+      signers:
+        items:
+          $ref: '#/definitions/models.OperatorSigner'
+        type: array
+    type: object
   models.OperatorSessionValidationRequest:
     properties:
       cli_session_id:
@@ -1675,12 +1704,21 @@ definitions:
     type: object
   models.OperatorSessionValidationResponse:
     properties:
+      l2_trust:
+        $ref: '#/definitions/models.OperatorL2Trust'
       operator_id:
         type: string
       user_id:
         type: string
       valid:
         type: boolean
+    type: object
+  models.OperatorSigner:
+    properties:
+      key_id:
+        type: string
+      public_key_hex:
+        type: string
     type: object
   models.OverviewCounters:
     properties:
@@ -2646,6 +2684,12 @@ definitions:
         $ref: '#/definitions/operatorv1.InferenceResult'
       receipt:
         $ref: '#/definitions/operatorv1.EventReceipt'
+      request_envelope:
+        allOf:
+        - $ref: '#/definitions/commonv1.GovernanceEnvelope'
+        description: |-
+          Original admitted intent. Its canonical hash is covered by receipt, allowing
+          offline consumers to bind the signed outcome to the exact request payload.
       result_payload:
         description: |-
           result_payload is the proto-marshaled terminal operator result for event_type

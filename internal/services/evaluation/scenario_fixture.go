@@ -23,12 +23,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.9.0"
+	GraderVersion = "1.10.1"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.15.0"
+	DefaultSuiteVersion = "1.16.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -36,9 +36,9 @@ const (
 	LegacyDefaultSuiteID = "north-star-25"
 
 	scenarioSyntheticLabel     = "SYNTHETIC - controlled evaluation fixture"
-	scenarioInputSchemaVersion = "1.2.0"
+	scenarioInputSchemaVersion = "1.3.0"
 	scenarioGoldSchemaVersion  = "1.1.0"
-	scenarioInputSchemaRef     = "evaluation-scenario-input@1.2.0"
+	scenarioInputSchemaRef     = "evaluation-scenario-input@1.3.0"
 	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.1.0"
 
 	// ScenarioWorkspaceToken is the typed template variable a prompt, seed, or
@@ -104,15 +104,25 @@ type InvestigationSeedMemory struct {
 	InteractionStyle         string `json:"interaction_style,omitempty"`
 }
 
-// InvestigationSeed is the investigation a scored turn runs in. The investigation applies
-// it through its own investigation and memory services before triage; only
-// the scored turn is a real chat call. CaseTitle is a realistic case title the
-// model sees in its system prompt; it never names the evaluation.
+// InvestigationSeed is the investigation a scored turn runs in. Prior turns
+// enter the conversation; case memory is retrieved with read_file by responders
+// and injected for Lite. ToolCalls execute before the scored turn and retain
+// their actual platform outcomes separately from model-authored calls.
 type InvestigationSeed struct {
 	CaseTitle       string                   `json:"case_title"`
 	CaseDescription string                   `json:"case_description,omitempty"`
 	Turns           []InvestigationSeedTurn  `json:"turns,omitempty"`
 	CaseMemory      *InvestigationSeedMemory `json:"case_memory,omitempty"`
+	ToolCalls       []ScenarioSeedToolCall   `json:"tool_calls,omitempty"`
+}
+
+// ScenarioSeedToolCall requests an actual platform observation, never a forged
+// tool result. Outcome is success, error, deny, or pre-envelope refusal; a
+// mismatch is a setup failure rather than a model failure.
+type ScenarioSeedToolCall struct {
+	ToolName  string          `json:"tool_name"`
+	Arguments json.RawMessage `json:"arguments"`
+	Outcome   string          `json:"outcome"`
 }
 
 // ScenarioScriptedFollowUp defines one frozen scripted user response to a clarification
@@ -136,6 +146,7 @@ type ScenarioInputFixture struct {
 	WorkspaceFiles []ScenarioWorkspaceFile    `json:"workspace_files,omitempty"`
 	Seed           InvestigationSeed          `json:"seed"`
 	FollowUps      []ScenarioScriptedFollowUp `json:"follow_ups,omitempty"`
+	Budget         *investigation.Budget      `json:"budget,omitempty"`
 }
 
 // ScenarioCriterion describes one responsibility-specific scoring criterion.

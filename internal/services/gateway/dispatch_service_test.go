@@ -124,10 +124,12 @@ func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
 			Payload:    []byte("result-payload-bytes"),
 		}
 		receipt := &operatorv1.EventReceipt{TransactionId: "tx-abc-123", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+		request := &commonv1.GovernanceEnvelope{Id: "tx-abc-123", Payload: []byte("original-request")}
 		result := &DispatchResult{
-			TransactionID:  "tx-abc-123",
-			ResultEnvelope: env,
-			Receipt:        receipt,
+			RequestEnvelope: request,
+			TransactionID:   "tx-abc-123",
+			ResultEnvelope:  env,
+			Receipt:         receipt,
 		}
 		resp := result.GovernedDispatchResult()
 		assert.Equal(t, "tx-abc-123", resp.GetTransactionId())
@@ -135,6 +137,7 @@ func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
 		assert.Equal(t, string(constants.ActionTypeFsRead), resp.GetActionType())
 		assert.Equal(t, []byte("result-payload-bytes"), resp.GetResultPayload())
 		assert.Same(t, receipt, resp.GetReceipt())
+		assert.Same(t, request, resp.GetRequestEnvelope(), "offline verification needs the original hashed intent as well as the result")
 		assert.Nil(t, resp.GetInferenceResult())
 	})
 

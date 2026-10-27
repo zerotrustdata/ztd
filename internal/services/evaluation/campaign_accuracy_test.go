@@ -55,6 +55,14 @@ func TestAccuracy_HistoryRequiresRetrievedEvidence(t *testing.T) {
 	require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades), "empty retrieval cannot support a fabricated receipt")
 }
 
+func TestAccuracy_FailedHistoryDoesNotExcuseIndependentWrongChoice(t *testing.T) {
+	failed := AgentToolCall{ToolName: constants.MCPToolEventReceiptList, IsOperatorTool: true, TransactionID: "history", PolicyDecision: agentPolicyDecisionAllow,
+		Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}}, ErrorType: agentToolErrorExecution}
+	wrongChoice := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: `{"path":"."}`, Success: true, ResultJSON: `{"matches":[]}`}
+	result := accuracyGrade(t, toolSelectInvestigation(), "I searched the directory instead.", []AgentToolCall{failed, wrongChoice})
+	require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades), "independent wrong choice remains a model failure")
+}
+
 func TestAccuracy_FailedCleanupDoesNotProveMutation(t *testing.T) {
 	call := AgentToolCall{ToolName: constants.MCPToolRunShellCommand, IsOperatorTool: true, TransactionID: "cleanup", PolicyDecision: agentPolicyDecisionAllow,
 		Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, StateRootBefore: "same", StateRootAfter: "same"}}, ErrorType: agentToolErrorExecution, Error: "permission denied"}
@@ -71,7 +79,7 @@ func TestAccuracy_FailedCleanupDoesNotProveMutation(t *testing.T) {
 }
 
 func TestAccuracy_DiagnosisUsesMeaningAndReportsOverclaim(t *testing.T) {
-	qualified := "Diagnosis: The checkout API has an 18% timeout rate with upstream payments service payments.internal.example; the cause is unknown.\nConfidence: Moderate, incomplete evidence.\nRecommended action: Compare service logs.\nCustomer-safe summary: Customers have checkout failures while we investigate."
+	qualified := "Diagnosis: The check… service has an 18% timeout rate with upstream pay…; the cause is unknown.\nConfidence: Moderate, incomplete evidence.\nRecommended action: Compare service logs.\nCustomer-safe summary: Customers have checkout failures while we investigate."
 	result := accuracyGrade(t, finalResponseDiagnosis(), qualified, nil)
 	require.True(t, gradePassed(result.DeterministicGrades, "scenario-content"))
 	overclaim := strings.Replace(qualified, "Moderate, incomplete evidence.", "High. The failing dependency creates a clear causal link.", 1)

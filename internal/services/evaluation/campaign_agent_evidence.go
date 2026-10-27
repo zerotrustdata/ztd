@@ -78,6 +78,14 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 	}
 	for _, call := range trace.ToolCalls {
+		if trace.SchemaVersion == agentTraceSchemaVersion && call.Receipt != nil && !call.IsDenied() {
+			if err := verifyNativeToolCallRequest(trace, call); err != nil {
+				return agentEvidenceError("tool call "+call.CallID+" request", err)
+			}
+			if err := verifyNativeToolCallResult(trace, call); err != nil {
+				return agentEvidenceError("tool call "+call.CallID+" result", err)
+			}
+		}
 		votes, err := verifyConsensusInferenceEvidence(anchors, trace, call)
 		if err != nil {
 			return agentEvidenceError("tool call "+call.CallID+" consensus", err)
@@ -94,8 +102,40 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 			toolClaims = append(toolClaims, *outcome)
 		}
 	}
+	var scenarioClaims []oracle.Outcome
+	observationPhases := make(map[string]uint8)
+	for _, observation := range trace.Observations {
+		if err := verifyScenarioObservation(trace, observation); err != nil {
+			return agentEvidenceError("scenario observation", err)
+		}
+		votes, err := verifyConsensusInferenceEvidence(anchors, trace, observation.Call)
+		if err != nil {
+			return agentEvidenceError("scenario observation consensus", err)
+		}
+		consensusClaims = append(consensusClaims, votes...)
+		outcome, err := verifyToolCallEvidence(anchors, trace.Data, observation.Call)
+		if err != nil {
+			return agentEvidenceError("scenario observation receipt", err)
+		}
+		if outcome != nil && outcome.Commitment != nil {
+			scenarioClaims = append(scenarioClaims, *outcome)
+		}
+		// Seed evidence precedes agent activity; final checks follow it. Include
+		// the observation's own consensus calls in the same phase.
+		phase := uint8(2)
+		if observation.Kind == scenarioObservationSeed {
+			phase = 0
+		}
+		for _, vote := range votes {
+			observationPhases[vote.Commitment.Hash] = phase
+		}
+		if outcome != nil && outcome.Commitment != nil {
+			observationPhases[outcome.Commitment.Hash] = phase
+		}
+	}
 	claims := append(slices.Clone(modelClaims), toolClaims...)
 	claims = append(claims, consensusClaims...)
+	claims = append(claims, scenarioClaims...)
 	ordered, err := oracle.OrderLedger(before, after, append(claims, observationClaims...))
 	if err == nil {
 		err = oracle.VerifyBracket(before, after, ordered)
@@ -105,10 +145,21 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	}
 	// Grading reads each role's calls in trace order, so that order must be
 	// the order the ledger committed them in.
-	for _, claims := range [][]oracle.Outcome{modelClaims, toolClaims} {
+	for _, claims := range [][]oracle.Outcome{modelClaims, toolClaims, scenarioClaims} {
 		if !inLedgerOrder(ordered, claims) {
 			return agentEvidenceError("ledger bracket", fmt.Errorf("trace records claimed executions out of ledger order: %w", constants.ErrConformanceLedgerGap))
 		}
+	}
+	var phase uint8
+	for _, outcome := range ordered {
+		next, observation := observationPhases[outcome.Commitment.Hash]
+		if !observation {
+			next = 1
+		}
+		if next < phase {
+			return agentEvidenceError("ledger bracket", fmt.Errorf("scenario observations do not bracket agent activity: %w", constants.ErrConformanceLedgerGap))
+		}
+		phase = next
 	}
 	return nil
 }
@@ -436,7 +487,7 @@ func verifyV7ModelCallTranscript(call AgentModelCall, result *operatorv1.Inferen
 // verified outcome, or nil when the call has no receipt.
 func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentToolCall) (*oracle.Outcome, error) {
 	if call.Receipt == nil || call.Receipt.EventReceipt == nil {
-		if call.TransactionID != "" || call.PolicyDecision == agentPolicyDecisionAllow {
+		if call.Success || call.TransactionID != "" || call.PolicyDecision == agentPolicyDecisionAllow {
 			return nil, fmt.Errorf("admitted call has no signed receipt: %w", constants.ErrEventReceiptMissing)
 		}
 		return nil, nil
@@ -461,7 +512,7 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, c
 			return nil, fmt.Errorf("executed receipt on a call recorded as %q: %w", call.PolicyDecision, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
 	case oracle.OutcomeRejected:
-		if call.PolicyDecision != agentPolicyDecisionDeny {
+		if call.Success || call.PolicyDecision != agentPolicyDecisionDeny {
 			return nil, fmt.Errorf("rejected receipt on a call recorded as %q: %w", call.PolicyDecision, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
 	default:

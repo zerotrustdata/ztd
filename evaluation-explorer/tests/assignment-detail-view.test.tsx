@@ -352,10 +352,10 @@ describe('AssignmentDetailView', () => {
 
     expect(askedHeading).toBeInTheDocument();
     expect(screen.getByText('User prompt sent to the agent.')).toBeInTheDocument();
-    expect(screen.getByText('Report the HTTP status code from the synthetic curl summary below.')).toBeInTheDocument();
+    expect(screen.getByText('Report the HTTP status code from the curl summary below.')).toBeInTheDocument();
 
     expect(providedHeading).toBeInTheDocument();
-    expect(screen.getByText('synthetic-curl-summary')).toBeInTheDocument();
+    expect(screen.getByText('curl-summary')).toBeInTheDocument();
     expect(screen.getByText(/curl -s -o \/dev\/null -w '%\{http_code\}'/)).toBeInTheDocument();
 
     expect(didHeading).toBeInTheDocument();
@@ -377,7 +377,7 @@ describe('AssignmentDetailView', () => {
 
     expect(screen.getByRole('heading', { name: 'What the model is asked' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'What the model was provided' })).toBeInTheDocument();
-    expect(screen.getByText('synthetic-app-log')).toBeInTheDocument();
+    expect(screen.getByText('app-log')).toBeInTheDocument();
     expect(screen.getByText(/checkout payment gateway timeout after 30s/)).toBeInTheDocument();
     expect(screen.getByText(/always offered the full production tool set/i)).toBeInTheDocument();
   });

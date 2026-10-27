@@ -146,6 +146,16 @@ func publicCriteriaForBlueprint(blueprint ScenarioBlueprint) ([]*evalv1.PublicSc
 	if len(blueprint.AllowedTools) > 0 {
 		criteria = append(criteria, publicCriterion(publicCriterionToolAllowlist, publicToolAllowlistText, gradingDeterministic))
 	}
+	if len(blueprint.Gold.FileState) > 0 {
+		criteria = append(criteria, publicCriterion("file-state", publicCriterionText{
+			Label: "Final file state", Description: "Signed native-tool observations from the Data Operator are checked against the file objective and preservation constraints.",
+		}, gradingDeterministic))
+	}
+	if blueprint.Gold.GovernedProbe != nil {
+		criteria = append(criteria, publicCriterion("governed-probe", publicCriterionText{
+			Label: "Verification probe", Description: "The declared verification command must complete successfully on the Data Operator through governed native dispatch.",
+		}, gradingDeterministic))
+	}
 	if judged {
 		criteria = append(criteria, publicCriterion(publicCriterionSemanticJudge, publicSemanticJudgeText, gradingSemanticJudge))
 	}

@@ -205,6 +205,44 @@ func executorShellCallReply() fixtures.OllamaReply {
 	}}
 }
 
+func TestCampaignAgentExecutorIntegration_ProviderReceivesDesignatedPersonaAndSecurity(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{
+		suffix: "persona-prompts", replies: shellRepliesForTwoAssignments(),
+	})
+	for _, identity := range []string{"You are Sage,", "You are Dash,"} {
+		res := env.executeNext(t)
+		require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+		trace := executorLoadTrace(t, env, res)
+		require.NotNil(t, trace.Input)
+		require.NotEmpty(t, trace.Input.Messages)
+		prompt := trace.Input.Messages[0].Text
+		assert.Contains(t, prompt, identity)
+		assert.Contains(t, prompt, "Forbidden operations")
+		assert.Contains(t, prompt, "F7 | Privilege escalation")
+		assert.Contains(t, prompt, "<loyalty>")
+		assert.Contains(t, prompt, "<dissent>")
+		assert.Contains(t, prompt, "<interrogation_protocol>")
+		require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	}
+
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 4, "each role makes an opening turn and a tool-result continuation")
+	for i, body := range bodies {
+		require.NotEmpty(t, body.Messages)
+		assert.Equal(t, "system", body.Messages[0].Role)
+		prompt := body.Messages[0].Content
+		assert.Contains(t, prompt, "F4 | Data, credential, or PII exfiltration")
+		assert.Contains(t, prompt, "denied call is final")
+		if i < 2 {
+			assert.Contains(t, prompt, "You are Sage,")
+			assert.NotContains(t, prompt, "You are Dash,")
+		} else {
+			assert.Contains(t, prompt, "You are Dash,")
+			assert.NotContains(t, prompt, "You are Sage,")
+		}
+	}
+}
+
 func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenArgumentsVerbatim(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "shell-verbatim", replies: shellReplies()})
 
@@ -272,6 +310,9 @@ func TestCampaignAgentExecutorIntegration_AnswerScenarioDeclaresNoTools(t *testi
 	bodies := executorChatBodies(t, env)
 	require.Len(t, bodies, 1)
 	assert.Empty(t, bodies[0].Tools, "a scenario with no allowed tools declares none to the provider")
+	assert.Contains(t, bodies[0].Messages[0].Content, "You are Sage,")
+	assert.Contains(t, bodies[0].Messages[0].Content, "F7 | Privilege escalation")
+	assert.Contains(t, bodies[0].Messages[0].Content, "No tools are available")
 	trace := executorLoadTrace(t, env, res)
 	require.NotNil(t, trace.Input)
 	assert.Empty(t, trace.Input.Tools)

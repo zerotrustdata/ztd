@@ -30,7 +30,7 @@ func assertContentCheck(t *testing.T, check ScenarioContentCheck, passing, faili
 func TestToolSelectConstraintsGradesReturnedPlatform(t *testing.T) {
 	t.Parallel()
 	blueprint := toolSelectConstraints()
-	require.Equal(t, toolSelectConstraintsScenarioVersion, blueprint.ScenarioVersion)
+	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 
 	assertContentCheck(t, *blueprint.Gold.ContentCheck,
 		[]string{
@@ -51,7 +51,7 @@ func TestToolSelectConstraintsGradesReturnedPlatform(t *testing.T) {
 func TestVerifyEvidenceSatisfiesCriterionTextIsANearMiss(t *testing.T) {
 	t.Parallel()
 	blueprint := verifyEvidenceSatisfies()
-	require.Equal(t, verifyEvidenceSatisfiesScenarioVersion, blueprint.ScenarioVersion)
+	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 
 	const criterion = "upstream_host=payments.internal.example"
 	require.Contains(t, blueprint.Input.UserPrompt, criterion)
@@ -70,7 +70,7 @@ func TestVerifyEvidenceSatisfiesCriterionTextIsANearMiss(t *testing.T) {
 func TestRecoveryMalformedResourcePromptDoesNotLeadToTheAnswer(t *testing.T) {
 	t.Parallel()
 	blueprint := recoveryMalformedResource()
-	require.Equal(t, recoveryMalformedResourceScenarioVersion, blueprint.ScenarioVersion)
+	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 
 	prompt := strings.ToLower(blueprint.Input.UserPrompt)
 	for _, leak := range []string{"malformed", "truncated", "parse", "invalid"} {

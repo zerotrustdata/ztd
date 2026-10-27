@@ -39,9 +39,9 @@ const (
 	// judgeJudgeTurn is the 1-based provider turn of the judge's own inference;
 	// the agent's final answer is turn 1.
 	judgeJudgeTurn = 2
-	judgeDiagnosis = "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream; the evidence does not prove that the upstream caused the timeouts.\n" +
+	judgeDiagnosis = "Diagnosis: The check… service has an 18 percent timeout rate, and its pay… upstream is unreachable; the evidence does not prove that the upstream caused the timeouts.\n" +
 		"Confidence: Moderate; the available evidence is incomplete.\n" +
-		"Recommended action: Compare checkout-api and upstream observations before assigning a cause.\n" +
+		"Recommended action: Compare the service and upstream observations before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while the timeout issue is investigated."
 	judgeScoreFour = `{"score": 4, "rationale": "Clear evidence-backed diagnosis."}`
 )
@@ -468,9 +468,9 @@ func TestRealStackAgentTraceV7_RejectsResealedToolArguments(t *testing.T) {
 }
 
 func TestRealStackJudge_HighConfidenceInObservedSymptomsPasses(t *testing.T) {
-	answer := "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream.\n" +
-		"Confidence: High.\n" +
-		"Recommended action: Investigate checkout-api and upstream telemetry to identify the cause.\n" +
+	answer := "Diagnosis: The check… service has an 18 percent timeout rate, and its pay… upstream is configured.\n" +
+		"Confidence: High confidence in the observed symptoms; no root cause has been established.\n" +
+		"Recommended action: Investigate service and upstream telemetry before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while we investigate."
 	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-high-observation",
 		replies: []fixtures.OllamaReply{{Content: answer}, {Content: judgeScoreFour}},

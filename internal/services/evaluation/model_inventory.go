@@ -26,7 +26,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const StandardScenarioCount = 27
+const StandardScenarioCount = DefaultSuiteScenarioCount
 
 // ModelInventoryFreeze is the immutable model registry derived from
 // a complete provider inventory query and optional capability probes.

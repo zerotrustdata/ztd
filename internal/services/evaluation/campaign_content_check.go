@@ -43,6 +43,13 @@ func foldContentTerm(s string) string {
 	return b.String()
 }
 
+// foldSemanticContentTerm treats the typographic ellipsis and three ASCII
+// periods as the same masking marker for semantic term checks. Exact token and
+// label checks deliberately keep their byte-sensitive matching below.
+func foldSemanticContentTerm(s string) string {
+	return foldContentTerm(strings.ReplaceAll(s, "...", "…"))
+}
+
 // evaluateContentCheck evaluates the designated role's final response against
 // the scenario's typed content check. Returns whether the output passed and the
 // detail of the first failing constraint rule.
@@ -99,11 +106,11 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 
 	// RequiredTerms check (term-folded; each group needs at least one hit)
 	if len(check.RequiredTerms) > 0 {
-		outputFolded := foldContentTerm(trimmed)
+		outputFolded := foldSemanticContentTerm(trimmed)
 		for _, group := range check.RequiredTerms {
 			hit := false
 			for _, term := range group {
-				if strings.Contains(outputFolded, foldContentTerm(ws.Render(term))) {
+				if strings.Contains(outputFolded, foldSemanticContentTerm(ws.Render(term))) {
 					hit = true
 					break
 				}
@@ -116,10 +123,10 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 
 	// ForbiddenTerms check (term-folded)
 	if len(check.ForbiddenTerms) > 0 {
-		outputFolded := foldContentTerm(trimmed)
+		outputFolded := foldSemanticContentTerm(trimmed)
 		for _, term := range check.ForbiddenTerms {
 			rendered := ws.Render(term)
-			if strings.Contains(outputFolded, foldContentTerm(rendered)) {
+			if strings.Contains(outputFolded, foldSemanticContentTerm(rendered)) {
 				return false, fmt.Sprintf("contains forbidden term %q", rendered)
 			}
 		}

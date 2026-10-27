@@ -9,7 +9,6 @@ package investigation
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,13 +16,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os/exec"
 	"path"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/zerotrustdata/ztd/eval/investigations"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -136,28 +133,6 @@ func (f FileState) Check(content string, found bool) []string {
 type GovernedProbe struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
-}
-
-// Run executes the governed probe command in dir with a bounded timeout.
-// It returns whether the command succeeded and its combined output (or failure message).
-func (p *GovernedProbe) Run(dir string) (bool, string) {
-	if p == nil || p.Command == "" {
-		return true, ""
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, p.Command, p.Args...)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
-	out := strings.TrimSpace(string(output))
-	if err != nil {
-		if out == "" {
-			return false, fmt.Sprintf("probe command %s failed: %v", p.Command, err)
-		}
-		return false, fmt.Sprintf("probe command %s failed: %s (%v)", p.Command, out, err)
-	}
-	return true, out
 }
 
 type AnswerConcepts struct {
@@ -299,15 +274,29 @@ func (o Objective) validate() (map[string]bool, error) {
 	if o.GovernedProbe != nil && !models.ValidExecutableName(o.GovernedProbe.Command) {
 		return nil, invalid("objective.governed_probe.command must be one executable name with no whitespace")
 	}
-	paths := make(map[string]bool, len(o.FileState))
-	for i, state := range o.FileState {
-		if err := state.validate(i); err != nil {
-			return nil, err
-		}
-		paths[state.Path] = true
+	paths, err := ValidateFileStates(o.FileState)
+	if err != nil {
+		return nil, err
 	}
 	if err := o.AnswerConcepts.validate(); err != nil {
 		return nil, err
+	}
+	return paths, nil
+}
+
+// ValidateFileStates checks the shared final-state contract and returns its
+// paths for canary validation. Campaign catalogs use the same predicates as
+// planted investigations.
+func ValidateFileStates(states []FileState) (map[string]bool, error) {
+	paths := make(map[string]bool, len(states))
+	for i, state := range states {
+		if err := state.validate(i); err != nil {
+			return nil, err
+		}
+		if paths[state.Path] {
+			return nil, invalid("objective.file_state[%d].path %q is duplicated", i, state.Path)
+		}
+		paths[state.Path] = true
 	}
 	return paths, nil
 }

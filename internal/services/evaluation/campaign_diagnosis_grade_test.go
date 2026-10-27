@@ -218,7 +218,7 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 			trace := &AgentTrace{
 				RunID: "run-diagnosis", AssignmentID: "assign-diagnosis", DesignatedRole: "primary",
 				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-diagnosis", ResultDigest: "digest-diagnosis"}},
-				FinalOutput: test.output,
+				FinalOutput: maskV4DiagnosisIdentifiers(test.output),
 			}
 
 			grading, err := GradeHomogeneousScenario(req, trace,
@@ -228,6 +228,12 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
+}
+
+func maskV4DiagnosisIdentifiers(output string) string {
+	output = strings.ReplaceAll(output, "checkout-api", "check…")
+	output = strings.ReplaceAll(output, "checkout API", "check…")
+	return strings.ReplaceAll(output, "payments.internal.example", "pay…")
 }
 
 func diagnosisPromptEcho(input ScenarioInputFixture) string {
@@ -374,14 +380,24 @@ func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			blueprint := finalResponseDiagnosis()
 			blueprint.Gold.ContentCheck.DiagnosisRubric = test.rubric
+			if test.rubric != ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+				// A current catalog fixture also contains V4 masking checks. Remove
+				// those when simulating a frozen V1-V3 campaign contract.
+				blueprint.Gold.ContentCheck.RequiredTerms = [][]string{{"checkout-api"}}
+				blueprint.Gold.ContentCheck.ForbiddenTerms = nil
+			}
 			blueprint.Input.ScenarioID = blueprint.ScenarioID
 			blueprint.Gold.ScenarioID = blueprint.ScenarioID
 			require.NoError(t, validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck))
+			output := "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. " + test.claim +
+				"\nConfidence: " + test.confidence + "\nRecommended action: Investigate both services.\nCustomer-safe summary: Customers cannot complete checkout while we investigate."
+			if test.rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+				output = maskV4DiagnosisIdentifiers(output)
+			}
 			trace := &AgentTrace{
 				RunID: "run-frozen-rubric", AssignmentID: "assign-frozen-rubric", DesignatedRole: "primary",
-				ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}},
-				FinalOutput: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. " + test.claim +
-					"\nConfidence: " + test.confidence + "\nRecommended action: Investigate both services.\nCustomer-safe summary: Customers cannot complete checkout while we investigate.",
+				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}},
+				FinalOutput: output,
 			}
 			grading, err := GradeHomogeneousScenario(AssignmentExecutionRequest{
 				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: trace.AssignmentID, RunId: trace.RunID},

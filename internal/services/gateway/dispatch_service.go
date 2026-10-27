@@ -237,6 +237,7 @@ type DispatchRequest struct {
 // the verified complete result and its digest was verified too.
 type DispatchResult struct {
 	ConsensusInferences []*operatorv1.ConsensusVoteInference
+	RequestEnvelope     *commonv1.GovernanceEnvelope
 	TransactionID       string
 	ResultEnvelope      *commonv1.GovernanceEnvelope
 	Receipt             *operatorv1.EventReceipt
@@ -408,6 +409,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 	defer func() {
 		if result != nil {
 			result.ConsensusInferences = consensusInferences
+			result.RequestEnvelope = env
 		}
 		err = governance.WithConsensusInferences(consensusInferences, err)
 	}()
@@ -1096,6 +1098,7 @@ func (r *DispatchResult) GovernedDispatchResult() *operatorv1.GovernedDispatchRe
 		InferenceResult:     r.InferenceResult,
 		Receipt:             r.Receipt,
 		ConsensusInferences: r.ConsensusInferences,
+		RequestEnvelope:     r.RequestEnvelope,
 	}
 	if r.ResultEnvelope != nil {
 		out.EventType = r.ResultEnvelope.GetEventType()

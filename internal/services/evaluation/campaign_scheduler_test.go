@@ -34,7 +34,7 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, 82)
+	assert.Len(t, assignments, 112)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
@@ -144,7 +144,7 @@ func TestBuildHomogeneousAssignmentMatrix_PreservesFilteredCatalogOrderAfterRelo
 	require.NoError(t, err)
 	// A custom suite's declared order is authoritative even when it differs
 	// from the built-in workflow and the filter is supplied in reverse order.
-	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[26]}
+	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[34]}
 	catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(catalog)
 	require.NoError(t, err)
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{

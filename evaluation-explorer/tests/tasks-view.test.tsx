@@ -55,7 +55,7 @@ describe('TasksView', () => {
   it('lists every catalog task grouped by category on the overview', () => {
     renderTasks();
 
-    expect(SCENARIO_TASKS).toHaveLength(27);
+    expect(SCENARIO_TASKS).toHaveLength(35);
     expect(screen.getByRole('heading', { name: 'Task catalog' })).toBeInTheDocument();
     expect(screen.getByText(SCENARIO_CATALOG_ID)).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'View full definition' })).toHaveLength(SCENARIO_TASKS.length);

@@ -180,7 +180,7 @@ func tribunalExpectedApprovedArguments(trace *evaluation.AgentTrace) string {
 	return (models.RunShellCommandRequest{
 		Command: "echo", Args: []string{"HEALTHY"},
 		Timeout:    constants.DefaultShellCommandTimeout,
-		WorkingDir: trace.Workspace.OperatorWorkingDirectory,
+		WorkingDir: trace.Workspace.Root,
 	}).CanonicalJSON()
 }
 
@@ -351,9 +351,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 
 	conversation, err := trace.Conversation()
 	require.NoError(t, err)
-	for _, message := range conversation {
-		assert.NotContains(t, message.Text, "Tribunal", "Tribunal calls are not conversation turns")
-	}
+	assert.Len(t, conversation, len(trace.Input.Messages)+3, "only two agent turns and one tool result join the opening conversation")
 
 	actions := res.GetGovernedActions()
 	require.Len(t, actions, 10, "the turn, its tool call's Tribunal inferences, the tool call, then the next turn")
@@ -689,6 +687,14 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
 	assert.Equal(t, []string{primary.GetServedModelTag(), assistant.GetServedModelTag(), assistant.GetServedModelTag()}, tribunalWireModels(t, env),
 		"the turn runs on the primary tag; every Tribunal member runs on the assistant tag")
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 3)
+	assert.Contains(t, bodies[0].Messages[0].Content, "You are Sage,")
+	assert.Contains(t, bodies[0].Messages[0].Content, "F7 | Privilege escalation")
+	for _, body := range bodies[1:] {
+		assert.Contains(t, body.Messages[0].Content, "You are a member of the Tribunal")
+		assert.NotContains(t, body.Messages[0].Content, "You are Dash,", "Assistant-tier Tribunal calls retain their member persona")
+	}
 	trace := executorLoadTrace(t, env, res)
 	require.Len(t, trace.ModelCalls, 3)
 	assert.Equal(t, primary.GetVariantId(), trace.ModelCalls[0].ModelVariantID)

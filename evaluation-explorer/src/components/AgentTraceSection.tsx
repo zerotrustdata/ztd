@@ -14,6 +14,7 @@ import {
   type AgentTrace,
   type AgentTraceHeldContext,
   type AgentTraceModelCall,
+  type AgentTraceObservation,
   type AgentTraceProto,
   type AgentTraceRuntime,
   type AgentTraceToolCall,
@@ -100,12 +101,15 @@ function Receipt({ receipt, title = 'Signed receipt' }: { receipt: AgentTracePro
   );
 }
 
-function ToolCall({ call }: { call: AgentTraceToolCall }) {
-  const outcome = call.success ? 'Succeeded' : call.error_type ? `Failed · ${label(call.error_type)}` : 'Failed';
+function ToolCall({ call, observationKind }: { call: AgentTraceToolCall; observationKind?: string }) {
+  const outcome = call.ingress_refusal_code !== undefined
+    ? `Pre-envelope refusal · code ${call.ingress_refusal_code}`
+    : call.success ? 'Succeeded' : call.error_type ? `Failed · ${label(call.error_type)}` : 'Failed';
   return (
     <li className={`transcript-tool-call ${call.success ? 'transcript-tool-call-ok' : 'transcript-tool-call-failed'}`}>
       <div className="transcript-tool-call-header">
         <code className="transcript-tool-name">{call.tool_name}</code>
+        {observationKind ? <span className="agent-trace-chip">Harness · {label(observationKind)}</span> : null}
         <span className={`transcript-outcome ${call.success ? 'tone-ok' : 'tone-critical'}`}>
           <span aria-hidden="true">{call.success ? '✓' : '✕'}</span> {outcome}
         </span>
@@ -117,6 +121,7 @@ function ToolCall({ call }: { call: AgentTraceToolCall }) {
         <TextBlock title="Approved arguments" text={call.approved_arguments_json} copyLabel={`${call.tool_name} approved arguments`} json />
       ) : null}
       {call.command ? <TextBlock title="Resolved command" text={call.command} copyLabel={`${call.tool_name} command`} /> : null}
+      {call.request_envelope ? <TextBlock title="Admitted request envelope" text={JSON.stringify(call.request_envelope, null, 2)} copyLabel={`${call.tool_name} request envelope`} json /> : null}
       {call.result_json ? <TextBlock title="Tool result" text={call.result_json} copyLabel={`${call.tool_name} result`} json /> : null}
       {call.error ? <TextBlock title="Error" text={call.error} copyLabel={`${call.tool_name} error`} /> : null}
       {call.receipt ? <Receipt receipt={call.receipt} /> : null}
@@ -161,6 +166,19 @@ function ModelCall({ call, index, toolCalls }: { call: AgentTraceModelCall; inde
       ) : null}
       {call.receipt ? <Receipt receipt={call.receipt} title="Inference receipt" /> : null}
     </li>
+  );
+}
+
+function HarnessObservations({ observations }: { observations: AgentTraceObservation[] }) {
+  if (observations.length === 0) return null;
+  return (
+    <div className="model-response-block">
+      <div className="model-response-header"><span className="model-response-label">Harness observations ({observations.length})</span></div>
+      <p className="task-section-note">These governed calls were made by the evaluation harness. They are evidence for the scenario and are not scored model tool calls.</p>
+      <ol className="transcript-tool-calls">
+        {observations.map(({ kind, call }, index) => <ToolCall key={`${kind}-${call.call_id}-${index}`} call={call} observationKind={kind} />)}
+      </ol>
+    </div>
   );
 }
 
@@ -256,6 +274,8 @@ function TraceBody({ trace }: { trace: AgentTrace }) {
           <p className="model-response-empty">Exact input not captured ({trace.schema_version}).</p>
         )}
       </div>
+
+      {trace.observations ? <HarnessObservations observations={trace.observations} /> : null}
 
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Turns ({trace.model_calls.length})</span></div>

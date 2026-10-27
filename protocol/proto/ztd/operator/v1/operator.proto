@@ -905,6 +905,9 @@ message GovernedDispatchResult {
   InferenceResult inference_result = 5;
   EventReceipt receipt = 6;
   repeated ConsensusVoteInference consensus_inferences = 7;
+  // Original admitted intent. Its canonical hash is covered by receipt, allowing
+  // offline consumers to bind the signed outcome to the exact request payload.
+  ztd.common.v1.GovernanceEnvelope request_envelope = 8;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified

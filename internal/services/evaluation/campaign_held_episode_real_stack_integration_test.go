@@ -275,6 +275,9 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 	}
 	require.NoError(t, json.Unmarshal(chat[2], &repTwoFirst))
 	require.Len(t, repTwoFirst.Messages, len(held)+1, "the model receives the whole held investigation, then the scenario prompt once more")
+	assert.Equal(t, "system", repTwoFirst.Messages[0].Role)
+	assert.Contains(t, repTwoFirst.Messages[0].Content, "You are Sage,")
+	assert.Contains(t, repTwoFirst.Messages[0].Content, "F7 | Privilege escalation")
 	for i, message := range held {
 		if message.ToolResult != nil {
 			assert.Equal(t, "tool", repTwoFirst.Messages[i].Role, "held tool result %d reaches the wire as a tool message", i)
@@ -289,6 +292,8 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 	assert.Equal(t, first.GetAssignmentId(), secondTrace.HeldContext.AssignmentID, "the held context names repetition 1")
 	assert.Equal(t, uint32(1), secondTrace.HeldContext.Repetition)
 	assert.Equal(t, firstTrace.EvidenceDigest, secondTrace.HeldContext.EvidenceDigest)
+	assert.NotEmpty(t, firstTrace.InvestigationID)
+	assert.Equal(t, firstTrace.InvestigationID, secondTrace.InvestigationID, "a held repetition remains inside the same investigation scope")
 	assert.Equal(t, held, secondTrace.HeldContext.Messages, "the held conversation is recorded verbatim")
 	assert.Equal(t, firstTrace.Workspace, secondTrace.Workspace, "the repetition continues in the previous workspace")
 	assert.Equal(t, firstTrace.Workspace, secondTrace.HeldContext.Workspace)

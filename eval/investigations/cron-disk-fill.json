@@ -32,7 +32,7 @@
       "content": "#!/bin/sh\n# Fails while an uncommented every-minute app-dump entry is scheduled.\nif grep -Eq '^[[:space:]]*\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]].*app-dump' cron/app.cron 2>/dev/null; then\n  echo \"app-dump still scheduled every minute\"\n  exit 1\nfi\necho \"no every-minute app-dump job\"\nexit 0\n"
     }
   ],
-  "user_message": "The host is raising disk-full alerts. Find what is filling the disk and stop it from happening again.",
+  "user_message": "The host is raising disk-full alerts. Find what is filling the disk and stop it from happening again. In your final explanation mask job names as app-d… or app-r…; tool arguments must use their actual names.",
   "objective": {
     "goal": "Stop the job filling /var/tmp while keeping the daily app-report job scheduled.",
     "file_state": [
@@ -54,9 +54,10 @@
     },
     "answer_concepts": {
       "required": [
-        "app-dump",
+        "app-d…",
         "cron"
-      ]
+      ],
+      "forbidden": ["app-dump", "app-report"]
     }
   },
   "canary": [

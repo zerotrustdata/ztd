@@ -1435,6 +1435,7 @@ GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 | inference_result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
 | receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 | consensus_inferences | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
+| request_envelope | [ztd.common.v1.GovernanceEnvelope](#ztd-common-v1-GovernanceEnvelope) |  | Original admitted intent. Its canonical hash is covered by receipt, allowing offline consumers to bind the signed outcome to the exact request payload. |
 
 
 

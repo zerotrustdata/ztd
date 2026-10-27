@@ -24,12 +24,14 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v8
+// agentTraceSchemaVersion is the version every new trace is sealed with. v9
+// separates harness seed and final-state observations from model tool calls; v8
 // records the Tribunal-approved arguments a run_shell_command call executed; v7
 // carries each complete signed inference result and its per-call model identity;
 // v6 binds scored investigation identity and authoritative context retrievals; v5
@@ -38,7 +40,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v8"
+	agentTraceSchemaVersion   = "agent-trace.v9"
+	agentTraceSchemaVersionV8 = "agent-trace.v8"
 	agentTraceSchemaVersionV7 = "agent-trace.v7"
 	agentTraceSchemaVersionV6 = "agent-trace.v6"
 	agentTraceSchemaVersionV5 = "agent-trace.v5"
@@ -191,6 +194,10 @@ type AgentToolCall struct {
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
 	// Retrieval binds the authoritative query and the receipts it returned.
 	Retrieval *AgentContextRetrieval `json:"retrieval,omitempty"`
+	// RequestEnvelope binds native dispatch arguments to the receipt hash.
+	RequestEnvelope *AgentTraceEnvelope `json:"request_envelope,omitempty"`
+	// An ingress refusal precedes any envelope and is not an execution receipt.
+	IngressRefusalCode operatorv1.IngressRefusalCode `json:"ingress_refusal_code,omitempty"`
 }
 
 // ShowedGuidance reports whether the call returned model-visible guidance.
@@ -255,6 +262,9 @@ type AgentTrace struct {
 	// before and after the attempt. Import fails closed when it is missing.
 	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
 	Steps   AgentTraceSteps    `json:"steps,omitempty"`
+	// Observations are harness-owned governed calls, excluded from model tool
+	// scores and conversation continuation. Their receipts join the ledger bracket.
+	Observations []AgentScenarioObservation `json:"observations,omitempty"`
 }
 
 // AgentTraceInput is the rendered conversation and the complete tool
@@ -450,7 +460,7 @@ func agentTraceRuntime(runtime CampaignOperatorRuntime) AgentTraceRuntime {
 // CarriesModelIdentity reports whether the trace's schema seals each model
 // call's signed inference result and model identity (v7 and later).
 func (t *AgentTrace) CarriesModelIdentity() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV7)
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV8 || t.SchemaVersion == agentTraceSchemaVersionV7)
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -483,6 +493,11 @@ func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
 			claims = append(claims, tool.TransactionID)
 		}
 	}
+	for _, observation := range t.Observations {
+		if observation.Call.TransactionID != "" {
+			claims = append(claims, observation.Call.TransactionID)
+		}
+	}
 	return &evalv1.AgentTrace{
 		AttemptId:             t.EvaluationAttemptID,
 		Steps:                 t.Steps,
@@ -495,6 +510,22 @@ func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
 // AgentTraceReceipt is a signed EventReceipt carried in the trace as
 // canonical protojson. It is decoded strictly; unknown fields fail.
 type AgentTraceReceipt struct{ *operatorv1.EventReceipt }
+
+// AgentTraceEnvelope retains canonical typed intent for offline verification.
+type AgentTraceEnvelope struct{ *commonv1.GovernanceEnvelope }
+
+func (e AgentTraceEnvelope) MarshalJSON() ([]byte, error) {
+	return evalv1.MarshalCanonical(e.GovernanceEnvelope)
+}
+
+func (e *AgentTraceEnvelope) UnmarshalJSON(body []byte) error {
+	envelope := &commonv1.GovernanceEnvelope{}
+	if err := protojson.Unmarshal(body, envelope); err != nil {
+		return fmt.Errorf("evaluation: decode request envelope: %w", err)
+	}
+	e.GovernanceEnvelope = envelope
+	return nil
+}
 
 // MarshalJSON writes the receipt as canonical protojson.
 func (r AgentTraceReceipt) MarshalJSON() ([]byte, error) {
@@ -712,7 +743,7 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -729,7 +760,17 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	default:
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion {
+	if trace.SchemaVersion != agentTraceSchemaVersion && len(trace.Observations) > 0 {
+		return fmt.Errorf("evaluation: validate agent trace: historical trace carries scenario observations: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	if trace.SchemaVersion != agentTraceSchemaVersion {
+		for _, call := range trace.ToolCalls {
+			if call.RequestEnvelope != nil || call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
+				return fmt.Errorf("evaluation: validate agent trace: historical trace carries v9 tool evidence: %w", constants.ErrEvidenceArtifactMalformed)
+			}
+		}
+	}
+	if trace.SchemaVersion == agentTraceSchemaVersion || trace.SchemaVersion == agentTraceSchemaVersionV8 {
 		if err := rejectShellTextSteps(trace.Steps); err != nil {
 			return fmt.Errorf("evaluation: validate agent trace: %w", err)
 		}

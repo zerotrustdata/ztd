@@ -8,12 +8,15 @@
 package evaluation
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"slices"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -49,6 +52,15 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	}
 	if err := validateSeedCaseTitle(blueprint); err != nil {
 		return err
+	}
+	if err := validateScenarioContext(blueprint, catalog); err != nil {
+		return err
+	}
+	if _, err := investigation.ValidateFileStates(blueprint.Gold.FileState); err != nil {
+		return scenarioContractError(blueprint, "invalid final file-state objective: %v", err)
+	}
+	if probe := blueprint.Gold.GovernedProbe; probe != nil && !models.ValidExecutableName(probe.Command) {
+		return scenarioContractError(blueprint, "verification probe must name one executable")
 	}
 	if err := validateScenarioToolNames(blueprint, catalog); err != nil {
 		return err
@@ -153,6 +165,38 @@ func validateSeedCaseTitle(blueprint ScenarioBlueprint) error {
 	lowered := strings.ToLower(title)
 	if strings.Contains(lowered, "eval") || strings.Contains(lowered, "{{") {
 		return scenarioContractError(blueprint, "seed case title %q must read like a real case and never name the evaluation", title)
+	}
+	return nil
+}
+
+func validateScenarioContext(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
+	if strings.TrimSpace(blueprint.Input.UserPrompt) == "" {
+		return scenarioContractError(blueprint, "user prompt is empty")
+	}
+	lite := slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	if lite && (len(blueprint.AllowedTools)+len(blueprint.ForbiddenTools)+len(blueprint.Input.Seed.ToolCalls) > 0) {
+		return scenarioContractError(blueprint, "Lite receives injected context and cannot retrieve or seed tool calls")
+	}
+	if !lite && blueprint.Input.Seed.CaseMemory != nil && !slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile) {
+		return scenarioUnanswerableError(blueprint, "case memory requires read_file for responder retrieval")
+	}
+	for _, turn := range blueprint.Input.Seed.Turns {
+		if !slices.Contains([]string{"user", "primary", "assistant"}, turn.Sender) || strings.TrimSpace(turn.Content) == "" {
+			return scenarioContractError(blueprint, "invalid or empty seed conversation turn")
+		}
+	}
+	if budget := blueprint.Input.Budget; budget != nil {
+		if budget.ToolTurnLimit < 1 || budget.ToolTurnLimit > investigation.MaxToolTurns || budget.WallClockLimitMS < 1 || budget.WallClockLimitMS > investigation.MaxWallClockMS {
+			return scenarioContractError(blueprint, "invalid investigation budget")
+		}
+	}
+	for _, call := range blueprint.Input.Seed.ToolCalls {
+		if _, ok := catalog.Tool(call.ToolName); !ok || !json.Valid(call.Arguments) {
+			return scenarioContractError(blueprint, "invalid seed tool %q or arguments", call.ToolName)
+		}
+		if !slices.Contains([]string{scenarioSeedSuccess, scenarioSeedError, scenarioSeedDeny, scenarioSeedRefusal}, call.Outcome) {
+			return scenarioContractError(blueprint, "seed tool %s has unspecified outcome", call.ToolName)
+		}
 	}
 	return nil
 }
@@ -356,6 +400,9 @@ func validateWorkspaceFiles(blueprint ScenarioBlueprint) error {
 	files := blueprint.Input.WorkspaceFiles
 	seen := make(map[string]struct{}, len(files))
 	real := 0
+	if blueprint.Input.Seed.CaseMemory != nil {
+		real++ // materializeCaseMemory writes the typed notes before the scored turn
+	}
 	for _, file := range files {
 		if err := validateWorkspaceRelPath(file.RelPath); err != nil {
 			return scenarioContractError(blueprint, "%v", err)
@@ -364,6 +411,9 @@ func validateWorkspaceFiles(blueprint ScenarioBlueprint) error {
 			return scenarioContractError(blueprint, "duplicate workspace file %q", file.RelPath)
 		}
 		seen[file.RelPath] = struct{}{}
+		if file.RelPath == scenarioCaseMemoryFile && blueprint.Input.Seed.CaseMemory != nil {
+			return scenarioContractError(blueprint, "workspace file collides with the seeded case notes")
+		}
 		if !file.Decoy {
 			real++
 		}

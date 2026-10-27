@@ -152,6 +152,40 @@ describe('verifyAgentTraceArtifact', () => {
     expect(inferences?.[1]?.failure?.error).toBe('Provider unavailable');
   });
 
+  it('decodes separately attributed v9 harness observations and rejects them on older schemas', async () => {
+    const observation = {
+      kind: 'seed',
+      call: { ...toolCallWith({}), call_id: 'scenario-observation-1', model_call_id: '', tool_name: 'event_receipt_list', arguments_json: '{"limit":20}', result_json: '{"receipts":[]}', success: true, receipt: { ...receipt('scenario-observation-1', 'MCP_CALL'), transaction_hash: 'a'.repeat(64) }, request_envelope: { transaction_hash: 'a'.repeat(64) } },
+    };
+    const refusal = {
+      kind: 'seed',
+      call: { call_id: 'scenario-refusal-1', model_call_id: '', tool_name: 'event_receipt_list', arguments_json: '{"limit":20}', error_type: 'invalid_arguments', error: 'invalid request', success: false, is_operator_tool: true, loop_turn: 0, ingress_refusal_code: 8 },
+    };
+    const body = sealedBody('agent-trace.v9', { model_calls: [v7Call()], observations: [observation, refusal] });
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+    expect(trace.observations).toMatchObject([
+      { kind: 'seed', call: { tool_name: 'event_receipt_list', model_call_id: '', request_envelope: { transaction_hash: 'a'.repeat(64) } } },
+      { kind: 'seed', call: { ingress_refusal_code: 8, success: false } },
+    ]);
+
+    const historical = sealedBody('agent-trace.v8', { observations: [observation] });
+    await expect(verifyAgentTraceArtifact(historical, scope(historical))).rejects.toThrow(/observations/u);
+  });
+
+  it('rejects unknown v9 harness observation kinds', async () => {
+    const body = sealedBody('agent-trace.v9', { model_calls: [v7Call()], observations: [{ kind: 'model_call', call: toolCallWith({}) }] });
+    await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path: 'agent_trace.observations[0].kind' });
+  });
+
+  it('rejects a v9 request envelope that does not match its signed receipt hash', async () => {
+    const observation = {
+      kind: 'probe',
+      call: { ...toolCallWith({}), request_envelope: { transaction_hash: 'a'.repeat(64) } },
+    };
+    const body = sealedBody('agent-trace.v9', { model_calls: [v7Call()], observations: [observation] });
+    await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path: 'agent_trace.observations[0].call.request_envelope.transaction_hash' });
+  });
+
   it.each([
     ['non-array inferences', 'bad', 'consensus_inferences'],
     ['non-object inference', [false], 'consensus_inferences[0]'],
@@ -372,6 +406,34 @@ describe('AgentTraceSection', () => {
     expect(screen.getByText(/"member_app_id": "member-1"/u)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Download trace' })).toBeInTheDocument();
+  });
+
+  it('renders v9 harness observations outside scored model turns', async () => {
+    const hash = 'a'.repeat(64);
+    const traceBody = sealedBody('agent-trace.v9', {
+      model_calls: [],
+      observations: [
+        { kind: 'seed', call: {
+          call_id: 'scenario-observation-1', model_call_id: '', tool_name: 'read_file', arguments_json: '{"path":"case-notes.json"}',
+          result_json: '{"content":"app-report"}', success: true, is_operator_tool: true, loop_turn: 0,
+          receipt: { ...receipt('scenario-observation-1', 'MCP_CALL'), transaction_hash: hash },
+          request_envelope: { transaction_hash: hash },
+        } },
+        { kind: 'seed', call: {
+          call_id: 'scenario-refusal-1', model_call_id: '', tool_name: 'run_shell_command', arguments_json: '{"command":"sudo"}',
+          error_type: 'invalid_arguments', error: 'pre-envelope denial', success: false, is_operator_tool: true, loop_turn: 0, ingress_refusal_code: 8,
+        } },
+      ],
+    });
+    evalStore.loadProofCatalog([entry(sha256(traceBody))]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(traceBody.slice())));
+    render(<AgentTraceSection id="trace" bindings={[{ ...bindings[0]!, sha256: sha256(traceBody) }]} runId="run-1" assignmentId="assignment-1" />);
+
+    expect(await screen.findByText('Harness observations (2)')).toBeInTheDocument();
+    expect(screen.getAllByText('Harness · Seed')).toHaveLength(2);
+    expect(screen.getByText('Pre-envelope refusal · code 8')).toBeInTheDocument();
+    expect(screen.getByText('Admitted request envelope')).toBeInTheDocument();
+    expect(screen.getByText('Turns (0)')).toBeInTheDocument();
   });
 
   it('renders the verified trace: input, thinking, tool call, receipt, and download', async () => {

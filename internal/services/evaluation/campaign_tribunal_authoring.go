@@ -9,7 +9,6 @@ package evaluation
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
-	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -51,6 +49,14 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	if len(proposal.Hostnames) > 0 {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
 	}
+	workingDir := r.workspace.Root
+	if proposal.WorkingDir != "" {
+		workingDir = r.workspace.Resolve(proposal.WorkingDir)
+		if !pathWithin(workingDir, r.workspace.OperatorWorkingDirectory) {
+			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorSecurity,
+				Error: fmt.Sprintf("security violation: working directory %q is outside operator workspace", proposal.WorkingDir)})
+		}
+	}
 	tier := r.designated
 	if IsHeterogeneousAssignment(r.req.Assignment) {
 		tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
@@ -70,7 +76,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	result, err := r.executor.inference.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{
 		Request:                 record.ArgumentsJSON,
 		Guidelines:              "The agent proposed this run_shell_command call. Preserve its goal using one executable and argv; shell pipelines, redirects, glob expansion, and substitutions are unavailable. Preserve literal utility arguments, including regex patterns and find -exec terminators.",
-		WorkingDirectory:        r.workspace.OperatorWorkingDirectory,
+		WorkingDirectory:        workingDir,
 		TimeoutSeconds:          constants.DefaultShellCommandTimeout,
 		TargetOperatorSessionId: r.target.SessionID,
 		InvestigationId:         r.trace.InvestigationID,
@@ -140,35 +146,7 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(constants.MCPToolRunShellCommand, dispatched)})
 	}
-	summary := "{}"
-	if record.Receipt != nil && record.Receipt.EventReceipt != nil && record.Receipt.GetResultSummary() != "" {
-		summary = record.Receipt.GetResultSummary()
-	}
-	failure, err := shellCommandFailure(summary)
-	if err != nil {
-		return AgentToolCall{}, err
-	}
-	if failure != nil {
-		if record.ArgumentsJSON != record.ApprovedArgumentsJSON {
-			failure.Error += "\nApproved arguments: " + record.ApprovedArgumentsJSON
-		}
-		return r.fail(record, *failure)
-	}
-	var resultValue mcp.RunShellCommandResult
-	if err := json.Unmarshal([]byte(summary), &resultValue); err != nil {
-		return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %w", constants.ErrEvaluationDispatchFailed, constants.MCPToolRunShellCommand, err)
-	}
-	if record.ArgumentsJSON != record.ApprovedArgumentsJSON {
-		var approved models.RunShellCommandRequest
-		if err := json.Unmarshal([]byte(record.ApprovedArgumentsJSON), &approved); err != nil {
-			return AgentToolCall{}, fmt.Errorf("%w: decode approved %s arguments: %w", constants.ErrEvaluationDispatchFailed, constants.MCPToolRunShellCommand, err)
-		}
-		return r.succeed(record, struct {
-			ApprovedArguments models.RunShellCommandRequest `json:"approved_arguments"`
-			Result            mcp.RunShellCommandResult     `json:"result"`
-		}{ApprovedArguments: approved, Result: resultValue})
-	}
-	return r.succeed(record, resultValue)
+	return r.completeNativeToolCall(record)
 }
 
 // recordMemberCalls records each Tribunal member inference on the trace, as

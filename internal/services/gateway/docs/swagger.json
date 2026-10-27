@@ -3047,6 +3047,7 @@
                 "OLLAMA_MODEL_INVENTORY",
                 "OLLAMA_MODEL_RELEASE",
                 "OLLAMA_MODEL_RESIDENCY",
+                "OPERATOR_L2_TRUST_REFRESH",
                 "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
                 "PLATFORM_ENROLLMENT_CREATE",
                 "PLATFORM_ENROLLMENT_CREATE_SESSION",
@@ -3054,6 +3055,7 @@
                 "PLATFORM_ENROLLMENT_ISSUE",
                 "PLATFORM_ENROLLMENT_PERSIST_POLICY",
                 "PLATFORM_ENROLLMENT_REVOKE",
+                "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS",
                 "PORT_CHECK",
                 "PROVIDER_BOUNDARY_OBSERVATION",
                 "RESTORE_FILE",
@@ -3086,6 +3088,7 @@
                 "ActionTypeOllamaModelInventory",
                 "ActionTypeOllamaModelRelease",
                 "ActionTypeOllamaModelResidency",
+                "ActionTypeOperatorL2TrustRefresh",
                 "ActionTypePlatformEnrollmentBindConsensus",
                 "ActionTypePlatformEnrollmentCreate",
                 "ActionTypePlatformEnrollmentCreateSession",
@@ -3093,6 +3096,7 @@
                 "ActionTypePlatformEnrollmentIssue",
                 "ActionTypePlatformEnrollmentPersistPolicy",
                 "ActionTypePlatformEnrollmentRevoke",
+                "ActionTypePlatformEnrollmentUnbindConsensus",
                 "ActionTypePortCheck",
                 "ActionTypeProviderBoundaryObservation",
                 "ActionTypeRestoreFile",
@@ -3232,6 +3236,7 @@
                 "ztd.v1.operator.intent.requested",
                 "ztd.v1.operator.intent.revoke.requested",
                 "ztd.v1.operator.intent.revoked",
+                "ztd.v1.operator.l2_trust_refresh.requested",
                 "ztd.v1.operator.logs.fetch.completed",
                 "ztd.v1.operator.logs.fetch.failed",
                 "ztd.v1.operator.logs.fetch.received",
@@ -3311,6 +3316,7 @@
                 "ztd.v1.platform.enrollment.issue.requested",
                 "ztd.v1.platform.enrollment.persist_policy.requested",
                 "ztd.v1.platform.enrollment.revoke.requested",
+                "ztd.v1.platform.enrollment.unbind_consensus.requested",
                 "ztd.v1.platform.external.service.configured",
                 "ztd.v1.platform.notification.sent",
                 "ztd.v1.platform.sse.connection.closed",
@@ -3461,6 +3467,7 @@
                 "EventOperatorIntentRequested",
                 "EventOperatorIntentRevokeRequested",
                 "EventOperatorIntentRevoked",
+                "EventOperatorL2TrustRefreshRequested",
                 "EventOperatorLogsFetchCompleted",
                 "EventOperatorLogsFetchFailed",
                 "EventOperatorLogsFetchReceived",
@@ -3540,6 +3547,7 @@
                 "EventPlatformEnrollmentIssueRequested",
                 "EventPlatformEnrollmentPersistPolicyRequested",
                 "EventPlatformEnrollmentRevokeRequested",
+                "EventPlatformEnrollmentUnbindConsensusRequested",
                 "EventPlatformExternalServiceConfigured",
                 "EventPlatformNotification",
                 "EventPlatformSseConnectionClosed",
@@ -4840,6 +4848,38 @@
                 }
             }
         },
+        "models.OperatorL2Trust": {
+            "type": "object",
+            "properties": {
+                "binding_version": {
+                    "type": "integer"
+                },
+                "consensus_set_id": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "member_key_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "quorum": {
+                    "type": "integer"
+                },
+                "require_distinct": {
+                    "type": "boolean"
+                },
+                "signers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.OperatorSigner"
+                    }
+                }
+            }
+        },
         "models.OperatorSessionValidationRequest": {
             "type": "object",
             "properties": {
@@ -4857,6 +4897,9 @@
         "models.OperatorSessionValidationResponse": {
             "type": "object",
             "properties": {
+                "l2_trust": {
+                    "$ref": "#/definitions/models.OperatorL2Trust"
+                },
                 "operator_id": {
                     "type": "string"
                 },
@@ -4865,6 +4908,17 @@
                 },
                 "valid": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.OperatorSigner": {
+            "type": "object",
+            "properties": {
+                "key_id": {
+                    "type": "string"
+                },
+                "public_key_hex": {
+                    "type": "string"
                 }
             }
         },
@@ -6243,6 +6297,14 @@
                 },
                 "receipt": {
                     "$ref": "#/definitions/operatorv1.EventReceipt"
+                },
+                "request_envelope": {
+                    "description": "Original admitted intent. Its canonical hash is covered by receipt, allowing\noffline consumers to bind the signed outcome to the exact request payload.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/commonv1.GovernanceEnvelope"
+                        }
+                    ]
                 },
                 "result_payload": {
                     "description": "result_payload is the proto-marshaled terminal operator result for event_type\n(for example FsReadResult), the same bytes the dispatch response carries today.",

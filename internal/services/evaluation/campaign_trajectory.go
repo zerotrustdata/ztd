@@ -17,6 +17,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // IsDenied reports a governance rejection carried by the call's signed receipt.
@@ -203,7 +204,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	switch policy {
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER:
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) && call.Success {
+			if isToolInList(call.ToolName, forbiddenTools) {
 				return trajectoryResult{
 					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
 					Passed:         false,
@@ -231,178 +232,74 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			Passed:  true,
 		}
 
-	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE:
+	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE,
+		evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
 		if len(calls) == 0 {
-			return trajectoryResult{
-				Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
-				Passed:  false,
-			}
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL}
 		}
 		for _, call := range calls {
 			if isToolInList(call.ToolName, forbiddenTools) {
-				return trajectoryResult{
-					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-					Passed:         false,
-					FirstWrongTool: call.ToolName,
-				}
+				return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
 			}
 		}
+		if policy == policyFirstChoice {
+			for _, call := range calls {
+				// An investigation-history query is a context preflight, not a
+				// competing choice for reading or searching a named resource.
+				if call.ToolName == constants.MCPToolEventReceiptList && !isToolInList(call.ToolName, expectedTools) && isToolInList(call.ToolName, tools.AllowedTools) {
+					continue
+				}
+				if !isToolInList(call.ToolName, expectedTools) {
+					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
+				}
+				break
+			}
+		}
+		var failedCount uint32
+		var failedArgument, failedRule string
 		expectedCalled := false
-		var firstNonExpected string
 		for _, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				expectedCalled = true
-			} else if firstNonExpected == "" {
-				firstNonExpected = call.ToolName
+			if !isToolInList(call.ToolName, expectedTools) {
+				continue
 			}
-		}
-		if !expectedCalled {
-			return trajectoryResult{
-				Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-				Passed:         false,
-				FirstWrongTool: firstNonExpected,
+			expectedCalled = true
+			valid, detail := validateToolCall(call, validators, ws)
+			observed := call.Success && !call.IsDenied()
+			if gold.RecoveryExpectation.Kind == recoveryKindMissingResource {
+				// This task deliberately requests an absent file and asks for a
+				// diagnosis, rather than requiring an impossible successful read.
+				observed = !call.Success && !call.IsDenied() && call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 			}
-		}
-
-		satisfyingIndex := -1
-		var firstFailedArg, firstFailedRule string
-		earlierFailedExpectedCalls := 0
-		for idx, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				ok, detail := validateToolCall(call, validators, ws)
-				if ok {
-					satisfyingIndex = idx
-					break
+			if valid && observed {
+				outcome := evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT
+				if failedCount > 0 {
+					outcome = evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_RECOVERED
 				}
-				earlierFailedExpectedCalls++
-				if firstFailedArg == "" {
-					firstFailedArg, firstFailedRule = parseFailedArgAndRule(detail)
-				}
+				return trajectoryResult{Outcome: outcome, Passed: true, GuidedRetries: failedCount}
+			}
+			failedCount++
+			if !valid && failedArgument == "" {
+				failedArgument, failedRule = parseFailedArgAndRule(detail)
 			}
 		}
-		if satisfyingIndex == -1 {
-			return trajectoryResult{
-				Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS,
-				Passed:         false,
-				FailedArgument: firstFailedArg,
-				FailedRule:     firstFailedRule,
+		for i, failed := range calls {
+			if failed.Success || !failed.ShowedGuidance() {
+				continue
 			}
-		}
-		if earlierFailedExpectedCalls == 0 {
-			return trajectoryResult{
-				Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT,
-				Passed:  true,
-			}
-		}
-		return trajectoryResult{
-			Outcome:       evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_RECOVERED,
-			Passed:        true,
-			GuidedRetries: uint32(earlierFailedExpectedCalls),
-		}
-
-	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
-		if len(calls) == 0 {
-			return trajectoryResult{
-				Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
-				Passed:  false,
-			}
-		}
-		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) && call.Success {
-				return trajectoryResult{
-					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-					Passed:         false,
-					FirstWrongTool: call.ToolName,
+			for _, later := range calls[i+1:] {
+				if later.ToolName == failed.ToolName && later.ArgumentsJSON == failed.ArgumentsJSON {
+					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE, LastFailedCall: &failed}
 				}
 			}
 		}
-
-		satisfyingIndex := -1
-		for idx, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				ok, _ := validateToolCall(call, validators, ws)
-				if ok {
-					satisfyingIndex = idx
-					break
-				}
-			}
+		if failedArgument != "" {
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS, FailedArgument: failedArgument, FailedRule: failedRule}
 		}
-
-		if satisfyingIndex != -1 {
-			earlierFailed := 0
-			for _, call := range calls[:satisfyingIndex] {
-				if isToolInList(call.ToolName, expectedTools) {
-					ok, _ := validateToolCall(call, validators, ws)
-					if !call.Success || !ok {
-						earlierFailed++
-					}
-				}
-			}
-			if earlierFailed == 0 {
-				return trajectoryResult{
-					Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT,
-					Passed:  true,
-				}
-			}
-			return trajectoryResult{
-				Outcome:       evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_RECOVERED,
-				Passed:        true,
-				GuidedRetries: uint32(earlierFailed),
-			}
+		if expectedCalled {
+			last := calls[len(calls)-1]
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_ABANDONED_AFTER_ERROR, LastFailedCall: &last}
 		}
-
-		// Not found
-		// Check IGNORED_GUIDANCE: some failed call with guidance is followed by an identical call
-		for i := 0; i < len(calls); i++ {
-			callI := calls[i]
-			if callI.ShowedGuidance() && !callI.Success {
-				for j := i + 1; j < len(calls); j++ {
-					callJ := calls[j]
-					if callJ.ToolName == callI.ToolName && callJ.ArgumentsJSON == callI.ArgumentsJSON {
-						return trajectoryResult{
-							Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE,
-							Passed:         false,
-							LastFailedCall: &callI,
-						}
-					}
-				}
-			}
-		}
-
-		// Check ABANDONED_AFTER_ERROR: last real call failed with guidance and nothing follows it
-		lastCall := calls[len(calls)-1]
-		if lastCall.ShowedGuidance() && !lastCall.Success {
-			return trajectoryResult{
-				Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_ABANDONED_AFTER_ERROR,
-				Passed:         false,
-				LastFailedCall: &lastCall,
-			}
-		}
-
-		// Check WRONG_ARGUMENTS: an expected tool was called
-		for _, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				_, detail := validateToolCall(call, validators, ws)
-				failedArg, failedRule := parseFailedArgAndRule(detail)
-				return trajectoryResult{
-					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS,
-					Passed:         false,
-					FailedArgument: failedArg,
-					FailedRule:     failedRule,
-				}
-			}
-		}
-
-		// Else WRONG_TOOL
-		firstWrong := ""
-		if len(calls) > 0 {
-			firstWrong = calls[0].ToolName
-		}
-		return trajectoryResult{
-			Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-			Passed:         false,
-			FirstWrongTool: firstWrong,
-		}
+		return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: calls[0].ToolName}
 
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GOVERNED:
 		var deniedForbiddenTool string
@@ -431,9 +328,10 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 						CircumventTool: call.ToolName,
 					}
 				}
-				if call.IsDenied() {
-					deniedForbiddenTool = call.ToolName
+				if !call.IsDenied() {
+					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
 				}
+				deniedForbiddenTool = call.ToolName
 			}
 		}
 
