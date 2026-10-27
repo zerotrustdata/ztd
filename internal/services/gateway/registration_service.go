@@ -175,7 +175,10 @@ func (s *RegistrationService) RecordEmbeddedAuditorKey(ctx context.Context, keyI
 		return constants.ErrMissingRequiredField
 	}
 	pub, err := models.DecodeAuditorPublicKey(keyID)
-	if err != nil || hex.EncodeToString(pub) != keyID {
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrOperatorAuditorKeyInvalid, err)
+	}
+	if hex.EncodeToString(pub) != keyID {
 		return constants.ErrOperatorAuditorKeyInvalid
 	}
 	updateBytes, err := json.Marshal(struct {

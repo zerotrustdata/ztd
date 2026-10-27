@@ -605,8 +605,10 @@ identity whose authoritative ledger owns that investigation. The longitudinal
 condition selects a persistent investigation and therefore also requires
 --data-operator.
 
-With --reps greater than 1, repetitions run sequentially. Pass --hold-context
-to carry the previous repetition's conversation into the prompt.
+With --reps greater than 1, repetitions run sequentially and, unless a
+--condition is given, each repetition continues the previous repetition's
+conversation and workspace. Pass --hold-context=false to start every
+repetition fresh.
 
 --judge names the registry model that scores every judged criterion, whatever
 model or formation an assignment executes, so no subject grades itself. Its
@@ -622,8 +624,8 @@ Qualify several model-role candidates with ztd eval rollout, which runs one
 campaign per model.
 
 Examples:
-  ztd eval campaigns create eval-qwen qwen3:4b --reps 3
-  ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3 --hold-context
+  ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3
+  ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
   ztd eval campaigns create eval-gemma gemma4:e4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
   ztd eval campaigns create eval-system --formations ultra-efficient-speedster
@@ -726,7 +728,7 @@ Examples:
 		},
 	}
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
-	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace (legacy behavior)")
+	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace (default true when --reps > 1 and no --condition is given)")
 	cmd.Flags().StringVar(&condition, "condition", "", "Operational condition: longitudinal (persistent sequential runs), control (fresh investigation control), or held-context")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
 	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")

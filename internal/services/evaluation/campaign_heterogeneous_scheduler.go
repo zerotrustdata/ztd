@@ -155,7 +155,7 @@ func ValidateHeterogeneousAssignmentMatrix(catalog *evalv1.EvaluationScenarioCat
 		}
 		cell := heterogeneousCell{stackID: assignment.GetHeterogeneous().GetStack().GetStackId(), scenarioID: assignment.GetScenarioId(), role: role}
 		if _, exists := cells[cell]; exists {
-			return fmt.Errorf("evaluation: validate heterogeneous assignment matrix: duplicate stack %s scenario %s role %s", cell.stackID, cell.scenarioID, role.String())
+			return fmt.Errorf("evaluation: validate heterogeneous assignment matrix: stack %s scenario %s role %s: %w", cell.stackID, cell.scenarioID, role.String(), constants.ErrEvaluationAssignmentCellDuplicate)
 		}
 		cells[cell] = struct{}{}
 	}

@@ -334,7 +334,8 @@ var (
 	ErrMCPRunShellCommandSSHSession            = errors.New("SSH session creation failed")
 	ErrMCPRunShellCommandTimedOut              = errors.New("command timed out")
 
-	ErrNetworkGetHostname = errors.New("get hostname")
+	ErrNetworkGetHostname     = errors.New("get hostname")
+	ErrNetworkIPv4Unavailable = errors.New("ipv4 dial: host has no IPv4 address")
 
 	// System utils errors
 	ErrSystemUtilsInvalidProcStatFormat = errors.New("invalid /proc/stat format")
@@ -1484,6 +1485,7 @@ var (
 	ErrDataOperatorAmbiguous               = errors.New("evaluation: multiple active data-operator sessions")
 	ErrDataOperatorNotBound                = errors.New("evaluation: data-operator session is not bound to the CLI session; run './ztd operator bind'")
 	ErrEvaluationScenarioRolesUnassigned   = errors.New("evaluation: scenario has no valid eligible roles")
+	ErrEvaluationAssignmentCellDuplicate   = errors.New("evaluation: assignment matrix schedules the same stack, scenario and role twice")
 	ErrEvaluationScenarioContractInvalid   = errors.New("evaluation: scenario contract is invalid")
 	ErrEvaluationCatalogRequiresJudge      = errors.New("evaluation: frozen catalog contains semantic-judge scenarios, which no executor can grade; freeze a new campaign from the current catalog")
 	ErrEvaluationCampaignJudgeInvalid      = errors.New("evaluation: campaign judge is missing, absent from the model registry, or not digest-pinned")

@@ -11,13 +11,16 @@ import "sync"
 
 // MockAPIClient is a scripted authcmd.APIClient for command tests.
 type MockAPIClient struct {
-	mu        sync.Mutex
-	GetResp   []byte
-	GetErr    error
-	PostResp  []byte
-	PostErr   error
-	GetCalls  []string
-	PostCalls []MockPostCall
+	mu          sync.Mutex
+	GetResp     []byte
+	GetErr      error
+	PostResp    []byte
+	PostErr     error
+	DeleteResp  []byte
+	DeleteErr   error
+	GetCalls    []string
+	PostCalls   []MockPostCall
+	DeleteCalls []string
 }
 
 // MockPostCall records one Post invocation.
@@ -47,5 +50,9 @@ func (m *MockAPIClient) Put(path string, body interface{}) ([]byte, error) {
 }
 
 func (m *MockAPIClient) Delete(path string) ([]byte, error) {
-	return nil, nil
+	m.mu.Lock()
+	m.DeleteCalls = append(m.DeleteCalls, path)
+	resp, err := m.DeleteResp, m.DeleteErr
+	m.mu.Unlock()
+	return resp, err
 }

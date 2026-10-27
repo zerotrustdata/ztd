@@ -21,13 +21,11 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 )
 
-var (
-	errFactory         = fmt.Errorf("factory boom")
-	errKeystoreFactory = fmt.Errorf("keystore factory boom")
-)
-
-func failingKeystoreFactory(_ fs.RuntimeFileService) (*keystore.Keystore, error) {
-	return nil, errKeystoreFactory
+// failingKeystoreFactory returns a keystore factory that fails with cause.
+func failingKeystoreFactory(cause error) func(fs.RuntimeFileService) (*keystore.Keystore, error) {
+	return func(fs.RuntimeFileService) (*keystore.Keystore, error) {
+		return nil, cause
+	}
 }
 
 func panickingKeystoreFactory(_ fs.RuntimeFileService) (*keystore.Keystore, error) {
@@ -35,6 +33,7 @@ func panickingKeystoreFactory(_ fs.RuntimeFileService) (*keystore.Keystore, erro
 }
 
 func TestReportAllCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	errFactory := fmt.Errorf("factory boom")
 	cmd := reportAllCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), panickingKeystoreFactory)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -46,6 +45,7 @@ func TestReportAllCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestReportVerifyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	errFactory := fmt.Errorf("factory boom")
 	cmd := reportVerifyCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), panickingKeystoreFactory)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -57,8 +57,9 @@ func TestReportVerifyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestReportAllCmdWithConfig_KeystoreFactoryError(t *testing.T) {
+	errKeystoreFactory := fmt.Errorf("keystore factory boom")
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
-	cmd := reportAllCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), failingKeystoreFactory)
+	cmd := reportAllCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), failingKeystoreFactory(errKeystoreFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -69,8 +70,9 @@ func TestReportAllCmdWithConfig_KeystoreFactoryError(t *testing.T) {
 }
 
 func TestReportVerifyCmdWithConfig_KeystoreFactoryError(t *testing.T) {
+	errKeystoreFactory := fmt.Errorf("keystore factory boom")
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
-	cmd := reportVerifyCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), failingKeystoreFactory)
+	cmd := reportVerifyCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), failingKeystoreFactory(errKeystoreFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)

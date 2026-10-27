@@ -446,6 +446,9 @@ export function publicGradeSummaries(assignment: AssignmentResult): PublicSemant
 
 export interface AssignmentGradeChip {
   criterion_id: string;
+  /** Public criterion label, qualified by the criterion's own name when the
+   *  scenario publishes that label for more than one criterion. */
+  label: string;
   status: string;
   explanation?: string;
   /** Grader output, published verbatim. */
@@ -456,41 +459,43 @@ function gradeChipSortRank(status: string): number {
   return status === 'fail' ? 0 : 1;
 }
 
-/** Deterministic grade chips from benchmark observations (thin publication path). */
-export function deterministicGradeChips(assignment: AssignmentResult): AssignmentGradeChip[] {
-  const summaries = assignment.benchmark_observations?.grade_summaries ?? [];
-  return summaries
-    .map((grade) => ({
-      criterion_id: grade.criterion_id,
-      status: grade.status.toLowerCase(),
-      explanation: publicGradeExplanationLabel(grade.explanation_code),
-      detail: grade.detail,
-    }))
-    .sort(
-      (left, right) =>
-        gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
-        left.criterion_id.localeCompare(right.criterion_id),
-    );
+/** Display label per published criterion. Judged criteria share one public
+ *  label, so a shared label is qualified by the criterion's own name. */
+function criterionLabels(assignment: AssignmentResult): Map<string, string> {
+  const criteria = assignment.scenario_summary?.criteria ?? [];
+  const uses = new Map<string, number>();
+  for (const criterion of criteria) uses.set(criterion.public_label, (uses.get(criterion.public_label) ?? 0) + 1);
+  return new Map(criteria.filter((criterion) => criterion.public_label).map((criterion) => {
+    const label = (uses.get(criterion.public_label) ?? 0) > 1
+      ? `${criterion.public_label}: ${criterion.criterion_id.split(':').pop()!.replace(/[-_]/g, ' ')}`
+      : criterion.public_label;
+    return [criterion.criterion_id, label];
+  }));
 }
 
-/** Grade chips for the verdict strip: semantic summaries when present, else deterministic grades. */
+/** Grade chips for the verdict strip: every published grade, deterministic and
+ *  semantic. A deterministic check (required or forbidden answer terms, tool
+ *  trajectory) can fail an assignment whose judged criteria all pass, so
+ *  neither set stands in for the other. A semantic summary wins a shared id. */
 export function assignmentGradeChips(assignment: AssignmentResult): AssignmentGradeChip[] {
-  const semantic = publicGradeSummaries(assignment);
-  if (semantic.length > 0) {
-    return semantic
-      .map((grade) => ({
-        criterion_id: grade.criterion_id,
-        status: grade.status,
-        explanation: publicGradeExplanationLabel(grade.explanation_code),
-        detail: grade.detail,
-      }))
-      .sort(
-        (left, right) =>
-          gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
-          left.criterion_id.localeCompare(right.criterion_id),
-      );
-  }
-  return deterministicGradeChips(assignment);
+  const labels = criterionLabels(assignment);
+  const chips = new Map<string, AssignmentGradeChip>();
+  const add = (criterionId: string, status: string, code: PublicGradeExplanationCode, detail?: string) => {
+    chips.set(criterionId, {
+      criterion_id: criterionId,
+      label: labels.get(criterionId) ?? criterionId.replace(/[-_]/g, ' '),
+      status: status.toLowerCase(),
+      explanation: publicGradeExplanationLabel(code),
+      detail,
+    });
+  };
+  for (const grade of assignment.benchmark_observations?.grade_summaries ?? []) add(grade.criterion_id, grade.status, grade.explanation_code, grade.detail);
+  for (const grade of publicGradeSummaries(assignment)) add(grade.criterion_id, grade.status, grade.explanation_code, grade.detail);
+  return [...chips.values()].sort(
+    (left, right) =>
+      gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
+      left.criterion_id.localeCompare(right.criterion_id),
+  );
 }
 
 /** Combined terminal and verification label for the verdict strip. */

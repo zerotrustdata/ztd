@@ -35,8 +35,8 @@ const (
 // resolver returns ::1 first and the IDE's port-forward only listens on
 // IPv4 127.0.0.1. Even if an IPv6 address somehow slips through the
 // lookup, the "tcp4" network prevents the kernel from creating an IPv6
-// socket. Literal IPv6 addresses (e.g. "[::1]") fail the ip4 lookup and
-// return an error — IPv6 is excluded entirely, not merely deprioritized.
+// socket. Literal IPv6 addresses (e.g. "[::1]") fail with
+// ErrNetworkIPv4Unavailable — IPv6 is excluded entirely, not merely deprioritized.
 //
 // Use this as the DialContext of any CLI HTTP transport that dials the
 // gateway via `localhost`. The URL retains `localhost` (for TLS SAN
@@ -52,14 +52,14 @@ func IPv4DialContext(ctx context.Context, network, addr string) (net.Conn, error
 		if ip.To4() != nil {
 			return d.DialContext(ctx, "tcp4", net.JoinHostPort(ip.String(), port))
 		}
-		return nil, fmt.Errorf("ipv4 dial: resolve %s: literal IPv6 not supported on IPv4 dialer", host)
+		return nil, fmt.Errorf("ipv4 dial: literal IPv6 host %s: %w", host, constants.ErrNetworkIPv4Unavailable)
 	}
 	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
 	if err != nil {
 		return nil, fmt.Errorf("ipv4 dial: resolve %s: %w", host, err)
 	}
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("ipv4 dial: no IPv4 address for %s", host)
+		return nil, fmt.Errorf("ipv4 dial: resolve %s: %w", host, constants.ErrNetworkIPv4Unavailable)
 	}
 	return d.DialContext(ctx, "tcp4", net.JoinHostPort(ips[0].String(), port))
 }

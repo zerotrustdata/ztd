@@ -19,9 +19,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-var errFactory = fmt.Errorf("factory boom")
-
 func TestTestSummaryCmd_FileSvcFactoryError(t *testing.T) {
+	errFactory := fmt.Errorf("factory boom")
 	cmd := testSummaryCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)

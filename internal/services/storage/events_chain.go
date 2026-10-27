@@ -370,7 +370,10 @@ func verifyCheckpointAnchor(
 	}
 
 	sigBytes, err := hex.DecodeString(cp.Signature)
-	if err != nil || len(sigBytes) != ed25519.SignatureSize || !ed25519.Verify(pinnedAuditorKey, canonical, sigBytes) {
+	if err != nil {
+		return fmt.Errorf("%w: decode checkpoint signature: %w", constants.ErrAuditCheckpointSignatureInvalid, err)
+	}
+	if len(sigBytes) != ed25519.SignatureSize || !ed25519.Verify(pinnedAuditorKey, canonical, sigBytes) {
 		return constants.ErrAuditCheckpointSignatureInvalid
 	}
 

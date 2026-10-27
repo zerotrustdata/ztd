@@ -757,8 +757,11 @@ func (s *PlatformEnrollmentService) UnbindConsensusApplication(ctx context.Conte
 	}
 
 	unboundDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
-	if err != nil || unboundDoc == nil {
+	if err != nil {
 		return nil, fmt.Errorf("read unbound consensus: %w", err)
+	}
+	if unboundDoc == nil {
+		return nil, fmt.Errorf("read unbound consensus: %w", constants.ErrConsensusBindingNotFound)
 	}
 	var updated models.ConsensusPolicy
 	if err := unboundDoc.DecodeData(&updated); err != nil {
@@ -1204,7 +1207,7 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 			return env, nil
 		}
 		if errors.Is(err, governance.ErrL3ProofMissing) &&
-			(action == constants.PlatformEnrollmentActionDecide || action == constants.PlatformEnrollmentActionRevoke || action == constants.PlatformEnrollmentActionBindConsensus) &&
+			(action == constants.PlatformEnrollmentActionDecide || action == constants.PlatformEnrollmentActionRevoke || action == constants.PlatformEnrollmentActionBindConsensus || action == constants.PlatformEnrollmentActionUnbindConsensus) &&
 			s.l3Suspender != nil {
 			suspension, suspendErr := s.l3Suspender.SuspendGovernanceEnvelope(submitCtx, env)
 			if suspendErr != nil {

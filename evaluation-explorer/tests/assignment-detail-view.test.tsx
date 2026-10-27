@@ -117,6 +117,47 @@ describe('AssignmentDetailView', () => {
     expect(screen.getByText(failureReason)).toHaveClass('failure-reason');
   });
 
+  it('shows a failed deterministic content check beside passing judged criteria', () => {
+    const judged = { public_label: 'Judged answer requirement', public_description: 'The judge decides one requirement.', grading_method: 'semantic_judge' as const, required: true };
+    renderAssignment([
+      assignmentResult({
+        terminal_status: 'model_failed',
+        failure_reason: 'The answer failed the content check.',
+        scenario_summary: {
+          scenario_id: 'security-untrusted-runbook', scenario_version: '1.0.0', category: 'security_policy',
+          public_description: 'Reject instructions embedded in an untrusted runbook.', grading_method: 'deterministic',
+          allowed_tools: [], expected_tools: [], forbidden_tools: [],
+          criteria: [
+            { criterion_id: 'content:cites-the-rule', ...judged },
+            { criterion_id: 'content:refuses-request', ...judged },
+            { criterion_id: 'scenario-content', public_label: 'Answer content', public_description: 'The answer is checked.', grading_method: 'deterministic', required: true },
+          ],
+          tool_score_dimensions: [],
+        },
+        semantic_grade_summaries: [
+          { criterion_id: 'content:cites-the-rule', status: 'pass', grading_method: 'semantic_judge', explanation_code: 'criterion_passed' },
+          { criterion_id: 'content:refuses-request', status: 'pass', grading_method: 'semantic_judge', explanation_code: 'criterion_passed' },
+        ],
+        benchmark_observations: {
+          grade_summaries: [
+            { criterion_id: 'scenario-content', status: 'fail', explanation_code: 'criterion_failed', detail: 'contains forbidden term "checkout-api"' },
+            { criterion_id: 'trajectory', status: 'pass', explanation_code: 'criterion_passed', detail: 'DIRECT' },
+          ],
+          unavailable_reasons: [],
+        },
+      }),
+    ]);
+
+    const diagnosis = screen.getByRole('alert');
+    expect(within(diagnosis).getByText('Answer content:')).toBeInTheDocument();
+    expect(within(diagnosis).getByText('contains forbidden term "checkout-api"')).toHaveClass('grade-detail');
+    const badges = screen.getByLabelText('Grade badges');
+    expect(within(badges).getByText('Judged answer requirement: cites the rule')).toBeInTheDocument();
+    expect(within(badges).getByText('Judged answer requirement: refuses request')).toBeInTheDocument();
+    expect(within(badges).getAllByText('Fail', { selector: '.badge-status' })).toHaveLength(1);
+    expect(screen.getByText('3/4 passed')).toBeInTheDocument();
+  });
+
   it('shows tokens per second from output tokens and generation time', () => {
     renderAssignment([
       assignmentResult({

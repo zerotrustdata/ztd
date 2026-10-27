@@ -26,7 +26,11 @@ func (k *Keystore) SigningPublicKey(secretName string) (ed25519.PublicKey, error
 		return nil, fmt.Errorf("read signing identity %s: %w", secretName, err)
 	}
 	seed, err := hex.DecodeString(encoded)
-	if err != nil || len(seed) != ed25519.SeedSize {
+	if err != nil {
+		return nil, fmt.Errorf("signing identity %s: %w: %w", secretName, constants.ErrValidationFailed, err)
+	}
+	if len(seed) != ed25519.SeedSize {
+		clear(seed)
 		return nil, fmt.Errorf("signing identity %s: %w", secretName, constants.ErrValidationFailed)
 	}
 	defer clear(seed)

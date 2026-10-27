@@ -470,6 +470,7 @@ func (c *PlatformEnrollmentController) requireActiveFirstUser(ctx context.Contex
 // handlePlatformEnrollmentConsensus handles binding and querying the consensus application.
 // POST /api/v1/auth/platform-enrollments/consensus: binds an enrolled app as the consensus app.
 // GET  /api/v1/auth/platform-enrollments/consensus: returns the bound consensus app.
+// DELETE /api/v1/auth/platform-enrollments/consensus: clears the bound consensus app through governance.
 // RouteAuthDual (active first user owner required).
 func (c *PlatformEnrollmentController) handlePlatformEnrollmentConsensus(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(constants.ContextKeyUserID).(string)

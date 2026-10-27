@@ -170,6 +170,7 @@ The single bound consensus record at `constants.DocIDConsensusBinding` names a `
 
 Consensus management commands:
 - `ztd consensus status` shows the bound provider, members, quorum, model, posture, and whether L2 is enforced.
+- `ztd consensus unbind` clears the bound consensus through the governed `PLATFORM_ENROLLMENT_UNBIND_CONSENSUS` action (`DELETE /api/v1/auth/platform-enrollments/consensus`). It is owner-only and a bootstrap action like bind. Under `ratify` and `notary` it is L3-gated and returns a pending approval (HTTP 202) that the CLI prints with its approval URL and transaction, as `enroll` does. On success the Gateway returns the cleared record with `enabled: false`. `--json` prints the typed suspension body or the cleared record.
 - Rebinding re-runs the enroll command for the chosen provider. The new bind replaces the bound record and is L3-gated under `ratify` and `notary` (INV-CON-POL-08).
 - Revoking a member application is handled by the application enrollment owner, not by a consensus subcommand (INV-CON-POL-08).
 - `ztd auth enroll consensus` is removed. No alias exists.

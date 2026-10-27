@@ -317,7 +317,7 @@ func DecodeAuditorPublicKey(keyHex string) (ed25519.PublicKey, error) {
 func decodeEd25519PublicKey(keyHex string, invalid error) (ed25519.PublicKey, error) {
 	pub, err := hex.DecodeString(keyHex)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", invalid, err)
+		return nil, fmt.Errorf("%w: %w", invalid, err)
 	}
 	if len(pub) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("%w: public key size %d", invalid, len(pub))

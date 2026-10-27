@@ -134,6 +134,15 @@ func eventReceiptMovesForward(prev, next operatorv1.ExecutionStatus) bool {
 	return eventReceiptStatusNonTerminal(prev)
 }
 
+// eventReceiptRejectsReplacement reports whether next is a governance rejection written over a
+// receipt that already reached a terminal status. A replayed envelope carries the admitted
+// transaction_id, so its rejection must not replace the executed receipt that the commitment
+// ledger is bound to. The rejection is still appended to the chain as evidence.
+func eventReceiptRejectsReplacement(prev, next *models.EventReceiptRecord) bool {
+	return !eventReceiptStatusNonTerminal(prev.Status) &&
+		next.EventReceipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+}
+
 func mergeForwardEventReceipt(prev, next *models.EventReceiptRecord) *models.EventReceiptRecord {
 	merged := *next
 	merged.TransactionHash = prev.TransactionHash
@@ -225,7 +234,7 @@ func (ass *LocalFirstEventsStore) recordEventReceipt(record *models.EventReceipt
 			return err
 		}
 		stored := record
-		forward := current == nil || eventReceiptMovesForward(current.Status, record.Status)
+		forward := current == nil || (eventReceiptMovesForward(current.Status, record.Status) && !eventReceiptRejectsReplacement(current, record))
 		if forward && current != nil {
 			stored = mergeForwardEventReceipt(current, record)
 		}

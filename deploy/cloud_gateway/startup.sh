@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Lateralus Labs, LLC.
+# Use of this source code is governed by the Business Source License
+# included in the LICENSE file.
+#
+# As of the Change Date listed in the LICENSE file, this software is
+# released under the Apache License, Version 2.0.
+#
 # Startup and self-healing bootstrap script for ztd Governance Gateway on Cloud VMs.
 # Executed by Compute Engine metadata_startup_script on instance boot.
 

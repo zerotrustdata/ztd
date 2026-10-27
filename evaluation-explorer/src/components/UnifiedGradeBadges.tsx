@@ -41,9 +41,7 @@ export function UnifiedGradeBadges({ assignment }: { assignment: AssignmentResul
             className={`grade-badge-details grade-${grade.status}`}
           >
             <summary className={`grade-badge-summary tone-${tone}`}>
-              <span className="badge-label">
-                {criterion?.public_label ?? grade.criterion_id.replace(/-/g, ' ')}
-              </span>
+              <span className="badge-label">{grade.label}</span>
               <span className="badge-status" aria-label={statusLabel(grade.status)}>
                 {statusLabel(grade.status)}
               </span>

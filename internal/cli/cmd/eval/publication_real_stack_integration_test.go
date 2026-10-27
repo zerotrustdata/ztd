@@ -509,8 +509,9 @@ func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun
 	require.NoError(t, err, out)
 
 	// Execution publishes the aggregate after the grown population settles; the
-	// stale partial report must not block it.
-	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish")
+	// stale partial report must not block it. --verify=false keeps the report
+	// stale, since a verifying resume would rebuild it over the grown population.
+	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish", "--verify=false")
 	require.NoError(t, err, out)
 
 	latest := latestSummary(t)
@@ -531,7 +532,8 @@ func TestPublicationRealStack_RunsPublishIgnoresStalePartialVerificationOnUnsett
 	require.NoError(t, err, out)
 	out, err = verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
-	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish")
+	// --verify=false keeps the partial report stale while the population grows.
+	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish", "--verify=false")
 	require.NoError(t, err, out)
 
 	out, err = env.run(t, "runs", "publish", runID)
@@ -878,9 +880,12 @@ func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T)
 func TestPublicationRealStack_VerificationBackfillRepublishesModelSummariesAfterKeysAreLost(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-backfill", 3)
-	executeCampaign(t, env, "pub-backfill")
+	// Execute without verifying, so the one verification below publishes the only
+	// verified model revision the backfill must republish.
+	out, err := env.run(t, "runs", "start", "pub-backfill", "--verify=false")
+	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
-	out, err := verifyCLI(t, env, runID)
+	out, err = verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)

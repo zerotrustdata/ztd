@@ -61,8 +61,8 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
   const criteria = useMemo(() => {
     const labels = new Map<string, string>();
     for (const { assignment, grades } of rows) {
-      for (const criterion of assignment.scenario_summary?.criteria ?? []) labels.set(criterion.criterion_id, criterion.public_label);
-      for (const id of grades.keys()) if (!labels.has(id)) labels.set(id, id.replace(/[-_]/g, ' '));
+      for (const grade of grades.values()) labels.set(grade.criterion_id, grade.label);
+      for (const criterion of assignment.scenario_summary?.criteria ?? []) if (!labels.has(criterion.criterion_id)) labels.set(criterion.criterion_id, criterion.public_label);
     }
     return [...labels].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);

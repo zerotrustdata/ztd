@@ -788,7 +788,9 @@ func isValidPublicMirrorClientIP(ip net.IP) bool {
 
 func (m *PublicMirrorServer) allowAnonymousRead(r *http.Request) bool {
 	host := m.publicMirrorClientID(r)
-	now := m.now().UTC()
+	// Rate windows live only in memory. Keep the monotonic clock reading so a
+	// wall-clock correction cannot hold a client inside an expired window.
+	now := m.now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.expireAnonymousRateWindows(now)

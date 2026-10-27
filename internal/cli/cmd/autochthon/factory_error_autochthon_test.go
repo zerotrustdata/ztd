@@ -19,9 +19,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-var errFactory = fmt.Errorf("factory boom")
-
 func TestAutochthonCmd_FileSvcFactoryError(t *testing.T) {
+	errFactory := fmt.Errorf("factory boom")
 	cmd := cmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -33,6 +32,7 @@ func TestAutochthonCmd_FileSvcFactoryError(t *testing.T) {
 }
 
 func TestAutochthonStatusCmd_FileSvcFactoryError(t *testing.T) {
+	errFactory := fmt.Errorf("factory boom")
 	cmd := statusCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)

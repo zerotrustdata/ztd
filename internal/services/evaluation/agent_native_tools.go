@@ -575,7 +575,7 @@ func decodeAgentToolContract(tool, raw string) (agentToolContract, error) {
 	case constants.MCPToolEventReceiptGet:
 		return decodeTypedAgentToolContract[mcp.EventReceiptGetRequest](raw)
 	default:
-		return nil, fmt.Errorf("unknown native tool %q", tool)
+		return nil, fmt.Errorf("evaluation: decode agent tool contract %q: %w", tool, constants.ErrMCPNativeToolUnknown)
 	}
 }
 
