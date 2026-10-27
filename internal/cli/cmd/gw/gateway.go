@@ -568,6 +568,14 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 
 			cmd.Println("[ztd] Starting ztd Gateway service...")
 			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
+			if resolved.InferenceLlamaCppEndpoint == "" {
+				for _, a := range platform.DetectEnvironment().OllamaAdvisories(cmd.Context(), platform.OllamaAdvisoryInput{
+					Endpoint:         resolved.InferenceOllamaEndpoint,
+					ModelStorageRoot: resolved.ProvenanceOperatorModelStorageRoot,
+				}) {
+					cmd.PrintErrf("[ztd] WSL: %s\n[ztd]      Fix: %s\n", a.Problem, a.Fix)
+				}
+			}
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
