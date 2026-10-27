@@ -9,12 +9,34 @@ package httpclient
 
 import (
 	"crypto/tls"
+	"net/http"
+	"net/http/cookiejar"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
+
+func TestWithTimeoutPreservesClientPolicyAndSource(t *testing.T) {
+	transport := NewIPv4Transport(&tls.Config{MinVersion: tls.VersionTLS13})
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	source := &http.Client{Transport: transport, Jar: jar, Timeout: DefaultTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return constants.ErrForbidden }}
+	for _, timeout := range []time.Duration{0, time.Minute} {
+		configured := WithTimeout(source, timeout)
+		assert.NotSame(t, source, configured)
+		assert.Equal(t, timeout, configured.Timeout)
+		assert.Equal(t, DefaultTimeout, source.Timeout)
+		assert.Same(t, source.Transport, configured.Transport)
+		assert.Same(t, source.Jar, configured.Jar)
+		require.NotNil(t, configured.CheckRedirect)
+		require.ErrorIs(t, configured.CheckRedirect(nil, nil), constants.ErrForbidden)
+	}
+}
 
 func TestConstants(t *testing.T) {
 	assert.Equal(t, 30*time.Second, DefaultTimeout)

@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
@@ -96,8 +97,8 @@ func New(cfg config.Config) (*Client, error) {
 	c := &Client{
 		cfg: cfg,
 		http: &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: tlsCfg},
+			Timeout:   httpclient.DefaultTimeout,
+			Transport: httpclient.NewIPv4Transport(tlsCfg),
 		},
 		roots: tlsCfg.RootCAs,
 	}
@@ -123,8 +124,8 @@ func New(cfg config.Config) (*Client, error) {
 	}
 	c.cliTLS = cliTLS
 	c.cliHTTP = &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: cliTLS},
+		Timeout:   httpclient.DefaultTimeout,
+		Transport: httpclient.NewIPv4Transport(cliTLS),
 	}
 	return c, nil
 }
@@ -327,10 +328,7 @@ func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*auth.Appro
 	if p.CLISessionID == "" {
 		return nil, fmt.Errorf("agent harness: subscribe approvals needs a CLI session: %w", constants.ErrMissingRequiredField)
 	}
-	sseHTTPClient := &http.Client{
-		Timeout:   0,
-		Transport: &http.Transport{TLSClientConfig: c.cliTLS.Clone()},
-	}
+	sseHTTPClient := httpclient.WithTimeout(c.cliHTTP, 0)
 	return auth.SubscribeApprovals(ctx, sseHTTPClient, c.cfg.PublicBaseURL, p.CLISessionID)
 }
 

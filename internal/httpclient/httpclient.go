@@ -75,6 +75,15 @@ func NewIPv4Transport(tlsCfg *tls.Config) *http.Transport {
 	}
 }
 
+// WithTimeout returns a copy of client with a different overall request timeout.
+// Zero leaves cancellation to the request context. The transport, identity,
+// redirect policy and cookie jar are retained; the source client is not mutated.
+func WithTimeout(client *http.Client, timeout time.Duration) *http.Client {
+	configured := *client
+	configured.Timeout = timeout
+	return &configured
+}
+
 // WithoutRedirects returns a copy of client that fails every redirect with
 // refusal. Use it for a client whose destination is a bound identity, where a
 // Location header would send the request to a host nobody bound or downgrade

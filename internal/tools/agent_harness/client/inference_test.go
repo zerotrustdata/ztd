@@ -8,8 +8,10 @@
 package client
 
 import (
+	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +23,37 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
+
+func TestDispatchIntent_UsesOnlyCallerDeadline(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		name := "no_deadline"
+		if explicit {
+			name = "caller_deadline"
+		}
+		t.Run(name, func(t *testing.T) {
+			client, err := New(config.Config{MTLSBaseURL: "http://tribunal.test"})
+			require.NoError(t, err)
+			recorder := &deadlineRecorder{}
+			client.http.Transport = recorder
+			ctx := t.Context()
+			var want time.Time
+			if explicit {
+				want = time.Now().Add(12 * time.Hour)
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, want)
+				defer cancel()
+			}
+			_, _, err = client.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{})
+			require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+			assert.Equal(t, explicit, recorder.has)
+			if explicit {
+				assert.Equal(t, want, recorder.deadline, "the intent client must not shorten the caller's deadline")
+			}
+		})
+	}
+}
 
 func TestInferenceHTTP_TimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
 	client, err := New(config.Config{MTLSBaseURL: "http://inference.test"})

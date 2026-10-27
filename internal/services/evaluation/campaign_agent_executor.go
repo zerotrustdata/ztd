@@ -472,6 +472,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 	r.trace.Input = input
 	messages := append(append(make([]*operatorv1.InferenceMessage, 0, len(r.held)+len(opening)), r.held...), opening...)
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
@@ -489,6 +492,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 		call.Thinking = thinking
 		call.ToolCallCount = len(toolCalls)
 		modelCallID := call.ProviderAttemptID
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 
 		questions, isInterrogation := parseInterrogationQuestions(text)
 		if isInterrogation {
@@ -547,7 +553,12 @@ func (r *agentRun) loop(ctx context.Context) error {
 		}
 		results := make([]*operatorv1.InferenceMessage, 0, len(toolCalls))
 		for _, toolCall := range toolCalls {
-			executed, err := r.runTool(ctx, turn, modelCallID, toolCall)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			callCtx, cancel := agentCallContext(ctx)
+			executed, err := r.runTool(callCtx, turn, modelCallID, toolCall)
+			cancel()
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 					r.trace.TerminalClassification = AgentTerminalClassificationTimeout
@@ -556,6 +567,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 				return err
 			}
 			r.trace.ToolCalls = append(r.trace.ToolCalls, executed)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if r.trace.TerminalClassification == AgentTerminalClassificationPolicyDenial {
 				return nil
 			}
@@ -584,6 +598,28 @@ func (r *agentRun) loop(ctx context.Context) error {
 	r.trace.ToolTurnLimitReached = true
 	r.trace.TerminalClassification = AgentTerminalClassificationBudgetExhaustion
 	return nil
+}
+
+// agentCallContext lets an admitted call return its signed outcome after the
+// assignment deadline. Cutting off the HTTP wait can lose a receipt while the
+// Operator continues executing, leaving an unclaimed ledger entry. The drain
+// is bounded by one approval and inference budget; cancellation before the
+// assignment deadline still interrupts it. The loop checks the assignment context before every new call.
+func agentCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if !ok || ctx.Err() != nil {
+		return ctx, func() {}
+	}
+	callCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline.Add(mcp.ApprovalRequestTTL+inferencedispatch.RequestDeadline))
+	stop := context.AfterFunc(ctx, func() {
+		if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			cancel()
+		}
+	})
+	return callCtx, func() {
+		stop()
+		cancel()
+	}
 }
 
 var (
@@ -773,7 +809,9 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // the caller stops the turn. call names the inference (purpose, loop turn, and
 // for a Tribunal call its tool call and persona); dispatch fills the rest.
 func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
-	result, call, err := r.dispatchInference(ctx, call, messages, tools)
+	callCtx, cancel := agentCallContext(ctx)
+	defer cancel()
+	result, call, err := r.dispatchInference(callCtx, call, messages, tools)
 	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.EventReceipt, err) {
 		// Required L2 refused the turn and the Inference runtime signed that
 		// rejection: a governance outcome, not a provider failure.
@@ -785,11 +823,12 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			r.trace.TerminalClassification = AgentTerminalClassificationTimeout
-			return nil, nil
+			call.Error = string(ExecutionFailureTimeout)
+		} else {
+			r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
+			r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
+			call.Error = r.trace.ProviderFailure
 		}
-		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
-		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
-		call.Error = r.trace.ProviderFailure
 	}
 	if err == nil || call.Receipt != nil {
 		r.trace.ModelCalls = append(r.trace.ModelCalls, call)

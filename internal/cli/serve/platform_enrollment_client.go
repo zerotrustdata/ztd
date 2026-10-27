@@ -15,6 +15,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -204,6 +205,11 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 	if err != nil {
 		return nil, fmt.Errorf("operator enrollment: generate request token: %w", err)
 	}
+	auditorKey, err := models.DecodeAuditorPublicKey(c.cfg.AuditorPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("operator enrollment: auditor key: %w", err)
+	}
+	auditorDigest := sha256.Sum256(auditorKey)
 	return &operatorBootstrapAttempt{
 		request: models.OperatorBootstrapRequest{
 			Token: token,
@@ -226,7 +232,7 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 		},
 		operatorKey:  operatorKey,
 		cliKey:       cliKey,
-		fingerprints: models.PlatformEnrollmentCSRFingerprints{Operator: operatorFP, CLI: cliFP},
+		fingerprints: models.PlatformEnrollmentCSRFingerprints{Operator: operatorFP, CLI: cliFP, AuditorKey: hex.EncodeToString(auditorDigest[:])},
 	}, nil
 }
 
@@ -310,7 +316,8 @@ func (c *OperatorBootstrapClient) observeCreated(ctx context.Context, attempt *o
 	if created == nil || created.RequestID == "" {
 		return fmt.Errorf("operator enrollment: created frame missing its request")
 	}
-	if created.Fingerprints.Operator != attempt.fingerprints.Operator || created.Fingerprints.CLI != attempt.fingerprints.CLI {
+	if created.Fingerprints.Operator != attempt.fingerprints.Operator || created.Fingerprints.CLI != attempt.fingerprints.CLI ||
+		created.Fingerprints.AuditorKey != attempt.fingerprints.AuditorKey {
 		return fmt.Errorf("operator enrollment: request %s does not carry this Operator's keys", created.RequestID)
 	}
 	if attempt.requestID == created.RequestID {
@@ -367,7 +374,7 @@ func readOperatorBootstrapFrame(conn *websocket.Conn, want models.OperatorBootst
 // proofs signs the canonical completion transcript with both private keys.
 func (a *operatorBootstrapAttempt) proofs() (*models.PlatformEnrollmentProofs, error) {
 	transcript, err := buildOperatorCompletionTranscript(a.requestID, a.request.Enrollment.TokenHash,
-		a.request.Enrollment.InstanceID, a.fingerprints.Operator, a.fingerprints.CLI)
+		a.request.Enrollment.InstanceID, a.fingerprints.Operator, a.fingerprints.CLI, a.fingerprints.AuditorKey)
 	if err != nil {
 		return nil, err
 	}
@@ -505,8 +512,8 @@ func OperatorBootstrapURL(endpoint string, httpPort int) string {
 // buildOperatorCompletionTranscript constructs the canonical
 // PlatformEnrollmentCompletionTranscript as deterministic protobuf,
 // matching the gateway's platformEnrollmentCompletionTranscript. The
-// operator transcript includes both the operator and CLI fingerprints.
-func buildOperatorCompletionTranscript(requestID, tokenHash, instanceID, operatorFP, cliFP string) ([]byte, error) {
+// operator transcript includes the operator, CLI, and auditor-key fingerprints.
+func buildOperatorCompletionTranscript(requestID, tokenHash, instanceID, operatorFP, cliFP, auditorFP string) ([]byte, error) {
 	message := &commonv1.PlatformEnrollmentCompletionTranscript{
 		ProtocolVersion: constants.PlatformEnrollmentProtocolVersion,
 		RequestId:       requestID,
@@ -514,8 +521,9 @@ func buildOperatorCompletionTranscript(requestID, tokenHash, instanceID, operato
 		ComponentKind:   commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_OPERATOR,
 		InstanceId:      instanceID,
 		Fingerprints: &commonv1.PlatformEnrollmentFingerprints{
-			Operator: operatorFP,
-			Cli:      cliFP,
+			Operator:   operatorFP,
+			Cli:        cliFP,
+			AuditorKey: auditorFP,
 		},
 	}
 	encoded, err := (proto.MarshalOptions{Deterministic: true}).Marshal(message)

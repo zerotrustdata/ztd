@@ -194,12 +194,12 @@ func executorImportRequest(t *testing.T, env *realStackAgentRun, assignmentID st
 }
 
 // executorShellCallReply scripts one run_shell_command call on the health fixture
-// the prompt names, with the given provider call ID.
-func executorShellCallReply(id string) fixtures.OllamaReply {
+// the prompt names, with a stable provider call ID.
+func executorShellCallReply() fixtures.OllamaReply {
 	return fixtures.OllamaReply{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
 		reply := realStackHealthCatReply(request)
 		for i := range reply.ToolCalls {
-			reply.ToolCalls[i].ID = id
+			reply.ToolCalls[i].ID = "call-1"
 		}
 		return reply
 	}}
@@ -307,7 +307,7 @@ func TestCampaignAgentExecutorIntegration_UndeclaredToolCallFailsWithoutDispatch
 
 func TestCampaignAgentExecutorIntegration_TraceRecordsExactInputThinkingAndProviderCallIDs(t *testing.T) {
 	replies := shellReplies()
-	replies[0] = executorShellCallReply("call-1")
+	replies[0] = executorShellCallReply()
 	replies[0].Thinking = "  Read the health file first.\n"
 	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "exact-input", replies: replies})
 
@@ -560,7 +560,7 @@ func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedReceiptAndVe
 			env := newRealStackAgentRun(t, realStackOptions{
 				shared: shared, singleRole: true, suffix: "provider-fail",
 				replies: []fixtures.OllamaReply{
-					executorShellCallReply("call-1"),
+					executorShellCallReply(),
 					{Failure: "provider unreachable"},
 				},
 			})
@@ -587,38 +587,61 @@ func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedReceiptAndVe
 }
 
 func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerifies(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
-	defer cancel()
-	env := newRealStackAgentRun(t, realStackOptions{
-		shared: true, singleRole: true, suffix: "timeout-bracket",
-		replies: []fixtures.OllamaReply{
-			executorShellCallReply("call-1"),
-			{
-				Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
-					<-ctx.Done()
-					return fixtures.OllamaReply{Failure: "context deadline exceeded"}
-				},
-			},
-		},
-	})
+	for _, shared := range []bool{false, true} {
+		for _, providerFails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("shared=%t/providerFails=%t", shared, providerFails), func(t *testing.T) {
+				var ctx context.Context
+				env := newRealStackAgentRun(t, realStackOptions{
+					shared: shared, singleRole: true, suffix: "timeout-bracket",
+					replies: []fixtures.OllamaReply{
+						executorShellCallReply(),
+						{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+							<-ctx.Done()
+							if providerFails {
+								return fixtures.OllamaReply{Failure: "provider failed after deadline"}
+							}
+							reply := realStackHealthCatReply(request)
+							reply.Content = "late answer"
+							return reply
+						}},
+					},
+				})
 
-	res, ok, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
-	require.NoError(t, err)
-	require.True(t, ok)
-	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, res.GetLifecycleStatus())
-	assert.Contains(t, res.GetFailureReason(), "The attempt timed out before completing the scenario.")
-	trace := executorLoadTrace(t, env, res)
-	assert.Equal(t, evaluation.AgentTerminalClassificationTimeout, trace.TerminalClassification)
-	require.NotNil(t, trace.Bracket)
-	require.NotNil(t, trace.Bracket.Before.EventReceipt)
-	require.NotNil(t, trace.Bracket.After.EventReceipt)
-	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				res, ok, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
+				require.NoError(t, err)
+				require.True(t, ok)
+				require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, res.GetLifecycleStatus(), res.GetInvalidEvidenceDetail())
+				assert.Contains(t, res.GetFailureReason(), "The attempt timed out before completing the scenario.")
+				trace := executorLoadTrace(t, env, res)
+				assert.Equal(t, evaluation.AgentTerminalClassificationTimeout, trace.TerminalClassification)
+				assert.Empty(t, trace.FinalOutput, "the late reply cannot complete the timed-out assignment")
+				require.Len(t, trace.ModelCalls, 2, "the in-flight inference's signed outcome is retained")
+				require.NotNil(t, trace.ModelCalls[1].Receipt)
+				if !providerFails {
+					assert.Equal(t, 1, trace.ModelCalls[1].ToolCallCount, "the late reply requested another tool call")
+				}
+				require.Len(t, trace.ToolCalls, 1, "the completed pre-timeout tool step is retained")
+				require.NotNil(t, trace.Bracket)
+				require.NotNil(t, trace.Bracket.Before.EventReceipt)
+				require.NotNil(t, trace.Bracket.After.EventReceipt)
+				require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+				assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT, trace.ToProto().GetFinishReason())
+				report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+				require.NoError(t, err)
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+				_, err = evaluation.NewCampaignExporter(env.clock).ExportRun(t.Context(), env.store, env.files, env.req.RunID, constants.EvaluationCampaignExportDirname)
+				require.NoError(t, err, "a timed-out attempt remains exportable")
+			})
+		}
+	}
 }
 
 func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOutOfDataBracket(t *testing.T) {
 	var env *realStackAgentRun
 	replies := []fixtures.OllamaReply{
-		executorShellCallReply("call-1"),
+		executorShellCallReply(),
 		// While the second turn is in flight, another caller runs an inference on
 		// the Inference runtime. That commitment is outside this trace.
 		{Content: "HEALTHY", BeforeReply: func() { executorForeignInference(t, env) }},

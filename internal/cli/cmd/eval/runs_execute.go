@@ -28,35 +28,11 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
-	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
-	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const (
-	assignmentTimeout      = 8 * time.Minute
-	campaignAgentPersonaID = "ztd-eval-campaign"
-)
-
-func deriveAssignmentTimeout(gov evaluation.RunGovernance) time.Duration {
-	timeout := assignmentTimeout
-	posture, err := cases.GovernancePosture(gov.Posture)
-	if err != nil {
-		return timeout
-	}
-	if posture.RequiresL3() {
-		timeout += mcp.ApprovalRequestTTL
-	}
-	if posture.RequiresL2() && gov.Consensus != nil && gov.Consensus.GetBound() {
-		maxRounds := 1
-		if gov.Consensus.GetProvider() == string(constants.ConsensusProviderTribunal) {
-			maxRounds = 2
-		}
-		timeout += time.Duration(maxRounds) * inferdispatch.RequestDeadline
-	}
-	return timeout
-}
+const campaignAgentPersonaID = "ztd-eval-campaign"
 
 type runExecuteOptions struct {
 	RunID        string
@@ -69,6 +45,16 @@ type runExecuteOptions struct {
 	// Zero disables the rollout generation-failure limit.
 	ProviderFailureLimit int
 	AssignmentTimeout    time.Duration
+}
+
+// assignmentContext adds a wall-clock deadline only when explicitly requested.
+// Without one, the executor's loop limits and each governed stage's deadlines
+// bound the work. Every assignment still gets an independent cancellation scope.
+func assignmentContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout > 0 {
+		return context.WithTimeout(parent, timeout)
+	}
+	return context.WithCancel(parent)
 }
 
 // runProviderFailureError stops repeated provider generation failures without
@@ -90,6 +76,9 @@ func (e *runProviderFailureError) Unwrap() error { return constants.ErrInference
 // streams only: it quotes grade detail and model-derived text, so it is never
 // written to a file under the runtime root.
 func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions) (executed int, runErr error) {
+	if opts.AssignmentTimeout < 0 {
+		return 0, fmt.Errorf("evaluation: assignment timeout must be nonnegative: %w", constants.ErrEvaluationFlagsInvalid)
+	}
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return 0, err
@@ -376,16 +365,12 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	iterations := int64(opts.Limit)
 	stopped := false
 	generationFailures := 0
-	iterTimeout := opts.AssignmentTimeout
-	if iterTimeout <= 0 {
-		iterTimeout = deriveAssignmentTimeout(governance)
-	}
 	for i := int64(0); i < iterations; i++ {
 		if watcher.Requested() {
 			stopped = true
 			break
 		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), iterTimeout)
+		ctx, cancel := assignmentContext(cmd.Context(), opts.AssignmentTimeout)
 		result, ok, err := controller.ExecuteNextAssignment(ctx, opts.RunID, executionBinding, artifacts)
 		cancel()
 		if ok && errors.Is(err, constants.ErrEvaluationPublicationFailed) {

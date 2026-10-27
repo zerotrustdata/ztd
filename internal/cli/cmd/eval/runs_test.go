@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -19,9 +20,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
-	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -113,57 +111,63 @@ func TestVerificationReportHelpers(t *testing.T) {
 	assert.Nil(t, verificationFailureReasons(nil))
 }
 
-func TestDeriveAssignmentTimeout(t *testing.T) {
-	// Doctrine posture, unbound: base execution budget (8m)
-	govDoc := evaluation.RunGovernance{
-		Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
-		Consensus: &evalv1.EvaluationConsensusIdentity{Bound: false},
-	}
-	assert.Equal(t, assignmentTimeout, deriveAssignmentTimeout(govDoc))
+// An assignment has no independent wall-clock deadline unless the operator
+// requests one. Parent cancellation and earlier parent deadlines still apply.
+func TestAssignmentContext_NoImplicitDeadline(t *testing.T) {
+	parent, cancelParent := context.WithCancel(t.Context())
+	defer cancelParent()
+	ctx, cancel := assignmentContext(parent, 0)
+	defer cancel()
+	_, hasDeadline := ctx.Deadline()
+	assert.False(t, hasDeadline)
+	require.NoError(t, ctx.Err())
+	cancelParent()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
 
-	// Ratify posture (requires L3, no L2): base + approval TTL (8m + 2m = 10m)
-	govRatify := evaluation.RunGovernance{
-		Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY,
-		Consensus: &evalv1.EvaluationConsensusIdentity{Bound: false},
-	}
-	assert.Equal(t, assignmentTimeout+mcp.ApprovalRequestTTL, deriveAssignmentTimeout(govRatify))
+func TestAssignmentContext_ExplicitTimeout(t *testing.T) {
+	before := time.Now()
+	ctx, cancel := assignmentContext(t.Context(), time.Minute)
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok)
+	assert.False(t, deadline.Before(before.Add(time.Minute)))
+	assert.False(t, deadline.After(time.Now().Add(time.Minute)))
+	cancel()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
 
-	// Consensus posture with Tribunal bound (requires L2, 2 rounds): base + 2 * inferdispatch.RequestDeadline
-	govConsensusTribunal := evaluation.RunGovernance{
-		Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
-		Consensus: &evalv1.EvaluationConsensusIdentity{
-			Bound:    true,
-			Provider: string(constants.ConsensusProviderTribunal),
-		},
+func TestAssignmentContext_PreservesParentDeadline(t *testing.T) {
+	parent, cancelParent := context.WithTimeout(t.Context(), time.Minute)
+	defer cancelParent()
+	want, _ := parent.Deadline()
+	for _, timeout := range []time.Duration{0, time.Hour} {
+		ctx, cancel := assignmentContext(parent, timeout)
+		got, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.Equal(t, want, got)
+		cancel()
+		require.NoError(t, parent.Err(), "ending an assignment must not cancel the run")
 	}
-	assert.Equal(t, assignmentTimeout+2*inferdispatch.RequestDeadline, deriveAssignmentTimeout(govConsensusTribunal))
-
-	// Notary posture with Tribunal bound (requires L3 and L2): base + approval TTL + 2 * inferdispatch.RequestDeadline
-	govNotaryTribunal := evaluation.RunGovernance{
-		Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY,
-		Consensus: &evalv1.EvaluationConsensusIdentity{
-			Bound:    true,
-			Provider: string(constants.ConsensusProviderTribunal),
-		},
-	}
-	assert.Equal(t, assignmentTimeout+mcp.ApprovalRequestTTL+2*inferdispatch.RequestDeadline, deriveAssignmentTimeout(govNotaryTribunal))
-
-	// Notary posture with non-tribunal consensus (1 round): base + approval TTL + 1 * inferdispatch.RequestDeadline
-	govNotaryApp := evaluation.RunGovernance{
-		Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY,
-		Consensus: &evalv1.EvaluationConsensusIdentity{
-			Bound:    true,
-			Provider: "application",
-		},
-	}
-	assert.Equal(t, assignmentTimeout+mcp.ApprovalRequestTTL+inferdispatch.RequestDeadline, deriveAssignmentTimeout(govNotaryApp))
 }
 
 func TestRunsFlags_AssignmentTimeoutFlag(t *testing.T) {
 	startCmd := runsStartCmd(nativeEvalDeps{})
-	assert.NotNil(t, startCmd.Flags().Lookup("assignment-timeout"))
-
 	resumeCmd := runsResumeCmd(nativeEvalDeps{})
-	assert.NotNil(t, resumeCmd.Flags().Lookup("assignment-timeout"))
+	for _, cmd := range []*cobra.Command{startCmd, resumeCmd} {
+		flag := cmd.Flags().Lookup("assignment-timeout")
+		require.NotNil(t, flag)
+		assert.Equal(t, "0s", flag.DefValue)
+		assert.Contains(t, flag.Usage, "0 adds no assignment deadline")
+	}
 	assert.Contains(t, resumeCmd.Aliases, "execute")
+}
+
+func TestRunsRejectNegativeAssignmentTimeoutBeforeLoadingRuntime(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	_, err := runStartFlow(cmd, nativeEvalDeps{}, runStartFlowOptions{AssignmentTimeout: -time.Second})
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+	_, err = executeRun(cmd, nativeEvalDeps{}, runExecuteOptions{AssignmentTimeout: -time.Second})
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }

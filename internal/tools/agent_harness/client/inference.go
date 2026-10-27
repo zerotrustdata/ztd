@@ -22,12 +22,12 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
-	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
@@ -135,13 +135,10 @@ func (c *Client) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalInt
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: marshal tribunal intent request: %v", constants.ErrRequestMarshalFailed, err)
 	}
-	// Every member call may run to the inference deadline, and each admitted
-	// envelope (a contextual revision needs a fresh one) may wait for a human
-	// decision before its own dispatch deadline.
-	httpClient := &http.Client{
-		Timeout:   time.Duration(tribunal.MaxMemberCalls)*dispatch.RequestDeadline + tribunal.MaxAdmissionReviews*(mcp.ApprovalRequestTTL+dispatch.RequestDeadline),
-		Transport: c.http.Transport,
-	}
+	// The caller owns the intent's overall lifetime. Each governed inference,
+	// approval and dispatch has its own deadline; a guessed aggregate HTTP
+	// timeout can expire while the Tribunal is still making bounded progress.
+	httpClient := httpclient.WithTimeout(c.http, 0)
 	status, respBody, err := c.doInference(ctx, httpClient, c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsIntents, body, nil)
 	if err != nil {
 		return nil, respBody, err
@@ -248,10 +245,7 @@ func (c *Client) DispatchInferenceStream(ctx context.Context, req *operatorv1.In
 }
 
 func (c *Client) inferenceHTTP() *http.Client {
-	return &http.Client{
-		Timeout:   mcp.ApprovalRequestTTL + dispatch.RequestDeadline,
-		Transport: c.http.Transport,
-	}
+	return httpclient.WithTimeout(c.http, mcp.ApprovalRequestTTL+dispatch.RequestDeadline)
 }
 
 func (c *Client) doInference(ctx context.Context, hc *http.Client, p Persona, method, url string, body []byte, accept *string) (int, []byte, error) {

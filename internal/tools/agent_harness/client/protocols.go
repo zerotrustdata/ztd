@@ -14,6 +14,7 @@ import (
 	"net/http"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -62,9 +63,8 @@ func (c *Client) DispatchCommandBody(ctx context.Context, p Persona, body []byte
 	if cliIdentity {
 		hc = c.cliHTTP
 	}
-	httpClient := *hc
-	httpClient.Timeout = mcp.ApprovalRequestTTL + dispatch.RequestDeadline
-	status, raw, err := c.doWithClient(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body, &httpClient, constants.HeaderValueApplicationJSON, cliIdentity)
+	httpClient := httpclient.WithTimeout(hc, mcp.ApprovalRequestTTL+dispatch.RequestDeadline)
+	status, raw, err := c.doWithClient(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body, httpClient, constants.HeaderValueApplicationJSON, cliIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: submit dispatch command: %w", err)
 	}

@@ -90,6 +90,24 @@ This document does not define a general SQLite backup or recovery procedure. The
 - **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`, carrying the vault key chain that sealed the evidence so a snapshot restores into a reinitialized runtime; `ztd eval runs delete` and `ztd eval campaigns delete` purge deleted evidence from the backups too; see [Evaluation Programs](./evals.md).
 - **Verify the audit chain:** `ztd audit verify` walks the hash chain from the latest checkpoint (or genesis) and reports the head sequence and hash.
 
+### Upgrading to signed audit checkpoints
+
+The v1.5.0 checkpoint schema requires `signature`, `auditor_key_id`, `created_at_unix_ms`, and `format_version` on `audit_chain_checkpoints`. A pre-upgrade database is rejected with `ErrAuditCheckpointSchemaIncompatible` even if that table is empty. Startup never adds columns or signs historical checkpoints retroactively (INV-STOR-SCHEMA-01).
+
+For the Gateway, stop connected Operators before resetting the trust domain, then run these commands from its working directory:
+
+```bash
+./ztd gw clean
+./ztd gw start --public-spectator --listen-host=0.0.0.0
+./ztd auth enroll user
+```
+
+`gw clean` offers an evaluation-evidence backup and archives the entire runtime as `.ztd-<MMDDHHMM>`, including the database, SQLite sidecars, file ledger, encrypted secrets, and PKI. The new Gateway creates a fresh database and trust domain; enroll applications and outbound Operators again. Supply the intended launch flags on `gw start`; `gw reset` starts with its default flags. An evaluation backup can be restored with `ztd eval restore`; it does not restore the old canonical database or old enrollment authority. See [Evaluation Programs](evals.md) for backup scope.
+
+Keep the archived runtime and access to its original keyring or SSH-agent sealing key for historical evidence. Verify an unsigned-checkpoint archive with its producing revision; the new verifier cannot certify it as signed-checkpoint evidence. A backup error aborts cleanup; resolve it before proceeding. `--skip-backup` explicitly skips the separate evaluation snapshot while retaining the whole-runtime archive.
+
+Each outbound Operator owns a separate authoritative database. Upgrade both runtime roles together and preserve each old Operator root with its signing keys and keyring access before starting from a fresh root and enrolling it. Resetting an Operator's enrollment identity alone does not replace its incompatible audit schema. Rebuilding the disposable [public mirror](public_spectator.md#upgrade-and-verification) is separate from preserving these authoritative runtime archives.
+
 ## Anti-patterns
 
 - Bypassing the RuntimeFileService to open database paths directly.

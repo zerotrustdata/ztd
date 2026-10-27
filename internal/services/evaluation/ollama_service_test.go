@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,6 +38,23 @@ func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ con
 			ReleaseResult: &operatorv1.OllamaModelReleaseResult{
 				ExecutionId: request.ExecutionID,
 				Status:      status,
+			},
+		}, nil
+	}
+	if request.ActionType == constants.ActionTypeOllamaModelInventory {
+		return &OllamaModelCommandDispatchResult{
+			Status: 200, Success: true,
+			InventoryResult: &operatorv1.OllamaModelInventoryResult{
+				ExecutionId: request.ExecutionID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+				Entries: []*operatorv1.ProviderModelInventoryEntry{{ServedModelTag: "qwen3:0.6b"}},
+			},
+		}, nil
+	}
+	if request.ActionType == constants.ActionTypeOllamaModelResidency {
+		return &OllamaModelCommandDispatchResult{
+			Status: 200, Success: true,
+			ResidencyResult: &operatorv1.OllamaModelResidencyResult{
+				ExecutionId: request.ExecutionID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			},
 		}, nil
 	}
@@ -147,4 +165,39 @@ func TestValidateOllamaModelReleaseResult_RequiresCompletedTypedResult(t *testin
 			Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		},
 	}))
+}
+
+func TestOllamaProviderQueries_UsePayloadExecutionID(t *testing.T) {
+	for _, action := range []constants.ActionType{constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency} {
+		t.Run(string(action), func(t *testing.T) {
+			dispatcher := &recordingOllamaModelCommandDispatcher{}
+			minted := 0
+			maintenance := OllamaModelMaintenanceContext{
+				TargetOperatorSessionID: "inference-session",
+				NewID: func(prefix string) string {
+					minted++
+					return fmt.Sprintf("%s-%d", prefix, minted)
+				},
+			}
+			var payloadID string
+			if action == constants.ActionTypeOllamaModelInventory {
+				_, err := ListOllamaProviderInventory(t.Context(), dispatcher, maintenance)
+				require.NoError(t, err)
+				require.Len(t, dispatcher.requests, 1)
+				var payload operatorv1.OllamaModelInventoryRequested
+				require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
+				payloadID = payload.GetExecutionId()
+			} else {
+				_, err := ReadOllamaProviderResidency(t.Context(), dispatcher, maintenance)
+				require.NoError(t, err)
+				require.Len(t, dispatcher.requests, 1)
+				var payload operatorv1.OllamaModelResidencyRequested
+				require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
+				payloadID = payload.GetExecutionId()
+			}
+			assert.Equal(t, payloadID, dispatcher.requests[0].ExecutionID)
+			assert.Equal(t, "inference-session", dispatcher.requests[0].TargetOperatorSessionID)
+			assert.Equal(t, 2, minted, "one execution ID and one task ID are minted")
+		})
+	}
 }

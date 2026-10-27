@@ -120,6 +120,9 @@ func writeRunStartPlan(cmd *cobra.Command, plan runStartPlanJSON, jsonOutput boo
 // sessions, persists the run and its assignment matrix, and unless prepared
 // only, executes and optionally verifies it.
 func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOptions) (*runStartFlowResult, error) {
+	if opts.AssignmentTimeout < 0 {
+		return nil, fmt.Errorf("evaluation: assignment timeout must be nonnegative: %w", constants.ErrEvaluationFlagsInvalid)
+	}
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return nil, err
@@ -358,7 +361,7 @@ Examples:
 	cmd.Flags().BoolVar(&opts.RequireProvenance, "require-provenance", false, "Fail verification when model provenance attestation windows are missing")
 	cmd.Flags().BoolVar(&opts.RequireObservation, "require-observation", false, "Fail verification when provider-boundary observation windows are missing")
 	cmd.Flags().BoolVar(&opts.NoAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
-	cmd.Flags().DurationVar(&opts.AssignmentTimeout, "assignment-timeout", 0, "Per-assignment execution timeout override (0 derives timeout from frozen run governance)")
+	cmd.Flags().DurationVar(&opts.AssignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
 }
 
@@ -493,7 +496,7 @@ Verification runs after execution by default; use --verify=false to skip it.`,
 	cmd.Flags().BoolVar(&verify, "verify", true, "Verify the run after execution")
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish assignment lifecycle and terminal result projections to the public mirror")
 	cmd.Flags().BoolVar(&noAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
-	cmd.Flags().DurationVar(&assignmentTimeout, "assignment-timeout", 0, "Per-assignment execution timeout override (0 derives timeout from frozen run governance)")
+	cmd.Flags().DurationVar(&assignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
 }
 
