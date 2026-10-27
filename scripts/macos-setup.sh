@@ -44,6 +44,12 @@ ztd_macos_install_missing() {
                 exit 1
                 ;;
             go) brew_packages+=("go") ;;
+            go-stale)
+                echo "System go ${ZTD_GO_STALE} is older than go.mod's ${ZTD_GO_MIN}."
+                if ztd_setup_confirm "Upgrade Go with Homebrew now? [y/N] "; then
+                    brew upgrade go || echo "  brew upgrade go failed; upgrade it manually"
+                fi
+                ;;
             node) brew_packages+=("node") ;;
             rg) brew_packages+=("ripgrep") ;;
             bc) brew_packages+=("bc") ;;

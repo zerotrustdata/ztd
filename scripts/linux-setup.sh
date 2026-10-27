@@ -192,6 +192,15 @@ ztd_linux_install_missing() {
                     echo "  Install Go ${ZTD_GO_MIN}+ from https://go.dev/dl/ and rerun this script."
                 fi
                 ;;
+            go-stale)
+                echo "System go ${ZTD_GO_STALE} is older than go.mod's ${ZTD_GO_MIN}; every shell and tool outside this repo still sees the old one."
+                if ztd_linux_init_sudo && ztd_have curl &&
+                    ztd_setup_confirm "Upgrade to the official Go ${ZTD_GO_MIN} tarball in /usr/local/go now? [y/N] "; then
+                    ztd_linux_install_go || echo "  Go upgrade failed; install it manually from https://go.dev/dl/"
+                else
+                    echo "  Upgrade later from https://go.dev/dl/ ; ztd keeps using its managed toolchain meanwhile."
+                fi
+                ;;
             node)
                 echo "Node.js ${ZTD_NODE_REQUIREMENT} is required (evaluation explorer, console, protocol/node)."
                 if ztd_linux_init_sudo && ztd_have curl &&
@@ -224,57 +233,124 @@ ztd_linux_secret_service_available() {
 # one. On Linux that is the Secret Service, else an ssh-agent key (SSH-only
 # sessions, servers, WSL). When neither exists, offers to create an Ed25519 key
 # and to load it from the shell profile. Never fails the setup.
+ztd_linux_keystore_fatal() {
+    ztd_ui_fatal "$1"
+    exit 1
+}
+
+# The seal is only as strong as the private key file under it, so setup stops
+# until the key is passphrase-protected.
+# usage: ztd_linux_require_passphrase <private-key-path>
+ztd_linux_require_passphrase() {
+    local key="$1"
+    ssh-keygen -y -P "" -f "$key" >/dev/null 2>&1 || return 0
+    ztd_ui_fail "$key has no passphrase: anyone who can read it can unseal the master key"
+    if [[ -t 0 ]] && ztd_setup_confirm "Remediate now by setting a passphrase on $key (ssh-keygen -p)? [y/N] "; then
+        ssh-keygen -p -f "$key" || true
+        if ! ssh-keygen -y -P "" -f "$key" >/dev/null 2>&1; then
+            ztd_ui_ok "$key is passphrase-protected"
+            return 0
+        fi
+    fi
+    ztd_linux_keystore_fatal "refusing to continue with an unprotected master-key seal. Run: ssh-keygen -p -f $key   then rerun: bash scripts/linux-setup.sh"
+}
+
+# Gates every private key the running agent holds (matched through its .pub).
+ztd_linux_gate_loaded_keys() {
+    local pub fields loaded
+    loaded="$(ssh-add -L 2>/dev/null)" || return 0
+    for pub in "$HOME"/.ssh/*.pub; do
+        [[ -f "$pub" ]] || continue
+        fields="$(awk '{print $1" "$2}' "$pub")"
+        if grep -qF "$fields" <<<"$loaded"; then
+            ztd_linux_require_passphrase "${pub%.pub}"
+        fi
+    done
+}
+
+# Replaces an earlier ztd block (it started a new agent per shell) with the
+# current one; only the marker-delimited block is touched.
+ztd_linux_write_agent_block() {
+    local key="$1" tmp
+    if [[ -f "$ZTD_PROFILE_FILE" ]] && grep -qF "$ZTD_SSH_AGENT_MARKER" "$ZTD_PROFILE_FILE"; then
+        if grep -qF "ztd-ssh-agent.sock" "$ZTD_PROFILE_FILE"; then
+            ztd_ui_ok "ssh-agent block already current in $ZTD_PROFILE_FILE"
+            return 0
+        fi
+        ztd_setup_confirm "Replace the outdated ztd ssh-agent block in $ZTD_PROFILE_FILE? [y/N] " ||
+            ztd_linux_keystore_fatal "outdated ssh-agent block left in place; rerun and accept, or remove it by hand"
+        tmp="$(mktemp "$ZTD_PROFILE_FILE.XXXXXX")"
+        awk -v m="$ZTD_SSH_AGENT_MARKER" '
+            # An old block ends at its unindented ssh-add line; a current one at its fi.
+            skip && /ztd-ssh-agent.sock/ { cur = 1 }
+            skip && ((!cur && /^ssh-add /) || (cur && /^fi$/)) { skip = 0; cur = 0; next }
+            skip { next }
+            $0 == m { skip = 1; next }
+            { print }' "$ZTD_PROFILE_FILE" >"$tmp"
+        cat "$tmp" >"$ZTD_PROFILE_FILE"
+        rm -f "$tmp"
+    elif ! ztd_setup_confirm "Start ssh-agent and load $key from $ZTD_PROFILE_FILE? [y/N] "; then
+        ztd_linux_keystore_fatal "no way to load the key for the Gateway; add the agent block to $ZTD_PROFILE_FILE and rerun"
+    fi
+    # One owner-only agent socket shared by every shell. ssh-add -l: 0 key
+    # loaded, 1 agent empty, 2 no agent answering (a stale socket is replaced).
+    {
+        echo ""
+        echo "$ZTD_SSH_AGENT_MARKER"
+        echo 'if [ -z "${SSH_AUTH_SOCK:-}" ] && command -v ssh-agent >/dev/null 2>&1; then'
+        echo '    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-$HOME/.ssh}/ztd-ssh-agent.sock"'
+        echo '    ssh-add -l >/dev/null 2>&1; [ $? -eq 2 ] && { rm -f "$SSH_AUTH_SOCK"; ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null; }'
+        echo "    ssh-add -l >/dev/null 2>&1 || ssh-add \"$key\""
+        echo 'fi'
+    } >>"$ZTD_PROFILE_FILE"
+    ztd_ui_ok "wrote the ssh-agent block to $ZTD_PROFILE_FILE"
+    ZTD_PROFILE_CHANGED=true
+    ZTD_KEYSTORE_SOURCE="source $ZTD_PROFILE_FILE"
+}
+
+# The Gateway seals its master key in the OS key store and fails closed without
+# one. On Linux that is the Secret Service, else a passphrase-protected key in
+# ssh-agent (SSH-only sessions, servers, WSL). Setup stops, rather than warns,
+# when it cannot leave that in place.
 ztd_linux_configure_keystore() {
+    # Only running the Gateway needs a key store, and fixing it needs a person
+    # at a terminal (passphrase prompts), so unattended runs skip it loudly.
+    if [[ "$ZTD_BUILD_ONLY" == true ]]; then
+        return 0
+    fi
+    if [[ ! -t 0 ]]; then
+        ztd_ui_warn "not a terminal: skipped the Gateway key store check; rerun bash scripts/linux-setup.sh in a terminal before './ztd gw start'"
+        return 0
+    fi
     if ztd_linux_secret_service_available; then
         ztd_ui_ok "Secret Service available; the master key is sealed there"
         return 0
     fi
+    ztd_have ssh-keygen && ztd_have ssh-agent && ztd_have ssh-add ||
+        ztd_linux_keystore_fatal "no Secret Service and no OpenSSH client: install ssh-keygen, ssh-agent and ssh-add, then rerun"
+
     if ssh-add -l >/dev/null 2>&1; then
-        ztd_ui_ok "ssh-agent has a key loaded; the master key is sealed under it"
+        ztd_linux_gate_loaded_keys
+        ztd_ui_ok "ssh-agent has a protected key loaded; the master key is sealed under it"
         return 0
     fi
     ztd_ui_warn "no Secret Service and no ssh-agent key; './ztd gw start' would fail closed"
 
-    if ! ztd_have ssh-keygen || ! ztd_have ssh-agent; then
-        ztd_ui_info "install an OpenSSH client (ssh-keygen, ssh-agent, ssh-add), then rerun this script"
-        return 0
-    fi
-
     local key="$HOME/.ssh/id_ed25519"
-    if [[ ! -f "$key" && ! -f "$HOME/.ssh/id_rsa" ]]; then
-        if ztd_setup_confirm "Create an Ed25519 key at $key (ssh-keygen prompts for a passphrase)? [y/N] "; then
-            mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-            ssh-keygen -t ed25519 -f "$key" || { ztd_ui_warn "ssh-keygen failed"; return 0; }
-        else
-            ztd_ui_info "create one with: ssh-keygen -t ed25519"
-        fi
+    if [[ ! -f "$key" && -f "$HOME/.ssh/id_rsa" ]]; then
+        key="$HOME/.ssh/id_rsa"
+    elif [[ ! -f "$key" ]]; then
+        ztd_setup_confirm "Create an Ed25519 key at $key (you will be asked for a passphrase)? [y/N] " ||
+            ztd_linux_keystore_fatal "no key for the Gateway master-key seal. Run: ssh-keygen -t ed25519   then rerun"
+        mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+        ssh-keygen -t ed25519 -f "$key" || ztd_linux_keystore_fatal "ssh-keygen failed"
     fi
-    [[ -f "$key" ]] || key="$HOME/.ssh/id_rsa"
+    ztd_linux_require_passphrase "$key"
 
     ztd_select_profile
-    if [[ -f "$ZTD_PROFILE_FILE" ]] && grep -qF "$ZTD_SSH_AGENT_MARKER" "$ZTD_PROFILE_FILE"; then
-        ztd_ui_ok "ssh-agent block already in $ZTD_PROFILE_FILE"
-    elif [[ -f "$key" ]] && ztd_setup_confirm "Start ssh-agent and load $key from $ZTD_PROFILE_FILE? [y/N] "; then
-        # One owner-only agent socket shared by every shell, instead of an
-        # orphaned agent per terminal. ssh-add -l: 0 key loaded, 1 agent empty,
-        # 2 no agent answering (stale socket is replaced).
-        {
-            echo ""
-            echo "$ZTD_SSH_AGENT_MARKER"
-            echo 'if [ -z "${SSH_AUTH_SOCK:-}" ] && command -v ssh-agent >/dev/null 2>&1; then'
-            echo '    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-$HOME/.ssh}/ztd-ssh-agent.sock"'
-            echo '    ssh-add -l >/dev/null 2>&1; [ $? -eq 2 ] && { rm -f "$SSH_AUTH_SOCK"; ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null; }'
-            echo "    ssh-add -l >/dev/null 2>&1 || ssh-add \"$key\""
-            echo 'fi'
-        } >>"$ZTD_PROFILE_FILE"
-        ztd_ui_ok "added the ssh-agent block to $ZTD_PROFILE_FILE"
-    fi
-    if [[ -f "$key" ]] && ssh-keygen -y -P "" -f "$key" >/dev/null 2>&1; then
-        ztd_ui_warn "$key has no passphrase, so anyone who can read it can unseal the master key"
-        ztd_ui_info "protect it with: ssh-keygen -p -f $key"
-    fi
-    ZTD_KEYSTORE_SOURCE="source $ZTD_PROFILE_FILE"
+    ztd_linux_write_agent_block "$key"
 }
+
 
 ztd_setup_init "$@"
 ztd_setup_main Linux ztd_linux_install_missing scripts/linux-setup.sh ztd_linux_configure_keystore

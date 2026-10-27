@@ -199,7 +199,12 @@ ztd_check_curl() {
     return 1
 }
 
+# Set by ztd_check_go to the older system go version when only a managed
+# toolchain satisfies go.mod; setup offers to upgrade the system go.
+ZTD_GO_STALE=""
+
 ztd_check_go() {
+    ZTD_GO_STALE=""
     if ! ztd_have go; then
         ztd_ui_fail "go: missing (need >= $ZTD_GO_MIN from go.mod)"
         return 1
@@ -219,7 +224,7 @@ ztd_check_go() {
         base_version="$(ztd_extract_version "$(cd "${TMPDIR:-/tmp}" && GOTOOLCHAIN=local go version 2>/dev/null)")"
         if [[ -n "$base_version" ]] && ! ztd_version_ge "$base_version" "$ZTD_GO_MIN"; then
             ztd_ui_warn "system go is $base_version; ztd uses a managed go $version toolchain from the Go module cache"
-            ztd_ui_warn "to make it your default: export PATH=\"$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go${version}.$(go env GOOS)-$(go env GOARCH)/bin:\$PATH\""
+            ZTD_GO_STALE="$base_version"
         fi
         return 0
     fi
@@ -576,7 +581,21 @@ ztd_create_env_file() {
     ztd_ui_ok "created .env from .env.example (mode 600)"
 }
 
+# Installs Go dev tools into GOBIN, Node dependencies in five projects, and
+# points git at scripts/git-hooks (core.hooksPath), so it asks first. Declining
+# is allowed: it sets ZTD_DEV_TOOLCHAIN=false and make dev-check is skipped.
+ZTD_DEV_TOOLCHAIN=true
 ztd_run_dev_setup() {
+    if [[ "$(git config --get core.hooksPath)" == "scripts/git-hooks" ]] &&
+        make dev-check >/dev/null 2>&1; then
+        ztd_ui_ok "contributor toolchain and git hooks already in place"
+        return 0
+    fi
+    if ! ztd_setup_confirm "Install the contributor toolchain (Go dev tools, Node dependencies) and enable the repo git hooks (core.hooksPath)? [y/N] "; then
+        ZTD_DEV_TOOLCHAIN=false
+        ztd_ui_info "skipped; run later with: make dev-setup"
+        return 0
+    fi
     make dev-setup
 }
 
@@ -598,6 +617,8 @@ ztd_select_profile() {
 ZTD_PATH_PLAN=()
 # true once every planned directory is in the profile (added now or earlier).
 ZTD_PATH_CONFIGURED=false
+# true only when this run wrote to the profile, i.e. a new shell would differ.
+ZTD_PROFILE_CHANGED=false
 
 # True when the profile already mentions <dir> literally or as $HOME/...,
 # ${HOME}/..., or ~/...
@@ -688,6 +709,19 @@ ztd_configure_path_unix() {
         ztd_plan_path_entry /usr/local/bin "# ztd: Node.js toolchain" prepend
     fi
 
+    # A managed toolchain only reachable inside the repo: offer to put it ahead
+    # of the older system go so every shell and tool sees the same version.
+    if ztd_have go && [[ "$(command -v go)" != /usr/local/go/bin/go ]]; then
+        local sys_go managed
+        sys_go="$(ztd_extract_version "$(cd "${TMPDIR:-/tmp}" && GOTOOLCHAIN=local go version 2>/dev/null)")"
+        if [[ -n "$sys_go" ]] && ! ztd_version_ge "$sys_go" "$ZTD_GO_MIN"; then
+            managed="$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go${ZTD_GO_MIN}.$(go env GOOS)-$(go env GOARCH)/bin"
+            if [[ -x "$managed/go" ]]; then
+                ztd_plan_path_entry "$managed" "# ztd: managed Go ${ZTD_GO_MIN} toolchain (system go is ${sys_go})" prepend
+            fi
+        fi
+    fi
+
     if [[ ${#ZTD_PATH_PLAN[@]} -eq 0 ]]; then
         ZTD_PATH_CONFIGURED=true
         return 0
@@ -717,6 +751,7 @@ ztd_configure_path_unix() {
             ztd_path_export_line "$mode" "$dir"
         } >>"$ZTD_PROFILE_FILE"
         ztd_ui_ok "added $dir to PATH in $ZTD_PROFILE_FILE"
+        ZTD_PROFILE_CHANGED=true
     done
     ZTD_PATH_CONFIGURED=true
 }
@@ -741,7 +776,9 @@ ztd_print_next_steps_unix() {
     echo -e "  ${ZTD_UI_BOLD}Binary${ZTD_UI_RESET}    $binary"
     echo -e "  ${ZTD_UI_BOLD}Docs${ZTD_UI_RESET}      docs/guides/getting_started.md"
 
-    if [[ "$ZTD_PATH_CONFIGURED" == true ]]; then
+    if [[ "$ZTD_PATH_CONFIGURED" == true && "$ZTD_PROFILE_CHANGED" != true ]]; then
+        :
+    elif [[ "$ZTD_PATH_CONFIGURED" == true ]]; then
         echo -e "\n  ${ZTD_UI_DIM}Open a new terminal or run 'source $ZTD_PROFILE_FILE' to use ztd from any directory.${ZTD_UI_RESET}"
     else
         echo ""
@@ -788,6 +825,11 @@ ztd_setup_main() {
         fi
     fi
 
+    if [[ -n "$ZTD_GO_STALE" ]]; then
+        "$install_fn" go-stale
+        ztd_collect_missing
+    fi
+
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Building evaluation-explorer assets"
         ztd_build_evaluation_explorer
@@ -809,10 +851,26 @@ ztd_setup_main() {
         "$post_fn"
     fi
 
-    if [[ "$ZTD_BUILD_ONLY" != true ]]; then
+    if [[ "$ZTD_BUILD_ONLY" != true && "$ZTD_DEV_TOOLCHAIN" == true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Verifying the toolchain (make dev-check)"
         make dev-check
     fi
 
     ztd_print_next_steps_unix
+    ztd_offer_new_shell
+}
+
+# A script cannot change its parent shell, so offer a fresh interactive shell
+# (which reads the profile) instead of making the user remember to source it.
+ztd_offer_new_shell() {
+    if [[ "$ZTD_PROFILE_CHANGED" != true ]]; then
+        return 0
+    fi
+    if [[ "$AUTO_YES" == true || ! -t 0 || -z "${SHELL:-}" ]]; then
+        return 0
+    fi
+    echo ""
+    if ztd_setup_confirm "Open a new shell now with these changes loaded (type 'exit' to return)? [y/N] "; then
+        exec "$SHELL" -i
+    fi
 }
