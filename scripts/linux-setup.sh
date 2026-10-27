@@ -205,5 +205,76 @@ ztd_linux_install_missing() {
     done
 }
 
+# Marker for the profile block that keeps an ssh-agent key loaded.
+ZTD_SSH_AGENT_MARKER="# ztd: ssh-agent key for the master key store"
+
+# True when the Secret Service (org.freedesktop.secrets) is running or
+# D-Bus-activatable on the session bus.
+ztd_linux_secret_service_available() {
+    ztd_have dbus-send || return 1
+    dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+        /org/freedesktop/DBus org.freedesktop.DBus.ListActivatableNames 2>/dev/null |
+        grep -q '"org.freedesktop.secrets"' && return 0
+    dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+        /org/freedesktop/DBus org.freedesktop.DBus.ListNames 2>/dev/null |
+        grep -q '"org.freedesktop.secrets"'
+}
+
+# The Gateway seals its master key in the OS key store and fails closed without
+# one. On Linux that is the Secret Service, else an ssh-agent key (SSH-only
+# sessions, servers, WSL). When neither exists, offers to create an Ed25519 key
+# and to load it from the shell profile. Never fails the setup.
+ztd_linux_configure_keystore() {
+    if ztd_linux_secret_service_available; then
+        ztd_ui_ok "Secret Service available; the master key is sealed there"
+        return 0
+    fi
+    if ssh-add -l >/dev/null 2>&1; then
+        ztd_ui_ok "ssh-agent has a key loaded; the master key is sealed under it"
+        return 0
+    fi
+    ztd_ui_warn "no Secret Service and no ssh-agent key; './ztd gw start' would fail closed"
+
+    if ! ztd_have ssh-keygen || ! ztd_have ssh-agent; then
+        ztd_ui_info "install an OpenSSH client (ssh-keygen, ssh-agent, ssh-add), then rerun this script"
+        return 0
+    fi
+
+    local key="$HOME/.ssh/id_ed25519"
+    if [[ ! -f "$key" && ! -f "$HOME/.ssh/id_rsa" ]]; then
+        if ztd_setup_confirm "Create an Ed25519 key at $key (ssh-keygen prompts for a passphrase)? [y/N] "; then
+            mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+            ssh-keygen -t ed25519 -f "$key" || { ztd_ui_warn "ssh-keygen failed"; return 0; }
+        else
+            ztd_ui_info "create one with: ssh-keygen -t ed25519"
+        fi
+    fi
+    [[ -f "$key" ]] || key="$HOME/.ssh/id_rsa"
+
+    ztd_select_profile
+    if [[ -f "$ZTD_PROFILE_FILE" ]] && grep -qF "$ZTD_SSH_AGENT_MARKER" "$ZTD_PROFILE_FILE"; then
+        ztd_ui_ok "ssh-agent block already in $ZTD_PROFILE_FILE"
+    elif [[ -f "$key" ]] && ztd_setup_confirm "Start ssh-agent and load $key from $ZTD_PROFILE_FILE? [y/N] "; then
+        # One owner-only agent socket shared by every shell, instead of an
+        # orphaned agent per terminal. ssh-add -l: 0 key loaded, 1 agent empty,
+        # 2 no agent answering (stale socket is replaced).
+        {
+            echo ""
+            echo "$ZTD_SSH_AGENT_MARKER"
+            echo 'if [ -z "${SSH_AUTH_SOCK:-}" ] && command -v ssh-agent >/dev/null 2>&1; then'
+            echo '    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-$HOME/.ssh}/ztd-ssh-agent.sock"'
+            echo '    ssh-add -l >/dev/null 2>&1; [ $? -eq 2 ] && { rm -f "$SSH_AUTH_SOCK"; ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null; }'
+            echo "    ssh-add -l >/dev/null 2>&1 || ssh-add \"$key\""
+            echo 'fi'
+        } >>"$ZTD_PROFILE_FILE"
+        ztd_ui_ok "added the ssh-agent block to $ZTD_PROFILE_FILE"
+    fi
+    if [[ -f "$key" ]] && ssh-keygen -y -P "" -f "$key" >/dev/null 2>&1; then
+        ztd_ui_warn "$key has no passphrase, so anyone who can read it can unseal the master key"
+        ztd_ui_info "protect it with: ssh-keygen -p -f $key"
+    fi
+    ZTD_KEYSTORE_SOURCE="source $ZTD_PROFILE_FILE"
+}
+
 ztd_setup_init "$@"
-ztd_setup_main Linux ztd_linux_install_missing scripts/linux-setup.sh
+ztd_setup_main Linux ztd_linux_install_missing scripts/linux-setup.sh ztd_linux_configure_keystore

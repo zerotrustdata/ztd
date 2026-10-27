@@ -728,6 +728,9 @@ ztd_print_next_steps_unix() {
     fi
 
     echo -e "\n${ZTD_UI_GREEN}${ZTD_UI_BOLD}${ZTD_UI_OK} ztd is ready${ZTD_UI_RESET} ${ZTD_UI_DIM}($(ztd_ui_elapsed))${ZTD_UI_RESET}\n"
+    if [[ -n "${ZTD_KEYSTORE_SOURCE:-}" ]]; then
+        echo -e "  ${ZTD_UI_YELLOW}${ZTD_UI_BOLD}First${ZTD_UI_RESET}     ${ZTD_UI_BOLD}${ZTD_KEYSTORE_SOURCE}${ZTD_UI_RESET}   ${ZTD_UI_DIM}(loads the ssh-agent key the Gateway needs; this shell has none yet)${ZTD_UI_RESET}"
+    fi
     echo -e "  ${ZTD_UI_BOLD}Next${ZTD_UI_RESET}      make quickstart"
     echo -e "            ${ZTD_UI_DIM}starts a local Gateway, signs you in, and runs your first governed action${ZTD_UI_RESET}"
     echo -e "  ${ZTD_UI_BOLD}Configure${ZTD_UI_RESET} .env     ${ZTD_UI_DIM}optional: remote Ollama endpoint, Cloudflare token; ./ztd loads it at startup${ZTD_UI_RESET}"
@@ -758,9 +761,10 @@ ztd_print_next_steps_unix() {
 # logical names in MISSING and installs what it can; the flow re-checks after it.
 # --build-only is three steps (prerequisites, build, PATH); the full contributor
 # flow adds the explorer build, `make dev-setup`, and `make dev-check`.
-# usage: ztd_setup_main <platform-label> <install-fn> <script-path>
+# An optional <post-fn> runs after the PATH step as part of it (platform extras).
+# usage: ztd_setup_main <platform-label> <install-fn> <script-path> [<post-fn>]
 ztd_setup_main() {
-    local platform="$1" install_fn="$2" script="$3" total step=0 prereqs
+    local platform="$1" install_fn="$2" script="$3" post_fn="${4:-}" total step=0 prereqs
     if [[ "$ZTD_BUILD_ONLY" == true ]]; then
         total=3
         prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT})"
@@ -801,6 +805,9 @@ ztd_setup_main() {
 
     step=$((step + 1)); ztd_ui_step "$step" "$total" "Adding ztd to PATH"
     ztd_configure_path_unix
+    if [[ -n "$post_fn" ]]; then
+        "$post_fn"
+    fi
 
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Verifying the toolchain (make dev-check)"

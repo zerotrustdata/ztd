@@ -105,6 +105,7 @@ pwsh scripts/windows-setup.ps1
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
 - **Linux Packages**: Detects the package manager before translating prerequisite names. The C compiler prerequisite installs `build-essential` on apt, `gcc` on dnf/zypper, or `base-devel` on pacman.
 - **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or `~/.profile` (Linux and macOS) or the user-level `Path` in the registry (Windows). Profiles are only appended to, never rewritten.
+- **Linux Key Store**: `scripts/linux-setup.sh` checks for a Secret Service or a loaded ssh-agent key, which the Gateway needs to seal its master key and otherwise fails closed. When neither exists (SSH-only sessions, servers, WSL), it offers to create an Ed25519 key and to append an ssh-agent start-and-`ssh-add` block to the shell profile. It never fails the setup.
 - **Env File**: After building `./ztd`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Only `./ztd` commands that pass the root pre-run load it, and only `secret` and `user_endpoint` keys are accepted (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
 
 ## Contributor Toolchain
