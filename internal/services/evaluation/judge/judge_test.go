@@ -538,7 +538,7 @@ func TestScoreCriterion_VerdictIsBoundToTheFrozenJudgeAndCampaignAuthority(t *te
 			assert.Equal(t, judgeRunID, req.GetRunId())
 			assert.Equal(t, judgeAssignment, req.GetAssignmentId())
 			assert.Equal(t, judgeScenarioID, req.GetScenarioId())
-			assert.Equal(t, criterionJSONSchema, req.GetResponseFormat().GetJsonSchema())
+			assert.Equal(t, criterionJSONSchema, req.GetResponseFormat().GetJsonSchema()) //nolint:testifylint // exact bytes, not JSON equivalence
 			assert.Equal(t, criterionRubric, req.GetMessages()[0].GetParts()[0].GetText())
 			user := requestUserText(req)
 			assert.Contains(t, user, criterionStatement)

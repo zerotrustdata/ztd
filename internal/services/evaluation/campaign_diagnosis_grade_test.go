@@ -352,14 +352,14 @@ func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAn
 // gradePassed reports whether the named deterministic criterion was emitted
 // with PASS. An absent criterion fails the test, so a negative assertion can
 // never pass vacuously; tests that expect absence must assert it explicitly.
-func gradePassed(t testing.TB, grades []*evalv1.DeterministicGrade, criterionID string) bool {
-	t.Helper()
+func gradePassed(tb testing.TB, grades []*evalv1.DeterministicGrade, criterionID string) bool {
+	tb.Helper()
 	for _, grade := range grades {
 		if grade.GetCriterionId() == criterionID {
 			return grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 		}
 	}
-	t.Fatalf("deterministic criterion %q was not emitted", criterionID)
+	tb.Fatalf("deterministic criterion %q was not emitted", criterionID)
 	return false
 }
 

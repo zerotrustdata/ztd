@@ -57,5 +57,5 @@ func TestCompleteNativeToolCall_KeepsResultsWithinTheBoundIntact(t *testing.T) {
 	completed, err := (&agentRun{}).completeNativeToolCall(nativeToolCall(operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, `{"matches":[]}`))
 	require.NoError(t, err)
 	assert.True(t, completed.Success)
-	assert.Equal(t, `{"matches":[]}`, completed.ResultJSON)
+	assert.Equal(t, `{"matches":[]}`, completed.ResultJSON) //nolint:testifylint // exact bytes, not JSON equivalence
 }

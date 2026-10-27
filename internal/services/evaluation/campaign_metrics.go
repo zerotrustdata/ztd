@@ -46,14 +46,14 @@ func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold Sc
 		return nil, fmt.Errorf("evaluation: compute investigation metrics: assignment and trace: %w", constants.ErrMissingRequiredField)
 	}
 
-	retrievalHitRate := computeRetrievalHitRate(trace, gold.GoldEvidenceReferences, input)
+	retrievalHitRate := computeRetrievalHitRate(trace, gold.GoldEvidenceReferences)
 	redundantCommandRate := computeRedundantCommandRate(trace)
 	stepsToDiagnosis := computeStepsToDiagnosis(trace)
 	diagnosisCorrectness := 0.0
 	if contentPassed {
 		diagnosisCorrectness = 1.0
 	}
-	evidenceBacked := computeEvidenceBackedConclusion(trace, gold, contentPassed, input)
+	evidenceBacked := computeEvidenceBackedConclusion(trace, gold, contentPassed)
 
 	return []*evalv1.DecomposedScoreRecord{
 		{
@@ -99,7 +99,7 @@ func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold Sc
 	}, nil
 }
 
-func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenceReference, input ScenarioInputFixture) float64 {
+func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenceReference) float64 {
 	if len(references) == 0 {
 		return 1.0
 	}
@@ -332,7 +332,7 @@ func computeStepsToDiagnosis(trace *AgentTrace) float64 {
 	return float64(steps)
 }
 
-func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteria, contentPassed bool, input ScenarioInputFixture) float64 {
+func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteria, contentPassed bool) float64 {
 	if !contentPassed {
 		return 0.0
 	}

@@ -440,12 +440,6 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 	return nil
 }
 
-// validateSessionWithGateway reconciles OperatorL2Trust on session reconnect
-// when the consensus binding version differs.
-func (vs *ZtdoService) validateSessionWithGateway(ctx context.Context) error {
-	return nil
-}
-
 // printOperatorStartupBanner prints the Operator startup banner to stdout
 func printOperatorStartupBanner(cfg *config.Config, logger *slog.Logger) {
 	logger.Info("[ztdo] Initializing Edge Execution Operator...")

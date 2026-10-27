@@ -27,8 +27,34 @@ import (
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
+// scriptedJudgeVariant is the default judge pinned to the digest of the model the
+// scripted provider serves under its tag, for stacks that dispatch the judge.
+func scriptedJudgeVariant(t *testing.T) *evalv1.ModelVariant {
+	t.Helper()
+	judge := testJudgeVariant()
+	judge.ModelDigest = fixtures.ScriptedModelDigest(t, judge.ServedModelTag)
+	return judge
+}
+
+// withScriptedJudgeVerdicts makes every scripted turn answer a request for the
+// default judge with a strict criterion verdict, so the position of a judge call
+// in the call order cannot hand it a scored model's scripted reply.
+func withScriptedJudgeVerdicts(replies []fixtures.OllamaReply) []fixtures.OllamaReply {
+	out := make([]fixtures.OllamaReply, len(replies))
+	for i, reply := range replies {
+		reply.Respond = func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+			if request.Model == evaluation.DefaultJudgeServedModelTag {
+				return fixtures.OllamaReply{Content: `{"met": true, "rationale": "scripted verdict"}`}
+			}
+			return fixtures.OllamaReply{}
+		}
+		out[i] = reply
+	}
+	return out
+}
+
 func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *testing.T) {
-	replies := make([]fixtures.OllamaReply, 16)
+	replies := make([]fixtures.OllamaReply, 96)
 	for i := range replies {
 		replies[i].Content = "READY"
 		if i < rolloutProviderFailureLimit {
@@ -37,7 +63,7 @@ func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *te
 	}
 	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{
 		Posture: constants.PostureDoctrine, EnablePublicSpectator: true,
-		Provenance: true, ModelTags: []string{"qwen3:8b"}, Replies: replies,
+		Provenance: true, ModelTags: []string{"qwen3:8b", evaluation.DefaultJudgeServedModelTag}, Replies: withScriptedJudgeVerdicts(replies),
 	})
 	previousOrigin := gwremote.PublicMirrorOrigin
 	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
@@ -46,7 +72,7 @@ func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *te
 	bad.ModelDigest = fixtures.ScriptedModelDigest(t, bad.ServedModelTag)
 	healthy.VariantId, healthy.ServedModelTag = "qwen3-8b", "qwen3:8b"
 	healthy.ModelDigest = fixtures.ScriptedModelDigest(t, healthy.ServedModelTag)
-	writeTestFrozenInventory(t, env.root, bad, healthy)
+	writeTestFrozenInventory(t, env.root, bad, healthy, scriptedJudgeVariant(t))
 	env.mustRun(t, "rollout", "add", bad.ServedModelTag)
 	env.mustRun(t, "rollout", "add", healthy.ServedModelTag)
 	var out bytes.Buffer
@@ -93,7 +119,7 @@ func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *te
 		if i < rolloutProviderFailureLimit {
 			assert.Equal(t, bad.ServedModelTag, request.Model)
 		} else {
-			assert.Equal(t, healthy.ServedModelTag, request.Model)
+			assert.Contains(t, []string{healthy.ServedModelTag, evaluation.DefaultJudgeServedModelTag}, request.Model)
 		}
 	}
 	var plan rolloutRunPlanJSON
@@ -106,7 +132,7 @@ func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *te
 }
 
 func TestRunRollout_HealthyResponseResetsGenerationFailureCount(t *testing.T) {
-	replies := make([]fixtures.OllamaReply, 16)
+	replies := make([]fixtures.OllamaReply, 96)
 	for i := range replies {
 		replies[i].Content = "READY"
 		if i < 2 || i == 3 || i == 4 {
@@ -115,14 +141,14 @@ func TestRunRollout_HealthyResponseResetsGenerationFailureCount(t *testing.T) {
 	}
 	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{
 		Posture: constants.PostureDoctrine, EnablePublicSpectator: true,
-		Provenance: true, Replies: replies,
+		Provenance: true, ModelTags: []string{evaluation.DefaultJudgeServedModelTag}, Replies: withScriptedJudgeVerdicts(replies),
 	})
 	previousOrigin := gwremote.PublicMirrorOrigin
 	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
 	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previousOrigin })
 	variant := testQwenVariant()
 	variant.ModelDigest = fixtures.ScriptedModelDigest(t, variant.ServedModelTag)
-	writeTestFrozenInventory(t, env.root, variant)
+	writeTestFrozenInventory(t, env.root, variant, scriptedJudgeVariant(t))
 	env.mustRun(t, "rollout", "add", variant.ServedModelTag)
 	var out bytes.Buffer
 	env.cmd.SetOut(&out)

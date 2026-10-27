@@ -265,7 +265,7 @@ func decodeTypedAgentToolContract[T any](raw string) (agentToolContract, error) 
 	return typedAgentToolContract[T]{value: value}, nil
 }
 
-func (a agentToolArguments) EventReceiptList() (mcp.EventReceiptListRequest, bool) {
+func (a *agentToolArguments) EventReceiptList() (mcp.EventReceiptListRequest, bool) {
 	contract, ok := a.contract.(typedAgentToolContract[mcp.EventReceiptListRequest])
 	return contract.value, ok
 }
@@ -285,7 +285,7 @@ func (a *agentToolArguments) SetEventReceiptListDefaults(investigationID string)
 	a.contract = contract
 }
 
-func (a agentToolArguments) CanonicalJSON() (string, error) {
+func (a *agentToolArguments) CanonicalJSON() (string, error) {
 	if a.tool != constants.MCPToolEventReceiptList {
 		return a.rawJSON, nil
 	}

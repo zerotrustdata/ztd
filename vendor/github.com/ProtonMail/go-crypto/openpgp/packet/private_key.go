@@ -1220,7 +1220,7 @@ func (pk *PrivateKey) parseMldsaEddsaPrivateKey(data []byte, ecLen, seedLen int)
 	priv := new(mldsa_eddsa.PrivateKey)
 	priv.PublicKey = *pub
 
-	if len(data) != ecLen + seedLen {
+	if len(data) != ecLen+seedLen {
 		return errors.StructuralError("wrong ML-DSA+EdDSA key size")
 	}
 
@@ -1249,7 +1249,7 @@ func (pk *PrivateKey) parseMlkemEcdhPrivateKey(data []byte, ecLen, seedLen int) 
 	priv := new(mlkem_ecdh.PrivateKey)
 	priv.PublicKey = *pub
 
-	if len(data) != ecLen + seedLen {
+	if len(data) != ecLen+seedLen {
 		return errors.StructuralError("wrong ML-KEM+ECDH key size")
 	}
 

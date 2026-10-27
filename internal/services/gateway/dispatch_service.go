@@ -797,7 +797,7 @@ func (r *dispatchResultRouter) handle(_ string, data []byte) {
 		constants.EventType(resultEnv.GetEventType()),
 		constants.ActionType(resultEnv.GetActionType()),
 	); err != nil {
-		r.logger.Warn("dispatch: reject result envelope", logging.ErrorKind(err), "transaction_id", r.txHash)
+		r.logger.Warn("dispatch: reject result envelope", logging.ErrorKind(err), slog.String("transaction_id", r.txHash))
 		return
 	}
 	if r.isEmbedded {
@@ -904,7 +904,7 @@ func (d *DispatchService) verifiedTransactionEventReceipt(ctx context.Context, r
 		return nil, transactionEventReceiptNone
 	}
 	if err := d.verifyBoundReceipt(ctx, operatorID, receipt); err != nil {
-		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), logging.ErrorKind(err))
+		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", slog.String("transaction_id", txHash), slog.String("signer_key_id", receipt.GetSignerKeyId()), logging.ErrorKind(err))
 		return nil, transactionEventReceiptNone
 	}
 	return receipt, kind

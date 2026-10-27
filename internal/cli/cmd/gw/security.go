@@ -46,6 +46,51 @@ func securityValidateCmd() *cobra.Command {
 	return securityValidateCmdWithConfig(shared.NewFileSvc)
 }
 
+// securityPath is a path shown to the operator and, when it lives inside the
+// runtime root, its service-relative form.
+type securityPath struct {
+	display string
+	rel     string
+}
+
+// securityPKIPaths holds every PKI path the validation reads. The authority,
+// service certificate, and chain entries are populated only for the default
+// runtime layout; an explicit --pki-dir checks the four core files.
+type securityPKIPaths struct {
+	rootCA        securityPath
+	rootKey       securityPath
+	trustBundle   securityPath
+	actuatorPub   securityPath
+	hubCA         securityPath
+	operatorCA    securityPath
+	gatewayPeerCA securityPath
+	serviceCert   securityPath
+	serviceChain  securityPath
+}
+
+type securityPKICheck struct {
+	path         securityPath
+	mustNotExist bool // e.g. unsealed private keys that violate INV-AUTH-ID-04
+	isOptional   bool
+}
+
+type securitySecretCheck struct {
+	path        securityPath
+	description string
+	isOptional  bool
+}
+
+// securityValidator runs the validation sections in order and accumulates the
+// pass/fail state. Every file read goes through fileSvc.
+type securityValidator struct {
+	cmd        *cobra.Command
+	fileSvc    fs.RuntimeFileService
+	ctx        context.Context
+	pkiDir     string
+	secretsDir string
+	failed     bool
+}
+
 func securityValidateCmdWithConfig(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
 	var pkiDir string
 	var secretsDir string
@@ -58,7 +103,6 @@ PKI certificate existence and validity, checks that the HTTPS port is active,
 and confirms that the CA bundle is properly configured for mTLS.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.Println("Running platform security validation...")
-			failed := false
 
 			fileSvc, err := fileSvcFactory("", slog.Default())
 			if err != nil {
@@ -69,455 +113,8 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 				ctx = context.Background()
 			}
 
-			// Helper to check file existence through fileSvc
-			checkFileExists := func(displayPath, relPath string) (bool, error) {
-				if relPath != "" {
-					return fileSvc.FileExists(ctx, relPath)
-				}
-				rPath, inRuntime, rErr := fs.RuntimeRelativePath(fileSvc, displayPath)
-				if rErr != nil {
-					return false, rErr
-				}
-				if inRuntime && rPath != "" {
-					return fileSvc.FileExists(ctx, rPath)
-				}
-				_, statErr := os.Stat(displayPath)
-				return statErr == nil, nil
-			}
-
-			// Helper to read file bytes through fileSvc
-			readFileBytes := func(displayPath, relPath string) ([]byte, error) {
-				if relPath != "" {
-					return fileSvc.ReadFile(ctx, relPath)
-				}
-				rPath, inRuntime, rErr := fs.RuntimeRelativePath(fileSvc, displayPath)
-				if rErr != nil {
-					return nil, rErr
-				}
-				if inRuntime && rPath != "" {
-					return fileSvc.ReadFile(ctx, rPath)
-				}
-				return os.ReadFile(displayPath)
-			}
-
-			// ─── 1. PKI Directory Structure ─────────────────────────────
-			cmd.Println("\n=== PKI Directory Structure ===")
-			type pkiCheckEntry struct {
-				displayPath  string
-				relPath      string
-				mustNotExist bool // e.g. unsealed private keys that violate INV-AUTH-ID-04
-				isOptional   bool
-			}
-
-			var pkiEntries []pkiCheckEntry
-			var rootCARelPath, rootCADisplayPath string
-			var rootKeyRelPath, rootKeyDisplayPath string
-			var trustBundleRelPath, trustBundleDisplayPath string
-			var actuatorPubRelPath, actuatorPubDisplayPath string
-			var hubCARelPath, hubCADisplayPath string
-			var opCARelPath, opCADisplayPath string
-			var gpCARelPath, gpCADisplayPath string
-			var svcCertRelPath, svcCertDisplayPath string
-			var svcChainRelPath, svcChainDisplayPath string
-
-			if pkiDir == "" {
-				rootCARelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCA)
-				rootCADisplayPath = fileSvc.Resolve(rootCARelPath)
-				rootKeyRelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCAKey)
-				rootKeyDisplayPath = fileSvc.Resolve(rootKeyRelPath)
-				trustBundleRelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
-				trustBundleDisplayPath = fileSvc.Resolve(trustBundleRelPath)
-				actuatorPubRelPath = filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)
-				actuatorPubDisplayPath = fileSvc.Resolve(actuatorPubRelPath)
-
-				hubCARelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirAuthorities, constants.PkiFileHubCA)
-				hubCADisplayPath = fileSvc.Resolve(hubCARelPath)
-				opCARelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirAuthorities, constants.PkiFileOperatorCA)
-				opCADisplayPath = fileSvc.Resolve(opCARelPath)
-				gpCARelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirAuthorities, constants.PkiFileGatewayPeerCA)
-				gpCADisplayPath = fileSvc.Resolve(gpCARelPath)
-
-				svcCertRelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirIssued, constants.PkiSubdirHub, constants.PkiFileGatewayCert)
-				svcCertDisplayPath = fileSvc.Resolve(svcCertRelPath)
-				svcChainRelPath = filepath.Join(constants.PkiDirname, constants.PkiSubdirIssued, constants.PkiSubdirHub, constants.PkiFileGatewayChain)
-				svcChainDisplayPath = fileSvc.Resolve(svcChainRelPath)
-
-				pkiEntries = []pkiCheckEntry{
-					{displayPath: rootCADisplayPath, relPath: rootCARelPath},
-					{displayPath: rootKeyDisplayPath, relPath: rootKeyRelPath, mustNotExist: true},
-					{displayPath: trustBundleDisplayPath, relPath: trustBundleRelPath},
-					{displayPath: actuatorPubDisplayPath, relPath: actuatorPubRelPath},
-					{displayPath: hubCADisplayPath, relPath: hubCARelPath},
-					{displayPath: opCADisplayPath, relPath: opCARelPath},
-					{displayPath: gpCADisplayPath, relPath: gpCARelPath, isOptional: true},
-					{displayPath: svcCertDisplayPath, relPath: svcCertRelPath, isOptional: true},
-					{displayPath: svcChainDisplayPath, relPath: svcChainRelPath, isOptional: true},
-				}
-			} else {
-				rootCADisplayPath = filepath.Join(pkiDir, constants.PkiSubdirRoot, constants.PkiFileRootCA)
-				rootKeyDisplayPath = filepath.Join(pkiDir, constants.PkiSubdirRoot, constants.PkiFileRootCAKey)
-				trustBundleDisplayPath = filepath.Join(pkiDir, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
-				actuatorPubDisplayPath = filepath.Join(pkiDir, constants.ActuatorPubJSONFilename)
-
-				var errRoot, errKey, errTrust, errAct error
-				rootCARelPath, _, errRoot = fs.RuntimeRelativePath(fileSvc, rootCADisplayPath)
-				rootKeyRelPath, _, errKey = fs.RuntimeRelativePath(fileSvc, rootKeyDisplayPath)
-				trustBundleRelPath, _, errTrust = fs.RuntimeRelativePath(fileSvc, trustBundleDisplayPath)
-				actuatorPubRelPath, _, errAct = fs.RuntimeRelativePath(fileSvc, actuatorPubDisplayPath)
-				if errRoot != nil || errKey != nil || errTrust != nil || errAct != nil {
-					return fmt.Errorf("security: pki path validation: %w: %w", constants.ErrValidationFailed, constants.ErrPathValidation)
-				}
-
-				pkiEntries = []pkiCheckEntry{
-					{displayPath: rootCADisplayPath, relPath: rootCARelPath},
-					{displayPath: rootKeyDisplayPath, relPath: rootKeyRelPath, mustNotExist: true},
-					{displayPath: trustBundleDisplayPath, relPath: trustBundleRelPath},
-					{displayPath: actuatorPubDisplayPath, relPath: actuatorPubRelPath},
-				}
-			}
-
-			for _, entry := range pkiEntries {
-				exists, chkErr := checkFileExists(entry.displayPath, entry.relPath)
-				if chkErr != nil {
-					cmd.Printf("  [FAIL] %s: %v\n", entry.displayPath, chkErr)
-					failed = true
-					continue
-				}
-
-				if entry.mustNotExist {
-					// Invariant check: unsealed CA private keys must never touch disk in the clear
-					if exists {
-						cmd.Printf("  [FAIL] %s exists unsealed on disk (violates INV-AUTH-ID-04 / INV-STOR-ENC-01)\n", entry.displayPath)
-						failed = true
-					} else {
-						cmd.Printf("  [OK]   %s is not exposed (sealed in secrets store)\n", filepath.Base(entry.displayPath))
-					}
-					continue
-				}
-
-				if exists {
-					cmd.Printf("  [OK]   %s exists\n", entry.displayPath)
-				} else {
-					// Check for legacy actuator key (warden_pub.pem) fallback
-					if entry.displayPath == actuatorPubDisplayPath {
-						legacyDisplay := filepath.Join(filepath.Dir(actuatorPubDisplayPath), constants.PkiFileWardenPub)
-						var legacyRel string
-						if pkiDir == "" {
-							legacyRel = filepath.Join(constants.PkiDirname, constants.PkiFileWardenPub)
-						} else {
-							legacyRel, _, _ = fs.RuntimeRelativePath(fileSvc, legacyDisplay)
-						}
-						legacyExists, _ := checkFileExists(legacyDisplay, legacyRel)
-						if legacyExists {
-							cmd.Printf("  [OK]   %s exists (legacy actuator key)\n", legacyDisplay)
-							continue
-						}
-					}
-
-					if entry.isOptional {
-						continue
-					}
-					cmd.Printf("  [FAIL] %s missing\n", entry.displayPath)
-					failed = true
-				}
-			}
-
-			// ─── 2. Secrets Directory ───────────────────────────────────
-			cmd.Println("\n=== Secrets Directory ===")
-			type secretCheckEntry struct {
-				displayPath string
-				relPath     string
-				description string
-				isOptional  bool
-			}
-
-			var secretEntries []secretCheckEntry
-			if secretsDir == "" {
-				actKeyRel := filepath.Join(constants.SecretsDirname, constants.SecretsFileActuatorSigningKey)
-				bootDigestRel := filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest)
-				caRootKeyRel := filepath.Join(constants.SecretsDirname, "ca_root_key")
-
-				secretEntries = []secretCheckEntry{
-					{displayPath: fileSvc.Resolve(actKeyRel), relPath: actKeyRel, description: "actuator signing key"},
-					{displayPath: fileSvc.Resolve(bootDigestRel), relPath: bootDigestRel, description: "bootstrap digest"},
-					{displayPath: fileSvc.Resolve(caRootKeyRel), relPath: caRootKeyRel, description: "sealed CA root key", isOptional: true},
-				}
-			} else {
-				actKeyDisplay := filepath.Join(secretsDir, constants.SecretsFileActuatorSigningKey)
-				bootDigestDisplay := filepath.Join(secretsDir, constants.SecretsFileBootstrapDigest)
-				actKeyRel, _, errActKey := fs.RuntimeRelativePath(fileSvc, actKeyDisplay)
-				bootDigestRel, _, errBoot := fs.RuntimeRelativePath(fileSvc, bootDigestDisplay)
-				if errActKey != nil || errBoot != nil {
-					return fmt.Errorf("security: secrets path validation: %w: %w", constants.ErrValidationFailed, constants.ErrPathValidation)
-				}
-				secretEntries = []secretCheckEntry{
-					{displayPath: actKeyDisplay, relPath: actKeyRel, description: "actuator signing key"},
-					{displayPath: bootDigestDisplay, relPath: bootDigestRel, description: "bootstrap digest"},
-				}
-			}
-
-			for _, entry := range secretEntries {
-				exists, chkErr := checkFileExists(entry.displayPath, entry.relPath)
-				if chkErr != nil {
-					cmd.Printf("  [FAIL] %s: %v\n", entry.displayPath, chkErr)
-					failed = true
-					continue
-				}
-				if exists {
-					if entry.description != "" && entry.isOptional {
-						cmd.Printf("  [OK]   %s exists (%s)\n", entry.displayPath, entry.description)
-					} else {
-						cmd.Printf("  [OK]   %s exists\n", entry.displayPath)
-					}
-				} else if !entry.isOptional {
-					cmd.Printf("  [FAIL] %s missing\n", entry.displayPath)
-					failed = true
-				}
-			}
-
-			// Check secrets directory permissions on POSIX
-			if runtime.GOOS != "windows" {
-				var secInfo os.FileInfo
-				var statErr error
-				if secretsDir == "" {
-					secInfo, statErr = fileSvc.Stat(ctx, constants.SecretsDirname)
-				} else {
-					rSecDir, inRuntime, _ := fs.RuntimeRelativePath(fileSvc, secretsDir)
-					if inRuntime && rSecDir != "" {
-						secInfo, statErr = fileSvc.Stat(ctx, rSecDir)
-					}
-				}
-				if statErr == nil && secInfo != nil {
-					perm := secInfo.Mode().Perm()
-					if perm&0077 != 0 {
-						cmd.Printf("  [WARN] Secrets directory permissions (%04o) are overly permissive (expected 0700)\n", perm)
-					} else {
-						cmd.Printf("  [OK]   Secrets directory permissions are private (%04o)\n", perm)
-					}
-				}
-			}
-
-			// ─── 3. Certificate Validation ──────────────────────────────
-			cmd.Println("\n=== Certificate Validation ===")
-			certData, err := readFileBytes(rootCADisplayPath, rootCARelPath)
-			if err != nil && !errors.Is(err, constants.ErrNotFound) && !os.IsNotExist(err) {
-				cmd.Printf("  [FAIL] failed to read root_ca.crt: %v\n", err)
-				failed = true
-			}
-
-			var rootCert *x509.Certificate
-			if certData != nil {
-				block, _ := pem.Decode(certData)
-				if block == nil || block.Type != "CERTIFICATE" {
-					cmd.Printf("  [FAIL] root_ca.crt is not a valid PEM certificate\n")
-					failed = true
-				} else {
-					cmd.Printf("  [OK]   root_ca.crt is valid PEM\n")
-					var parseErr error
-					rootCert, parseErr = x509.ParseCertificate(block.Bytes)
-					if parseErr != nil {
-						cmd.Printf("  [FAIL] root_ca.crt X.509 parse failed: %v\n", parseErr)
-						failed = true
-					} else {
-						if !rootCert.IsCA {
-							cmd.Printf("  [FAIL] root_ca.crt is not a Certificate Authority (CA: false)\n")
-							failed = true
-						} else {
-							cmd.Printf("  [OK]   root_ca.crt is a Certificate Authority (CA: true)\n")
-						}
-						now := time.Now()
-						if now.Before(rootCert.NotBefore) {
-							cmd.Printf("  [FAIL] root_ca.crt is not yet valid (valid from %s)\n", rootCert.NotBefore.Format(time.RFC3339))
-							failed = true
-						} else if now.After(rootCert.NotAfter) {
-							cmd.Printf("  [FAIL] root_ca.crt expired on %s\n", rootCert.NotAfter.Format(time.RFC3339))
-							failed = true
-						} else {
-							daysLeft := int(time.Until(rootCert.NotAfter).Hours() / 24)
-							cmd.Printf("  [OK]   root_ca.crt is active (expires in %d days)\n", daysLeft)
-						}
-					}
-				}
-			}
-
-			// In default runtime mode, validate intermediate CAs against root CA
-			if pkiDir == "" && rootCert != nil {
-				validateIntermediate := func(name, displayPath, relPath string) *x509.Certificate {
-					exists, _ := checkFileExists(displayPath, relPath)
-					if !exists {
-						return nil
-					}
-					data, readErr := readFileBytes(displayPath, relPath)
-					if readErr != nil {
-						return nil
-					}
-					blk, _ := pem.Decode(data)
-					if blk == nil || blk.Type != "CERTIFICATE" {
-						cmd.Printf("  [FAIL] %s is not a valid PEM certificate\n", name)
-						failed = true
-						return nil
-					}
-					c, pErr := x509.ParseCertificate(blk.Bytes)
-					if pErr != nil {
-						cmd.Printf("  [FAIL] %s X.509 parse failed: %v\n", name, pErr)
-						failed = true
-						return nil
-					}
-					if sigErr := c.CheckSignatureFrom(rootCert); sigErr != nil {
-						cmd.Printf("  [FAIL] %s signature check against root CA failed: %v\n", name, sigErr)
-						failed = true
-					} else {
-						cmd.Printf("  [OK]   %s is valid CA signed by root CA\n", name)
-					}
-					return c
-				}
-
-				hubCert := validateIntermediate("hub_ca.crt", hubCADisplayPath, hubCARelPath)
-				validateIntermediate("operator_ca.crt", opCADisplayPath, opCARelPath)
-				validateIntermediate("gateway_peer_ca.crt", gpCADisplayPath, gpCARelPath)
-
-				// Validate service certificate against hub CA if present
-				if svcExists, _ := checkFileExists(svcCertDisplayPath, svcCertRelPath); svcExists {
-					svcData, readErr := readFileBytes(svcCertDisplayPath, svcCertRelPath)
-					if readErr == nil {
-						blk, _ := pem.Decode(svcData)
-						if blk != nil && blk.Type == "CERTIFICATE" {
-							svcCert, pErr := x509.ParseCertificate(blk.Bytes)
-							if pErr == nil && hubCert != nil {
-								if sigErr := svcCert.CheckSignatureFrom(hubCert); sigErr != nil {
-									cmd.Printf("  [FAIL] operator-gateway.crt signature check against hub CA failed: %v\n", sigErr)
-									failed = true
-								} else {
-									cmd.Printf("  [OK]   operator-gateway.crt is valid and signed by hub CA\n")
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// ─── 4. Port Availability & Listener Status ─────────────────
-			cmd.Println("\n=== Port Availability ===")
-			ports := []struct {
-				port int
-				name string
-			}{
-				{constants.Ports.OperatorHttp, "HTTP"},
-				{constants.Ports.OperatorHttps, "HTTPS/mTLS"},
-			}
-
-			var gwRunning bool
-			var gwPID int
-			if pkiDir == "" {
-				pm, pmErr := platform.NewProcessManager(fileSvc)
-				if pmErr == nil {
-					gwRunning, gwPID, _ = pm.OperatorStatus()
-				}
-			}
-
-			for _, p := range ports {
-				addr := fmt.Sprintf("127.0.0.1:%d", p.port)
-				conn, dialErr := net.DialTimeout(string(constants.NetworkProtocolTCP), addr, 300*time.Millisecond)
-				if dialErr == nil {
-					conn.Close()
-					if gwRunning && gwPID > 0 {
-						cmd.Printf("  [OK]   Port %d is active (Gateway %s listener, PID %d)\n", p.port, p.name, gwPID)
-					} else {
-						cmd.Printf("  [OK]   Port %d is active (%s listener connected)\n", p.port, p.name)
-					}
-				} else {
-					if gwRunning {
-						cmd.Printf("  [FAIL] Port %d is not responding (Gateway online with PID %d)\n", p.port, gwPID)
-						failed = true
-					} else {
-						listener, listenErr := net.Listen(string(constants.NetworkProtocolTCP), addr)
-						if listenErr == nil {
-							listener.Close()
-							cmd.Printf("  [OK]   Port %d is available\n", p.port)
-						} else {
-							cmd.Printf("  [WARN] Port %d is in use by another process\n", p.port)
-						}
-					}
-				}
-			}
-
-			// ─── 5. TLS Configuration ───────────────────────────────────
-			cmd.Println("\n=== TLS Configuration ===")
-			trustData, err := readFileBytes(trustBundleDisplayPath, trustBundleRelPath)
-			if err != nil && !errors.Is(err, constants.ErrNotFound) && !os.IsNotExist(err) {
-				cmd.Printf("  [FAIL] failed to read trust bundle: %v\n", err)
-				failed = true
-			}
-
-			if trustData != nil {
-				certPool := x509.NewCertPool()
-				if !certPool.AppendCertsFromPEM(trustData) {
-					cmd.Printf("  [FAIL] Trust bundle is not valid PEM\n")
-					failed = true
-				} else {
-					cmd.Printf("  [OK]   Trust bundle is valid PEM\n")
-
-					var bundleCerts []*x509.Certificate
-					rest := trustData
-					for len(rest) > 0 {
-						var block *pem.Block
-						block, rest = pem.Decode(rest)
-						if block == nil {
-							break
-						}
-						if block.Type == "CERTIFICATE" {
-							c, cErr := x509.ParseCertificate(block.Bytes)
-							if cErr == nil {
-								bundleCerts = append(bundleCerts, c)
-							}
-						}
-					}
-					if len(bundleCerts) > 0 {
-						hasExpired := false
-						now := time.Now()
-						for _, c := range bundleCerts {
-							if now.After(c.NotAfter) {
-								hasExpired = true
-								cmd.Printf("  [FAIL] Trust bundle contains expired certificate: %s (expired %s)\n", c.Subject.CommonName, c.NotAfter.Format(time.RFC3339))
-								failed = true
-							}
-						}
-						if !hasExpired {
-							cmd.Printf("  [OK]   Trust bundle contains %d valid CA certificate(s)\n", len(bundleCerts))
-						}
-					}
-				}
-			}
-
-			// ─── 6. Storage & Database Permissions ──────────────────────
-			if pkiDir == "" {
-				cmd.Println("\n=== Storage & Permissions ===")
-				dbRelPath := filepath.Join(constants.DataDirname, constants.DbFilename)
-				dbExists, _ := fileSvc.FileExists(ctx, dbRelPath)
-				if dbExists {
-					cmd.Printf("  [OK]   Canonical database %s exists\n", constants.DbFilename)
-					if runtime.GOOS != "windows" {
-						dbInfo, statErr := fileSvc.Stat(ctx, dbRelPath)
-						if statErr == nil {
-							perm := dbInfo.Mode().Perm()
-							if perm&0077 != 0 {
-								cmd.Printf("  [WARN] Database permissions (%04o) are overly permissive (expected 0600)\n", perm)
-							} else {
-								cmd.Printf("  [OK]   Database permissions are private (%04o)\n", perm)
-							}
-						}
-					}
-				}
-			}
-
-			// ─── 7. Summary ─────────────────────────────────────────────
-			cmd.Println("\n=== Summary ===")
-			if failed {
-				cmd.Println("[FAIL] Security validation failed")
-				return fmt.Errorf("security: validate: %w", constants.ErrValidationFailed)
-			}
-			cmd.Println("[OK]   Security validation passed")
-			return nil
+			v := &securityValidator{cmd: cmd, fileSvc: fileSvc, ctx: ctx, pkiDir: pkiDir, secretsDir: secretsDir}
+			return v.run()
 		},
 	}
 
@@ -525,4 +122,477 @@ and confirms that the CA bundle is properly configured for mTLS.`,
 	cmd.Flags().StringVar(&secretsDir, "secrets-dir", "", "Secrets directory (default: "+constants.RuntimeDirname+"/"+constants.SecretsDirname+")")
 
 	return cmd
+}
+
+func (v *securityValidator) run() error {
+	v.cmd.Println("\n=== PKI Directory Structure ===")
+	paths, err := v.pkiPaths()
+	if err != nil {
+		return err
+	}
+	v.checkPKIDirectory(paths)
+
+	v.cmd.Println("\n=== Secrets Directory ===")
+	if err := v.checkSecretsDirectory(); err != nil {
+		return err
+	}
+
+	v.cmd.Println("\n=== Certificate Validation ===")
+	rootCert := v.checkRootCA(paths.rootCA)
+	if v.pkiDir == "" && rootCert != nil {
+		v.checkIntermediateChain(paths, rootCert)
+	}
+
+	v.cmd.Println("\n=== Port Availability ===")
+	v.checkPorts()
+
+	v.cmd.Println("\n=== TLS Configuration ===")
+	v.checkTrustBundle(paths.trustBundle)
+
+	if v.pkiDir == "" {
+		v.cmd.Println("\n=== Storage & Permissions ===")
+		v.checkDatabase()
+	}
+
+	v.cmd.Println("\n=== Summary ===")
+	if v.failed {
+		v.cmd.Println("[FAIL] Security validation failed")
+		return fmt.Errorf("security: validate: %w", constants.ErrValidationFailed)
+	}
+	v.cmd.Println("[OK]   Security validation passed")
+	return nil
+}
+
+// runtimePath resolves a service-relative path to its operator-facing form.
+func (v *securityValidator) runtimePath(rel string) securityPath {
+	return securityPath{display: v.fileSvc.Resolve(rel), rel: rel}
+}
+
+// explicitPath maps a path under an explicit directory flag to its
+// service-relative form.
+func (v *securityValidator) explicitPath(display string) (securityPath, error) {
+	rel, _, err := fs.RuntimeRelativePath(v.fileSvc, display)
+	return securityPath{display: display, rel: rel}, err
+}
+
+func (v *securityValidator) pkiPaths() (securityPKIPaths, error) {
+	if v.pkiDir == "" {
+		authorities := filepath.Join(constants.PkiDirname, constants.PkiSubdirAuthorities)
+		hub := filepath.Join(constants.PkiDirname, constants.PkiSubdirIssued, constants.PkiSubdirHub)
+		return securityPKIPaths{
+			rootCA:        v.runtimePath(filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCA)),
+			rootKey:       v.runtimePath(filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCAKey)),
+			trustBundle:   v.runtimePath(filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)),
+			actuatorPub:   v.runtimePath(filepath.Join(constants.PkiDirname, constants.ActuatorPubJSONFilename)),
+			hubCA:         v.runtimePath(filepath.Join(authorities, constants.PkiFileHubCA)),
+			operatorCA:    v.runtimePath(filepath.Join(authorities, constants.PkiFileOperatorCA)),
+			gatewayPeerCA: v.runtimePath(filepath.Join(authorities, constants.PkiFileGatewayPeerCA)),
+			serviceCert:   v.runtimePath(filepath.Join(hub, constants.PkiFileGatewayCert)),
+			serviceChain:  v.runtimePath(filepath.Join(hub, constants.PkiFileGatewayChain)),
+		}, nil
+	}
+
+	rootCA, errRoot := v.explicitPath(filepath.Join(v.pkiDir, constants.PkiSubdirRoot, constants.PkiFileRootCA))
+	rootKey, errKey := v.explicitPath(filepath.Join(v.pkiDir, constants.PkiSubdirRoot, constants.PkiFileRootCAKey))
+	trustBundle, errTrust := v.explicitPath(filepath.Join(v.pkiDir, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle))
+	actuatorPub, errAct := v.explicitPath(filepath.Join(v.pkiDir, constants.ActuatorPubJSONFilename))
+	if errRoot != nil || errKey != nil || errTrust != nil || errAct != nil {
+		return securityPKIPaths{}, fmt.Errorf("security: pki path validation: %w: %w", constants.ErrValidationFailed, constants.ErrPathValidation)
+	}
+	return securityPKIPaths{rootCA: rootCA, rootKey: rootKey, trustBundle: trustBundle, actuatorPub: actuatorPub}, nil
+}
+
+func (v *securityValidator) pkiChecks(paths securityPKIPaths) []securityPKICheck {
+	checks := []securityPKICheck{
+		{path: paths.rootCA},
+		{path: paths.rootKey, mustNotExist: true},
+		{path: paths.trustBundle},
+		{path: paths.actuatorPub},
+	}
+	if v.pkiDir != "" {
+		return checks
+	}
+	return append(checks,
+		securityPKICheck{path: paths.hubCA},
+		securityPKICheck{path: paths.operatorCA},
+		securityPKICheck{path: paths.gatewayPeerCA, isOptional: true},
+		securityPKICheck{path: paths.serviceCert, isOptional: true},
+		securityPKICheck{path: paths.serviceChain, isOptional: true},
+	)
+}
+
+func (v *securityValidator) checkPKIDirectory(paths securityPKIPaths) {
+	for _, check := range v.pkiChecks(paths) {
+		exists, err := v.exists(check.path)
+		if err != nil {
+			v.fail("  [FAIL] %s: %v\n", check.path.display, err)
+			continue
+		}
+
+		if check.mustNotExist {
+			// Invariant check: unsealed CA private keys must never touch disk in the clear
+			if exists {
+				v.fail("  [FAIL] %s exists unsealed on disk (violates INV-AUTH-ID-04 / INV-STOR-ENC-01)\n", check.path.display)
+			} else {
+				v.cmd.Printf("  [OK]   %s is not exposed (sealed in secrets store)\n", filepath.Base(check.path.display))
+			}
+			continue
+		}
+
+		if exists {
+			v.cmd.Printf("  [OK]   %s exists\n", check.path.display)
+			continue
+		}
+		if check.path == paths.actuatorPub && v.legacyActuatorKeyExists(paths.actuatorPub) {
+			continue
+		}
+		if check.isOptional {
+			continue
+		}
+		v.fail("  [FAIL] %s missing\n", check.path.display)
+	}
+}
+
+// legacyActuatorKeyExists reports the warden_pub.pem fallback for the
+// actuator public key.
+func (v *securityValidator) legacyActuatorKeyExists(actuatorPub securityPath) bool {
+	legacy := securityPath{display: filepath.Join(filepath.Dir(actuatorPub.display), constants.PkiFileWardenPub)}
+	if v.pkiDir == "" {
+		legacy.rel = filepath.Join(constants.PkiDirname, constants.PkiFileWardenPub)
+	} else {
+		legacy.rel, _, _ = fs.RuntimeRelativePath(v.fileSvc, legacy.display)
+	}
+	exists, _ := v.exists(legacy)
+	if exists {
+		v.cmd.Printf("  [OK]   %s exists (legacy actuator key)\n", legacy.display)
+	}
+	return exists
+}
+
+func (v *securityValidator) secretChecks() ([]securitySecretCheck, error) {
+	if v.secretsDir == "" {
+		return []securitySecretCheck{
+			{path: v.runtimePath(filepath.Join(constants.SecretsDirname, constants.SecretsFileActuatorSigningKey)), description: "actuator signing key"},
+			{path: v.runtimePath(filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest)), description: "bootstrap digest"},
+			{path: v.runtimePath(filepath.Join(constants.SecretsDirname, "ca_root_key")), description: "sealed CA root key", isOptional: true},
+		}, nil
+	}
+
+	actKey, errActKey := v.explicitPath(filepath.Join(v.secretsDir, constants.SecretsFileActuatorSigningKey))
+	bootDigest, errBoot := v.explicitPath(filepath.Join(v.secretsDir, constants.SecretsFileBootstrapDigest))
+	if errActKey != nil || errBoot != nil {
+		return nil, fmt.Errorf("security: secrets path validation: %w: %w", constants.ErrValidationFailed, constants.ErrPathValidation)
+	}
+	return []securitySecretCheck{
+		{path: actKey, description: "actuator signing key"},
+		{path: bootDigest, description: "bootstrap digest"},
+	}, nil
+}
+
+func (v *securityValidator) checkSecretsDirectory() error {
+	checks, err := v.secretChecks()
+	if err != nil {
+		return err
+	}
+
+	for _, check := range checks {
+		exists, chkErr := v.exists(check.path)
+		if chkErr != nil {
+			v.fail("  [FAIL] %s: %v\n", check.path.display, chkErr)
+			continue
+		}
+		switch {
+		case exists && check.description != "" && check.isOptional:
+			v.cmd.Printf("  [OK]   %s exists (%s)\n", check.path.display, check.description)
+		case exists:
+			v.cmd.Printf("  [OK]   %s exists\n", check.path.display)
+		case !check.isOptional:
+			v.fail("  [FAIL] %s missing\n", check.path.display)
+		}
+	}
+
+	v.checkSecretsPermissions()
+	return nil
+}
+
+// checkSecretsPermissions warns when the secrets directory is group or world
+// accessible on POSIX.
+func (v *securityValidator) checkSecretsPermissions() {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	var info os.FileInfo
+	var statErr error
+	if v.secretsDir == "" {
+		info, statErr = v.fileSvc.Stat(v.ctx, constants.SecretsDirname)
+	} else {
+		rel, inRuntime, _ := fs.RuntimeRelativePath(v.fileSvc, v.secretsDir)
+		if inRuntime && rel != "" {
+			info, statErr = v.fileSvc.Stat(v.ctx, rel)
+		}
+	}
+	if statErr != nil || info == nil {
+		return
+	}
+	perm := info.Mode().Perm()
+	if perm&0077 != 0 {
+		v.cmd.Printf("  [WARN] Secrets directory permissions (%04o) are overly permissive (expected 0700)\n", perm)
+	} else {
+		v.cmd.Printf("  [OK]   Secrets directory permissions are private (%04o)\n", perm)
+	}
+}
+
+func (v *securityValidator) checkRootCA(rootCA securityPath) *x509.Certificate {
+	certData, err := v.read(rootCA)
+	if err != nil && !errors.Is(err, constants.ErrNotFound) && !os.IsNotExist(err) {
+		v.fail("  [FAIL] failed to read root_ca.crt: %v\n", err)
+	}
+	if certData == nil {
+		return nil
+	}
+
+	block, _ := pem.Decode(certData)
+	if block == nil || block.Type != "CERTIFICATE" {
+		v.fail("  [FAIL] root_ca.crt is not a valid PEM certificate\n")
+		return nil
+	}
+	v.cmd.Printf("  [OK]   root_ca.crt is valid PEM\n")
+	rootCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		v.fail("  [FAIL] root_ca.crt X.509 parse failed: %v\n", err)
+		return nil
+	}
+
+	if rootCert.IsCA {
+		v.cmd.Printf("  [OK]   root_ca.crt is a Certificate Authority (CA: true)\n")
+	} else {
+		v.fail("  [FAIL] root_ca.crt is not a Certificate Authority (CA: false)\n")
+	}
+	now := time.Now()
+	switch {
+	case now.Before(rootCert.NotBefore):
+		v.fail("  [FAIL] root_ca.crt is not yet valid (valid from %s)\n", rootCert.NotBefore.Format(time.RFC3339))
+	case now.After(rootCert.NotAfter):
+		v.fail("  [FAIL] root_ca.crt expired on %s\n", rootCert.NotAfter.Format(time.RFC3339))
+	default:
+		daysLeft := int(time.Until(rootCert.NotAfter).Hours() / 24)
+		v.cmd.Printf("  [OK]   root_ca.crt is active (expires in %d days)\n", daysLeft)
+	}
+	return rootCert
+}
+
+// checkIntermediateChain validates the intermediate CAs against the root CA
+// and the service certificate against the hub CA.
+func (v *securityValidator) checkIntermediateChain(paths securityPKIPaths, rootCert *x509.Certificate) {
+	hubCert := v.checkIntermediateCA("hub_ca.crt", paths.hubCA, rootCert)
+	v.checkIntermediateCA("operator_ca.crt", paths.operatorCA, rootCert)
+	v.checkIntermediateCA("gateway_peer_ca.crt", paths.gatewayPeerCA, rootCert)
+	v.checkServiceCertificate(paths.serviceCert, hubCert)
+}
+
+func (v *securityValidator) checkIntermediateCA(name string, path securityPath, rootCert *x509.Certificate) *x509.Certificate {
+	exists, _ := v.exists(path)
+	if !exists {
+		return nil
+	}
+	data, err := v.read(path)
+	if err != nil {
+		return nil
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "CERTIFICATE" {
+		v.fail("  [FAIL] %s is not a valid PEM certificate\n", name)
+		return nil
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		v.fail("  [FAIL] %s X.509 parse failed: %v\n", name, err)
+		return nil
+	}
+	if err := cert.CheckSignatureFrom(rootCert); err != nil {
+		v.fail("  [FAIL] %s signature check against root CA failed: %v\n", name, err)
+	} else {
+		v.cmd.Printf("  [OK]   %s is valid CA signed by root CA\n", name)
+	}
+	return cert
+}
+
+func (v *securityValidator) checkServiceCertificate(path securityPath, hubCert *x509.Certificate) {
+	if exists, _ := v.exists(path); !exists {
+		return
+	}
+	data, err := v.read(path)
+	if err != nil {
+		return
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return
+	}
+	svcCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil || hubCert == nil {
+		return
+	}
+	if err := svcCert.CheckSignatureFrom(hubCert); err != nil {
+		v.fail("  [FAIL] operator-gateway.crt signature check against hub CA failed: %v\n", err)
+	} else {
+		v.cmd.Printf("  [OK]   operator-gateway.crt is valid and signed by hub CA\n")
+	}
+}
+
+func (v *securityValidator) checkPorts() {
+	ports := []struct {
+		port int
+		name string
+	}{
+		{constants.Ports.OperatorHttp, "HTTP"},
+		{constants.Ports.OperatorHttps, "HTTPS/mTLS"},
+	}
+
+	var gwRunning bool
+	var gwPID int
+	if v.pkiDir == "" {
+		pm, err := platform.NewProcessManager(v.fileSvc)
+		if err == nil {
+			gwRunning, gwPID, _ = pm.OperatorStatus()
+		}
+	}
+
+	for _, p := range ports {
+		addr := fmt.Sprintf("127.0.0.1:%d", p.port)
+		conn, err := net.DialTimeout(string(constants.NetworkProtocolTCP), addr, 300*time.Millisecond)
+		switch {
+		case err == nil:
+			conn.Close()
+			if gwRunning && gwPID > 0 {
+				v.cmd.Printf("  [OK]   Port %d is active (Gateway %s listener, PID %d)\n", p.port, p.name, gwPID)
+			} else {
+				v.cmd.Printf("  [OK]   Port %d is active (%s listener connected)\n", p.port, p.name)
+			}
+		case gwRunning:
+			v.fail("  [FAIL] Port %d is not responding (Gateway online with PID %d)\n", p.port, gwPID)
+		default:
+			listener, listenErr := net.Listen(string(constants.NetworkProtocolTCP), addr)
+			if listenErr == nil {
+				listener.Close()
+				v.cmd.Printf("  [OK]   Port %d is available\n", p.port)
+			} else {
+				v.cmd.Printf("  [WARN] Port %d is in use by another process\n", p.port)
+			}
+		}
+	}
+}
+
+func (v *securityValidator) checkTrustBundle(trustBundle securityPath) {
+	trustData, err := v.read(trustBundle)
+	if err != nil && !errors.Is(err, constants.ErrNotFound) && !os.IsNotExist(err) {
+		v.fail("  [FAIL] failed to read trust bundle: %v\n", err)
+	}
+	if trustData == nil {
+		return
+	}
+
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(trustData) {
+		v.fail("  [FAIL] Trust bundle is not valid PEM\n")
+		return
+	}
+	v.cmd.Printf("  [OK]   Trust bundle is valid PEM\n")
+
+	bundleCerts := parseBundleCertificates(trustData)
+	if len(bundleCerts) == 0 {
+		return
+	}
+	hasExpired := false
+	now := time.Now()
+	for _, c := range bundleCerts {
+		if now.After(c.NotAfter) {
+			hasExpired = true
+			v.fail("  [FAIL] Trust bundle contains expired certificate: %s (expired %s)\n", c.Subject.CommonName, c.NotAfter.Format(time.RFC3339))
+		}
+	}
+	if !hasExpired {
+		v.cmd.Printf("  [OK]   Trust bundle contains %d valid CA certificate(s)\n", len(bundleCerts))
+	}
+}
+
+// parseBundleCertificates returns every certificate in a PEM bundle that
+// parses; entries that are not certificates or do not parse are skipped.
+func parseBundleCertificates(bundle []byte) []*x509.Certificate {
+	var certs []*x509.Certificate
+	rest := bundle
+	for len(rest) > 0 {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		if c, err := x509.ParseCertificate(block.Bytes); err == nil {
+			certs = append(certs, c)
+		}
+	}
+	return certs
+}
+
+func (v *securityValidator) checkDatabase() {
+	dbRelPath := filepath.Join(constants.DataDirname, constants.DbFilename)
+	dbExists, _ := v.fileSvc.FileExists(v.ctx, dbRelPath)
+	if !dbExists {
+		return
+	}
+	v.cmd.Printf("  [OK]   Canonical database %s exists\n", constants.DbFilename)
+	if runtime.GOOS == "windows" {
+		return
+	}
+	dbInfo, err := v.fileSvc.Stat(v.ctx, dbRelPath)
+	if err != nil {
+		return
+	}
+	perm := dbInfo.Mode().Perm()
+	if perm&0077 != 0 {
+		v.cmd.Printf("  [WARN] Database permissions (%04o) are overly permissive (expected 0600)\n", perm)
+	} else {
+		v.cmd.Printf("  [OK]   Database permissions are private (%04o)\n", perm)
+	}
+}
+
+// fail prints a failed check and marks the validation as failed.
+func (v *securityValidator) fail(format string, args ...any) {
+	v.cmd.Printf(format, args...)
+	v.failed = true
+}
+
+// exists checks a path through the file service when it lives inside the
+// runtime root and falls back to the host filesystem otherwise.
+func (v *securityValidator) exists(p securityPath) (bool, error) {
+	if p.rel != "" {
+		return v.fileSvc.FileExists(v.ctx, p.rel)
+	}
+	rel, inRuntime, err := fs.RuntimeRelativePath(v.fileSvc, p.display)
+	if err != nil {
+		return false, err
+	}
+	if inRuntime && rel != "" {
+		return v.fileSvc.FileExists(v.ctx, rel)
+	}
+	_, statErr := os.Stat(p.display)
+	return statErr == nil, nil
+}
+
+// read reads a path with the same runtime-root routing as exists.
+func (v *securityValidator) read(p securityPath) ([]byte, error) {
+	if p.rel != "" {
+		return v.fileSvc.ReadFile(v.ctx, p.rel)
+	}
+	rel, inRuntime, err := fs.RuntimeRelativePath(v.fileSvc, p.display)
+	if err != nil {
+		return nil, err
+	}
+	if inRuntime && rel != "" {
+		return v.fileSvc.ReadFile(v.ctx, rel)
+	}
+	return os.ReadFile(p.display)
 }

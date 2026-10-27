@@ -297,7 +297,7 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 
 		assessment := assessAgentTrace(req, trace, completed, nil)
 		require.ErrorIs(t, assessment.failed, constants.ErrMissingRequiredField)
-		assert.NoError(t, assessment.invalid)
+		require.NoError(t, assessment.invalid)
 		assert.Nil(t, assessment.grading)
 	})
 }

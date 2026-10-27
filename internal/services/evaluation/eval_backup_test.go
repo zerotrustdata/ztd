@@ -468,7 +468,7 @@ func TestEvalBackup_RestoreSkipsExistingByDefaultAndIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, again.Restored)
 	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(again.Skipped))
-	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath))
+	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath)) //nolint:testifylint // exact bytes, not JSON equivalence
 
 	// With overwrite, the snapshot version replaces the diverged runtime file.
 	overwritten, err := f.backup.Restore(ctx, report.SnapshotDir, true)
@@ -705,7 +705,7 @@ func TestEvalBackup_RestoreAllSkipsExistingByDefaultAndIsIdempotent(t *testing.T
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{backupCampaignPath}, reportPaths(restored.Restored))
 	assert.ElementsMatch(t, []string{backupRunReportPath}, reportPaths(restored.Skipped))
-	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath))
+	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath)) //nolint:testifylint // exact bytes, not JSON equivalence
 	campaignExists, err := f.files.FileExists(ctx, backupCampaignPath)
 	require.NoError(t, err)
 	assert.True(t, campaignExists, "missing file must be restored")

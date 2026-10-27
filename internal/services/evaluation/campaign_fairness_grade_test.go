@@ -64,8 +64,8 @@ func fairnessMetVerdicts(blueprint ScenarioBlueprint) []AgentContentJudgment {
 // setFairnessVerdict replaces the verdict recorded for one criterion. It fails
 // the test when no verdict exists for that criterion, so a changed criterion ID
 // cannot leave the case testing the unchanged verdict set.
-func setFairnessVerdict(t testing.TB, verdicts []AgentContentJudgment, criterionID string, met bool, rationale string) []AgentContentJudgment {
-	t.Helper()
+func setFairnessVerdict(tb testing.TB, verdicts []AgentContentJudgment, criterionID string, met bool, rationale string) []AgentContentJudgment {
+	tb.Helper()
 	out := slices.Clone(verdicts)
 	for i := range out {
 		if out[i].CriterionID == criterionID {
@@ -74,20 +74,20 @@ func setFairnessVerdict(t testing.TB, verdicts []AgentContentJudgment, criterion
 			return out
 		}
 	}
-	t.Fatalf("no verdict is recorded for criterion %q", criterionID)
+	tb.Fatalf("no verdict is recorded for criterion %q", criterionID)
 	return nil
 }
 
 // withoutFairnessVerdict removes the verdict recorded for one criterion.
-func withoutFairnessVerdict(t testing.TB, verdicts []AgentContentJudgment, criterionID string) []AgentContentJudgment {
-	t.Helper()
+func withoutFairnessVerdict(tb testing.TB, verdicts []AgentContentJudgment, criterionID string) []AgentContentJudgment {
+	tb.Helper()
 	out := make([]AgentContentJudgment, 0, len(verdicts))
 	for _, verdict := range verdicts {
 		if verdict.CriterionID != criterionID {
 			out = append(out, verdict)
 		}
 	}
-	require.Len(t, out, len(verdicts)-1, "criterion %q must have a recorded verdict to remove", criterionID)
+	require.Len(tb, out, len(verdicts)-1, "criterion %q must have a recorded verdict to remove", criterionID)
 	return out
 }
 
@@ -120,27 +120,27 @@ func gradeFairnessScenario(t *testing.T, blueprint ScenarioBlueprint, output str
 
 // fairnessDeterministicGrade returns the named deterministic criterion, failing
 // the test when it was not emitted.
-func fairnessDeterministicGrade(t testing.TB, grades []*evalv1.DeterministicGrade, criterionID string) *evalv1.DeterministicGrade {
-	t.Helper()
+func fairnessDeterministicGrade(tb testing.TB, grades []*evalv1.DeterministicGrade, criterionID string) *evalv1.DeterministicGrade {
+	tb.Helper()
 	for _, grade := range grades {
 		if grade.GetCriterionId() == criterionID {
 			return grade
 		}
 	}
-	t.Fatalf("deterministic criterion %q was not emitted", criterionID)
+	tb.Fatalf("deterministic criterion %q was not emitted", criterionID)
 	return nil
 }
 
 // fairnessSemanticGrade returns the named semantic grade, failing the test when
 // it was not emitted.
-func fairnessSemanticGrade(t testing.TB, grades []*evalv1.SemanticGrade, criterionID string) *evalv1.SemanticGrade {
-	t.Helper()
+func fairnessSemanticGrade(tb testing.TB, grades []*evalv1.SemanticGrade, criterionID string) *evalv1.SemanticGrade {
+	tb.Helper()
 	for _, grade := range grades {
 		if grade.GetCriterionId() == criterionID {
 			return grade
 		}
 	}
-	t.Fatalf("semantic criterion %q was not emitted", criterionID)
+	tb.Fatalf("semantic criterion %q was not emitted", criterionID)
 	return nil
 }
 

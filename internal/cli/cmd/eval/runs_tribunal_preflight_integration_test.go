@@ -27,11 +27,26 @@ func TestRunsStart_AllowsSharedRuntimeUnderTribunalConsensus(t *testing.T) {
 	bindRunTribunalConsensus(t, run.stack.Gateway, run.stack.Identity)
 	data, err := run.stack.Data.Workload()
 	require.NoError(t, err)
+
+	// One answer-only cell is enough to prove the shared runtime starts; the full default suite would execute every cell inline.
+	suite := evaluation.DefaultScenarioSuite()
+	suite.ID = "shared-tribunal-runtime-suite"
+	suite.Version = evaluation.SuiteSchemaVersion
+	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
+		if scenario.ScenarioID == "instruction-exact-format" {
+			suite.Scenarios = []evaluation.SuiteScenario{scenario}
+			break
+		}
+	}
+	require.Len(t, suite.Scenarios, 1)
+	require.NoError(t, evaluation.NewStore(env.fileSvc(t)).CreateSuite(context.Background(), suite))
+
 	_, err = createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
 		Platform:    testPlatform,
 		CampaignID:  "eval-shared-tribunal-runtime",
 		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
 		Repetitions: 1,
+		SuiteID:     suite.ID,
 		Investigation: &evalv1.EvaluationInvestigation{
 			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
 			InvestigationId: "shared-tribunal-investigation",

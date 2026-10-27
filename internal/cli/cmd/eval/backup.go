@@ -307,7 +307,7 @@ ztd public restore --queue`,
 			if len(report.Skipped) > 0 {
 				details = append(details, fmt.Sprintf("%d existing skipped", len(report.Skipped)))
 			}
-			detailStr := ""
+			var detailStr string
 			if len(details) > 0 {
 				detailStr = fmt.Sprintf(" (%s)", strings.Join(details, ", "))
 			} else {

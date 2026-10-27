@@ -96,7 +96,6 @@ func bindRunTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, id
 	require.NoError(t, store.AddConsensus(ctx, models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
 		Provider:        string(constants.ConsensusProviderTribunal),
-		EndpointURL:     fixtureBinding.EndpointURL,
 		MemberAppIDs:    memberAppIDs,
 		Quorum:          3,
 		RequireDistinct: true,

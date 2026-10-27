@@ -85,9 +85,7 @@ func TestPublicCmd_ExposesProductionSurface(t *testing.T) {
 
 func TestPublicRepairOutboxCmd_UsesGatewayOwnedStateWhenHostConfigIsAbsent(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
-	original := gwremote.GatewayHealthCheck
-	gwremote.GatewayHealthCheck = func() bool { return true }
-	t.Cleanup(func() { gwremote.GatewayHealthCheck = original })
+	gwremote.WithConfiguredGatewayHealthCheck(t, true)
 
 	var output bytes.Buffer
 	cmd := publicRepairOutboxCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))

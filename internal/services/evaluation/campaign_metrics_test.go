@@ -231,11 +231,11 @@ func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
 	}
 
 	trace := &AgentTrace{ToolCalls: []AgentToolCall{call}}
-	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}), 0)
+	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs), 0)
 
 	call.Success = false
 	trace = &AgentTrace{ToolCalls: []AgentToolCall{call}}
-	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}), 0)
+	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, refs), 0)
 }
 
 func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
@@ -243,20 +243,15 @@ func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
 		{ReferenceID: "ref-missing-script", ExpectedContent: "deploy-healthcheck: not found"},
 		{ReferenceID: "ref-exit-code", ExpectedContent: "exit_code=127"},
 	}
-	input := ScenarioInputFixture{
-		InlineContext: []ScenarioInlineContent{
-			{Content: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"},
-		},
-	}
 	trace := &AgentTrace{Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"}}}}
-	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, input), 0)
+	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs), 0)
 
 	// A content-only reference the input never carried is still a miss.
 	refs = append(refs, ScenarioGoldEvidenceReference{ReferenceID: "ref-unseen", ExpectedContent: "disk quota exceeded"})
-	assert.InDelta(t, 2.0/3.0, computeRetrievalHitRate(trace, refs, input), 1e-9)
+	assert.InDelta(t, 2.0/3.0, computeRetrievalHitRate(trace, refs), 1e-9)
 
 	// A reference naming a resource needs an observation even when the input
 	// quotes its content.
 	resourceRef := []ScenarioGoldEvidenceReference{{ReferenceID: "ref-log", TargetResource: "logs/deploy.log", ExpectedContent: "exit_code=127"}}
-	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, resourceRef, input), 0)
+	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, resourceRef), 0)
 }

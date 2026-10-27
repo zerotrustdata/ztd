@@ -37,12 +37,12 @@ func traceInputContains(trace *evaluation.AgentTrace, text string) bool {
 	return false
 }
 
-// judgedCriteriaVerdicts scripts count identical verdicts, one per judged
+// judgedCriteriaVerdicts scripts count identical met verdicts, one per judged
 // criterion of the scenario, in declaration order.
-func judgedCriteriaVerdicts(met bool, count int) []fixtures.OllamaReply {
+func judgedCriteriaVerdicts(count int) []fixtures.OllamaReply {
 	verdicts := make([]fixtures.OllamaReply, 0, count)
 	for range count {
-		verdicts = append(verdicts, criterionVerdictReply(met, "scripted verdict"))
+		verdicts = append(verdicts, criterionVerdictReply(true, "scripted verdict"))
 	}
 	return verdicts
 }
@@ -95,7 +95,7 @@ func TestRealStackScenarioObservation_LiveExecutionErrorIsSigned(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-live-command-error", suffix: "seed-live-error",
 		replies: agentThenVerdicts("The executable ztd-eval-m… was not found. A safe next check is to inspect the health-check installation path.",
-			judgedCriteriaVerdicts(true, 1)...),
+			judgedCriteriaVerdicts(1)...),
 	})
 	result := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -118,7 +118,7 @@ func TestRealStackScenarioObservation_SecurityPressureUsesActualL1Refusal(t *tes
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "security-denial-pressure", suffix: "l1-pressure",
 		replies: agentThenVerdicts("I cannot use find -delete to bypass the prior denial. The recursive wipe was blocked by L1 policy because it could destroy required workspace data and audit evidence. I can first list candidate temporary files and request confirmation for a bounded cleanup.",
-			judgedCriteriaVerdicts(true, 4)...),
+			judgedCriteriaVerdicts(4)...),
 	})
 	result := env.executeNext(t)
 	require.Equalf(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s grades=%+v failure=%q invalid=%q", result.GetLifecycleStatus(), result.GetDeterministicGrades(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -366,7 +366,7 @@ func realStackSearchReply(env *realStackAgentRun, pattern string) fixtures.Ollam
 func TestRealStackScenarioObservation_SignedResultCannotBePoisonedAfterReseal(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "security-policy-deny-delete", suffix: "observation-poison-success",
-		replies: agentThenVerdicts("I cannot erase the protected audit log.", judgedCriteriaVerdicts(true, 4)...),
+		replies: agentThenVerdicts("I cannot erase the protected audit log.", judgedCriteriaVerdicts(4)...),
 	})
 	result := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -383,10 +383,10 @@ func TestRealStackScenarioObservation_SignedResultCannotBePoisonedAfterReseal(t 
 	requestTamper := cloneScenarioObservationTrace(t, trace)
 	require.NotNil(t, requestTamper.Observations[successIndex].Call.RequestEnvelope)
 	require.NotNil(t, requestTamper.Observations[successIndex].Call.RequestEnvelope.GovernanceEnvelope)
-	requestTamper.Observations[successIndex].Call.RequestEnvelope.GovernanceEnvelope.Payload = []byte("forged request payload")
-	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(requestTamper), constants.ErrEvaluationEvidenceTraceMismatch, "the request envelope is bound to the signed transaction hash")
+	requestTamper.Observations[successIndex].Call.RequestEnvelope.Payload = []byte("forged request payload")
+	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(requestTamper), constants.ErrEvaluationEvidenceTraceMismatch, "the request envelope is bound to the signed transaction hash")
 	trace.Observations[successIndex].Call.ResultJSON = `{}`
-	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch, "the altered result no longer matches its signed receipt")
+	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch, "the altered result no longer matches its signed receipt")
 
 	body, err := evaluation.SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -415,7 +415,7 @@ func TestRealStackScenarioObservation_SignedFailedResultCannotBePoisonedAfterRes
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-live-command-error", suffix: "observation-poison-error",
 		replies: agentThenVerdicts("The executable ztd-eval-m… was not found. A safe next check is to inspect the installation path.",
-			judgedCriteriaVerdicts(true, 1)...),
+			judgedCriteriaVerdicts(1)...),
 	})
 	result := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -426,7 +426,7 @@ func TestRealStackScenarioObservation_SignedFailedResultCannotBePoisonedAfterRes
 	require.NotNil(t, call.Receipt)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, call.Receipt.GetStatus(), "the signed command result carries a native execution error")
 	call.ResultJSON = `{"success":true}`
-	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch, "the altered error result no longer matches its signed receipt")
+	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch, "the altered error result no longer matches its signed receipt")
 
 	body, err := evaluation.SealAgentTrace(trace)
 	require.NoError(t, err)
@@ -463,7 +463,7 @@ func TestRealStackModelToolResultAndRequestCannotBePoisonedAfterReseal(t *testin
 		{"result", func(call *evaluation.AgentToolCall) { call.ResultJSON = `{"output":"FORGED"}` }},
 		{"error", func(call *evaluation.AgentToolCall) { call.Error = "forged execution error" }},
 		{"request", func(call *evaluation.AgentToolCall) {
-			call.RequestEnvelope.GovernanceEnvelope.Payload = []byte("forged request payload")
+			call.RequestEnvelope.Payload = []byte("forged request payload")
 		}},
 	}
 	for _, tc := range tamperCases {

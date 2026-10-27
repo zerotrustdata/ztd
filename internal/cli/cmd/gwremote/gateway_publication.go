@@ -326,10 +326,6 @@ func FetchPublicMirrorBootstrapWithOrigin(ctx context.Context, origin string) (m
 	return fetchPublicMirrorBootstrapWithClientAndOrigin(ctx, newMirrorHTTPClient(5*time.Second), origin)
 }
 
-func fetchPublicMirrorBootstrapWithClient(ctx context.Context, client *http.Client) (models.PublicFeedBootstrap, error) {
-	return fetchPublicMirrorBootstrapWithClientAndOrigin(ctx, client, publicMirrorOrigin())
-}
-
 func fetchPublicMirrorBootstrapWithClientAndOrigin(ctx context.Context, client *http.Client, origin string) (models.PublicFeedBootstrap, error) {
 	if origin == "" {
 		origin = publicMirrorOrigin()

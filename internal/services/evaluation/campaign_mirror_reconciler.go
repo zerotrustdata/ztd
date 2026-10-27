@@ -213,8 +213,7 @@ func (r *CampaignMirrorReconciler) reconcileRuns(ctx context.Context, runIDs []s
 			update(CampaignMirrorReconcileMissing, 0, nil)
 			continue
 		}
-		effectiveTimeout := runTimeout
-		effectiveTimeout = CampaignMirrorReconcileRunTimeout(runTimeout, assignmentCountForMirrorTimeout(ctx, r.store, runID))
+		effectiveTimeout := CampaignMirrorReconcileRunTimeout(runTimeout, assignmentCountForMirrorTimeout(ctx, r.store, runID))
 		runCtx, cancel := context.WithTimeout(ctx, effectiveTimeout)
 		published, err := r.restoreRun(runCtx, runID, force)
 		cancel()

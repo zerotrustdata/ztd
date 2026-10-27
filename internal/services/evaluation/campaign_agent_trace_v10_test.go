@@ -62,6 +62,6 @@ func TestAgentTraceV10_RejectsV9ContentJudgments(t *testing.T) {
 	body, err := MarshalCanonicalJSONObject(historical)
 	require.NoError(t, err)
 	_, err = DecodeAgentTrace(body)
-	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.ErrorIs(t, ValidateAgentTraceDigest(historical), constants.ErrEvidenceArtifactMalformed)
 }

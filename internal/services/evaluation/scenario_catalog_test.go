@@ -595,7 +595,7 @@ func TestScenarioErrorWithoutCause_HasNoCauseChain(t *testing.T) {
 
 	err := scenarioContractError(blueprint, "user prompt is empty")
 	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
-	assert.NotErrorIs(t, err, constants.ErrPathValidation)
+	require.NotErrorIs(t, err, constants.ErrPathValidation)
 	assert.Equal(t, "evaluation: scenario scenario-under-test: "+constants.ErrEvaluationScenarioContractInvalid.Error()+": user prompt is empty", err.Error())
 }
 

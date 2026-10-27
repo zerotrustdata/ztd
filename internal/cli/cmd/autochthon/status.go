@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/autochthon"
@@ -26,10 +25,6 @@ const (
 	defaultStatusSurprises   = 10
 	statusTimeLayout         = "2006-01-02 15:04:05"
 )
-
-func statusCmd() *cobra.Command {
-	return statusCmdWithConfig(shared.NewFileSvc)
-}
 
 func statusCmdWithConfig(newFileSvc fileSvcFactory) *cobra.Command {
 	var workingDir, anchor string

@@ -96,10 +96,10 @@ type Score struct {
 	// Messages are the exact messages dispatched, set once a request was built.
 	Messages      []*operatorv1.InferenceMessage
 	TransactionID string // the governed inference transaction
-	Receipt          *operatorv1.EventReceipt
-	Result           *operatorv1.InferenceResult // the result the receipt's result summary binds
-	RubricVersion    string
-	Detail           string
+	Receipt       *operatorv1.EventReceipt
+	Result        *operatorv1.InferenceResult // the result the receipt's result summary binds
+	RubricVersion string
+	Detail        string
 }
 
 // Judge scores traces through governed inference.
