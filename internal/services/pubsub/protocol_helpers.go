@@ -134,6 +134,11 @@ func buildResultEnvelope(
 	webSessionID string,
 	cliSessionID string,
 ) (*commonv1.GovernanceEnvelope, error) {
+	if outcomeEntry, ok := constants.Registry.Lookup(outcomeEvent); !ok {
+		return nil, fmt.Errorf("pubsub: outcome %q: %w", outcomeEvent, constants.ErrTxUnknownEventType)
+	} else if !outcomeEntry.HasTransport("pubsub") {
+		return nil, fmt.Errorf("pubsub: outcome %q: %w", outcomeEvent, constants.ErrEventTransportViolation)
+	}
 	if requestEvent != "" {
 		if err := constants.ValidateGovernedResultEnvelope(requestEvent, outcomeEvent, originatingActionType); err != nil {
 			return nil, fmt.Errorf("validate governed result envelope: %w", err)

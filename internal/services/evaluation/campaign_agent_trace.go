@@ -72,6 +72,7 @@ const (
 	AgentTerminalClassificationBudgetExhaustion         = "budget_exhaustion"
 	AgentTerminalClassificationHarnessFailure           = "harness_failure"
 	AgentTerminalClassificationUnsupportedClarification = "unsupported_clarification"
+	AgentTerminalClassificationTimeout                  = "timeout"
 )
 
 // AgentTraceWorkspace is the attempt-scoped workspace one agent trace ran in.
@@ -466,6 +467,8 @@ func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
 	finishReason := evalv1.AgentFinishReason_AGENT_FINISH_REASON_STOPPED
 	if t.ToolTurnLimitReached {
 		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_TOOL_TURN_LIMIT
+	} else if t.TerminalClassification == AgentTerminalClassificationTimeout {
+		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT
 	} else if t.ProviderFailure != "" {
 		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_ERROR
 	}

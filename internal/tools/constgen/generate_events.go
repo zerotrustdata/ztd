@@ -61,6 +61,16 @@ type EventRegistryEntry struct {
 	Reserved          bool
 }
 
+// HasTransport reports whether the registry entry declares the given transport.
+func (e EventRegistryEntry) HasTransport(transport string) bool {
+	for _, t := range e.Transport {
+		if t == transport {
+			return true
+		}
+	}
+	return false
+}
+
 // EventRegistry provides metadata lookup for EventType values.
 type EventRegistry struct {
 	byType map[EventType]EventRegistryEntry
@@ -70,6 +80,15 @@ type EventRegistry struct {
 func (r EventRegistry) Lookup(event EventType) (EventRegistryEntry, bool) {
 	entry, ok := r.byType[event]
 	return entry, ok
+}
+
+// TransportsFor returns the transports declared for an event type.
+func (r EventRegistry) TransportsFor(event EventType) ([]string, bool) {
+	entry, ok := r.byType[event]
+	if !ok {
+		return nil, false
+	}
+	return entry.Transport, true
 }
 
 // ActionFor returns the governed action class for a request event.
@@ -114,6 +133,15 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 	}
 
 	b.WriteString("}}\n\n")
+
+	b.WriteString("// EventTransportRegistry maps every registered EventType to its declared transports.\n")
+	b.WriteString("var EventTransportRegistry = map[EventType][]string{\n")
+	for _, key := range keys {
+		entry := reg.Events[key]
+		fmt.Fprintf(&b, "\t%s: %s,\n", entry.GoConst, goStringSlice(entry.Transport))
+	}
+	b.WriteString("}\n\n")
+
 	b.WriteString(generateOperatorHierarchy(hierarchy))
 	return b.String(), nil
 }

@@ -13,11 +13,13 @@
 package evaluation_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -582,6 +584,35 @@ func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedReceiptAndVe
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 		})
 	}
+}
+
+func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerifies(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	env := newRealStackAgentRun(t, realStackOptions{
+		shared: true, singleRole: true, suffix: "timeout-bracket",
+		replies: []fixtures.OllamaReply{
+			executorShellCallReply("call-1"),
+			{
+				Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+					<-ctx.Done()
+					return fixtures.OllamaReply{Failure: "context deadline exceeded"}
+				},
+			},
+		},
+	})
+
+	res, ok, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, res.GetLifecycleStatus())
+	assert.Contains(t, res.GetFailureReason(), "The attempt timed out before completing the scenario.")
+	trace := executorLoadTrace(t, env, res)
+	assert.Equal(t, evaluation.AgentTerminalClassificationTimeout, trace.TerminalClassification)
+	require.NotNil(t, trace.Bracket)
+	require.NotNil(t, trace.Bracket.Before.EventReceipt)
+	require.NotNil(t, trace.Bracket.After.EventReceipt)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }
 
 func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOutOfDataBracket(t *testing.T) {

@@ -17,7 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -107,4 +111,59 @@ func TestVerificationReportHelpers(t *testing.T) {
 	assert.Empty(t, verificationStatusString(nil))
 	assert.Zero(t, verificationFailureCount(nil))
 	assert.Nil(t, verificationFailureReasons(nil))
+}
+
+func TestDeriveAssignmentTimeout(t *testing.T) {
+	// Doctrine posture, unbound: base execution budget (8m)
+	govDoc := evaluation.RunGovernance{
+		Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		Consensus: &evalv1.EvaluationConsensusIdentity{Bound: false},
+	}
+	assert.Equal(t, assignmentTimeout, deriveAssignmentTimeout(govDoc))
+
+	// Ratify posture (requires L3, no L2): base + approval TTL (8m + 2m = 10m)
+	govRatify := evaluation.RunGovernance{
+		Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY,
+		Consensus: &evalv1.EvaluationConsensusIdentity{Bound: false},
+	}
+	assert.Equal(t, assignmentTimeout+mcp.ApprovalRequestTTL, deriveAssignmentTimeout(govRatify))
+
+	// Consensus posture with Tribunal bound (requires L2, 2 rounds): base + 2 * inferdispatch.RequestDeadline
+	govConsensusTribunal := evaluation.RunGovernance{
+		Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
+		Consensus: &evalv1.EvaluationConsensusIdentity{
+			Bound:    true,
+			Provider: string(constants.ConsensusProviderTribunal),
+		},
+	}
+	assert.Equal(t, assignmentTimeout+2*inferdispatch.RequestDeadline, deriveAssignmentTimeout(govConsensusTribunal))
+
+	// Notary posture with Tribunal bound (requires L3 and L2): base + approval TTL + 2 * inferdispatch.RequestDeadline
+	govNotaryTribunal := evaluation.RunGovernance{
+		Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY,
+		Consensus: &evalv1.EvaluationConsensusIdentity{
+			Bound:    true,
+			Provider: string(constants.ConsensusProviderTribunal),
+		},
+	}
+	assert.Equal(t, assignmentTimeout+mcp.ApprovalRequestTTL+2*inferdispatch.RequestDeadline, deriveAssignmentTimeout(govNotaryTribunal))
+
+	// Notary posture with non-tribunal consensus (1 round): base + approval TTL + 1 * inferdispatch.RequestDeadline
+	govNotaryApp := evaluation.RunGovernance{
+		Posture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY,
+		Consensus: &evalv1.EvaluationConsensusIdentity{
+			Bound:    true,
+			Provider: "application",
+		},
+	}
+	assert.Equal(t, assignmentTimeout+mcp.ApprovalRequestTTL+inferdispatch.RequestDeadline, deriveAssignmentTimeout(govNotaryApp))
+}
+
+func TestRunsFlags_AssignmentTimeoutFlag(t *testing.T) {
+	startCmd := runsStartCmd(nativeEvalDeps{})
+	assert.NotNil(t, startCmd.Flags().Lookup("assignment-timeout"))
+
+	resumeCmd := runsResumeCmd(nativeEvalDeps{})
+	assert.NotNil(t, resumeCmd.Flags().Lookup("assignment-timeout"))
+	assert.Contains(t, resumeCmd.Aliases, "execute")
 }

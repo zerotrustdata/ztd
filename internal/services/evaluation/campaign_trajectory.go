@@ -185,7 +185,7 @@ type trajectoryResult struct {
 }
 
 func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, view agentGradingView) trajectoryResult {
-	if view.Trace.ToolTurnLimitReached {
+	if view.Trace.ToolTurnLimitReached || view.Trace.TerminalClassification == AgentTerminalClassificationTimeout {
 		return trajectoryResult{
 			Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED,
 			Passed:  false,
@@ -613,6 +613,9 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			pubMid = s
 		case evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED:
 			s := "The model used all of its tool turns without finishing."
+			if view.Trace.TerminalClassification == AgentTerminalClassificationTimeout {
+				s = "The attempt timed out before completing the scenario."
+			}
 			privMid = s
 			pubMid = s
 		default:

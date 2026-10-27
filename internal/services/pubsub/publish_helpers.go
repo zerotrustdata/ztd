@@ -100,6 +100,13 @@ func publishLFEATypedResponseTo(
 	eventsStore *storage.LocalFirstEventsStore, // records observed-state content evidence
 	scrubbingService *scrubbing.ScrubbingService, // egress scrubber, also scrubs the recorded evidence
 ) error {
+	entry, ok := constants.Registry.Lookup(eventType)
+	if !ok {
+		return fmt.Errorf("pubsub: publish LFEA typed response: %w: %q", constants.ErrTxUnknownEventType, eventType)
+	}
+	if !entry.HasTransport("pubsub") {
+		return fmt.Errorf("pubsub: publish LFEA typed response: %w: %q", constants.ErrEventTransportViolation, eventType)
+	}
 	executionID := executionIDFromMessage(msg)
 	setExecutionIDOnPayload(payload, executionID)
 
@@ -159,6 +166,13 @@ func publishLFEAErrorTo(
 	eventsStore *storage.LocalFirstEventsStore, // records observed-state content evidence
 	scrubbingService *scrubbing.ScrubbingService, // egress scrubber, also scrubs the recorded evidence
 ) error {
+	entry, ok := constants.Registry.Lookup(eventType)
+	if !ok {
+		return fmt.Errorf("pubsub: publish LFEA error: %w: %q", constants.ErrTxUnknownEventType, eventType)
+	}
+	if !entry.HasTransport("pubsub") {
+		return fmt.Errorf("pubsub: publish LFEA error: %w: %q", constants.ErrEventTransportViolation, eventType)
+	}
 	executionID := executionIDFromMessage(msg)
 
 	// Error text can carry paths and command output, so it is scrubbed here. Without an active

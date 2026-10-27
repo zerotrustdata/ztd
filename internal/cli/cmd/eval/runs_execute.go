@@ -28,6 +28,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -36,6 +38,25 @@ const (
 	assignmentTimeout      = 8 * time.Minute
 	campaignAgentPersonaID = "ztd-eval-campaign"
 )
+
+func deriveAssignmentTimeout(gov evaluation.RunGovernance) time.Duration {
+	timeout := assignmentTimeout
+	posture, err := cases.GovernancePosture(gov.Posture)
+	if err != nil {
+		return timeout
+	}
+	if posture.RequiresL3() {
+		timeout += mcp.ApprovalRequestTTL
+	}
+	if posture.RequiresL2() && gov.Consensus != nil && gov.Consensus.GetBound() {
+		maxRounds := 1
+		if gov.Consensus.GetProvider() == string(constants.ConsensusProviderTribunal) {
+			maxRounds = 2
+		}
+		timeout += time.Duration(maxRounds) * inferdispatch.RequestDeadline
+	}
+	return timeout
+}
 
 type runExecuteOptions struct {
 	RunID        string
@@ -47,6 +68,7 @@ type runExecuteOptions struct {
 	ResultOutput func(*evalv1.EvaluationAssignmentResult)
 	// Zero disables the rollout generation-failure limit.
 	ProviderFailureLimit int
+	AssignmentTimeout    time.Duration
 }
 
 // runProviderFailureError stops repeated provider generation failures without
@@ -354,12 +376,16 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	iterations := int64(opts.Limit)
 	stopped := false
 	generationFailures := 0
+	iterTimeout := opts.AssignmentTimeout
+	if iterTimeout <= 0 {
+		iterTimeout = deriveAssignmentTimeout(governance)
+	}
 	for i := int64(0); i < iterations; i++ {
 		if watcher.Requested() {
 			stopped = true
 			break
 		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), assignmentTimeout)
+		ctx, cancel := context.WithTimeout(cmd.Context(), iterTimeout)
 		result, ok, err := controller.ExecuteNextAssignment(ctx, opts.RunID, executionBinding, artifacts)
 		cancel()
 		if ok && errors.Is(err, constants.ErrEvaluationPublicationFailed) {

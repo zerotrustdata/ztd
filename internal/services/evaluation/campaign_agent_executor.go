@@ -132,15 +132,22 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read opening ledger sentinel", err)
 	}
-	if err := run.loop(ctx); err != nil {
-		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment", err)
+	loopErr := run.loop(ctx)
+	if loopErr != nil {
+		if !errors.Is(loopErr, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, assignmentExecutionError("evaluation: execute homogeneous assignment", loopErr)
+		}
+		run.trace.TerminalClassification = AgentTerminalClassificationTimeout
 	}
-	after, err := e.sentinel.Read(ctx, cases.ExecutorOutbound, sentinelPath)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		run.trace.TerminalClassification = AgentTerminalClassificationTimeout
+	}
+	persistCtx := assignmentPersistContext(ctx)
+	after, err := e.sentinel.Read(persistCtx, cases.ExecutorOutbound, sentinelPath)
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read closing ledger sentinel", err)
 	}
 	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{EventReceipt: before}, After: AgentTraceReceipt{EventReceipt: after}}
-	persistCtx := assignmentPersistContext(ctx)
 	body, err := SealAgentTrace(run.trace)
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: seal trace", err)
@@ -158,11 +165,12 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		return nil, assignmentExecutionError("evaluation: import homogeneous assignment result", err)
 	}
 	// A trace the Data Operator's evidence does not back, and a trace whose
-	// provider produced no answer, are never judged and never promoted: their
-	// imported lifecycle and grades stand as they are.
+	// provider produced no answer or timed out, are never judged and never
+	// promoted: their imported lifecycle and grades stand as they are.
 	switch result.GetLifecycleStatus() {
 	case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE,
-		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED:
+		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED,
+		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED:
 		return result, nil
 	}
 	if semanticGrades, judgeScores := e.scoreWithJudge(ctx, req, run.trace); len(semanticGrades) > 0 {
@@ -466,6 +474,10 @@ func (r *agentRun) loop(ctx context.Context) error {
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
 		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
+				r.trace.TerminalClassification = AgentTerminalClassificationTimeout
+				return ctx.Err()
+			}
 			// A turn infer already classified (a signed L2 denial) keeps it.
 			if r.trace.TerminalClassification == "" {
 				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
@@ -537,6 +549,10 @@ func (r *agentRun) loop(ctx context.Context) error {
 		for _, toolCall := range toolCalls {
 			executed, err := r.runTool(ctx, turn, modelCallID, toolCall)
 			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					r.trace.TerminalClassification = AgentTerminalClassificationTimeout
+					return ctx.Err()
+				}
 				return err
 			}
 			r.trace.ToolCalls = append(r.trace.ToolCalls, executed)
@@ -767,6 +783,10 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 		return nil, nil
 	}
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			r.trace.TerminalClassification = AgentTerminalClassificationTimeout
+			return nil, nil
+		}
 		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
 		call.Error = r.trace.ProviderFailure
@@ -1191,6 +1211,9 @@ func utf8RuneStart(b byte) bool {
 func agentTraceLifecycle(req AssignmentExecutionRequest, trace *AgentTrace) evalv1.EvaluationAssignmentLifecycleStatus {
 	if trace.ProviderFailure != "" && trace.FinalOutput == "" && !trace.ToolTurnLimitReached {
 		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
+	}
+	if trace.TerminalClassification == AgentTerminalClassificationTimeout {
+		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
 	}
 	if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
 		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED

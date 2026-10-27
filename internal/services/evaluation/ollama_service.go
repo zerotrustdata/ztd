@@ -286,7 +286,7 @@ func dispatchOllamaTypedQuery(
 	actionType constants.ActionType,
 	payload []byte,
 	investigationID string,
-	executionPrefix string,
+	executionID string,
 	validate func(*OllamaModelCommandDispatchResult) error,
 ) (*OllamaModelCommandDispatchResult, error) {
 	if dispatcher == nil {
@@ -305,10 +305,10 @@ func dispatchOllamaTypedQuery(
 		Payload:                 payload,
 		Environment:             maintenance.Environment,
 		TimeoutSeconds:          maintenance.timeoutSeconds(),
-		ExecutionID:             maintenance.NewID(executionPrefix),
+		ExecutionID:             executionID,
 		CaseID:                  caseID,
 		InvestigationID:         investigationID,
-		TaskID:                  maintenance.NewID(executionPrefix + "-task"),
+		TaskID:                  maintenance.NewID(executionID + "-task"),
 	}
 	result, err := dispatcher.DispatchOllamaModelCommand(ctx, request)
 	if err != nil {
@@ -355,7 +355,7 @@ func ListOllamaProviderInventory(ctx context.Context, dispatcher OllamaModelComm
 		constants.ActionTypeOllamaModelInventory,
 		payload,
 		"ollama-model-inventory",
-		"ollama-inventory",
+		executionID,
 		ValidateOllamaModelInventoryResult,
 	)
 	if err != nil {
@@ -379,7 +379,7 @@ func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelComm
 		constants.ActionTypeOllamaModelResidency,
 		payload,
 		"ollama-model-residency",
-		"ollama-residency",
+		executionID,
 		ValidateOllamaModelResidencyResult,
 	)
 	if err != nil {

@@ -93,3 +93,26 @@ func TestGradeHomogeneousScenario_EmptyReplyGradesModelFail(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verdictFromGrades(grading.DeterministicGrades))
 }
+
+func TestGradeHomogeneousScenario_TimeoutRecordedAsFailedLifecycle(t *testing.T) {
+	req := providerFailureGradeRequest()
+	trace := &AgentTrace{
+		RunID:                  "run-1",
+		AssignmentID:           "assign-1",
+		DesignatedRole:         "primary",
+		TerminalClassification: AgentTerminalClassificationTimeout,
+		ModelCalls:             []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-1", ResultDigest: "digest-1"}},
+	}
+	lifecycle := agentTraceLifecycle(req, trace)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, lifecycle)
+
+	grading, err := GradeHomogeneousScenario(req, trace, lifecycle)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED, grading.Trajectory.Outcome)
+	assert.Contains(t, grading.Trajectory.FailureReason, "The attempt timed out before completing the scenario.")
+	assert.Contains(t, grading.Trajectory.PublicFailureReason, "The attempt timed out before completing the scenario.")
+
+	protoTrace := trace.ToProto()
+	require.NotNil(t, protoTrace)
+	assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT, protoTrace.FinishReason)
+}

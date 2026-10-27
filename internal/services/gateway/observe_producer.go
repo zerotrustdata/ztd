@@ -418,6 +418,9 @@ func (s *ObserveProducerService) emitSSEEvent(route SSERoute, eventType string, 
 	if !ok {
 		return fmt.Errorf("observe producer: emit sse %q: %w", eventType, constants.ErrTxUnknownEventType)
 	}
+	if !entry.HasTransport("sse") {
+		return fmt.Errorf("observe producer: emit sse %q: %w", eventType, constants.ErrEventTransportViolation)
+	}
 	if entry.Persistence == "ephemeral" {
 		return s.publisher.PublishEphemeral(route, eventType, payload)
 	}

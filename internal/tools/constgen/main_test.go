@@ -188,6 +188,16 @@ func TestValidateRegistry_AcceptsNonGovernedRequestEndingInRequested(t *testing.
 	require.NoError(t, validateRegistry(reg, map[string]struct{}{}))
 }
 
+func TestValidateRegistry_AcceptsLocalTransport(t *testing.T) {
+	localEvent := validOutcome()
+	localEvent.Transport = []string{"local"}
+	localEvent.Persistence = "operator.audit_log"
+	localEvent.Value = "ztd.v1.platform.audit.chain.checkpointed"
+	reg := registryFile{Events: map[string]eventEntry{"Checkpoint": localEvent}}
+
+	require.NoError(t, validateRegistry(reg, map[string]struct{}{}))
+}
+
 func TestValidateRegistry_WrapsRuleSentinelsForErrorsIs(t *testing.T) {
 	request := validOutcome()
 	request.Kind = "request"
@@ -224,6 +234,8 @@ func TestValidateRegistry_RejectsEntriesThatBreakASingleRule(t *testing.T) {
 		{name: "wire value with uppercase segment", mutate: func(e *eventEntry) { e.Value = "ztd.v1.app.Case.created" }, want: `A: invalid wire value "ztd.v1.app.Case.created"`},
 		{name: "wire value without entity segment", mutate: func(e *eventEntry) { e.Value = "ztd.v1.app" }, want: `A: invalid wire value "ztd.v1.app"`},
 		{name: "unknown kind", mutate: func(e *eventEntry) { e.Kind = "notification" }, want: `A: unknown kind "notification"`},
+		{name: "missing transport", mutate: func(e *eventEntry) { e.Transport = nil }, want: "A: missing transport"},
+		{name: "empty transport", mutate: func(e *eventEntry) { e.Transport = []string{} }, want: "A: missing transport"},
 		{name: "unknown transport", mutate: func(e *eventEntry) { e.Transport = []string{"pubsub", "carrier-pigeon"} }, want: `A: unknown transport "carrier-pigeon"`},
 		{name: "unknown producer", mutate: func(e *eventEntry) { e.Producers = []string{"gateway", "intern"} }, want: `A: unknown producer "intern"`},
 		{name: "removed dashboard producer", mutate: func(e *eventEntry) { e.Producers = []string{"dashboard"} }, want: `A: unknown producer "dashboard"`},

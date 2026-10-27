@@ -1572,4 +1572,5 @@ var (
 	ErrEventRequestWireValue     = errors.New("non-governed request event wire value must end in .requested")
 	ErrEventStreamTransport      = errors.New("stream events must use sse transport only")
 	ErrEventRegistryUnknownField = errors.New("event registry entry has a field outside the declared shape")
+	ErrEventTransportViolation   = errors.New("event transport violation")
 )

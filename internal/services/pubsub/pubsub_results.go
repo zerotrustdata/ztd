@@ -388,6 +388,14 @@ func (rr *PubSubResultsService) PublishEventReceipt(ctx context.Context, env *co
 	if env == nil || receipt == nil {
 		return fmt.Errorf("pubsub: publish event receipt: %w", constants.ErrMissingRequiredField)
 	}
+	receiptEventType := constants.Event.Operator.Receipt.Recorded
+	receiptEntry, ok := constants.Registry.Lookup(receiptEventType)
+	if !ok {
+		return fmt.Errorf("pubsub: publish event receipt: %w: %q", constants.ErrTxUnknownEventType, receiptEventType)
+	}
+	if !receiptEntry.HasTransport("pubsub") {
+		return fmt.Errorf("pubsub: publish event receipt: %w: %q", constants.ErrEventTransportViolation, receiptEventType)
+	}
 
 	receiptBytes, err := proto.Marshal(receipt)
 	if err != nil {
@@ -432,6 +440,15 @@ func (rr *PubSubResultsService) PublishEventReceipt(ctx context.Context, env *co
 // publishUniversal marshals a GovernanceEnvelope as protojson and publishes it to the results channel.
 // operatorID overrides rr.config.OperatorID for channel routing (e.g. gateway mode where config has no operator ID).
 func (rr *PubSubResultsService) publishUniversal(ctx context.Context, env *commonv1.GovernanceEnvelope, operatorID, operatorSessionID string) error {
+	if env != nil && env.EventType != "" {
+		entry, ok := constants.Registry.Lookup(constants.EventType(env.EventType))
+		if !ok {
+			return fmt.Errorf("pubsub: publish universal: %w: %q", constants.ErrTxUnknownEventType, env.EventType)
+		}
+		if !entry.HasTransport("pubsub") {
+			return fmt.Errorf("pubsub: publish universal: %w: %q", constants.ErrEventTransportViolation, env.EventType)
+		}
+	}
 	data, err := protojson.Marshal(env)
 	if err != nil {
 		return fmt.Errorf("pubsub: marshal envelope: %w", err)

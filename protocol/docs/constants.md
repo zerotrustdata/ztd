@@ -126,7 +126,7 @@ Each entry in `events.json` adheres to a strict schema validated by `constgen`:
 ```
 
 - **`kind`**: Must be one of `request`, `outcome`, `fact`, `stream`.
-- **`transport`**: Allowed values are `governed`, `pubsub`, and `sse`. Any `governance` request must include `governed`.
+- **`transport`**: Allowed values are `governed`, `pubsub`, `sse`, and `local`. Any `governance` request must include `governed`.
 - **`producers`**: Components authorized to emit the event (`gateway`, `operator`, `cli`, `mcp`).
 - **`persistence`**: Storage target (`operator.audit_log`, `gateway.audit_log`, `gateway.sse_store`, `gateway.operator_docs`, `gateway.docstore`, `ephemeral`).
 - **`governance`**: Links request events directly to their `action_type` and Protobuf payload type.

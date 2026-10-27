@@ -80,7 +80,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-EVT-XPORT-01 | A request routed over the `governed` transport MUST be rejected unless its registry entry declares `governed` in the `transport` array (`constants.ValidateGovernedRequest`). The runtime does not check `pubsub` or `sse` declarations at publish time. |
+| INV-EVT-XPORT-01 | Every registered event MUST declare its transport (`governed`, `pubsub`, `sse`, or `local`). A request routed over the `governed` transport MUST be rejected unless its registry entry declares `governed` (`constants.ValidateGovernedRequest`). Pub/sub results and LFEA responses MUST be rejected unless the event declares `pubsub` transport. SSE events emitted by Gateway producers MUST be rejected unless the event declares `sse` transport (`constants.ErrEventTransportViolation`). Events persisted to SQLite audit chains and never published over `pubsub` or `sse` declare `local`. |
 | INV-EVT-XPORT-02 | The `governed` transport is restricted to request events carrying a valid `GovernanceEnvelope`. Governed requests MUST traverse the five-layer pipeline (L1–L5) before dispatch. |
 
 ### Storage and Persistence Ownership (`INV-EVT-PERS`)
