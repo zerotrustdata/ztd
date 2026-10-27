@@ -536,8 +536,13 @@ test_quickstart_surfaces_key_store_remedy() {
 	out="$SCRATCH/qs-keyring.out"
 	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -ne 0 ]] || { cat "$out" >&2; fail "quickstart with no key store: want non-zero exit"; }
-	grep -qF 'ssh-agent' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-agent remedy"; }
-	grep -qF 'ssh-add' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-add step in the remedy"; }
+	if [[ "$(uname -s)" == Darwin ]]; then
+		grep -qF 'Keychain' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no Keychain remedy on macOS"; }
+		grep -qF 'Always Allow' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no Always Allow step in the macOS remedy"; }
+	else
+		grep -qF 'ssh-agent' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-agent remedy"; }
+		grep -qF 'ssh-add' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-add step in the remedy"; }
+	fi
 	if grep -qF -- '--master-key' "$out"; then
 		cat "$out" >&2
 		fail "quickstart key-store failure: remedy still names a --master-key flag"

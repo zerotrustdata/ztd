@@ -35,7 +35,14 @@ ztd_macos_install_missing() {
     for item in "${missing[@]}"; do
         case "$item" in
             git) brew_packages+=("git") ;;
-            make) brew_packages+=("make") ;;
+            make)
+                # brew's make installs as gmake; `make` itself ships with the
+                # Xcode Command Line Tools, which ztd_check_make looks for.
+                echo "make ships with the Xcode Command Line Tools (brew's make is gmake and does not provide 'make'). Install them:"
+                echo "  xcode-select --install"
+                echo "Finish that installer, then rerun: bash scripts/macos-setup.sh"
+                exit 1
+                ;;
             go) brew_packages+=("go") ;;
             node) brew_packages+=("node") ;;
             rg) brew_packages+=("ripgrep") ;;
@@ -44,6 +51,7 @@ ztd_macos_install_missing() {
                 echo "A C compiler is required by the Go race detector. Install the Xcode Command Line Tools:"
                 echo "  xcode-select --install"
                 echo "Finish that installer, then rerun: bash scripts/macos-setup.sh"
+                exit 1
                 ;;
             curl) echo "curl ships with macOS; check that /usr/bin is on PATH." ;;
         esac

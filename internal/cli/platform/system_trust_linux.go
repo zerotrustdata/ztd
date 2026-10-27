@@ -127,18 +127,18 @@ func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.C
 	managedPath := filepath.Join(managedDir(family), managedFilename(fingerprint))
 
 	// sudo cp <staged> <managed> — argument array, no shell interpolation.
-	if _, err := i.runner.Run(ctx, nil, "sudo", "cp", certPath, managedPath); err != nil {
-		return wrapElevation(err)
+	if out, err := i.runner.Run(ctx, nil, "sudo", "cp", certPath, managedPath); err != nil {
+		return wrapElevation(out, err)
 	}
 
 	switch family {
 	case linuxFamilyDebian:
-		if _, err := i.runner.Run(ctx, nil, "sudo", "update-ca-certificates"); err != nil {
-			return wrapElevation(err)
+		if out, err := i.runner.Run(ctx, nil, "sudo", "update-ca-certificates"); err != nil {
+			return wrapElevation(out, err)
 		}
 	case linuxFamilyRHEL:
-		if _, err := i.runner.Run(ctx, nil, "sudo", "update-ca-trust", "extract"); err != nil {
-			return wrapElevation(err)
+		if out, err := i.runner.Run(ctx, nil, "sudo", "update-ca-trust", "extract"); err != nil {
+			return wrapElevation(out, err)
 		}
 	}
 	return nil
@@ -147,11 +147,11 @@ func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.C
 // wrapElevation maps common sudo/exec failures to typed errors. A non-zero
 // exit from sudo typically means the user cancelled the privilege prompt or
 // the command itself failed.
-func wrapElevation(err error) error {
+func wrapElevation(out []byte, err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+	return trustCmdError(out, err)
 }
 
 // listStaleAnchorsPlatform enumerates ztd-root-*.crt files in the managed CA
@@ -216,19 +216,19 @@ func (i *SystemTrustInstaller) removeStaleAnchorsPlatform(ctx context.Context, a
 	}
 
 	for _, a := range anchors {
-		if _, err := i.runner.Run(ctx, nil, "sudo", "rm", "-f", a.Handle); err != nil {
-			return wrapElevation(err)
+		if out, err := i.runner.Run(ctx, nil, "sudo", "rm", "-f", a.Handle); err != nil {
+			return wrapElevation(out, err)
 		}
 	}
 
 	switch family {
 	case linuxFamilyDebian:
-		if _, err := i.runner.Run(ctx, nil, "sudo", "update-ca-certificates", "--fresh"); err != nil {
-			return wrapElevation(err)
+		if out, err := i.runner.Run(ctx, nil, "sudo", "update-ca-certificates", "--fresh"); err != nil {
+			return wrapElevation(out, err)
 		}
 	case linuxFamilyRHEL:
-		if _, err := i.runner.Run(ctx, nil, "sudo", "update-ca-trust", "extract"); err != nil {
-			return wrapElevation(err)
+		if out, err := i.runner.Run(ctx, nil, "sudo", "update-ca-trust", "extract"); err != nil {
+			return wrapElevation(out, err)
 		}
 	}
 	return nil

@@ -14,7 +14,6 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -49,9 +48,9 @@ func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.C
 	}
 	defer cleanup()
 
-	_, err = i.runner.Run(ctx, nil, "sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot", "-k", darwinSystemKeychain, certPath)
+	out, err := i.runner.Run(ctx, nil, "sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot", "-k", darwinSystemKeychain, certPath)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+		return trustCmdError(out, err)
 	}
 	return nil
 }
@@ -120,8 +119,8 @@ func (i *SystemTrustInstaller) listStaleAnchorsPlatform(ctx context.Context, cur
 // elevation.
 func (i *SystemTrustInstaller) removeStaleAnchorsPlatform(ctx context.Context, anchors []StaleAnchor) error {
 	for _, a := range anchors {
-		if _, err := i.runner.Run(ctx, nil, "sudo", "security", "delete-certificate", "-Z", a.Handle, darwinSystemKeychain); err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+		if out, err := i.runner.Run(ctx, nil, "sudo", "security", "delete-certificate", "-Z", a.Handle, darwinSystemKeychain); err != nil {
+			return trustCmdError(out, err)
 		}
 	}
 	return nil
