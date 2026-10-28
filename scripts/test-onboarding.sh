@@ -150,7 +150,7 @@ test_go_too_old_is_missing() {
 # `go install pkg@version` takes its toolchain from the tool's go.mod, not ours,
 # so under GOTOOLCHAIN=auto an older system Go builds the tool and the
 # post-install freshness check rejects it. The stub go mirrors that: it builds
-# with STUB_GO_MIN only when the install pins that toolchain.
+# with STUB_GO_MIN only when the install pins that exact toolchain.
 test_dev_tool_installs_with_go_mod_toolchain() {
 	local bin="$SCRATCH/bin-dev-tool" gobin="$SCRATCH/gobin-dev-tool"
 	mkdir -p "$bin" "$gobin"
@@ -162,7 +162,7 @@ env)
 	;;
 install)
 	built_with=1.26.9
-	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}+auto" ] && built_with="$STUB_GO_MIN"
+	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}" ] && built_with="$STUB_GO_MIN"
 	printf '#!/bin/sh\n# built-with %s\n' "$built_with" >"$STUB_GOBIN/fakebuf"
 	chmod 755 "$STUB_GOBIN/fakebuf"
 	;;
@@ -288,7 +288,7 @@ test_path_profile_idempotent() {
 	mkdir -p "$home"
 	profile="$home/.bashrc"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$SOURCE_ROOT"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		ztd_ui_init
@@ -307,7 +307,7 @@ test_path_profile_preserves_installed_node() {
 	mkdir -p "$home"
 	profile="$home/.bashrc"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$SOURCE_ROOT"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		# Model the Linux tarball's command resolution without writing to /usr/local.
@@ -334,7 +334,7 @@ test_path_profile_respects_home_form() {
 	before="$SCRATCH/bashrc-home-form.before"
 	cp "$profile" "$before"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$home/src/ztd"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		ztd_ui_init
@@ -349,7 +349,7 @@ test_path_profile_matches_whole_path() {
 	profile="$home/.bashrc"
 	printf '%s\n' "export PATH=\"\$PATH:$home/src/ztd-old:$home/src/ztd/bin\"" >"$profile"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$home/src/ztd"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		ztd_ui_init

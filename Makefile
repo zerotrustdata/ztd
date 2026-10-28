@@ -395,7 +395,7 @@ website-test:
 	@cd website && npm run check
 
 .PHONY: website-bundle-check
-website-bundle-check:
+website-bundle-check: website-build
 	@echo "Validating the Cloudflare Worker bundle..."
 	@cd website && npx wrangler deploy --dry-run
 
@@ -898,7 +898,7 @@ test-release-smoke: build
 	@./ztd test release-smoke
 
 test-operator-deploy: build
-	@bash scripts/ci/operator-deploy-lifecycle.sh --count 3
+	@bash scripts/ci/operator-deploy-lifecycle.sh --count 3 $(OPERATOR_DEPLOY_ARGS)
 
 # Explicit targets for tests against the user's local Gateway. Reset goes
 # through the existing CLI confirmation and evidence-backup flow.
@@ -1214,7 +1214,6 @@ ci-protocol: dev-check
 .PHONY: ci-website
 ci-website: dev-check
 	@$(MAKE) website-test
-	@$(MAKE) website-build
 	@$(MAKE) website-bundle-check
 	@echo "Website CI complete."
 

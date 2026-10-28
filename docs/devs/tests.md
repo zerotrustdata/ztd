@@ -318,7 +318,7 @@ The enrollment burst deadline contract (`TestPlatformEnrollmentBurst`) runs only
 
 `TestHandleInternalSSEStream_FirstFlushCanDeliverDeploymentAnnouncements` proves listeners exist before HTTP 200, write deadlines are cleared, announcements arrive once, and cancellation unregisters listeners.
 
-On Linux, `bash scripts/ci/operator-deploy-lifecycle.sh --count 3` starts a fresh doctrine Gateway and invokes `TestOperatorDeploy_LocalLifecycle` through `ztd test e2e`.
+On Linux, `make test-operator-deploy` starts a fresh doctrine Gateway and invokes `TestOperatorDeploy_LocalLifecycle` through `ztd test e2e`. When another Gateway occupies the default ports, select two unused ports with `OPERATOR_DEPLOY_ARGS='--http-port 18080 --https-port 18443'`. The runner checks those ports before starting and passes them to enrollment and the E2E scenario; it preserves other Gateways.
 
 ### Run the Release Smoke
 

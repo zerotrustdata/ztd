@@ -24,7 +24,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -39,7 +41,24 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+func TestReexecHealthServer_ReportsListenerFailure(t *testing.T) {
+	t.Setenv(string(constants.EnvVar.TestReexec), "serve")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	child := exec.CommandContext(testutil.Context(t), executable, "gw", "start", "--http-port", strconv.Itoa(port))
+	output, err := child.CombinedOutput()
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, 1, exitErr.ExitCode())
+	assert.Contains(t, string(output), "re-exec health server:")
+}
 
 // launchProfileWriteFailingFileSvc wraps a RuntimeFileService and fails
 // WriteFile calls that target the launch profile path. All other operations

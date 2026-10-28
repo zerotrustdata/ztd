@@ -2,6 +2,9 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { prepareReleaseNotes, releaseLinkResolver, renderReleaseNotes } from '../src/release-notes.js';
@@ -56,7 +59,28 @@ test('renderReleaseNotes requires a header naming the same version', () => {
   assert.throws(() => renderReleaseNotes('## [2.3.1] - Oct 1\n\nBody.\n', '2.3.1', NOTE), /must start with/);
 });
 
-test('every committed release note renders into a fragment', async () => {
+test('prepareReleaseNotes excludes explicit TBD drafts and rejects malformed release headers', async t => {
+  const repository = await mkdtemp(join(tmpdir(), 'ztd-release-notes-'));
+  t.after(() => rm(repository, { recursive: true, force: true }));
+  const series = join(repository, 'docs/release_notes/v2.3.x');
+  await mkdir(series, { recursive: true });
+  await writeFile(join(series, 'v2.3.1.md'), '## [2.3.1] - 2026-10-01 - Published\n\nPublished notes.\n');
+  const draftPath = join(series, 'v2.3.2.md');
+  for (const header of ['## [2.3.2] - TBD', '## [2.3.2] - TBD - Upcoming', '## [2.3.2] - TBD - Upcoming (Draft)']) {
+    await writeFile(draftPath, `${header}\r\n\r\nUnpublished notes.\r\n`);
+    const fragments = await prepareReleaseNotes(repository);
+    assert.deepEqual([...fragments.keys()], ['_release-notes/2.3.1.html']);
+    assert.match(fragments.get('_release-notes/2.3.1.html'), /Published notes/);
+  }
+  for (const header of ['## [2.3.9] - TBD - Upcoming (Draft)', '## [2.3.2] - someday - Upcoming (Draft)']) {
+    await writeFile(draftPath, `${header}\n\nUnpublished notes.\n`);
+    await assert.rejects(prepareReleaseNotes(repository), /must start with/);
+  }
+  await writeFile(draftPath, '## [2.3.2] - 2026-10-02 - Released\n\nNew release.\n');
+  assert.equal((await prepareReleaseNotes(repository)).has('_release-notes/2.3.2.html'), true);
+});
+
+test('committed dated release notes render into fragments', async () => {
   const fragments = await prepareReleaseNotes(REPOSITORY);
   assert.ok(fragments.size > 0);
   for (const [path, html] of fragments) {

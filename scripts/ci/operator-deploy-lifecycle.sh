@@ -15,12 +15,16 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="$REPO/ztd"
 COUNT=3
 ROOT=""
+HTTP_PORT=8080
+HTTPS_PORT=8443
 while (($#)); do
     case "$1" in
         --binary) BIN="${2:?--binary needs a path}"; shift 2 ;;
         --count) COUNT="${2:?--count needs a number}"; shift 2 ;;
         --root) ROOT="${2:?--root needs a path}"; shift 2 ;;
-        --help) echo "Usage: $0 [--binary PATH] [--count 3] [--root NEW_DIRECTORY]"; exit 0 ;;
+        --http-port) HTTP_PORT="${2:?--http-port needs a port}"; shift 2 ;;
+        --https-port) HTTPS_PORT="${2:?--https-port needs a port}"; shift 2 ;;
+        --help) echo "Usage: $0 [--binary PATH] [--count 3] [--root NEW_DIRECTORY] [--http-port 8080] [--https-port 8443]"; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -28,12 +32,22 @@ if [[ ! "$COUNT" =~ ^[1-9][0-9]*$ ]] || ((COUNT > 4997)); then
     echo "--count must be an integer in 1..4997" >&2
     exit 2
 fi
+for port in "$HTTP_PORT" "$HTTPS_PORT"; do
+    if [[ ! "$port" =~ ^[1-9][0-9]{0,4}$ ]] || ((port > 65535)); then
+        echo "Gateway ports must be integers in 1..65535" >&2
+        exit 2
+    fi
+done
+if [[ "$HTTP_PORT" == "$HTTPS_PORT" ]]; then
+    echo "Gateway HTTP and HTTPS ports must differ" >&2
+    exit 2
+fi
 BIN="$(realpath "$BIN")"
 [[ -x "$BIN" ]] || { echo "Build ztd with make build first" >&2; exit 2; }
 # Probe before installing the cleanup trap: an occupied port belongs to someone
 # else, so refusing the run must never stop that Gateway.
 if command -v ss >/dev/null 2>&1; then
-    for port in 8080 8443; do
+    for port in "$HTTP_PORT" "$HTTPS_PORT"; do
         if [[ -n "$(ss -Hltn "sport = :$port" 2>/dev/null)" ]]; then
             echo "Port $port is occupied; lifecycle test requires an isolated Gateway" >&2
             exit 1
@@ -161,10 +175,13 @@ eval "$AGENT_ENV"
 export SSH_AUTH_SOCK
 ssh-add -q "$ROOT/keys/agent_key"
 (cd "$ROOT/run" && "$BIN" gw start --cert-mode localhost --posture doctrine \
+    --http-port "$HTTP_PORT" --https-port "$HTTPS_PORT" \
     --capabilities data --public-spectator=false --log info) >"$ROOT/out/gateway-start.log" 2>&1
-(cd "$ROOT/run" && "$BIN" login --endpoint localhost) >"$ROOT/out/owner-login.log" 2>&1
+(cd "$ROOT/run" && "$BIN" login --endpoint "localhost:$HTTP_PORT" --port "$HTTPS_PORT") >"$ROOT/out/owner-login.log" 2>&1
 cd "$REPO"
 setsid env ZTD_E2E_RUNTIME_ROOT="$ROOT/run" \
+ZTD_E2E_GATEWAY_HTTP_PORT="$HTTP_PORT" \
+ZTD_E2E_GATEWAY_HTTPS_PORT="$HTTPS_PORT" \
 ZTD_E2E_FLEET_SIZE="$COUNT" \
 ZTD_E2E_FLEET_BIN="$BIN" \
 ZTD_E2E_FLEET_REPORT="$ROOT/out/deployment-report.json" \

@@ -57,6 +57,9 @@ export async function prepareReleaseNotes(repositoryDirectory) {
       const notePath = `${NOTES_DIRECTORY}/${series}/${name}`;
       if (!RELEASE_VERSION.test(version) || !version.startsWith(`${seriesMatch[1]}.${seriesMatch[2]}.`)) throw new Error(`release note ${notePath} is not a ${series} version`);
       const markdown = await readFile(join(repositoryDirectory, notePath), 'utf8');
+      // TBD explicitly marks unreleased notes; never bundle them as public release fragments.
+      const draftHeader = new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\] - TBD(?: - .+)?$`);
+      if (draftHeader.test(markdown.trim().split(/\r?\n/, 1)[0])) continue;
       files.set(`${RELEASE_NOTES_PATH.slice(1)}${version}.html`, renderReleaseNotes(markdown, version, notePath));
     }
   }

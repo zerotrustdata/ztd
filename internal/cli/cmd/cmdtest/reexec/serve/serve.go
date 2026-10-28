@@ -40,8 +40,10 @@ func IfRequested() {
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	_ = srv.ListenAndServe()
-	os.Exit(0)
+	if err := srv.ListenAndServe(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "re-exec health server: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func parseHTTPPortFromArgs(args []string) int {

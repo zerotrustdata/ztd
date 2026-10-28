@@ -5,7 +5,7 @@
 // paste, `irm https://zerotrustdata.io/start.ps1 | iex`, in a real PowerShell session whose Invoke-RestMethod and
 // Invoke-WebRequest are replaced by a stub release host serving start.ps1, the real static/ztd.ps1 installer, a
 // release pointer, a fake ztd.exe, and its checksum. The fake ztd.exe records every invocation and models the
-// Gateway and CLI identity as files, so tests can assert the exact command sequence. Skipped when pwsh is absent.
+// Gateway and CLI identity as files, so tests can assert the exact command sequence. Skipped when native pwsh is absent.
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -22,7 +22,8 @@ const installScript = fileURLToPath(new URL('../static/ztd.ps1', import.meta.url
 function findPwsh() {
   if (process.env.ZTD_TEST_PWSH) return process.env.ZTD_TEST_PWSH;
   for (const directory of (process.env.PATH || '').split(delimiter)) {
-    for (const name of ['pwsh', 'pwsh.exe']) {
+    // WSL can inherit Windows pwsh.exe on PATH; it cannot use this host's POSIX fixtures or environment.
+    for (const name of process.platform === 'win32' ? ['pwsh.exe', 'pwsh'] : ['pwsh']) {
       try {
         if (statSync(join(directory, name)).isFile()) return join(directory, name);
       } catch {
@@ -33,7 +34,7 @@ function findPwsh() {
   return null;
 }
 const PWSH = findPwsh();
-const skip = !PWSH && 'pwsh is not installed (set ZTD_TEST_PWSH to its path)';
+const skip = !PWSH && 'native pwsh is not installed (set ZTD_TEST_PWSH to its path)';
 
 // The served "release binary". On Windows hosts it would be a real executable; here it is a POSIX script that
 // pwsh runs by path like any native command.
