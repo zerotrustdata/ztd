@@ -415,7 +415,7 @@ func TestOllamaBackend_GenerateStreamErrorEventReturnsProviderStreamError(t *tes
 	response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model"})
 
 	require.ErrorIs(t, err, constants.ErrInferenceProviderStreamError)
-	assert.NotErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+	require.NotErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
 	assert.NotContains(t, err.Error(), "XML syntax error")
 	assert.Nil(t, response)
 	assert.Equal(t, AttemptFailureStreamError, ClassifyAttemptFailure(err))

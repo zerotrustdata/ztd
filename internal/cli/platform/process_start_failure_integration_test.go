@@ -234,7 +234,7 @@ func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
 	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
 	require.ErrorContains(t, startErr, "key store approval denied",
 		"the start must wait past the health budget for the child's outcome")
-	assert.Contains(t, notices.String(), "Keychain prompt")
+	assert.Contains(t, notices.String(), "Keychain dialog")
 
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
 }

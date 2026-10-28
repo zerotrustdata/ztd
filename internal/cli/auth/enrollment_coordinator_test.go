@@ -1354,6 +1354,9 @@ func TestEnroll_StaleAnchors_Confirmed_RemovesAndInstalls(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		assert.Contains(t, prompt, "2 stale")
 		return true
@@ -1413,6 +1416,9 @@ func TestEnroll_StaleAnchors_None_NoPrompt(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
@@ -1467,6 +1473,9 @@ func TestEnroll_StaleAnchors_ListError_ProceedsAsBestEffort(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
@@ -1496,6 +1505,9 @@ func TestEnroll_StaleAnchors_Unsupported_SkipsDetection(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
@@ -1763,6 +1775,9 @@ func TestEnroll_ReusedIdentity_StaleBundle_DetectsStaleOSAnchors(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		assert.Contains(t, prompt, "1 stale")
 		return true
@@ -1865,6 +1880,9 @@ func TestEnroll_NoSystemTrust_StillRunsStaleDetection(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
