@@ -352,6 +352,18 @@ type AgentTraceContextToolResult struct {
 	ResultJSON string `json:"result_json"`
 }
 
+// clarificationAt returns the clarification turn recorded at loopTurn. The
+// executor records one for every interrogation it detects, answered or not, so
+// a recorded turn identifies an interrogation without re-reading the text.
+func (t *AgentTrace) clarificationAt(loopTurn int) (AgentClarificationTurn, bool) {
+	for _, clarification := range t.Clarifications {
+		if clarification.LoopTurn == loopTurn {
+			return clarification, true
+		}
+	}
+	return AgentClarificationTurn{}, false
+}
+
 // Conversation rebuilds the complete conversation this trace's model saw and
 // produced: its held context, its input, and per completed turn the assistant
 // message and its tool results, ending with the final answer. A v3 trace
@@ -377,20 +389,13 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 		if !call.Completed() {
 			break
 		}
-		_, interrogation := parseInterrogationQuestions(call.Text)
-		if call.ToolCallCount == 0 || interrogation {
+		clarification, interrogated := t.clarificationAt(call.LoopTurn)
+		if call.ToolCallCount == 0 || interrogated {
 			if call.Text != "" {
 				messages = append(messages, AgentTraceContextMessage{Role: assistantRole, Text: call.Text})
 			}
-			var followUpResp string
-			for _, clar := range t.Clarifications {
-				if clar.LoopTurn == call.LoopTurn && clar.UserResponse != "" {
-					followUpResp = clar.UserResponse
-					break
-				}
-			}
-			if followUpResp != "" {
-				messages = append(messages, AgentTraceContextMessage{Role: userRole, Text: followUpResp})
+			if clarification.UserResponse != "" {
+				messages = append(messages, AgentTraceContextMessage{Role: userRole, Text: clarification.UserResponse})
 				continue
 			}
 			break

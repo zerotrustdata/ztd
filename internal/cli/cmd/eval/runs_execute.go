@@ -646,13 +646,14 @@ type runStateReporter interface {
 // command, so the run never continues or ends behind a projection it failed to
 // write.
 type runLifecycle struct {
-	client       runStateReporter
-	live         evaluation.LeaseLiveness
-	deps         nativeEvalDeps
-	store        *evaluation.Store
-	cliSessionID string
-	runID        string
-	startedAt    time.Time
+	client         runStateReporter
+	live           evaluation.LeaseLiveness
+	deps           nativeEvalDeps
+	store          *evaluation.Store
+	cliSessionID   string
+	runID          string
+	startedAt      time.Time
+	lastObservedAt time.Time
 	// running is set once RUNNING is attempted. The Gateway's state after an
 	// attempt is unknown, so the release reports even when the attempt failed.
 	running bool
@@ -670,7 +671,7 @@ func (l *runLifecycle) reportRunning(ctx context.Context) error {
 		return nil
 	}
 	l.running = true
-	err = l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+	err = l.post(ctx, models.RunLifecycleStatusRunning, row)
 	// running is refused only from a terminal projection. A run the store has
 	// not cancelled is resumable, so the projection contradicts the store.
 	var refused *models.ObserveTransitionError
@@ -695,7 +696,7 @@ func (l *runLifecycle) reconcileProjection(ctx context.Context) (models.RunLifec
 	if row.Queued == 0 || releasedRunStatus(row) != models.RunLifecycleStatusWaiting {
 		return "", nil
 	}
-	err = l.post(ctx, models.RunLifecycleStatusWaiting, row, nil)
+	err = l.post(ctx, models.RunLifecycleStatusWaiting, row)
 	var refused *models.ObserveTransitionError
 	if err == nil || !errors.As(err, &refused) {
 		return "", err
@@ -721,8 +722,8 @@ func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) e
 	if err != nil {
 		return err
 	}
-	endedAt := l.deps.now().UTC()
-	return l.post(ctx, releasedRunStatus(row), row, &endedAt)
+	endedAt := l.nextObservedAt()
+	return l.sendAt(ctx, releasedRunStatus(row), row, &endedAt, endedAt, "")
 }
 
 // releasedRunStatus is the projected status of a released run, read from the row
@@ -763,13 +764,29 @@ func (l *runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
 	return row, nil
 }
 
-func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
-	return l.send(ctx, status, row, endedAt, "")
+func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow) error {
+	return l.send(ctx, status, row, nil, "")
 }
 
 // send posts status, replacing the terminal projected status reopens when it is
 // set. Only reconcileProjection reopens.
 func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time, reopens models.RunLifecycleStatus) error {
+	observedAt := l.nextObservedAt()
+	return l.sendAt(ctx, status, row, endedAt, observedAt, reopens)
+}
+
+func (l *runLifecycle) sendAt(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time, observedAt time.Time, reopens models.RunLifecycleStatus) error {
+	if endedAt != nil {
+		end := *endedAt
+		if end.Before(l.startedAt) {
+			end = l.startedAt
+		}
+		if observedAt.Before(end) {
+			observedAt = end
+			l.lastObservedAt = end
+		}
+		endedAt = &end
+	}
 	startedAt := l.startedAt
 	err := l.client.UpdateRunState(ctx, models.ObserveProducerRunStateRequest{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
@@ -781,7 +798,7 @@ func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatu
 		TotalTasks:     int(row.ExpectedAssignments),
 		StartedAt:      &startedAt,
 		EndedAt:        endedAt,
-		ObservedAt:     l.deps.now().UTC(),
+		ObservedAt:     observedAt,
 		Reopens:        reopens,
 		CLISessionID:   l.cliSessionID,
 	})
@@ -789,4 +806,20 @@ func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatu
 		return fmt.Errorf("evaluation: report run %s status %s: %w", l.runID, status, err)
 	}
 	return nil
+}
+
+// nextObservedAt preserves the ordering of lifecycle updates from this run
+// when the host wall clock moves backwards between RUNNING and its released
+// status. The Gateway rejects an older observed_at value, so without this clamp
+// a completed local run could fail only while projecting its final status.
+func (l *runLifecycle) nextObservedAt() time.Time {
+	now := l.deps.now().UTC()
+	if now.Before(l.startedAt) {
+		now = l.startedAt
+	}
+	if now.Before(l.lastObservedAt) {
+		now = l.lastObservedAt
+	}
+	l.lastObservedAt = now
+	return now
 }

@@ -80,3 +80,18 @@ func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForExactLabels(t *testi
 	require.False(t, ok, "the full identifier must not satisfy a partial-mask exact label")
 	require.Contains(t, detail, "exact label mismatch")
 }
+
+func TestEvaluateContentCheck_MaskedEllipsesDoNotInflateSentenceCount(t *testing.T) {
+	check := ScenarioContentCheck{MaxSentences: 1}
+	for _, output := range []string{
+		"check... experienced a 18% timeout spike during deploy",
+		"check… experienced a 18% timeout spike during deploy",
+	} {
+		ok, detail := evaluateContentCheck(output, check, ScenarioWorkspace{})
+		require.True(t, ok, "output %q: %s", output, detail)
+	}
+
+	ok, detail := evaluateContentCheck("The service timed out. The cause is unknown.", check, ScenarioWorkspace{})
+	require.False(t, ok)
+	require.Contains(t, detail, "sentence count 2 exceeds maximum 1")
+}

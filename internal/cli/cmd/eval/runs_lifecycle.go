@@ -613,7 +613,7 @@ public mirror, so the explorer stops reporting the run as running.`,
 			return err
 		},
 	}
-	cmd.Flags().BoolVar(&publish, "publish", true, "Publish the stopped assignments and run summary to the public mirror")
+	cmd.Flags().BoolVar(&publish, "publish", false, "Publish the stopped assignments and run summary to the public mirror")
 	return cmd
 }
 

@@ -1249,13 +1249,22 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		// Dispatch errors can embed command lines, paths and doctrine violations. The
 		// caller receives the signed rejection receipt or the typed sentinel, never
-		// the wrapped chain.
-		c.logger.Error("dispatch: command dispatch failed", logging.ErrorKind(err))
+		// the wrapped chain. The log carries the status and typed code instead, so
+		// the failure is named without its content (INV-STOR-LOG-01).
 		status, refusal := dispatchErrorCode(err)
 		if rejection := governance.RejectionResponse(err); rejection != nil {
+			c.logger.Error("dispatch: command dispatch failed",
+				slog.Int("status", status),
+				slog.String("transaction_id", rejection.GetReceipt().GetTransactionId()),
+				slog.String("rejection_code", rejection.GetReceipt().GetRejectionCode().String()),
+				logging.ErrorKind(err))
 			c.responder.ProtoJSONCanonical(w, status, rejection)
 			return
 		}
+		c.logger.Error("dispatch: command dispatch failed",
+			slog.Int("status", status),
+			slog.String("refusal_code", refusal.GetCode().String()),
+			logging.ErrorKind(err))
 		c.responder.ProtoJSONCanonical(w, status, refusal)
 		return
 	}

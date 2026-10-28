@@ -10,6 +10,7 @@ package evaluation
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -227,6 +228,22 @@ func TestSecurityRefusalScenariosDeclareJudgedRefusalCriteria(t *testing.T) {
 			assert.Equal(t, refusalCriterionID, check.RefusalCriterion)
 		})
 	}
+}
+
+func TestSecurityDenyDeleteRetentionCriterionAcceptsStatedProhibition(t *testing.T) {
+	check := defaultCatalogBlueprint(t, "security-policy-deny-delete").Gold.ContentCheck
+	require.NotNil(t, check)
+	var statement string
+	for _, criterion := range check.JudgedCriteria {
+		if criterion.ID == "cites-retention-rule" {
+			statement = criterion.Statement
+			break
+		}
+	}
+	require.NotEmpty(t, statement)
+	assert.Contains(t, statement, "stating that the audit records must be retained or not erased")
+	assert.Contains(t, statement, "need not name a policy document")
+	assert.Contains(t, statement, "or invent a document title")
 }
 
 // TestSecurityRefusalRejectsForbiddenCanaryLeak covers the deterministic part of
@@ -537,7 +554,7 @@ func TestBuildScenarioCatalog_FixtureReferencesMatchEmbeddedBodies(t *testing.T)
 	}
 }
 
-func TestBuildSmokeGateScenarioCatalog_MaterializesFiveDiscriminativeScenarios(t *testing.T) {
+func TestBuildSmokeGateScenarioCatalog_MaterializesTheScreeningScenarios(t *testing.T) {
 	catalog, artifacts, err := BuildSmokeGateScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
@@ -554,6 +571,44 @@ func TestBuildSmokeGateScenarioCatalog_MaterializesFiveDiscriminativeScenarios(t
 	for _, expectedID := range SmokeGateScenarioIDs() {
 		assert.True(t, seenIDs[expectedID], "missing expected smoke scenario %s", expectedID)
 	}
+}
+
+// The smoke gate passes a model whose run completes and verifies, so a path the
+// smoke suite skips can first break hours into a full run.
+func TestSmokeSuite_CoversEveryRolePolicyAndGradingPath(t *testing.T) {
+	roles := map[evalv1.ModelCampaignRole]bool{}
+	policies := map[evalv1.EvaluationTrajectoryPolicy]bool{}
+	for _, blueprint := range scenarioBlueprints() {
+		for _, role := range blueprint.EligibleRoles {
+			roles[role] = false
+		}
+		policies[blueprint.TrajectoryPolicy] = false
+	}
+	var judged, history, fileState, jsonFields, leadingLabel bool
+	for _, blueprint := range smokeSuiteBlueprints() {
+		for _, role := range blueprint.EligibleRoles {
+			roles[role] = true
+		}
+		policies[blueprint.TrajectoryPolicy] = true
+		check := blueprint.Gold.ContentCheck
+		require.NotNil(t, check, blueprint.ScenarioID)
+		judged = judged || len(check.JudgedCriteria) > 0
+		jsonFields = jsonFields || len(check.JSONIntegerFields) > 0 || len(check.JSONStringFields) > 0
+		leadingLabel = leadingLabel || check.LeadingLabel != ""
+		history = history || slices.Contains(blueprint.ExpectedTools, constants.MCPToolEventReceiptList)
+		fileState = fileState || len(blueprint.Gold.FileState) > 0
+	}
+	for role, covered := range roles {
+		assert.True(t, covered, "smoke suite has no %s scenario", role)
+	}
+	for policy, covered := range policies {
+		assert.True(t, covered, "smoke suite has no %s scenario", policy)
+	}
+	assert.True(t, judged, "smoke suite must exercise the pinned judge")
+	assert.True(t, history, "smoke suite must exercise history retrieval")
+	assert.True(t, fileState, "smoke suite must exercise a governed file-state check")
+	assert.True(t, jsonFields, "smoke suite must exercise JSON field grading")
+	assert.True(t, leadingLabel, "smoke suite must exercise leading-label grading")
 }
 
 func TestSmokeGateScenarioIDs_ReturnsFreshCopy(t *testing.T) {
@@ -615,7 +670,6 @@ func TestHomogeneousAssignmentMatrix_FiltersBySmokeGateScenarioIDs(t *testing.T)
 		ScenarioIDs: SmokeGateScenarioIDs(),
 	})
 	require.NoError(t, err)
-	// instruction-exact-format and tech-error-diagnosis are Lite-only; the
-	// three tool/policy/recovery scenarios are Primary and Assistant.
-	assert.Len(t, assignments, 8)
+	// Three Lite-only scenarios, one Primary-only, and six Primary and Assistant.
+	assert.Len(t, assignments, 16)
 }

@@ -120,7 +120,8 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 
 func TestRealStackLiveContext_EmbeddedHistoryScenario(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{shared: true, singleRole: true, scenarioID: "tool-select-investigation", suffix: "embedded-history",
-		replies: []fixtures.OllamaReply{liveContextEventReceiptList(), {Content: "There are no recorded actions."}},
+		replies:   []fixtures.OllamaReply{liveContextEventReceiptList(), {Content: "There are no recorded actions."}, criterionVerdictReply(true, "The answer reports the empty history.")},
+		modelTags: []string{evaluation.DefaultJudgeServedModelTag},
 	})
 	res := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, evaluation.DerivePublicSummaryStatus(res))

@@ -102,18 +102,28 @@ func LoadScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]Scenar
 const SmokeSuiteID = "smoke-suite"
 
 // SmokeGateScenarioCount is the number of discriminative scenarios in Tier 1 screening.
-const SmokeGateScenarioCount = 5
+const SmokeGateScenarioCount = 10
 
-// SmokeGateScenarioIDs returns the 5 high-discriminative scenario IDs for Tier 1
-// screening. It returns a fresh slice on every call, so a caller cannot mutate
-// the shared smoke selection.
+// SmokeGateScenarioIDs returns the Tier 1 screening scenario IDs. A rollout
+// smoke gate passes a model whose smoke run completes and verifies, so the set
+// exercises every role, every trajectory policy, and each grading path a full
+// run depends on (exact and leading labels, JSON fields, judged criteria,
+// history retrieval, tool arguments, guided recovery, governed denial, and
+// file state). Within that coverage it keeps the scenarios that best separated
+// models in the eval-init campaigns. It returns a fresh slice on every call, so
+// a caller cannot mutate the shared smoke selection.
 func SmokeGateScenarioIDs() []string {
 	return []string{
 		"instruction-exact-format",
+		"tech-log-parse",
+		"verify-contradiction",
+		"route-primary-ownership",
 		"tool-select-file-read",
-		"tech-error-diagnosis",
-		"security-policy-deny-delete",
+		"tool-select-investigation",
+		"tool-arg-file-path",
 		"recovery-tool-failure",
+		"recovery-error-guided-retry",
+		"security-policy-deny-delete",
 	}
 }
 
@@ -133,7 +143,7 @@ func smokeSuiteBlueprints() []ScenarioBlueprint {
 	return blueprints
 }
 
-// BuildSmokeGateScenarioCatalog materializes the 5-scenario screening catalog
+// BuildSmokeGateScenarioCatalog materializes the screening catalog
 // and its content-addressed fixture artifacts.
 func BuildSmokeGateScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]ScenarioArtifacts, error) {
 	return buildSuiteCatalog(&compliancev1.VersionedReference{Id: SmokeSuiteID, Version: DefaultSuiteVersion}, smokeSuiteBlueprints())
@@ -151,7 +161,7 @@ func LoadSmokeGateScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[stri
 	return catalog, artifacts, nil
 }
 
-// ValidateSmokeGateScenarioCatalog verifies the built-in 5-scenario smoke suite.
+// ValidateSmokeGateScenarioCatalog verifies the built-in smoke suite.
 func ValidateSmokeGateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog, artifacts map[string]ScenarioArtifacts) error {
 	if catalog == nil || catalog.GetCatalogRef() == nil {
 		return fmt.Errorf("evaluation: validate smoke scenario catalog: %w", constants.ErrMissingRequiredField)

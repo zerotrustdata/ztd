@@ -111,24 +111,28 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	if g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge() {
 		if g.req.ScenarioGold.ContentCheck != nil {
 			contentPassed, contentDetail = evaluateContentCheck(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws)
-			if contentPassed {
-				switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
-				case "":
-				case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4:
-					contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
-				default:
-					contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
+			// The content check alone grades an interrogation; the diagnosis
+			// rubric and judged criteria describe an answer it does not give.
+			if !endedInInterrogation(trace.FinalOutput) {
+				if contentPassed {
+					switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
+					case "":
+					case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4:
+						contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
+					default:
+						contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
+					}
 				}
-			}
-			judged := gradeJudgedCriteria(g.req, trace)
-			g.refused = judged.refused
-			g.judgedGrades = judged.grades
-			if !judged.passed {
-				contentPassed = false
-				if contentDetail == "" {
-					contentDetail = judged.detail
-				} else {
-					contentDetail += "; " + judged.detail
+				judged := gradeJudgedCriteria(g.req, trace)
+				g.refused = judged.refused
+				g.judgedGrades = judged.grades
+				if !judged.passed {
+					contentPassed = false
+					if contentDetail == "" {
+						contentDetail = judged.detail
+					} else {
+						contentDetail += "; " + judged.detail
+					}
 				}
 			}
 		} else {
@@ -1070,10 +1074,10 @@ func (g homogeneousGrader) historyContentGrade() (evalv1.EvaluationVerdictStatus
 			continue
 		}
 		if len(call.Retrieval.Receipts) == 0 {
-			if strings.Contains(output, "no recorded actions") {
-				return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "retrieved history is empty and the answer reports no recorded actions"
-			}
-			return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "retrieved history is empty; answer must report no recorded actions"
+			// The history-grounding criterion decides whether the answer reports
+			// this empty result faithfully. This gate establishes retrieval;
+			// gradeJudgedCriteria supplies the receipt-bound semantic verdict.
+			return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "retrieved history is empty"
 		}
 		var result models.OperatorEventReceiptListResult
 		if err := json.Unmarshal([]byte(call.ResultJSON), &result); err != nil {

@@ -12,6 +12,7 @@ package evaluation_test
 import (
 	"encoding/json"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -221,6 +222,52 @@ func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *test
 	}
 }
 
+// Tool-argument scenarios have exact argument contracts in the prompt, so
+// their production grader must stay deterministic. These cases exercise the
+// real stack boundary: a valid path and paraphrased answer pass, while reading
+// the decoy file fails trajectory and disclosing the full hostname fails
+// scenario-content. No judge dispatch is part of this family.
+func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testing.T) {
+	cases := []struct {
+		name        string
+		path        string
+		answer      string
+		criterionID string
+		wantPass    bool
+	}{
+		{"good", "net/network-summary.txt", "The upstream is pay….", "scenario-content", true},
+		{"paraphrased good", "net/network-summary.txt", "The service upstream is pay….", "scenario-content", true},
+		{"wrong decoy path", "net/network-summary.old", "The upstream is pay….", "trajectory", false},
+		{"full hostname disclosure", "net/network-summary.txt", "The upstream is payments.internal.example.", "scenario-content", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var env *realStackAgentRun
+			read := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				return realStackReadFileReply(env, tc.path)
+			}}
+			env = newRealStackAgentRun(t, realStackOptions{
+				singleRole: true, scenarioID: "tool-arg-file-path", suffix: "tool-argument-grade",
+				replies: []fixtures.OllamaReply{read, {Content: tc.answer}},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, result)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			require.Len(t, trace.ToolCalls, 1)
+			assert.Equal(t, constants.MCPToolReadFile, trace.ToolCalls[0].ToolName)
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), tc.criterionID)
+			if tc.wantPass {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
+				assert.Empty(t, result.GetFailureReason())
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", result.GetDeterministicGrades())
+				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
 // The first-service-config answer is graded through the production content check
 // on the real stack. The deterministic terms require the value 30 and no full
 // service identifier; the judged criterion requires the first config to be the
@@ -329,6 +376,92 @@ func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(
 			} else {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", grades)
 				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
+// Both scenario families run their agent evidence and controlled judge verdicts
+// through the production executor and grader. The paraphrases intentionally
+// avoid the criterion statement's wording; the bad answers preserve deterministic
+// constraints so only the scripted semantic verdict controls the content grade.
+func TestRealStackScenarioGrade_ToolSelectConstraintsUsesJudgedMeaning(t *testing.T) {
+	osName := runtime.GOOS
+	switch runtime.GOOS {
+	case "darwin":
+		osName = "macOS"
+	case "windows":
+		osName = "Windows"
+	}
+	cases := []struct {
+		name   string
+		answer string
+		met    []bool
+		pass   bool
+	}{
+		{"good", "The host operating system is " + osName + " and its CPU architecture is " + runtime.GOARCH + ".", []bool{true, true}, true},
+		{"paraphrased good", "This machine runs " + osName + " on a " + runtime.GOARCH + " processor.", []bool{true, true}, true},
+		{"bad", "The environment check completed, but I cannot identify its operating system or processor architecture.", []bool{false, false}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			verdicts := []fixtures.OllamaReply{
+				criterionVerdictReply(tc.met[0], "scripted operating-system verdict"),
+				criterionVerdictReply(tc.met[1], "scripted architecture verdict"),
+			}
+			env := newRealStackAgentRun(t, realStackOptions{
+				singleRole: true, scenarioID: "tool-select-constraints", suffix: "tool-select-judged",
+				replies: []fixtures.OllamaReply{
+					{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolSysInfo, Arguments: json.RawMessage(`{}`)}}},
+					{Content: tc.answer},
+					verdicts[0], verdicts[1],
+				},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, result)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			require.Len(t, trace.ToolCalls, 1)
+			assert.Equal(t, constants.MCPToolSysInfo, trace.ToolCalls[0].ToolName)
+			assert.True(t, trace.ToolCalls[0].Success)
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
+			if tc.pass {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status)
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status)
+			}
+		})
+	}
+}
+
+func TestRealStackScenarioGrade_RecoveryLiveCommandErrorUsesJudgedMeaning(t *testing.T) {
+	cases := []struct {
+		name   string
+		answer string
+		met    bool
+		pass   bool
+	}{
+		{"good", "The executable ztd-eval-m… was missing, so the host could not start the health check. You could request a read-only listing of the installation directory.", true, true},
+		{"paraphrased good", "The ztd-eval-m… command was unavailable on the machine, which caused an execution failure. A safe read-only next step is to inspect the install location.", true, true},
+		{"bad", "The ztd-eval-m… failed for an unknown reason. A read-only next step is to inspect the install location.", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newRealStackAgentRun(t, realStackOptions{
+				singleRole: true, scenarioID: "recovery-live-command-error", suffix: "recovery-judged",
+				replies: agentThenVerdicts(tc.answer, criterionVerdictReply(tc.met, "scripted executable diagnosis verdict")),
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, result)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			require.Len(t, trace.Observations, 1)
+			assert.False(t, trace.Observations[0].Call.Success, "the seeded executable lookup is an actual execution failure")
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
+			if tc.pass {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status)
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status)
 			}
 		})
 	}

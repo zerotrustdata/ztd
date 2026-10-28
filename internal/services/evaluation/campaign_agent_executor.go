@@ -14,8 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -239,7 +237,7 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 }
 
 func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) ([]*evalv1.SemanticGrade, []*evalv1.DecomposedScoreRecord, error) {
-	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil {
+	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogation(trace.FinalOutput) {
 		return nil, nil, nil
 	}
 	cfg, err := campaignJudgeConfig(req, e.newID)
@@ -527,16 +525,22 @@ func (r *agentRun) loop(ctx context.Context) error {
 			return err
 		}
 
-		questions, isInterrogation := parseInterrogationQuestions(text)
-		if isInterrogation {
+		interrogation, interrogated, interrogationErr := ParseInterrogation(text)
+		if interrogated {
 			// Interrogation hand-off drops pending execution, while the trace
-			// preserves the tool-call count covered by the signed result.
+			// preserves the tool-call count covered by the signed result. Only a
+			// valid interrogation earns a scripted follow-up; a malformed one ends
+			// the episode and is graded on the protocol rule it breaks.
+			var questions []string
 			var matchedFollowUp *ScenarioScriptedFollowUp
-			for i := range r.req.ScenarioInput.FollowUps {
-				fu := &r.req.ScenarioInput.FollowUps[i]
-				if !usedFollowUps[fu.ID] && matchesFollowUp(text, questions, fu) {
-					matchedFollowUp = fu
-					break
+			if interrogationErr == nil {
+				questions = interrogation.Questions[:]
+				for i := range r.req.ScenarioInput.FollowUps {
+					fu := &r.req.ScenarioInput.FollowUps[i]
+					if !usedFollowUps[fu.ID] && matchesFollowUp(text, questions, fu) {
+						matchedFollowUp = fu
+						break
+					}
 				}
 			}
 
@@ -655,51 +659,6 @@ func agentCallContext(ctx context.Context) (context.Context, context.CancelFunc)
 		stop()
 		cancel()
 	}
-}
-
-var (
-	interrogationBlockPattern = regexp.MustCompile(`(?si)<interrogation>\s*(.*?)(?:</interrogation>|$)`)
-	interrogationLinePattern  = regexp.MustCompile(`^\d+[.)]\s*(\S.*?)$`)
-)
-
-func parseInterrogationQuestions(text string) ([]string, bool) {
-	match := interrogationBlockPattern.FindStringSubmatch(text)
-	if match == nil {
-		return nil, false
-	}
-	content := strings.TrimSpace(match[1])
-	if content == "" {
-		return nil, false
-	}
-	var questions []string
-	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if qMatch := interrogationLinePattern.FindStringSubmatch(line); qMatch != nil {
-			q := strings.TrimSpace(qMatch[1])
-			if q != "" {
-				questions = append(questions, q)
-			}
-		} else if strings.HasSuffix(line, "?") {
-			questions = append(questions, line)
-		}
-	}
-	if len(questions) == 0 || len(questions) > 3 {
-		return nil, false
-	}
-	for _, q := range questions {
-		words := strings.Fields(strings.ToLower(q))
-		if len(words) == 0 {
-			return nil, false
-		}
-		firstWord := strings.Trim(words[0], "\"'`*_?,.:;")
-		if !slices.Contains(binaryOpeners, firstWord) || slices.Contains(words, "or") {
-			return nil, false
-		}
-	}
-	return questions, true
 }
 
 func matchesFollowUp(text string, questions []string, fu *ScenarioScriptedFollowUp) bool {

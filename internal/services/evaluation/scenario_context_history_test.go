@@ -22,6 +22,7 @@ func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededReceipts(t *tes
 	assert.NotContains(t, strings.ToLower(blueprint.Gold.ExpectedBehavior), "payment timeout")
 	assert.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 
+	assert.Equal(t, "history-grounding", blueprint.Gold.ContentCheck.JudgedCriteria[0].ID)
 	assert.Equal(t, 3, blueprint.Gold.ContentCheck.MaxSentences, "the rubric bounds the answer without hard-coding receipt wording")
 	for _, output := range []string{
 		"There are no recorded actions in the current investigation history.",

@@ -25,12 +25,18 @@ import (
 )
 
 // contentJudgeObjective is what the judge is told about the task: the scenario
-// prompt and the frozen evidence the role saw. It never carries the expected
-// behavior or any criterion other than the one being judged.
-func contentJudgeObjective(input ScenarioInputFixture) string {
+// prompt, frozen evidence, and receipt-backed history results the role saw.
+// It never carries the expected behavior or any criterion other than the one
+// being judged.
+func contentJudgeObjective(input ScenarioInputFixture, trace *AgentTrace) string {
 	objective := input.UserPrompt
 	for _, evidence := range input.InlineContext {
 		objective += "\n\nFrozen evidence (" + evidence.Label + "):\n" + evidence.Content
+	}
+	for _, call := range trace.ToolCalls {
+		if call.ToolName == constants.MCPToolEventReceiptList && call.Success && call.Retrieval != nil {
+			objective += "\n\nRecorded history query result:\n" + call.ResultJSON
+		}
 	}
 	return objective
 }
@@ -102,7 +108,7 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 	if err != nil {
 		return fmt.Errorf("evaluation: judge content criteria: %w: %w", constants.ErrEvaluationContentJudgeFailed, err)
 	}
-	objective := contentJudgeObjective(req.ScenarioInput)
+	objective := contentJudgeObjective(req.ScenarioInput, trace)
 	for _, criterion := range judgedCriteria(req) {
 		score := j.ScoreCriterion(ctx, criterion, objective, trace.FinalOutput)
 		if score.Status != judge.StatusScored {
@@ -154,7 +160,7 @@ func verifyContentJudgments(req AssignmentExecutionRequest, trace *AgentTrace) e
 	if err != nil {
 		return fmt.Errorf("evaluation: verify content judgments: %w", err)
 	}
-	objective := contentJudgeObjective(req.ScenarioInput)
+	objective := contentJudgeObjective(req.ScenarioInput, trace)
 	attempts := make(map[string]struct{}, len(criteria))
 	var errs []error
 	for i, criterion := range criteria {

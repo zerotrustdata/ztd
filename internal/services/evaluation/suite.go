@@ -115,7 +115,7 @@ func DefaultScenarioSuite() ScenarioSuite {
 // SmokeScenarioSuite returns the built-in smoke suite as an authoring record.
 func SmokeScenarioSuite() ScenarioSuite {
 	return suiteDefinitionFromBlueprints(SmokeSuiteID, DefaultSuiteVersion,
-		"The built-in screening subset of the default suite: five high-discrimination scenarios for a fast pre-qualification pass.",
+		"The built-in screening subset of the default suite: ten discriminative scenarios covering every role, trajectory policy, and grading path a full run depends on, for a fast pre-qualification pass.",
 		smokeSuiteBlueprints())
 }
 

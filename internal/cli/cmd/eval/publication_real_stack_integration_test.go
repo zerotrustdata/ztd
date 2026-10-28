@@ -358,6 +358,19 @@ func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 }
 
+func TestPublicationRealStack_CancelDoesNotPublishByDefaultAfterDeferredRun(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(3))
+	createPublicationCampaign(t, run, "pub-cancel-deferred", 3)
+	out, err := env.run(t, "runs", "start", "pub-cancel-deferred", "--prepare-only", "--publish=false")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	before := mirrorProjections(t)
+
+	out, err = env.run(t, "runs", "cancel", runID)
+	require.NoError(t, err, out)
+	assert.Equal(t, before, mirrorProjections(t), "cancel leaves the public mirror untouched unless --publish is supplied")
+}
+
 func TestPublicationRealStack_CatchUpAfterLiveExecutionKeepsEveryResultOnce(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-catchup", 3)
@@ -870,7 +883,7 @@ func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T)
 	assertStatus("interrupted")
 
 	// Cancel stops every assignment that has not settled, so the run reports cancelled.
-	out, err = env.run(t, "runs", "cancel", runID)
+	out, err = env.run(t, "runs", "cancel", runID, "--publish")
 	require.NoError(t, err, out)
 	assertStatus("cancelled")
 }

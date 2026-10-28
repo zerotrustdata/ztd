@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -36,19 +37,18 @@ func scriptedJudgeVariant(t *testing.T) *evalv1.ModelVariant {
 	return judge
 }
 
-// withScriptedJudgeVerdicts makes every scripted turn answer a request for the
-// default judge with a strict criterion verdict, so the position of a judge call
-// in the call order cannot hand it a scored model's scripted reply.
+// withScriptedJudgeVerdicts consumes the scored model's replies only for agent
+// requests. Judge calls always return a verdict without advancing that sequence.
 func withScriptedJudgeVerdicts(replies []fixtures.OllamaReply) []fixtures.OllamaReply {
 	out := make([]fixtures.OllamaReply, len(replies))
-	for i, reply := range replies {
-		reply.Respond = func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+	var next atomic.Int64
+	for i := range out {
+		out[i].Respond = func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
 			if request.Model == evaluation.DefaultJudgeServedModelTag {
 				return fixtures.OllamaReply{Content: `{"met": true, "rationale": "scripted verdict"}`}
 			}
-			return fixtures.OllamaReply{}
+			return replies[int(next.Add(1))-1]
 		}
-		out[i] = reply
 	}
 	return out
 }

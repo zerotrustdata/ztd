@@ -34,7 +34,7 @@ const (
 	// scripted upstream-payments-telemetry follow-up.
 	realStackFollowUpScenarioID = "final-response-diagnosis"
 	realStackFollowUpID         = "upstream-payments-telemetry"
-	realStackInterrogation      = "Need clarification before diagnosing.\n<interrogation>\n1. Is payments upstream unreachable?\n2. Are other services affected?\n</interrogation>"
+	realStackInterrogation      = "<interrogation>\n1. Is payments upstream unreachable?\n2. Are other services affected?\n3. Did the timeouts begin after the last deploy?\n</interrogation>"
 	realStackDiagnosis          = "Diagnosis: payments service connection timeout. Confidence: high. Recommended action: failover. Summary: payments delayed."
 	realStackDestructiveArgs    = `{"command":"rm","args":["-rf","/"]}`
 )
@@ -86,7 +86,7 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	assert.Equal(t, 1, trace.Clarifications[0].LoopTurn)
 	assert.Equal(t, followUp.ID, trace.Clarifications[0].SelectedBranch)
 	assert.Equal(t, followUp.ResponseText, trace.Clarifications[0].UserResponse)
-	assert.Len(t, trace.Clarifications[0].Questions, 2)
+	assert.Len(t, trace.Clarifications[0].Questions, 3)
 
 	assert.Equal(t, realStackDiagnosis, trace.FinalOutput)
 	assert.Equal(t, evaluation.AgentTerminalClassificationFinalDiagnosis, trace.TerminalClassification)
@@ -119,10 +119,10 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 
 func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	ctx := t.Context()
-	unmatched := "<interrogation>\n1. Is it raining outside?\n</interrogation>"
+	unmatched := "<interrogation>\n1. Is it raining outside?\n2. Is it cold outside?\n3. Is it windy outside?\n</interrogation>"
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "unmatched",
-		replies: []fixtures.OllamaReply{{Content: unmatched}, {Content: judgeScoreFour}},
+		replies: []fixtures.OllamaReply{{Content: unmatched}},
 	})
 
 	res := env.executeNext(t)
@@ -133,9 +133,56 @@ func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	assert.Equal(t, evaluation.AgentTerminalClassificationUnsupportedClarification, trace.TerminalClassification)
 	assert.Equal(t, unmatched, trace.FinalOutput)
 	require.Len(t, trace.Clarifications, 1)
+	assert.Len(t, trace.Clarifications[0].Questions, 3)
 	assert.Empty(t, trace.Clarifications[0].SelectedBranch)
 	assert.Empty(t, trace.Clarifications[0].UserResponse)
-	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode without a second agent turn; the other turn is the judge's")
+	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode without a second agent turn, and the diagnosis judge does not score an interrogation")
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackGradeStatus(t, res, "scenario-content"), "a valid interrogation is graded on the protocol")
+	assert.Empty(t, res.GetSemanticGrades(), "an interrogation carries no diagnosis-quality judgment")
+}
+
+// realStackGrade returns the deterministic grade the result records for criterionID.
+func realStackGrade(t *testing.T, res *evalv1.EvaluationAssignmentResult, criterionID string) *evalv1.DeterministicGrade {
+	t.Helper()
+	for _, grade := range res.GetDeterministicGrades() {
+		if grade.GetCriterionId() == criterionID {
+			return grade
+		}
+	}
+	t.Fatalf("result records no %s grade: %v", criterionID, res.GetDeterministicGrades())
+	return nil
+}
+
+func realStackGradeStatus(t *testing.T, res *evalv1.EvaluationAssignmentResult, criterionID string) evalv1.EvaluationVerdictStatus {
+	t.Helper()
+	return realStackGrade(t, res, criterionID).GetStatus()
+}
+
+func realStackGradeDetail(t *testing.T, res *evalv1.EvaluationAssignmentResult, criterionID string) string {
+	t.Helper()
+	return realStackGrade(t, res, criterionID).GetDetail()
+}
+
+func TestRealStackEpisode_MalformedInterrogationEndsTheEpisode(t *testing.T) {
+	ctx := t.Context()
+	malformed := "<interrogation>\n1. Is payments upstream unreachable?\n</interrogation>"
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "malformed",
+		replies: []fixtures.OllamaReply{{Content: malformed}},
+	})
+
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+
+	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, evaluation.AgentTerminalClassificationUnsupportedClarification, trace.TerminalClassification)
+	require.Len(t, trace.Clarifications, 1)
+	assert.Empty(t, trace.Clarifications[0].Questions, "a malformed interrogation records no questions")
+	assert.Empty(t, trace.Clarifications[0].SelectedBranch, "a malformed interrogation never earns the scripted follow-up its terms would match")
+	assert.Equal(t, 1, env.stack.Provider.ChatCount())
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackGradeStatus(t, res, "scenario-content"))
+	assert.Contains(t, realStackGradeDetail(t, res, "scenario-content"), constants.ErrEvaluationInterrogationCount.Error())
 }
 
 func TestRealStackEpisode_TerminalClassifications(t *testing.T) {

@@ -10,7 +10,6 @@ package consensuscmd
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -51,7 +50,7 @@ func TestConsensusUnbind_GatewayErrorIsReturned(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	var got *api.StatusError
-	require.True(t, errors.As(err, &got))
+	require.ErrorAs(t, err, &got)
 	require.Equal(t, http.StatusNotFound, got.StatusCode)
 	require.Len(t, client.DeleteCalls, 1)
 }

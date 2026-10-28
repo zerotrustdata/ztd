@@ -13,11 +13,11 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // foldContentTerm lowercases s and collapses every run of whitespace, dashes
@@ -61,9 +61,21 @@ func foldSemanticContentTerm(s string) string {
 
 // evaluateContentCheck evaluates the designated role's final response against
 // the scenario's typed content check. Returns whether the output passed and the
-// detail of the first failing constraint rule.
+// detail of the first failing constraint rule. An interrogation is graded on
+// the Interrogation Protocol alone: the answer rules describe an answer the
+// model chose not to give.
 func evaluateContentCheck(output string, check ScenarioContentCheck, ws ScenarioWorkspace) (bool, string) {
 	trimmed := strings.TrimSpace(output)
+
+	if _, interrogated, err := ParseInterrogation(trimmed); interrogated {
+		if err != nil {
+			return false, err.Error()
+		}
+		return true, ""
+	}
+	if check.Interrogation {
+		return false, constants.ErrEvaluationInterrogationMissing.Error()
+	}
 
 	// ExactToken check
 	if check.ExactToken != "" {
@@ -141,13 +153,6 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 		}
 	}
 
-	// Interrogation protocol check
-	if check.Interrogation {
-		if ok, detail := evaluateInterrogation(trimmed); !ok {
-			return false, detail
-		}
-	}
-
 	// JSON fields check
 	if len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 {
 		payload := extractJSONObject(trimmed)
@@ -168,48 +173,6 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 		}
 	}
 
-	return true, ""
-}
-
-var (
-	interrogationBlock    = regexp.MustCompile(`(?s)^<interrogation>\s*(.*?)\s*</interrogation>$`)
-	interrogationQuestion = regexp.MustCompile(`^\d+[.)]\s*(\S.*\?)$`)
-)
-
-// binaryOpeners are the words a yes/no question starts with. A question that
-// opens with anything else ("which", "what", "how", ...) asks for an answer
-// other than yes or no.
-var binaryOpeners = []string{
-	"is", "are", "was", "were", "do", "does", "did", "can", "could", "has", "have", "had",
-	"will", "would", "should", "shall", "may", "might", "must",
-}
-
-// evaluateInterrogation checks the Interrogation Protocol: the entire answer is
-// one <interrogation> block of exactly three numbered yes/no questions.
-func evaluateInterrogation(output string) (bool, string) {
-	match := interrogationBlock.FindStringSubmatch(output)
-	if match == nil {
-		return false, "the answer is not a single <interrogation> block"
-	}
-	var lines []string
-	for _, line := range strings.Split(match[1], "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			lines = append(lines, line)
-		}
-	}
-	if len(lines) != 3 {
-		return false, fmt.Sprintf("the interrogation block has %d questions, want exactly 3", len(lines))
-	}
-	for _, line := range lines {
-		question := interrogationQuestion.FindStringSubmatch(line)
-		if question == nil {
-			return false, fmt.Sprintf("interrogation line %q is not a numbered question", line)
-		}
-		words := strings.Fields(strings.ToLower(question[1]))
-		if !slices.Contains(binaryOpeners, strings.Trim(words[0], ",")) || slices.Contains(words, "or") {
-			return false, fmt.Sprintf("interrogation question %q is not strictly yes/no", question[1])
-		}
-	}
 	return true, ""
 }
 
@@ -260,7 +223,7 @@ func cleanContentLabel(s string) string {
 }
 
 func countSentences(text string) int {
-	text = strings.TrimSpace(text)
+	text = strings.TrimSpace(normalizeMaskedEllipsis(text))
 	if text == "" {
 		return 0
 	}

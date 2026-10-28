@@ -19,7 +19,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func accuracyGrade(t *testing.T, blueprint ScenarioBlueprint, output string, calls []AgentToolCall) *ScenarioGradingResult {
+func accuracyGrade(t *testing.T, blueprint ScenarioBlueprint, output string, calls []AgentToolCall, judgments ...AgentContentJudgment) *ScenarioGradingResult {
 	t.Helper()
 	blueprint.Input.ScenarioID = blueprint.ScenarioID
 	req := AssignmentExecutionRequest{
@@ -27,7 +27,7 @@ func accuracyGrade(t *testing.T, blueprint ScenarioBlueprint, output string, cal
 		ScenarioInput: blueprint.Input, ScenarioGold: blueprint.Gold,
 		ScenarioTools: ScenarioToolExpectations{TrajectoryPolicy: blueprint.TrajectoryPolicy, ExpectedTools: blueprint.ExpectedTools, AllowedTools: blueprint.AllowedTools, ForbiddenTools: blueprint.ForbiddenTools},
 	}
-	trace := &AgentTrace{RunID: "accuracy-run", AssignmentID: "accuracy", DesignatedRole: "primary", FinalOutput: output, ToolCalls: calls,
+	trace := &AgentTrace{RunID: "accuracy-run", AssignmentID: "accuracy", DesignatedRole: "primary", FinalOutput: output, ToolCalls: calls, ContentJudgments: judgments,
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}}}
 	result, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)
@@ -49,8 +49,12 @@ func TestAccuracy_HistoryRequiresRetrievedEvidence(t *testing.T) {
 	empty.ErrorType = ""
 	empty.Receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	empty.Retrieval = &AgentContextRetrieval{}
-	result = accuracyGrade(t, toolSelectInvestigation(), "No recorded actions", []AgentToolCall{empty})
+	result = accuracyGrade(t, toolSelectInvestigation(), "No recorded actions", []AgentToolCall{empty}, AgentContentJudgment{CriterionID: "history-grounding", Met: true})
 	require.Equal(t, verdictPass, verdictFromGrades(result.DeterministicGrades))
+	result = accuracyGrade(t, toolSelectInvestigation(), "No recorded actions", []AgentToolCall{empty})
+	require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades), "a successful query cannot substitute for a missing judge verdict")
+	result = accuracyGrade(t, toolSelectInvestigation(), "No recorded actions, but the operator restarted payments earlier", []AgentToolCall{empty}, AgentContentJudgment{CriterionID: "history-grounding", Met: false})
+	require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades), "the judge rejects unsupported actions even when the old exact phrase is present")
 	result = accuracyGrade(t, toolSelectInvestigation(), "Receipt invented records a command", []AgentToolCall{empty})
 	require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades), "empty retrieval cannot support a fabricated receipt")
 }
@@ -114,7 +118,7 @@ func TestAccuracy_HistoryCitationMustMatchReturnedReceipt(t *testing.T) {
 		{"No recorded actions", verdictFail},
 		{"Receipt returned-tx", verdictFail},
 	} {
-		result := accuracyGrade(t, toolSelectInvestigation(), tc.output, []AgentToolCall{call})
+		result := accuracyGrade(t, toolSelectInvestigation(), tc.output, []AgentToolCall{call}, AgentContentJudgment{CriterionID: "history-grounding", Met: true})
 		require.Equal(t, tc.want, verdictFromGrades(result.DeterministicGrades), tc.output)
 	}
 }
