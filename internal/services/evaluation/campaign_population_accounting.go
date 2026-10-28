@@ -54,7 +54,7 @@ func NewCampaignPopulationAccountant(now func() time.Time) *CampaignPopulationAc
 // AccountRun recomputes population coverage from canonical assignment records.
 func (a *CampaignPopulationAccountant) AccountRun(
 	ctx context.Context,
-	store *Store,
+	store CampaignStore,
 	runID string,
 	catalog *evalv1.EvaluationScenarioCatalog,
 ) (*CampaignPopulationReport, error) {

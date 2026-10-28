@@ -9,13 +9,17 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -191,16 +195,126 @@ func TestCampaignPopulationAccountant_UsesFrozenPostureForMatrix(t *testing.T) {
 				ExpectedAssignmentCount: uint32(tc.wantExpected), VerifiedAssignmentCount: uint32(len(assignments)),
 				CampaignDigest: spec.GetCampaignDigest(), CatalogDigest: spec.GetCatalogDigest(), ModelRegistryDigest: spec.GetModelRegistryDigest(),
 			}
-			applicability, err := BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, projectorReport)
+			applicability, err := BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, uint32(tc.wantExpected), projectorReport)
 			require.NoError(t, err)
 			projectorReport.VerifiedPopulationDigest, err = ComputeVerifiedPopulationDigest(applicability.Population)
 			require.NoError(t, err)
-			applicability, err = BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, projectorReport)
+			applicability, err = BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, uint32(tc.wantExpected), projectorReport)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantComplete, applicability.Applicable)
 			assert.Equal(t, uint32(tc.wantExpected), verified.Report.GetExpectedAssignmentCount())
 		})
 	}
+}
+
+// persistPostureGatedRun schedules the default suite as if under
+// scheduledPosture (plus extraScenarios scheduled without the L2 gate) and
+// persists a traceless provider-failure result for every assignment, which the
+// verifier accepts structurally.
+func persistPostureGatedRun(t *testing.T, posture, scheduledPosture evalv1.EvaluationGovernancePosture, extraScenarios []string) (*Store, CampaignInitRequest, *evalv1.EvaluationRun, []*evalv1.EvaluationAssignment) {
+	t.Helper()
+	ctx := context.Background()
+	store := NewStore(newCampaignMemoryFileService())
+	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+	req := testCampaignInitRequest(t)
+	req.Governance = RunGovernance{Posture: posture, Consensus: &evalv1.EvaluationConsensusIdentity{}}
+	run, err := controller.InitializeCampaign(ctx, req)
+	require.NoError(t, err)
+	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+		CampaignID: req.CampaignID, RunID: run.GetRunId(), Catalog: req.Catalog,
+		ActivePosture: scheduledPosture, Variants: req.Inventory.Variants, RepetitionCount: req.RepetitionCount,
+	})
+	require.NoError(t, err)
+	if len(extraScenarios) > 0 {
+		gated, gatedErr := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+			CampaignID: req.CampaignID, RunID: run.GetRunId(), Catalog: req.Catalog,
+			ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+			Variants:      req.Inventory.Variants, RepetitionCount: req.RepetitionCount, ScenarioIDs: extraScenarios,
+		})
+		require.NoError(t, gatedErr)
+		assignments = append(assignments, gated...)
+	}
+	for _, assignment := range assignments {
+		result, resultErr := BuildExecutorFailureAssignmentResult(AssignmentExecutionRequest{Assignment: assignment}, fmt.Errorf("dispatch inference: %w", constants.ErrInferenceBackendTimeout), time.Unix(1_700_000_050, 0).UTC())
+		require.NoError(t, resultErr)
+		assignment.LifecycleStatus = result.GetLifecycleStatus()
+		assignment.CompletedAt = result.GetCompletedAt()
+		require.NoError(t, store.SaveAssignment(ctx, assignment))
+		require.NoError(t, store.SaveAssignmentResult(ctx, result))
+	}
+	return store, req, run, assignments
+}
+
+func TestCampaignRunVerifier_VerdictFollowsFrozenPostureMatrix(t *testing.T) {
+	consensus := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS
+	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
+	gatedScenarios := []string{"recovery-live-command-error", "tool-arg-shell-command"}
+	for _, tc := range []struct {
+		name             string
+		posture          evalv1.EvaluationGovernancePosture
+		scheduledPosture evalv1.EvaluationGovernancePosture
+		extraScenarios   []string
+		wantStatus       evalv1.EvaluationVerdictStatus
+		wantExpected     uint32
+		wantVerified     uint32
+	}{
+		{name: "reduced consensus matrix passes", posture: consensus, scheduledPosture: consensus,
+			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, wantExpected: 52, wantVerified: 52},
+		{name: "consensus run with a gated scenario fails", posture: consensus, scheduledPosture: consensus, extraScenarios: gatedScenarios,
+			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, wantExpected: 52, wantVerified: 56},
+		{name: "reduced doctrine matrix is incomplete", posture: doctrine, scheduledPosture: consensus,
+			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, wantExpected: 56, wantVerified: 52},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, req, run, _ := persistPostureGatedRun(t, tc.posture, tc.scheduledPosture, tc.extraScenarios)
+
+			report, err := NewCampaignRunVerifier(func() time.Time { return time.Unix(1_700_000_100, 0).UTC() }).
+				VerifyRun(context.Background(), store, run.GetRunId(), req.Catalog, req.ScenarioArtifacts)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantStatus, report.GetStatus(), "failure reasons: %v", report.GetFailureReasons())
+			assert.Equal(t, tc.wantExpected, report.GetExpectedAssignmentCount())
+			assert.Equal(t, tc.wantVerified, report.GetVerifiedAssignmentCount())
+			if tc.wantStatus == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
+				assert.Empty(t, report.GetFailureReasons())
+			}
+		})
+	}
+}
+
+func TestCampaignPublication_RejectsReportDenominatorMatchedToIncompletePopulation(t *testing.T) {
+	ctx := context.Background()
+	// A doctrine run expects 56 cells; only the 52-cell consensus matrix exists.
+	store, req, run, assignments := persistPostureGatedRun(t,
+		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, nil)
+	spec, err := store.LoadCampaignSpec(ctx, req.CampaignID)
+	require.NoError(t, err)
+	results, err := loadCampaignAssignmentResults(ctx, store, run.GetRunId(), assignments)
+	require.NoError(t, err)
+
+	// The tampered report claims the incomplete population is the whole matrix.
+	tampered := uint32(len(assignments))
+	report := &evalv1.EvaluationVerificationReport{
+		SchemaVersion: campaignVerificationSchemaVersion, ReportId: run.GetRunId(), RunId: run.GetRunId(),
+		Status:                  evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+		VerifiedAt:              timestamppb.New(time.Unix(1_700_000_200, 0).UTC()),
+		VerifierReleaseVersion:  "test-release",
+		VerifierContractVersion: constants.CampaignVerifierVersion,
+		ReportDigestRef:         &compliancev1.ComplianceEvidenceReference{Sha256: strings.Repeat("a", 64)},
+		CampaignDigest:          spec.GetCampaignDigest(), CatalogDigest: spec.GetCatalogDigest(), ModelRegistryDigest: spec.GetModelRegistryDigest(),
+	}
+	forged, err := BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, tampered, report)
+	require.NoError(t, err)
+	report.VerifiedPopulationDigest, err = ComputeVerifiedPopulationDigest(forged.Population)
+	require.NoError(t, err)
+	report.ExpectedAssignmentCount = tampered
+	report.VerifiedAssignmentCount = forged.VerifiedAssignmentCount
+
+	bound, err := NewCampaignPublicationCoordinator(store, store.files, NewMemoryCampaignPublicationStateStore(), &recordingCampaignFeedExporter{}).boundRunVerification(ctx, run.GetRunId(), report)
+
+	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.Nil(t, bound)
 }
 
 func TestCampaignPopulationAccountant_CompleteSystemRunPasses(t *testing.T) {

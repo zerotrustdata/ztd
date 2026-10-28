@@ -296,7 +296,7 @@ func buildBoundTestReport(t *testing.T, store *Store, run *evalv1.EvaluationRun,
 		VerifierContractVersion: constants.CampaignVerifierVersion,
 		ReportDigestRef:         &compliancev1.ComplianceEvidenceReference{Sha256: strings.Repeat("a", 64)},
 	}
-	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, report)
+	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, uint32(len(assignments)), report)
 	require.NoError(t, err)
 	populationDigest, err := digestProto(applicability.Population)
 	require.NoError(t, err)
@@ -491,7 +491,7 @@ func TestBindRunVerificationOnSettledRun(t *testing.T) {
 			report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 			tc.mutate(report)
 
-			bound, err := bindRunVerification(run, spec, catalog, assignments, results, report)
+			bound, err := bindRunVerification(run, spec, catalog, assignments, results, uint32(len(assignments)), report)
 
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)

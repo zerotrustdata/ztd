@@ -1063,13 +1063,9 @@ func appendVerifiedModelSummaryRecords(records []CampaignViewRecord, runID, data
 
 // BuildRunVerificationApplicability binds a report to the exact completed
 // assignment population used by the aggregate projector.
-func BuildRunVerificationApplicability(run *evalv1.EvaluationRun, spec *evalv1.EvaluationCampaignSpec, catalog *evalv1.EvaluationScenarioCatalog, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, report *evalv1.EvaluationVerificationReport) (*RunVerificationApplicability, error) {
-	if run == nil || spec == nil || catalog == nil || report == nil || report.GetRunId() != run.GetRunId() {
+func BuildRunVerificationApplicability(run *evalv1.EvaluationRun, spec *evalv1.EvaluationCampaignSpec, catalog *evalv1.EvaluationScenarioCatalog, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, expectedAssignmentCount uint32, report *evalv1.EvaluationVerificationReport) (*RunVerificationApplicability, error) {
+	if run == nil || spec == nil || catalog == nil || report == nil || report.GetRunId() != run.GetRunId() || expectedAssignmentCount == 0 {
 		return nil, fmt.Errorf("evaluation: build run verification applicability: %w", constants.ErrMissingRequiredField)
-	}
-	expectedAssignmentCount := uint32(len(assignments))
-	if report.GetExpectedAssignmentCount() > 0 {
-		expectedAssignmentCount = report.GetExpectedAssignmentCount()
 	}
 	applicability := &RunVerificationApplicability{RunID: run.GetRunId(), CampaignID: spec.GetCampaignId(), ExpectedAssignmentCount: expectedAssignmentCount}
 	population := &evalv1.EvaluationVerifiedPopulation{SchemaVersion: "1.0.0", RunId: run.GetRunId(), CampaignId: spec.GetCampaignId(), CampaignDigest: spec.GetCampaignDigest(), CatalogRef: spec.GetCatalogRef(), CatalogDigest: spec.GetCatalogDigest(), ModelRegistryDigest: spec.GetModelRegistryDigest(), Lane: run.GetLane(), ExpectedAssignmentCount: expectedAssignmentCount}

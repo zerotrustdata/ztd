@@ -272,7 +272,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	require.NoError(t, err)
 	cat, err := store.LoadScenarioCatalog(context.Background(), req.CampaignID)
 	require.NoError(t, err)
-	applicability, err := BuildRunVerificationApplicability(run, spec, cat, assignments, results, report)
+	applicability, err := BuildRunVerificationApplicability(run, spec, cat, assignments, results, uint32(len(assignments)), report)
 	require.NoError(t, err)
 	populationDigest, err := digestProto(applicability.Population)
 	require.NoError(t, err)

@@ -100,6 +100,10 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 	if err != nil {
 		return nil, err
 	}
+	population, err := NewCampaignPopulationAccountant(v.now).AccountRun(ctx, store, runID, catalog)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: verify campaign population: %w", err)
+	}
 	var formationSet *HeterogeneousStackSet
 	executionBinding := CampaignExecutionBinding{
 		ModelRegistryDigest:     spec.GetModelRegistryDigest(),
@@ -125,12 +129,16 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 		return nil, fmt.Errorf("evaluation: verify run lane: %w", constants.ErrEvaluationTargetKindMismatch)
 	}
 	report := &evalv1.EvaluationVerificationReport{
-		SchemaVersion: CampaignSchemaVersion,
-		ReportId:      runID,
-		RunId:         runID,
-		VerifiedAt:    timestamppb.New(v.now().UTC()),
+		SchemaVersion:           CampaignSchemaVersion,
+		ReportId:                runID,
+		RunId:                   runID,
+		VerifiedAt:              timestamppb.New(v.now().UTC()),
+		ExpectedAssignmentCount: uint32(population.ExpectedCells),
 	}
 	failures := make([]string, 0)
+	if !population.Complete {
+		failures = append(failures, population.FailureReasons...)
+	}
 	verifiedCount := 0
 	for _, assignment := range assignments {
 		if assignment == nil {
@@ -217,6 +225,7 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 	if verifiedCount == 0 {
 		failures = append(failures, "no terminal assignments with persisted results were available for verification")
 	}
+	report.VerifiedAssignmentCount = uint32(verifiedCount)
 	return finalizeCampaignVerificationReport(report, failures), nil
 }
 
@@ -232,7 +241,7 @@ func bindCampaignVerificationReport(report *evalv1.EvaluationVerificationReport,
 	if expectedAssignmentCount > 0 {
 		bound.ExpectedAssignmentCount = expectedAssignmentCount
 	}
-	population, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, bound)
+	population, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, expectedAssignmentCount, bound)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -270,7 +279,7 @@ func bindCampaignVerificationReport(report *evalv1.EvaluationVerificationReport,
 		ProducedAt:         bound.GetVerifiedAt(),
 		VerifiedAt:         bound.GetVerifiedAt(),
 	}
-	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, bound)
+	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, expectedAssignmentCount, bound)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -318,7 +327,11 @@ func BindStoredCampaignVerificationReport(ctx context.Context, store *Store, rep
 	if err != nil {
 		return nil, nil, err
 	}
-	return bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, report.GetExpectedAssignmentCount(), policy)
+	population, err := NewCampaignPopulationAccountant(policy.AssessmentTime).AccountRun(ctx, store, report.GetRunId(), catalog)
+	if err != nil {
+		return nil, nil, err
+	}
+	return bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, uint32(population.ExpectedCells), policy)
 }
 
 func providerObservationPolicyProto(policy ProviderObservationPolicy) evalv1.EvaluationWitnessPolicy {

@@ -260,7 +260,7 @@ Operator leaf certificates are valid for `OperatorLeafCertTTL` (default 7 days).
 1. Subscribes to `renewal:<operator_id>:<operator_session_id>` over the existing mTLS WebSocket connection.
 2. Generates a new P-256 key and CSR in memory and publishes a `request` frame.
 3. The Gateway validates connection identity, verifies the active session, issues a renewed leaf certificate, and updates L2 signer trust.
-4. The Operator swaps the in-memory certificate for future handshakes without interrupting established connections or writing to disk.
+4. The Operator swaps the in-memory certificate for future handshakes without interrupting established connections or writing to disk. The renewal response's L2 trust snapshot replaces held trust at the same or a newer binding version; once trust is bound, a missing, unversioned, or older snapshot fails the renewal and leaves held trust intact.
 
 A failed attempt retries with backoff (starting at 1 second, doubling, capped at 1 minute) until it succeeds, the Gateway refuses the renewal (final for that identity), or the leaf expires. After a refusal or expiry, the Operator stops renewing and re-enrolls. The renewed leaf is signed with the Gateway's `OperatorLeafCertTTL`, so it has the same lifetime as the enrolled leaf.
 

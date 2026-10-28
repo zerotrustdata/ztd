@@ -1226,6 +1226,7 @@ func TestBuildRunVerificationApplicability_BindsHeterogeneousStackPopulation(t *
 		catalog,
 		[]*evalv1.EvaluationAssignment{assignment},
 		map[string]*evalv1.EvaluationAssignmentResult{assignment.GetAssignmentId(): result},
+		1,
 		report,
 	)
 	require.NoError(t, err)

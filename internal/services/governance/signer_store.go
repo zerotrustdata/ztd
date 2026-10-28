@@ -70,8 +70,10 @@ func NewL2TrustStore(trust *models.OperatorL2Trust) (*L2TrustStore, error) {
 	return &L2TrustStore{trust: decoded}, nil
 }
 
-// Replace swaps in the Gateway's current L2 trust. A nil trust empties the
-// store. A malformed trust is rejected and the held trust is kept.
+// Replace swaps in the Gateway's current L2 trust. Binding versions may stay
+// the same but cannot regress; a nil trust therefore only clears an
+// unversioned store. A malformed or older trust is rejected and held trust is
+// kept.
 func (s *L2TrustStore) Replace(trust *models.OperatorL2Trust) error {
 	decoded, err := decodeL2Trust(trust)
 	if err != nil {
@@ -79,8 +81,8 @@ func (s *L2TrustStore) Replace(trust *models.OperatorL2Trust) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if trust != nil && trust.BindingVersion > 0 && trust.BindingVersion < s.trust.bindingVersion {
-		return fmt.Errorf("l2 trust: binding version %d regresses current version %d: %w", trust.BindingVersion, s.trust.bindingVersion, constants.ErrValidationFailed)
+	if decoded.bindingVersion < s.trust.bindingVersion {
+		return fmt.Errorf("l2 trust: binding version %d regresses current version %d: %w", decoded.bindingVersion, s.trust.bindingVersion, constants.ErrValidationFailed)
 	}
 	s.trust = decoded
 	return nil

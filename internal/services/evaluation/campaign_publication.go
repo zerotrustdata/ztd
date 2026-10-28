@@ -407,7 +407,11 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 	if err != nil {
 		return 0, err
 	}
-	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, report)
+	population, err := NewCampaignPopulationAccountant(time.Now).AccountRun(ctx, c.store, report.GetRunId(), catalog)
+	if err != nil {
+		return 0, err
+	}
+	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, uint32(population.ExpectedCells), report)
 	if err != nil {
 		return 0, err
 	}
@@ -676,7 +680,11 @@ func (c *CampaignPublicationCoordinator) loadBoundRunVerification(ctx context.Co
 	if err != nil {
 		return nil, err
 	}
-	bound, err := bindRunVerification(run, spec, catalog, assignments, results, report)
+	population, err := NewCampaignPopulationAccountant(time.Now).AccountRun(ctx, c.store, runID, catalog)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: load bound run verification: account population: %w", err)
+	}
+	bound, err := bindRunVerification(run, spec, catalog, assignments, results, uint32(population.ExpectedCells), report)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: load bound run verification: %w", err)
 	}
@@ -698,7 +706,11 @@ func (c *CampaignPublicationCoordinator) boundRunVerification(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	return bindRunVerification(run, spec, catalog, assignments, results, report)
+	population, err := NewCampaignPopulationAccountant(time.Now).AccountRun(ctx, c.store, runID, catalog)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: bound run verification: account population: %w", err)
+	}
+	return bindRunVerification(run, spec, catalog, assignments, results, uint32(population.ExpectedCells), report)
 }
 
 // bindRunVerification returns the report when it applies to the run's persisted
@@ -713,12 +725,13 @@ func bindRunVerification(
 	catalog *evalv1.EvaluationScenarioCatalog,
 	assignments []*evalv1.EvaluationAssignment,
 	results map[string]*evalv1.EvaluationAssignmentResult,
+	expectedAssignmentCount uint32,
 	report *evalv1.EvaluationVerificationReport,
 ) (*evalv1.EvaluationVerificationReport, error) {
 	if !boundVerificationMetadataComplete(report) {
 		return nil, fmt.Errorf("persisted report is malformed: %w", constants.ErrEvidenceArtifactMalformed)
 	}
-	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, report)
+	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, expectedAssignmentCount, report)
 	if err != nil {
 		return nil, err
 	}

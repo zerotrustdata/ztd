@@ -214,6 +214,16 @@ func (vs *ZtdoService) validateOperatorSession(ctx context.Context, sessionID st
 	return nil
 }
 
+func (vs *ZtdoService) configureSessionValidationClient() error {
+	tlsCfg, err := vs.tlsConfig.GetTLSConfig()
+	if err != nil {
+		return fmt.Errorf("operator session validation: TLS config: %w", err)
+	}
+	client := &http.Client{Transport: httpclient.NewIPv4Transport(tlsCfg), Timeout: httpclient.DefaultTimeout}
+	vs.sessionValidationHTTPClient = httpclient.WithoutRedirects(client, constants.ErrValidationFailed)
+	return nil
+}
+
 func (vs *ZtdoService) Start(ctx context.Context) error {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
@@ -243,12 +253,9 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 
 	vs.logger.Info("Establishing ztd connectivity...")
 	if vs.sessionValidator == nil {
-		tlsCfg, err := vs.tlsConfig.GetTLSConfig()
-		if err != nil {
-			return fmt.Errorf("ztdo: session validation TLS config: %w", err)
+		if err := vs.configureSessionValidationClient(); err != nil {
+			return fmt.Errorf("ztdo: configure session validation: %w", err)
 		}
-		client := &http.Client{Transport: httpclient.NewIPv4Transport(tlsCfg), Timeout: httpclient.DefaultTimeout}
-		vs.sessionValidationHTTPClient = httpclient.WithoutRedirects(client, constants.ErrValidationFailed)
 		vs.sessionValidator = vs.validateOperatorSession
 	}
 	var err error
@@ -502,11 +509,6 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 			vs.logger.Error("ztdo: failed to stop pubsub command service", "error", err)
 		}
 	}
-	if vs.sessionValidationHTTPClient != nil {
-		vs.sessionValidationHTTPClient.CloseIdleConnections()
-		vs.sessionValidationHTTPClient = nil
-	}
-
 	// Stop execution service to kill any active tasks
 	if vs.execution != nil {
 		vs.execution.Stop()
@@ -520,6 +522,10 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 
 	// Wait for shutdown handler goroutine to complete
 	vs.wg.Wait()
+	if vs.sessionValidationHTTPClient != nil {
+		vs.sessionValidationHTTPClient.CloseIdleConnections()
+		vs.sessionValidationHTTPClient = nil
+	}
 
 	// The runtime session is over: mark its audit session ended so retention may
 	// prune it. A failure is logged; the row then stays live and is never pruned.

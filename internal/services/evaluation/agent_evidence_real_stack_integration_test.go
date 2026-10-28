@@ -311,6 +311,9 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	if opts.scenario != nil {
 		opts.scenario(target)
 	}
+	// The rig scripts every model reply, so a scenario gated out of L2 postures
+	// for live-model runs still exercises the Tribunal deterministically here.
+	target.ExcludeWhenL2Enforced = false
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
