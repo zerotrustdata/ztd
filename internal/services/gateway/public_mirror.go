@@ -1846,6 +1846,27 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// fillProofSigningKey returns the segment's published key, or the mirror's
+// registered key when the segment omits it and that key's SHA-256 equals keyID.
+// The response is the only place the key is added. Stored segment bytes stay
+// as signed.
+func (m *PublicMirrorServer) fillProofSigningKey(sourceID, keyID, published string) string {
+	if published != "" {
+		return published
+	}
+	m.mu.RLock()
+	key, ok := m.keys.Registry[publicMirrorKeyRegistryID(sourceID, keyID)]
+	m.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	filled, ok := models.PublicProofSigningKeyHex(key, keyID)
+	if !ok {
+		return ""
+	}
+	return filled
+}
+
 // handleProofHead handles GET /proof-head without loading the artifact catalog.
 func (m *PublicMirrorServer) handleProofHead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1870,6 +1891,7 @@ func (m *PublicMirrorServer) handleProofHead(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "proof head not found", http.StatusNotFound)
 		return
 	}
+	head.SigningPublicKey = m.fillProofSigningKey(sourceID, head.SigningKeyID, head.SigningPublicKey)
 	m.writeJSON(w, http.StatusOK, head)
 }
 
@@ -1901,6 +1923,9 @@ func (m *PublicMirrorServer) handleProofSegments(w http.ResponseWriter, r *http.
 	}
 	if segments == nil {
 		segments = []models.PublicProofManifestSegment{}
+	}
+	for index := range segments {
+		segments[index].SigningPublicKey = m.fillProofSigningKey(segments[index].SourceID, segments[index].SigningKeyID, segments[index].SigningPublicKey)
 	}
 	m.writeJSON(w, http.StatusOK, models.PublicProofSegmentsResponse{
 		SchemaVersion: constants.PublicProofSegmentSchemaVersion,

@@ -425,3 +425,85 @@ func TestVerifyProofCmd_ValidatesKeyRegistryWithRotation(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, out.String(), "Proof package verified (2 segments, 2 active artifacts")
 }
+
+func TestVerifyProofCmd_UsesPublishedSigningKey(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	published, ok := models.PublicProofSigningKeyHex(pub, models.PublicProofSigningKeyID(pub))
+	require.True(t, ok)
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	ctx := context.Background()
+	require.NoError(t, fileSvc.MkdirAll(ctx, "proofs", constants.PermDirPrivate))
+	content := []byte(`{"hello":"published key"}`)
+	digest := sha256.Sum256(content)
+	artifactID := hex.EncodeToString(digest[:])
+	require.NoError(t, fileSvc.WriteFile(ctx, filepath.Join("proofs", artifactID), content, constants.PermFilePrivate))
+
+	entry := models.PublicProofCatalogEntry{
+		ArtifactID: artifactID, Filename: "file.json", MediaType: "application/json", ByteSize: int64(len(content)),
+		SHA256: artifactID, Classification: models.PublicFeedProofClassificationPublicSafe, CampaignID: "c1",
+		GeneratedAt: time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC), VerificationCommand: "sha256sum file.json",
+		ImmutableURL: "/proofs/" + artifactID,
+	}
+	sign := func(seg models.PublicProofManifestSegment) models.PublicProofManifestSegment {
+		t.Helper()
+		seg.ProofRootSHA256 = models.ComputePublicProofSegmentRoot(seg)
+		root, decodeErr := hex.DecodeString(seg.ProofRootSHA256)
+		require.NoError(t, decodeErr)
+		seg.Signature = hex.EncodeToString(ed25519.Sign(priv, root))
+		return seg
+	}
+	base := models.PublicProofManifestSegment{
+		SchemaVersion: constants.PublicProofSegmentSchemaVersion, SourceID: "src-1", SegmentIndex: 1,
+		PreviousRoot: constants.PublicFeedZeroHashHex, CampaignID: "c1", VerificationOK: true,
+		Entries: []models.PublicProofCatalogEntry{entry}, GeneratedAt: time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC),
+		SigningKeyID: models.PublicProofSigningKeyID(pub), SigningPublicKey: published,
+	}
+	write := func(segments ...models.PublicProofManifestSegment) {
+		t.Helper()
+		var buf bytes.Buffer
+		for _, seg := range segments {
+			line, marshalErr := json.Marshal(seg)
+			require.NoError(t, marshalErr)
+			buf.Write(line)
+			buf.WriteByte('\n')
+		}
+		require.NoError(t, fileSvc.WriteFile(ctx, "proof-segments.jsonl", buf.Bytes(), constants.PermFilePrivate))
+	}
+	run := func(extra ...string) error {
+		t.Helper()
+		cmd := publicVerifyProofCmd()
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		args := []string{"--segments", fileSvc.Resolve("proof-segments.jsonl"), "--artifacts", fileSvc.Resolve("proofs")}
+		cmd.SetArgs(append(args, extra...))
+		return cmd.Execute()
+	}
+
+	signed := sign(base)
+	write(signed)
+	require.NoError(t, run())
+	require.NoError(t, run("--public-key", published))
+	require.Error(t, run("--public-key", hex.EncodeToString(other)))
+
+	legacy := signed
+	legacy.SigningPublicKey = ""
+	write(sign(legacy))
+	require.Error(t, run())
+	require.NoError(t, run("--public-key", published))
+
+	// A later segment publishes the key. Earlier segments with the same key ID
+	// verify under it.
+	legacy.SegmentIndex = 1
+	later := legacy
+	later.SegmentIndex = 2
+	later.PreviousRoot = legacy.ProofRootSHA256
+	later.Entries = nil
+	later.SigningPublicKey = published
+	write(sign(legacy), sign(later))
+	require.NoError(t, run())
+}

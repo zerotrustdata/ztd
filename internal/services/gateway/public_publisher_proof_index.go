@@ -297,10 +297,17 @@ func (s *PublicPublisherService) lockProofLog(ctx context.Context) (io.Closer, e
 	return held, nil
 }
 
-// signProofSegment fills in the root, key ID, and signature of seg.
+// signProofSegment fills in the published verification text, the signing key
+// when the key ID binds it, the root, and the signature of seg.
 func (s *PublicPublisherService) signProofSegment(seg models.PublicProofManifestSegment) (models.PublicProofManifestSegment, error) {
-	privateKey, _, keyID := s.proofSigningKey()
+	privateKey, publicKey, keyID := s.proofSigningKey()
 	seg.SigningKeyID = keyID
+	seg.VerifierInstructions = models.PublicProofVerifierInstructions
+	if published, ok := models.PublicProofSigningKeyHex(publicKey, keyID); ok {
+		seg.SigningPublicKey = published
+	} else {
+		seg.SigningPublicKey = ""
+	}
 	seg.ProofRootSHA256 = models.ComputePublicProofSegmentRoot(seg)
 	root, err := hex.DecodeString(seg.ProofRootSHA256)
 	if err != nil {

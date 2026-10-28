@@ -8,6 +8,7 @@
 package models
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,6 +21,44 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
+
+// PublicProofVerifierInstructions is the offline command published on each
+// newly signed proof segment. It names the checks verify-proof performs and
+// the optional out-of-band pins. It does not claim an identity beyond the
+// published key.
+const PublicProofVerifierInstructions = "Run ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs. The command recomputes each segment root from the zero hash, checks each Ed25519 signature under the segment's signing_public_key, requires SHA-256 of that key to equal signing_key_id, applies withdrawals, and hashes active artifacts by their content-addressed IDs. Pass --public-key or --key-registry to require a key supplied separately. The default command checks the published signatures and hash chain; it does not establish an out-of-band publisher identity."
+
+// PublicAssignmentAuditVerificationCommand is the offline command published
+// on an assignment events database. The segment log supplies the signing key.
+func PublicAssignmentAuditVerificationCommand(dbFilename string) string {
+	return fmt.Sprintf("ztd public verify-assignment --db %s --segments proof-segments.jsonl", dbFilename)
+}
+
+// PublicProofSigningKeyID is the SHA-256 hex of an Ed25519 public key. The
+// publisher stores that digest as signing_key_id.
+func PublicProofSigningKeyID(key ed25519.PublicKey) string {
+	digest := sha256.Sum256(key)
+	return hex.EncodeToString(digest[:])
+}
+
+// PublicProofSigningKeyHex returns the hex public key when key's SHA-256
+// equals keyID. A mismatch returns false so a caller does not publish a key
+// the signed key ID does not bind.
+func PublicProofSigningKeyHex(key ed25519.PublicKey, keyID string) (string, bool) {
+	if len(key) != ed25519.PublicKeySize || keyID == "" || PublicProofSigningKeyID(key) != keyID {
+		return "", false
+	}
+	return hex.EncodeToString(key), true
+}
+
+// DecodePublicProofSigningKey parses a hex-encoded Ed25519 public key.
+func DecodePublicProofSigningKey(keyHex string) (ed25519.PublicKey, error) {
+	raw, err := hex.DecodeString(strings.TrimSpace(keyHex))
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("%w: invalid ed25519 public key hex", constants.ErrPublicFeedProofSegmentInvalid)
+	}
+	return ed25519.PublicKey(raw), nil
+}
 
 // Public feed record type constants. These mirror the closed vocabulary in
 // protocol/models/public_feed.json.
@@ -251,7 +290,11 @@ type PublicProofHead struct {
 	VerifierInstructions        string    `json:"verifier_instructions"`
 	GeneratedAt                 time.Time `json:"generated_at"`
 	SigningKeyID                string    `json:"signing_key_id"`
-	Signature                   string    `json:"signature"`
+	// SigningPublicKey is the hex Ed25519 public key whose SHA-256 is
+	// SigningKeyID. The mirror fills it from its key registry when the
+	// stored head omits it.
+	SigningPublicKey string `json:"signing_public_key,omitempty"`
+	Signature        string `json:"signature"`
 }
 
 // PublicProofSegmentsResponse is the response for GET /proof-segments.
@@ -381,7 +424,10 @@ type PublicProofManifest struct {
 	VerifierInstructions        string                    `json:"verifier_instructions"`
 	GeneratedAt                 time.Time                 `json:"generated_at"`
 	SigningKeyID                string                    `json:"signing_key_id"`
-	Signature                   string                    `json:"signature"`
+	// SigningPublicKey is the hex Ed25519 public key whose SHA-256 is
+	// SigningKeyID. It is excluded from the legacy manifest root.
+	SigningPublicKey string `json:"signing_public_key,omitempty"`
+	Signature        string `json:"signature"`
 }
 
 // PublicProofManifestSegment is one signed link in a chained proof log.
@@ -399,14 +445,21 @@ type PublicProofManifestSegment struct {
 	WithdrawnArtifactIDs        []string                  `json:"withdrawn_artifact_ids,omitempty"`
 	GeneratedAt                 time.Time                 `json:"generated_at"`
 	SigningKeyID                string                    `json:"signing_key_id"`
-	ProofRootSHA256             string                    `json:"proof_root_sha256"`
-	Signature                   string                    `json:"signature"`
-	VerifierInstructions        string                    `json:"verifier_instructions,omitempty"`
+	// SigningPublicKey is the hex Ed25519 public key whose SHA-256 is
+	// SigningKeyID. It is excluded from the segment root: the root already
+	// binds SigningKeyID, and including the key would invalidate segments
+	// signed before the field existed.
+	SigningPublicKey     string `json:"signing_public_key,omitempty"`
+	ProofRootSHA256      string `json:"proof_root_sha256"`
+	Signature            string `json:"signature"`
+	VerifierInstructions string `json:"verifier_instructions,omitempty"`
 }
 
 // ComputePublicProofSegmentRoot hashes a domain-separated, length-prefixed
 // encoding of every signed field. Length prefixes prevent adjacent variable
-// fields from having ambiguous encodings. Root and signature are excluded.
+// fields from having ambiguous encodings. Root, signature, and
+// signing_public_key are excluded. The public key is bound by signing_key_id,
+// which is the SHA-256 of that key and is inside the root.
 func ComputePublicProofSegmentRoot(seg PublicProofManifestSegment) string {
 	h := sha256.New()
 	field := func(value string) {
@@ -477,12 +530,32 @@ func VerifyPublicProofSegment(sourceID string, seg PublicProofManifestSegment, k
 	if ComputePublicProofSegmentRoot(seg) != seg.ProofRootSHA256 {
 		return constants.ErrPublicFeedProofSegmentInvalid
 	}
+	if err := bindPublicProofSigningKey(seg, key); err != nil {
+		return err
+	}
 	root, err := hex.DecodeString(seg.ProofRootSHA256)
 	if err != nil || len(root) != sha256.Size {
 		return constants.ErrPublicFeedProofSegmentInvalid
 	}
 	signature, err := hex.DecodeString(seg.Signature)
 	if err != nil || len(key) != ed25519.PublicKeySize || !ed25519.Verify(key, root, signature) {
+		return constants.ErrPublicFeedSignatureInvalid
+	}
+	return nil
+}
+
+// bindPublicProofSigningKey checks a published key against signing_key_id and
+// the key used for the signature. An empty published key is a segment signed
+// before the field existed; the caller supplies the verification key.
+func bindPublicProofSigningKey(seg PublicProofManifestSegment, key ed25519.PublicKey) error {
+	if seg.SigningPublicKey == "" {
+		return nil
+	}
+	published, err := DecodePublicProofSigningKey(seg.SigningPublicKey)
+	if err != nil || PublicProofSigningKeyID(published) != seg.SigningKeyID {
+		return constants.ErrPublicFeedProofSegmentInvalid
+	}
+	if !bytes.Equal(published, key) {
 		return constants.ErrPublicFeedSignatureInvalid
 	}
 	return nil

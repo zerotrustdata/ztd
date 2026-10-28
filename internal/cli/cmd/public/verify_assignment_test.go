@@ -300,7 +300,26 @@ func TestVerifyAssignmentCmd_RejectsTamperedDatabase(t *testing.T) {
 	})
 }
 
-func TestVerifyAssignmentCmd_RequiresOneKeySource(t *testing.T) {
+func TestVerifyAssignmentCmd_UsesPublishedSigningKey(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	keyID := models.PublicProofSigningKeyID(pub)
+	published, ok := models.PublicProofSigningKeyHex(pub, keyID)
+	require.True(t, ok)
+	files := assignmentTestFiles(t)
+	data := buildAssignmentTestDatabase(t, files)
+	dbPath := writeAssignmentTestDatabase(t, files, data)
+	segment := assignmentTestSegment(1, constants.PublicFeedZeroHashHex, keyID,
+		[]models.PublicProofCatalogEntry{assignmentTestEntry(assignmentTestDBName, data)}, nil)
+	segment.SigningPublicKey = published
+	segmentsPath := writeAssignmentTestSegments(t, files, signAssignmentTestSegment(t, priv, segment))
+
+	out, err := runVerifyAssignment(t, "--db", dbPath, "--segments", segmentsPath)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Assignment audit verified")
+}
+
+func TestVerifyAssignmentCmd_LegacySegmentRequiresPin(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)
@@ -312,5 +331,5 @@ func TestVerifyAssignmentCmd_RequiresOneKeySource(t *testing.T) {
 			[]models.PublicProofCatalogEntry{assignmentTestEntry(assignmentTestDBName, data)}, nil)))
 
 	_, err = runVerifyAssignment(t, "--db", dbPath, "--segments", segmentsPath)
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	require.ErrorIs(t, err, constants.ErrPublicFeedProofSegmentInvalid)
 }
