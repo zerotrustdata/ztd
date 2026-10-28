@@ -2799,6 +2799,8 @@ definitions:
     - 45
     - 46
     - 47
+    - 48
+    - 49
     format: int32
     type: integer
     x-enum-varnames:
@@ -2850,6 +2852,8 @@ definitions:
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED
   operatorv1.InferenceDispatchRequest:
     properties:
       acting_app_id:
@@ -3348,6 +3352,7 @@ definitions:
     - 23
     - 24
     - 25
+    - 26
     format: int32
     type: integer
     x-enum-varnames:
@@ -3377,6 +3382,7 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:

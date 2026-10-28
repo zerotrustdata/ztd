@@ -19,10 +19,13 @@
 # state lives in $ZTD_DIR/.ztd/. Never requires root and never invokes sudo.
 #
 # Environment:
-#   ZTD_DIR              Install and runtime directory (default: ~/ztd).
+#   ZTD_DIR              Install and runtime directory (default: ~/ztd). The default is refused when that
+#                        directory already has files and is not an existing ztd install (a clone named ~/ztd,
+#                        for example). On macOS, "$HOME/Library/Application Support/ztd" is a safe choice.
 #   ZTD_VERSION          Install this X.Y.Z release instead of the latest.
 #   ZTD_OVERWRITE=1      Replace an existing $ZTD_DIR/ztd binary (upgrade). A running Gateway keeps its version
 #                        until it is restarted (./ztd gw restart).
+#   ZTD_REQUIRE_SIGSTORE Passed through to ztd.sh. 1 refuses the install unless cosign verifies the bundle.
 
 set -eu
 
@@ -63,6 +66,18 @@ fail() {
   exit 1
 }
 
+# True when the working directory contains anything other than . and ...
+dir_occupied() {
+  for entry in .* *; do
+    case "$entry" in
+      .|..|'*'|'.*') continue ;;
+    esac
+    [ -e "$entry" ] || continue
+    return 0
+  done
+  return 1
+}
+
 # Shows the captured output of the failed step, indented.
 show_log() {
   if [ -s "$log" ]; then
@@ -95,8 +110,8 @@ gateway_start_hint() {
     case "$(uname -s)" in
       Darwin)
         warn "macOS Keychain did not release the Gateway vault master key."
-        echo "    Rerun in a GUI terminal session and approve the Keychain prompt for ztd (Always Allow)." >&2
-        echo "    No GUI session (SSH/container)? The Keychain prompt cannot be shown there; sign in from the GUI session first." >&2
+        echo "    The dialog wants your Mac login password, not a ztd account. Choose Always Allow for the ztd-platform item." >&2
+        echo "    Rerun in a GUI terminal session. SSH cannot show the Keychain dialog." >&2
         ;;
       *)
         warn "No usable OS key store for the Gateway vault master key. Start an ssh-agent with a key loaded:"
@@ -143,6 +158,17 @@ main() {
     "${HOME:-/nonexistent}"/*) display_dir="~${dir#"$HOME"}" ;;
   esac
 
+  # Dropping a Gateway into a clone named ~/ztd is how a Mac checkout gets a
+  # runtime tree beside the source. An explicit ZTD_DIR is the user's choice.
+  if [ -z "${ZTD_DIR:-}" ] && [ ! -e ./ztd ]; then
+    if [ -d .git ] || [ -f go.mod ]; then
+      fail "$display_dir is a source checkout. Refusing to put a Gateway runtime in it. Set ZTD_DIR to an empty directory. On macOS: ZTD_DIR=\"\$HOME/Library/Application Support/ztd\""
+    fi
+    if dir_occupied; then
+      fail "$display_dir already has files and is not a ztd install. Set ZTD_DIR to an empty directory. On macOS: ZTD_DIR=\"\$HOME/Library/Application Support/ztd\""
+    fi
+  fi
+
   trap cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -162,7 +188,8 @@ main() {
       show_log
       fail "installing the ztd binary failed; nothing else was changed"
     fi
-    ok "$(awk '/^Installed /' "$log") — SHA-256 verified"
+    verified=$(awk '/^Verified: / { sub(/^Verified: /, ""); print; exit }' "$log")
+    ok "$(awk '/^Installed /' "$log") — ${verified:-SHA-256 verified}"
   fi
   if ./ztd --version </dev/null >"$log" 2>&1; then
     info "$(head -n 1 "$log")"
@@ -177,6 +204,10 @@ main() {
     ok "already running — reusing it"
   else
     info "starting Gateway (doctrine posture, embedded data Operator, loopback only)..."
+    if [ "$(uname -s)" = Darwin ]; then
+      info "If this is the first start, macOS shows a Keychain dialog for \"ztd-platform\"."
+      info "It wants your Mac login password, not a ztd account. Choose Always Allow. A GUI session is required."
+    fi
     if ! captured gw start; then
       show_log
       gateway_start_hint
@@ -219,7 +250,11 @@ main() {
   esac
   printf '  %scd %s%s\n' "$bold" "$cd_target" "$reset"
   next_step "./ztd tui" "live governance console in the terminal"
-  next_step "./ztd login web" "add a passkey, then open ${console:-https://localhost:8443/console/}"
+  if [ "$(uname -s)" = Darwin ]; then
+    next_step "./ztd login web" "asks before sudo adds the Gateway CA to the System keychain, then a passkey. Open ${console:-https://localhost:8443/console/}"
+  else
+    next_step "./ztd login web" "add a passkey, then open ${console:-https://localhost:8443/console/}"
+  fi
   printf '  ./ztd gw data audit list --operator-session-id %s\n' "${session:-<id>}"
   next_step "./ztd mcp agent run claude" "put an AI agent behind the Gateway"
   next_step "./ztd gw stop" "stop the Gateway; state in .ztd/ is kept"

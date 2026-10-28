@@ -109,21 +109,17 @@ test_extract_version() {
 	[[ "$got" == 22.23.3 ]] || fail "extract node banner: want 22.23.3, got '$got'"
 }
 
-test_build_only_requires_frontend_toolchain() {
+test_build_only_does_not_require_node() {
 	local bin="$SCRATCH/bin-build-only"
 	toolchain_stubs "$bin" "$GO_MIN"
 	local missing
 	missing="$(collect_missing home-build-only "$bin" --build-only)" ||
 		fail "collect_missing --build-only failed"
 	[[ -z "$missing" ]] || fail "--build-only: want no missing tools, got '$missing'"
-	local tool
-	for tool in node npm; do
-		mv "$bin/$tool" "$bin/$tool.disabled"
-		missing="$(collect_missing "home-build-only-no-$tool" "$bin" --build-only)" ||
-			fail "collect_missing --build-only without $tool failed"
-		[[ "$missing" == node ]] || fail "--build-only without $tool: want MISSING 'node', got '$missing'"
-		mv "$bin/$tool.disabled" "$bin/$tool"
-	done
+	rm -f "$bin/node" "$bin/npm"
+	missing="$(collect_missing home-build-only-no-node "$bin" --build-only)" ||
+		fail "collect_missing --build-only without node failed"
+	[[ -z "$missing" ]] || fail "--build-only without node: want no missing tools, got '$missing'"
 }
 
 test_full_mode_requires_node() {
@@ -162,6 +158,10 @@ env)
 	;;
 install)
 	built_with=1.26.9
+<<<<<<< HEAD
+=======
+	# The installer pins an exact toolchain (go1.27.3), not go1.27.3+auto.
+>>>>>>> 5739d4f6e399ae95a2f7d90e7bc51d92e8456b9e
 	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}" ] && built_with="$STUB_GO_MIN"
 	printf '#!/bin/sh\n# built-with %s\n' "$built_with" >"$STUB_GOBIN/fakebuf"
 	chmod 755 "$STUB_GOBIN/fakebuf"
@@ -541,6 +541,10 @@ test_quickstart_end_to_end_is_idempotent() {
 	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -eq 0 ]] || { cat "$out" >&2; fail "quickstart first run: want exit 0, got $rc"; }
 	grep -qF 'hello from ztd' "$out" || { cat "$out" >&2; fail "quickstart first run: no governed-action output"; }
+	if [[ "$(uname -s)" == Darwin ]]; then
+		grep -qF 'ztd-platform' "$out" || { cat "$out" >&2; fail "quickstart first run: no Keychain preflight"; }
+		grep -qF 'Mac login password' "$out" || { cat "$out" >&2; fail "quickstart first run: preflight does not say whose password"; }
+	fi
 	grep -qF "You're running ztd" "$out" || fail "quickstart first run: no success banner"
 	grep -qxF 'gw start --capabilities data' "$state/calls.log" ||
 		fail "quickstart first run: missing gw start call"
@@ -600,7 +604,7 @@ main() {
 	run_test test_chromium_detection
 	run_test test_version_ge
 	run_test test_extract_version
-	run_test test_build_only_requires_frontend_toolchain
+	run_test test_build_only_does_not_require_node
 	run_test test_full_mode_requires_node
 	run_test test_go_too_old_is_missing
 	run_test test_dev_tool_installs_with_go_mod_toolchain

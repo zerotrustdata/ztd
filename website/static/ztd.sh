@@ -13,6 +13,12 @@
 # path; symbolic links and directories are never replaced. Requires curl, install,
 # mktemp, awk, tr, and either sha256sum or shasum. Never requires root and never
 # invokes sudo. On Windows, use ztd.ps1 instead.
+#
+# After the checksum matches, the signature bundle is downloaded. When cosign is
+# on PATH the bundle is verified against the release workflow identity for that
+# version. ZTD_REQUIRE_SIGSTORE=1 refuses the install when cosign is missing or
+# the bundle does not verify. On macOS, com.apple.quarantine is removed only
+# after that verification.
 
 set -eu
 
@@ -125,10 +131,54 @@ main() {
     fail "checksum verification failed for $binary; nothing was installed"
   fi
 
+  # The checksum proves the bytes match what this host published. Sigstore
+  # proves the release workflow signed them. Checksum-only is honest about
+  # that gap; ZTD_REQUIRE_SIGSTORE=1 closes it.
+  verified="SHA-256 verified; signature not checked (install cosign, or set ZTD_REQUIRE_SIGSTORE=1 to require it)"
+  sig_path="$tmp_dir/$binary.sigstore.json"
+  if curl -fsSL "$binary_url.sigstore.json" -o "$sig_path"; then
+    if command -v cosign >/dev/null 2>&1; then
+      identity="https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v${version}"
+      if ! cosign verify-blob \
+        --bundle "$sig_path" \
+        --certificate-identity "$identity" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        "$binary_path" >"$tmp_dir/cosign.out" 2>&1; then
+        cat "$tmp_dir/cosign.out" >&2
+        fail "Sigstore verification failed for $binary; nothing was installed"
+      fi
+      verified="SHA-256 verified and Sigstore signature verified"
+    elif [ "${ZTD_REQUIRE_SIGSTORE:-}" = 1 ]; then
+      fail "ZTD_REQUIRE_SIGSTORE=1 but cosign is not installed (macOS: brew install cosign)"
+    fi
+  elif [ "${ZTD_REQUIRE_SIGSTORE:-}" = 1 ]; then
+    fail "ZTD_REQUIRE_SIGSTORE=1 but the signature bundle could not be downloaded: $binary_url.sigstore.json"
+  else
+    verified="SHA-256 verified; signature bundle unavailable, checksum only"
+  fi
+  echo "Verified: $verified"
+
+  case "$(uname -s)" in
+    Darwin)
+      if command -v xattr >/dev/null 2>&1 && xattr -p com.apple.quarantine "$binary_path" >/dev/null 2>&1; then
+        xattr -d com.apple.quarantine "$binary_path" \
+          || fail "could not clear Gatekeeper quarantine on the verified binary"
+        echo "Cleared Gatekeeper quarantine after verification"
+      fi
+      ;;
+  esac
+
   if [ -n "$replacing" ]; then
     echo "ztd install: replacing existing $target (ZTD_OVERWRITE=1); it was not checked as a previous ztd install" >&2
   fi
   install -m 0755 "$binary_path" "$target" || fail "could not write $target"
+  case "$(uname -s)" in
+    Darwin)
+      if command -v xattr >/dev/null 2>&1; then
+        xattr -d com.apple.quarantine "$target" 2>/dev/null || true
+      fi
+      ;;
+  esac
   echo "Installed $target"
 }
 
