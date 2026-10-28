@@ -1153,7 +1153,7 @@ func TestAssignmentAuditProofPlan_AddsAgentTraceOnlyWhenCaptured(t *testing.T) {
 	require.Len(t, plan.artifacts, 1, "the database alone: no vault key is published")
 	database := plan.artifacts[0]
 	assert.Equal(t, "assignment-assignment-1.db", database.Filename)
-	assert.Equal(t, "ztd public verify-assignment --db assignment-assignment-1.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>", database.VerificationCommand)
+	assert.Equal(t, models.PublicAssignmentAuditVerificationCommand("assignment-assignment-1.db"), database.VerificationCommand)
 	assert.Empty(t, plan.response.AgentTraceSHA256)
 
 	request.AgentTrace = []byte(`{"evidence_digest":"x","final_output":"spiffe://ztd.local/operator/x"}`)

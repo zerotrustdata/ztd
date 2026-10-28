@@ -22,6 +22,7 @@ import {
 } from '../contract/agent-trace';
 import type { PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
+import { runnableVerifyCommand } from '../verifyCommand';
 import { useMirrorOrigin } from '../state/mirror';
 import { useProofArtifact } from '../state/proof';
 import { PanelSection } from './evidence';
@@ -403,7 +404,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
   const state = useVerifiedTrace(url, binding, runId, assignmentId);
 
   if (!binding || !artifact) return null;
-  const command = artifact.verification_command;
+  const command = runnableVerifyCommand(artifact.verification_command);
 
   return (
     <PanelSection id={id} className="assignment-agent-trace" title="Full agent trace">

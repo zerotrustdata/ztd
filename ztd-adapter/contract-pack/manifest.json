@@ -94,23 +94,23 @@
     },
     {
       "path": "public/manifest.json",
-      "sha256": "6401c1565f3993256e8f3b6b023f2fac4f9c0e7675b85a0ddb25fc7e8dbe5d05"
+      "sha256": "841f9f7aa2fb0f6ee8968521fab0e315206b18b565c92ebb15c6c3a66c2690f6"
     },
     {
       "path": "public/models.ts",
-      "sha256": "994c200e7481f4335f2759a5278b6f45a8f3bbd0eb07c6115ac6e475a6da52e5"
+      "sha256": "61b08c46963c17397551760a8bc6d03b3dde850429ed56ded466e9514316eff2"
     },
     {
       "path": "public/offline-verifier.md",
-      "sha256": "3532ed7b2bfe5d188f2b5da150a441c5adf0e33cc553a5e165132d2df991a2c7"
+      "sha256": "541afc26b81d5992a7d8f59cf007c76bc4c9bc419a496bf11a58d9cda26b3ce7"
     },
     {
       "path": "public/proof-schemas.json",
-      "sha256": "847e9dd1fa174d437ccaebf7b7b7a9f0cbbf5ae81225971ddfa2b67c442cb9f5"
+      "sha256": "5dc27b4f48061ac977dc3f584a3787cfe40d2d5b179af64e20c6117d2682a150"
     },
     {
       "path": "public/public-read.openapi.json",
-      "sha256": "451aed190446dcaa1ece5220932fbc1bd5be122aa8a48ed2c74237d636a7456c"
+      "sha256": "4c9bc6761a287ee15e02d7a2c349140d43cc73b8cdfad95eab830ed0738e6e5a"
     },
     {
       "path": "public/README.md",

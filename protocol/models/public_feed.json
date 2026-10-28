@@ -112,7 +112,8 @@
     "artifacts": {"type": "array", "items": "public_proof_catalog_entry", "required": true, "description": "Catalog entries for every artifact in the proof package"},
     "verifier_instructions": {"type": "string", "required": true, "description": "Human-readable offline verification instructions"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the proof package was generated"},
-    "signing_key_id": {"type": "string", "required": true, "description": "Identifier of the signing key used to sign the proof root"},
+    "signing_key_id": {"type": "string", "required": true, "description": "SHA-256 hex of the Ed25519 public key in signing_public_key"},
+    "signing_public_key": {"type": "string", "required": false, "description": "Ed25519 public key, hex-encoded. SHA-256 of the key bytes equals signing_key_id. Excluded from the legacy manifest root."},
     "signature": {"type": "string", "required": true, "description": "Ed25519 signature over the proof root SHA-256, hex-encoded"}
   },
 
@@ -129,12 +130,13 @@
     "artifact_count": {"type": "integer", "required": true, "description": "Active artifact count from the mirror projection; authenticate membership through the signed log"},
     "verifier_instructions": {"type": "string", "required": true, "description": "Human-readable offline verification instructions"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp of the latest proof publication"},
-    "signing_key_id": {"type": "string", "required": true, "description": "Identifier of the signing key used to sign the proof root"},
+    "signing_key_id": {"type": "string", "required": true, "description": "SHA-256 hex of the Ed25519 public key in signing_public_key"},
+    "signing_public_key": {"type": "string", "required": false, "description": "Ed25519 public key, hex-encoded. SHA-256 of the key bytes equals signing_key_id. The mirror fills this from its registered key when the stored head omits it."},
     "signature": {"type": "string", "required": true, "description": "Ed25519 signature over the proof root SHA-256, hex-encoded"}
   },
 
   "public_proof_manifest_segment": {
-    "_description": "One source-signed append-only proof log link. The root binds every field except root and signature using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot.",
+    "_description": "One source-signed append-only proof log link. The root binds every field except root, signature, and signing_public_key using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot. signing_public_key is bound because signing_key_id is the SHA-256 of that key and is inside the root. Excluding the key keeps segments signed before the field existed valid.",
     "schema_version": {"type": "string", "required": true, "description": "Signed segment schema version"},
     "source_id": {"type": "string", "required": true, "description": "Pseudonymous source deployment identifier"},
     "segment_index": {"type": "integer", "required": true, "description": "Consecutive chain position starting at one"},
@@ -146,7 +148,8 @@
     "entries": {"type": "array", "items": "public_proof_catalog_entry", "required": false, "description": "New artifacts introduced by this segment only"},
     "withdrawn_artifact_ids": {"type": "array", "items": "string", "required": false, "description": "Previously active content IDs withdrawn by this segment"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true},
-    "signing_key_id": {"type": "string", "required": true},
+    "signing_key_id": {"type": "string", "required": true, "description": "SHA-256 hex of the Ed25519 public key in signing_public_key"},
+    "signing_public_key": {"type": "string", "required": false, "description": "Ed25519 public key, hex-encoded. SHA-256 of the key bytes equals signing_key_id. Excluded from the segment root so segments signed before the field existed stay valid. Verification rejects a key that does not hash to signing_key_id."},
     "proof_root_sha256": {"type": "string", "required": true},
     "signature": {"type": "string", "required": true},
     "verifier_instructions": {"type": "string", "required": false}
