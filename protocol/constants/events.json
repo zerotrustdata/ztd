@@ -4,6 +4,9 @@
       "_go_const": "EventAiEvalAssignmentCompleted",
       "value": "ztd.v1.ai.eval.assignment.completed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -13,6 +16,9 @@
       "_go_const": "EventAiEvalAssignmentStarted",
       "value": "ztd.v1.ai.eval.assignment.started",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -22,6 +28,9 @@
       "_go_const": "EventAiEvalCycleCompleted",
       "value": "ztd.v1.ai.eval.cycle.completed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -31,6 +40,9 @@
       "_go_const": "EventAiEvalCycleStarted",
       "value": "ztd.v1.ai.eval.cycle.started",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -40,6 +52,9 @@
       "_go_const": "EventAiEvalHeartbeat",
       "value": "ztd.v1.ai.eval.heartbeat",
       "kind": "fact",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -49,6 +64,9 @@
       "_go_const": "EventAiEvalMetricAvailable",
       "value": "ztd.v1.ai.eval.metric.available",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -58,6 +76,9 @@
       "_go_const": "EventAiEvalModelRoleInvoked",
       "value": "ztd.v1.ai.eval.model_role.invoked",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -67,6 +88,9 @@
       "_go_const": "EventAiEvalProofAvailable",
       "value": "ztd.v1.ai.eval.proof.available",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -76,6 +100,9 @@
       "_go_const": "EventAiEvalPublicationCompleted",
       "value": "ztd.v1.ai.eval.publication.completed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -85,6 +112,9 @@
       "_go_const": "EventAiEvalStopRequested",
       "value": "ztd.v1.ai.eval.stop.requested",
       "kind": "request",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -94,6 +124,9 @@
       "_go_const": "EventAiEvalVerifierCompleted",
       "value": "ztd.v1.ai.eval.verifier.completed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -103,6 +136,9 @@
       "_go_const": "EventAiLLMChatFilterEvent",
       "value": "ztd.v1.ai.llm.chat.filter.updated",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "cli"
       ],
@@ -112,6 +148,9 @@
       "_go_const": "EventAppAgentStatusUpdated",
       "value": "ztd.v1.app.agent.status.updated",
       "kind": "fact",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -134,6 +173,9 @@
       "_go_const": "EventAppCaseDeleted",
       "value": "ztd.v1.app.case.deleted",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "operator"
       ],
@@ -189,6 +231,9 @@
       "_go_const": "EventAppInvestigationCreated",
       "value": "ztd.v1.app.investigation.created",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "operator"
       ],
@@ -198,6 +243,9 @@
       "_go_const": "EventAppInvestigationUpdated",
       "value": "ztd.v1.app.investigation.updated",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "operator"
       ],
@@ -207,6 +255,9 @@
       "_go_const": "EventAppRunStatusUpdated",
       "value": "ztd.v1.app.run.status.updated",
       "kind": "fact",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -216,6 +267,9 @@
       "_go_const": "EventAppTaskCompleted",
       "value": "ztd.v1.app.task.completed",
       "kind": "outcome",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "cli"
       ],
@@ -225,6 +279,9 @@
       "_go_const": "EventConsensusVoteRecorded",
       "value": "ztd.v1.consensus.vote.recorded",
       "kind": "fact",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],
@@ -417,6 +474,9 @@
       "_go_const": "EventOperatorBootstrapCompleted",
       "value": "ztd.v1.operator.bootstrap.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -427,6 +487,9 @@
       "_go_const": "EventOperatorBootstrapConfigReceived",
       "value": "ztd.v1.operator.bootstrap.config.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -437,6 +500,9 @@
       "_go_const": "EventOperatorBootstrapFailed",
       "value": "ztd.v1.operator.bootstrap.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -447,6 +513,9 @@
       "_go_const": "EventOperatorBootstrapReceived",
       "value": "ztd.v1.operator.bootstrap.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -470,6 +539,9 @@
       "_go_const": "EventOperatorBound",
       "value": "ztd.v1.operator.bound",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -601,6 +673,9 @@
       "_go_const": "EventOperatorCommandExecution",
       "value": "ztd.v1.operator.command.execution.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "cli",
         "operator"
@@ -663,6 +738,9 @@
       "_go_const": "EventOperatorCommandResult",
       "value": "ztd.v1.operator.command.result.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "cli",
         "operator"
@@ -747,6 +825,9 @@
       "_go_const": "EventOperatorContextChanged",
       "value": "ztd.v1.operator.context.changed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -757,6 +838,9 @@
       "_go_const": "EventOperatorDeviceRegistered",
       "value": "ztd.v1.operator.device.registered",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -784,6 +868,9 @@
       "_go_const": "EventOperatorEvalWorkspaceSeedCompleted",
       "value": "ztd.v1.operator.eval.workspace.seed.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -793,6 +880,9 @@
       "_go_const": "EventOperatorEvalWorkspaceSeedFailed",
       "value": "ztd.v1.operator.eval.workspace.seed.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -822,6 +912,9 @@
       "_go_const": "EventOperatorFieldReadAccessDenied",
       "value": "ztd.v1.operator.field.read.access.denied",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -832,6 +925,9 @@
       "_go_const": "EventOperatorFieldReadAccessGranted",
       "value": "ztd.v1.operator.field.read.access.granted",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -855,6 +951,9 @@
       "_go_const": "EventOperatorFileDiffFetchCompleted",
       "value": "ztd.v1.operator.file.diff.fetch.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -864,6 +963,9 @@
       "_go_const": "EventOperatorFileDiffFetchFailed",
       "value": "ztd.v1.operator.file.diff.fetch.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -873,6 +975,9 @@
       "_go_const": "EventOperatorFileDiffFetchReceived",
       "value": "ztd.v1.operator.file.diff.fetch.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -904,6 +1009,9 @@
       "_go_const": "EventOperatorFileDiffFetchStarted",
       "value": "ztd.v1.operator.file.diff.fetch.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -913,6 +1021,9 @@
       "_go_const": "EventOperatorFileEditApprovalFeedback",
       "value": "ztd.v1.operator.file.edit.approval.feedback",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -923,6 +1034,9 @@
       "_go_const": "EventOperatorFileEditApprovalGranted",
       "value": "ztd.v1.operator.file.edit.approval.granted",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -932,6 +1046,9 @@
       "_go_const": "EventOperatorFileEditApprovalRejected",
       "value": "ztd.v1.operator.file.edit.approval.rejected",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -955,6 +1072,9 @@
       "_go_const": "EventOperatorFileEditCompleted",
       "value": "ztd.v1.operator.file.edit.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "cli",
         "operator"
@@ -965,6 +1085,9 @@
       "_go_const": "EventOperatorFileEditFailed",
       "value": "ztd.v1.operator.file.edit.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -995,6 +1118,9 @@
       "_go_const": "EventOperatorFileEditStarted",
       "value": "ztd.v1.operator.file.edit.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1004,6 +1130,9 @@
       "_go_const": "EventOperatorFileEditTimeout",
       "value": "ztd.v1.operator.file.edit.timeout",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1014,6 +1143,9 @@
       "_go_const": "EventOperatorFileHistoryFetchCompleted",
       "value": "ztd.v1.operator.file.history.fetch.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1023,6 +1155,9 @@
       "_go_const": "EventOperatorFileHistoryFetchFailed",
       "value": "ztd.v1.operator.file.history.fetch.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1032,6 +1167,9 @@
       "_go_const": "EventOperatorFileHistoryFetchReceived",
       "value": "ztd.v1.operator.file.history.fetch.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1063,6 +1201,9 @@
       "_go_const": "EventOperatorFileHistoryFetchStarted",
       "value": "ztd.v1.operator.file.history.fetch.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1072,6 +1213,9 @@
       "_go_const": "EventOperatorFileRestoreCompleted",
       "value": "ztd.v1.operator.file.restore.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1082,6 +1226,9 @@
       "_go_const": "EventOperatorFileRestoreFailed",
       "value": "ztd.v1.operator.file.restore.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1092,6 +1239,9 @@
       "_go_const": "EventOperatorFileRestoreReceived",
       "value": "ztd.v1.operator.file.restore.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1123,6 +1273,9 @@
       "_go_const": "EventOperatorFilesystemGrepCompleted",
       "value": "ztd.v1.operator.filesystem.grep.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1132,6 +1285,9 @@
       "_go_const": "EventOperatorFilesystemGrepFailed",
       "value": "ztd.v1.operator.filesystem.grep.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1141,6 +1297,9 @@
       "_go_const": "EventOperatorFilesystemGrepReceived",
       "value": "ztd.v1.operator.filesystem.grep.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1172,6 +1331,9 @@
       "_go_const": "EventOperatorFilesystemGrepStarted",
       "value": "ztd.v1.operator.filesystem.grep.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1181,6 +1343,9 @@
       "_go_const": "EventOperatorFilesystemListCompleted",
       "value": "ztd.v1.operator.filesystem.list.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1190,6 +1355,9 @@
       "_go_const": "EventOperatorFilesystemListFailed",
       "value": "ztd.v1.operator.filesystem.list.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1199,6 +1367,9 @@
       "_go_const": "EventOperatorFilesystemListReceived",
       "value": "ztd.v1.operator.filesystem.list.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1230,6 +1401,9 @@
       "_go_const": "EventOperatorFilesystemListStarted",
       "value": "ztd.v1.operator.filesystem.list.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1239,6 +1413,9 @@
       "_go_const": "EventOperatorFilesystemReadCompleted",
       "value": "ztd.v1.operator.filesystem.read.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1248,6 +1425,9 @@
       "_go_const": "EventOperatorFilesystemReadFailed",
       "value": "ztd.v1.operator.filesystem.read.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1257,6 +1437,9 @@
       "_go_const": "EventOperatorFilesystemReadReceived",
       "value": "ztd.v1.operator.filesystem.read.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1288,6 +1471,9 @@
       "_go_const": "EventOperatorFilesystemReadStarted",
       "value": "ztd.v1.operator.filesystem.read.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1354,6 +1540,9 @@
       "_go_const": "EventOperatorHistoryFetchCompleted",
       "value": "ztd.v1.operator.history.fetch.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1364,6 +1553,9 @@
       "_go_const": "EventOperatorHistoryFetchFailed",
       "value": "ztd.v1.operator.history.fetch.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1374,6 +1566,9 @@
       "_go_const": "EventOperatorHistoryFetchReceived",
       "value": "ztd.v1.operator.history.fetch.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1405,6 +1600,9 @@
       "_go_const": "EventOperatorInferenceCompleted",
       "value": "ztd.v1.operator.inference.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1415,6 +1613,9 @@
       "_go_const": "EventOperatorInferenceFailed",
       "value": "ztd.v1.operator.inference.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1425,6 +1626,9 @@
       "_go_const": "EventOperatorInferenceProgressUpdated",
       "value": "ztd.v1.operator.inference.progress.updated",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1458,6 +1662,9 @@
       "_go_const": "EventOperatorIntentApprovalGranted",
       "value": "ztd.v1.operator.intent.approval.granted",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1467,6 +1674,9 @@
       "_go_const": "EventOperatorIntentApprovalRejected",
       "value": "ztd.v1.operator.intent.approval.rejected",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1489,6 +1699,9 @@
       "_go_const": "EventOperatorIntentDenied",
       "value": "ztd.v1.operator.intent.denied",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1498,6 +1711,9 @@
       "_go_const": "EventOperatorIntentGranted",
       "value": "ztd.v1.operator.intent.granted",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1531,6 +1747,9 @@
       "_go_const": "EventOperatorIntentRevoked",
       "value": "ztd.v1.operator.intent.revoked",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1540,6 +1759,9 @@
       "_go_const": "EventOperatorLogsFetchCompleted",
       "value": "ztd.v1.operator.logs.fetch.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1550,6 +1772,9 @@
       "_go_const": "EventOperatorLogsFetchFailed",
       "value": "ztd.v1.operator.logs.fetch.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1560,6 +1785,9 @@
       "_go_const": "EventOperatorLogsFetchReceived",
       "value": "ztd.v1.operator.logs.fetch.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1672,6 +1900,9 @@
       "_go_const": "EventOperatorModelProvenanceObservationCompleted",
       "value": "ztd.v1.operator.model.provenance.observation.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1703,6 +1934,9 @@
       "_go_const": "EventOperatorNetworkPingCompleted",
       "value": "ztd.v1.operator.network.ping.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1713,6 +1947,9 @@
       "_go_const": "EventOperatorNetworkPingFailed",
       "value": "ztd.v1.operator.network.ping.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1723,6 +1960,9 @@
       "_go_const": "EventOperatorNetworkPingReceived",
       "value": "ztd.v1.operator.network.ping.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1746,6 +1986,9 @@
       "_go_const": "EventOperatorNetworkPortCheckCompleted",
       "value": "ztd.v1.operator.network.port.check.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1755,6 +1998,9 @@
       "_go_const": "EventOperatorNetworkPortCheckFailed",
       "value": "ztd.v1.operator.network.port.check.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1764,6 +2010,9 @@
       "_go_const": "EventOperatorNetworkPortCheckReceived",
       "value": "ztd.v1.operator.network.port.check.received",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1795,6 +2044,9 @@
       "_go_const": "EventOperatorNetworkPortCheckStarted",
       "value": "ztd.v1.operator.network.port.check.started",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1817,6 +2069,9 @@
       "_go_const": "EventOperatorNotaryTransactionExpired",
       "value": "ztd.v1.operator.notary.transaction.expired",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1827,6 +2082,9 @@
       "_go_const": "EventOperatorOllamaModelInventoryCompleted",
       "value": "ztd.v1.operator.ollama.model.inventory.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1837,6 +2095,9 @@
       "_go_const": "EventOperatorOllamaModelInventoryFailed",
       "value": "ztd.v1.operator.ollama.model.inventory.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1869,6 +2130,9 @@
       "_go_const": "EventOperatorOllamaModelReleaseCompleted",
       "value": "ztd.v1.operator.ollama.model.release.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1879,6 +2143,9 @@
       "_go_const": "EventOperatorOllamaModelReleaseFailed",
       "value": "ztd.v1.operator.ollama.model.release.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1911,6 +2178,9 @@
       "_go_const": "EventOperatorOllamaModelResidencyCompleted",
       "value": "ztd.v1.operator.ollama.model.residency.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1921,6 +2191,9 @@
       "_go_const": "EventOperatorOllamaModelResidencyFailed",
       "value": "ztd.v1.operator.ollama.model.residency.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1953,6 +2226,9 @@
       "_go_const": "EventOperatorPanelListUpdated",
       "value": "ztd.v1.operator.panel.list.updated",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1962,6 +2238,9 @@
       "_go_const": "EventOperatorProviderBoundaryObservationCompleted",
       "value": "ztd.v1.operator.provider.boundary.observation.completed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -1993,6 +2272,9 @@
       "_go_const": "EventOperatorReceiptRecorded",
       "value": "ztd.v1.operator.receipt.recorded",
       "kind": "fact",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "gateway",
         "operator"
@@ -2027,6 +2309,9 @@
       "_go_const": "EventOperatorReputationCommitmentVerified",
       "value": "ztd.v1.operator.reputation.commitment.verified",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "operator"
       ],
@@ -2076,6 +2361,9 @@
       "_go_const": "EventOperatorReputationStakeResolutionCreated",
       "value": "ztd.v1.operator.reputation.stake.resolution.created",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "operator"
       ],
@@ -2118,6 +2406,9 @@
       "_go_const": "EventOperatorShutdownAcknowledged",
       "value": "ztd.v1.operator.shutdown.acknowledged",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -2148,6 +2439,9 @@
       "_go_const": "EventOperatorSlotInitializationFailed",
       "value": "ztd.v1.operator.slot.initialization.failed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -2218,6 +2512,9 @@
       "_go_const": "EventOperatorTerminalApprovalDenied",
       "value": "ztd.v1.operator.terminal.approval.denied",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -2227,6 +2524,9 @@
       "_go_const": "EventOperatorTerminalAuthStateChanged",
       "value": "ztd.v1.operator.terminal.auth.state.changed",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -2236,6 +2536,9 @@
       "_go_const": "EventOperatorUnbound",
       "value": "ztd.v1.operator.unbound",
       "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
       "producers": [
         "operator"
       ],
@@ -2245,6 +2548,9 @@
       "_go_const": "EventPlatformAuditChainCheckpointed",
       "value": "ztd.v1.platform.audit.chain.checkpointed",
       "kind": "fact",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2255,6 +2561,9 @@
       "_go_const": "EventPlatformAuthInfo",
       "value": "ztd.v1.platform.auth.info.updated",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "cli",
         "gateway"
@@ -2265,6 +2574,9 @@
       "_go_const": "EventPlatformAuthLoginFailed",
       "value": "ztd.v1.platform.auth.login.failed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2275,6 +2587,9 @@
       "_go_const": "EventPlatformAuthLoginRequested",
       "value": "ztd.v1.platform.auth.login.requested",
       "kind": "request",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2285,6 +2600,9 @@
       "_go_const": "EventPlatformAuthLoginSucceeded",
       "value": "ztd.v1.platform.auth.login.succeeded",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2295,6 +2613,9 @@
       "_go_const": "EventPlatformAuthLogoutFailed",
       "value": "ztd.v1.platform.auth.logout.failed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2305,6 +2626,9 @@
       "_go_const": "EventPlatformAuthLogoutRequested",
       "value": "ztd.v1.platform.auth.logout.requested",
       "kind": "request",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2315,6 +2639,9 @@
       "_go_const": "EventPlatformAuthLogoutSucceeded",
       "value": "ztd.v1.platform.auth.logout.succeeded",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2325,6 +2652,9 @@
       "_go_const": "EventPlatformAuthSessionExpired",
       "value": "ztd.v1.platform.auth.session.expired",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2335,6 +2665,9 @@
       "_go_const": "EventPlatformAuthSessionValidationFailed",
       "value": "ztd.v1.platform.auth.session.validation.failed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2345,6 +2678,9 @@
       "_go_const": "EventPlatformAuthSessionValidationRequested",
       "value": "ztd.v1.platform.auth.session.validation.requested",
       "kind": "request",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2355,6 +2691,9 @@
       "_go_const": "EventPlatformAuthSessionValidationSucceeded",
       "value": "ztd.v1.platform.auth.session.validation.succeeded",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2365,6 +2704,9 @@
       "_go_const": "EventPlatformAuthUserAuthenticated",
       "value": "ztd.v1.platform.auth.user.authenticated",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2375,6 +2717,9 @@
       "_go_const": "EventPlatformAuthUserUnauthenticated",
       "value": "ztd.v1.platform.auth.user.unauthenticated",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2385,6 +2730,9 @@
       "_go_const": "EventPlatformConsoleLogConnectedConfirmed",
       "value": "ztd.v1.platform.console.log.connected.confirmed",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2394,6 +2742,9 @@
       "_go_const": "EventPlatformConsoleLogEntryReceived",
       "value": "ztd.v1.platform.console.log.entry.received",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2561,10 +2912,30 @@
       ],
       "persistence": "gateway.docstore"
     },
+    "PlatformEnrollmentUnbindConsensusRequested": {
+      "_go_const": "EventPlatformEnrollmentUnbindConsensusRequested",
+      "value": "ztd.v1.platform.enrollment.unbind_consensus.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS",
+        "payload": "ztd.common.v1.PlatformEnrollmentGovernancePayload"
+      },
+      "producers": [
+        "cli",
+        "gateway"
+      ],
+      "persistence": "gateway.docstore"
+    },
     "PlatformExternalServiceConfigured": {
       "_go_const": "EventPlatformExternalServiceConfigured",
       "value": "ztd.v1.platform.external.service.configured",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2575,6 +2946,9 @@
       "_go_const": "EventPlatformNotification",
       "value": "ztd.v1.platform.notification.sent",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "cli",
         "gateway"
@@ -2657,6 +3031,9 @@
       "_go_const": "EventPlatformTelemetryAuditLogged",
       "value": "ztd.v1.platform.telemetry.audit.logged",
       "kind": "outcome",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2667,6 +3044,9 @@
       "_go_const": "EventPlatformTelemetryErrorLogged",
       "value": "ztd.v1.platform.telemetry.error.logged",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2677,6 +3057,9 @@
       "_go_const": "EventPlatformTelemetryHealthReported",
       "value": "ztd.v1.platform.telemetry.health.reported",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2687,6 +3070,9 @@
       "_go_const": "EventPlatformTelemetryPerformanceRecorded",
       "value": "ztd.v1.platform.telemetry.performance.recorded",
       "kind": "fact",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2697,6 +3083,9 @@
       "_go_const": "EventPlatformUsageUpdated",
       "value": "ztd.v1.platform.usage.updated",
       "kind": "outcome",
+      "transport": [
+        "sse"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2707,6 +3096,9 @@
       "_go_const": "EventPublicFeedBatchAcknowledged",
       "value": "ztd.v1.public.feed.batch.acknowledged",
       "kind": "outcome",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2717,6 +3109,9 @@
       "_go_const": "EventPublicFeedBatchExported",
       "value": "ztd.v1.public.feed.batch.exported",
       "kind": "outcome",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2727,6 +3122,9 @@
       "_go_const": "EventPublicFeedKeyRotated",
       "value": "ztd.v1.public.feed.key.rotated",
       "kind": "outcome",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],
@@ -2737,6 +3135,9 @@
       "_go_const": "EventPublicFeedProofPublished",
       "value": "ztd.v1.public.feed.proof.published",
       "kind": "outcome",
+      "transport": [
+        "local"
+      ],
       "producers": [
         "gateway"
       ],

@@ -76,5 +76,36 @@ func TestPublicProofSegmentRoot_BindsEveryFieldWithoutAmbiguousConcatenation(t *
 	equivalent.GeneratedAt = base.GeneratedAt.In(time.FixedZone("other", 3600))
 	equivalent.ProofRootSHA256 = "excluded"
 	equivalent.Signature = "excluded"
+	equivalent.SigningPublicKey = hex.EncodeToString(pub)
 	require.Equal(t, base.ProofRootSHA256, ComputePublicProofSegmentRoot(equivalent))
+	require.ErrorIs(t, VerifyPublicProofSegment(base.SourceID, equivalent, pub), constants.ErrPublicFeedProofSegmentInvalid)
+}
+
+func TestPublicProofSegment_PublishedKeyIsBoundBySigningKeyID(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	published, ok := PublicProofSigningKeyHex(pub, PublicProofSigningKeyID(pub))
+	require.True(t, ok)
+	_, ok = PublicProofSigningKeyHex(pub, "test-key-1")
+	require.False(t, ok)
+
+	seg := PublicProofManifestSegment{
+		SchemaVersion: constants.PublicProofSegmentSchemaVersion, SourceID: "source", SegmentIndex: 1,
+		PreviousRoot: constants.PublicFeedZeroHashHex, VerificationOK: true,
+		GeneratedAt:  time.Date(2026, 10, 17, 1, 0, 0, 0, time.UTC),
+		SigningKeyID: PublicProofSigningKeyID(pub), SigningPublicKey: published,
+	}
+	seg.ProofRootSHA256 = ComputePublicProofSegmentRoot(seg)
+	root, err := hex.DecodeString(seg.ProofRootSHA256)
+	require.NoError(t, err)
+	seg.Signature = hex.EncodeToString(ed25519.Sign(priv, root))
+	require.NoError(t, VerifyPublicProofSegment(seg.SourceID, seg, pub))
+	require.ErrorIs(t, VerifyPublicProofSegment(seg.SourceID, seg, other), constants.ErrPublicFeedSignatureInvalid)
+
+	forged := seg
+	forged.SigningPublicKey = hex.EncodeToString(other)
+	require.Equal(t, seg.ProofRootSHA256, ComputePublicProofSegmentRoot(forged))
+	require.ErrorIs(t, VerifyPublicProofSegment(seg.SourceID, forged, other), constants.ErrPublicFeedProofSegmentInvalid)
 }

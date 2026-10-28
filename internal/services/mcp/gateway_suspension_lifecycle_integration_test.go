@@ -55,7 +55,7 @@ func newLifecycleStores(t *testing.T) lifecycleStores {
 	require.NoError(t, err)
 	testVault := storagetest.CreateTestVault(t, filepath.Join(tempDir, "vault"), privKey)
 
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), slog.Default())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), slog.Default())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

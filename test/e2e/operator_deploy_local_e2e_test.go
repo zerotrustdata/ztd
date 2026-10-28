@@ -84,13 +84,18 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	before, err := e2eClient.ListOperators(ctx)
 	require.NoError(t, err)
 	decisions := deploymentDecisionCount(t)
+	httpPort, httpsPort, err := e2eGatewayPorts()
+	require.NoError(t, err)
 
 	deploy := func(phase string, count, start int, approve bool) []models.OperatorDeploymentState {
 		t.Helper()
 		args := []string{"operator", "deploy", "--local", "--dest-dir", root,
 			"--count", strconv.Itoa(count), "--start-index", strconv.Itoa(start),
 			"--parallel", strconv.Itoa(min(count, 100)), "--background", "--capabilities", "data",
-			"--endpoint", e2eCfg.cfg.Paths.Host}
+			"--endpoint", e2eCfg.gatewayHTTPSURL, "--operator-endpoint", e2eCfg.cfg.Paths.Host}
+		if httpPort != 0 {
+			args = append(args, "--gateway-http-port", strconv.Itoa(httpPort), "--gateway-https-port", strconv.Itoa(httpsPort))
+		}
 		if approve {
 			args = append(args, "--approve", "--trust-bundle", e2eCfg.cfg.ResolvedTrustBundlePath())
 		}
@@ -241,11 +246,15 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	}()
 	go func() {
 		defer close(canceledDone)
-		output, err := deploymentCLI(canceledCtx, bin, "operator", "deploy", "--local", "--dest-dir", root,
-			"--count", "1", "--start-index", strconv.Itoa(n+3), "--background",
+		args := []string{"operator", "deploy", "--local", "--dest-dir", root,
+			"--count", "1", "--start-index", strconv.Itoa(n + 3), "--background",
 			"--trust-bundle", e2eCfg.cfg.ResolvedTrustBundlePath(),
 			"--operator-endpoint", "127.0.0.1", "--gateway-https-port", bootstrapPort,
-			"--endpoint", e2eCfg.cfg.Paths.Host)
+			"--endpoint", e2eCfg.gatewayHTTPSURL}
+		if httpPort != 0 {
+			args = append(args, "--gateway-http-port", strconv.Itoa(httpPort))
+		}
+		output, err := deploymentCLI(canceledCtx, bin, args...)
 		canceled <- canceledResult{output, err}
 	}()
 	select {
@@ -288,6 +297,15 @@ func deploymentCLI(ctx context.Context, bin string, args ...string) (string, err
 	root, err := resolveRuntimeRoot()
 	if err != nil {
 		return "", err
+	}
+	// Deploy has its own SSH --port flag and receives explicit Gateway ports
+	// from the scenario. Other commands use the shared global endpoint flags.
+	if len(args) >= 2 && args[1] != "deploy" {
+		endpointArgs, err := e2eGatewayEndpointArgs()
+		if err != nil {
+			return "", err
+		}
+		args = append(args, endpointArgs...)
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = root
@@ -380,7 +398,9 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.Equal(t, result.OperatorID, record.OperatorID)
 		require.Equal(t, result.OperatorSessionID, record.OperatorSessionID)
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
-		key, err := governance.SignerPublicKey(receipt.SignerKeyId)
+		key, err := models.DecodeActuatorPublicKey(op.Operator.GetActuatorPublicKey())
+		require.NoError(t, err)
+		key, err = governance.NewPinnedSignerSource(key).GetTrustedSignerPublicKey(testutil.Context(t), receipt.SignerKeyId)
 		require.NoError(t, err)
 		require.NoError(t, governance.VerifyEventReceiptSignature(receipt, key))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

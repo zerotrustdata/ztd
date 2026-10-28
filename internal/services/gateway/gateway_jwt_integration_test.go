@@ -235,14 +235,6 @@ func TestGateway_JWTIntegration(t *testing.T) {
 			Responder:   resp,
 			CrossOrigin: len(cfg.Gateway.AllowedOrigins) > 0,
 		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         cfg,
-			Logger:      logger,
-			DocStore:    db.GetDocStore(),
-			SignerStore: db.GetSignerStore(),
-			UserSvc:     userSvc,
-			Responder:   resp,
-		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       cfg,
 			Logger:    logger,
@@ -473,14 +465,6 @@ func TestGateway_JITPasskeyBootstrapWithURL(t *testing.T) {
 			DocStore:    db.GetDocStore(),
 			Responder:   resp,
 			CrossOrigin: len(cfg.Gateway.AllowedOrigins) > 0,
-		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         cfg,
-			Logger:      logger,
-			DocStore:    db.GetDocStore(),
-			SignerStore: db.GetSignerStore(),
-			UserSvc:     userSvc,
-			Responder:   resp,
 		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       cfg,
@@ -727,14 +711,6 @@ func TestGateway_JITPasskeyStepUpRequired(t *testing.T) {
 			DocStore:    db.GetDocStore(),
 			Responder:   resp,
 			CrossOrigin: len(cfg.Gateway.AllowedOrigins) > 0,
-		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         cfg,
-			Logger:      logger,
-			DocStore:    db.GetDocStore(),
-			SignerStore: db.GetSignerStore(),
-			UserSvc:     userSvc,
-			Responder:   resp,
 		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       cfg,

@@ -280,25 +280,57 @@ func (c *CampaignPublicationCoordinator) catchUpAuditProofs(
 	return proofs, nil
 }
 
-// republishAuditProofs ingests the audit proof of every terminal assignment for
-// the verified republish. The request is the one each assignment was published
-// with, so the Gateway reuses its catalogued database and answers with the digest
-// the republished result records bind. Nothing is rebuilt on the host.
+// republishAuditProofs resolves the audit proofs for the verified republish.
+// Published proof artifacts already catalogued in publicationState with matching
+// hashes are reused directly to eliminate redundant WAN uploads. Any uningested
+// proofs are ingested before verified result records are built.
 func (c *CampaignPublicationCoordinator) republishAuditProofs(
 	ctx context.Context,
 	assignments []*evalv1.EvaluationAssignment,
 	results map[string]*evalv1.EvaluationAssignmentResult,
 	fixtures map[string]ScenarioArtifacts,
+	publicationState *CampaignPublicationState,
 ) (map[string]CampaignPublishedProofArtifacts, error) {
 	if len(assignments) == 0 {
 		return map[string]CampaignPublishedProofArtifacts{}, nil
 	}
-	liveRequests, err := c.publishAssignmentAuditEvents(ctx, assignments[0].GetRunId(), assignments, results)
+	runID := assignments[0].GetRunId()
+	proofs := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
+	var pending []*evalv1.EvaluationAssignment
+
+	for _, assignment := range assignments {
+		assignmentID := assignment.GetAssignmentId()
+		result := results[assignmentID]
+		if result == nil {
+			continue
+		}
+		if publicationState != nil && containsString(publicationState.PublishedIdempotency, AssignmentAuditProofIdempotencyKey(runID, assignmentID)) {
+			if stored, ok := publicationState.PublishedProofArtifacts[assignmentID]; ok {
+				_, traceSHA256, err := loadAssignmentAgentTraceArtifact(ctx, c.store, result)
+				if err != nil {
+					return nil, err
+				}
+				fixture := fixtures[assignment.GetScenarioId()]
+				if stored.DatabaseSHA256 != "" && stored.AgentTraceSHA256 == traceSHA256 && stored.ScenarioInputSHA256 != "" &&
+					stored.ScenarioInputSHA256 == fixture.Input.Reference.GetSha256() && stored.ScenarioGoldSHA256 == fixture.Gold.Reference.GetSha256() {
+					proofs[assignmentID] = stored
+					continue
+				}
+			}
+		}
+		pending = append(pending, assignment)
+	}
+
+	if len(pending) == 0 {
+		return proofs, nil
+	}
+
+	liveRequests, err := c.publishAssignmentAuditEvents(ctx, runID, pending, results)
 	if err != nil {
 		return nil, err
 	}
-	inputs := make([]AssignmentAuditProofInput, 0, len(assignments))
-	for _, assignment := range assignments {
+	inputs := make([]AssignmentAuditProofInput, 0, len(pending))
+	for _, assignment := range pending {
 		result := results[assignment.GetAssignmentId()]
 		if result == nil {
 			continue
@@ -311,7 +343,14 @@ func (c *CampaignPublicationCoordinator) republishAuditProofs(
 			inputs = append(inputs, input)
 		}
 	}
-	return c.ingestAssignmentAuditProofs(ctx, inputs)
+	ingested, err := c.ingestAssignmentAuditProofs(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+	for assignmentID, artifacts := range ingested {
+		proofs[assignmentID] = artifacts
+	}
+	return proofs, nil
 }
 
 // publishAssignmentAuditEvents builds the live event requests of every terminal

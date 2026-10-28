@@ -183,13 +183,29 @@ func TestCampaignsCreate_JSONReportsFrozenSpec(t *testing.T) {
 	env := newStoreRunEnv(t)
 
 	var payload campaignCreateJSON
-	require.NoError(t, env.runJSON(t, &payload, "campaigns", "create", "eval-a", "--all"))
+	require.NoError(t, env.runJSON(t, &payload, "campaigns", "create", "eval-a", testQwenVariant().GetServedModelTag()))
 	assert.Equal(t, "eval-a", payload.CampaignID)
 	assert.Equal(t, campaignLaneModelRole, payload.Lane)
 	assert.Equal(t, 1, payload.ModelCount)
-	assert.Equal(t, uint64(41), payload.CellsPerRun)
+	catalog, _, err := evaluation.LoadScenarioCatalog()
+	require.NoError(t, err)
+	assert.Equal(t, evaluation.ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), payload.CellsPerRun)
+	assert.Equal(t, evaluation.ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), payload.CellsPerRunL2)
+	assert.Equal(t, evaluation.DefaultJudgeServedModelTag, payload.Judge, "the default judge is frozen without a --judge flag")
 	assert.NotEmpty(t, payload.ModelRegistryDigest)
 	assert.NotEmpty(t, payload.CatalogDigest)
+}
+
+// TestCampaignsCreate_RejectsAJudgeAbsentFromTheRegistry: the judge is pinned
+// from the model registry, so a tag the registry does not serve never freezes.
+func TestCampaignsCreate_RejectsAJudgeAbsentFromTheRegistry(t *testing.T) {
+	env := newStoreRunEnv(t)
+
+	_, err := env.run(t, "campaigns", "create", "eval-a", testQwenVariant().GetServedModelTag(), "--judge", "absent:1b")
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignJudgeInvalid)
+
+	_, err = env.run(t, "campaigns", "show", "eval-a")
+	require.Error(t, err, "a rejected create must not persist the campaign")
 }
 
 func TestCampaignsCreate_RequiresSelection(t *testing.T) {
@@ -256,7 +272,8 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	assert.Equal(t, 1, payload.StackCount)
 	catalog, _, err := evaluation.LoadScenarioCatalog()
 	require.NoError(t, err)
-	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1), payload.CellsPerRun)
+	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), payload.CellsPerRun)
+	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), payload.CellsPerRunL2)
 	assert.Greater(t, payload.ModelCount, 1)
 
 	spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
@@ -273,6 +290,7 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	assert.Equal(t, campaignLaneSystem, show.Lane)
 	assert.Equal(t, 1, show.StackCount)
 	assert.Equal(t, payload.CellsPerRun, show.CellsPer)
+	assert.Equal(t, payload.CellsPerRunL2, show.CellsPerL2)
 }
 
 func TestCampaignsCreate_UsesProjectFormationOverlay(t *testing.T) {
@@ -414,6 +432,7 @@ func TestCreateCampaign_VersionsOnCatalogChange(t *testing.T) {
 		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
 		Repetitions: 1,
 		SuiteID:     evaluation.SmokeSuiteID,
+		Judge:       testJudgeVariant(),
 	}
 	_, err = createCampaign(ctx, env.deps, env.fileSvc(t), changedCatalog)
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict, "versioning is opt-in")
@@ -445,6 +464,7 @@ func TestCreateCampaign_VersioningKeepsTheCampaignIDWhileTheCatalogIsUnchanged(t
 		Variants:               []*evalv1.ModelVariant{testQwenVariant()},
 		Repetitions:            1,
 		VersionOnCatalogChange: true,
+		Judge:                  testJudgeVariant(),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "eval-a", result.Spec.GetCampaignId())
@@ -462,6 +482,7 @@ func TestCreateCampaign_VersioningStillConflictsOnNonCatalogDrift(t *testing.T) 
 		Variants:               []*evalv1.ModelVariant{testQwenVariant()},
 		Repetitions:            3,
 		VersionOnCatalogChange: true,
+		Judge:                  testJudgeVariant(),
 	})
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 }
@@ -499,6 +520,7 @@ func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 		CampaignID: "eval-system", RunID: "run-system", Catalog: catalog, Inventory: inventory,
 		ScenarioArtifacts: artifacts, RepetitionCount: 1, Platform: testPlatform, Governance: testGovernance,
 		Lane: evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, FormationStackSet: stackSet,
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 	_, err = env.run(t, "runs", "start", "eval-system", "--prepare-only", "--publish=false")
@@ -515,5 +537,5 @@ func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 			scheduled = len(assignments)
 		}
 	}
-	assert.Equal(t, int(evaluation.FormationMatrixSize(catalog, 1)), scheduled)
+	assert.Equal(t, int(evaluation.FormationMatrixSize(catalog, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)), scheduled)
 }

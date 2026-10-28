@@ -218,16 +218,22 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 			trace := &AgentTrace{
 				RunID: "run-diagnosis", AssignmentID: "assign-diagnosis", DesignatedRole: "primary",
 				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-diagnosis", ResultDigest: "digest-diagnosis"}},
-				FinalOutput: test.output,
+				FinalOutput: maskV4DiagnosisIdentifiers(test.output),
 			}
 
 			grading, err := GradeHomogeneousScenario(req, trace,
 				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "scenario-content"))
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
+}
+
+func maskV4DiagnosisIdentifiers(output string) string {
+	output = strings.ReplaceAll(output, "checkout-api", "check…")
+	output = strings.ReplaceAll(output, "checkout API", "check…")
+	return strings.ReplaceAll(output, "payments.internal.example", "pay…")
 }
 
 func diagnosisPromptEcho(input ScenarioInputFixture) string {
@@ -262,8 +268,8 @@ func TestGradeHomogeneousScenario_ScenarioIDWithoutDiagnosisRubricUsesItsGoldChe
 	grading, err := GradeHomogeneousScenario(req, trace,
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)
-	assert.True(t, gradePassed(grading.DeterministicGrades, "scenario-content"))
-	assert.True(t, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+	assert.True(t, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+	assert.True(t, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 }
 
 func TestGradeHomogeneousScenario_UnknownDiagnosisRubricFailsClosed(t *testing.T) {
@@ -287,8 +293,8 @@ func TestGradeHomogeneousScenario_UnknownDiagnosisRubricFailsClosed(t *testing.T
 	grading, err := GradeHomogeneousScenario(req, trace,
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)
-	assert.False(t, gradePassed(grading.DeterministicGrades, "scenario-content"))
-	assert.False(t, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+	assert.False(t, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+	assert.False(t, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 }
 
 func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAndTrajectory(t *testing.T) {
@@ -338,17 +344,22 @@ func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAn
 			grading, err := GradeHomogeneousScenario(req, trace,
 				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			assert.Equal(t, test.wantEvidence, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+			assert.Equal(t, test.wantEvidence, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
 }
 
-func gradePassed(grades []*evalv1.DeterministicGrade, criterionID string) bool {
+// gradePassed reports whether the named deterministic criterion was emitted
+// with PASS. An absent criterion fails the test, so a negative assertion can
+// never pass vacuously; tests that expect absence must assert it explicitly.
+func gradePassed(tb testing.TB, grades []*evalv1.DeterministicGrade, criterionID string) bool {
+	tb.Helper()
 	for _, grade := range grades {
 		if grade.GetCriterionId() == criterionID {
 			return grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 		}
 	}
+	tb.Fatalf("deterministic criterion %q was not emitted", criterionID)
 	return false
 }
 
@@ -374,22 +385,32 @@ func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			blueprint := finalResponseDiagnosis()
 			blueprint.Gold.ContentCheck.DiagnosisRubric = test.rubric
+			if test.rubric != ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+				// A current catalog fixture also contains V4 masking checks. Remove
+				// those when simulating a frozen V1-V3 campaign contract.
+				blueprint.Gold.ContentCheck.RequiredTerms = [][]string{{"checkout-api"}}
+				blueprint.Gold.ContentCheck.ForbiddenTerms = nil
+			}
 			blueprint.Input.ScenarioID = blueprint.ScenarioID
 			blueprint.Gold.ScenarioID = blueprint.ScenarioID
 			require.NoError(t, validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck))
+			output := "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. " + test.claim +
+				"\nConfidence: " + test.confidence + "\nRecommended action: Investigate both services.\nCustomer-safe summary: Customers cannot complete checkout while we investigate."
+			if test.rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+				output = maskV4DiagnosisIdentifiers(output)
+			}
 			trace := &AgentTrace{
 				RunID: "run-frozen-rubric", AssignmentID: "assign-frozen-rubric", DesignatedRole: "primary",
-				ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}},
-				FinalOutput: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. " + test.claim +
-					"\nConfidence: " + test.confidence + "\nRecommended action: Investigate both services.\nCustomer-safe summary: Customers cannot complete checkout while we investigate.",
+				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}},
+				FinalOutput: output,
 			}
 			grading, err := GradeHomogeneousScenario(AssignmentExecutionRequest{
 				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: trace.AssignmentID, RunId: trace.RunID},
 				ScenarioInput: blueprint.Input, ScenarioGold: blueprint.Gold,
 			}, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "scenario-content"))
-			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "scenario-content"))
+			assert.Equal(t, test.passed, gradePassed(t, grading.DeterministicGrades, "required-evidence:final_response"))
 		})
 	}
 }

@@ -294,7 +294,7 @@ func bindFormationRoleFlags(cmd *cobra.Command, prefix, label string) *formation
 	cmd.Flags().StringVar(&f.displayName, prefix+"-display-name", "", label+" display name (defaults to the served tag)")
 	cmd.Flags().StringVar(&f.provider, prefix+"-provider", "", label+" provider, for example Alibaba (defaults to the model family)")
 	cmd.Flags().StringVar(&f.family, prefix+"-family", "", label+" model family, for example \"Qwen 3.5\"")
-	cmd.Flags().StringVar(&f.providerClass, prefix+"-provider-class", "ollama", label+" inference provider class")
+	cmd.Flags().StringVar(&f.providerClass, prefix+"-provider-class", constants.InferenceProviderOllama, label+" inference provider class: ollama or llamacpp for sovereign roles")
 	cmd.Flags().StringVar(&f.servedTag, prefix+"-tag", "", label+" served model tag, for example qwen3.5:9b (required)")
 	cmd.Flags().StringVar(&f.trust, prefix+"-trust", "sovereign", label+" trust class: sovereign or delegated")
 	cmd.Flags().StringVar(&f.quant, prefix+"-quant", "", label+" quantization format, required for sovereign roles (e.g. Q4_K_M)")

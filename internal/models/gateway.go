@@ -28,6 +28,30 @@ type Document struct {
 	UpdatedAt  time.Time
 }
 
+// DecodeData decodes the document's Data fields into target, a typed struct.
+// Data is a field map, not raw JSON, so it is re-serialized once before decoding.
+func (d *Document) DecodeData(target any) error {
+	return decodeDocumentFields(d.Data, target)
+}
+
+// DecodeWire decodes the document's ForWire view (Data plus the id, created_at
+// and updated_at system fields) into target, for records whose typed model
+// carries those fields.
+func (d *Document) DecodeWire(target any) error {
+	return decodeDocumentFields(d.ForWire(), target)
+}
+
+func decodeDocumentFields(fields map[string]json.RawMessage, target any) error {
+	b, err := json.Marshal(fields)
+	if err != nil {
+		return fmt.Errorf("marshal document data: %w", err)
+	}
+	if err := json.Unmarshal(b, target); err != nil {
+		return fmt.Errorf("unmarshal document data: %w", err)
+	}
+	return nil
+}
+
 // ForWire serializes Document to a JSON-encodable map for the HTTP response boundary.
 // Timestamps are formatted as fixed-microsecond UTC strings. The caller's data fields are
 // merged with system fields (id, created_at, updated_at).
@@ -423,6 +447,13 @@ type CLIEnrollmentResponse struct {
 
 // ActuatorPublicKeyExport is the typed JSON structure for exporting the Actuator's public key.
 type ActuatorPublicKeyExport struct {
+	KeyID     string `json:"key_id"`
+	PublicKey string `json:"public_key"`
+	Algorithm string `json:"algorithm"`
+}
+
+// AuditorPublicKeyExport is the typed JSON structure for exporting the Auditor's public key.
+type AuditorPublicKeyExport struct {
 	KeyID     string `json:"key_id"`
 	PublicKey string `json:"public_key"`
 	Algorithm string `json:"algorithm"`

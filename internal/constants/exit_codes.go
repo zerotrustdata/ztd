@@ -64,6 +64,11 @@ const (
 	// ExitCodeUsage indicates command line usage error (typically 2)
 	ExitCodeUsage = 2
 
+	// ExitCodeActionExecutionFailed indicates the command's governed action was
+	// dispatched (and, when required, approved) but failed in execution
+	// (ErrActionExecutionFailed). Its signed FAILED receipt is the evidence.
+	ExitCodeActionExecutionFailed = 10
+
 	// ExitCodeTimeout indicates command timed out (typically 124)
 	ExitCodeTimeout = 124
 

@@ -27,6 +27,7 @@ import (
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
@@ -236,6 +237,7 @@ type DispatchRequest struct {
 // the verified complete result and its digest was verified too.
 type DispatchResult struct {
 	ConsensusInferences []*operatorv1.ConsensusVoteInference
+	RequestEnvelope     *commonv1.GovernanceEnvelope
 	TransactionID       string
 	ResultEnvelope      *commonv1.GovernanceEnvelope
 	Receipt             *operatorv1.EventReceipt
@@ -407,6 +409,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 	defer func() {
 		if result != nil {
 			result.ConsensusInferences = consensusInferences
+			result.RequestEnvelope = env
 		}
 		err = governance.WithConsensusInferences(consensusInferences, err)
 	}()
@@ -780,7 +783,7 @@ type dispatchResultRouter struct {
 func (r *dispatchResultRouter) handle(_ string, data []byte) {
 	resultEnv := &commonv1.GovernanceEnvelope{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, resultEnv); err != nil {
-		r.logger.Warn("dispatch: failed to unmarshal result envelope", "error", err)
+		r.logger.Warn("dispatch: failed to unmarshal result envelope", logging.ErrorKind(err))
 		return
 	}
 	if resultEnv.Id != r.txHash {
@@ -794,7 +797,7 @@ func (r *dispatchResultRouter) handle(_ string, data []byte) {
 		constants.EventType(resultEnv.GetEventType()),
 		constants.ActionType(resultEnv.GetActionType()),
 	); err != nil {
-		r.logger.Warn("dispatch: reject result envelope", "error", err, "transaction_id", r.txHash)
+		r.logger.Warn("dispatch: reject result envelope", logging.ErrorKind(err), slog.String("transaction_id", r.txHash))
 		return
 	}
 	if r.isEmbedded {
@@ -901,7 +904,7 @@ func (d *DispatchService) verifiedTransactionEventReceipt(ctx context.Context, r
 		return nil, transactionEventReceiptNone
 	}
 	if err := d.verifyBoundReceipt(ctx, operatorID, receipt); err != nil {
-		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", "transaction_id", txHash, "signer_key_id", receipt.GetSignerKeyId(), "error", err)
+		d.logger.Warn("dispatch: receipt not verified against the executing operator's bound key", slog.String("transaction_id", txHash), slog.String("signer_key_id", receipt.GetSignerKeyId()), logging.ErrorKind(err))
 		return nil, transactionEventReceiptNone
 	}
 	return receipt, kind
@@ -955,7 +958,7 @@ func decodeInferenceProgressEnvelope(env *commonv1.GovernanceEnvelope) (*operato
 func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv, resultEnv *commonv1.GovernanceEnvelope) (*DispatchResult, error) {
 	completion := &operatorv1.InferenceCompletion{}
 	if err := proto.Unmarshal(resultEnv.Payload, completion); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceResultDecode, err)
+		return nil, fmt.Errorf("dispatch: %w: %w", constants.ErrInferenceResultDecode, err)
 	}
 
 	receipt := completion.GetReceipt()
@@ -970,7 +973,7 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 		return nil, fmt.Errorf("dispatch: %w: receipt signer store not configured", constants.ErrInferenceReceiptVerify)
 	}
 	if err := d.verifyBoundReceipt(ctx, cmdEnv.GetOperatorId(), receipt); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceReceiptVerify, err)
+		return nil, fmt.Errorf("dispatch: %w: %w", constants.ErrInferenceReceiptVerify, err)
 	}
 
 	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
@@ -993,7 +996,7 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	}
 	request := &operatorv1.InferenceRequested{}
 	if err := proto.Unmarshal(cmdEnv.Payload, request); err != nil {
-		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceResultDecode, err)
+		return nil, fmt.Errorf("dispatch: %w: %w", constants.ErrInferenceResultDecode, err)
 	}
 	if err := models.ValidateDecisionCompletion(request.GetDecision(), result); err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
@@ -1061,6 +1064,10 @@ func inferenceReceiptFailureError(receipt *operatorv1.EventReceipt) error {
 		return constants.ErrInferenceModelNotFound
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID:
 		return constants.ErrInferenceProviderResponseInvalid
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR:
+		return constants.ErrInferenceProviderStreamError
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED:
+		return constants.ErrL5ActuatorRehydrate
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID:
 		return constants.ErrInferenceGenerationOptionsInvalid
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED:
@@ -1095,6 +1102,7 @@ func (r *DispatchResult) GovernedDispatchResult() *operatorv1.GovernedDispatchRe
 		InferenceResult:     r.InferenceResult,
 		Receipt:             r.Receipt,
 		ConsensusInferences: r.ConsensusInferences,
+		RequestEnvelope:     r.RequestEnvelope,
 	}
 	if r.ResultEnvelope != nil {
 		out.EventType = r.ResultEnvelope.GetEventType()
@@ -1221,7 +1229,7 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Extract the requestor's user ID from the mTLS identity context.
-	requestorUserID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	requestorUserID := serviceauth.RequestorUserID(r.Context())
 	actingAppID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		c.logger.Warn("dispatch: clear response deadline", logging.ErrorKind(err))
@@ -1245,13 +1253,22 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		// Dispatch errors can embed command lines, paths and doctrine violations. The
 		// caller receives the signed rejection receipt or the typed sentinel, never
-		// the wrapped chain.
-		c.logger.Error("dispatch: command dispatch failed", logging.ErrorKind(err))
+		// the wrapped chain. The log carries the status and typed code instead, so
+		// the failure is named without its content (INV-STOR-LOG-01).
 		status, refusal := dispatchErrorCode(err)
 		if rejection := governance.RejectionResponse(err); rejection != nil {
+			c.logger.Error("dispatch: command dispatch failed",
+				slog.Int("status", status),
+				slog.String("transaction_id", rejection.GetReceipt().GetTransactionId()),
+				slog.String("rejection_code", rejection.GetReceipt().GetRejectionCode().String()),
+				logging.ErrorKind(err))
 			c.responder.ProtoJSONCanonical(w, status, rejection)
 			return
 		}
+		c.logger.Error("dispatch: command dispatch failed",
+			slog.Int("status", status),
+			slog.String("refusal_code", refusal.GetCode().String()),
+			logging.ErrorKind(err))
 		c.responder.ProtoJSONCanonical(w, status, refusal)
 		return
 	}

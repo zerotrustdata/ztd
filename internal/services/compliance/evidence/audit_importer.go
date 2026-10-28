@@ -9,7 +9,6 @@ package evidence
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -78,7 +77,7 @@ func (i *AuditRecordImporter) Import(ctx context.Context) ([]EvidenceNode, error
 
 func validAuditRecordBinding(binding AuditRecordImportBinding) error {
 	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.AuditRecordReferencePrefix); !referenceValid {
-		return errors.New("content reference is invalid")
+		return fmt.Errorf("content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := ValidateRelativePath(binding.Path); err != nil {
 		return err

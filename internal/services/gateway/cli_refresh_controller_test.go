@@ -331,9 +331,7 @@ func TestCLIRefreshController_Refresh_PrefersRegistryActiveDataOperator(t *testi
 	require.NoError(t, err)
 	require.NotNil(t, newDoc)
 	var newSession models.CLISession
-	dataBytes, err := json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
+	require.NoError(t, newDoc.DecodeData(&newSession))
 	assert.Equal(t, activeSessionID, newSession.OperatorSessionID,
 		"new CLI session must bind to registry-active data operator")
 	assert.Equal(t, activeSessionID, resp.OperatorSessionID)
@@ -442,9 +440,7 @@ func TestCLIRefreshController_Refresh_UnboundOldSession_BindsEmbedded(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, newDoc)
 	var newSession models.CLISession
-	dataBytes, err := json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
+	require.NoError(t, newDoc.DecodeData(&newSession))
 	assert.Equal(t, "embedded-sess-refresh", newSession.OperatorSessionID,
 		"new session persists the recovered embedded binding")
 }

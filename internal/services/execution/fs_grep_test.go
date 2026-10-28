@@ -11,10 +11,13 @@ package execution
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -215,5 +218,92 @@ func TestFsGrepService_HiddenRootAndSensitiveFiles(t *testing.T) {
 		t.Parallel()
 		_, err := service.SearchFile(ctx, &models.FsGrepRequest{Path: privateKey, Pattern: "needle"})
 		require.ErrorIs(t, err, constants.ErrSensitivePath)
+	})
+}
+
+// grepWithin runs one directory search and fails the test if it does not
+// return within the bound, so a blocking read surfaces as a failure rather
+// than a hung suite.
+func grepWithin(t *testing.T, service *FsGrepService, req *models.FsGrepRequest) (*models.FsGrepResult, error) {
+	t.Helper()
+	type outcome struct {
+		result *models.FsGrepResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := service.SearchDirectory(context.Background(), req)
+		done <- outcome{result, err}
+	}()
+	select {
+	case got := <-done:
+		return got.result, got.err
+	case <-time.After(5 * time.Second):
+		t.Fatal("search_directory did not return; a non-regular file blocked the walk")
+		return nil, nil
+	}
+}
+
+func TestFsGrepService_SkipsNonRegularFiles(t *testing.T) {
+	t.Parallel()
+	workDir := testutil.TempDir(t)
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "app.log"), []byte("needle\n"), 0644))
+	fifo := filepath.Join(workDir, "pipe")
+	require.NoError(t, syscall.Mkfifo(fifo, constants.PermFilePrivate))
+	require.NoError(t, os.Symlink(fifo, filepath.Join(workDir, "pipe-link")))
+
+	service, err := NewFsGrepService(workDir, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	result, err := grepWithin(t, service, &models.FsGrepRequest{Path: workDir, Pattern: "needle"})
+	require.NoError(t, err)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+	require.Equal(t, 1, result.TotalMatches)
+	assert.Equal(t, "app.log", filepath.Base(result.Matches[0].Path))
+	assert.False(t, result.Truncated)
+}
+
+func TestFsGrepService_WalkBoundsTruncate(t *testing.T) {
+	t.Parallel()
+	workDir := testutil.TempDir(t)
+	for i := range 10 {
+		require.NoError(t, os.WriteFile(filepath.Join(workDir, fmt.Sprintf("file-%02d.log", i)), []byte("needle\n"), 0644))
+	}
+
+	t.Run("entry bound", func(t *testing.T) {
+		t.Parallel()
+		service, err := NewFsGrepService(workDir, slog.New(slog.DiscardHandler))
+		require.NoError(t, err)
+		service.maxWalkEntries = 4 // the root plus three files
+
+		result, err := grepWithin(t, service, &models.FsGrepRequest{Path: workDir, Pattern: "needle"})
+		require.NoError(t, err)
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+		assert.True(t, result.Truncated)
+		assert.Equal(t, 3, result.TotalMatches)
+	})
+
+	t.Run("duration bound", func(t *testing.T) {
+		t.Parallel()
+		service, err := NewFsGrepService(workDir, slog.New(slog.DiscardHandler))
+		require.NoError(t, err)
+		service.maxWalkDuration = 0
+
+		result, err := grepWithin(t, service, &models.FsGrepRequest{Path: workDir, Pattern: "needle"})
+		require.NoError(t, err)
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+		assert.True(t, result.Truncated)
+		assert.Zero(t, result.TotalMatches)
+	})
+
+	t.Run("default bounds leave a small tree untruncated", func(t *testing.T) {
+		t.Parallel()
+		service, err := NewFsGrepService(workDir, slog.New(slog.DiscardHandler))
+		require.NoError(t, err)
+
+		result, err := grepWithin(t, service, &models.FsGrepRequest{Path: workDir, Pattern: "needle"})
+		require.NoError(t, err)
+		assert.False(t, result.Truncated)
+		assert.Equal(t, 10, result.TotalMatches)
 	})
 }

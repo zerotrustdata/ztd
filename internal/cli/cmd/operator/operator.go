@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/cli/stream"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/ollama"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -39,17 +40,20 @@ import (
 )
 
 type operatorListEntry struct {
-	OperatorID                 string                         `json:"operator_id"`
-	OperatorSessionID          string                         `json:"operator_session_id"`
-	OperatorType               constants.OperatorType         `json:"operator_type"`
-	OperatorCapabilities       constants.OperatorCapabilities `json:"operator_capabilities"`
-	Status                     constants.OperatorStatus       `json:"status"`
-	Component                  constants.ComponentName        `json:"component"`
-	Hostname                   string                         `json:"hostname,omitempty"`
-	Name                       string                         `json:"name,omitempty"`
-	LastHeartbeatAt            *time.Time                     `json:"last_heartbeat_at,omitempty"`
-	InferenceOllamaEndpoint    string                         `json:"inference_ollama_endpoint,omitempty"`
-	ProvenanceModelStorageRoot string                         `json:"provenance_operator_model_storage_root,omitempty"`
+	OperatorID                   string                         `json:"operator_id"`
+	OperatorSessionID            string                         `json:"operator_session_id"`
+	OperatorType                 constants.OperatorType         `json:"operator_type"`
+	OperatorCapabilities         constants.OperatorCapabilities `json:"operator_capabilities"`
+	Status                       constants.OperatorStatus       `json:"status"`
+	Component                    constants.ComponentName        `json:"component"`
+	Hostname                     string                         `json:"hostname,omitempty"`
+	Name                         string                         `json:"name,omitempty"`
+	LastHeartbeatAt              *time.Time                     `json:"last_heartbeat_at,omitempty"`
+	InferenceOllamaEndpoint      string                         `json:"inference_ollama_endpoint,omitempty"`
+	InferenceLlamaCppEndpoint    string                         `json:"inference_llamacpp_endpoint,omitempty"`
+	InferenceLlamaCppModelRoot   string                         `json:"inference_llamacpp_model_root,omitempty"`
+	ProvenanceModelStorageRoot   string                         `json:"provenance_operator_model_storage_root,omitempty"`
+	ProvenanceModelStorageFormat string                         `json:"provenance_operator_model_storage_format,omitempty"`
 }
 
 type operatorListOutput struct {
@@ -107,7 +111,7 @@ func operatorOllamaEndpoint(cmd *cobra.Command) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("operator: model maintenance: %w", err)
 	}
-	endpoint := config.InferenceOllamaEndpoint(raw)
+	endpoint := config.InferenceOllamaEndpoint(raw, "")
 	if endpoint == "" {
 		return "", fmt.Errorf("operator: model maintenance: %w", constants.ErrInferenceEndpointInvalid)
 	}
@@ -128,7 +132,10 @@ func operatorModelPullCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("operator: pull model: %w", err)
 			}
-			client := ollama.NewClient(base, &http.Client{Timeout: inference.ProviderRequestTimeout})
+			client := ollama.NewClient(base, &http.Client{
+				Timeout:   inference.ProviderRequestTimeout,
+				Transport: httpclient.NewIPv4Transport(nil),
+			})
 			if err := client.Pull(cmd.Context(), args[0], nil); err != nil {
 				return fmt.Errorf("operator: pull model: %w", err)
 			}
@@ -151,7 +158,10 @@ func operatorModelCopyCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("operator: copy model: %w", err)
 			}
-			client := ollama.NewClient(base, &http.Client{Timeout: inference.ProviderRequestTimeout})
+			client := ollama.NewClient(base, &http.Client{
+				Timeout:   inference.ProviderRequestTimeout,
+				Transport: httpclient.NewIPv4Transport(nil),
+			})
 			if err := client.Copy(cmd.Context(), args[0], args[1]); err != nil {
 				return fmt.Errorf("operator: copy model: %w", err)
 			}
@@ -281,7 +291,10 @@ func operatorListCmdWithConfig(configLoader func(string) (*config.Config, error)
 					}
 					if op.RuntimeConfig != nil {
 						entry.InferenceOllamaEndpoint = op.RuntimeConfig.InferenceOllamaEndpoint
+						entry.InferenceLlamaCppEndpoint = op.RuntimeConfig.InferenceLlamacppEndpoint
+						entry.InferenceLlamaCppModelRoot = op.RuntimeConfig.InferenceLlamacppModelRoot
 						entry.ProvenanceModelStorageRoot = op.RuntimeConfig.ProvenanceOperatorModelStorageRoot
+						entry.ProvenanceModelStorageFormat = op.RuntimeConfig.ProvenanceOperatorModelStorageFormat
 					}
 					entries = append(entries, entry)
 				}
@@ -324,6 +337,8 @@ func operatorStartCmd() *cobra.Command {
 	var gatewayHTTPSPort int
 	var capabilities constants.OperatorCapabilities
 	var inferenceOllamaEndpoint string
+	var inferenceLlamaCppEndpoint string
+	var inferenceLlamaCppModelRoot string
 	var inferenceKeepAlive string
 	var inferenceAllowHostedDecision bool
 	var inferenceDecisionModels []string
@@ -331,6 +346,7 @@ func operatorStartCmd() *cobra.Command {
 	var providerBoundaryObserverID string
 	var provenanceOperatorID string
 	var provenanceOperatorModelStorageRoot string
+	var provenanceOperatorModelStorageFormat string
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -367,14 +383,17 @@ func operatorStartCmd() *cobra.Command {
 				CloudMode:                    cloud,
 				CloudProvider:                provider,
 				HeartbeatInterval:            time.Duration(heartbeatInterval) * time.Second,
-				InferenceOllamaEndpoint:      config.InferenceOllamaEndpoint(inferenceOllamaEndpoint),
+				InferenceOllamaEndpoint:      config.InferenceOllamaEndpoint(inferenceOllamaEndpoint, inferenceLlamaCppEndpoint),
+				InferenceLlamaCppEndpoint:    inferenceLlamaCppEndpoint,
+				InferenceLlamaCppModelRoot:   inferenceLlamaCppModelRoot,
 				InferenceAllowHostedDecision: inferenceAllowHostedDecision,
 				InferenceDecisionModels:      inferenceDecisionModels, InferenceDecisionOnly: inferenceDecisionOnly,
 				InferenceKeepAlive:         inferenceKeepAlive,
 				ProviderBoundaryObserverID: providerBoundaryObserverID,
 
-				ProvenanceOperatorID:               provenanceOperatorID,
-				ProvenanceOperatorModelStorageRoot: provenanceOperatorModelStorageRoot,
+				ProvenanceOperatorID:                 provenanceOperatorID,
+				ProvenanceOperatorModelStorageRoot:   provenanceOperatorModelStorageRoot,
+				ProvenanceOperatorModelStorageFormat: provenanceOperatorModelStorageFormat,
 			}
 
 			// Run operator (this blocks until shutdown)
@@ -395,16 +414,19 @@ func operatorStartCmd() *cobra.Command {
 	cmd.Flags().IntVar(&gatewayHTTPSPort, "gateway-https-port", 0, "Gateway HTTPS/mTLS port to dial (default: platform default)")
 
 	// Inference (ztdllama) flags. Enable when the operator runs as an
-	// Inference Node calling the configured remote Ollama provider.
+	// Inference Node calling the configured Ollama or llama.cpp provider.
 	cmd.Flags().Var(&capabilities, "capabilities", "Comma-separated operator capabilities: data,inference,provenance,observer (repeatable; default: data)")
 	cmd.Flags().StringVar(&inferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Remote Ollama provider endpoint (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
+	cmd.Flags().StringVar(&inferenceLlamaCppEndpoint, "inference-llamacpp-endpoint", "", "llama.cpp llama-server router endpoint; selects the llama.cpp provider instead of Ollama")
+	cmd.Flags().StringVar(&inferenceLlamaCppModelRoot, "inference-llamacpp-model-root", "", "llama-server --models-dir as seen by this Operator; served GGUF files are hashed from it (required with --inference-llamacpp-endpoint)")
 	cmd.Flags().StringSliceVar(&inferenceDecisionModels, "decision-model", nil, "Decision models this Operator is provisioned to serve (repeat or comma-separate)")
 	cmd.Flags().BoolVar(&inferenceDecisionOnly, "decision-only", false, "Reserve this Inference Operator for decisions and exclude it from campaign/chat routing")
 	cmd.Flags().BoolVar(&inferenceAllowHostedDecision, "allow-hosted-decision", false, "Allow decision requests to use hosted Jev with the runtime vault credential")
-	cmd.Flags().StringVar(&inferenceKeepAlive, "inference-keep-alive", "", fmt.Sprintf("Ollama keep-alive duration (default: %s for infinite)", constants.InferenceDefaultKeepAlive))
+	cmd.Flags().StringVar(&inferenceKeepAlive, "inference-keep-alive", "", fmt.Sprintf("Provider keep-alive duration (default: %s for infinite; llama.cpp accepts -1 or 0)", constants.InferenceDefaultKeepAlive))
 	cmd.Flags().StringVar(&providerBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity pseudonym")
 	cmd.Flags().StringVar(&provenanceOperatorID, "provenance-operator-id", "", "Stable provenance operator identity pseudonym")
-	cmd.Flags().StringVar(&provenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory containing content-addressed model weight blobs (for example ~/.ollama/models)")
+	cmd.Flags().StringVar(&provenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory of the model weight store (for example ~/.ollama/models or a llama-server --models-dir)")
+	cmd.Flags().StringVar(&provenanceOperatorModelStorageFormat, "model-storage-format", "", "Model store layout under --model-storage-root: ollama (default) or llamacpp")
 
 	return cmd
 }

@@ -7,6 +7,8 @@
 
 package constants
 
+import "time"
+
 // System paths (Unix) for critical system directories and files.
 const (
 	PathEtc                                                   = "/etc"
@@ -348,6 +350,7 @@ const (
 	// Gateway-specific filenames
 	GatewayIDFilename       = "gateway-id"
 	ActuatorPubJSONFilename = "Actuator_pub.json"
+	AuditorPubJSONFilename  = "Auditor_pub.json"
 	NetworkIdentityFilename = "network-identity.json"
 
 	// Operator-specific filenames
@@ -538,6 +541,18 @@ const (
 	FsGrepMaxMatches            = 500
 	FsGrepScannerInitialBufSize = 64 * 1024
 	FsGrepScannerMaxBufSize     = 1024 * 1024
+	// FsGrepMaxWalkEntries and FsGrepMaxWalkDuration bound one grep walk; a
+	// search rooted at a large tree such as / stops there with a truncated
+	// result instead of running until the caller's deadline.
+	FsGrepMaxWalkEntries  = 50000
+	FsGrepMaxWalkDuration = 15 * time.Second
+
+	// FsDiskProfileMaxEntries bounds the entries one disk profile lists, and
+	// FsDiskProfileMaxWalkEntries and FsDiskProfileMaxWalkDuration bound its
+	// walk. A profile that reaches a bound returns a truncated result.
+	FsDiskProfileMaxEntries      = 500
+	FsDiskProfileMaxWalkEntries  = 50000
+	FsDiskProfileMaxWalkDuration = 15 * time.Second
 
 	ExecutionMaxStreamSize = 10 * 1024 * 1024 // 10MB per stream
 	ExecutionMaxLines      = 50               // Max lines for terminal output preview
@@ -639,6 +654,9 @@ const (
 	ReleaseEvidenceMarkdownSuffix = "-compliance-evidence.md"
 	ReleaseEvidenceCSVSuffix      = "-compliance-evidence.csv"
 )
+
+// EvaluationFormationCatalogPath is relative to the project root, outside runtime state.
+const EvaluationFormationCatalogPath = EvaluationDirname + "/formation-catalog.json"
 
 // Evidence verifier identities, reference prefixes, collection limits, and
 // attestation metadata. These describe runtime evidence handling, distinct

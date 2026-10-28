@@ -201,6 +201,27 @@ func IsHeterogeneousAssignment(assignment *evalv1.EvaluationAssignment) bool {
 	return ok && heterogeneous.Heterogeneous != nil && heterogeneous.Heterogeneous.GetStack() != nil
 }
 
+// AssignmentDesignatedRole returns the model role one assignment executes,
+// verifies, and projects under: the designated role its homogeneous or
+// heterogeneous target declares. A nil assignment, a target without a role, or an
+// UNSPECIFIED or unknown role fails closed; there is no PRIMARY default.
+func AssignmentDesignatedRole(assignment *evalv1.EvaluationAssignment) (evalv1.ModelCampaignRole, error) {
+	var role evalv1.ModelCampaignRole
+	switch {
+	case assignment.GetHomogeneous() != nil:
+		role = assignment.GetHomogeneous().GetDesignatedRole()
+	case assignment.GetHeterogeneous() != nil:
+		role = assignment.GetHeterogeneous().GetDesignatedRole()
+	}
+	if role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED {
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED, fmt.Errorf("evaluation: assignment designated role: %w", constants.ErrMissingRequiredField)
+	}
+	if _, err := modelCampaignRoleLabel(role); err != nil {
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED, fmt.Errorf("evaluation: assignment designated role: %w", err)
+	}
+	return role, nil
+}
+
 // HeterogeneousStackFromAssignment returns the frozen stack binding for one
 // system-lane assignment.
 func HeterogeneousStackFromAssignment(assignment *evalv1.EvaluationAssignment) (*evalv1.HeterogeneousStackDefinition, error) {

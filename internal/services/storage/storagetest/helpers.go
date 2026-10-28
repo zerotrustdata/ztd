@@ -76,7 +76,7 @@ func NewTestEventsStore(t *testing.T, sessionIDs ...string) *storage.LocalFirstE
 	testVault := CreateTestVault(t, fileSvc.Resolve(constants.VaultDirname), key)
 
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirStandard))
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

@@ -358,6 +358,11 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		return nil, "", "", "", "", "", fmt.Errorf("operator actuator key: %w", err)
 	}
 	actuatorKeyHex := hex.EncodeToString(actuatorPub)
+	auditorPub, err := req.Operator.AuditorKey()
+	if err != nil {
+		return nil, "", "", "", "", "", fmt.Errorf("operator auditor key: %w", err)
+	}
+	auditorKeyHex := hex.EncodeToString(auditorPub)
 	if err := h.refuseActuatorKeyChange(ctx, operatorID, actuatorKeyHex); err != nil {
 		return nil, "", "", "", "", "", err
 	}
@@ -404,6 +409,8 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		// verify against it alone (SignerStoreService.ReceiptSignerKey in the Gateway).
 		ActuatorPublicKey: actuatorKeyHex,
 		ActuatorKeyId:     actuatorKeyHex,
+		AuditorPublicKey:  auditorKeyHex,
+		AuditorKeyId:      auditorKeyHex,
 		Claimed:           true,
 		ClaimedAt:         timestamppb.New(now),
 		CreatedAt:         timestamppb.New(now),
@@ -684,12 +691,8 @@ func (h *PlatformEnrollmentHandler) persistAppSigningKey(ctx context.Context, re
 		return fmt.Errorf("platform enrollment: read signing key: %w", err)
 	}
 	if existing != nil {
-		data, err := json.Marshal(existing.Data)
-		if err != nil {
-			return fmt.Errorf("platform enrollment: marshal existing signing key: %w", err)
-		}
 		var signer models.TrustedSigner
-		if err := json.Unmarshal(data, &signer); err != nil {
+		if err := existing.DecodeData(&signer); err != nil {
 			return fmt.Errorf("platform enrollment: decode existing signing key: %w", err)
 		}
 		if signer.PublicKey != hex.EncodeToString(key) || !signer.Enabled {
@@ -751,11 +754,7 @@ func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSu
 		}
 		if boundDoc != nil {
 			var boundPolicy models.ConsensusPolicy
-			bData, err := json.Marshal(boundDoc.Data)
-			if err != nil {
-				return "", fmt.Errorf("platform enrollment: marshal consensus binding for revocation: %w", err)
-			}
-			if err := json.Unmarshal(bData, &boundPolicy); err != nil {
+			if err := boundDoc.DecodeData(&boundPolicy); err != nil {
 				return "", fmt.Errorf("platform enrollment: decode consensus binding for revocation: %w", err)
 			}
 			isMember := false
@@ -972,12 +971,8 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		if appDoc == nil {
 			return "", constants.ErrConsensusAppNotEnrolled
 		}
-		policyData, err := json.Marshal(appDoc.Data)
-		if err != nil {
-			return "", fmt.Errorf("platform enrollment: marshal app policy: %w", err)
-		}
 		var appPolicy models.AppPolicy
-		if err := json.Unmarshal(policyData, &appPolicy); err != nil {
+		if err := appDoc.DecodeData(&appPolicy); err != nil {
 			return "", fmt.Errorf("platform enrollment: decode app policy: %w", err)
 		}
 		if appPolicy.OwnerUserID != actorUserID {
@@ -990,12 +985,8 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		if signerDoc == nil {
 			return "", constants.ErrConsensusAppMissingSignerKey
 		}
-		signerData, err := json.Marshal(signerDoc.Data)
-		if err != nil {
-			return "", fmt.Errorf("platform enrollment: marshal trusted signer: %w", err)
-		}
 		var signer models.TrustedSigner
-		if err := json.Unmarshal(signerData, &signer); err != nil {
+		if err := signerDoc.DecodeData(&signer); err != nil {
 			return "", fmt.Errorf("platform enrollment: decode trusted signer: %w", err)
 		}
 		key, err := hex.DecodeString(signer.PublicKey)
@@ -1004,9 +995,19 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		}
 	}
 
+	var bindingVersion int64 = 1
+	existingDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err == nil && existingDoc != nil {
+		var prevPolicy models.ConsensusPolicy
+		if err := existingDoc.DecodeData(&prevPolicy); err == nil && prevPolicy.BindingVersion > 0 {
+			bindingVersion = prevPolicy.BindingVersion + 1
+		}
+	}
+
 	now := time.Now().UTC()
 	consensusDoc := models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
+		BindingVersion:  bindingVersion,
 		AppID:           appID,
 		MemberAppIDs:    append([]string(nil), spec.MemberAppIDs...),
 		Quorum:          spec.Quorum,
@@ -1037,6 +1038,55 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		return fmt.Sprintf("platform enrollment bind_consensus provider=%s app_id=%s quorum=%d actor=%s", spec.Provider, appID, spec.Quorum, actorUserID), nil
 	}
 	return fmt.Sprintf("platform enrollment bind_consensus provider=%s app_id=%s endpoint=%s actor=%s", spec.Provider, appID, spec.EndpointURL, actorUserID), nil
+}
+
+// HandleUnbindConsensus clears the Gateway consensus application binding.
+func (h *PlatformEnrollmentHandler) HandleUnbindConsensus(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("platform enrollment: unbind consensus context: %w", err)
+	}
+	payload, err := h.decodePayload(msg)
+	if err != nil {
+		return "", err
+	}
+	actorUserID := strings.TrimSpace(payload.GetActorUserId())
+	if actorUserID == "" {
+		return "", constants.ErrPlatformEnrollmentInvalidDecision
+	}
+
+	existingDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: check existing consensus: %w", err)
+	}
+	if existingDoc == nil {
+		return "", constants.ErrConsensusBindingNotFound
+	}
+	var existingPolicy models.ConsensusPolicy
+	if err := existingDoc.DecodeData(&existingPolicy); err != nil {
+		return "", fmt.Errorf("platform enrollment: decode existing consensus: %w", err)
+	}
+	if !existingPolicy.Enabled {
+		return "", constants.ErrConsensusBindingNotFound
+	}
+
+	now := time.Now().UTC()
+	existingPolicy.Enabled = false
+	existingPolicy.BindingVersion = existingPolicy.BindingVersion + 1
+	existingPolicy.UpdatedAt = now
+
+	data, err := json.Marshal(existingPolicy)
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: marshal consensus unbind: %w", err)
+	}
+	if err := h.deps.DocStore.DocSet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding), data); err != nil {
+		return "", fmt.Errorf("platform enrollment: persist consensus unbind: %w", err)
+	}
+
+	h.logger.Info("platform enrollment consensus unbound",
+		"actor_user_id", actorUserID,
+		"binding_version", existingPolicy.BindingVersion)
+	return fmt.Sprintf("platform enrollment unbind_consensus app_id=%s version=%d actor=%s",
+		existingPolicy.PrimaryAppID(), existingPolicy.BindingVersion, actorUserID), nil
 }
 
 // sessionExists reports whether a session document is already persisted.

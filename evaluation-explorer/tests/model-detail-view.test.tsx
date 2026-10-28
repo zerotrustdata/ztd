@@ -74,4 +74,22 @@ describe('ModelDetailView', () => {
     expect(identity.getByText('8.00 GiB (8,589,934,592 bytes)')).toBeInTheDocument();
     expect(identity.getByText('4,096 tokens (4K)')).toBeInTheDocument();
   });
+
+  it('labels a Nemotron model as NVIDIA even when its frozen architecture is gemma4', () => {
+    const nemotron = {
+      ...model,
+      variant_id: 'hf-co-nvidia-nvidia-nemotron-3-5-bolt-e4b-4gb-q4-k-m',
+      display_name: 'NVIDIA Nemotron 3.5 Bolt E4B',
+      served_model_tag: 'hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M',
+      model_family: 'gemma4',
+    };
+    evalStore.loadFixtures([nemotron, run], []);
+    render(<MemoryRouter initialEntries={[`/models/${nemotron.dataset_id}/${nemotron.variant_id}?role=${nemotron.role}`]}><Routes><Route path="/models/:datasetId/:variantId" element={<ModelDetailView />} /></Routes></MemoryRouter>);
+    const hero = screen.getByRole('heading', { level: 1, name: nemotron.display_name }).closest('header')!;
+    expect(hero).toHaveTextContent('Model · Nemotron');
+    expect(within(hero).getByText('NVIDIA', { exact: true })).toBeInTheDocument();
+    expect(hero).not.toHaveTextContent('Gemma');
+    expect(hero).not.toHaveTextContent('Google');
+    expect(hero).toHaveTextContent(nemotron.served_model_tag);
+  });
 });

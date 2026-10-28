@@ -61,7 +61,7 @@ func (t *Tracker) Begin(_ context.Context, command *evalv1.ModelProvenanceObserv
 		return fmt.Errorf("model provenance tracker: begin: invalid phase")
 	}
 	if command.GetServedModelTag() == "" || command.GetExpectedModelDigest() == "" {
-		return fmt.Errorf("model provenance tracker: begin: missing model binding")
+		return fmt.Errorf("model provenance tracker: begin: missing model binding: %w", constants.ErrMissingRequiredField)
 	}
 
 	t.mu.Lock()
@@ -99,7 +99,7 @@ func (t *Tracker) Finalize(ctx context.Context, command *evalv1.ModelProvenanceO
 		expectedDigest = command.GetExpectedModelDigest()
 	}
 	if servedModelTag == "" || expectedDigest == "" {
-		return nil, fmt.Errorf("model provenance tracker: finalize: missing model binding")
+		return nil, fmt.Errorf("model provenance tracker: finalize: missing model binding: %w", constants.ErrMissingRequiredField)
 	}
 
 	if err := ctx.Err(); err != nil {

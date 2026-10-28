@@ -15,7 +15,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -204,7 +204,7 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 
 	g := &GatewayService{
 		posture:         constants.PostureDoctrine,
-		logger:          slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		logger:          testutil.NewTestLogger(),
 		maxPayloadBytes: 10 * 1024 * 1024,
 		maxFailures:     3, // Lower threshold for faster test
 		// Long enough that a slow runner cannot lapse it between the third
@@ -332,7 +332,7 @@ func TestNativeToolExecutionIntegration(t *testing.T) {
 	pubKey, privKey, _ := ed25519.GenerateKey(nil)
 	_ = pubKey
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := testutil.NewTestLogger()
 	processor := &fakeEnvelopeProcessor{
 		receipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-native-1",
@@ -413,7 +413,7 @@ func TestReadFieldIntegration(t *testing.T) {
 	pubKey, privKey, _ := ed25519.GenerateKey(nil)
 	_ = pubKey
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := testutil.NewTestLogger()
 	fieldPathRegistry, err := NewFieldPathRegistry(logger)
 	require.NoError(t, err, "Failed to initialize field path registry")
 
@@ -470,7 +470,7 @@ func TestReadFieldIntegration(t *testing.T) {
 // (DispatchToDownstream), so they cannot be tested via callTool with a fake processor.
 func TestHandleReadField(t *testing.T) {
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := testutil.NewTestLogger()
 	fieldPathRegistry, err := NewFieldPathRegistry(logger)
 	require.NoError(t, err)
 

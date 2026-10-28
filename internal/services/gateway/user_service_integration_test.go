@@ -42,10 +42,8 @@ func TestUserService_CreateUser_Integration(t *testing.T) {
 		organization, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOrganizations), newUser.OrganizationID)
 		require.NoError(t, err)
 		require.NotNil(t, organization)
-		organizationData, err := json.Marshal(organization.ForWire())
-		require.NoError(t, err)
 		var organizationRecord models.Organization
-		require.NoError(t, json.Unmarshal(organizationData, &organizationRecord))
+		require.NoError(t, organization.DecodeWire(&organizationRecord))
 		require.Equal(t, newUser.OrganizationID, organizationRecord.ID)
 		require.Equal(t, newUser.ID, organizationRecord.OwnerUserID)
 		require.Equal(t, []string{newUser.ID}, organizationRecord.MemberUserIDs)
@@ -93,7 +91,7 @@ func TestUserService_Disable_Integration(t *testing.T) {
 		require.Len(t, results, 1)
 
 		var auditEntry models.AdminAuditEntry
-		err = json.Unmarshal(mustMarshal(t, results[0].ForWire()), &auditEntry)
+		err = results[0].DecodeWire(&auditEntry)
 		require.NoError(t, err)
 		require.NotNil(t, auditEntry.Details)
 		require.Equal(t, "test_reason", auditEntry.Details.Reason)
@@ -367,11 +365,4 @@ func TestUserService_docToUser_Integration(t *testing.T) {
 		_, err = userSvc.docToUser(malformedDoc)
 		require.Error(t, err)
 	})
-}
-
-func mustMarshal(t *testing.T, v any) []byte {
-	t.Helper()
-	b, err := json.Marshal(v)
-	require.NoError(t, err)
-	return b
 }

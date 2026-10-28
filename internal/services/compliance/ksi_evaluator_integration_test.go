@@ -80,7 +80,7 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 
 	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirStandard))
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), logger)
+	mainDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { mainDB.Close() })
 
@@ -107,11 +107,13 @@ func newIntegrationEvaluatorFixture(t *testing.T) *integrationEvaluatorFixture {
 
 	return &integrationEvaluatorFixture{
 		deps: EvaluatorDeps{
-			Audit:       eventsStore,
-			Ledger:      ledger,
-			Commitments: commitments,
-			History:     history,
-			Graders:     graders,
+			AuditorTrust:  governance.NewPinnedSignerSource(privKey.Public().(ed25519.PublicKey)),
+			ActuatorTrust: governance.NewPinnedSignerSource(privKey.Public().(ed25519.PublicKey)),
+			Audit:         eventsStore,
+			Ledger:        ledger,
+			Commitments:   commitments,
+			History:       history,
+			Graders:       graders,
 		},
 		eventsStore: eventsStore,
 		ledger:      ledger,

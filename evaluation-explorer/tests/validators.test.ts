@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ValidationError,
   isCatalogSnapshot,
+  isAssignmentResult,
   isModelSummary,
   isSuiteSummary,
   isFeedSnapshot,
@@ -68,6 +69,19 @@ describe('isCatalogSnapshot', () => {
     expect(() => isCatalogSnapshot(bad)).toThrow(ValidationError);
   });
 
+});
+
+describe('public string validation', () => {
+  it('retains UTF-8 byte limits and control-character rejection', () => {
+    const assignment = fixtureAssignmentResults[0];
+    expect(assignment).toBeDefined();
+    const current = { ...assignment, schema_version: '1.4.0' as const };
+    expect(() => isAssignmentResult({ ...current, tools_declared: ['café 🧪'] })).not.toThrow();
+    for (const control of ['\u0000', '\u001f', '\u007f']) {
+      expect(() => isAssignmentResult({ ...current, tools_declared: [`bad${control}text`] })).toThrow(ValidationError);
+    }
+    expect(() => isAssignmentResult({ ...current, tools_declared: ['🧪'.repeat(33)] })).toThrow(ValidationError);
+  });
 });
 
 describe('isModelSummary', () => {
@@ -224,7 +238,7 @@ describe('proof catalog contract', () => {
         classification: 'public_safe',
         campaign_id: 'campaign-1',
         generated_at: '2026-09-20T00:00:00Z',
-        verification_command: 'ztd public verify-assignment --db assignment.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>',
+        verification_command: 'ztd public verify-assignment --db assignment.db --segments proof-segments.jsonl',
         immutable_url: `/proofs/${artifactID}`,
       }],
     })).not.toThrow();
@@ -243,7 +257,7 @@ describe('proof catalog contract', () => {
         classification: 'public_safe',
         campaign_id: 'campaign-1',
         generated_at: '2026-09-20T00:00:00Z',
-        verification_command: 'ztd public verify-assignment --db assignment.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>',
+        verification_command: 'ztd public verify-assignment --db assignment.db --segments proof-segments.jsonl',
         immutable_url: '/proofs/deadbeef',
       }],
     })).toThrow(ValidationError);

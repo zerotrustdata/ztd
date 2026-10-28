@@ -86,6 +86,20 @@ describe('normalizeHistoryItem', () => {
     expect(() => normalizeHistoryItem(null)).toThrow();
   });
 
+  it('defers payload serialization until record_bytes is read', () => {
+    let serializations = 0;
+    const item = historyItem({
+      kind: 'catalog_snapshot',
+      dataset_id: 'lazy-history',
+      payload: { toJSON: () => { serializations++; return 'encoded'; } },
+    }, 5, 'projection') as Record<string, unknown>;
+
+    const record = normalizeHistoryItem(item);
+    expect(serializations).toBe(0);
+    expect(JSON.parse(record.record_bytes).payload).toBe('encoded');
+    expect(serializations).toBe(1);
+  });
+
   it('preserves a native evaluation payload through mirror history normalization', () => {
     const record = normalizeHistoryItem(historyItem(nativeEvaluation, 11));
     expect(JSON.parse(record.record_bytes)).toEqual(nativeEvaluation);
@@ -110,6 +124,20 @@ describe('normalizeRecentProjection', () => {
 
   it('rejects non-object input', () => {
     expect(() => normalizeRecentProjection(42)).toThrow();
+  });
+
+  it('defers payload serialization until record_bytes is read', () => {
+    let serializations = 0;
+    const item = bootstrapItem({
+      kind: 'catalog_snapshot',
+      dataset_id: 'lazy-bootstrap',
+      payload: { toJSON: () => { serializations++; return 'encoded'; } },
+    }, 3) as Record<string, unknown>;
+
+    const record = normalizeRecentProjection(item);
+    expect(serializations).toBe(0);
+    expect(JSON.parse(record.record_bytes).payload).toBe('encoded');
+    expect(serializations).toBe(1);
   });
 });
 

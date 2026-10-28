@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -22,7 +23,18 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/reporting"
 )
 
+type fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)
+type keystoreFactory func(fileSvc fs.RuntimeFileService) (*keystore.Keystore, error)
+
+func openKeystore(fileSvc fs.RuntimeFileService) (*keystore.Keystore, error) {
+	return keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{})
+}
+
 func Cmd() *cobra.Command {
+	return cmdWithConfig(shared.NewFileSvc, openKeystore)
+}
+
+func cmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "report",
 		Aliases: []string{"reports"},
@@ -34,8 +46,8 @@ the commitment hash chain, and the git merkle root.`,
 	}
 
 	cmd.AddCommand(
-		reportAllCmd(),
-		reportVerifyCmd(),
+		reportAllCmdWithConfig(newFileSvc, newKeystore),
+		reportVerifyCmdWithConfig(newFileSvc, newKeystore),
 	)
 
 	return cmd
@@ -55,7 +67,7 @@ func (f *reportFlags) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.ledgerDir, "ledger-dir", "", "Ledger base directory (default: <runtime-dir>/data/ledger)")
 }
 
-func (f *reportFlags) resolveOptions() (reporting.Options, error) {
+func (f *reportFlags) resolveOptions(newFileSvc fileSvcFactory, newKeystore keystoreFactory) (reporting.Options, error) {
 	runtimeDir := f.runtimeDir
 	if runtimeDir == "" {
 		runtimeDir = paths.Infra.RuntimeDir
@@ -84,14 +96,14 @@ func (f *reportFlags) resolveOptions() (reporting.Options, error) {
 		outDir = filepath.Join(constants.ReportsDirname, time.Now().UTC().Format("2006-01-02T150405Z"))
 	}
 
-	fileSvc, err := fs.NewRuntimeFileService(baseDir, slog.Default())
+	fileSvc, err := newFileSvc(baseDir, slog.Default())
 	if err != nil {
-		return reporting.Options{}, fmt.Errorf("%w: %w", constants.ErrInternal, err)
+		return reporting.Options{}, fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
 
 	// The keystore is opened without Initialize so a report never generates a
 	// master key. Reports read encrypted stores, so an unusable key store fails the report.
-	ks, err := keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{})
+	ks, err := newKeystore(fileSvc)
 	if err != nil {
 		return reporting.Options{}, fmt.Errorf("%w: keystore: %w", constants.ErrReportVaultUnavailable, err)
 	}
@@ -105,6 +117,10 @@ func (f *reportFlags) resolveOptions() (reporting.Options, error) {
 }
 
 func reportAllCmd() *cobra.Command {
+	return reportAllCmdWithConfig(shared.NewFileSvc, openKeystore)
+}
+
+func reportAllCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFactory) *cobra.Command {
 	var f reportFlags
 
 	cmd := &cobra.Command{
@@ -114,7 +130,7 @@ func reportAllCmd() *cobra.Command {
 deterministic CSV files and run verification checks. Output files are written
 to the reports directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts, err := f.resolveOptions()
+			opts, err := f.resolveOptions(newFileSvc, newKeystore)
 			if err != nil {
 				return err
 			}
@@ -142,6 +158,10 @@ to the reports directory.`,
 }
 
 func reportVerifyCmd() *cobra.Command {
+	return reportVerifyCmdWithConfig(shared.NewFileSvc, openKeystore)
+}
+
+func reportVerifyCmdWithConfig(newFileSvc fileSvcFactory, newKeystore keystoreFactory) *cobra.Command {
 	var f reportFlags
 
 	cmd := &cobra.Command{
@@ -151,7 +171,7 @@ func reportVerifyCmd() *cobra.Command {
 verification_summary.csv file to the reports directory. Checks include hash
 integrity, receipt signature validation, and ledger consistency.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts, err := f.resolveOptions()
+			opts, err := f.resolveOptions(newFileSvc, newKeystore)
 			if err != nil {
 				return err
 			}

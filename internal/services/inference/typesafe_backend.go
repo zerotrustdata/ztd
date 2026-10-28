@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -37,7 +38,11 @@ func NewTypeSafeBackend(vault DecisionCredentialVault) (*TypeSafeBackend, error)
 	if vault == nil {
 		return nil, constants.ErrVaultNotInitialized
 	}
-	return &TypeSafeBackend{vault: vault, client: &http.Client{Timeout: ProviderRequestTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	baseClient := &http.Client{Timeout: ProviderRequestTimeout}
+	return &TypeSafeBackend{
+		vault:  vault,
+		client: httpclient.WithoutRedirects(baseClient, http.ErrUseLastResponse),
+	}, nil
 }
 func (b *TypeSafeBackend) Decide(ctx context.Context, req models.DecisionRequest) (*models.DecisionResponse, error) {
 	if !req.AllowHosted || !req.Input.GetAllowHosted() {
@@ -77,6 +82,9 @@ func (r decisionBackendRouter) Decide(ctx context.Context, req models.DecisionRe
 			return nil, constants.ErrInferenceHostedNotAllowed
 		}
 		return r.hosted.Decide(ctx, req)
+	}
+	if r.local == nil {
+		return nil, fmt.Errorf("inference: decide: %w: no local provider", constants.ErrInferenceBackendUnavailable)
 	}
 	return r.local.Decide(ctx, req)
 }

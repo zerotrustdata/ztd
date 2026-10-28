@@ -1,78 +1,61 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { describe, expect, it } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { NavDrawer } from '../src/components/NavDrawer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
+import { App } from '../src/App';
+import { evalStore } from '../src/state/store';
+import { fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 
-describe('NavDrawer', () => {
-  it('renders hamburger button and toggles dropdown drawer', () => {
-    render(
-      <MemoryRouter>
-        <NavDrawer />
-      </MemoryRouter>,
-    );
+vi.mock('../src/state/startup', () => ({ startFeed: vi.fn(), stopFeed: vi.fn() }));
 
-    const toggleBtn = screen.getByRole('button', { name: /Open navigation menu/i });
-    expect(toggleBtn).toBeInTheDocument();
-    expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
+const run = { ...fixtureEvaluationSummaries[0]!, run_status: 'running' as const };
 
-    // Initially drawer is not visible and no inline navigation links are rendered
-    expect(screen.queryByRole('menu', { name: /Primary navigation drawer/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+beforeEach(() => {
+  window.history.replaceState(null, '', '/');
+  evalStore.loadFixtures([run], []);
+});
 
-    // Click to open
-    fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
+describe('Navigation and runs drawer', () => {
+  it('opens by default and keeps live Runs mounted across menu and run navigation', () => {
+    render(<App />);
+    const toggle = within(screen.getByRole('banner')).getByRole('button', { name: 'Close navigation drawer' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const drawer = screen.getByRole('complementary', { name: 'Navigation and runs' });
+    const nav = within(drawer).getByRole('navigation', { name: 'Primary navigation' });
+    expect(within(nav).getAllByRole('link')).toHaveLength(8);
+    const runs = within(drawer).getByRole('region', { name: 'Runs' });
+    expect(within(runs).getByText('running')).toBeInTheDocument();
 
-    const drawer = screen.getByRole('menu', { name: /Primary navigation drawer/i });
-    expect(drawer).toBeInTheDocument();
-
-    // Verify all 8 navigation links are present
-    expect(screen.getByRole('menuitem', { name: /Live/i })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('menuitem', { name: /Leaderboard/i })).toHaveAttribute('href', '/leaderboard');
-    expect(screen.getByRole('menuitem', { name: /Evals/i })).toHaveAttribute('href', '/evaluations');
-    expect(screen.getByRole('menuitem', { name: /Tasks/i })).toHaveAttribute('href', '/tasks');
-    expect(screen.getByRole('menuitem', { name: /Models/i })).toHaveAttribute('href', '/models');
-    expect(screen.getByRole('menuitem', { name: /Docs/i })).toHaveAttribute('href', '/methodology');
-    expect(screen.getByRole('menuitem', { name: /About/i })).toHaveAttribute('href', '/about');
-    expect(screen.getByRole('menuitem', { name: /Sponsors/i })).toHaveAttribute('href', '/sponsors');
-
-    // Click link closes drawer
-    fireEvent.click(screen.getByRole('menuitem', { name: /Tasks/i }));
-    expect(screen.queryByRole('menu', { name: /Primary navigation drawer/i })).not.toBeInTheDocument();
+    for (const label of ['Leaderboard', 'Evals', 'Tasks', 'Models', 'Docs', 'About', 'Sponsors', 'Live']) {
+      fireEvent.click(within(nav).getByRole('link', { name: new RegExp(`^${label}`) }));
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('region', { name: 'Runs' })).toBe(runs);
+    }
+    fireEvent.click(within(runs).getByRole('link', { name: run.run_id }));
+    expect(window.location.pathname).toBe(`/evaluations/${run.dataset_id}/${run.run_id}`);
+    expect(screen.getByRole('region', { name: 'Runs' })).toBe(runs);
+    act(() => evalStore.acceptProjection({ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify({ ...run, run_status: 'cancelled' }) }));
+    expect(within(runs).getByText('cancelled')).toBeInTheDocument();
   });
 
-  it('closes on Escape key press', () => {
-    render(
-      <MemoryRouter>
-        <NavDrawer />
-      </MemoryRouter>,
-    );
-
-    const toggleBtn = screen.getByRole('button', { name: /Open navigation menu/i });
-    fireEvent.click(toggleBtn);
-    expect(screen.getByRole('menu', { name: /Primary navigation drawer/i })).toBeInTheDocument();
-
+  it('collapses with either button or Escape and restores focus to the header toggle', () => {
+    render(<App />);
+    const toggle = within(screen.getByRole('banner')).getByRole('button', { name: 'Close navigation drawer' });
+    const drawer = screen.getByRole('complementary', { name: 'Navigation and runs' });
+    const close = within(drawer).getByRole('button', { name: 'Close navigation drawer' });
+    close.focus();
+    fireEvent.click(close);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(drawer).toHaveAttribute('inert');
+    expect(toggle).toHaveFocus();
+    fireEvent.click(toggle);
+    expect(drawer).not.toHaveAttribute('inert');
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('menu', { name: /Primary navigation drawer/i })).not.toBeInTheDocument();
-  });
-
-  it('closes on close button click', () => {
-    render(
-      <MemoryRouter>
-        <NavDrawer />
-      </MemoryRouter>,
-    );
-
-    const toggleBtn = screen.getByRole('button', { name: /Open navigation menu/i });
-    fireEvent.click(toggleBtn);
-    expect(screen.getByRole('menu', { name: /Primary navigation drawer/i })).toBeInTheDocument();
-
-    const closeBtn = screen.getByRole('button', { name: /Close navigation drawer/i });
-    fireEvent.click(closeBtn);
-    expect(screen.queryByRole('menu', { name: /Primary navigation drawer/i })).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveFocus();
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect(drawer).toHaveAttribute('inert');
   });
 });

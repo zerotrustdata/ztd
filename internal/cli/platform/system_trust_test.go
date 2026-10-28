@@ -20,6 +20,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // testCA generates a self-signed CA certificate and returns its PEM and the
@@ -252,6 +254,18 @@ func testLeafAndKey(t *testing.T) (string, *ecdsa.PrivateKey, *ecdsa.PrivateKey)
 	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
 	require.NoError(t, err)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), key, key
+}
+
+func TestTrustCmdError_KeepsCommandOutput(t *testing.T) {
+	err := trustCmdError([]byte("sudo: a password is required\n"), assert.AnError)
+	require.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
+	assert.Contains(t, err.Error(), "sudo: a password is required")
+}
+
+func TestTrustCmdError_NoOutputStaysBare(t *testing.T) {
+	err := trustCmdError(nil, assert.AnError)
+	require.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
+	assert.NotContains(t, err.Error(), " : ")
 }
 
 func generateECKeyPEM(t *testing.T) string {

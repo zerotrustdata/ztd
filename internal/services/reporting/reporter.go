@@ -20,6 +20,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
@@ -69,11 +70,20 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 		return RunResult{}, err
 	}
 
+	auditorKey, err := opts.Keystore.SigningPublicKey(constants.SecretsFileAuditorSigningKey)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("report: auditor trust anchor: %w", err)
+	}
+	actuatorKey, err := opts.Keystore.SigningPublicKey(constants.SecretsFileActuatorSigningKey)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("report: actuator trust anchor: %w", err)
+	}
+
 	// Open ztd.db once; the local-first events store and its commitment ledger share the pool.
 	if err := fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirPrivate); err != nil {
 		return RunResult{}, fmt.Errorf("%w: data dir: %w", constants.ErrReportStoreUnavailable, err)
 	}
-	mainDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
+	mainDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("%w: main db: %w", constants.ErrReportStoreUnavailable, err)
 	}
@@ -82,6 +92,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	// Open the local-first events store; event receipts project its events rows.
 	eventsStoreCfg := storage.DefaultLocalFirstEventsStoreConfig()
 	eventsStoreCfg.EncryptionVault = v
+	eventsStoreCfg.PinnedAuditorPublicKey = auditorKey
 	eventsStore, err := storage.NewLocalFirstEventsStore(eventsStoreCfg, mainDB, logger, fileSvc)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("%w: local-first events store: %w", constants.ErrReportStoreUnavailable, err)
@@ -142,7 +153,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	// Verification pass.
 	var failCount int
 	if ctx.Err() == nil {
-		verRes, vr, verErr := reportVerification(ctx, opts.OutDir, eventsStore, cl, ledger)
+		verRes, vr, verErr := reportVerification(ctx, opts.OutDir, eventsStore, cl, ledger, governance.NewPinnedSignerSource(auditorKey), governance.NewPinnedSignerSource(actuatorKey))
 		if verErr != nil {
 			logger.Warn("Verification reporter failed", "error", verErr)
 		} else {

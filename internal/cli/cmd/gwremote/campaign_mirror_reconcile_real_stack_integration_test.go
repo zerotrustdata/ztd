@@ -95,10 +95,11 @@ func TestCampaignMirrorReconcilerRealStack_RestoresMissingVerifiedRuns(t *testin
 	assert.True(t, mirrorHasDataset(t, runID), "the restored dataset must be served by the mirror")
 }
 
-// TestCampaignMirrorReconcilerRealStack_ReconcileAllVerifiedRunsFromStoreForceSkipsPresentDataset
-// publishes a verified run, then reconciles with force. The dataset is present, so the
-// run is skipped: nothing is restored or republished, and the mirror does not advance.
-func TestCampaignMirrorReconcilerRealStack_ReconcileAllVerifiedRunsFromStoreForceSkipsPresentDataset(t *testing.T) {
+// TestCampaignMirrorReconcilerRealStack_ReconcileAllVerifiedRunsFromStoreForceRepublishesPresentDataset
+// publishes a verified run, then reconciles with force. Force bypasses the presence
+// probe, so the run is republished even though the dataset is present: it is never
+// reported as skipped, and the mirror advances.
+func TestCampaignMirrorReconcilerRealStack_ReconcileAllVerifiedRunsFromStoreForceRepublishesPresentDataset(t *testing.T) {
 	ctx := t.Context()
 	e := newEvalRunStack(t, evalRunOptions{posture: constants.PostureDoctrine, publicMirror: true, replies: evalRunShellReplies()})
 	e.initialize(t)
@@ -114,10 +115,10 @@ func TestCampaignMirrorReconcilerRealStack_ReconcileAllVerifiedRunsFromStoreForc
 
 	result, err := newMirrorRunReconciler(t, e).ReconcileAllVerifiedRunsFromStore(ctx, time.Minute, true, true, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []string{runID}, result.SkippedRunIDs)
-	assert.Empty(t, result.RestoredRunIDs)
-	assert.Empty(t, result.RepublishedRunIDs)
-	assert.Equal(t, highWater, mirrorHighWaterSequence(t, e.stack.Gateway), "a skipped run must publish nothing")
+	assert.Empty(t, result.SkippedRunIDs)
+	assert.Equal(t, []string{runID}, result.RestoredRunIDs)
+	assert.Positive(t, result.PublishedRecords)
+	assert.Greater(t, mirrorHighWaterSequence(t, e.stack.Gateway), highWater, "force must republish into the mirror")
 }
 
 // TestCampaignMirrorReconcilerRealStack_ReconcileRunRestoresMissingDataset restores one

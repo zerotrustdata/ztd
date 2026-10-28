@@ -74,7 +74,7 @@ var (
 	}
 
 	allowedTransport = map[string]struct{}{
-		"governed": {}, "pubsub": {}, "sse": {},
+		"governed": {}, "pubsub": {}, "sse": {}, "local": {},
 	}
 
 	allowedProducers = map[string]struct{}{
@@ -94,7 +94,7 @@ var (
 	// requiredEventFields and requiredGovernanceFields are the required-field
 	// sets validateRegistry enforces (missing values fail with "missing <field>"
 	// or "governance requires ..."). The parity test pins them to the schema.
-	requiredEventFields      = []string{"_go_const", "value", "producers", "persistence"}
+	requiredEventFields      = []string{"_go_const", "value", "transport", "producers", "persistence"}
 	requiredGovernanceFields = []string{"action_type", "payload"}
 )
 
@@ -263,6 +263,9 @@ func validateRegistry(reg registryFile, actionTypes map[string]struct{}) error {
 			}
 		}
 
+		if len(entry.Transport) == 0 {
+			errs = append(errs, fmt.Errorf("%s: missing transport", key))
+		}
 		for _, t := range entry.Transport {
 			if _, ok := allowedTransport[t]; !ok {
 				errs = append(errs, fmt.Errorf("%s: unknown transport %q", key, t))

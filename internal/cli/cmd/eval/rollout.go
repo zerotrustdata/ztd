@@ -98,13 +98,9 @@ func rolloutListCmd(deps nativeEvalDeps) *cobra.Command {
 				return nil
 			}
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "NAME\tCAMPAIGNS\tON FAILURE")
+			_, _ = fmt.Fprintln(w, "NAME\tCAMPAIGNS")
 			for _, def := range definitions {
-				policy := "stop"
-				if def.ContinueOnFailure {
-					policy = "continue"
-				}
-				_, _ = fmt.Fprintf(w, "%s\t%d\t%s\n", def.Name, len(def.Campaigns), policy)
+				_, _ = fmt.Fprintf(w, "%s\t%d\n", def.Name, len(def.Campaigns))
 			}
 			return w.Flush()
 		},

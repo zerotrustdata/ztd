@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,23 @@ func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ con
 			},
 		}, nil
 	}
+	if request.ActionType == constants.ActionTypeOllamaModelInventory {
+		return &OllamaModelCommandDispatchResult{
+			Status: 200, Success: true,
+			InventoryResult: &operatorv1.OllamaModelInventoryResult{
+				ExecutionId: request.ExecutionID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+				Entries: []*operatorv1.ProviderModelInventoryEntry{{ServedModelTag: "qwen3:0.6b"}},
+			},
+		}, nil
+	}
+	if request.ActionType == constants.ActionTypeOllamaModelResidency {
+		return &OllamaModelCommandDispatchResult{
+			Status: 200, Success: true,
+			ResidencyResult: &operatorv1.OllamaModelResidencyResult{
+				ExecutionId: request.ExecutionID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			},
+		}, nil
+	}
 	return &OllamaModelCommandDispatchResult{
 		Status:  200,
 		Success: true,
@@ -53,13 +71,13 @@ func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ con
 func TestReleaseOllamaModels_TargetsExactInferenceSession(t *testing.T) {
 	t.Parallel()
 	dispatcher := &recordingOllamaModelCommandDispatcher{}
-	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "registry.example/team/gemma3:4b"}, map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"}, func(prefix string) string { return prefix + "-id" })
+	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "registry.example/team/gemma3:4b"}, func(prefix string) string { return prefix + "-id" })
 	require.NoError(t, err)
 	require.Len(t, dispatcher.requests, 1)
 	assert.Equal(t, "inference-session", dispatcher.requests[0].TargetOperatorSessionID)
 	assert.Equal(t, constants.ActionTypeOllamaModelRelease, dispatcher.requests[0].ActionType)
 	assert.Empty(t, dispatcher.requests[0].Command, "release is a typed action, not a shell command")
-	assert.Equal(t, "http://provider.example:11434", dispatcher.requests[0].Environment["ZTD_OLLAMA_ENDPOINT"])
+	assert.Empty(t, dispatcher.requests[0].Environment, "the Operator releases through its own configured provider")
 	var payload operatorv1.OllamaModelReleaseRequested
 	require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
 	assert.Equal(t, dispatcher.requests[0].ExecutionID, payload.GetExecutionId(), "payload and envelope execution ids must match")
@@ -69,7 +87,7 @@ func TestReleaseOllamaModels_TargetsExactInferenceSession(t *testing.T) {
 func TestReleaseOllamaModels_ValidatesWholeBatchBeforeDispatch(t *testing.T) {
 	t.Parallel()
 	dispatcher := &recordingOllamaModelCommandDispatcher{}
-	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "qwen3:0.6b;whoami"}, nil, func(prefix string) string { return prefix + "-id" })
+	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "qwen3:0.6b;whoami"}, func(prefix string) string { return prefix + "-id" })
 	require.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)
 	assert.Empty(t, dispatcher.requests)
 }
@@ -77,7 +95,7 @@ func TestReleaseOllamaModels_ValidatesWholeBatchBeforeDispatch(t *testing.T) {
 func TestReleaseOllamaModels_PropagatesFailedOperatorCommand(t *testing.T) {
 	t.Parallel()
 	dispatcher := &recordingOllamaModelCommandDispatcher{returnCode: 1}
-	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b"}, nil, func(prefix string) string { return prefix + "-id" })
+	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b"}, func(prefix string) string { return prefix + "-id" })
 	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 	assert.Len(t, dispatcher.requests, 1)
 }
@@ -147,4 +165,39 @@ func TestValidateOllamaModelReleaseResult_RequiresCompletedTypedResult(t *testin
 			Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		},
 	}))
+}
+
+func TestOllamaProviderQueries_UsePayloadExecutionID(t *testing.T) {
+	for _, action := range []constants.ActionType{constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency} {
+		t.Run(string(action), func(t *testing.T) {
+			dispatcher := &recordingOllamaModelCommandDispatcher{}
+			minted := 0
+			maintenance := OllamaModelMaintenanceContext{
+				TargetOperatorSessionID: "inference-session",
+				NewID: func(prefix string) string {
+					minted++
+					return fmt.Sprintf("%s-%d", prefix, minted)
+				},
+			}
+			var payloadID string
+			if action == constants.ActionTypeOllamaModelInventory {
+				_, err := ListOllamaProviderInventory(t.Context(), dispatcher, maintenance)
+				require.NoError(t, err)
+				require.Len(t, dispatcher.requests, 1)
+				var payload operatorv1.OllamaModelInventoryRequested
+				require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
+				payloadID = payload.GetExecutionId()
+			} else {
+				_, err := ReadOllamaProviderResidency(t.Context(), dispatcher, maintenance)
+				require.NoError(t, err)
+				require.Len(t, dispatcher.requests, 1)
+				var payload operatorv1.OllamaModelResidencyRequested
+				require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
+				payloadID = payload.GetExecutionId()
+			}
+			assert.Equal(t, payloadID, dispatcher.requests[0].ExecutionID)
+			assert.Equal(t, "inference-session", dispatcher.requests[0].TargetOperatorSessionID)
+			assert.Equal(t, 2, minted, "one execution ID and one task ID are minted")
+		})
+	}
 }

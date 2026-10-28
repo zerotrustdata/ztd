@@ -3,8 +3,8 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - internal/cli/cmd/test/
   - internal/testutil/
@@ -155,7 +155,7 @@ The fleet smoke defaults to 100 Operators. `SCALE_COUNT` overrides that cohort f
 
 `make test-eval-live` requires `LIVE_OLLAMA_ENDPOINT` and `LIVE_MODEL` and runs the Tier 4 provider qualification under ratify and notary. The existing eval-loop, conformance-loop, release-smoke, and scale runners own isolated Gateways, so their posture changes and cleanup stay within their own runtimes and remain in `make test`.
 
-`make test-onboarding-smoke` names the CI-only fresh-checkout contributor setup and release smoke. It refuses an existing runtime or `.env`; the Docker onboarding matrix covers the contributor and release-smoke scenarios in the full suite.
+`make test-onboarding-smoke` names the fresh-checkout contributor setup and release smoke, intended for a disposable host. It refuses an existing runtime or `.env`; the Docker onboarding matrix covers the contributor and release-smoke scenarios in the full suite.
 
 ### Run Test Tiers
 
@@ -281,7 +281,7 @@ make ci
 
 `make ci` refreshes generated artifacts as it runs. GitHub Actions separately checks generated-file freshness. The local gate includes Linux standard and FIPS binary checks, Windows cross-compilation, the standard unit and integration suites with coverage, enrollment bursts, FIPS unit and integration reruns on Linux, downstream Go imports, and the frontend, protocol, website, and script checks.
 
-`ci-onboarding`, included in `make ci`, requires a running Docker daemon. It runs the same `test-onboarding-docker` target used by Actions across Ubuntu, Debian, Fedora, and Arch for build-only setup, a fresh-terminal rerun, and quickstart. A separate Ubuntu container runs build-only setup followed by contributor setup, notice and env-file checks, governed release smoke, and the real three-Operator deployment lifecycle used by Actions. This gives setup and process tests disposable hosts without changing the contributor's toolchain or occupying their Gateway ports. Missing Docker fails the gate. Logs and evidence remain under `.local.dev/onboarding/`.
+`ci-onboarding`, included in `make ci`, requires a running Docker daemon. It runs `test-onboarding-docker` across Ubuntu, Debian, Fedora, and Arch for build-only setup, a fresh-terminal rerun, and quickstart. A separate Ubuntu container runs build-only setup followed by contributor setup, notice and env-file checks, governed release smoke, and the real three-Operator deployment lifecycle. GitHub Actions does not run the fresh-host onboarding jobs; they run locally only. This gives setup and process tests disposable hosts without changing the contributor's toolchain or occupying their Gateway ports. Missing Docker fails the gate. Logs and evidence remain under `.local.dev/onboarding/`.
 
 Native macOS Keychain and Windows DPAPI/process behavior still require those hosts. The main workflow runs full unit and integration suites on Linux and macOS; Windows runs the full unit suite and selected integration packages. Live-provider E2E and fleet scale qualification remain explicit targets.
 
@@ -318,7 +318,7 @@ The enrollment burst deadline contract (`TestPlatformEnrollmentBurst`) runs only
 
 `TestHandleInternalSSEStream_FirstFlushCanDeliverDeploymentAnnouncements` proves listeners exist before HTTP 200, write deadlines are cleared, announcements arrive once, and cancellation unregisters listeners.
 
-On Linux, `bash scripts/ci/operator-deploy-lifecycle.sh --count 3` starts a fresh doctrine Gateway and invokes `TestOperatorDeploy_LocalLifecycle` through `ztd test e2e`.
+On Linux, `make test-operator-deploy` starts a fresh doctrine Gateway and invokes `TestOperatorDeploy_LocalLifecycle` through `ztd test e2e`. When another Gateway occupies the default ports, select two unused ports with `OPERATOR_DEPLOY_ARGS='--http-port 18080 --https-port 18443'`. The runner checks those ports before starting and passes them to enrollment and the E2E scenario; it preserves other Gateways.
 
 ### Run the Release Smoke
 

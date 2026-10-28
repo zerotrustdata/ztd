@@ -109,21 +109,17 @@ test_extract_version() {
 	[[ "$got" == 22.23.3 ]] || fail "extract node banner: want 22.23.3, got '$got'"
 }
 
-test_build_only_requires_frontend_toolchain() {
+test_build_only_does_not_require_node() {
 	local bin="$SCRATCH/bin-build-only"
 	toolchain_stubs "$bin" "$GO_MIN"
 	local missing
 	missing="$(collect_missing home-build-only "$bin" --build-only)" ||
 		fail "collect_missing --build-only failed"
 	[[ -z "$missing" ]] || fail "--build-only: want no missing tools, got '$missing'"
-	local tool
-	for tool in node npm; do
-		mv "$bin/$tool" "$bin/$tool.disabled"
-		missing="$(collect_missing "home-build-only-no-$tool" "$bin" --build-only)" ||
-			fail "collect_missing --build-only without $tool failed"
-		[[ "$missing" == node ]] || fail "--build-only without $tool: want MISSING 'node', got '$missing'"
-		mv "$bin/$tool.disabled" "$bin/$tool"
-	done
+	rm -f "$bin/node" "$bin/npm"
+	missing="$(collect_missing home-build-only-no-node "$bin" --build-only)" ||
+		fail "collect_missing --build-only without node failed"
+	[[ -z "$missing" ]] || fail "--build-only without node: want no missing tools, got '$missing'"
 }
 
 test_full_mode_requires_node() {
@@ -150,7 +146,7 @@ test_go_too_old_is_missing() {
 # `go install pkg@version` takes its toolchain from the tool's go.mod, not ours,
 # so under GOTOOLCHAIN=auto an older system Go builds the tool and the
 # post-install freshness check rejects it. The stub go mirrors that: it builds
-# with STUB_GO_MIN only when the install pins that toolchain.
+# with STUB_GO_MIN only when the install pins that exact toolchain.
 test_dev_tool_installs_with_go_mod_toolchain() {
 	local bin="$SCRATCH/bin-dev-tool" gobin="$SCRATCH/gobin-dev-tool"
 	mkdir -p "$bin" "$gobin"
@@ -162,7 +158,8 @@ env)
 	;;
 install)
 	built_with=1.26.9
-	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}+auto" ] && built_with="$STUB_GO_MIN"
+	# The installer pins an exact toolchain (go1.27.3), not go1.27.3+auto.
+	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}" ] && built_with="$STUB_GO_MIN"
 	printf '#!/bin/sh\n# built-with %s\n' "$built_with" >"$STUB_GOBIN/fakebuf"
 	chmod 755 "$STUB_GOBIN/fakebuf"
 	;;
@@ -288,7 +285,7 @@ test_path_profile_idempotent() {
 	mkdir -p "$home"
 	profile="$home/.bashrc"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$SOURCE_ROOT"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		ztd_ui_init
@@ -307,7 +304,7 @@ test_path_profile_preserves_installed_node() {
 	mkdir -p "$home"
 	profile="$home/.bashrc"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$SOURCE_ROOT"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		# Model the Linux tarball's command resolution without writing to /usr/local.
@@ -334,7 +331,7 @@ test_path_profile_respects_home_form() {
 	before="$SCRATCH/bashrc-home-form.before"
 	cp "$profile" "$before"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$home/src/ztd"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		ztd_ui_init
@@ -349,7 +346,7 @@ test_path_profile_matches_whole_path() {
 	profile="$home/.bashrc"
 	printf '%s\n' "export PATH=\"\$PATH:$home/src/ztd-old:$home/src/ztd/bin\"" >"$profile"
 	(
-		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true
+		HOME="$home" PATH="$(profile_path)" SHELL=/bin/bash AUTO_YES=true ZTD_BUILD_ONLY=true ZTD_GO_MIN="$GO_MIN"
 		REPO_ROOT="$home/src/ztd"
 		export HOME PATH SHELL AUTO_YES ZTD_BUILD_ONLY REPO_ROOT
 		ztd_ui_init
@@ -431,6 +428,51 @@ EOF
 	done
 }
 
+test_optional_tools_setup() {
+	(
+		ztd_ui_init
+		ZTD_BUILD_ONLY=false AUTO_YES=true
+		ztd_have() { return 1; }
+		ztd_check_chromium() { return 1; }
+		ztd_setup_confirm() { echo "$1" >>"$SCRATCH/optional-prompts"; return 0; }
+		install_optional() { echo "$1" >>"$SCRATCH/optional-installs"; return 1; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		[[ "$(cat "$SCRATCH/optional-installs")" == $'docker\nchromium' ]] || fail "optional install failures must allow both offers and continue"
+		[[ "$(wc -l <"$SCRATCH/optional-prompts" | tr -d ' ')" == 2 ]] || fail "missing optional tools must prompt separately"
+		rm "$SCRATCH/optional-installs" "$SCRATCH/optional-prompts"
+		ztd_setup_confirm() { return 1; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		[[ ! -f "$SCRATCH/optional-installs" ]] || fail "declined optional tools must not install"
+		AUTO_YES=false
+		ztd_setup_confirm() { fail "noninteractive optional setup must skip prompts"; }
+		ztd_setup_optional_tools install_optional </dev/null >/dev/null
+		AUTO_YES=true
+		ZTD_BUILD_ONLY=true
+		ztd_have() { fail "build-only must skip optional tools"; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		ZTD_BUILD_ONLY=false
+		ztd_have() { return 0; }
+		ztd_check_chromium() { return 0; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		[[ ! -f "$SCRATCH/optional-installs" ]] || fail "installed optional tools must be reused"
+	)
+}
+
+test_chromium_detection() {
+	(
+		ztd_ui_init
+		local browser
+		for browser in chromium chromium-browser google-chrome google-chrome-stable; do
+			ztd_have() { [[ "$1" == "$browser" ]]; }
+			ztd_check_chromium >/dev/null || fail "browser detection missed $browser"
+		done
+		if [[ "$(uname -s)" == Darwin && -x "/Applications/Safari.app/Contents/MacOS/Safari" ]]; then
+			ztd_have() { return 1; }
+			ztd_check_chromium >/dev/null || fail "Safari should count, so setup does not offer another browser"
+		fi
+	)
+}
+
 test_quickstart_help_and_unknown_option() {
 	local out="$SCRATCH/qs-help.out" rc=0
 	HOME="$SCRATCH/home-qs-help" bash "$SCRIPT_DIR/quickstart.sh" --help >"$out" 2>&1 || rc=$?
@@ -500,6 +542,16 @@ test_quickstart_end_to_end_is_idempotent() {
 	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -eq 0 ]] || { cat "$out" >&2; fail "quickstart first run: want exit 0, got $rc"; }
 	grep -qF 'hello from ztd' "$out" || { cat "$out" >&2; fail "quickstart first run: no governed-action output"; }
+	if [[ "$(uname -s)" == Darwin ]]; then
+		grep -qF 'ztd-platform' "$out" || { cat "$out" >&2; fail "quickstart first run: no Keychain preflight"; }
+		grep -qF 'Mac login password' "$out" || { cat "$out" >&2; fail "quickstart first run: preflight does not say whose password"; }
+		grep -qF 'login keychain' "$out" || { cat "$out" >&2; fail "quickstart first run: success path does not name the login keychain"; }
+		grep -qF 'no sudo' "$out" || { cat "$out" >&2; fail "quickstart first run: success path does not say trust install skips sudo"; }
+		if grep -qF 'sudo security' "$out"; then
+			cat "$out" >&2
+			fail "quickstart first run: still tells the user to sudo"
+		fi
+	fi
 	grep -qF "You're running ztd" "$out" || fail "quickstart first run: no success banner"
 	grep -qxF 'gw start --capabilities data' "$state/calls.log" ||
 		fail "quickstart first run: missing gw start call"
@@ -536,8 +588,13 @@ test_quickstart_surfaces_key_store_remedy() {
 	out="$SCRATCH/qs-keyring.out"
 	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
 	[[ $rc -ne 0 ]] || { cat "$out" >&2; fail "quickstart with no key store: want non-zero exit"; }
-	grep -qF 'ssh-agent' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-agent remedy"; }
-	grep -qF 'ssh-add' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-add step in the remedy"; }
+	if [[ "$(uname -s)" == Darwin ]]; then
+		grep -qF 'Keychain' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no Keychain remedy on macOS"; }
+		grep -qF 'Always Allow' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no Always Allow step in the macOS remedy"; }
+	else
+		grep -qF 'ssh-agent' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-agent remedy"; }
+		grep -qF 'ssh-add' "$out" || { cat "$out" >&2; fail "quickstart key-store failure: no ssh-add step in the remedy"; }
+	fi
 	if grep -qF -- '--master-key' "$out"; then
 		cat "$out" >&2
 		fail "quickstart key-store failure: remedy still names a --master-key flag"
@@ -550,9 +607,11 @@ run_test() {
 }
 
 main() {
+	run_test test_optional_tools_setup
+	run_test test_chromium_detection
 	run_test test_version_ge
 	run_test test_extract_version
-	run_test test_build_only_requires_frontend_toolchain
+	run_test test_build_only_does_not_require_node
 	run_test test_full_mode_requires_node
 	run_test test_go_too_old_is_missing
 	run_test test_dev_tool_installs_with_go_mod_toolchain

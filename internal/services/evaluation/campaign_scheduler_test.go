@@ -29,12 +29,44 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 		CampaignID:      "smoke-campaign",
 		RunID:           "run-1",
 		Catalog:         catalog,
+		ActivePosture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		Variants:        variants,
 		RepetitionCount: 1,
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, 82)
+	assert.Len(t, assignments, 112)
+}
+
+func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T) {
+	catalog, _, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	byID := make(map[string]*evalv1.EvaluationScenarioDefinition, len(catalog.GetScenarios()))
+	for _, scenario := range catalog.GetScenarios() {
+		byID[scenario.GetScenarioId()] = scenario
+	}
+	assert.True(t, byID["recovery-live-command-error"].GetExcludeWhenL2Enforced())
+	assert.True(t, byID["tool-arg-shell-command"].GetExcludeWhenL2Enforced())
+
+	variant := testModelVariant()
+	consensus, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+		CampaignID: "posture-gate", RunID: "consensus-run", Catalog: catalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
+		Variants:      []*evalv1.ModelVariant{variant},
+	})
+	require.NoError(t, err)
+	assert.Len(t, consensus, 52)
+	for _, assignment := range consensus {
+		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command"}, assignment.GetScenarioId())
+	}
+
+	doctrine, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+		CampaignID: "posture-gate", RunID: "doctrine-run", Catalog: catalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		Variants:      []*evalv1.ModelVariant{variant},
+	})
+	require.NoError(t, err)
+	assert.Len(t, doctrine, 56)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
@@ -49,6 +81,7 @@ func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
 		CampaignID:      "model-by-model",
 		RunID:           "run-1",
 		Catalog:         catalog,
+		ActivePosture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		Variants:        variants,
 		RepetitionCount: 2,
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
@@ -102,6 +135,7 @@ func TestBuildHomogeneousAssignmentMatrix_SchedulesEachScenarioOnlyForItsEligibl
 		CampaignID:      "role-eligibility",
 		RunID:           "run-1",
 		Catalog:         catalog,
+		ActivePosture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		Variants:        []*evalv1.ModelVariant{variant},
 		RepetitionCount: 1,
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
@@ -130,10 +164,11 @@ func TestBuildHomogeneousAssignmentMatrix_RejectsScenarioWithoutEligibleRoles(t 
 	catalog.Scenarios[0].EligibleRoles = nil
 
 	_, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
-		CampaignID: "campaign",
-		RunID:      "run",
-		Catalog:    catalog,
-		Variants:   []*evalv1.ModelVariant{testModelVariant()},
+		CampaignID:    "campaign",
+		RunID:         "run",
+		Catalog:       catalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		Variants:      []*evalv1.ModelVariant{testModelVariant()},
 	})
 
 	require.ErrorIs(t, err, constants.ErrEvaluationScenarioRolesUnassigned)
@@ -144,14 +179,15 @@ func TestBuildHomogeneousAssignmentMatrix_PreservesFilteredCatalogOrderAfterRelo
 	require.NoError(t, err)
 	// A custom suite's declared order is authoritative even when it differs
 	// from the built-in workflow and the filter is supplied in reverse order.
-	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[26]}
+	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[34]}
 	catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(catalog)
 	require.NoError(t, err)
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
 		CampaignID: "workflow-campaign", RunID: "workflow-run", Catalog: catalog,
-		Variants:    []*evalv1.ModelVariant{{VariantId: "model", ServedModelTag: "model:1", ModelDigest: repeatHex('a')}},
-		ScenarioIDs: []string{catalog.Scenarios[2].GetScenarioId(), catalog.Scenarios[0].GetScenarioId()},
-		QueuedAt:    time.Unix(1_700_000_000, 0).UTC(),
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		Variants:      []*evalv1.ModelVariant{{VariantId: "model", ServedModelTag: "model:1", ModelDigest: repeatHex('a')}},
+		ScenarioIDs:   []string{catalog.Scenarios[2].GetScenarioId(), catalog.Scenarios[0].GetScenarioId()},
+		QueuedAt:      time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
 	var ids []string

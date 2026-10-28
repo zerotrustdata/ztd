@@ -81,6 +81,7 @@ export interface PublicProofManifest {
   verifier_instructions: string;
   generated_at: string;
   signing_key_id: string;
+  signing_public_key?: string;
   signature: string;
 }
 
@@ -97,6 +98,7 @@ export interface PublicProofHead {
   verifier_instructions: string;
   generated_at: string;
   signing_key_id: string;
+  signing_public_key?: string;
   signature: string;
 }
 
@@ -113,6 +115,7 @@ export interface PublicProofManifestSegment {
   withdrawn_artifact_ids?: String[];
   generated_at: string;
   signing_key_id: string;
+  signing_public_key?: string;
   proof_root_sha256: string;
   signature: string;
   verifier_instructions?: string;
@@ -230,6 +233,7 @@ export function isPublicProofManifest(value: unknown): value is PublicProofManif
   if (!(typeof v.verifier_instructions === 'string')) return false; /* verifier_instructions */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */
+  if (v.signing_public_key !== undefined && !(typeof v.signing_public_key === 'string')) return false; /* signing_public_key */
   if (!(typeof v.signature === 'string')) return false; /* signature */
   return true;
 }
@@ -249,6 +253,7 @@ export function isPublicProofHead(value: unknown): value is PublicProofHead {
   if (!(typeof v.verifier_instructions === 'string')) return false; /* verifier_instructions */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */
+  if (v.signing_public_key !== undefined && !(typeof v.signing_public_key === 'string')) return false; /* signing_public_key */
   if (!(typeof v.signature === 'string')) return false; /* signature */
   return true;
 }
@@ -268,6 +273,7 @@ export function isPublicProofManifestSegment(value: unknown): value is PublicPro
   if (v.withdrawn_artifact_ids !== undefined && !(Array.isArray(v.withdrawn_artifact_ids) && v.withdrawn_artifact_ids.every((x) => typeof x === 'string'))) return false; /* withdrawn_artifact_ids */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   if (!(typeof v.signing_key_id === 'string')) return false; /* signing_key_id */
+  if (v.signing_public_key !== undefined && !(typeof v.signing_public_key === 'string')) return false; /* signing_public_key */
   if (!(typeof v.proof_root_sha256 === 'string')) return false; /* proof_root_sha256 */
   if (!(typeof v.signature === 'string')) return false; /* signature */
   if (v.verifier_instructions !== undefined && !(typeof v.verifier_instructions === 'string')) return false; /* verifier_instructions */

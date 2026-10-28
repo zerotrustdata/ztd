@@ -356,7 +356,8 @@ func TestReportCommitments_CancelledContext(t *testing.T) {
 // newTestReplayStore builds a replay store over a fresh ztd.db.
 func newTestReplayStore(t *testing.T) *storage.ReplayStore {
 	t.Helper()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(filepath.Join(testutil.TempDir(t), constants.DbFilename)), testutil.NewTestLogger())
+	fileSvc := newReportingTestFileSvc(t, testutil.TempDir(t))
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	rs, err := storage.NewReplayStore(db, testutil.NewTestLogger())
@@ -421,7 +422,7 @@ func newTestSuspendedStore(t *testing.T) *storage.SuspendedTransactionService {
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	v := createTestVault(t, fileSvc, privKey)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(filepath.Join(testutil.TempDir(t), constants.DbFilename)), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	sts, err := storage.NewSuspendedTransactionService(db, v, testutil.NewTestLogger())

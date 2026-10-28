@@ -10,11 +10,13 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -508,4 +510,61 @@ func TestFSDiskProfileTool_Execute_LargeMaxDepth(t *testing.T) {
 
 	// Should see all levels
 	require.GreaterOrEqual(t, len(profileResult.Entries), 5)
+}
+
+// A profile rooted at a large tree returns a bounded, truncated listing
+// instead of every entry: an unbounded result reached the Gateway scrubber
+// at 26.6 MB during the cron-disk-fill evaluation.
+func TestFSDiskProfileTool_Execute_ListingBoundTruncates(t *testing.T) {
+	tmpDir := testutil.TempDir(t)
+	for i := range constants.FsDiskProfileMaxEntries + 50 {
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, fmt.Sprintf("f%04d", i)), []byte("x"), 0o600))
+	}
+	args, err := json.Marshal(FSDiskProfileRequest{Path: tmpDir})
+	require.NoError(t, err)
+
+	result, err := (&FSDiskProfileTool{}).Execute(context.Background(), args)
+	require.NoError(t, err)
+
+	var profile FSDiskProfileResult
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &profile))
+	require.Len(t, profile.Entries, constants.FsDiskProfileMaxEntries)
+	require.True(t, profile.Truncated)
+}
+
+// The walk itself stops at its entry bound, whatever max_depth the caller
+// requests, so a profile of / cannot run until the caller's deadline.
+func TestFSDiskProfileTool_Execute_WalkBoundTruncates(t *testing.T) {
+	tmpDir := testutil.TempDir(t)
+	for i := range 20 {
+		dir := filepath.Join(tmpDir, fmt.Sprintf("d%02d", i))
+		require.NoError(t, os.MkdirAll(dir, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o600))
+	}
+	args, err := json.Marshal(FSDiskProfileRequest{Path: tmpDir, MaxDepth: 1000})
+	require.NoError(t, err)
+
+	tool := &FSDiskProfileTool{maxWalkEntries: 10}
+	result, err := tool.Execute(context.Background(), args)
+	require.NoError(t, err)
+
+	var profile FSDiskProfileResult
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &profile))
+	require.LessOrEqual(t, len(profile.Entries), 10)
+	require.True(t, profile.Truncated)
+}
+
+func TestFSDiskProfileTool_Execute_WithinBoundsNotTruncated(t *testing.T) {
+	tmpDir := testutil.TempDir(t)
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "f"), []byte("x"), 0o600))
+	args, err := json.Marshal(FSDiskProfileRequest{Path: tmpDir})
+	require.NoError(t, err)
+
+	result, err := (&FSDiskProfileTool{}).Execute(context.Background(), args)
+	require.NoError(t, err)
+
+	var profile FSDiskProfileResult
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &profile))
+	require.Len(t, profile.Entries, 2)
+	require.False(t, profile.Truncated)
 }

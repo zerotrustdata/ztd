@@ -42,6 +42,9 @@ const (
 	// publicMirrorVerifyPageBatches bounds how many batch headers startup
 	// verification holds at once.
 	publicMirrorVerifyPageBatches = 1000
+	// Signed snapshot pages include payloads, so use a smaller bound.
+	publicMirrorVerifySnapshotPageBatches = 8
+	publicMirrorHashBufferBytes           = 32 * 1024
 	// publicMirrorQueryChunk bounds the parameters of one IN (...) lookup.
 	publicMirrorQueryChunk = 500
 )
@@ -156,6 +159,10 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 	if logger == nil {
 		logger = slog.Default()
 	}
+	ctx, cancel := context.WithTimeout(ctx, constants.PublicMirrorVerificationTimeout)
+	defer cancel()
+	started := time.Now()
+	logger.Info("Public mirror verification started", "timeout", constants.PublicMirrorVerificationTimeout)
 	if err := fileSvc.MkdirAll(ctx, constants.PublicMirrorProofsDir, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("public mirror store: create proofs dir: %w", err)
 	}
@@ -171,11 +178,12 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 		_ = store.Close()
 		return nil, err
 	}
+	logger.Info("Public mirror verification completed", "elapsed", time.Since(started))
 	return store, nil
 }
 
 func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicMirrorStore, error) {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.PublicMirrorDBPath)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.PublicMirrorDBPath)), logger)
 	if err != nil {
 		return nil, fmt.Errorf("public mirror store: open %s: %w", constants.PublicMirrorDBPath, err)
 	}
@@ -752,6 +760,7 @@ func (s *PublicMirrorStore) ProofHead(ctx context.Context, sourceID string) (mod
 		VerifierInstructions:        header.VerifierInstructions,
 		GeneratedAt:                 header.GeneratedAt,
 		SigningKeyID:                header.SigningKeyID,
+		SigningPublicKey:            header.SigningPublicKey,
 		Signature:                   header.Signature,
 	}, true, nil
 }
@@ -849,7 +858,7 @@ func decodePublicMirrorJSON(value string, target any) error {
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return fmt.Errorf("trailing JSON")
+		return fmt.Errorf("trailing JSON: %w", constants.ErrInvalidJSONBody)
 	}
 	return nil
 }
@@ -1209,6 +1218,7 @@ func queryPublicMirrorManifestEntries(ctx context.Context, tx *sql.Tx, sourceID 
 // hashes, record hashes, revocations, summary), every proof artifact file,
 // and every proof manifest.
 func (s *PublicMirrorStore) verify(ctx context.Context) error {
+	s.logger.Info("Public mirror verification stage", "stage", "feed")
 	state, err := s.loadState(ctx)
 	if err != nil {
 		return err
@@ -1235,10 +1245,12 @@ func (s *PublicMirrorStore) verify(ctx context.Context) error {
 			return err
 		}
 	}
+	s.logger.Info("Public mirror verification stage", "stage", "artifacts")
 	sizes, err := s.verifyProofArtifacts(ctx)
 	if err != nil {
 		return err
 	}
+	s.logger.Info("Public mirror verification stage", "stage", "manifests")
 	return s.verifyProofManifests(ctx, state.keys, sizes)
 }
 
@@ -1252,6 +1264,8 @@ func (s *PublicMirrorStore) verifySource(ctx context.Context, summary PublicMirr
 	verifiedRecords := 0
 	var verifiedBytes int64
 	after := int64(0)
+	started := time.Now()
+	verifiedBatches := 0
 	for {
 		headers, err := sqliteutil.MaterializeRows(ctx, s.db, `
 			SELECT first_sequence, last_sequence, protocol_version, schema_version, previous_batch_hash,
@@ -1277,13 +1291,37 @@ func (s *PublicMirrorStore) verifySource(ctx context.Context, summary PublicMirr
 		if len(headers) == 0 {
 			break
 		}
+		// Read records across batch boundaries in bounded pages. Only the
+		// current signed batch is assembled for signature verification.
+		var recordPage []models.PublicFeedRecord
+		recordOffset := 0
+		recordAfter := headers[0].FirstSequence - 1
+		through := headers[len(headers)-1].LastSequence
 		for _, batch := range headers {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if batch.FirstSequence != previousSequence+1 || batch.PreviousBatchHash != previousHash || batch.LastSequence < batch.FirstSequence {
 				return publicMirrorCorrupt("invalid source batch chain %s@%d", sourceID, batch.FirstSequence)
 			}
-			records, err := s.recordsInRange(ctx, sourceID, batch.FirstSequence, batch.LastSequence)
-			if err != nil {
-				return err
+			var records []models.PublicFeedRecord
+			for {
+				if recordOffset == len(recordPage) {
+					recordPage, err = s.recordsAfter(ctx, sourceID, recordAfter, through, publicMirrorReadPageRecords)
+					if err != nil {
+						return err
+					}
+					recordOffset = 0
+					if len(recordPage) == 0 {
+						break
+					}
+					recordAfter = recordPage[len(recordPage)-1].Sequence
+				}
+				if recordPage[recordOffset].Sequence > batch.LastSequence {
+					break
+				}
+				records = append(records, recordPage[recordOffset])
+				recordOffset++
 			}
 			if int64(len(records)) != batch.LastSequence-batch.FirstSequence+1 {
 				return publicMirrorCorrupt("missing source records %s@%d", sourceID, batch.FirstSequence)
@@ -1317,6 +1355,8 @@ func (s *PublicMirrorStore) verifySource(ctx context.Context, summary PublicMirr
 			verifiedRecords += len(records)
 		}
 		after = headers[len(headers)-1].FirstSequence
+		verifiedBatches += len(headers)
+		s.logger.Info("Public mirror verification progress", "stage", "feed", "batches", verifiedBatches, "records", verifiedRecords, "elapsed", time.Since(started))
 	}
 	if summary.RetainedBatchCount > 0 {
 		if summary.HighWaterSequence != previousSequence || summary.FeedChainHash != previousHash || summary.RetainedRecordCount != verifiedRecords || summary.RetainedRecordBytes != verifiedBytes || summary.LastAcceptedAt.IsZero() {
@@ -1343,7 +1383,12 @@ func (s *PublicMirrorStore) verifyProofArtifacts(ctx context.Context) (map[strin
 		return nil, fmt.Errorf("public mirror store: read proof artifacts: %w", err)
 	}
 	sizes := make(map[string]int64, len(rows))
+	buffer := make([]byte, publicMirrorHashBufferBytes)
+	started := time.Now()
 	for _, row := range rows {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !validPublicProofArtifactID(row.id) || row.size < 0 || row.size > constants.PublicFeedMaxArtifactBytes {
 			return nil, publicMirrorCorrupt("invalid proof artifact %s", row.id)
 		}
@@ -1354,7 +1399,7 @@ func (s *PublicMirrorStore) verifyProofArtifacts(ctx context.Context) (map[strin
 		if !info.Mode().IsRegular() || info.Size() != row.size {
 			return nil, publicMirrorCorrupt("proof artifact %s file mismatch", row.id)
 		}
-		digest, err := s.hashProofArtifact(ctx, row.id)
+		digest, err := s.hashProofArtifact(ctx, row.id, buffer)
 		if err != nil {
 			return nil, err
 		}
@@ -1362,19 +1407,38 @@ func (s *PublicMirrorStore) verifyProofArtifacts(ctx context.Context) (map[strin
 			return nil, publicMirrorCorrupt("proof artifact %s hash mismatch", row.id)
 		}
 		sizes[row.id] = row.size
+		if len(sizes)%publicMirrorQueryChunk == 0 || len(sizes) == len(rows) {
+			s.logger.Info("Public mirror verification progress", "stage", "artifacts", "verified", len(sizes), "total", len(rows), "elapsed", time.Since(started))
+		}
 	}
 	return sizes, nil
 }
 
-func (s *PublicMirrorStore) hashProofArtifact(ctx context.Context, artifactID string) (string, error) {
+func (s *PublicMirrorStore) hashProofArtifact(ctx context.Context, artifactID string, buffer []byte) (string, error) {
 	file, err := s.openProofArtifact(ctx, artifactID)
 	if err != nil {
 		return "", publicMirrorCorrupt("open proof artifact %s: %v", artifactID, err)
 	}
 	defer file.Close()
 	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", publicMirrorCorrupt("read proof artifact %s: %v", artifactID, err)
+	// Read explicitly so os.File.WriteTo cannot allocate a fresh copy buffer
+	// for each artifact, and cancellation is observed between chunks.
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("hash proof artifact: %w", err)
+		}
+		n, err := file.Read(buffer)
+		if n > 0 {
+			if _, writeErr := hash.Write(buffer[:n]); writeErr != nil {
+				return "", fmt.Errorf("hash proof artifact: %w", writeErr)
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("%w: read proof artifact %s: %w", constants.ErrPublicFeedMirrorStoreCorrupt, artifactID, err)
+		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }

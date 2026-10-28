@@ -302,6 +302,7 @@ The assertion must still verify for this user, credential and transaction.
 | operator | [string](#string) |  |  |
 | cli | [string](#string) |  |  |
 | signing_key | [string](#string) |  | SHA-256 of the optional raw Ed25519 application signing public key. |
+| auditor_key | [string](#string) |  | SHA-256 of the Operator&#39;s Ed25519 Auditor public key. |
 
 
 

@@ -9,7 +9,6 @@ package investigation
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,13 +16,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os/exec"
 	"path"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/zerotrustdata/ztd/eval/investigations"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -46,6 +43,12 @@ var (
 	idPattern     = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
+
+// ValidID reports whether id is a lowercase kebab-case identifier, the shape
+// every investigation and evaluation fixture ID must take.
+func ValidID(id string) bool {
+	return idPattern.MatchString(id)
+}
 
 type Scenario struct {
 	SchemaVersion string          `json:"schema_version"`
@@ -88,7 +91,7 @@ type FileState struct {
 	SHA256      string   `json:"sha256,omitempty"` // exact content
 	Contains    []string `json:"contains,omitempty"`
 	NotContains []string `json:"not_contains,omitempty"`
-	NotMatches  []string `json:"not_matches,omitempty"` // RE2, compiled at load
+	NotMatches  []string `json:"not_matches,omitempty"` // RE2; Validate rejects an expression that does not compile
 	Absent      bool     `json:"absent,omitempty"`      // the file must not exist
 }
 
@@ -121,7 +124,8 @@ func (f FileState) Check(content string, found bool) []string {
 		}
 	}
 	for _, expr := range f.NotMatches {
-		if regexp.MustCompile(expr).MatchString(content) {
+		re, err := regexp.Compile(expr)
+		if err != nil || re.MatchString(content) {
 			failures = append(failures, "not_matches "+expr)
 		}
 	}
@@ -135,28 +139,6 @@ func (f FileState) Check(content string, found bool) []string {
 type GovernedProbe struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
-}
-
-// Run executes the governed probe command in dir with a bounded timeout.
-// It returns whether the command succeeded and its combined output (or failure message).
-func (p *GovernedProbe) Run(dir string) (bool, string) {
-	if p == nil || p.Command == "" {
-		return true, ""
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, p.Command, p.Args...)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
-	out := strings.TrimSpace(string(output))
-	if err != nil {
-		if out == "" {
-			return false, fmt.Sprintf("probe command %s failed: %v", p.Command, err)
-		}
-		return false, fmt.Sprintf("probe command %s failed: %s (%v)", p.Command, out, err)
-	}
-	return true, out
 }
 
 type AnswerConcepts struct {
@@ -191,7 +173,7 @@ func (s *Scenario) Validate() error {
 	if s.SchemaVersion != ScenarioSchemaVersion {
 		return invalid("schema_version %q, want %s", s.SchemaVersion, ScenarioSchemaVersion)
 	}
-	if !idPattern.MatchString(s.ID) {
+	if !ValidID(s.ID) {
 		return invalid("id %q must match %s", s.ID, idPattern)
 	}
 	required := []struct{ field, value string }{
@@ -298,15 +280,29 @@ func (o Objective) validate() (map[string]bool, error) {
 	if o.GovernedProbe != nil && !models.ValidExecutableName(o.GovernedProbe.Command) {
 		return nil, invalid("objective.governed_probe.command must be one executable name with no whitespace")
 	}
-	paths := make(map[string]bool, len(o.FileState))
-	for i, state := range o.FileState {
-		if err := state.validate(i); err != nil {
-			return nil, err
-		}
-		paths[state.Path] = true
+	paths, err := ValidateFileStates(o.FileState)
+	if err != nil {
+		return nil, err
 	}
 	if err := o.AnswerConcepts.validate(); err != nil {
 		return nil, err
+	}
+	return paths, nil
+}
+
+// ValidateFileStates checks the shared final-state contract and returns its
+// paths for canary validation. Campaign catalogs use the same predicates as
+// planted investigations.
+func ValidateFileStates(states []FileState) (map[string]bool, error) {
+	paths := make(map[string]bool, len(states))
+	for i, state := range states {
+		if err := state.validate(i); err != nil {
+			return nil, err
+		}
+		if paths[state.Path] {
+			return nil, invalid("objective.file_state[%d].path %q is duplicated", i, state.Path)
+		}
+		paths[state.Path] = true
 	}
 	return paths, nil
 }

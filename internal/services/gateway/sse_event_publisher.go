@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 )
@@ -44,6 +45,13 @@ func NewSSEEventPublisher(sseStore *SSEEventService, pubsub *GatewayWebSocketHan
 // before the live publish so a replaying consumer never misses an event it was
 // shown live.
 func (p *SSEEventPublisher) Publish(route SSERoute, eventType string, payload any, producerID string) error {
+	entry, ok := constants.Registry.Lookup(constants.EventType(eventType))
+	if !ok {
+		return fmt.Errorf("publish sse: %w: %q", constants.ErrTxUnknownEventType, eventType)
+	}
+	if !entry.HasTransport("sse") {
+		return fmt.Errorf("publish sse: %w: %q", constants.ErrEventTransportViolation, eventType)
+	}
 	payloadBytes, err := buildSSEPushPayload(route, eventType, payload)
 	if err != nil {
 		return err
@@ -60,6 +68,13 @@ func (p *SSEEventPublisher) Publish(route SSERoute, eventType string, payload an
 // the stream emits them without an id: line and a reconnecting consumer cannot
 // replay them. A consumer that must not miss one reconciles on reconnect.
 func (p *SSEEventPublisher) PublishEphemeral(route SSERoute, eventType string, payload any) error {
+	entry, ok := constants.Registry.Lookup(constants.EventType(eventType))
+	if !ok {
+		return fmt.Errorf("publish ephemeral sse: %w: %q", constants.ErrTxUnknownEventType, eventType)
+	}
+	if !entry.HasTransport("sse") {
+		return fmt.Errorf("publish ephemeral sse: %w: %q", constants.ErrEventTransportViolation, eventType)
+	}
 	payloadBytes, err := buildSSEPushPayload(route, eventType, payload)
 	if err != nil {
 		return err

@@ -110,7 +110,7 @@ func NewSuspendedTransactionService(db *sqliteutil.DB, v *vault.Vault, logger *s
 		logger = slog.Default()
 	}
 
-	if _, err := db.Exec(suspendedTransactionSchema); err != nil {
+	if _, err := db.ExecWithRetry(context.Background(), suspendedTransactionSchema); err != nil {
 		return nil, fmt.Errorf("suspended_transaction_store: initialize schema: %w", err)
 	}
 

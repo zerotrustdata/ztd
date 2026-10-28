@@ -29,9 +29,10 @@ import (
 	"sync"
 	"time"
 
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"google.golang.org/protobuf/encoding/protojson"
+
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -52,7 +53,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/ztdbinaries"
-	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
 // GatewayModeService is the top-level orchestrator for gateway mode (operator).
@@ -273,7 +273,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
 	}
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
-	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
+	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceLlamacppEndpoint: cfg.Inference.LlamaCppEndpoint, InferenceLlamacppModelRoot: cfg.Inference.LlamaCppModelRoot, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
 		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
 	}
 
@@ -346,6 +346,9 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	auditorPriv, auditorKeyID, err := sm.GetAuditorKey()
 	if err != nil {
 		return nil, fmt.Errorf("gateway: load auditor signing key: %w", err)
+	}
+	if err := reg.RecordEmbeddedAuditorKey(ctx, auditorKeyID); err != nil {
+		return nil, fmt.Errorf("gateway: embedded auditor key: %w", err)
 	}
 
 	// --- Consensus bootstrap (C2 inverted order: before pubsub and mcpGateway) ---
@@ -428,6 +431,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 				ResultsService:           results,
 				Inference:                handlers.Inference,
 				InferenceAttemptStore:    handlers.InferenceAttemptStore,
+				InferenceProvider:        handlers.InferenceProvider,
 				ProviderBoundaryObserver: handlers.ProviderBoundaryObserver,
 				ModelProvenanceOperator:  handlers.ModelProvenanceOperator,
 				Logger:                   embeddedOperatorLogger,
@@ -905,20 +909,13 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Responder:   ls.responder,
 			CrossOrigin: len(cfg.Gateway.AllowedOrigins) > 0,
 		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         cfg,
-			Logger:      logger,
-			DocStore:    ls.docStore,
-			SignerStore: ls.signerStore,
-			UserSvc:     userSvc,
-			Responder:   ls.responder,
-		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       cfg,
 			Logger:    logger,
 			Reg:       reg,
 			Auth:      auth,
 			Dispatch:  ls.dispatchSvc,
+			Trust:     ls.consensusStore,
 			Responder: ls.responder,
 		},
 		DispatchControllerDeps: DispatchControllerDeps{

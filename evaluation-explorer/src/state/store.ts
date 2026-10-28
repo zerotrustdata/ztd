@@ -29,7 +29,7 @@ import type {
   SuiteSummary,
 } from '../contract/types';
 import { decodeLiveEventWire, isLiveEventKind } from '../contract/live-event-wire';
-import { decodeViewRecord, isProjectionRecord, ValidationError } from '../contract/validators';
+import { decodeViewRecord, getParsedProjectionPayload, isProjectionRecord, ValidationError } from '../contract/validators';
 import {
   deriveFreshness,
   type FeedConnectionState,
@@ -38,10 +38,10 @@ import {
 } from '../utils/feed-state';
 import { CAMPAIGN_MESSAGE_TYPES, decodeCampaignProjectionEnvelope } from '../contract/campaign-wire';
 import {
-  adaptCampaignProjectionEnvelope,
+  adaptDecodedCampaignProjectionEnvelope,
+  beginCampaignAdaptContextTransaction,
   campaignProgressCounts,
   campaignRunIdFromDatasetId,
-  cloneCampaignAdaptContext,
   createCampaignAdaptContext,
   recordCampaignMatrixTotal,
   type CampaignAdaptContext,
@@ -233,6 +233,14 @@ export class EvalStore {
   }
 
   setMirrorOrigin(mirrorOrigin: string): void {
+    if (this.state.mirrorOrigin && this.state.mirrorOrigin !== mirrorOrigin) {
+      this.campaignContexts = new Map();
+      const state = emptyState();
+      state.mirrorOrigin = mirrorOrigin;
+      this.state = state;
+      this.emitIfNotBatching();
+      return;
+    }
     this.setState((state) => ({ ...state, mirrorOrigin }));
   }
 
@@ -369,7 +377,7 @@ export class EvalStore {
     try {
       isProjectionRecord(record);
       if (record.record_type !== 'projection' && record.record_type !== 'event') return;
-      const payload = parseProjectionPayload(record.record_bytes);
+      const payload = getParsedProjectionPayload(record) ?? parseProjectionPayload(record.record_bytes);
       if (
         payload.kind === 'evaluation_summary' &&
         payload.native_result === undefined &&
@@ -380,10 +388,18 @@ export class EvalStore {
       if (isCampaignProjectionPayload(payload)) {
         const envelope = decodeCampaignProjectionEnvelope(payload);
         const runId = envelope.record.run_id;
-        const candidateContext = cloneCampaignAdaptContext(this.campaignContexts.get(runId) ?? createCampaignAdaptContext());
-        const adapted = adaptCampaignProjectionEnvelope(envelope, candidateContext);
-        const validated = adapted.map((decoded) => decodeViewRecord(decoded.kind, decoded));
-        this.campaignContexts.set(runId, candidateContext);
+        const context = this.campaignContexts.get(runId) ?? createCampaignAdaptContext();
+        const transaction = beginCampaignAdaptContextTransaction(context);
+        let validated: Array<SnapshotRecord | LiveEvent>;
+        try {
+          const adapted = adaptDecodedCampaignProjectionEnvelope(envelope, context);
+          validated = adapted.map((decoded) => decodeViewRecord(decoded.kind, decoded));
+          transaction.commit();
+        } catch (error) {
+          transaction.rollback();
+          throw error;
+        }
+        this.campaignContexts.set(runId, context);
         for (const decoded of validated) {
           this.indexRecord(state, decoded, record.sequence);
           if (decoded.kind === 'assignment_result') {

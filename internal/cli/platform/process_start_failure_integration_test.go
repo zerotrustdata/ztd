@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -104,7 +105,7 @@ func TestStartOperator_PIDWriteFailureTerminatesChildAndLeavesNoPIDFile(t *testi
 	pm, err := NewProcessManager(fileSvc)
 	require.NoError(t, err)
 
-	startErr := pm.StartOperator(minimalStartOpts())
+	startErr := pm.StartOperator(t.Context(), minimalStartOpts())
 	require.Error(t, startErr, "StartOperator should fail when writePID fails")
 	require.ErrorIs(t, startErr, constants.ErrPIDWriteFailed,
 		"error should wrap ErrPIDWriteFailed, got: %v", startErr)
@@ -124,7 +125,7 @@ func TestStartOperator_ProcessDeathDuringHealthCheckRemovesPIDFile(t *testing.T)
 	pm, err := NewProcessManager(fileSvc)
 	require.NoError(t, err)
 
-	startErr := pm.StartOperator(minimalStartOpts())
+	startErr := pm.StartOperator(t.Context(), minimalStartOpts())
 	require.Error(t, startErr, "StartOperator should fail when the process never becomes healthy")
 	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
 		"error should wrap ErrProcessStartFailed, got: %v", startErr)
@@ -138,13 +139,13 @@ func TestStartOperator_ProcessDeathDuringHealthCheckRemovesPIDFile(t *testing.T)
 // diagnostic emitted by this start attempt instead of only telling the user
 // to inspect the log manually.
 func TestStartOperator_ProcessDeathReturnsChildDiagnostic(t *testing.T) {
-	t.Setenv(testReexecEnv, "error")
+	t.Setenv(string(constants.EnvVar.TestReexec), "error")
 	fileSvc := newStartFailureFileSvc(t)
 
 	pm, err := NewProcessManager(fileSvc)
 	require.NoError(t, err)
 
-	startErr := pm.StartOperator(minimalStartOpts())
+	startErr := pm.StartOperator(t.Context(), minimalStartOpts())
 	require.Error(t, startErr)
 	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
 	require.ErrorContains(t, startErr, "gateway child startup diagnostic")
@@ -152,12 +153,69 @@ func TestStartOperator_ProcessDeathReturnsChildDiagnostic(t *testing.T) {
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
 }
 
+func TestStartOperator_TimeoutReturnsChildDiagnostic(t *testing.T) {
+	t.Setenv(string(constants.EnvVar.TestReexec), "verification")
+	fileSvc := newStartFailureFileSvc(t)
+	pm, err := NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	pm.SetHealthCheckParameters(100*time.Millisecond, 150)
+	startErr := pm.StartOperator(t.Context(), minimalStartOpts())
+	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
+	require.ErrorIs(t, startErr, context.DeadlineExceeded)
+	require.ErrorContains(t, startErr, "stage=snapshots batches=42")
+	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
+}
+
+type cancelAfterPIDWriteFileSvc struct {
+	fs.RuntimeFileService
+	cancel context.CancelFunc
+}
+
+func (s *cancelAfterPIDWriteFileSvc) WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error {
+	err := s.RuntimeFileService.WriteFile(ctx, relPath, data, mode)
+	if err == nil && relPath == pidRelPath() {
+		s.cancel()
+	}
+	return err
+}
+
+func TestStartOperator_CancellationStopsChild(t *testing.T) {
+	t.Setenv(string(constants.EnvVar.TestReexec), "hold")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fileSvc := &cancelAfterPIDWriteFileSvc{RuntimeFileService: newStartFailureFileSvc(t), cancel: cancel}
+	pm, err := NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	err = pm.StartOperator(ctx, minimalStartOpts())
+	require.ErrorIs(t, err, constants.ErrProcessStartFailed)
+	require.ErrorIs(t, err, context.Canceled)
+	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
+}
+
+func TestStartupDiagnostic_ReadsTailOfCurrentAttempt(t *testing.T) {
+	fileSvc := newStartFailureFileSvc(t)
+	pm, err := NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	log, err := pm.logSvc.OpenLogForAppend(t.Context())
+	require.NoError(t, err)
+	_, err = log.WriteString("old attempt diagnostic\n")
+	require.NoError(t, err)
+	start, err := log.Seek(0, io.SeekEnd)
+	require.NoError(t, err)
+	_, err = log.Write(bytes.Repeat([]byte("progress\n"), maxStartupDiagnosticBytes))
+	require.NoError(t, err)
+	_, err = log.WriteString("latest verification diagnostic\n")
+	require.NoError(t, err)
+	require.NoError(t, log.Close())
+	assert.Equal(t, "latest verification diagnostic", pm.startupDiagnostic(start))
+}
+
 // TestStartOperator_KeyStoreApprovalExtendsHealthWait verifies that a child
 // waiting on the user to approve OS key store access (a macOS Keychain prompt
 // for a rebuilt binary) is not killed when the normal health budget runs out:
 // the user is told what to approve, and the start waits for the child.
 func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
-	t.Setenv(testReexecEnv, "keystore-approval")
+	t.Setenv(string(constants.EnvVar.TestReexec), "keystore-approval")
 	fileSvc := newStartFailureFileSvc(t)
 
 	pm, err := NewProcessManager(fileSvc)
@@ -171,12 +229,12 @@ func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
 	opts := minimalStartOpts()
 	var notices bytes.Buffer
 	opts.Notices = &notices
-	startErr := pm.StartOperator(opts)
+	startErr := pm.StartOperator(t.Context(), opts)
 	require.Error(t, startErr)
 	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
 	require.ErrorContains(t, startErr, "key store approval denied",
 		"the start must wait past the health budget for the child's outcome")
-	assert.Contains(t, notices.String(), "Keychain prompt")
+	assert.Contains(t, notices.String(), "Keychain dialog")
 
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
 }
@@ -263,7 +321,7 @@ func TestStartOperator_ForeignHealthServerAfterChildExitIsRejected(t *testing.T)
 	done := make(chan struct{})
 	defer close(done)
 	startErrCh := make(chan error, 1)
-	go func() { startErrCh <- pm.StartOperator(opts) }()
+	go func() { startErrCh <- pm.StartOperator(t.Context(), opts) }()
 	go bindForeignHealthServerAfterPIDWrite(t, fileSvc, httpPort, done) //nolint:testifylint // shared helper keeps require for the test goroutine
 
 	select {
@@ -284,7 +342,7 @@ func TestStartOperator_ForeignHealthServerAfterChildExitIsRejected(t *testing.T)
 // foreign server claims it, and its health response must not satisfy the
 // start health check.
 func TestStartOperator_ForeignHealthServerWhileChildAliveIsRejected(t *testing.T) {
-	t.Setenv(testReexecEnv, "hold")
+	t.Setenv(string(constants.EnvVar.TestReexec), "hold")
 	fileSvc := newStartFailureFileSvc(t)
 	opts := startOptsOnFreePorts(t)
 	httpPort := opts.HTTPPort
@@ -296,7 +354,7 @@ func TestStartOperator_ForeignHealthServerWhileChildAliveIsRejected(t *testing.T
 	done := make(chan struct{})
 	defer close(done)
 	startErrCh := make(chan error, 1)
-	go func() { startErrCh <- pm.StartOperator(opts) }()
+	go func() { startErrCh <- pm.StartOperator(t.Context(), opts) }()
 	go bindForeignHealthServerAfterPIDWrite(t, fileSvc, httpPort, done) //nolint:testifylint // shared helper keeps require for the test goroutine
 
 	select {

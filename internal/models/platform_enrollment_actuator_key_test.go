@@ -59,3 +59,22 @@ func TestPlatformOperatorCSRPayload_ActuatorKeyUsesPresentedKey(t *testing.T) {
 	_, err = missing.ActuatorKey()
 	assert.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInvalid)
 }
+
+func TestPlatformOperatorCSRPayload_AuditorKeyUsesPresentedKey(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	keyHex := hex.EncodeToString(pub)
+	payload := &PlatformOperatorCSRPayload{AuditorPublicKey: keyHex, AuditorKeyID: keyHex}
+	got, err := payload.AuditorKey()
+	require.NoError(t, err)
+	assert.Equal(t, pub, got)
+
+	missing := &PlatformOperatorCSRPayload{}
+	_, err = missing.AuditorKey()
+	require.ErrorIs(t, err, constants.ErrOperatorAuditorKeyInvalid)
+
+	payload.AuditorKeyID = hex.EncodeToString(make([]byte, ed25519.PublicKeySize))
+	_, err = payload.AuditorKey()
+	require.ErrorIs(t, err, constants.ErrOperatorAuditorKeyInvalid)
+}

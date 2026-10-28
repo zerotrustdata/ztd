@@ -30,9 +30,9 @@ func TestGatewayConstructsAndRegistersAllEmbeddedOperatorCapabilities(t *testing
 	cfg.Gateway.VaultDir = fileSvc.Resolve(constants.VaultDirname)
 	cfg.Gateway.Posture = constants.PostureDoctrine
 	cfg.OperatorCapabilities = constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}
-	cfg.Inference = config.InferenceConfig{Enabled: true, OllamaEndpoint: "http://127.0.0.1:11434", KeepAlive: "-1"}
+	cfg.Inference = config.InferenceConfig{Enabled: true, Provider: constants.InferenceProviderOllama, OllamaEndpoint: "http://127.0.0.1:11434", KeepAlive: "-1"}
 	cfg.ProviderBoundaryObserver = config.ProviderBoundaryObserverConfig{Enabled: true, ObserverID: "embedded-observer"}
-	cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "embedded-provenance", ModelStorageRoot: testutil.TempDir(t)}
+	cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "embedded-provenance", ModelStorageRoot: testutil.TempDir(t), ModelStorageFormat: constants.ModelStorageFormatOllama}
 	db, err := openTestDB(t, fileSvc, logger)
 	require.NoError(t, err)
 	svc, err := NewGatewayModeServiceWithDB(cfg, fileSvc, logger, db, nil, nil)

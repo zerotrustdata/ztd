@@ -861,6 +861,8 @@ const VARIANT_ALIASES: Record<string, string> = {
 };
 
 const FAMILY_LABELS: Record<string, { family: string; provider: string }> = {
+  nemotron: { family: "Nemotron", provider: "NVIDIA" },
+  deepseek: { family: "DeepSeek R1", provider: "DeepSeek" },
   gemma2: { family: "Gemma 2", provider: "Google" },
   gemma3: { family: "Gemma 3", provider: "Google" },
   gemma4: { family: "Gemma 4", provider: "Google" },
@@ -979,16 +981,15 @@ export function resolveModelProfile(
   const canonicalId = VARIANT_ALIASES[model.variant_id] ?? model.variant_id;
   const raw = RAW_MODEL_INVENTORY[canonicalId] ?? RAW_MODEL_INVENTORY[model.variant_id];
 
-  const familyKey = model.model_family ?? raw?.family ?? inferFamilyKey(model.variant_id, model.display_name);
+  // Provider families describe architecture; named derivatives retain their
+  // own identity even when their weights use a Gemma, Llama, or Qwen base.
+  const identity = `${model.served_model_tag ?? raw?.tag ?? ""} ${model.variant_id} ${model.display_name}`.toLowerCase();
+  const namedFamily = identity.includes("nemotron") ? "nemotron" : identity.includes("deepseek") ? "deepseek" : undefined;
+  const familyKey = namedFamily ?? model.model_family ?? raw?.family ?? inferFamilyKey(model.variant_id, model.display_name);
   const familyInfo = FAMILY_LABELS[familyKey] ?? {
     family: capitalizeWords(familyKey),
     provider: model.backend_provider_class ?? "Ollama",
   };
-
-  // Refine DeepSeek R1 family label when served tag is deepseek-r1
-  const isDeepSeek = model.variant_id.includes("deepseek") || raw?.tag?.includes("deepseek");
-  const familyLabel = isDeepSeek ? "DeepSeek R1" : familyInfo.family;
-  const providerLabel = isDeepSeek ? "DeepSeek" : familyInfo.provider;
 
   const servedTag = model.served_model_tag;
 
@@ -1025,9 +1026,9 @@ export function resolveModelProfile(
   return {
     variant_id: model.variant_id,
     served_model_tag: servedTag,
-    family: familyLabel,
-    family_key: isDeepSeek ? "deepseek" : familyKey,
-    provider: providerLabel,
+    family: familyInfo.family,
+    family_key: familyKey,
+    provider: familyInfo.provider,
     parameter_count: parameterCount,
     parameter_label: parameterLabel,
     model_digest: model.model_digest,

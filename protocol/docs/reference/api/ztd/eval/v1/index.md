@@ -774,6 +774,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
 | investigation | [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation) |  | Investigation identity and its authoritative Data Operator are frozen into campaign_digest. Absent only on legacy specs frozen before this field. |
 | formation_stack_set_digest | [string](#string) |  | Nonempty only for a system campaign. Binds the complete frozen catalog formation set into campaign_digest, independently of later catalog edits. |
+| judge_variant | [ModelVariant](#ztd-eval-v1-ModelVariant) |  | judge_variant is the governed-registry model that scores every judged criterion of every assignment in the campaign, whatever model or formation the assignment executes, so no subject grades itself. It is frozen into campaign_digest and dispatched under its own single-entry judge registry, never as a scored model_registry entry. Absent only on campaigns frozen before pinned judging; their judged cells fail closed. |
 
 
 
@@ -1015,6 +1016,7 @@ EvaluationScenarioDefinition describes one frozen typed scenario.
 | trajectory_policy | [EvaluationTrajectoryPolicy](#ztd-eval-v1-EvaluationTrajectoryPolicy) |  |  |
 | prompt_hint | [PromptHint](#ztd-eval-v1-PromptHint) |  |  |
 | tribunal_commands | [bool](#bool) |  | tribunal_commands routes run_shell_command through Tribunal authoring. Unset, the model calls the native tool directly. The frozen catalog digest binds the choice. |
+| exclude_when_l2_enforced | [bool](#bool) |  | exclude_when_l2_enforced marks scenarios whose required state-changing tool call or successful/error seed action is gated by L2. The frozen catalog digest binds this eligibility rule. |
 
 
 
@@ -1235,6 +1237,7 @@ EvaluationVerificationReport independently verifies one run or assignment.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | stack | [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition) |  |  |
+| designated_role | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  | Stack role this assignment executes as. |
 
 
 

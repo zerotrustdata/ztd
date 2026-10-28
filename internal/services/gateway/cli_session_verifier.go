@@ -10,7 +10,6 @@ package gateway
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -104,16 +103,10 @@ func (v *cliSessionVerifier) verifyCLISession(ctx context.Context, userID, cliSe
 		return nil, constants.ErrCLIL3SessionNotFound
 	}
 
-	sessionBytes, err := json.Marshal(doc.ForWire())
-	if err != nil {
-		v.logger.Warn("Failed to marshal CLI session", "cli_session_id", doc.ID, "error", err)
-		return nil, fmt.Errorf("cli session verifier: marshal cli session: %w", err)
-	}
-
 	var session models.CLISession
-	if err := json.Unmarshal(sessionBytes, &session); err != nil {
-		v.logger.Warn("Failed to unmarshal CLI session", "cli_session_id", doc.ID, "error", err)
-		return nil, fmt.Errorf("cli session verifier: unmarshal cli session: %w", err)
+	if err := doc.DecodeWire(&session); err != nil {
+		v.logger.Warn("Failed to decode CLI session", "cli_session_id", doc.ID, "error", err)
+		return nil, fmt.Errorf("cli session verifier: decode cli session: %w", err)
 	}
 
 	if session.UserID != userID {

@@ -36,7 +36,7 @@ type VerificationResult struct {
 	Rows      []VerificationRow
 }
 
-func reportVerification(ctx context.Context, outDir string, eventsStore *storage.LocalFirstEventsStore, cl *storage.CommitmentLedger, ledger *storage.GitLedgerService) (FileResult, VerificationResult, error) {
+func reportVerification(ctx context.Context, outDir string, eventsStore *storage.LocalFirstEventsStore, cl *storage.CommitmentLedger, ledger *storage.GitLedgerService, auditorTrust, actuatorTrust governance.EvidenceSignerSource) (FileResult, VerificationResult, error) {
 	path := filepath.Join(outDir, constants.ReportVerificationFilename)
 
 	var vr VerificationResult
@@ -49,7 +49,21 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 		}
 	}
 
-	// Check 1: Commitment chain integrity
+	// Check 1: Events chain integrity
+	if ctx.Err() != nil {
+		return FileResult{}, vr, ctx.Err()
+	}
+	if eventsStore != nil {
+		if err := eventsStore.VerifyChain(ctx, 0); err != nil {
+			addRow("events_chain", "events", "all", verifyResultFail, fmt.Sprintf("events chain verification failed: %v", err))
+		} else {
+			addRow("events_chain", "events", "all", verifyResultPass, "events chain verified")
+		}
+	} else {
+		addRow("events_chain", "events", "all", verifyResultSkipped, "local-first events store not configured")
+	}
+
+	// Check 2: Commitment chain integrity
 	if ctx.Err() != nil {
 		return FileResult{}, vr, ctx.Err()
 	}
@@ -103,7 +117,7 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 				allSignaturesOK = false
 				continue
 			}
-			if !commitmentRowMatchesAttestation(c, &attestation) {
+			if !governance.CommitmentRowMatchesAttestation(c, &attestation) {
 				addRow("commitment_hash_recompute", "commitment_ledger", c.Hash, verifyResultFail, "structured commitment columns diverge from attestation JSON")
 				allHashesOK = false
 			}
@@ -120,10 +134,14 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 				addRow("commitment_hash_recompute", "commitment_ledger", c.Hash, verifyResultFail, "stored commitment does not match its canonical attestation hash")
 				allHashesOK = false
 			}
-			publicKey, keyErr := hex.DecodeString(attestation.AuditorKeyId)
+			var publicKey ed25519.PublicKey
+			keyErr := constants.ErrTrustedSignerKeyNotFound
+			if auditorTrust != nil {
+				publicKey, keyErr = auditorTrust.GetTrustedSignerPublicKey(ctx, attestation.AuditorKeyId)
+			}
 			signature, signatureErr := hex.DecodeString(attestation.Signature)
-			if keyErr != nil || signatureErr != nil || len(publicKey) != ed25519.PublicKeySize || !ed25519.Verify(ed25519.PublicKey(publicKey), canonical, signature) {
-				addRow("commitment_signature", "commitment_ledger", c.Hash, verifyResultFail, "Auditor signature verification failed")
+			if keyErr != nil || signatureErr != nil || len(publicKey) != ed25519.PublicKeySize || !ed25519.Verify(publicKey, canonical, signature) {
+				addRow("commitment_signature", "commitment_ledger", c.Hash, verifyResultFail, "Auditor signature verification failed against pinned trust")
 				allSignaturesOK = false
 			}
 		}
@@ -190,18 +208,31 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 	}
 	if eventsStore != nil && commitmentsErr == nil {
 		missingReceipts := 0
+		invalidReceipts := 0
 		for _, c := range commitments {
 			if c.TransactionID == "" {
+				invalidReceipts++
 				continue
 			}
 			r, err := eventsStore.GetEventReceipt(c.TransactionID)
 			if err != nil || r == nil {
 				missingReceipts++
+				continue
+			}
+			if actuatorTrust == nil || r.EventReceipt == nil {
+				invalidReceipts++
+				continue
+			}
+			publicKey, err := actuatorTrust.GetTrustedSignerPublicKey(ctx, r.EventReceipt.GetSignerKeyId())
+			if err != nil || governance.VerifyEventReceipt(r.EventReceipt, publicKey) != nil || !governance.ReceiptMatchesCommitment(r.EventReceipt, c) {
+				invalidReceipts++
 			}
 		}
 		if missingReceipts > 0 {
 			addRow("receipt_commitment_crosslink", "events_store+commitment_ledger", "all", verifyResultFail,
 				fmt.Sprintf("%d committed transaction_ids have no matching receipt", missingReceipts))
+		} else if invalidReceipts > 0 {
+			addRow("receipt_commitment_crosslink", "events_store+commitment_ledger", "all", verifyResultFail, fmt.Sprintf("%d receipts failed pinned signature or commitment linkage verification", invalidReceipts))
 		} else if len(commitments) > 0 {
 			addRow("receipt_commitment_crosslink", "events_store+commitment_ledger", "all", verifyResultPass,
 				fmt.Sprintf("all %d commitments have matching receipts", len(commitments)))
@@ -222,20 +253,4 @@ func reportVerification(ctx context.Context, outDir string, eventsStore *storage
 	}
 	res.Filename = constants.ReportVerificationFilename
 	return res, vr, nil
-}
-
-func commitmentRowMatchesAttestation(row *storage.CommitmentRow, attestation *operatorv1.CommitmentAttestation) bool {
-	return row.TransactionID == attestation.TransactionId &&
-		row.TransactionHash == attestation.TransactionHash &&
-		row.PriorCommitmentHash == attestation.PriorCommitmentHash &&
-		row.Hash == attestation.Hash &&
-		row.StateRootAtCommit == attestation.StateRootAtCommit &&
-		row.L2SignatureDigest == attestation.L2SignatureDigest &&
-		row.WardenIntentSignatureDigest == attestation.WardenIntentSignatureDigest &&
-		row.HumanSignatureDigest == attestation.HumanSignatureDigest &&
-		row.ActionType == attestation.ActionType &&
-		row.TargetResource == attestation.TargetResource &&
-		row.CommittedAt.UnixMilli() == attestation.CommittedAtUnixMs &&
-		row.AuditorKeyID == attestation.AuditorKeyId &&
-		row.Signature == attestation.Signature
 }

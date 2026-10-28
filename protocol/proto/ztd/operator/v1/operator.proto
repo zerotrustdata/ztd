@@ -437,6 +437,14 @@ message OperatorRuntimeConfig {
   bool inference_allow_hosted_decision = 21;
   repeated string inference_decision_models = 22;
   bool inference_decision_only = 23;
+  // Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint).
+  string inference_llamacpp_endpoint = 24;
+  // llama-server --models-dir as seen by this Operator
+  // (--inference-llamacpp-model-root).
+  string inference_llamacpp_model_root = 25;
+  // Model store layout under provenance_operator_model_storage_root
+  // (--model-storage-format: ollama or llamacpp).
+  string provenance_operator_model_storage_format = 26;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -493,6 +501,12 @@ message OperatorDocument {
   string actuator_public_key = 36;
   // actuator_key_id equals actuator_public_key (key_id == hex(pub)).
   string actuator_key_id = 37;
+  // auditor_public_key is the hex Ed25519 public key of this Operator's
+  // Auditor, bound once at enrollment. Auditor attestations verify only
+  // against this key.
+  string auditor_public_key = 38;
+  // auditor_key_id equals auditor_public_key (key_id == hex(pub)).
+  string auditor_key_id = 39;
 }
 
 message ShutdownRequested {
@@ -683,6 +697,9 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID = 23;
   RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED = 24;
   RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED = 25;
+  // The provider accepted the request, then ended its response stream with an error event instead of a done event,
+  // such as when its own tool-call parser rejected the model's output. The provider's message is never signed.
+  RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR = 26;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
@@ -869,6 +886,9 @@ message GovernedDispatchResult {
   InferenceResult inference_result = 5;
   EventReceipt receipt = 6;
   repeated ConsensusVoteInference consensus_inferences = 7;
+  // Original admitted intent. Its canonical hash is covered by receipt, allowing
+  // offline consumers to bind the signed outcome to the exact request payload.
+  ztd.common.v1.GovernanceEnvelope request_envelope = 8;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified
@@ -1966,6 +1986,8 @@ enum InferenceDispatchFailureCode {
   INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID = 45;
   INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED = 46;
   INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED = 47;
+  INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR = 48;
+  INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED = 49;
 }
 
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
@@ -2039,4 +2061,27 @@ message InferenceHostedEgressAttestation {
  string provenance = 3;
  string normalized_request_hash = 4;
  bool explicit_consent = 5;
+}
+
+// AuditChainCheckpointPayload is the canonical protobuf payload for
+// ztd.v1.platform.audit.chain.checkpointed events on the audit events chain.
+message AuditChainCheckpointPayload {
+  int64 pruned_through_seq = 1;
+  string pruned_through_hash = 2;
+  int64 events_pruned_count = 3;
+  int64 created_at_unix_ms = 4;
+  string format_version = 5;
+}
+
+// AuditChainCheckpoint represents a durable, signed checkpoint anchor
+// stored in audit_chain_checkpoints.
+message AuditChainCheckpoint {
+  int64 pruned_through_seq = 1;
+  string pruned_through_hash = 2;
+  int64 events_pruned_count = 3;
+  string checkpoint_hash = 4;
+  int64 created_at_unix_ms = 5;
+  string auditor_key_id = 6;
+  string format_version = 7;
+  string signature = 8;
 }

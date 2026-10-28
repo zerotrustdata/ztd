@@ -9,6 +9,7 @@ package storage
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -30,6 +31,40 @@ import (
 	"github.com/zerotrustdata/ztd/internal/timesvc"
 )
 
+// CheckpointSigner signs domain-separated checkpoint canonical bytes with the auditor key.
+type CheckpointSigner interface {
+	Sign(data []byte) ([]byte, error)
+	KeyID() string
+}
+
+// Ed25519CheckpointSigner implements CheckpointSigner using an in-memory ed25519.PrivateKey.
+type Ed25519CheckpointSigner struct {
+	priv  ed25519.PrivateKey
+	keyID string
+}
+
+// NewEd25519CheckpointSigner creates a CheckpointSigner backed by an Ed25519 private key.
+func NewEd25519CheckpointSigner(priv ed25519.PrivateKey, keyID string) *Ed25519CheckpointSigner {
+	return &Ed25519CheckpointSigner{
+		priv:  priv,
+		keyID: keyID,
+	}
+}
+
+func (s *Ed25519CheckpointSigner) Sign(data []byte) ([]byte, error) {
+	if s == nil || len(s.priv) != ed25519.PrivateKeySize {
+		return nil, constants.ErrAuditCheckpointUntrustedSigner
+	}
+	return ed25519.Sign(s.priv, data), nil
+}
+
+func (s *Ed25519CheckpointSigner) KeyID() string {
+	if s == nil {
+		return ""
+	}
+	return s.keyID
+}
+
 // LocalFirstEventsStoreConfig holds configuration for the runtime's local-first events store.
 type LocalFirstEventsStoreConfig struct {
 	RetentionDays        int
@@ -37,6 +72,10 @@ type LocalFirstEventsStoreConfig struct {
 	// EncryptionVault is the required vault.Vault for encrypting sensitive content fields.
 	// content_text, command_raw, command_stdout, and command_stderr are encrypted at rest.
 	EncryptionVault *vault.Vault
+	// CheckpointSigner signs domain-separated checkpoint anchors with the runtime's auditor key.
+	CheckpointSigner CheckpointSigner
+	// PinnedAuditorPublicKey is the pinned Ed25519 public key used to verify checkpoint signatures.
+	PinnedAuditorPublicKey ed25519.PublicKey
 }
 
 // DefaultLocalFirstEventsStoreConfig returns the default configuration for the events store.
@@ -117,6 +156,8 @@ type LocalFirstEventsStore struct {
 	encryptionVault  *vault.Vault
 	pruner           *sqliteutil.Pruner
 	commitmentLedger *CommitmentLedger
+	checkpointSigner CheckpointSigner
+	pinnedAuditorKey ed25519.PublicKey
 	closeOnce        sync.Once
 
 	muWrites sync.WaitGroup
@@ -144,11 +185,19 @@ func NewLocalFirstEventsStore(config *LocalFirstEventsStoreConfig, db *sqliteuti
 	}
 
 	ass := &LocalFirstEventsStore{
-		config:          config,
-		logger:          logger,
-		fileSvc:         fileSvc,
-		encryptionVault: config.EncryptionVault,
-		db:              db,
+		config:           config,
+		logger:           logger,
+		fileSvc:          fileSvc,
+		encryptionVault:  config.EncryptionVault,
+		db:               db,
+		checkpointSigner: config.CheckpointSigner,
+	}
+	if len(config.PinnedAuditorPublicKey) == ed25519.PublicKeySize {
+		ass.pinnedAuditorKey = append(ed25519.PublicKey(nil), config.PinnedAuditorPublicKey...)
+	} else if config.CheckpointSigner != nil && config.CheckpointSigner.KeyID() != "" {
+		if pubBytes, err := hex.DecodeString(config.CheckpointSigner.KeyID()); err == nil && len(pubBytes) == ed25519.PublicKeySize {
+			ass.pinnedAuditorKey = pubBytes
+		}
 	}
 
 	if err := ass.bootstrap(); err != nil {
@@ -171,6 +220,49 @@ func (ass *LocalFirstEventsStore) CommitmentLedger() *CommitmentLedger {
 		return nil
 	}
 	return ass.commitmentLedger
+}
+
+// SetCheckpointSigner updates the checkpoint signer on the store and active configuration.
+func (ass *LocalFirstEventsStore) SetCheckpointSigner(signer CheckpointSigner) {
+	if ass == nil {
+		return
+	}
+	ass.checkpointSigner = signer
+	if ass.config != nil {
+		ass.config.CheckpointSigner = signer
+	}
+	if len(ass.pinnedAuditorKey) == 0 && signer != nil && signer.KeyID() != "" {
+		if pubBytes, err := hex.DecodeString(signer.KeyID()); err == nil && len(pubBytes) == ed25519.PublicKeySize {
+			ass.pinnedAuditorKey = pubBytes
+		}
+	}
+}
+
+// SetPinnedAuditorPublicKey updates the pinned auditor public key used to verify checkpoints.
+func (ass *LocalFirstEventsStore) SetPinnedAuditorPublicKey(pub ed25519.PublicKey) {
+	if ass == nil {
+		return
+	}
+	ass.pinnedAuditorKey = append(ed25519.PublicKey(nil), pub...)
+	if ass.config != nil {
+		ass.config.PinnedAuditorPublicKey = ass.pinnedAuditorKey
+	}
+}
+
+// CheckpointSigner returns the configured checkpoint signer.
+func (ass *LocalFirstEventsStore) CheckpointSigner() CheckpointSigner {
+	if ass == nil {
+		return nil
+	}
+	return ass.checkpointSigner
+}
+
+// PinnedAuditorPublicKey returns the pinned auditor public key.
+func (ass *LocalFirstEventsStore) PinnedAuditorPublicKey() ed25519.PublicKey {
+	if ass == nil {
+		return nil
+	}
+	return ass.pinnedAuditorKey
 }
 
 // bootstrap initializes the events store (directory structure, database)
@@ -225,13 +317,53 @@ func (ass *LocalFirstEventsStore) verifyWritePermissions() error {
 // fresh-only: CREATE TABLE IF NOT EXISTS is the whole schema, with no ALTER TABLE
 // migrations or column back-fills.
 func (ass *LocalFirstEventsStore) initDatabase() error {
-	if _, err := ass.db.Exec(eventsStoreSchema); err != nil {
+	if err := ass.checkCheckpointsSchema(); err != nil {
+		return err
+	}
+
+	if _, err := ass.db.ExecWithRetry(context.Background(), eventsStoreSchema); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreInitSchemaFailed, err)
 	}
 
 	ass.commitmentLedger = NewCommitmentLedger(ass.db, ass.logger, ass.encryptionVault)
 
 	ass.logger.Info("Database schema initialized")
+	return nil
+}
+
+func (ass *LocalFirstEventsStore) checkCheckpointsSchema() error {
+	rows, err := ass.db.Query(`PRAGMA table_info(audit_chain_checkpoints)`)
+	if err != nil {
+		return fmt.Errorf("audit chain: check schema: %w", err)
+	}
+	defer rows.Close()
+
+	cols := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid       int
+			name      string
+			colType   string
+			notNull   int
+			dfltValue sql.NullString
+			pk        int
+		)
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("audit chain: scan column: %w", err)
+		}
+		cols[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("audit chain: rows: %w", err)
+	}
+	if len(cols) == 0 {
+		return nil
+	}
+	for _, req := range []string{"signature", "auditor_key_id", "created_at_unix_ms", "format_version"} {
+		if !cols[req] {
+			return fmt.Errorf("%w: column %s missing in audit_chain_checkpoints", constants.ErrAuditCheckpointSchemaIncompatible, req)
+		}
+	}
 	return nil
 }
 
@@ -331,6 +463,10 @@ CREATE TABLE IF NOT EXISTS audit_chain_checkpoints (
 	pruned_through_hash TEXT NOT NULL,
 	pruned_count INTEGER NOT NULL,
 	checkpoint_hash TEXT NOT NULL,
+	created_at_unix_ms INTEGER NOT NULL,
+	auditor_key_id TEXT NOT NULL,
+	signature TEXT NOT NULL,
+	format_version TEXT NOT NULL,
 	created_at TEXT NOT NULL
 );
 
@@ -547,11 +683,12 @@ func (ass *LocalFirstEventsStore) prepareEventInsert(event *Event) (PreparedEven
 	}
 
 	return PreparedEventInsert{
-		Event:        event,
-		TimestampStr: timesvc.FormatTimestamp(event.Timestamp),
-		Vault:        ass.encryptionVault,
-		Stdout:       stdout,
-		Stderr:       stderr,
+		Event:            event,
+		TimestampStr:     timesvc.FormatTimestamp(event.Timestamp),
+		Vault:            ass.encryptionVault,
+		Stdout:           stdout,
+		Stderr:           stderr,
+		PinnedAuditorKey: ass.pinnedAuditorKey,
 	}, nil
 }
 
@@ -1397,7 +1534,7 @@ func eventsStorePrune(config *LocalFirstEventsStoreConfig) sqliteutil.PruneFunc 
 
 		// 2. Checkpoint and delete chained events older than retention period.
 		// Event receipts live on those rows, so they leave with the chain.
-		if err := PruneChainedEvents(ctx, db, logger, config.EncryptionVault, cutoff); err != nil {
+		if err := PruneChainedEvents(ctx, db, logger, config.EncryptionVault, config.CheckpointSigner, cutoff); err != nil {
 			logger.Error("Failed to prune chained audit events", string(constants.ConnectionStateError), err)
 			return err
 		}

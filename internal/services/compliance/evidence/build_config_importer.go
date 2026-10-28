@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -140,7 +139,7 @@ func (i *BuildConfigImporter) buildNodes(records []importedBuildConfigAttestatio
 
 func validBuildConfigBinding(binding BuildConfigImportBinding) error {
 	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.BuildAttestationReferencePrefix); !referenceValid {
-		return errors.New("content reference is invalid")
+		return fmt.Errorf("content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := ValidateRelativePath(binding.Path); err != nil {
 		return err

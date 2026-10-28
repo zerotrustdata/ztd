@@ -7,6 +7,8 @@
     - [A2aCallRequested](#ztd-operator-v1-A2aCallRequested)
     - [AssertionResponse](#ztd-operator-v1-AssertionResponse)
     - [AttestationResponse](#ztd-operator-v1-AttestationResponse)
+    - [AuditChainCheckpoint](#ztd-operator-v1-AuditChainCheckpoint)
+    - [AuditChainCheckpointPayload](#ztd-operator-v1-AuditChainCheckpointPayload)
     - [AuditEvent](#ztd-operator-v1-AuditEvent)
     - [AuditFileMutation](#ztd-operator-v1-AuditFileMutation)
     - [AuditMsgRequested](#ztd-operator-v1-AuditMsgRequested)
@@ -243,6 +245,49 @@ Mirrors McpCallRequested for the Agent-to-Agent JSON protocol.
 | client_data_json | [string](#string) |  |  |
 | attestation_object | [string](#string) |  |  |
 | transports | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-AuditChainCheckpoint"></a>
+
+### AuditChainCheckpoint
+AuditChainCheckpoint represents a durable, signed checkpoint anchor
+stored in audit_chain_checkpoints.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| pruned_through_seq | [int64](#int64) |  |  |
+| pruned_through_hash | [string](#string) |  |  |
+| events_pruned_count | [int64](#int64) |  |  |
+| checkpoint_hash | [string](#string) |  |  |
+| created_at_unix_ms | [int64](#int64) |  |  |
+| auditor_key_id | [string](#string) |  |  |
+| format_version | [string](#string) |  |  |
+| signature | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-AuditChainCheckpointPayload"></a>
+
+### AuditChainCheckpointPayload
+AuditChainCheckpointPayload is the canonical protobuf payload for
+ztd.v1.platform.audit.chain.checkpointed events on the audit events chain.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| pruned_through_seq | [int64](#int64) |  |  |
+| pruned_through_hash | [string](#string) |  |  |
+| events_pruned_count | [int64](#int64) |  |  |
+| created_at_unix_ms | [int64](#int64) |  |  |
+| format_version | [string](#string) |  |  |
 
 
 
@@ -1387,6 +1432,7 @@ GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 | inference_result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
 | receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 | consensus_inferences | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated |  |
+| request_envelope | [ztd.common.v1.GovernanceEnvelope](#ztd-common-v1-GovernanceEnvelope) |  | Original admitted intent. Its canonical hash is covered by receipt, allowing offline consumers to bind the signed outcome to the exact request payload. |
 
 
 
@@ -2539,6 +2585,8 @@ persists it; every other component reads it through this contract.
 | stale_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Instant after which an active remote Operator that stays silent reads as stale: its last sign of life plus the stale window for its declared heartbeat interval. The Gateway derives it on every read and never stores it; it is unset for an Operator that cannot read as stale. |
 | actuator_public_key | [string](#string) |  | actuator_public_key is the hex Ed25519 public key of this Operator&#39;s L5 Actuator, bound once at enrollment over the authenticated bootstrap channel. Receipts executed by this Operator verify only against this key. |
 | actuator_key_id | [string](#string) |  | actuator_key_id equals actuator_public_key (key_id == hex(pub)). |
+| auditor_public_key | [string](#string) |  | auditor_public_key is the hex Ed25519 public key of this Operator&#39;s Auditor, bound once at enrollment. Auditor attestations verify only against this key. |
+| auditor_key_id | [string](#string) |  | auditor_key_id equals auditor_public_key (key_id == hex(pub)). |
 
 
 
@@ -2573,6 +2621,9 @@ OperatorDocument.runtime_config.
 | inference_allow_hosted_decision | [bool](#bool) |  |  |
 | inference_decision_models | [string](#string) | repeated |  |
 | inference_decision_only | [bool](#bool) |  |  |
+| inference_llamacpp_endpoint | [string](#string) |  | Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint). |
+| inference_llamacpp_model_root | [string](#string) |  | llama-server --models-dir as seen by this Operator (--inference-llamacpp-model-root). |
+| provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama or llamacpp). |
 
 
 
@@ -3429,6 +3480,8 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID | 45 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED | 46 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED | 47 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR | 48 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED | 49 |  |
 
 
 
@@ -3640,6 +3693,7 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID | 23 |  |
 | RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED | 24 |  |
 | RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
+| RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR | 26 | The provider accepted the request, then ended its response stream with an error event instead of a done event, such as when its own tool-call parser rejected the model&#39;s output. The provider&#39;s message is never signed. |
 
 
  

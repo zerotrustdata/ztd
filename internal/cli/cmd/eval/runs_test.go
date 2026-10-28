@@ -11,8 +11,7 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -83,22 +82,6 @@ func markFirstAssignmentRunning(t *testing.T, env *runEnv) {
 	require.NoError(t, store.SaveAssignment(ctx, assignments[0]))
 }
 
-func TestResolveCampaignOllamaEndpoint_UsesExactOperatorRuntimeConfig(t *testing.T) {
-	operators := []*operatorv1.OperatorDocument{{
-		Id:                "inference-1",
-		OperatorSessionId: "inference-session",
-		Status:            string(constants.OperatorStatusActive),
-		OperatorType:      string(constants.OperatorTypeRemote),
-		RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
-			Capabilities:            []string{string(constants.OperatorCapabilityInference)},
-			InferenceOllamaEndpoint: "http://provider.example:11434",
-		},
-	}}
-	endpoint, err := resolveCampaignOllamaEndpoint(operators, "inference-session")
-	require.NoError(t, err)
-	assert.Equal(t, "http://provider.example:11434", endpoint)
-}
-
 func TestRunCommands_DoNotExposeOllamaEndpointOverride(t *testing.T) {
 	t.Parallel()
 	commands := []*cobra.Command{
@@ -126,4 +109,65 @@ func TestVerificationReportHelpers(t *testing.T) {
 	assert.Empty(t, verificationStatusString(nil))
 	assert.Zero(t, verificationFailureCount(nil))
 	assert.Nil(t, verificationFailureReasons(nil))
+}
+
+// An assignment has no independent wall-clock deadline unless the operator
+// requests one. Parent cancellation and earlier parent deadlines still apply.
+func TestAssignmentContext_NoImplicitDeadline(t *testing.T) {
+	parent, cancelParent := context.WithCancel(t.Context())
+	defer cancelParent()
+	ctx, cancel := assignmentContext(parent, 0)
+	defer cancel()
+	_, hasDeadline := ctx.Deadline()
+	assert.False(t, hasDeadline)
+	require.NoError(t, ctx.Err())
+	cancelParent()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
+func TestAssignmentContext_ExplicitTimeout(t *testing.T) {
+	before := time.Now()
+	ctx, cancel := assignmentContext(t.Context(), time.Minute)
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok)
+	assert.False(t, deadline.Before(before.Add(time.Minute)))
+	assert.False(t, deadline.After(time.Now().Add(time.Minute)))
+	cancel()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
+func TestAssignmentContext_PreservesParentDeadline(t *testing.T) {
+	parent, cancelParent := context.WithTimeout(t.Context(), time.Minute)
+	defer cancelParent()
+	want, _ := parent.Deadline()
+	for _, timeout := range []time.Duration{0, time.Hour} {
+		ctx, cancel := assignmentContext(parent, timeout)
+		got, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.Equal(t, want, got)
+		cancel()
+		require.NoError(t, parent.Err(), "ending an assignment must not cancel the run")
+	}
+}
+
+func TestRunsFlags_AssignmentTimeoutFlag(t *testing.T) {
+	startCmd := runsStartCmd(nativeEvalDeps{})
+	resumeCmd := runsResumeCmd(nativeEvalDeps{})
+	for _, cmd := range []*cobra.Command{startCmd, resumeCmd} {
+		flag := cmd.Flags().Lookup("assignment-timeout")
+		require.NotNil(t, flag)
+		assert.Equal(t, "0s", flag.DefValue)
+		assert.Contains(t, flag.Usage, "0 adds no assignment deadline")
+	}
+	assert.Contains(t, resumeCmd.Aliases, "execute")
+}
+
+func TestRunsRejectNegativeAssignmentTimeoutBeforeLoadingRuntime(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
+	_, err := runStartFlow(cmd, nativeEvalDeps{}, runStartFlowOptions{AssignmentTimeout: -time.Second})
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+	_, err = executeRun(cmd, nativeEvalDeps{}, runExecuteOptions{AssignmentTimeout: -time.Second})
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }

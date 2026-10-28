@@ -317,6 +317,105 @@ type PrivilegedRouteRegistry struct {
 	prefixes map[string]struct{}
 }
 
+type mtlsIdentityClass uint8
+
+const (
+	mtlsIdentityApp mtlsIdentityClass = iota + 1
+	mtlsIdentityOperator
+)
+
+// mtlsIdentityRouteAllowed is the HTTP boundary for non-human workload
+// certificates. The route is admitted only when both its method and path are
+// explicitly listed for that certificate class; unknown methods and paths
+// fail closed.
+func mtlsIdentityRouteAllowed(identity mtlsIdentityClass, method, path string) bool {
+	switch identity {
+	case mtlsIdentityApp:
+		switch {
+		case method == http.MethodPost && (path == constants.APIPaths.MCPEndpoint || path == constants.APIPaths.A2ACall || path == constants.APIPaths.GovernanceEnvelopes || path == constants.APIPaths.GovernanceDeliberations || path == constants.APIPaths.OperatorsIntents || path == constants.APIPaths.InferenceDispatch || path == constants.APIPaths.ObserveProducerAgentState || path == constants.APIPaths.ObserveProducerRunState || path == constants.APIPaths.ObserveProducerStop || path == constants.APIPaths.GatewayReputationSign):
+			return true
+		case method == http.MethodGet && path == constants.APIPaths.AuditEventReceipts:
+			return true
+		case method == http.MethodGet && isGovernanceSignerReadPath(path):
+			return true
+		case method == http.MethodGet && path == constants.APIPaths.DataSettings:
+			return true
+		case method == http.MethodGet && isDataDocumentPath(path):
+			return true
+		case method == http.MethodPost && isDataQueryPath(path):
+			return true
+		case method == http.MethodGet && isInferenceObservationReadPath(path):
+			return true
+		case method == http.MethodGet && isEvalCampaignPublicationStatePath(path):
+			return true
+		default:
+			return false
+		}
+	case mtlsIdentityOperator:
+		switch {
+		case method == http.MethodPost && (path == constants.APIPaths.OperatorsValidate || path == constants.APIPaths.OperatorsTarget):
+			return true
+		case method == http.MethodGet && path == constants.APIPaths.PubSubStream:
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func isInferenceObservationReadPath(path string) bool {
+	for _, prefix := range []string{constants.APIPaths.InferenceProviderObservations, constants.APIPaths.InferenceModelProvenanceAttestations} {
+		suffix := strings.TrimPrefix(path, prefix)
+		if suffix != path && suffix != "" && !strings.Contains(suffix, "/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isEvalCampaignPublicationStatePath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.EvalCampaignPublicationStateByRun) || !strings.HasSuffix(path, constants.EvalCampaignPublicationStateSuffix) {
+		return false
+	}
+	runID := strings.TrimSuffix(strings.TrimPrefix(path, constants.APIPaths.EvalCampaignPublicationStateByRun), constants.EvalCampaignPublicationStateSuffix)
+	return runID != "" && !strings.Contains(runID, "/")
+}
+
+func isGovernanceSignerReadPath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.GovernanceSignersByID) {
+		return false
+	}
+	signerID := strings.TrimPrefix(path, constants.APIPaths.GovernanceSignersByID)
+	return signerID != "" && !strings.Contains(signerID, "/")
+}
+
+func isDataDocumentPath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.DataPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, constants.APIPaths.DataPrefix), "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] != "" && parts[1] != "_query"
+}
+
+func isDataQueryPath(path string) bool {
+	if !strings.HasPrefix(path, constants.APIPaths.DataPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, constants.APIPaths.DataPrefix), "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] == "_query"
+}
+
+func (s *AuthService) denyDisallowedMTLSIdentityRoute(w http.ResponseWriter, r *http.Request, identity mtlsIdentityClass) bool {
+	if mtlsIdentityRouteAllowed(identity, r.Method, r.URL.Path) {
+		return false
+	}
+	s.logger.Warn("gateway: auth: mTLS identity route denied", "identity_class", identity, "method", r.Method, "path", r.URL.Path)
+	s.responder.Error(w, http.StatusForbidden, constants.ErrPrivilegedEndpointAccess.Error())
+	return true
+}
+
 // NewPrivilegedRouteRegistry creates a registry with the canonical privileged routes.
 func NewPrivilegedRouteRegistry() *PrivilegedRouteRegistry {
 	r := &PrivilegedRouteRegistry{
@@ -559,13 +658,9 @@ func (s *AuthService) ValidateOperatorCLISessionBinding(ctx context.Context, ope
 	if doc == nil {
 		return nil, &AuthError{Message: constants.ErrCLISessionNotFound.Error(), Status: http.StatusUnauthorized}
 	}
-	b, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: auth: marshal CLI session binding: %w: %w", err, constants.ErrRequestMarshalFailed)
-	}
 	var cliSession models.CLISession
-	if err := json.Unmarshal(b, &cliSession); err != nil {
-		return nil, fmt.Errorf("gateway: auth: unmarshal CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
+	if err := doc.DecodeData(&cliSession); err != nil {
+		return nil, fmt.Errorf("gateway: auth: decode CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
 	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
@@ -728,6 +823,9 @@ func (s *AuthService) handleOperatorAuth(w http.ResponseWriter, r *http.Request,
 				return
 			}
 		}
+		if s.denyDisallowedMTLSIdentityRoute(w, r, mtlsIdentityOperator) {
+			return
+		}
 
 		// Stamp context with user_id and operator session info
 		ctx := context.WithValue(r.Context(), constants.ContextKeyUserID, op.UserId)
@@ -785,14 +883,8 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 		}
 
 		var cliSession models.CLISession
-		b, err := json.Marshal(cliDoc.Data)
-		if err != nil {
-			s.logger.Error("gateway: auth: marshal CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal CLI session %s: %w: %w", cliSessionID, err, constants.ErrRequestMarshalFailed))
-			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
-			return true
-		}
-		if err := json.Unmarshal(b, &cliSession); err != nil {
-			s.logger.Error("gateway: auth: unmarshal CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal CLI session %s: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed))
+		if err := cliDoc.DecodeData(&cliSession); err != nil {
+			s.logger.Error("gateway: auth: decode CLI session", "cli_session_id", cliSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode CLI session %s: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed))
 			s.responder.Error(w, http.StatusInternalServerError, constants.ErrSessionParseFailed.Error())
 			return true
 		}
@@ -997,15 +1089,12 @@ func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next
 				}
 
 				var policy models.AppPolicy
-				data, err := json.Marshal(doc.Data)
-				if err != nil {
-					s.logger.Error("gateway: auth: marshal app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal app policy %s: %w: %w", appID, err, constants.ErrRequestMarshalFailed))
+				if err := doc.DecodeData(&policy); err != nil {
+					s.logger.Error("gateway: auth: decode app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode app policy %s: %w: %w", appID, err, constants.ErrResponseParseFailed))
 					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
 					return true
 				}
-				if err := json.Unmarshal(data, &policy); err != nil {
-					s.logger.Error("gateway: auth: unmarshal app policy", "app_id", appID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal app policy %s: %w: %w", appID, err, constants.ErrResponseParseFailed))
-					s.responder.Error(w, http.StatusInternalServerError, constants.ErrInvalidAppPolicy.Error())
+				if s.denyDisallowedMTLSIdentityRoute(w, r, mtlsIdentityApp) {
 					return true
 				}
 
@@ -1040,7 +1129,7 @@ func (s *AuthService) handleAppAuth(w http.ResponseWriter, r *http.Request, next
 					}
 				}
 				if delegateUserID != "" {
-					ctx = context.WithValue(ctx, constants.ContextKeyUserID, delegateUserID)
+					ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, delegateUserID)
 				}
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return true
@@ -1083,10 +1172,9 @@ func (s *AuthService) enforceAppPolicy(r *http.Request, policy *models.AppPolicy
 		}
 	}
 
-	// Check collection access for /_query paths (already blocked, but for future-proofing)
-	if strings.HasPrefix(r.URL.Path, constants.APIPaths.QueryPrefix) {
-		// Extract collection from query parameters
-		collection := r.URL.Query().Get("collection")
+	// Check collection access for read-only data queries.
+	if isDataQueryPath(r.URL.Path) {
+		collection := strings.Split(strings.TrimPrefix(r.URL.Path, constants.APIPaths.DataPrefix), "/")[0]
 		if collection != "" && len(policy.AllowedCollections) > 0 {
 			allowed := false
 			for _, allowedCol := range policy.AllowedCollections {
@@ -1136,12 +1224,8 @@ func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*ur
 		return false, nil
 	}
 	var cliSession models.CLISession
-	b, err := json.Marshal(doc.Data)
-	if err != nil {
-		return false, fmt.Errorf("gateway: auth: marshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrRequestMarshalFailed)
-	}
-	if err := json.Unmarshal(b, &cliSession); err != nil {
-		return false, fmt.Errorf("gateway: auth: unmarshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
+	if err := doc.DecodeData(&cliSession); err != nil {
+		return false, fmt.Errorf("gateway: auth: decode CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
 	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
@@ -1174,13 +1258,8 @@ func (s *AuthService) ValidateWebSessionCookie(r *http.Request) (webSessionID, u
 	}
 
 	var webSession models.WebSession
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		s.logger.Error("gateway: auth: marshal web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: marshal web session %s: %w: %w", webSessionID, err, constants.ErrRequestMarshalFailed))
-		return "", "", constants.ErrSessionParseFailed
-	}
-	if err := json.Unmarshal(data, &webSession); err != nil {
-		s.logger.Error("gateway: auth: unmarshal web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: unmarshal web session %s: %w: %w", webSessionID, err, constants.ErrResponseParseFailed))
+	if err := doc.DecodeData(&webSession); err != nil {
+		s.logger.Error("gateway: auth: decode web session", "web_session_id", webSessionID, string(constants.ConnectionStateError), fmt.Errorf("gateway: auth: decode web session %s: %w: %w", webSessionID, err, constants.ErrResponseParseFailed))
 		return "", "", constants.ErrSessionParseFailed
 	}
 

@@ -26,7 +26,7 @@ func setupSignerStore(t *testing.T) *SignerStoreService {
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

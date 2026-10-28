@@ -116,6 +116,10 @@ ztd mcp agent run goose       # Goose
 # Pass additional execution arguments to the agent:
 ztd mcp agent run claude -- -p "Fix unit test failures"
 
+# Goose session does not accept a one-shot instruction. -t, -i, and --recipe
+# start `goose run` instead, with the same --no-profile and --with-extension.
+ztd mcp agent run goose -- --provider ollama --model qwen2.5:0.5b -t "Call run_shell_command"
+
 # Verify tool lockdown configuration without launching the binary (safe for CI):
 ztd mcp agent verify claude
 

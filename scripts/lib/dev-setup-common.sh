@@ -68,7 +68,8 @@ ztd_usage() {
 Usage: bash scripts/$(basename "$0") [options]
 
 Installs the toolchain needed to build ztd and, by default, to run 'make ci'
-(Go dev tools and Node dependencies).
+(Go dev tools and Node dependencies). Docker and Chromium are optional;
+contributor setup offers to install them when missing.
 
 Options:
   -y, --yes       Install missing tooling without prompting
@@ -199,7 +200,12 @@ ztd_check_curl() {
     return 1
 }
 
+# Set by ztd_check_go to the older system go version when only a managed
+# toolchain satisfies go.mod; setup offers to upgrade the system go.
+ZTD_GO_STALE=""
+
 ztd_check_go() {
+    ZTD_GO_STALE=""
     if ! ztd_have go; then
         ztd_ui_fail "go: missing (need >= $ZTD_GO_MIN from go.mod)"
         return 1
@@ -213,6 +219,14 @@ ztd_check_go() {
     fi
     if ztd_version_ge "$version" "$ZTD_GO_MIN"; then
         ztd_ui_ok "go $version (need >= $ZTD_GO_MIN)"
+        # Inside the repo, go.mod may auto-switch to a managed toolchain while
+        # the system go (what tools and other shells see) is older.
+        local base_version
+        base_version="$(ztd_extract_version "$(cd "${TMPDIR:-/tmp}" && GOTOOLCHAIN=local go version 2>/dev/null)")"
+        if [[ -n "$base_version" ]] && ! ztd_version_ge "$base_version" "$ZTD_GO_MIN"; then
+            ztd_ui_warn "system go is $base_version; ztd uses a managed go $version toolchain from the Go module cache"
+            ZTD_GO_STALE="$base_version"
+        fi
         return 0
     fi
     ztd_ui_fail "go: $version is older than $ZTD_GO_MIN required by go.mod"
@@ -297,20 +311,89 @@ ztd_check_cc() {
 }
 
 # Fills MISSING with the logical names of absent prerequisites. --build-only
-# checks what `make build` needs, including Node.js and npm to build the
-# embedded Console and Evaluation Explorer assets.
+# checks what `make build-go` needs. That target compiles ./ztd from the
+# committed console and explorer embeds and does not run Node. The full
+# contributor setup still requires Node.js and npm for `make build`.
 ztd_collect_missing() {
     MISSING=()
     ztd_check_git || MISSING+=("git")
     ztd_check_make || MISSING+=("make")
     ztd_check_curl || MISSING+=("curl")
     ztd_check_go || MISSING+=("go")
-    ztd_check_node || MISSING+=("node")
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
+        ztd_check_node || MISSING+=("node")
         ztd_check_ripgrep || MISSING+=("rg")
         ztd_check_bc || MISSING+=("bc")
         ztd_check_cc || MISSING+=("cc")
     fi
+}
+
+# Docker and a Chromium browser support container and browser workflows. They
+# are optional: never add them to MISSING or require a running Docker daemon.
+ztd_check_chromium() {
+    local browser
+    for browser in chromium chromium-browser google-chrome google-chrome-stable; do
+        if ztd_have "$browser"; then
+            return 0
+        fi
+    done
+    if [[ "$(uname -s)" == Darwin ]]; then
+        # A browser already on this Mac is enough. Do not offer a second one
+        # through a Homebrew cask. Playwright still downloads its own Chromium.
+        local app
+        for app in \
+            "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+            "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium" \
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+            "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+            "/Applications/Safari.app/Contents/MacOS/Safari" \
+            "/Applications/Firefox.app/Contents/MacOS/firefox" \
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+            "/Applications/Arc.app/Contents/MacOS/Arc" \
+            "/Applications/Orion.app/Contents/MacOS/Orion"; do
+            [[ ! -x "$app" ]] || return 0
+        done
+    fi
+    return 1
+}
+
+# The platform callback installs one accepted tool without another prompt.
+# Optional installs are skipped when stdin cannot accept a response, unless
+# --yes was supplied, and failures do not stop the required setup steps.
+ztd_setup_optional_tools() {
+    [[ "$ZTD_BUILD_ONLY" != true ]] || return 0
+    local install_fn="$1" tool label present
+    ztd_ui_title "Optional tools (Docker, Chromium)"
+    for tool in docker chromium; do
+        present=false
+        case "$tool" in
+            docker)
+                label="Docker"
+                if [[ "$(uname -s)" == Darwin ]]; then
+                    label="Docker Desktop into /Applications (its installer adds a privileged helper)"
+                fi
+                if ztd_have docker; then present=true; fi
+                ;;
+            chromium) label="Chromium (or Google Chrome)"; if ztd_check_chromium; then present=true; fi ;;
+        esac
+        if [[ "$present" == true ]]; then
+            ztd_ui_ok "$label: installed"
+            continue
+        fi
+        ztd_ui_warn "$label: missing (optional)"
+        if [[ "$AUTO_YES" != true && ! -t 0 ]]; then
+            ztd_ui_info "skipped $label; rerun setup interactively or with --yes to install"
+            continue
+        fi
+        if ztd_setup_confirm "Install $label now? [y/N] "; then
+            if ! "$install_fn" "$tool"; then
+                ztd_ui_warn "$label installation failed; continuing without this optional tool"
+            fi
+        else
+            ztd_ui_info "skipped $label"
+        fi
+    done
 }
 
 # --- contributor-toolchain checks (used by dev-check.sh and dev-tools-if-needed) -
@@ -445,9 +528,11 @@ ztd_dev_tool_if_needed() {
     echo "  installing $bin ($pkg; $reason)..."
     # `go install pkg@version` resolves the toolchain from the tool's go.mod, not
     # ours, so GOTOOLCHAIN=auto would build with an older local Go. Require ours.
+    # An exact version (not "+auto", which only sets a minimum) so an older
+    # system go cannot pick the tool's own go.mod toolchain instead.
     local toolchain="${GOTOOLCHAIN:-auto}"
     if [[ -n "$min_go" ]]; then
-        toolchain="go${min_go}+auto"
+        toolchain="go${min_go}"
     fi
     GOTOOLCHAIN="$toolchain" go install "$pkg" || return 1
     hash -d "$bin" 2>/dev/null || hash -r 2>/dev/null || true
@@ -484,6 +569,9 @@ ztd_dev_tool_if_needed() {
     if [[ "$is_stale" == true ]]; then
         echo "FATAL: after installing $pkg, PATH resolves $bin to '$resolved' (version ${post_mod:-unknown}, built with go ${post_go:-unknown})." >&2
         echo "The resolved binary is stale (pinned $pinned, need go >= $min_go)." >&2
+        if [[ -n "$min_go" && "$post_go" != "unknown" ]] && ! ztd_version_ge "$post_go" "$min_go"; then
+            echo "It was built with an older Go toolchain. Retry with: GOTOOLCHAIN=go${min_go} go install $pkg" >&2
+        fi
         shopt -s nocasematch 2>/dev/null
         if [[ "$resolved" != "$gobin"/* ]]; then
             echo "A stale copy outside GOBIN ($gobin) is shadowing the installed tool." >&2
@@ -549,7 +637,11 @@ ztd_build_evaluation_explorer() {
 }
 
 ztd_run_make_build() {
-    make build
+    if [[ "$ZTD_BUILD_ONLY" == true ]]; then
+        make build-go
+    else
+        make build
+    fi
 }
 
 # Creates the owner-only .env that every ./ztd command loads, from the
@@ -563,7 +655,21 @@ ztd_create_env_file() {
     ztd_ui_ok "created .env from .env.example (mode 600)"
 }
 
+# Installs Go dev tools into GOBIN, Node dependencies in five projects, and
+# points git at scripts/git-hooks (core.hooksPath), so it asks first. Declining
+# is allowed: it sets ZTD_DEV_TOOLCHAIN=false and make dev-check is skipped.
+ZTD_DEV_TOOLCHAIN=true
 ztd_run_dev_setup() {
+    if [[ "$(git config --get core.hooksPath)" == "scripts/git-hooks" ]] &&
+        make dev-check >/dev/null 2>&1; then
+        ztd_ui_ok "contributor toolchain and git hooks already in place"
+        return 0
+    fi
+    if ! ztd_setup_confirm "Install the contributor toolchain (Go dev tools, Node dependencies) and enable the repo git hooks (core.hooksPath)? [y/N] "; then
+        ZTD_DEV_TOOLCHAIN=false
+        ztd_ui_info "skipped; run later with: make dev-setup"
+        return 0
+    fi
     make dev-setup
 }
 
@@ -585,6 +691,8 @@ ztd_select_profile() {
 ZTD_PATH_PLAN=()
 # true once every planned directory is in the profile (added now or earlier).
 ZTD_PATH_CONFIGURED=false
+# true only when this run wrote to the profile, i.e. a new shell would differ.
+ZTD_PROFILE_CHANGED=false
 
 # True when the profile already mentions <dir> literally or as $HOME/...,
 # ${HOME}/..., or ~/...
@@ -675,6 +783,19 @@ ztd_configure_path_unix() {
         ztd_plan_path_entry /usr/local/bin "# ztd: Node.js toolchain" prepend
     fi
 
+    # A managed toolchain only reachable inside the repo: offer to put it ahead
+    # of the older system go so every shell and tool sees the same version.
+    if ztd_have go && [[ "$(command -v go)" != /usr/local/go/bin/go ]]; then
+        local sys_go managed
+        sys_go="$(ztd_extract_version "$(cd "${TMPDIR:-/tmp}" && GOTOOLCHAIN=local go version 2>/dev/null)")"
+        if [[ -n "$sys_go" && -n "${ZTD_GO_MIN:-}" ]] && ! ztd_version_ge "$sys_go" "$ZTD_GO_MIN"; then
+            managed="$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go${ZTD_GO_MIN}.$(go env GOOS)-$(go env GOARCH)/bin"
+            if [[ -x "$managed/go" ]]; then
+                ztd_plan_path_entry "$managed" "# ztd: managed Go ${ZTD_GO_MIN} toolchain (system go is ${sys_go})" prepend
+            fi
+        fi
+    fi
+
     if [[ ${#ZTD_PATH_PLAN[@]} -eq 0 ]]; then
         ZTD_PATH_CONFIGURED=true
         return 0
@@ -704,6 +825,7 @@ ztd_configure_path_unix() {
             ztd_path_export_line "$mode" "$dir"
         } >>"$ZTD_PROFILE_FILE"
         ztd_ui_ok "added $dir to PATH in $ZTD_PROFILE_FILE"
+        ZTD_PROFILE_CHANGED=true
     done
     ZTD_PATH_CONFIGURED=true
 }
@@ -715,6 +837,9 @@ ztd_print_next_steps_unix() {
     fi
 
     echo -e "\n${ZTD_UI_GREEN}${ZTD_UI_BOLD}${ZTD_UI_OK} ztd is ready${ZTD_UI_RESET} ${ZTD_UI_DIM}($(ztd_ui_elapsed))${ZTD_UI_RESET}\n"
+    if [[ -n "${ZTD_KEYSTORE_SOURCE:-}" ]]; then
+        echo -e "  ${ZTD_UI_YELLOW}${ZTD_UI_BOLD}First${ZTD_UI_RESET}     ${ZTD_UI_BOLD}${ZTD_KEYSTORE_SOURCE}${ZTD_UI_RESET}   ${ZTD_UI_DIM}(loads the ssh-agent key the Gateway needs; this shell has none yet)${ZTD_UI_RESET}"
+    fi
     echo -e "  ${ZTD_UI_BOLD}Next${ZTD_UI_RESET}      make quickstart"
     echo -e "            ${ZTD_UI_DIM}starts a local Gateway, signs you in, and runs your first governed action${ZTD_UI_RESET}"
     echo -e "  ${ZTD_UI_BOLD}Configure${ZTD_UI_RESET} .env     ${ZTD_UI_DIM}optional: remote Ollama endpoint, Cloudflare token; ./ztd loads it at startup${ZTD_UI_RESET}"
@@ -725,7 +850,9 @@ ztd_print_next_steps_unix() {
     echo -e "  ${ZTD_UI_BOLD}Binary${ZTD_UI_RESET}    $binary"
     echo -e "  ${ZTD_UI_BOLD}Docs${ZTD_UI_RESET}      docs/guides/getting_started.md"
 
-    if [[ "$ZTD_PATH_CONFIGURED" == true ]]; then
+    if [[ "$ZTD_PATH_CONFIGURED" == true && "$ZTD_PROFILE_CHANGED" != true ]]; then
+        :
+    elif [[ "$ZTD_PATH_CONFIGURED" == true ]]; then
         echo -e "\n  ${ZTD_UI_DIM}Open a new terminal or run 'source $ZTD_PROFILE_FILE' to use ztd from any directory.${ZTD_UI_RESET}"
     else
         echo ""
@@ -745,12 +872,13 @@ ztd_print_next_steps_unix() {
 # logical names in MISSING and installs what it can; the flow re-checks after it.
 # --build-only is three steps (prerequisites, build, PATH); the full contributor
 # flow adds the explorer build, `make dev-setup`, and `make dev-check`.
-# usage: ztd_setup_main <platform-label> <install-fn> <script-path>
+# An optional <post-fn> runs after the PATH step as part of it (platform extras).
+# usage: ztd_setup_main <platform-label> <install-fn> <script-path> [<post-fn>] [<optional-install-fn>]
 ztd_setup_main() {
-    local platform="$1" install_fn="$2" script="$3" total step=0 prereqs
+    local platform="$1" install_fn="$2" script="$3" post_fn="${4:-}" optional_install_fn="${5:-}" total step=0 prereqs
     if [[ "$ZTD_BUILD_ONLY" == true ]]; then
         total=3
-        prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT})"
+        prereqs="git, make, curl, go >= ${ZTD_GO_MIN} (committed frontend embeds; Node is not required)"
         ztd_ui_title "ztd ${platform} setup ${ZTD_UI_DIM}(build only)${ZTD_UI_RESET}"
     else
         total=6
@@ -771,6 +899,11 @@ ztd_setup_main() {
         fi
     fi
 
+    if [[ -n "$ZTD_GO_STALE" ]]; then
+        "$install_fn" go-stale
+        ztd_collect_missing
+    fi
+
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Building evaluation-explorer assets"
         ztd_build_evaluation_explorer
@@ -788,11 +921,34 @@ ztd_setup_main() {
 
     step=$((step + 1)); ztd_ui_step "$step" "$total" "Adding ztd to PATH"
     ztd_configure_path_unix
+    if [[ -n "$post_fn" ]]; then
+        "$post_fn"
+    fi
 
-    if [[ "$ZTD_BUILD_ONLY" != true ]]; then
+    if [[ "$ZTD_BUILD_ONLY" != true && "$ZTD_DEV_TOOLCHAIN" == true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Verifying the toolchain (make dev-check)"
         make dev-check
     fi
 
+    if [[ -n "$optional_install_fn" ]]; then
+        ztd_setup_optional_tools "$optional_install_fn"
+    fi
+
     ztd_print_next_steps_unix
+    ztd_offer_new_shell
+}
+
+# A script cannot change its parent shell, so offer a fresh interactive shell
+# (which reads the profile) instead of making the user remember to source it.
+ztd_offer_new_shell() {
+    if [[ "$ZTD_PROFILE_CHANGED" != true ]]; then
+        return 0
+    fi
+    if [[ "$AUTO_YES" == true || ! -t 0 || -z "${SHELL:-}" ]]; then
+        return 0
+    fi
+    echo ""
+    if ztd_setup_confirm "Open a new shell now with these changes loaded (type 'exit' to return)? [y/N] "; then
+        exec "$SHELL" -i
+    fi
 }

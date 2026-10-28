@@ -25,6 +25,13 @@ import (
 
 const otherHostPID = 9999
 
+func TestRunsCancel_PublicationIsOptIn(t *testing.T) {
+	cmd := runsCancelCmd(nativeEvalDeps{})
+	flag := cmd.Flags().Lookup("publish")
+	require.NotNil(t, flag)
+	assert.Equal(t, "false", flag.DefValue)
+}
+
 // rejectingRunStateReporter is a Gateway run projection that refuses every update.
 type rejectingRunStateReporter struct {
 	err error
@@ -37,11 +44,13 @@ func (r rejectingRunStateReporter) UpdateRunState(context.Context, models.Observ
 // recordingRunStateReporter is a Gateway run projection that accepts every update
 // and keeps the statuses it was sent.
 type recordingRunStateReporter struct {
-	posts []models.RunLifecycleStatus
+	posts    []models.RunLifecycleStatus
+	requests []models.ObserveProducerRunStateRequest
 }
 
 func (r *recordingRunStateReporter) UpdateRunState(_ context.Context, req models.ObserveProducerRunStateRequest) error {
 	r.posts = append(r.posts, req.Status)
+	r.requests = append(r.requests, req)
 	return nil
 }
 
@@ -69,10 +78,35 @@ func TestRunLifecycle_RejectedPostIsReturnedToTheCommand(t *testing.T) {
 		startedAt: time.Unix(1789657000, 0).UTC(),
 	}
 
-	err := lifecycle.post(context.Background(), models.RunLifecycleStatusRunning, &runRow{Queued: 1}, nil)
+	err := lifecycle.post(context.Background(), models.RunLifecycleStatusRunning, &runRow{Queued: 1})
 	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.Contains(t, err.Error(), "run-a-1")
 	assert.Contains(t, err.Error(), string(models.RunLifecycleStatusRunning))
+}
+
+func TestRunLifecycle_ObservedAtNeverMovesBackward(t *testing.T) {
+	startedAt := time.Unix(1789657338, 0).UTC()
+	readings := []time.Time{startedAt.Add(time.Second), startedAt.Add(-time.Second), startedAt.Add(3 * time.Second)}
+	index := 0
+	reporter := &recordingRunStateReporter{}
+	lifecycle := runLifecycle{client: reporter, runID: "run-a-1", startedAt: startedAt, deps: nativeEvalDeps{now: func() time.Time {
+		value := readings[index]
+		index++
+		return value
+	}}}
+
+	require.NoError(t, lifecycle.post(context.Background(), models.RunLifecycleStatusRunning, &runRow{Queued: 1}))
+	endedAt := startedAt.Add(-2 * time.Second)
+	require.NoError(t, lifecycle.send(context.Background(), models.RunLifecycleStatusWaiting, &runRow{Queued: 1}, &endedAt, ""))
+	require.NoError(t, lifecycle.post(context.Background(), models.RunLifecycleStatusRunning, &runRow{Queued: 1}))
+
+	require.Len(t, reporter.requests, 3)
+	assert.Equal(t, readings[0], reporter.requests[0].ObservedAt)
+	assert.Equal(t, readings[0], reporter.requests[1].ObservedAt, "a wall-clock step cannot make a later lifecycle update stale")
+	assert.Equal(t, readings[2], reporter.requests[2].ObservedAt, "a later forward reading is preserved")
+	require.NotNil(t, reporter.requests[1].EndedAt)
+	assert.GreaterOrEqual(t, *reporter.requests[1].EndedAt, startedAt)
+	assert.LessOrEqual(t, *reporter.requests[1].EndedAt, reporter.requests[1].ObservedAt)
 }
 
 // holdRun records a lease on a run for a process that the fake process control

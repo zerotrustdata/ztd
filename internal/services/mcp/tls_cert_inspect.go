@@ -81,7 +81,7 @@ func (t *TLSCertInspectTool) InputSchema() *InputSchema {
 func (t *TLSCertInspectTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
 	var req TLSCertInspectRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return CallToolResult{}, fmt.Errorf("%w: %v", constants.ErrMCPUnmarshalArguments, err)
+		return CallToolResult{}, fmt.Errorf("%w: %w", constants.ErrMCPUnmarshalArguments, err)
 	}
 
 	var cert *x509.Certificate
@@ -132,7 +132,7 @@ func loadCertFromFile(path string) (*x509.Certificate, error) {
 
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, fmt.Errorf("tls_cert_inspect: failed to decode PEM block")
+		return nil, fmt.Errorf("tls_cert_inspect: %w", constants.ErrPEMDecodeFailed)
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)

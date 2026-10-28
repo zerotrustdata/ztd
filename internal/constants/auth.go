@@ -194,6 +194,9 @@ const (
 const (
 	// ContextKeyUserID stores the authenticated user ID in context.
 	ContextKeyUserID ContextKey = "user_id"
+	// ContextKeyDelegatedUserID stores an app certificate's user SAN for
+	// governed request attribution. It does not authenticate a human session.
+	ContextKeyDelegatedUserID ContextKey = "delegated_user_id"
 	// ContextKeyAppID stores the application ID in context.
 	ContextKeyAppID ContextKey = "app_id"
 	// ContextKeyTenantID stores the tenant/organization ID in context.

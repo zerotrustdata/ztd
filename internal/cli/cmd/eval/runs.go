@@ -338,6 +338,7 @@ type runPublishAllJSON struct {
 
 func runsPublishCmd(deps nativeEvalDeps) *cobra.Command {
 	var force, all bool
+	var mirrorOrigin string
 	cmd := &cobra.Command{
 		Use:   "publish [<run>]",
 		Short: "Publish missing public lifecycle projections for one run, or republish every run",
@@ -363,7 +364,7 @@ the others; the command reports each failure and exits with an error.`,
 				return err
 			}
 			if all {
-				publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+				publication, err := NewCampaignPublicationCoordinatorWithMirrorOrigin(cmd, fileSvc, cfg, mirrorOrigin)
 				if err != nil {
 					return fmt.Errorf("evaluation: runs publish: %w", err)
 				}
@@ -373,7 +374,7 @@ the others; the command reports each failure and exits with an error.`,
 			if err := evaluation.RejectArchivedRun(cmd.Context(), fileSvc, runID); err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}
-			publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+			publication, err := NewCampaignPublicationCoordinatorWithMirrorOrigin(cmd, fileSvc, cfg, mirrorOrigin)
 			if err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}
@@ -389,6 +390,7 @@ the others; the command reports each failure and exits with an error.`,
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Clear host publication idempotency and republish all projections (use after a gateway mirror volume wipe)")
 	cmd.Flags().BoolVar(&all, "all", false, "Republish every run that is not archived, clearing publication idempotency as --force does")
+	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Override the public mirror read origin (default: derived from --endpoint or http://127.0.0.1:8082)")
 	return cmd
 }
 

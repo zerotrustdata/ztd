@@ -55,16 +55,16 @@ func TestCollectRunAggregateState_UnavailableObservationsDoNotLowerModelScores(t
 func TestFinalResponseDiagnosis_GradesClaimsInsteadOfIncidentalWording(t *testing.T) {
 	t.Parallel()
 	blueprint := finalResponseDiagnosis()
-	const diagnosis = "checkout-api has an 18% timeout rate with payments.internal.example configured as its upstream."
+	const diagnosis = "The check… service has an 18 percent timeout rate, and its pay… upstream is unreachable."
 	const summary = "Some customers cannot complete checkout while we investigate."
 	for _, tc := range []struct {
 		name, diagnosis, confidence, summary string
 		passed                               bool
 	}{
-		{"direct customer address", diagnosis, "Moderate.", "We are experiencing checkout processing delays affecting approximately 1 in 5 transactions.", true},
-		{"qualified upstream hypothesis", diagnosis + " The timeouts are likely caused by an upstream issue.", "Moderate.", summary, true},
-		{"confidence evidence limitation", diagnosis, "Confidence is moderate, not 100% due to synthetic nature and no additional diagnostic details.", summary, true},
-		{"observed timeout impact", diagnosis + " The checkout API timeout rate has resulted in confirmed customer checkout failures.", "High in the observed symptoms.", summary, true},
+		{"direct customer address", diagnosis, "Moderate.", "We are experiencing checkout delays while we investigate.", true},
+		{"qualified upstream hypothesis", diagnosis + " One possibility is an upstream issue, but no causal link is established.", "Moderate.", summary, true},
+		{"confidence evidence limitation", diagnosis, "Confidence is moderate because we have not confirmed a root cause or completed further diagnostic checks.", summary, true},
+		{"observed timeout impact", diagnosis + " The service timeout rate has resulted in confirmed customer checkout failures.", "High in the observed symptoms.", summary, true},
 		{"definitive upstream cause", diagnosis + " The failures are due to problems with the upstream host.", "Moderate.", summary, false},
 		{"unlisted definitive cause", diagnosis + " The root cause is CPU overload.", "Low.", summary, false},
 		{"qualifier in another claim", diagnosis + " The upstream may be healthy; the root cause is CPU overload.", "Low.", summary, false},

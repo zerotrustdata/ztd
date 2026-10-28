@@ -101,7 +101,7 @@ func ComputeObservationDigest(window *evalv1.ProviderBoundaryObservationWindow) 
 	}
 	clone, ok := proto.Clone(window).(*evalv1.ProviderBoundaryObservationWindow)
 	if !ok {
-		return "", fmt.Errorf("provider observer: compute observation digest: invalid clone")
+		return "", fmt.Errorf("provider observer: compute observation digest: invalid clone: %w", constants.ErrInternal)
 	}
 	clone.ObservationDigest = ""
 	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
@@ -136,14 +136,14 @@ func ValidateObservationWindow(window *evalv1.ProviderBoundaryObservationWindow)
 		return fmt.Errorf("provider observer: validate observation window: %w", constants.ErrMissingRequiredField)
 	}
 	if window.GetSchemaVersion() != "" && window.GetSchemaVersion() != SchemaVersion {
-		return fmt.Errorf("provider observer: validate observation window: unsupported schema version")
+		return fmt.Errorf("provider observer: validate observation window: unsupported schema version: %w", constants.ErrEvidenceSchemaMismatch)
 	}
 	expected, err := ComputeObservationDigest(window)
 	if err != nil {
 		return err
 	}
 	if window.GetObservationDigest() != expected {
-		return fmt.Errorf("provider observer: validate observation window: digest mismatch")
+		return fmt.Errorf("provider observer: validate observation window: digest mismatch: %w", constants.ErrChecksumMismatch)
 	}
 	return nil
 }

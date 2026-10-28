@@ -249,6 +249,18 @@ func (s *recordingBundleFileService) EnforceFilePermissions(context.Context, str
 	panic("unexpected EnforceFilePermissions")
 }
 
+func (s *recordingBundleFileService) CreateOrRestrictFile(_ context.Context, relPath string, _ os.FileMode) error {
+	if _, ok := s.files[relPath]; !ok {
+		s.files[relPath] = nil
+	}
+	return nil
+}
+
+func (s *recordingBundleFileService) RestrictFileIfExists(_ context.Context, relPath string, _ os.FileMode) (bool, error) {
+	_, exists := s.files[relPath]
+	return exists, nil
+}
+
 func (s *recordingBundleFileService) Resolve(relPath string) string {
 	if s.runtimeDir != "" {
 		return filepath.Join(s.runtimeDir, filepath.FromSlash(relPath))

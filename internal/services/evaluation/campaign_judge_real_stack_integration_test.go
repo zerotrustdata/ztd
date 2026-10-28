@@ -39,9 +39,9 @@ const (
 	// judgeJudgeTurn is the 1-based provider turn of the judge's own inference;
 	// the agent's final answer is turn 1.
 	judgeJudgeTurn = 2
-	judgeDiagnosis = "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream; the evidence does not prove that the upstream caused the timeouts.\n" +
+	judgeDiagnosis = "Diagnosis: The check… service has an 18 percent timeout rate, and its pay… upstream is unreachable; the evidence does not prove that the upstream caused the timeouts.\n" +
 		"Confidence: Moderate; the available evidence is incomplete.\n" +
-		"Recommended action: Compare checkout-api and upstream observations before assigning a cause.\n" +
+		"Recommended action: Compare the service and upstream observations before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while the timeout issue is investigated."
 	judgeScoreFour = `{"score": 4, "rationale": "Clear evidence-backed diagnosis."}`
 )
@@ -179,6 +179,76 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	}
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
 	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, res.GetTrajectoryOutcome())
+}
+
+// judgeRequestInference forwards every governed inference to the real Inference
+// Operator and records each dispatch request in order.
+type judgeRequestInference struct {
+	realStackInference
+	requests []*operatorv1.InferenceDispatchRequest
+}
+
+func (d *judgeRequestInference) DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	d.requests = append(d.requests, proto.Clone(req).(*operatorv1.InferenceDispatchRequest))
+	return d.realStackInference.DispatchInference(ctx, req)
+}
+
+// TestRealStackJudge_PinnedJudgeScoresUnderItsOwnRegistry proves the campaign's
+// frozen judge, not the scored model, takes the judge turn: the dispatch names
+// the judge's served tag under a judge-only registry, the Inference Operator
+// admits it, and every grade the run verifier checks names the judge.
+func TestRealStackJudge_PinnedJudgeScoresUnderItsOwnRegistry(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus} {
+		for _, tag := range []struct{ id, served string }{
+			{"gemma4-e4b", evaluation.DefaultJudgeServedModelTag},
+			{"hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m", "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"},
+		} {
+			t.Run(string(posture)+"/"+tag.id, func(t *testing.T) {
+				ctx := t.Context()
+				pinned := &evalv1.ModelVariant{
+					VariantId: tag.id, ProviderClass: "ollama",
+					ServedModelTag: tag.served,
+					ModelDigest:    fixtures.ScriptedModelDigest(t, tag.served),
+				}
+				env := newRealStackAgentRun(t, realStackOptions{
+					posture: posture, singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-pinned",
+					replies:   judgeReplies(fixtures.OllamaReply{Content: judgeScoreFour}),
+					modelTags: []string{tag.served},
+					request: func(req *evaluation.CampaignInitRequest, _ string) {
+						req.Judge = pinned
+					},
+				})
+				inference := &judgeRequestInference{realStackInference: env.inference}
+
+				res := executeNextWithInference(t, env, inference)
+				require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+
+				require.Len(t, inference.requests, judgeJudgeTurn, "the agent answer and the judge each take one governed inference")
+				agentRequest, judgeRequest := inference.requests[0], inference.requests[judgeJudgeTurn-1]
+				assert.Equal(t, realStackModelTag, agentRequest.GetModel(), "the scored model answers")
+				assert.Equal(t, tag.served, judgeRequest.GetModel(), "the pinned judge scores")
+				wantRegistry, wantDigest, err := evaluation.JudgeModelRegistry(env.req.CampaignID, pinned)
+				require.NoError(t, err)
+				assert.Equal(t, wantDigest, judgeRequest.GetModelRegistryDigest())
+				require.Len(t, judgeRequest.GetModelRegistry(), 1, "the judge dispatches under a registry of the judge alone")
+				assert.True(t, proto.Equal(wantRegistry[0], judgeRequest.GetModelRegistry()[0]))
+				assert.NotEqual(t, agentRequest.GetModelRegistryDigest(), judgeRequest.GetModelRegistryDigest(), "the judge registry is not the scored registry")
+
+				grade := diagnosisQualityGrade(res)
+				require.NotNil(t, grade)
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), grade.GetDetail())
+				assert.Equal(t, pinned.GetVariantId(), grade.GetJudgeVariantId())
+				require.NotEmpty(t, res.GetGraderCalls())
+				for _, call := range res.GetGraderCalls() {
+					assert.Equal(t, pinned.GetVariantId(), call.GetJudgeVariantId())
+				}
+
+				report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+				require.NoError(t, err)
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+			})
+		}
+	}
 }
 
 func TestRealStackJudge_FailureReportedSeparately(t *testing.T) {
@@ -377,7 +447,7 @@ func TestRealStackRunVerifier_RejectsInputsOutsideFrozenCatalog(t *testing.T) {
 		artifact.Gold.Body = []byte(`{"scenario_id":"forged"}`)
 		artifacts[id] = artifact
 		_, err := evaluation.NewCampaignRunVerifier(nil).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, artifacts)
-		require.Error(t, err)
+		require.ErrorIs(t, err, constants.ErrChecksumMismatch)
 	})
 }
 
@@ -468,9 +538,9 @@ func TestRealStackAgentTraceV7_RejectsResealedToolArguments(t *testing.T) {
 }
 
 func TestRealStackJudge_HighConfidenceInObservedSymptomsPasses(t *testing.T) {
-	answer := "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream.\n" +
-		"Confidence: High.\n" +
-		"Recommended action: Investigate checkout-api and upstream telemetry to identify the cause.\n" +
+	answer := "Diagnosis: The check… service has an 18 percent timeout rate, and its pay… upstream is configured.\n" +
+		"Confidence: High confidence in the observed symptoms; no root cause has been established.\n" +
+		"Recommended action: Investigate service and upstream telemetry before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while we investigate."
 	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-high-observation",
 		replies: []fixtures.OllamaReply{{Content: answer}, {Content: judgeScoreFour}},

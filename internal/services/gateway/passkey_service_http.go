@@ -323,14 +323,7 @@ func (h *PasskeyHandler) RegisterVerify(cfg passkeyHandlerConfig) http.HandlerFu
 			req.CLISessionID = tok.CLISessionID
 			req.EnrollmentToken = ""
 
-			responseJSON, err := json.Marshal(req.AttestationResponse)
-			if err != nil {
-				h.logger.Warn("Failed to marshal attestation response (enrollment-token flow)", "error", err, "userID", req.UserID)
-				h.responder.Error(w, http.StatusBadRequest, "failed to marshal attestation response")
-				return
-			}
-
-			cred, err := h.VerifyRegistration(r.Context(), req.UserID, responseJSON)
+			cred, err := h.VerifyRegistration(r.Context(), req.UserID, req.AttestationResponse)
 			if err != nil {
 				h.logger.Warn("Passkey register verify failed (enrollment-token flow)", "error", err, "userID", req.UserID)
 				h.responder.Error(w, http.StatusBadRequest, err.Error())
@@ -383,17 +376,7 @@ func (h *PasskeyHandler) RegisterVerify(cfg passkeyHandlerConfig) http.HandlerFu
 			}
 		}
 
-		responseJSON, err := json.Marshal(req.AttestationResponse)
-		if err != nil {
-			h.logger.Warn("Failed to marshal attestation response", "error", err, "userID", req.UserID)
-			h.responder.JSON(w, http.StatusOK, models.PasskeyVerifyResponse{
-				Success: false,
-				Error:   "failed to marshal attestation response",
-			})
-			return
-		}
-
-		cred, err := h.VerifyRegistration(r.Context(), req.UserID, responseJSON)
+		cred, err := h.VerifyRegistration(r.Context(), req.UserID, req.AttestationResponse)
 		if err != nil {
 			h.logger.Warn("Passkey register verify failed", "error", err, "userID", req.UserID)
 			h.responder.JSON(w, http.StatusOK, models.PasskeyVerifyResponse{

@@ -26,9 +26,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // maxArtifactBytes is the default size limit for a single evidence artifact
@@ -222,14 +220,14 @@ func ValidateCanonicalJSON(body []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("JSON contains trailing data")
+		return fmt.Errorf("JSON contains trailing data: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, raw); err != nil {
 		return err
 	}
 	if !bytes.Equal(body, compact.Bytes()) {
-		return fmt.Errorf("JSON is not canonical compact encoding")
+		return fmt.Errorf("JSON is not canonical compact encoding: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	return nil
 }
@@ -285,107 +283,10 @@ func ClassifyReadError(err error) error {
 	return constants.ErrInvalidEvidenceGraph
 }
 
-// Contains returns true if the target string appears in the values slice.
-func Contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
-type ReceiptBinding struct {
-	RunID                   string
-	ScenarioID              string
-	AttemptID               string
-	ExecutionID             string
-	InvestigationID         string
-	TransactionID           string
-	TargetOperatorID        string
-	TargetOperatorSessionID string
-	ActionType              string
-}
-
-type ReceiptProjection struct {
-	ExecutionID       string
-	TransactionID     string
-	TransactionHash   string
-	InvestigationID   string
-	OperatorID        string
-	OperatorSessionID string
-	ActionType        string
-	SignerKeyID       string
-	Signature         string
-}
-
-type VerifiedReceiptEvidence struct {
-	Binding                ReceiptBinding
-	ReceiptReference       *compliancev1.ComplianceEvidenceReference
-	PersistenceReference   *compliancev1.ComplianceEvidenceReference
-	ProtocolChainReference string
-	Receipt                *operatorv1.EventReceipt
-}
-
-func BuildVerifiedReceiptEvidence(binding ReceiptBinding, projection ReceiptProjection, receipt *operatorv1.EventReceipt) (*VerifiedReceiptEvidence, error) {
-	if binding.RunID == "" || binding.ScenarioID == "" || binding.AttemptID == "" || binding.ExecutionID == "" || binding.InvestigationID == "" || binding.TransactionID == "" || binding.TargetOperatorID == "" || binding.TargetOperatorSessionID == "" || binding.ActionType == "" {
-		return nil, fmt.Errorf("%w: receipt binding is incomplete", constants.ErrInvalidEvidenceGraph)
-	}
-	if projection.ExecutionID != binding.ExecutionID || projection.InvestigationID != binding.InvestigationID || projection.TransactionID != binding.TransactionID || projection.OperatorID != binding.TargetOperatorID || projection.OperatorSessionID != binding.TargetOperatorSessionID || projection.ActionType != binding.ActionType || projection.TransactionHash == "" || projection.SignerKeyID == "" || projection.Signature == "" {
-		return nil, fmt.Errorf("%w: receipt projection does not match the declared binding", constants.ErrInvalidEvidenceGraph)
-	}
-	if receipt == nil || receipt.GetTransactionId() != projection.TransactionID || receipt.GetTransactionHash() != projection.TransactionHash || receipt.GetSignerKeyId() != projection.SignerKeyID || receipt.GetSignature() != projection.Signature {
-		return nil, fmt.Errorf("%w: canonical receipt does not match the governed response projection", constants.ErrInvalidEvidenceGraph)
-	}
-	attestation := receipt.GetFinalPersistenceAttestation()
-	if attestation == nil || attestation.GetTransactionId() != binding.TransactionID || attestation.GetAuditRecordId() != binding.TransactionID || attestation.GetSignerKeyId() != projection.SignerKeyID || attestation.GetReceiptSignatureDigest() == "" || attestation.GetPersistedAtUnixMs() <= 0 || attestation.GetSignature() == "" {
-		return nil, fmt.Errorf("%w: canonical receipt lacks a bound final-persistence attestation", constants.ErrInvalidEvidenceGraph)
-	}
-	chain, err := governance.ValidateDeterministicProtocolChain(receipt)
-	if err != nil {
-		return nil, fmt.Errorf("%w: validate deterministic protocol chain: %v", constants.ErrInvalidEvidenceGraph, err)
-	}
-	bound := false
-	for _, stage := range receipt.GetDeterministicStageEvidence() {
-		if stage.GetTransactionId() == binding.TransactionID && stage.GetTransactionHash() == projection.TransactionHash && stage.GetOperatorId() == binding.TargetOperatorID && stage.GetOperatorSessionId() == binding.TargetOperatorSessionID && stage.GetActionType() == binding.ActionType && stage.GetCaseId() == binding.RunID && stage.GetInvestigationId() == binding.InvestigationID && stage.GetTaskId() == binding.AttemptID {
-			bound = true
-			break
-		}
-	}
-	if !bound {
-		return nil, fmt.Errorf("%w: canonical receipt lacks the declared run, scenario, attempt, transaction, action, and target binding", constants.ErrEvidenceScopeMismatch)
-	}
-	receiptBody, err := MarshalCanonicalProto(receipt)
-	if err != nil {
-		return nil, fmt.Errorf("%w: canonicalize event receipt: %v", constants.ErrInvalidEvidenceGraph, err)
-	}
-	persistenceBody, err := MarshalCanonicalProto(attestation)
-	if err != nil {
-		return nil, fmt.Errorf("%w: canonicalize receipt persistence attestation: %v", constants.ErrInvalidEvidenceGraph, err)
-	}
-	receiptID := ContentAddress(ArtifactTypeEventReceipt, receiptBody)
-	_, receiptDigest, _ := ParseContentAddress(receiptID)
-	persistenceID := ContentAddress(ArtifactTypeReceiptPersistence, persistenceBody)
-	_, persistenceDigest, _ := ParseContentAddress(persistenceID)
-	return &VerifiedReceiptEvidence{
-		Binding: binding,
-		ReceiptReference: &compliancev1.ComplianceEvidenceReference{
-			ArtifactId: receiptID, ArtifactType: string(ArtifactTypeEventReceipt), Sha256: receiptDigest, MediaType: constants.MediaTypeJSON,
-			RunId: binding.RunID, AttemptId: binding.AttemptID, ScenarioId: binding.ScenarioID, TransactionId: binding.TransactionID,
-		},
-		PersistenceReference: &compliancev1.ComplianceEvidenceReference{
-			ArtifactId: persistenceID, ArtifactType: string(ArtifactTypeReceiptPersistence), Sha256: persistenceDigest, MediaType: constants.MediaTypeJSON,
-			RunId: binding.RunID, AttemptId: binding.AttemptID, ScenarioId: binding.ScenarioID, TransactionId: binding.TransactionID,
-		},
-		ProtocolChainReference: chain.ContentReference,
-		Receipt:                receipt,
-	}, nil
-}
-
 func ValidateVerificationReport(body []byte, reportID, verifierID, verifierVersion string, notAfter time.Time) (*compliancev1.ComplianceVerificationReport, error) {
 	report := &compliancev1.ComplianceVerificationReport{}
 	if err := compliancev1.UnmarshalCanonical(body, report); err != nil {
-		return nil, fmt.Errorf("%w: decode canonical verification report: %v", constants.ErrEvidenceArtifactMalformed, err)
+		return nil, fmt.Errorf("%w: decode canonical verification report: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if reportID == "" || verifierID == "" || verifierVersion == "" || notAfter.IsZero() || report.GetReportId() != reportID || report.GetVerifierId() != verifierID || report.GetVerifierVersion() != verifierVersion || !report.GetValid() || len(report.GetFailures()) != 0 || report.GetVerifiedAt() == nil || report.GetVerifiedAt().CheckValid() != nil || report.GetVerifiedAt().AsTime().After(notAfter) {
 		return nil, fmt.Errorf("%w: verification report is invalid or does not match its declared binding", constants.ErrReportVerificationFailed)

@@ -364,7 +364,11 @@ func (e *CampaignExporter) ExportRun(
 	if err != nil && !errors.Is(err, constants.ErrNotFound) && !errors.Is(err, stdfs.ErrNotExist) {
 		return nil, fmt.Errorf("evaluation: load campaign verification for export: %w", err)
 	}
-	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, verificationReport)
+	populationReport, err := NewCampaignPopulationAccountant(e.now).AccountRun(ctx, store, runID, catalog)
+	if err != nil {
+		return nil, err
+	}
+	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, uint32(populationReport.ExpectedCells), verificationReport)
 	if err != nil && verificationReport != nil {
 		return nil, fmt.Errorf("evaluation: resolve export verification applicability: %w", err)
 	}
@@ -424,11 +428,6 @@ func (e *CampaignExporter) ExportRun(
 	if err != nil {
 		return nil, err
 	}
-	populationReport, err := NewCampaignPopulationAccountant(e.now).AccountRun(ctx, store, runID, catalog)
-	if err != nil {
-		return nil, err
-	}
-
 	// The bundle carries only the disclosure-safe public projection, so it is
 	// written as is, outside the sealed roots (normalizeRuntimeExportDir).
 	exportFiles := SealedFiles(fileSvc)
@@ -512,6 +511,7 @@ func (e *CampaignExporter) ExportRun(
 	}
 	if err := e.writeSQLiteExport(
 		ctx,
+		exportFiles,
 		exportFiles.Resolve(sqlitePath),
 		run,
 		spec,
@@ -995,6 +995,7 @@ func formatTimestamp(ts *timestamppb.Timestamp) string {
 
 func (e *CampaignExporter) writeSQLiteExport(
 	ctx context.Context,
+	fileSvc fs.RuntimeFileService,
 	path string,
 	run *evalv1.EvaluationRun,
 	spec *evalv1.EvaluationCampaignSpec,
@@ -1006,7 +1007,7 @@ func (e *CampaignExporter) writeSQLiteExport(
 	aggregate *runAggregateState,
 	modelSummaries [][]byte,
 ) (err error) {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(path), slog.Default())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(path), slog.Default())
 	if err != nil {
 		return fmt.Errorf("evaluation: export campaign run: open sqlite: %w", err)
 	}

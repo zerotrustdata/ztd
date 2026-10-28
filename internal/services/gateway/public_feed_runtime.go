@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,13 +40,13 @@ const (
 func ReadPublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService) (models.PublicExportConfig, error) {
 	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedExportConfigPath)
 	if err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedConfigRequired, err)
+		return models.PublicExportConfig{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedConfigRequired, err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var exportConfig models.PublicExportConfig
 	if err := decoder.Decode(&exportConfig); err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: decode: %v", constants.ErrPublicFeedConfigRequired, err)
+		return models.PublicExportConfig{}, fmt.Errorf("%w: decode: %w", constants.ErrPublicFeedConfigRequired, err)
 	}
 	if err := rejectTrailingPublicJSON(decoder); err != nil {
 		return models.PublicExportConfig{}, err
@@ -98,18 +99,27 @@ func ValidatePublicMirrorOrigin(origin string) error {
 }
 
 // ValidatePublicMirrorListenAddresses enforces loopback-only private/public
-// mirror listeners with distinct addresses. When allowContainerBind is true,
-// 0.0.0.0 is also accepted so a container network can reach the listener.
+// mirror listeners with distinct addresses. The private ingest listener is
+// unconditionally restricted to loopback (INV-SPEC-ISO-03). When
+// allowContainerBind is true, 0.0.0.0 is accepted only for the public read
+// listener so an external network or container can reach it.
 func ValidatePublicMirrorListenAddresses(privateAddress, publicAddress string, allowContainerBind bool) error {
-	for _, address := range []string{privateAddress, publicAddress} {
-		host, _, err := net.SplitHostPort(address)
-		if err != nil {
-			return fmt.Errorf("%w: %q: %v", constants.ErrPublicFeedListenAddress, address, err)
-		}
-		if !isAllowedPublicMirrorListenHost(host, allowContainerBind) {
-			return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, address)
-		}
+	privateHost, _, err := net.SplitHostPort(privateAddress)
+	if err != nil {
+		return fmt.Errorf("%w: %q: %w", constants.ErrPublicFeedListenAddress, privateAddress, err)
 	}
+	if !isAllowedPublicMirrorListenHost(privateHost, false) {
+		return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, privateAddress)
+	}
+
+	publicHost, _, err := net.SplitHostPort(publicAddress)
+	if err != nil {
+		return fmt.Errorf("%w: %q: %w", constants.ErrPublicFeedListenAddress, publicAddress, err)
+	}
+	if !isAllowedPublicMirrorListenHost(publicHost, allowContainerBind) {
+		return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, publicAddress)
+	}
+
 	if _, port, err := net.SplitHostPort(privateAddress); err == nil && port != "0" && sameListenAddress(privateAddress, publicAddress) {
 		return fmt.Errorf("%w: duplicate address %q", constants.ErrPublicFeedListenAddress, privateAddress)
 	}
@@ -144,7 +154,7 @@ func ValidatePublicExplorerListenAddress(explorerAddress, privateAddress, public
 	}
 	host, _, err := net.SplitHostPort(explorerAddress)
 	if err != nil {
-		return fmt.Errorf("%w: %q: %v", constants.ErrPublicFeedListenAddress, explorerAddress, err)
+		return fmt.Errorf("%w: %q: %w", constants.ErrPublicFeedListenAddress, explorerAddress, err)
 	}
 	if !isAllowedPublicMirrorListenHost(host, allowContainerBind) {
 		return fmt.Errorf("%w: %q", constants.ErrPublicFeedListenAddress, explorerAddress)
@@ -171,24 +181,16 @@ func normalizeListenAddress(address string) string {
 	return net.JoinHostPort(host, port)
 }
 
-// EnsureLocalPublicFeed initializes export config and signing material when
-// absent so the gateway-owned mirror can accept publisher ingest.
-func EnsureLocalPublicFeed(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keystore.Keystore, sourceID, mirrorOrigin string) (models.PublicExportConfig, error) {
+// InitializeLocalPublicFeed creates a new local publisher generation. It
+// requires an unused feed state and rolls back paths it created if a later
+// write fails. Callers that want read-if-present behavior must make that choice
+// explicitly before calling this function.
+func InitializeLocalPublicFeed(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keystore.Keystore, sourceID, mirrorOrigin string) (models.PublicExportConfig, error) {
 	if ks == nil {
 		return models.PublicExportConfig{}, fmt.Errorf("public-feed: %w: keystore", constants.ErrMissingRequiredField)
 	}
-	exportConfig, err := ReadPublicExportConfig(ctx, fileSvc)
-	if err == nil {
-		return exportConfig, nil
-	}
-	if !errors.Is(err, constants.ErrPublicFeedConfigRequired) {
+	if err := ValidatePublicFeedSourceID(sourceID); err != nil {
 		return models.PublicExportConfig{}, err
-	}
-	if strings.TrimSpace(sourceID) == "" {
-		sourceID = defaultPublicSpectatorSourceID
-	}
-	if strings.TrimSpace(mirrorOrigin) == "" {
-		mirrorOrigin = fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPrivatePort)
 	}
 	if err := ValidatePublicMirrorOrigin(mirrorOrigin); err != nil {
 		return models.PublicExportConfig{}, err
@@ -217,26 +219,38 @@ func EnsureLocalPublicFeed(ctx context.Context, fileSvc fs.RuntimeFileService, k
 	}
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedKeyGenFailed, err)
+		return models.PublicExportConfig{}, fmt.Errorf("%w: %w", constants.ErrPublicFeedKeyGenFailed, err)
 	}
 	token := make([]byte, constants.PublicFeedIngestTokenBytes)
 	if _, err := rand.Read(token); err != nil {
 		return models.PublicExportConfig{}, fmt.Errorf("public-feed: generate ingest token: %w", err)
 	}
 	keyDigest := sha256.Sum256(publicKey)
-	exportConfig = models.DefaultPublicExportConfig()
+	exportConfig := models.DefaultPublicExportConfig()
 	exportConfig.Enabled = true
 	exportConfig.SourceID = sourceID
 	exportConfig.MirrorOrigin = mirrorOrigin
 	exportConfig.SigningKeyID = hex.EncodeToString(keyDigest[:])
+	createdPaths := make([]string, 0, 3)
+	rollback := func(cause error) error {
+		result := cause
+		for index := len(createdPaths) - 1; index >= 0; index-- {
+			if removeErr := fileSvc.Remove(ctx, createdPaths[index]); removeErr != nil {
+				result = errors.Join(result, fmt.Errorf("public-feed: roll back initialization path %s: %w", createdPaths[index], removeErr))
+			}
+		}
+		return result
+	}
 	if err := WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedSigningKeyPath, privateKey); err != nil {
 		return models.PublicExportConfig{}, fmt.Errorf("public-feed: write signing key: %w", err)
 	}
+	createdPaths = append(createdPaths, constants.PublicFeedSigningKeyPath)
 	if err := WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedIngestTokenPath, token); err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("public-feed: write ingest token: %w", err)
+		return models.PublicExportConfig{}, rollback(fmt.Errorf("public-feed: write ingest token: %w", err))
 	}
-	if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
-		return models.PublicExportConfig{}, err
+	createdPaths = append(createdPaths, constants.PublicFeedIngestTokenPath)
+	if err := WritePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
+		return models.PublicExportConfig{}, rollback(err)
 	}
 	return exportConfig, nil
 }
@@ -396,13 +410,13 @@ func TransitionLocalPublicFeed(ctx context.Context, fileSvc fs.RuntimeFileServic
 	if err := WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedIngestTokenPath, token); err != nil {
 		return models.PublicExportConfig{}, rollback(fmt.Errorf("public-feed: write new ingest token: %w", err))
 	}
-	if err := writePublicExportConfig(ctx, fileSvc, newConfig); err != nil {
+	if err := WritePublicExportConfig(ctx, fileSvc, newConfig); err != nil {
 		return models.PublicExportConfig{}, rollback(err)
 	}
 	return newConfig, nil
 }
 
-func writePublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService, exportConfig models.PublicExportConfig) error {
+func WritePublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService, exportConfig models.PublicExportConfig) error {
 	if err := ValidatePublicExportConfig(exportConfig); err != nil {
 		return err
 	}
@@ -455,7 +469,8 @@ func ReadPublicSecret(ctx context.Context, fileSvc fs.RuntimeFileService, ks *ke
 }
 
 func rejectTrailingPublicJSON(decoder *json.Decoder) error {
-	if decoder.More() {
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
 		return fmt.Errorf("%w: trailing JSON", constants.ErrPublicFeedConfigRequired)
 	}
 	return nil

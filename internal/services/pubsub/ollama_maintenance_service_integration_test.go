@@ -97,10 +97,10 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_PublishesTypedFailure(t
 			wantError: "invalid request payload",
 		},
 		{
-			name:      "provider endpoint is not configured",
+			name:      "inference is not enabled",
 			endpoint:  func(*testing.T) string { return "" },
 			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaInventoryMessage(t, "") },
-			wantError: constants.ErrInferenceEndpointInvalid.Error(),
+			wantError: constants.ErrInferenceBackendUnavailable.Error(),
 		},
 		{
 			name: "provider is unavailable",
@@ -223,10 +223,10 @@ func TestOllamaMaintenanceService_HandleResidencyRequest_PublishesTypedFailure(t
 			wantError: "invalid request payload",
 		},
 		{
-			name:      "provider endpoint is not configured",
+			name:      "inference is not enabled",
 			endpoint:  func(*testing.T) string { return "" },
 			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaResidencyMessage(t, "") },
-			wantError: constants.ErrInferenceEndpointInvalid.Error(),
+			wantError: constants.ErrInferenceBackendUnavailable.Error(),
 		},
 		{
 			name: "provider is unavailable",
@@ -345,10 +345,10 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedFailure(t *
 			wantError: constants.ErrInferenceModelTagInvalid.Error(),
 		},
 		{
-			name:      "provider endpoint is not configured",
+			name:      "inference is not enabled",
 			endpoint:  func(*testing.T) string { return "" },
 			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaReleaseMessage(t, "", "qwen3:0.6b") },
-			wantError: constants.ErrInferenceEndpointInvalid.Error(),
+			wantError: constants.ErrInferenceBackendUnavailable.Error(),
 		},
 	}
 	for _, tt := range tests {

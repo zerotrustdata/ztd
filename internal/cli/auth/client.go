@@ -144,9 +144,9 @@ func GenerateCSR(commonName string) (csrPEM string, privKey *ecdsa.PrivateKey, e
 	template := x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName:   commonName,
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 		},
-		DNSNames: []string{"localhost", "ztd.local"},
+		DNSNames: []string{"localhost", constants.GatewayInternalHostname},
 	}
 
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &template, privKey)

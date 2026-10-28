@@ -1,0 +1,72 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package evaluation
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
+
+func TestMetricsUseDispatchedEvidenceAndSuccessfulResultsOnly(t *testing.T) {
+	ref := []ScenarioGoldEvidenceReference{{ReferenceID: "case", ExpectedContent: "preserve app-report"}}
+	trace := &AgentTrace{ToolCalls: []AgentToolCall{{ToolName: constants.MCPToolReadFile, ArgumentsJSON: `{"path":"case-notes.json"}`, Success: true, ResultJSON: "case notes unavailable"}}}
+	require.Zero(t, computeRetrievalHitRate(trace, ref), "nothing was dispatched to the model")
+	require.Zero(t, computeEvidenceBackedConclusion(trace, ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"preserve app-report"}}}}, true), "tool arguments are not evidence")
+
+	trace.Input = &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "preserve app-report"}}}
+	require.InDelta(t, 1.0, computeRetrievalHitRate(trace, ref), 0, "actual dispatched input counts as available evidence")
+	require.InDelta(t, 1.0, computeEvidenceBackedConclusion(trace, ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"preserve app-report"}}}}, true), 0)
+
+	trace.Input = nil
+	trace.ToolCalls[0].Success = false
+	trace.ToolCalls[0].ResultJSON = "preserve app-report"
+	require.Zero(t, computeRetrievalHitRate(trace, ref), "failed retrieval cannot count as observed")
+	require.Zero(t, computeEvidenceBackedConclusion(trace, ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"preserve app-report"}}}}, true), "failed-call result is not model-visible evidence")
+}
+
+func TestMetricsIgnoreAssistantClaimsAsEvidence(t *testing.T) {
+	ref := []ScenarioGoldEvidenceReference{{ReferenceID: "claim", ExpectedContent: "port 8081"}}
+	criteria := ScenarioGoldCriteria{ContentCheck: &ScenarioContentCheck{RequiredTerms: [][]string{{"port 8081"}}}}
+	trace := &AgentTrace{
+		Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String(), Text: "port 8081"}}},
+		HeldContext: &AgentTraceHeldContext{Messages: []AgentTraceContextMessage{
+			{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String(), Text: "The config uses port 8081."},
+		}},
+	}
+	require.Zero(t, computeRetrievalHitRate(trace, ref), "system and previous assistant prose are claims, not evidence")
+	require.Zero(t, computeEvidenceBackedConclusion(trace, criteria, true))
+
+	trace.HeldContext.Messages = append(trace.HeldContext.Messages, AgentTraceContextMessage{
+		Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String(), ToolResult: &AgentTraceContextToolResult{Name: constants.MCPToolReadFile, ResultJSON: `{"content":"port 8081"}`},
+	})
+	require.InDelta(t, 1.0, computeRetrievalHitRate(trace, ref), 0, "tool result carried in verified held conversation is evidence")
+	require.InDelta(t, 1.0, computeEvidenceBackedConclusion(trace, criteria, true), 0)
+}
+
+func TestMetricsNamedReferencesRequireMatchingRequestAndResult(t *testing.T) {
+	resource := ScenarioGoldEvidenceReference{ReferenceID: "service-config", TargetResource: "app/service.conf", ExpectedContent: "listen_port = 8081"}
+	call := AgentToolCall{ToolName: constants.MCPToolReadFile, ArgumentsJSON: `{"path":"app/other.conf"}`, Success: true, ResultJSON: `{"path":"app/other.conf","content":"listen_port = 8081"}`}
+	trace := &AgentTrace{ToolCalls: []AgentToolCall{call}}
+	require.Zero(t, computeRetrievalHitRate(trace, []ScenarioGoldEvidenceReference{resource}), "same content from a different resource is not the named evidence")
+
+	trace.ToolCalls[0].ArgumentsJSON = `{"path":"app/service.conf"}`
+	trace.ToolCalls[0].ResultJSON = `{"path":"app/other.conf","content":"listen_port = 8081"}`
+	require.Zero(t, computeRetrievalHitRate(trace, []ScenarioGoldEvidenceReference{resource}), "requested resource must also be present in returned result")
+
+	trace.ToolCalls[0].ResultJSON = `{"path":"app/service.conf","content":"listen_port = 8081"}`
+	require.InDelta(t, 1.0, computeRetrievalHitRate(trace, []ScenarioGoldEvidenceReference{resource}), 0)
+
+	commandRef := ScenarioGoldEvidenceReference{ReferenceID: "check-script", CommandPattern: "check.sh", ExpectedContent: "exit_code=0"}
+	trace.ToolCalls = []AgentToolCall{{ToolName: constants.MCPToolReadFile, Success: true, ArgumentsJSON: `{"path":"other.log"}`, ResultJSON: `{"path":"other.log","content":"check.sh exit_code=0"}`}}
+	require.Zero(t, computeRetrievalHitRate(trace, []ScenarioGoldEvidenceReference{commandRef}), "mentioning the command in unrelated output is not command evidence")
+	trace.ToolCalls[0] = AgentToolCall{ToolName: constants.MCPToolRunShellCommand, Success: true, ArgumentsJSON: `{"command":"sh","args":["check.sh"]}`, ResultJSON: `{"output":"exit_code=0"}`}
+	require.InDelta(t, 1.0, computeRetrievalHitRate(trace, []ScenarioGoldEvidenceReference{commandRef}), 0)
+}

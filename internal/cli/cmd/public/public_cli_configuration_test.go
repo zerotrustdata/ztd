@@ -85,9 +85,7 @@ func TestPublicCmd_ExposesProductionSurface(t *testing.T) {
 
 func TestPublicRepairOutboxCmd_UsesGatewayOwnedStateWhenHostConfigIsAbsent(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
-	original := gwremote.GatewayHealthCheck
-	gwremote.GatewayHealthCheck = func() bool { return true }
-	t.Cleanup(func() { gwremote.GatewayHealthCheck = original })
+	gwremote.WithConfiguredGatewayHealthCheck(t, true)
 
 	var output bytes.Buffer
 	cmd := publicRepairOutboxCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
@@ -136,6 +134,52 @@ func TestPublicInitCmd_PersistsPrivateConfigurationAndSecrets(t *testing.T) {
 		require.NoError(t, statErr)
 		assert.Equal(t, testutil.FileMode(constants.PermFilePrivate, info.IsDir()), info.Mode().Perm())
 	}
+}
+
+func TestPublicInitCmd_RejectsExistingFeedWithoutChangingGeneration(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	ctx := testutil.Context(t)
+	initialize := func(sourceID string) error {
+		cmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+		cmd.SetArgs([]string{"--source-id", sourceID, "--mirror-origin", "https://mirror.example"})
+		return cmd.Execute()
+	}
+	require.NoError(t, initialize("deployment-a"))
+	paths := []string{constants.PublicFeedExportConfigPath, constants.PublicFeedSigningKeyPath, constants.PublicFeedIngestTokenPath}
+	original := make([][]byte, len(paths))
+	for index, path := range paths {
+		var err error
+		original[index], err = fileSvc.ReadFile(ctx, path)
+		require.NoError(t, err)
+	}
+
+	require.ErrorIs(t, initialize("deployment-b"), constants.ErrPublicFeedConfigExists)
+	for index, path := range paths {
+		actual, err := fileSvc.ReadFile(ctx, path)
+		require.NoError(t, err)
+		assert.Equal(t, original[index], actual)
+	}
+}
+
+func TestPublicInitCmd_RejectsOrphanedOutboxBeforeWritingSecrets(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	ctx := testutil.Context(t)
+	const outbox = "orphaned-generation\n"
+	require.NoError(t, fileSvc.WriteFile(ctx, constants.PublicFeedOutboxPath, []byte(outbox), constants.PermFilePrivate))
+	cmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", "https://mirror.example"})
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicFeedOrphanedGeneration)
+	for _, path := range []string{constants.PublicFeedExportConfigPath, constants.PublicFeedSigningKeyPath, constants.PublicFeedIngestTokenPath} {
+		exists, err := fileSvc.FileExists(ctx, path)
+		require.NoError(t, err)
+		assert.False(t, exists, path)
+	}
+	actual, err := fileSvc.ReadFile(ctx, constants.PublicFeedOutboxPath)
+	require.NoError(t, err)
+	assert.Equal(t, outbox, string(actual))
 }
 
 func TestPublicPublishAndRotateKeyCommands_DeriveDurableSequenceAndAuthenticateMirror(t *testing.T) {
@@ -236,7 +280,7 @@ func TestPublicSourceTransitionCmd_RequiresConfirmationAndArchivesOldSource(t *t
 	require.NoError(t, transitionCmd.Execute())
 	assert.Contains(t, output.String(), "deployment-new")
 
-	activeConfig, err := readPublicExportConfig(context.Background(), fileSvc)
+	activeConfig, err := gateway.ReadPublicExportConfig(context.Background(), fileSvc)
 	require.NoError(t, err)
 	assert.Equal(t, "deployment-new", activeConfig.SourceID)
 	archivedPaths, err := gateway.PublicFeedArchivePathsFor("deployment-old")
@@ -430,7 +474,7 @@ func TestPublicCommands_RejectMalformedTrailingUnknownAndInvalidConfiguration(t 
 		body []byte
 	}{
 		{name: "malformed JSON", body: []byte(`{`)},
-		{name: "trailing JSON", body: append(append([]byte(nil), validBytes...), []byte(`{}`)...)},
+		{name: "trailing JSON", body: append(append([]byte(nil), validBytes...), []byte(`}`)...)},
 		{name: "unknown field", body: unknown},
 		{name: "invalid limits", body: invalidBytes},
 	}
@@ -459,7 +503,7 @@ func TestPublicPushCmd_RetriesDurableOutboxAfterCommandRestart(t *testing.T) {
 	var exportConfig models.PublicExportConfig
 	require.NoError(t, json.Unmarshal(configBytes, &exportConfig))
 	exportConfig.RetryMaxAttempts = 1
-	require.NoError(t, writePublicExportConfig(context.Background(), fileSvc, exportConfig))
+	require.NoError(t, gateway.WritePublicExportConfig(context.Background(), fileSvc, exportConfig))
 	input := models.PublicFeedRecordInput{RecordType: models.PublicFeedRecordTypeProjection, RecordBytes: validPublicProjectionBytes("campaign-a")}
 	inputBytes, err := json.Marshal(input)
 	require.NoError(t, err)
@@ -499,7 +543,7 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	initCmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	initCmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", "https://mirror.example"})
 	require.NoError(t, initCmd.Execute())
-	exportConfig, err := readPublicExportConfig(context.Background(), fileSvc)
+	exportConfig, err := gateway.ReadPublicExportConfig(context.Background(), fileSvc)
 	require.NoError(t, err)
 	privateKeyBytes, err := gateway.ReadPublicSecret(context.Background(), fileSvc, ks, constants.PublicFeedSigningKeyPath, ed25519.PrivateKeySize, constants.ErrPublicFeedSigningKeyRequired)
 	require.NoError(t, err)
@@ -515,7 +559,7 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	publicServer := httptest.NewServer(mirror.PublicHandler())
 	t.Cleanup(publicServer.Close)
 	exportConfig.MirrorOrigin = server.URL
-	require.NoError(t, writePublicExportConfig(context.Background(), fileSvc, exportConfig))
+	require.NoError(t, gateway.WritePublicExportConfig(context.Background(), fileSvc, exportConfig))
 	pushCmd := publicPushCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	publisher, err := newPublicPublisherForCommand(pushCmd, fileSvc, exportConfig)
 	require.NoError(t, err)

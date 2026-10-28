@@ -8,7 +8,6 @@
 package gateway
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -49,10 +48,6 @@ func newSignerController(d SignerControllerDeps) *SignerController {
 	}
 }
 
-func (c *SignerController) readBody(r *http.Request) ([]byte, error) {
-	return readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
-}
-
 func (c *SignerController) handleGovernanceSigners(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -65,27 +60,6 @@ func (c *SignerController) handleGovernanceSigners(w http.ResponseWriter, r *htt
 			Success: true,
 			Signers: signers,
 		})
-
-	case http.MethodPost:
-		body, err := c.readBody(r)
-		if err != nil {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrSignerControllerBodyReadFailed.Error())
-			return
-		}
-		var signer models.TrustedSigner
-		if err := json.Unmarshal(body, &signer); err != nil {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		if signer.ID == "" || signer.PublicKey == "" {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
-			return
-		}
-		if err := c.signerStore.AddTrustedSigner(r.Context(), signer); err != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("signer_controller: handleGovernanceSigners: %w", err).Error())
-			return
-		}
-		c.responder.JSON(w, http.StatusCreated, models.StatusResponse{Status: constants.GatewayModeStatusOK})
 
 	default:
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
@@ -120,18 +94,6 @@ func (c *SignerController) handleGovernanceSignerByID(w http.ResponseWriter, r *
 			return
 		}
 		c.responder.JSON(w, http.StatusOK, doc.ForWire())
-
-	case http.MethodDelete:
-		deleted, err := c.signerStore.DeleteTrustedSigner(r.Context(), id)
-		if err != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("signer_controller: handleGovernanceSignerByID: %w", err).Error())
-			return
-		}
-		if !deleted {
-			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, models.StatusResponse{Status: constants.GatewayModeStatusOK})
 
 	default:
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())

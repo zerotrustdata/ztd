@@ -812,10 +812,10 @@ func payloadToFileEditRequest(msg *PubSubCommandMessage) (*models.FileEditReques
 		return nil, fmt.Errorf("failed to decode file edit payload as protobuf FileEditRequested: %w", err)
 	}
 	if p.FilePath == "" {
-		return nil, fmt.Errorf("missing file_path in payload")
+		return nil, fmt.Errorf("missing file_path in payload: %w", constants.ErrMissingRequiredField)
 	}
 	if p.Operation == "" {
-		return nil, fmt.Errorf("missing operation in payload")
+		return nil, fmt.Errorf("missing operation in payload: %w", constants.ErrMissingRequiredField)
 	}
 
 	requestID := executionIDFromMessage(msg)
@@ -830,7 +830,7 @@ func payloadToFileEditRequest(msg *PubSubCommandMessage) (*models.FileEditReques
 
 	operation := constants.FileOperation(p.Operation)
 	if !isValidFileOperation(operation) {
-		return nil, fmt.Errorf("invalid file operation: %s", p.Operation)
+		return nil, fmt.Errorf("invalid file operation: %s: %w", p.Operation, constants.ErrFileEditUnsupportedOperation)
 	}
 
 	req := &models.FileEditRequest{

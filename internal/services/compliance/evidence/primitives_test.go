@@ -24,7 +24,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestCanonicalProtoBodyEqual_ComparesAgainstCanonicalProtocolBytes(t *testing.T) {
@@ -169,14 +168,14 @@ func TestValidateCanonicalJSON_AcceptsCanonicalCompact(t *testing.T) {
 func TestValidateCanonicalJSON_RejectsNonCanonicalWhitespace(t *testing.T) {
 	body := []byte(`{"key": "value"}`)
 	err := ValidateCanonicalJSON(body)
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Contains(t, err.Error(), "canonical compact")
 }
 
 func TestValidateCanonicalJSON_RejectsTrailingData(t *testing.T) {
 	body := []byte(`{"key":"value"}extra`)
 	err := ValidateCanonicalJSON(body)
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Contains(t, err.Error(), "trailing data")
 }
 
@@ -276,83 +275,6 @@ func TestClassifyReadError_PreservesTooLarge(t *testing.T) {
 
 func TestClassifyReadError_MapsUnknownToInvalidGraph(t *testing.T) {
 	assert.ErrorIs(t, ClassifyReadError(errors.New("unknown")), constants.ErrInvalidEvidenceGraph)
-}
-
-func TestContains_FindsTarget(t *testing.T) {
-	assert.True(t, Contains([]string{"a", "b", "c"}, "b"))
-	assert.False(t, Contains([]string{"a", "b", "c"}, "d"))
-	assert.False(t, Contains([]string{}, "a"))
-}
-
-func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *testing.T) {
-	binding := ReceiptBinding{
-		RunID:                   "run-1",
-		ScenarioID:              "scenario-1",
-		AttemptID:               "attempt-1",
-		ExecutionID:             "execution-1",
-		InvestigationID:         "scenario-1",
-		TransactionID:           "tx-1",
-		TargetOperatorID:        "operator-1",
-		TargetOperatorSessionID: "session-1",
-		ActionType:              "GOVERNANCE_ACTION",
-	}
-	projection := ReceiptProjection{
-		ExecutionID:       binding.ExecutionID,
-		TransactionID:     binding.TransactionID,
-		TransactionHash:   "tx-hash",
-		InvestigationID:   binding.InvestigationID,
-		OperatorID:        binding.TargetOperatorID,
-		OperatorSessionID: binding.TargetOperatorSessionID,
-		ActionType:        binding.ActionType,
-		SignerKeyID:       "signer-1",
-		Signature:         "receipt-signature",
-	}
-	newReceipt := func() *operatorv1.EventReceipt {
-		receipt := newEvalVerifiedChainReceipt(projection.SignerKeyID)
-		receipt.Signature = projection.Signature
-		receipt.FinalPersistenceAttestation = &operatorv1.ReceiptPersistenceAttestation{
-			TransactionId: binding.TransactionID, ReceiptSignatureDigest: "signature-digest", PersistedAtUnixMs: 1,
-			AuditRecordId: binding.TransactionID, SignerKeyId: projection.SignerKeyID, Signature: "persistence-signature",
-		}
-		for _, stage := range receipt.DeterministicStageEvidence {
-			stage.OperatorId = binding.TargetOperatorID
-			stage.OperatorSessionId = binding.TargetOperatorSessionID
-			stage.CaseId = binding.RunID
-			stage.InvestigationId = binding.InvestigationID
-			stage.TaskId = binding.AttemptID
-		}
-		return receipt
-	}
-
-	evidence, err := BuildVerifiedReceiptEvidence(binding, projection, newReceipt())
-	require.NoError(t, err)
-	assert.Equal(t, binding.TransactionID, evidence.ReceiptReference.GetTransactionId())
-	assert.Equal(t, binding.AttemptID, evidence.PersistenceReference.GetAttemptId())
-	assert.NotEmpty(t, evidence.ProtocolChainReference)
-
-	tests := []struct {
-		name   string
-		mutate func(*operatorv1.EventReceipt)
-	}{
-		{name: "target session mismatch", mutate: func(receipt *operatorv1.EventReceipt) {
-			for _, stage := range receipt.DeterministicStageEvidence {
-				stage.OperatorSessionId = "session-other"
-			}
-		}},
-		{name: "attempt mismatch", mutate: func(receipt *operatorv1.EventReceipt) {
-			for _, stage := range receipt.DeterministicStageEvidence {
-				stage.TaskId = "attempt-other"
-			}
-		}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			receipt := newReceipt()
-			test.mutate(receipt)
-			_, err := BuildVerifiedReceiptEvidence(binding, projection, receipt)
-			assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
-		})
-	}
 }
 
 func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *testing.T) {

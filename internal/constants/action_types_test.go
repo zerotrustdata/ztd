@@ -125,6 +125,7 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentRevoke,
 		ActionTypePlatformEnrollmentBindConsensus,
+		ActionTypePlatformEnrollmentUnbindConsensus,
 		ActionTypePortCheck,
 		ActionTypeOllamaModelInventory,
 		ActionTypeOllamaModelResidency,
@@ -163,6 +164,7 @@ func TestActionTypeIsMutation_EveryActionTypeClassified(t *testing.T) {
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy,
 		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentUnbindConsensus,
 		ActionTypeRestoreFile,
 		ActionTypeShutdown,
 	}
@@ -202,12 +204,14 @@ func TestActionTypeIsBootstrapAction_PlatformEnrollmentReturnsTrue(t *testing.T)
 	t.Parallel()
 
 	bootstrapActions := []ActionType{
+		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreate,
 		ActionTypePlatformEnrollmentDecide,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentRevoke,
+		ActionTypePlatformEnrollmentUnbindConsensus,
 	}
 
 	for _, at := range bootstrapActions {

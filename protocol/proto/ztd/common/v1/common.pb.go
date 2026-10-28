@@ -972,7 +972,9 @@ type PlatformEnrollmentFingerprints struct {
 	Operator string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
 	Cli      string                 `protobuf:"bytes,3,opt,name=cli,proto3" json:"cli,omitempty"`
 	// SHA-256 of the optional raw Ed25519 application signing public key.
-	SigningKey    string `protobuf:"bytes,4,opt,name=signing_key,json=signingKey,proto3" json:"signing_key,omitempty"`
+	SigningKey string `protobuf:"bytes,4,opt,name=signing_key,json=signingKey,proto3" json:"signing_key,omitempty"`
+	// SHA-256 of the Operator's Ed25519 Auditor public key.
+	AuditorKey    string `protobuf:"bytes,5,opt,name=auditor_key,json=auditorKey,proto3" json:"auditor_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1031,6 +1033,13 @@ func (x *PlatformEnrollmentFingerprints) GetCli() string {
 func (x *PlatformEnrollmentFingerprints) GetSigningKey() string {
 	if x != nil {
 		return x.SigningKey
+	}
+	return ""
+}
+
+func (x *PlatformEnrollmentFingerprints) GetAuditorKey() string {
+	if x != nil {
+		return x.AuditorKey
 	}
 	return ""
 }
@@ -1757,13 +1766,15 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x0fbinding_persona\x18\x18 \x01(\tR\x0ebindingPersona\x12*\n" +
 	"\x11evaluation_run_id\x18\x1c \x01(\tR\x0fevaluationRunId\x128\n" +
 	"\x18evaluation_assignment_id\x18\x1d \x01(\tR\x16evaluationAssignmentId\x12\x18\n" +
-	"\aposture\x18\x1b \x01(\tR\aposture\"\x81\x01\n" +
+	"\aposture\x18\x1b \x01(\tR\aposture\"\xa2\x01\n" +
 	"\x1ePlatformEnrollmentFingerprints\x12\x10\n" +
 	"\x03app\x18\x01 \x01(\tR\x03app\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x10\n" +
 	"\x03cli\x18\x03 \x01(\tR\x03cli\x12\x1f\n" +
 	"\vsigning_key\x18\x04 \x01(\tR\n" +
-	"signingKey\"\x84\f\n" +
+	"signingKey\x12\x1f\n" +
+	"\vauditor_key\x18\x05 \x01(\tR\n" +
+	"auditorKey\"\x84\f\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +

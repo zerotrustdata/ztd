@@ -180,20 +180,26 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 	}
 	switch model.Trust {
 	case FormationTrustSovereign:
-		if model.ProviderClass != "ollama" || model.Quantization == "" {
-			return fmt.Errorf("formation role %s: sovereign model must use Ollama and declare quantization: %w", role, constants.ErrFormationInvalid)
+		if !isLocalProviderClass(model.ProviderClass) || model.Quantization == "" {
+			return fmt.Errorf("formation role %s: sovereign model must use a local provider (ollama or llamacpp) and declare quantization: %w", role, constants.ErrFormationInvalid)
 		}
 		if !isSupportedLocalQuantization(model.Quantization) {
 			return fmt.Errorf("formation role %s: unsupported local quantization %q: %w", role, model.Quantization, constants.ErrFormationInvalid)
 		}
 	case FormationTrustDelegated:
-		if model.ProviderClass == "ollama" || model.Quantization != "" || model.EstimatedModelVRAMMiB != 0 {
+		if isLocalProviderClass(model.ProviderClass) || model.Quantization != "" || model.EstimatedModelVRAMMiB != 0 {
 			return fmt.Errorf("formation role %s: delegated model cannot declare local allocation: %w", role, constants.ErrFormationInvalid)
 		}
 	default:
 		return fmt.Errorf("formation role %s: unknown trust class %q: %w", role, model.Trust, constants.ErrFormationInvalid)
 	}
 	return nil
+}
+
+// isLocalProviderClass reports whether class names a provider serving weights
+// the deployment holds, the only providers a sovereign role may use.
+func isLocalProviderClass(class string) bool {
+	return class == constants.InferenceProviderOllama || class == constants.InferenceProviderLlamaCpp
 }
 
 // missingFields names the absent fields, sorted, or returns "" when none are.
@@ -302,113 +308,12 @@ func NewExecutionTopologies() (*ExecutionTopologies, error) {
 	var formations []Formation
 
 	// Try to load from checked-in catalog file first
-	catalogPath := "eval/formation-catalog.json"
-	if data, err := os.ReadFile(catalogPath); err == nil {
-		var catalogData struct {
-			SchemaVersion string `json:"schema_version"`
-			Formations    []struct {
-				ID                string `json:"id"`
-				DisplayName       string `json:"display_name"`
-				Description       string `json:"description"`
-				MaxVRAMMiB        uint64 `json:"max_vram_mib"`
-				RelaxedValidation bool   `json:"relaxed_validation,omitempty"`
-				Primary           struct {
-					VariantID             string `json:"variant_id"`
-					DisplayName           string `json:"display_name"`
-					Provider              string `json:"provider"`
-					Family                string `json:"family"`
-					ProviderClass         string `json:"provider_class"`
-					ServedModelTag        string `json:"served_model_tag"`
-					Trust                 string `json:"trust"`
-					Quantization          string `json:"quantization,omitempty"`
-					ParameterCount        uint64 `json:"parameter_count,omitempty"`
-					EstimatedModelVRAMMiB uint64 `json:"estimated_model_vram_mib,omitempty"`
-					EstimatedKVCacheMiB   uint64 `json:"estimated_kv_cache_mib,omitempty"`
-					ModelDigest           string `json:"model_digest,omitempty"`
-				} `json:"primary"`
-				Assistant struct {
-					VariantID             string `json:"variant_id"`
-					DisplayName           string `json:"display_name"`
-					Provider              string `json:"provider"`
-					Family                string `json:"family"`
-					ProviderClass         string `json:"provider_class"`
-					ServedModelTag        string `json:"served_model_tag"`
-					Trust                 string `json:"trust"`
-					Quantization          string `json:"quantization,omitempty"`
-					ParameterCount        uint64 `json:"parameter_count,omitempty"`
-					EstimatedModelVRAMMiB uint64 `json:"estimated_model_vram_mib,omitempty"`
-					EstimatedKVCacheMiB   uint64 `json:"estimated_kv_cache_mib,omitempty"`
-					ModelDigest           string `json:"model_digest,omitempty"`
-				} `json:"assistant"`
-				Lite struct {
-					VariantID             string `json:"variant_id"`
-					DisplayName           string `json:"display_name"`
-					Provider              string `json:"provider"`
-					Family                string `json:"family"`
-					ProviderClass         string `json:"provider_class"`
-					ServedModelTag        string `json:"served_model_tag"`
-					Trust                 string `json:"trust"`
-					Quantization          string `json:"quantization,omitempty"`
-					ParameterCount        uint64 `json:"parameter_count,omitempty"`
-					EstimatedModelVRAMMiB uint64 `json:"estimated_model_vram_mib,omitempty"`
-					EstimatedKVCacheMiB   uint64 `json:"estimated_kv_cache_mib,omitempty"`
-					ModelDigest           string `json:"model_digest,omitempty"`
-				} `json:"lite"`
-			} `json:"formations"`
-		}
-
+	if data, err := os.ReadFile(constants.EvaluationFormationCatalogPath); err == nil {
+		var catalogData persistedFormationCatalogOverlay
 		if err := json.Unmarshal(data, &catalogData); err == nil {
 			formations = make([]Formation, 0, len(catalogData.Formations))
-			for _, f := range catalogData.Formations {
-				formations = append(formations, Formation{
-					ID:                f.ID,
-					DisplayName:       f.DisplayName,
-					Description:       f.Description,
-					MaxVRAMMiB:        f.MaxVRAMMiB,
-					RelaxedValidation: f.RelaxedValidation,
-					Primary: FormationModel{
-						VariantID:             f.Primary.VariantID,
-						DisplayName:           f.Primary.DisplayName,
-						Provider:              f.Primary.Provider,
-						Family:                f.Primary.Family,
-						ProviderClass:         f.Primary.ProviderClass,
-						ServedModelTag:        f.Primary.ServedModelTag,
-						Trust:                 FormationTrust(f.Primary.Trust),
-						Quantization:          f.Primary.Quantization,
-						ParameterCount:        f.Primary.ParameterCount,
-						EstimatedModelVRAMMiB: f.Primary.EstimatedModelVRAMMiB,
-						EstimatedKVCacheMiB:   f.Primary.EstimatedKVCacheMiB,
-						ModelDigest:           f.Primary.ModelDigest,
-					},
-					Assistant: FormationModel{
-						VariantID:             f.Assistant.VariantID,
-						DisplayName:           f.Assistant.DisplayName,
-						Provider:              f.Assistant.Provider,
-						Family:                f.Assistant.Family,
-						ProviderClass:         f.Assistant.ProviderClass,
-						ServedModelTag:        f.Assistant.ServedModelTag,
-						Trust:                 FormationTrust(f.Assistant.Trust),
-						Quantization:          f.Assistant.Quantization,
-						ParameterCount:        f.Assistant.ParameterCount,
-						EstimatedModelVRAMMiB: f.Assistant.EstimatedModelVRAMMiB,
-						EstimatedKVCacheMiB:   f.Assistant.EstimatedKVCacheMiB,
-						ModelDigest:           f.Assistant.ModelDigest,
-					},
-					Lite: FormationModel{
-						VariantID:             f.Lite.VariantID,
-						DisplayName:           f.Lite.DisplayName,
-						Provider:              f.Lite.Provider,
-						Family:                f.Lite.Family,
-						ProviderClass:         f.Lite.ProviderClass,
-						ServedModelTag:        f.Lite.ServedModelTag,
-						Trust:                 FormationTrust(f.Lite.Trust),
-						Quantization:          f.Lite.Quantization,
-						ParameterCount:        f.Lite.ParameterCount,
-						EstimatedModelVRAMMiB: f.Lite.EstimatedModelVRAMMiB,
-						EstimatedKVCacheMiB:   f.Lite.EstimatedKVCacheMiB,
-						ModelDigest:           f.Lite.ModelDigest,
-					},
-				})
+			for _, entry := range catalogData.Formations {
+				formations = append(formations, entry.toFormation())
 			}
 		}
 	}
@@ -543,7 +448,7 @@ func defaultExecutionTopologies() []Formation {
 func formationModel(variantID, displayName, provider, family, tag string, parameters uint64, quantization string, modelVRAMMiB, cacheMiB uint64) FormationModel {
 	return FormationModel{
 		VariantID: variantID, DisplayName: displayName, Provider: provider, Family: family,
-		ProviderClass: "ollama", ServedModelTag: tag, Trust: FormationTrustSovereign,
+		ProviderClass: constants.InferenceProviderOllama, ServedModelTag: tag, Trust: FormationTrustSovereign,
 		Quantization: quantization, ParameterCount: parameters, EstimatedModelVRAMMiB: modelVRAMMiB,
 		EstimatedKVCacheMiB: cacheMiB,
 	}

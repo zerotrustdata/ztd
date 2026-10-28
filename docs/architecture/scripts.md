@@ -3,8 +3,8 @@ doc_id: scripts
 title: Automation Scripts
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - scripts/
   - internal/services/gateway/scripts/
@@ -51,7 +51,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SCRIPTS-01 | Setup scripts MUST check for `git`, `make`, `curl`, `go`, `node`, and `npm` (Node.js 22.22.2+, 24.15+, or 26+) before building in both modes. `make build` compiles and embeds the Console and Evaluation Explorer frontends. Unless `--build-only` is passed, Unix setup scripts also MUST check `rg` (ripgrep), `bc`, and a C compiler. The Go version MUST be read from `go.mod` and compared including the patch component. Every tool pin for the contributor toolchain (`BUF_VERSION`, `PROTOC_GEN_GO_VERSION`, `GOLANGCI_LINT_VERSION`, etc.) MUST be read from the root `Makefile` as its single source of truth. |
+| INV-SCRIPTS-01 | The full setup MUST check for `git`, `make`, `curl`, `go`, `node`, and `npm` (Node.js 22.22.2+, 24.15+, or 26+) before `make build`, which refreshes the Console and Evaluation Explorer embeds. `--build-only` MUST check `git`, `make`, `curl`, and `go`, then run `make build-go`, which compiles `./ztd` from the committed embeds and MUST NOT require Node.js. Unless `--build-only` is passed, Unix setup scripts also MUST check `rg` (ripgrep), `bc`, and a C compiler. The Go version MUST be read from `go.mod` and compared including the patch component. Every tool pin for the contributor toolchain (`BUF_VERSION`, `PROTOC_GEN_GO_VERSION`, `GOLANGCI_LINT_VERSION`, etc.) MUST be read from the root `Makefile` as its single source of truth. |
 | INV-SCRIPTS-02 | Setup scripts on Linux and macOS MUST update shell profiles (`~/.zshrc`, `~/.bashrc`, or `~/.profile`) for persistent PATH modification, and MUST do so only after confirmation or with `--yes`; a non-interactive run without `--yes` leaves the profile unchanged. Windows scripts MUST update the user-level `Path` through the registry under the same confirmation rule (`--yes` or an interactive confirmation). Invoking users MUST open a new shell or source the profile before `ztd` is available in other terminals. |
 | INV-SCRIPTS-04 | Gateway-served deploy scripts (`ztd-deploy.sh`, `ztd-deploy.ps1`) are bootstrap conveniences for trusted networks only. They fetch artifacts over plain HTTP, lack TLS protection, and delete `~/.ztd/pki` before startup. Users MUST fetch and inspect the rendered script before execution. |
 | INV-SCRIPTS-06 | Unless `--build-only` is passed, the Linux, macOS, and Windows setup scripts MUST leave a machine that passes `make dev-check`. |
@@ -75,6 +75,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Contributor toolchain targets | `Makefile` (`dev-setup`, `dev-tools`, `dev-node`, `dev-check`, `hooks-install`) | Installed via pinned version variables in root `Makefile` |
 | Go package smoke test | `scripts/smoke-test-go.sh` | Verifies downstream module imports against local repository |
 | Fresh onboarding smoke test | `scripts/ci/onboarding-smoke.sh` | Automated Linux runner testing full setup, smoke actions, and local evidence |
+| Governed agent smoke | `scripts/agent-governed-smoke.sh`, `make test-agent-smoke` | Local Ollama or llama.cpp model, `ztd mcp agent run goose`, signed receipt and commitment verification |
 | Operator deployment lifecycle | `scripts/ci/operator-deploy-lifecycle.sh` | Automated multi-operator deployment, liveness, and termination lifecycle |
 | Commit hygiene gate | `scripts/check-commit-hygiene.sh`, `scripts/git-hooks/` | Pre-commit (`--staged`) and pre-push (`--range`) hygiene validations |
 | Commit hygiene tests | `scripts/test-commit-hygiene.sh`, `make test-commit-hygiene` | Exercises the hygiene hook in disposable repositories |
@@ -101,10 +102,13 @@ bash scripts/macos-setup.sh
 pwsh scripts/windows-setup.ps1
 ```
 
-- **Options**: `-y` / `--yes` (unattended installation), `--build-only` (build the binary and embedded frontends; skip contributor tools), `-h` (help).
+- **Options**: `-y` / `--yes` (unattended installation), `--build-only` (compile `./ztd` with `make build-go` from the committed embeds; skip Node and contributor tools), `-h` (help).
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
 - **Linux Packages**: Detects the package manager before translating prerequisite names. The C compiler prerequisite installs `build-essential` on apt, `gcc` on dnf/zypper, or `base-devel` on pacman.
 - **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or `~/.profile` (Linux and macOS) or the user-level `Path` in the registry (Windows). Profiles are only appended to, never rewritten.
+- **Linux Key Store**: `scripts/linux-setup.sh` requires a Secret Service or a passphrase-protected key in ssh-agent, which the Gateway needs to seal its master key (it otherwise fails closed). Setup stops with an error, rather than warning, when the key has no passphrase, when no key exists and creating one is declined, or when the profile block is declined. It creates an Ed25519 key if none exists, offers `ssh-keygen -p` for an unprotected key, and writes (or replaces an outdated) marker-delimited profile block that shares one owner-only agent socket across shells.
+- **Interactive Fixes**: Setup checks first and prompts only when a change is actually needed (an up-to-date toolchain, hooks, Go, key and profile block are skipped silently), before anything that changes the system and offers a quick fix wherever one exists: package and toolchain installs, upgrading a system Go older than `go.mod` requires (official tarball on Linux, `brew upgrade` on macOS), the contributor toolchain and git hooks (`core.hooksPath`), key creation, a passphrase for an unprotected key, the ssh-agent profile block, `PATH` entries, and a new shell with the changes loaded. `--yes` accepts every prompt except the new shell; without a terminal and without `--yes`, required installation prompts fail instead of guessing. The Linux key store check is skipped (with a notice) in `--build-only` and non-terminal runs.
+- **Optional Docker and Chromium**: Linux and macOS contributor setup detects Docker and a browser and offers each missing tool separately. On macOS, Safari, Chrome, Chromium, Firefox, Brave, Edge, Arc, or Orion already in `/Applications` counts, so setup does not offer a second browser. Linux uses distribution packages; macOS Docker is the Docker Desktop cask, and the prompt says that it installs into `/Applications` and adds a privileged helper. Declining an offer or an installation failure leaves setup successful. `--build-only` skips these tools; non-terminal runs skip the offers unless `--yes` is passed, which accepts the optional installs too. Docker detection checks the CLI without requiring a running daemon; starting Docker or completing Docker Desktop setup remains a separate step. Homebrew itself is never installed by the script.
 - **Env File**: After building `./ztd`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Only `./ztd` commands that pass the root pre-run load it, and only `secret` and `user_endpoint` keys are accepted (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
 
 ## Contributor Toolchain
@@ -124,6 +128,7 @@ make dev-check    # Preflight verification; runs before all CI targets
 ## Smoke and Onboarding Tests
 
 - **`scripts/smoke-test-go.sh`**: Creates an ephemeral Go module under `.ztd/tmp/` with a `replace` directive mapping `github.com/zerotrustdata/ztd` to the local repository, then builds a program that imports `github.com/zerotrustdata/ztd/protocol`.
+- **`scripts/agent-governed-smoke.sh`** (`make test-agent-smoke`): Builds `./ztd`, ensures Ollama (default) or a llama.cpp `llama-server`, pulls a tiny tool-calling model, and runs `ztd mcp agent run goose` in its own runtime directory. The task must produce one `COMPLETED` receipt for `echo ztd-smoke-ok` and one `FAILED` receipt with `GOVERNANCE_REJECTION_CODE_L1_DOCTRINE` for `rm -rf /`. It then runs `ztd audit verify` and `ztd report verify`, and requires the allowed transaction on the commitment ledger. Exit is non-zero on any miss. The default model is `qwen2.5:0.5b`. Against Ollama's tool API, three trials each: `functiongemma:270m` and `granite4:350m` missed the required arguments, `smollm2:360m` does not advertise tools, and both `qwen2.5:0.5b` and `qwen3:0.6b` passed, including `qwen2.5:0.5b` with a 29-tool list. Through Goose, `qwen3:0.6b` emitted no tool calls (its thinking channel), and `qwen2.5:0.5b` produced both the allowed `echo` and the L1 denial on 2 of 3 runs. The smoke therefore defaults to `qwen2.5:0.5b` and retries the task up to `ZTD_SMOKE_ATTEMPTS` (default 3) until both receipts exist. Override with `ZTD_SMOKE_MODEL` and `ZTD_SMOKE_BACKEND=ollama|llamacpp` (`ZTD_SMOKE_GGUF` and `ZTD_SMOKE_LLAMACPP_ENDPOINT` for llama.cpp). Timeouts are `ZTD_SMOKE_AGENT_TIMEOUT` (default 600) and `ZTD_SMOKE_PULL_TIMEOUT` (default 900). The script reuses an Ollama that is already listening and stops only the processes it started. It is not part of `make test`. GitHub runs it from `.github/workflows/agent-governed-smoke.yml` (`workflow_dispatch`, CPU runner).
 - **`make test-onboarding`**: Offline, hermetic unit tests validating setup scripts, version checking, and quickstart execution.
 - **`make test-onboarding-docker`**: Replays setup and execution across clean container images (`ubuntu`, `debian`, `fedora`, `arch`). After build-only setup installs Git, the disposable working-tree snapshot receives a local commit so release-smoke evidence can identify the exact source it tests.
 

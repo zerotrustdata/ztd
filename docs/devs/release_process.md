@@ -3,8 +3,8 @@ doc_id: release_process
 title: Release Process
 audience: maintainers and coding agents
 status: current
-version: v1.4.0
-last_updated: 2026-10-25
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - VERSION
   - Makefile
@@ -47,7 +47,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines the release preparation, change inventory, documentation reconciliation, version synchronization, compliance evidence generation, and release publication workflow for the ztd platform and protocol packages.
+Defines the release preparation, change inventory, documentation reconciliation, version synchronization, compliance evidence generation, multi-agent orchestration roles, and release publication workflow for the ztd platform and protocol packages.
 
 ## Quick index
 
@@ -58,9 +58,14 @@ Defines the release preparation, change inventory, documentation reconciliation,
   - [Version synchronization (`INV-REL-VER`)](#version-synchronization-inv-rel-ver)
   - [Compliance evidence (`INV-REL-COMP`)](#compliance-evidence-inv-rel-comp)
   - [Release smoke evidence (`INV-REL-SMOKE`)](#release-smoke-evidence-inv-rel-smoke)
+  - [Multi-agent release orchestration (`INV-REL-ORCH`)](#multi-agent-release-orchestration-inv-rel-orch)
 - [Owned surfaces](#owned-surfaces)
+  - [Platform claims and maintained paths](#platform-claims-and-maintained-paths)
+  - [Release agent roles and surface ownership](#release-agent-roles-and-surface-ownership)
 - [Procedures](#procedures)
-  - [Agent PR Preparation Sequence](#agent-pr-preparation-sequence)
+  - [Multi-Agent Orchestration Architecture](#multi-agent-orchestration-architecture)
+  - [Predetermined Lite Agent Role Specifications](#predetermined-lite-agent-role-specifications)
+  - [Phased Multi-Agent Orchestration Sequence (e.g. Bumping to v1.4.2)](#phased-multi-agent-orchestration-sequence-eg-bumping-to-v142)
   - [Release Owner Tagging and Publication (Post-Merge)](#release-owner-tagging-and-publication-post-merge)
   - [Release Signing](#release-signing)
   - [Website Download Set and Promotion (R2)](#website-download-set-and-promotion-r2)
@@ -112,7 +117,18 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-REL-SMOKE-05 | Smoke artifacts are engineering acceptance evidence, not the signed public compliance bundle required by `INV-REL-COMP-01`. A passing smoke run does not replace release compliance preparation or expand claims of tested `doctrine` posture. |
 | INV-REL-SMOKE-06 | The runner MUST retain command logs, metadata, per-runtime reports, and a summary identifying binary SHA-256, source revision and dirty state, platform, posture, ingress, runtime roots, local signed receipts, and start/end times. `make ci` is not a substitute for runtime smoke acceptance. |
 
+### Multi-agent release orchestration (`INV-REL-ORCH`)
+
+| ID | Rule |
+| :--- | :--- |
+| INV-REL-ORCH-01 | Multi-agent release preparation MUST be led by a coordinating Lead Release Orchestrator delegating strictly to specialized Lite Subagents (`flash_lite`). Subagents MUST adhere strictly to their predetermined role identity, purpose, and path scope specified in this document. Inventing ad-hoc roles or unconstrained free-form task assignments is prohibited. |
+| INV-REL-ORCH-02 | Lite Subagents MUST operate strictly within their assigned surface paths defined in [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries). Modifying files outside the assigned surface is prohibited. |
+| INV-REL-ORCH-03 | The release orchestration pipeline MUST adhere strictly to sequential phase barriers (Phase 1 through Phase 7). Downstream subagents MUST NOT be dispatched until prerequisite phase validation criteria are fully satisfied. |
+| INV-REL-ORCH-04 | Every Lite Subagent MUST return a structured completion deliverable confirming executed command exit codes, mutated files, and verification status. The Lead Orchestrator MUST verify these deliverables before advancing the pipeline. |
+
 ## Owned surfaces
+
+### Platform claims and maintained paths
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
@@ -132,28 +148,289 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Compliance projection | `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md`, `.csv` | `ztd compliance release-evidence` |
 | Tag and push target | `Makefile` (`make release`) | Release owner only on merged `main` |
 
+### Release agent roles and surface ownership
+
+| Role Name | Model Tier | Surface Key | Assigned Path Scope | Primary Deliverable |
+| :--- | :--- | :--- | :--- | :--- |
+| **Lead Release Orchestrator** | `inherit` | `surface-release-ci` | Full repository (read-only for planning, coordinates phases) | Release plan, subagent dispatch, verification synthesis, and Release Owner handoff |
+| **Release Version Synchronizer** (`rel-version-sync`) | `flash_lite` (Lite ONLY) | `surface-release-ci`, `surface-docs` | `VERSION`, `internal/tools/versionsync/`, `protocol/docs/*.md`, `*/package.json`, `*/package-lock.json`, `website/src/index.html`, `README.md`, `.github/CONTRIBUTING.md` | Synchronized `VERSION`, specs, manifests, website hero chip, and passing `make version-sync-check` |
+| **Protocol & Code Generation Auditor** (`rel-proto-codegen`) | `flash_lite` (Lite ONLY) | `surface-protocol` | `protocol/proto/ztd/`, `protocol/constants/`, `internal/constants/*_gen.go`, `console/src/generated/`, `evaluation-explorer/src/content/scenario-catalog.generated.ts`, `internal/services/gateway/docs/swagger.*` | Validated doctrine JSON, regenerated constants and OpenAPI specs, clean `make constants-check` |
+| **Frontend Embed & Web Asset Builder** (`rel-frontend-embed`) | `flash_lite` (Lite ONLY) | `surface-frontend` | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Fresh explorer and console embeds containing `VERSION`, passing `make console-embed-check`, fresh `website/dist/` |
+| **Release Notes & Documentation Auditor** (`rel-docs-notes`) | `flash_lite` (Lite ONLY) | `surface-docs` | `docs/release_notes/vX.Y.x/vX.Y.Z.md`, `CHANGELOG.md`, affected documents under `docs/`, `AGENTS.md`, `CLAUDE.md` | Authored `vX.Y.Z.md` release notes, updated `CHANGELOG.md` row, and audited documentation metadata |
+| **Release Smoke & Qualification Runner** (`rel-smoke-qual`) | `flash_lite` (Lite ONLY) | `surface-release-ci`, `surface-tests` | `bin/`, `.ztd/operators/release-smoke-*`, `test-results/` | Built candidate binary, passing `./ztd test release-smoke`, passing eval loop, and passing conformance loop |
+| **Compliance Evidence Generator** (`rel-compliance-gen`) | `flash_lite` (Lite ONLY) | `surface-release-ci` | `release-evidence/<version>/report-bundle/`, `docs/release_notes/vX.Y.x/*-compliance-evidence.*` | Sealed compliance bundle, projected `vX.Y.Z-compliance-evidence.md` and `.csv` |
+| **Release Rehearsal & Verification Auditor** (`rel-rehearsal-audit`) | `flash_lite` (Lite ONLY) | `surface-release-ci` | `scripts/release-*.sh`, `.github/workflows/`, repo-wide lint and unit test runners | Passing `make test-release-scripts`, `./ztd test lint`, `./ztd test unit`, and verified rehearsal runbook |
+
 ## Procedures
 
-### Agent PR Preparation Sequence
+### Multi-Agent Orchestration Architecture
 
-For campaign evidence, verify the recorded release in protected `campaign-spec.json`. Compliance capture preserves digest-bound release and source revision and excludes operator `release-tag.json` assertions. Campaign exports report release provenance in `run_summary.json` and SQLite metadata. See [Evaluation Architecture](../architecture/evals.md) for export contracts.
+To achieve rapid, error-free, and reproducible release preparation, the release process divides work between a coordinating **Lead Release Orchestrator** and a team of specialized **Lite Subagents** (`INV-REL-ORCH-01`):
 
-To refresh published runs after correcting asserted tags, execute `ztd public restore --run-id <run> --force`.
+1. **Lead Release Orchestrator (Parent Agent)**: Ingests the release target (e.g. `v1.4.2`), performs diff analysis, enforces phase barriers, dispatches predetermined tasks to specialized Lite Subagents, validates deliverables at each phase barrier, and compiles the final handoff for the human Release Owner.
+2. **Lite Subagents (`flash_lite` ONLY)**: Each subagent is invoked with `Model: flash_lite`, a dedicated role title, strict path boundaries from [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries), and an immutable instruction list. Lite models are mandatory because their focused execution avoids context window saturation, eliminates conversational drift, and prevents unauthorized edits outside their assigned boundary (`INV-REL-ORCH-02`).
+3. **Phase Barrier Synchronization**: The release sequence is organized into 7 distinct phases. Subagents in parallel phases operate on strictly disjoint surfaces. No phase may begin until all prerequisite phase validation criteria pass (`INV-REL-ORCH-03`).
 
-1. **Determine change inventory:** Review `git diff --name-status v<prev-tag>..HEAD` and the full diff to identify all added, changed, removed, fixed, and security-sensitive behavior. Group changes by affected contract or user journey (for example CLI and Operator lifecycle, protocol, evaluation, installation, website downloads, or release automation) so tests and documentation are traced across layers rather than file-by-file alone.
-2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`; map changed code, schemas, configuration, and workflows to their canonical documents; then audit each affected document end-to-end against those sources. Review linked guides and entry points for stale commands, claims, and cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI. Documents assessed and left unchanged retain their metadata.
-3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then include the sections Overview, Added, Changed, Removed (when anything is removed), Fixed, Qualification evidence, Compatibility (`INV-REL-VER-10`), Tests, Documentation, Compliance Evidence, and Deferred sections.
-4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
-5. **Sync protocol specs, npm versions, and website homepage:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Update the hero status chip in `website/src/index.html` to `v<VERSION>` (`INV-REL-VER-08`), confirm the version badge in `README.md` reads `v<VERSION>`, and run `make website-build` to refresh `website/dist/`.
-6. **Regenerate protocol bindings:** When `protocol/proto/ztd/` changed, run `make proto-generate` so generated Go and TypeScript output is current.
-7. **Update CHANGELOG:** Add the release table row under `## vX.Y.x` in `CHANGELOG.md`. When the release adds a new minor-version section, add the `## vX.Y.x` section with table headers above existing minor-version sections and create `docs/release_notes/vX.Y.x/`.
-8. **Refresh embedded frontends:** Run `make explorer-embed` (`INV-REL-VER-06`) and `make console-embed-check` (`INV-REL-VER-07`); refresh stale console embeds with `make console-embed`. `make build` automatically builds and embeds both frontends.
-9. **Run the core-platform smoke gate:** Build the candidate with `make build`, then run `./ztd test release-smoke`. Require exit status 0 and `result: PASS` in `<root>/evidence/smoke-summary.json`; retain the entire root as review evidence. The runner owns and cleans up its isolated Gateway and data Operator.
-10. **Generate and verify compliance evidence:** Run `./ztd compliance release-prepare` with the candidate `./ztd` binary and the intended Gateway runtime database. From the repository root, defaults apply only when that checkout also owns the assessment runtime; otherwise pass `--project-root <gateway-runtime-root>` (or an explicit `--db`) and the matching `--repo-root`. Add `--new-key` only when creating the report-signing key. The command reads `ztd.db` read-only, derives protected scope from `VERSION`, git, the running binary digest, and the assessment window, builds external trust policies, generates and seals the public bundle under the runtime root, exports it under `release-evidence/<version>/report-bundle/` by default, verifies the export offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`. Keep smoke artifacts as separate engineering acceptance evidence; they do not replace this bundle.
-11. **Finalize document metadata:** Update `last_updated` and `version` on every audited document.
-12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, the relevant `./ztd test integration --pkg <package>` packages, `./ztd test eval-loop` for cross-process evaluation loop qualification under ratify and notary, and `./ztd test conformance-loop` for cross-process conformance qualification (all postures by default). Run `make console-lint console-test console-embed-check`, `make explorer-lint explorer-test`, and `make constants-check`. When API annotations changed, run `make swagger-generate` and commit the generated OpenAPI diff. Run checks required by affected surfaces, including `make website-test website-build` for website changes. Record the exact commands and outcomes in release notes.
+```mermaid
+flowchart TD
+  P1["Phase 1: Scoping & Change Inventory<br/>(Lead Orchestrator)"] --> B1{"Barrier 1: Inventory Ready"}
+  B1 --> P2A["Phase 2A: Version Sync<br/>(Role: rel-version-sync)"]
+  B1 --> P2B["Phase 2B: Protocol & Codegen<br/>(Role: rel-proto-codegen)"]
+  P2A --> B2{"Barrier 2: Manifests & Specs Clean"}
+  P2B --> B2
+  B2 --> P3A["Phase 3A: Frontend Embeds<br/>(Role: rel-frontend-embed)"]
+  B2 --> P3B["Phase 3B: Notes & Docs<br/>(Role: rel-docs-notes)"]
+  P3A --> B3{"Barrier 3: Embeds & Notes Fresh"}
+  P3B --> B3
+  B3 --> P4["Phase 4: Candidate Build & Qualification<br/>(Role: rel-smoke-qual)"]
+  P4 --> B4{"Barrier 4: Smoke & Conformance PASS"}
+  B4 --> P5["Phase 5: Compliance Evidence<br/>(Role: rel-compliance-gen)"]
+  P5 --> B5{"Barrier 5: Sealed Bundle & Projections"}
+  B5 --> P6["Phase 6: Rehearsal Audit & Verification<br/>(Role: rel-rehearsal-audit)"]
+  P6 --> B6{"Barrier 6: All Suites PASS"}
+  B6 --> P7["Phase 7: Human Release Owner Handoff<br/>(Lead Orchestrator)"]
+```
+
+### Predetermined Lite Agent Role Specifications
+
+Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_lite`, the specified `Role`, and the exact task instructions defined below.
+
+---
+
+#### Role 1: Release Version Synchronizer (`rel-version-sync`)
+
+- **Identity**: `Release Version Synchronizer`
+- **Model**: `flash_lite`
+- **Surface**: `surface-release-ci`, `surface-docs`
+- **Assigned Paths**: `VERSION`, `internal/tools/versionsync/`, `protocol/docs/*.md`, `*/package.json`, `*/package-lock.json`, `website/src/index.html`, `README.md`, `.github/CONTRIBUTING.md`
+- **Purpose**: Advance platform version, synchronize protocol doc version headers, update npm package manifests and lockfiles, and update website hero and README badges.
+- **Strict Boundary**: MUST NOT touch Go backend code, proto definitions, or release notes.
+- **Predetermined Task Instructions**:
+  1. Write target version `vX.Y.Z\n` into `VERSION`.
+  2. Run `make version-sync` to propagate version across protocol docs and npm manifests.
+  3. Run `make version-sync-check` to verify zero drift.
+  4. Update hero status chip in `website/src/index.html` to `ztd <b>vX.Y.Z</b>`.
+  5. Update version badge in `README.md` and check `.github/CONTRIBUTING.md`.
+  6. Run `make website-build` to refresh `website/dist/index.html`.
+- **Deliverable Contract**:
+  - Exit code of `make version-sync-check`.
+  - List of updated files.
+  - Confirmation of `website/dist/index.html` regeneration.
+
+---
+
+#### Role 2: Protocol & Code Generation Auditor (`rel-proto-codegen`)
+
+- **Identity**: `Protocol & Code Generation Auditor`
+- **Model**: `flash_lite`
+- **Surface**: `surface-protocol`
+- **Assigned Paths**: `protocol/proto/ztd/`, `protocol/constants/`, `internal/constants/*_gen.go`, `console/src/generated/`, `evaluation-explorer/src/content/scenario-catalog.generated.ts`, `internal/services/gateway/docs/swagger.*`
+- **Purpose**: Ensure that Protobuf stubs, constant registries, doctrine JSON schemas, and OpenAPI specs are generated, valid, and synchronized.
+- **Strict Boundary**: MUST NOT edit handwritten Go or frontend logic. Hand edits allowed only in `.proto` sources or JSON registries if fixing schema syntax.
+- **Predetermined Task Instructions**:
+  1. Run `make doctrines-validate` to confirm all doctrine definitions are valid JSON.
+  2. Run `make constants-check`. If drifted, run `make constants-generate` and re-verify.
+  3. Run `make explorer-catalog-check`. If drifted, run `make explorer-catalog-generate` and re-verify.
+  4. If `.proto` schemas changed, run `make proto-generate`.
+  5. Run `make swagger-generate` to regenerate OpenAPI spec from Go Swagger annotations.
+- **Deliverable Contract**:
+  - Status of `make doctrines-validate`, `make constants-check`, and `make explorer-catalog-check`.
+  - List of generated code artifacts modified.
+
+---
+
+#### Role 3: Frontend Embed & Web Asset Builder (`rel-frontend-embed`)
+
+- **Identity**: `Frontend Embed & Web Asset Builder`
+- **Model**: `flash_lite`
+- **Surface**: `surface-frontend`
+- **Assigned Paths**: `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/`
+- **Purpose**: Compile production frontend bundles, refresh Gateway Go embed assets, ensure no stale assets remain, and validate web packages.
+- **Prerequisite**: Phase 2 must be complete so `VERSION` and package manifests are synchronized.
+- **Strict Boundary**: MUST NOT touch backend Go code or documentation outside website assets.
+- **Predetermined Task Instructions**:
+  1. Run `make explorer-embed` (`INV-REL-VER-06`) to compile `VERSION` into Explorer bundle and refresh `internal/services/gateway/explorer/static/`.
+  2. Run `make console-embed-check` (`INV-REL-VER-07`). If stale, run `make console-embed`.
+  3. Verify that `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` finds the current bundle.
+  4. Run `make console-lint console-test`.
+  5. Run `make explorer-lint explorer-test`.
+  6. Run `make website-test website-build`.
+- **Deliverable Contract**:
+  - Verification that Explorer bundle embeds `vX.Y.Z`.
+  - Status of `make console-embed-check` (PASS).
+  - Status of frontend test suites.
+
+---
+
+#### Role 4: Release Notes & Documentation Auditor (`rel-docs-notes`)
+
+- **Identity**: `Release Notes & Documentation Auditor`
+- **Model**: `flash_lite`
+- **Surface**: `surface-docs`
+- **Assigned Paths**: `docs/release_notes/vX.Y.x/vX.Y.Z.md`, `CHANGELOG.md`, affected documents under `docs/`, `AGENTS.md`, `CLAUDE.md`
+- **Purpose**: Draft comprehensive release notes, update the changelog index, and audit modified documentation according to `docs/devs/docs.md` standards.
+- **Prerequisite**: Change inventory from Phase 1.
+- **Strict Boundary**: MUST NOT modify production code, manifests, or test scripts.
+- **Predetermined Task Instructions**:
+  1. Determine minor series directory `docs/release_notes/vX.Y.x/`. If release starts a new minor series, create directory and table header in `CHANGELOG.md` (`INV-REL-VER-04`).
+  2. Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with required header `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`) and standard sections: Overview, Added, Changed, Removed, Fixed, Qualification evidence, Compatibility (`INV-REL-VER-10`), Tests, Documentation, Compliance Evidence, Deferred.
+  3. Add release row under `## vX.Y.x` in `CHANGELOG.md` linking to `vX.Y.Z.md`.
+  4. Walk documentation catalog in `docs/devs/docs.md` for documents affected by the change inventory. For audited documents, update `last_updated: YYYY-MM-DD` and `version: vX.Y.Z` (`INV-DOC-FMT-02`).
+  5. Audit `AGENTS.md` and `CLAUDE.md` to ensure all build, test, and CLI commands match current code.
+- **Deliverable Contract**:
+  - Path of created release notes file.
+  - Diff of `CHANGELOG.md`.
+  - List of audited documentation files with updated front matter.
+
+---
+
+#### Role 5: Release Smoke & Qualification Runner (`rel-smoke-qual`)
+
+- **Identity**: `Release Smoke & Qualification Runner`
+- **Model**: `flash_lite`
+- **Surface**: `surface-release-ci`, `surface-tests`
+- **Assigned Paths**: `bin/`, `.ztd/operators/release-smoke-*`, `test-results/`
+- **Purpose**: Build host candidate binary and execute provider-free release smoke test and cross-process qualification loops.
+- **Prerequisite**: Phase 3 complete (embedded frontends refreshed).
+- **Strict Boundary**: MUST NOT edit application source code.
+- **Predetermined Task Instructions**:
+  1. Compile candidate binary: `make build`.
+  2. Run release smoke gate: `./ztd test release-smoke` (`INV-REL-SMOKE-01`).
+  3. Verify exit status 0 and check `evidence/smoke-summary.json` for `result: PASS`.
+  4. Verify that `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` are `PASS` in both Operator and Gateway reports (`INV-REL-SMOKE-04`).
+  5. Verify that every row in `verification_summary.csv` is `PASS`.
+  6. Run cross-process evaluation loop: `./ztd test eval-loop`.
+  7. Run cross-process conformance loop: `./ztd test conformance-loop`.
+- **Deliverable Contract**:
+  - Full path of smoke evidence root `.ztd/operators/release-smoke-<timestamp>`.
+  - Content summary of `evidence/smoke-summary.json`.
+  - Exit status of `eval-loop` and `conformance-loop`.
+
+---
+
+#### Role 6: Compliance Evidence Generator (`rel-compliance-gen`)
+
+- **Identity**: `Compliance Evidence Generator`
+- **Model**: `flash_lite`
+- **Surface**: `surface-release-ci`
+- **Assigned Paths**: `release-evidence/<version>/report-bundle/`, `docs/release_notes/vX.Y.x/*-compliance-evidence.*`
+- **Purpose**: Generate, seal, verify, and project the signed public compliance evidence bundle.
+- **Prerequisite**: Phase 4 complete (candidate binary built and passing smoke).
+- **Strict Boundary**: MUST NOT modify application logic.
+- **Predetermined Task Instructions**:
+  1. Execute compliance preparation using candidate binary:
+     ```bash
+     ./ztd compliance release-prepare --repo-root .
+     ```
+  2. Verify that the sealed public bundle was exported under `release-evidence/<version>/report-bundle/`.
+  3. Verify that canonical evidence projections were created under `docs/release_notes/vX.Y.x/`:
+     - `vX.Y.Z-compliance-evidence.md`
+     - `vX.Y.Z-compliance-evidence.csv`
+  4. Verify that projections match canonical bundle contents (`INV-REL-COMP-03`).
+- **Deliverable Contract**:
+  - Bundle hash and verification status.
+  - Paths of generated projection files.
+  - Compliance summary metrics for inclusion in release notes.
+
+---
+
+#### Role 7: Release Rehearsal & Verification Auditor (`rel-rehearsal-audit`)
+
+- **Identity**: `Release Rehearsal & Verification Auditor`
+- **Model**: `flash_lite`
+- **Surface**: `surface-release-ci`
+- **Assigned Paths**: `scripts/release-*.sh`, `.github/workflows/`, test suites
+- **Purpose**: Execute repository verification suite, test release automation scripts, and audit CI/CD workflow configurations.
+- **Prerequisite**: Phase 5 complete.
+- **Strict Boundary**: Read-only validation; MUST NOT push or trigger live publication.
+- **Predetermined Task Instructions**:
+  1. Run release script regression suite: `make test-release-scripts`.
+  2. Run repository linter: `./ztd test lint`.
+  3. Run platform unit test suite: `./ztd test unit`.
+  4. Run targeted integration tests for modified packages: `./ztd test integration --pkg <package>`.
+  5. Verify that `.github/workflows/release-binary.yml` and `.github/workflows/deploy-website.yml` match maintained script targets.
+  6. Prepare the exact post-merge rehearsal instructions for the Release Owner.
+- **Deliverable Contract**:
+  - Test suite results table (Lint, Unit, Integration, Release Scripts).
+  - Confirmation of workflow health.
+  - Formatted handoff notes.
+
+---
+
+### Phased Multi-Agent Orchestration Sequence (e.g. Bumping to v1.4.2)
+
+When an AI Orchestrator receives a release directive (such as "Bump version to v1.4.2 and prepare release"), it executes this predetermined 7-phase sequence:
+
+#### Phase 1: Scoping & Change Inventory (Lead Orchestrator)
+
+1. Identify previous release tag (e.g. `v1.4.1` from `VERSION`).
+2. Collect the change inventory across commits since previous release. Identify all added, changed, removed, fixed, and security-sensitive behaviors across surfaces.
+3. Formulate the release theme title `<Title>` for `INV-REL-VER-09` (e.g. `Performance Optimization and Fleet Scalability`).
+4. Establish barrier requirement: Proceed to Phase 2.
+
+#### Phase 2: Manifest & Specification Synchronization (Parallel Lite Dispatch)
+
+Dispatch in parallel:
+- **Subagent 1**: `invoke_subagent` with `Role: "Release Version Synchronizer"`, `Model: flash_lite`.
+  - Instruct to set `v1.4.2` in `VERSION`, run `make version-sync`, verify with `make version-sync-check`, update `website/src/index.html` hero chip, update `README.md` badge, and rebuild website.
+- **Subagent 2**: `invoke_subagent` with `Role: "Protocol & Code Generation Auditor"`, `Model: flash_lite`.
+  - Instruct to run `make doctrines-validate`, `make constants-check`, `make explorer-catalog-check`, `make proto-generate`, and `make swagger-generate`.
+
+*Barrier Check 2*: Both subagents report zero errors. `make version-sync-check` passes.
+
+#### Phase 3: Frontends, Embeds & Release Documentation (Parallel Lite Dispatch)
+
+Dispatch in parallel:
+- **Subagent 3**: `invoke_subagent` with `Role: "Frontend Embed & Web Asset Builder"`, `Model: flash_lite`.
+  - Instruct to run `make explorer-embed`, verify `v1.4.2` string in bundle, run `make console-embed-check`, run `make console-lint console-test`, `make explorer-lint explorer-test`, and `make website-test website-build`.
+- **Subagent 4**: `invoke_subagent` with `Role: "Release Notes & Documentation Auditor"`, `Model: flash_lite`.
+  - Pass the Phase 1 change inventory and release title.
+  - Instruct to draft `docs/release_notes/v1.4.x/v1.4.2.md`, add row to `CHANGELOG.md`, update affected developer documentation metadata (`last_updated: 2026-10-26`, `version: v1.4.2`), and audit `AGENTS.md` and `CLAUDE.md`.
+
+*Barrier Check 3*: Explorer bundle contains `v1.4.2`. `make console-embed-check` passes. Release notes exist.
+
+#### Phase 4: Candidate Build & Qualification Gates (Sequential Lite Dispatch)
+
+Dispatch sequentially:
+- **Subagent 5**: `invoke_subagent` with `Role: "Release Smoke & Qualification Runner"`, `Model: flash_lite`.
+  - Instruct to run `make build`, `./ztd test release-smoke`, `./ztd test eval-loop`, and `./ztd test conformance-loop`.
+  - Instruct to inspect `evidence/smoke-summary.json` and verification summary CSVs for strict `PASS`.
+
+*Barrier Check 4*: Candidate binary built. Smoke summary is `PASS`. Conformance and eval loops pass.
+
+#### Phase 5: Compliance Evidence Generation & Sealing (Sequential Lite Dispatch)
+
+Dispatch sequentially:
+- **Subagent 6**: `invoke_subagent` with `Role: "Compliance Evidence Generator"`, `Model: flash_lite`.
+  - Instruct to run `./ztd compliance release-prepare --repo-root .`.
+  - Verify that `docs/release_notes/v1.4.x/v1.4.2-compliance-evidence.md` and `.csv` are created and match canonical bundle.
+
+*Barrier Check 5*: Compliance bundle sealed and projections verified.
+
+#### Phase 6: Release Rehearsal & Verification Audit (Sequential Lite Dispatch)
+
+Dispatch sequentially:
+- **Subagent 7**: `invoke_subagent` with `Role: "Release Rehearsal & Verification Auditor"`, `Model: flash_lite`.
+  - Instruct to run `make test-release-scripts`, `./ztd test lint`, and `./ztd test unit`.
+
+*Barrier Check 6*: All test suites pass. Rehearsal scripts verified.
+
+#### Phase 7: Human Release Owner Handoff (Lead Orchestrator)
+
+1. The Lead Orchestrator inspects the working tree to verify that only expected release files are modified.
+2. The Lead Orchestrator MUST NOT run git commands (`INV-REL-DUTY-01`).
+3. Compile a structured Release Preparation Summary including:
+   - Target version (`vX.Y.Z`) and release notes link.
+   - Core qualification and smoke summary metrics (`PASS`).
+   - Compliance evidence bundle path and verification status.
+   - Verification suite outcomes.
+4. Deliver exact, copy-paste Git commands for the human Release Owner to review and execute.
+
+---
 
 ### Release Owner Tagging and Publication (Post-Merge)
+
+Once the PR prepared by the agents is reviewed, approved, and merged to `main`, the human Release Owner executes the publication sequence from a clean local checkout:
 
 ```bash
 # On merged main branch with clean tree:
@@ -162,7 +439,7 @@ make release-rehearse
 make release
 ```
 
-`make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, a write/read/delete probe of the real `ztd-releases` R2 bucket with the publish credential (`scripts/release-r2.sh check`), `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. Release failures are meant to surface in the rehearsal, before a tag exists.
+`make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, a write/read/delete probe of the real `ztd-releases` R2 bucket with the publish credential (`scripts/release-r2.sh check`), `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. Release failures surface in the rehearsal before a tag exists.
 
 `make release` aborts unless the current branch is `main`, `HEAD` equals `origin/main` after a fetch, and a successful `workflow_dispatch` rehearsal exists for `HEAD`. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or the tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. `.github/workflows/release-binary.yml` validates the tag, builds and signs binaries, creates a draft GitHub release, uploads and verifies the versioned R2 set, publishes the GitHub release, then promotes website downloads. After publication, a separate matrix verifies fresh `go install` on Linux, macOS, and Windows.
 
@@ -191,6 +468,9 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 
 ## Anti-patterns
 
+- Using non-lite models or open-ended, ad-hoc prompts for release subagents (`INV-REL-ORCH-01`).
+- Allowing a subagent to touch files outside its assigned surface path boundary (`INV-REL-ORCH-02`).
+- Disregarding or bypassing phased execution barriers (e.g. running smoke tests before candidate build, or generating compliance before candidate binary) (`INV-REL-ORCH-03`).
 - Agent running `git commit`, `git push`, or `make release` (`INV-REL-DUTY-01`).
 - Running `make release` from a feature branch or with unmerged changes (`INV-REL-DUTY-02`).
 - Pushing a release tag by hand instead of `make release`, or tagging before `make release-rehearse` passes on that commit.
@@ -214,6 +494,6 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - [Developer Guidelines](devs.md): coding invariants and repository standards.
 - [Documentation Guide](docs.md): documentation audit, catalog, and formatting standards.
 - [Testing Guide](tests.md): test execution tiers and verification commands.
-- [Code Map](codemap.md): package and runtime ownership maps.
+- [Code Map](codemap.md): package and runtime ownership maps, assignable code surfaces, and agent boundaries.
 - [Troubleshooting Guide](troubleshooting.md): diagnostics and recovery procedures.
 - [Host-Native Headless UX Smoke Test](../guides/ux_smoke_test.md): maintained release smoke command, runtime scenarios, evidence, and acceptance criteria.

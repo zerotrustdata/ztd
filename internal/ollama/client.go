@@ -16,6 +16,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // Client is a minimal HTTP client for Ollama model maintenance endpoints.
@@ -65,11 +67,18 @@ func (c *Client) Pull(ctx context.Context, model string, fn func(ProgressRespons
 	})
 }
 
+// copyRequest is the /api/copy body. Fields are ordered by JSON key so the
+// encoded bytes match the previous sorted-key map output.
+type copyRequest struct {
+	Destination string `json:"destination"`
+	Source      string `json:"source"`
+}
+
 // Copy creates a model alias from an existing local model.
 func (c *Client) Copy(ctx context.Context, source, destination string) error {
-	return c.do(ctx, http.MethodPost, "/api/copy", map[string]string{
-		"source":      source,
-		"destination": destination,
+	return c.do(ctx, http.MethodPost, "/api/copy", copyRequest{
+		Destination: destination,
+		Source:      source,
 	})
 }
 
@@ -83,8 +92,8 @@ func (c *Client) do(ctx context.Context, method, path string, reqData any) error
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	request.Header.Set(constants.HeaderAccept, constants.HeaderValueApplicationJSON)
 
 	response, err := c.http.Do(request)
 	if err != nil {
@@ -109,8 +118,8 @@ func (c *Client) stream(ctx context.Context, method, path string, reqData any, f
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/x-ndjson")
+	request.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	request.Header.Set(constants.HeaderAccept, constants.HeaderValueApplicationNDJSON)
 
 	response, err := c.http.Do(request)
 	if err != nil {

@@ -64,6 +64,7 @@ import type {
 } from '../contract/proto-enums.generated';
 import {
   decodeCampaignProjectionEnvelope,
+  type CampaignProjectionEnvelope,
   mapCampaignRelease,
   type CampaignLifecycleEnvelope,
   type CampaignResultEnvelope,
@@ -139,11 +140,37 @@ export function cloneCampaignAdaptContext(context: CampaignAdaptContext): Campai
   };
 }
 
+type ContextUndo = () => void;
+const contextUndoLogs = new WeakMap<CampaignAdaptContext, ContextUndo[]>();
+
+/** Begin a proportional-to-this-record rollback log for adapter mutations. */
+export function beginCampaignAdaptContextTransaction(context: CampaignAdaptContext): {
+  commit: () => void;
+  rollback: () => void;
+} {
+  if (contextUndoLogs.has(context)) throw new Error('campaign context transaction already active');
+  const undo: ContextUndo[] = [];
+  contextUndoLogs.set(context, undo);
+  const finish = () => contextUndoLogs.delete(context);
+  return {
+    commit: finish,
+    rollback: () => {
+      for (let index = undo.length - 1; index >= 0; index--) undo[index]?.();
+      finish();
+    },
+  };
+}
+
+function logUndo(context: CampaignAdaptContext, undo: ContextUndo): void {
+  contextUndoLogs.get(context)?.push(undo);
+}
+
 function ensureRunProgress(context: CampaignAdaptContext, runId: string): RunProgress {
   const existing = context.runTotals.get(runId);
   if (existing) return existing;
   const progress: RunProgress = { scheduled: 0, matrixTotal: 0, terminal: 0, passed: 0, failed: 0 };
   context.runTotals.set(runId, progress);
+  logUndo(context, () => context.runTotals.delete(runId));
   return progress;
 }
 
@@ -152,17 +179,26 @@ function trackScheduledAssignment(context: CampaignAdaptContext, runId: string, 
   if (!seen) {
     seen = new Set();
     context.scheduledAssignments.set(runId, seen);
+    logUndo(context, () => context.scheduledAssignments.delete(runId));
   }
-  seen.add(assignmentId);
+  const wasScheduled = seen.has(assignmentId);
+  if (!wasScheduled) {
+    seen.add(assignmentId);
+    logUndo(context, () => seen?.delete(assignmentId));
+  }
   const progress = ensureRunProgress(context, runId);
+  const previousScheduled = progress.scheduled;
   progress.scheduled = seen.size;
+  if (previousScheduled !== progress.scheduled) logUndo(context, () => { progress.scheduled = previousScheduled; });
   return progress;
 }
 
 function recordMatrixTotal(context: CampaignAdaptContext, runId: string, candidate: number): RunProgress {
   const progress = ensureRunProgress(context, runId);
   if (candidate > progress.matrixTotal) {
+    const previous = progress.matrixTotal;
     progress.matrixTotal = candidate;
+    logUndo(context, () => { progress.matrixTotal = previous; });
   }
   return progress;
 }
@@ -190,17 +226,27 @@ function markTerminalAssignment(
   if (!seen) {
     seen = new Set();
     context.terminalAssignments.set(runId, seen);
+    logUndo(context, () => context.terminalAssignments.delete(runId));
   }
   if (seen.has(assignmentId)) {
     return { progress, isNew: false };
   }
   seen.add(assignmentId);
+  logUndo(context, () => seen?.delete(assignmentId));
+  const previousTerminal = progress.terminal;
+  const previousPassed = progress.passed;
+  const previousFailed = progress.failed;
   progress.terminal += 1;
   if (terminalStatus === 'completed') {
     progress.passed += 1;
   } else {
     progress.failed += 1;
   }
+  logUndo(context, () => {
+    progress.terminal = previousTerminal;
+    progress.passed = previousPassed;
+    progress.failed = previousFailed;
+  });
   return { progress, isNew: true };
 }
 
@@ -243,6 +289,13 @@ export function adaptCampaignProjectionEnvelope(
   context: CampaignAdaptContext,
 ): Array<SnapshotRecord | LiveEvent> {
   const decoded = decodeCampaignProjectionEnvelope(envelope);
+  return adaptDecodedCampaignProjectionEnvelope(decoded, context);
+}
+
+export function adaptDecodedCampaignProjectionEnvelope(
+  decoded: CampaignProjectionEnvelope,
+  context: CampaignAdaptContext,
+): Array<SnapshotRecord | LiveEvent> {
   switch (decoded.message_type) {
     case 'PublicAssignmentLifecycleRecord':
       return adaptLifecycleRecord(decoded, context);
@@ -265,7 +318,9 @@ function adaptLifecycleRecord(
   const evaluationUnit = mapEvaluationUnit(record.lane);
   const repetition = record.repetition ?? 1;
 
-  context.assignmentMeta.set(metaKey(runId, assignmentId), {
+  const key = metaKey(runId, assignmentId);
+  const previousMeta = context.assignmentMeta.get(key);
+  context.assignmentMeta.set(key, {
     repetition,
     scenarioId: record.scenario_id,
     scenarioCategory,
@@ -273,6 +328,10 @@ function adaptLifecycleRecord(
     role,
     evaluationUnit,
     stackId: record.stack_id,
+  });
+  logUndo(context, () => {
+    if (previousMeta === undefined) context.assignmentMeta.delete(key);
+    else context.assignmentMeta.set(key, previousMeta);
   });
 
   const records: Array<SnapshotRecord | LiveEvent> = [];

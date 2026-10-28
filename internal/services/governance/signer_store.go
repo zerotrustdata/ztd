@@ -53,9 +53,10 @@ type L2TrustStore struct {
 
 // l2Trust is one decoded, immutable L2 trust; Replace swaps it whole.
 type l2Trust struct {
-	policy  *L2ConsensusPolicy
-	setID   string
-	signers map[string]ed25519.PublicKey
+	bindingVersion int64
+	policy         *L2ConsensusPolicy
+	setID          string
+	signers        map[string]ed25519.PublicKey
 }
 
 // NewL2TrustStore decodes the bundle's L2 trust. A nil trust yields the empty
@@ -69,22 +70,58 @@ func NewL2TrustStore(trust *models.OperatorL2Trust) (*L2TrustStore, error) {
 	return &L2TrustStore{trust: decoded}, nil
 }
 
-// Replace swaps in the Gateway's current L2 trust. A nil trust empties the
-// store. A malformed trust is rejected and the held trust is kept.
+// Replace swaps in the Gateway's current L2 trust. Binding versions may stay
+// the same but cannot regress; a nil trust therefore only clears an
+// unversioned store. A malformed or older trust is rejected and held trust is
+// kept.
 func (s *L2TrustStore) Replace(trust *models.OperatorL2Trust) error {
 	decoded, err := decodeL2Trust(trust)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if decoded.bindingVersion < s.trust.bindingVersion {
+		return fmt.Errorf("l2 trust: binding version %d regresses current version %d: %w", decoded.bindingVersion, s.trust.bindingVersion, constants.ErrValidationFailed)
+	}
 	s.trust = decoded
-	s.mu.Unlock()
 	return nil
+}
+
+// ReplaceIfNewer atomically swaps a newer Gateway trust snapshot into the
+// store. An out-of-order response is ignored, which lets concurrent validation
+// and certificate-renewal replies race without rolling trust back or turning a
+// benign stale reply into an Operator shutdown.
+func (s *L2TrustStore) ReplaceIfNewer(trust *models.OperatorL2Trust) (bool, error) {
+	decoded, err := decodeL2Trust(trust)
+	if err != nil {
+		return false, err
+	}
+	if trust == nil {
+		return false, fmt.Errorf("l2 trust: missing versioned snapshot: %w", constants.ErrValidationFailed)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if decoded.bindingVersion <= s.trust.bindingVersion {
+		return false, nil
+	}
+	s.trust = decoded
+	return true, nil
+}
+
+// BindingVersion returns the version of the currently loaded L2 trust.
+func (s *L2TrustStore) BindingVersion() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.trust.bindingVersion
 }
 
 func decodeL2Trust(trust *models.OperatorL2Trust) (l2Trust, error) {
 	if trust == nil {
 		return l2Trust{}, nil
+	}
+	if !trust.Enabled {
+		return l2Trust{bindingVersion: trust.BindingVersion}, nil
 	}
 	if trust.ConsensusSetID == "" || trust.Quorum < 1 || trust.Quorum > len(trust.MemberKeyIDs) {
 		return l2Trust{}, fmt.Errorf("l2 trust: consensus set %q quorum %d of %d members: %w",
@@ -109,6 +146,7 @@ func decodeL2Trust(trust *models.OperatorL2Trust) (l2Trust, error) {
 		signers[signer.KeyID] = ed25519.PublicKey(pub)
 	}
 	return l2Trust{
+		bindingVersion: trust.BindingVersion,
 		policy: &L2ConsensusPolicy{
 			MemberKeyIDs:    append([]string(nil), trust.MemberKeyIDs...),
 			Quorum:          trust.Quorum,

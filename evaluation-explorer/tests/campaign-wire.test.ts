@@ -288,6 +288,12 @@ describe('campaign projection wire contract', () => {
       expect((decoded.record as CampaignResultRecord).role_transcripts).toHaveLength(3);
     });
 
+    it('preserves Unicode transcript text', () => {
+      const unicodeTranscript = { ...transcript, response: 'café 🧪' };
+      const decoded = decodeCampaignProjectionEnvelope(withTranscripts([unicodeTranscript]));
+      expect((decoded.record as CampaignResultRecord).role_transcripts?.[0]?.response).toBe('café 🧪');
+    });
+
     it('accepts Tribunal-approved tool call arguments', () => {
       const approved = '{"args":["/tmp/retry.conf"],"command":"cat"}';
       const decoded = decodeCampaignProjectionEnvelope(withTranscripts([{ ...transcript, tool_calls: [{ ...toolCall, tool_name: 'run_shell_command', approved_arguments_json: approved }] }]));

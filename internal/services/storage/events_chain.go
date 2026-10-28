@@ -8,10 +8,13 @@
 package storage
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
@@ -34,6 +39,11 @@ const (
 
 	// eventsContentDigestLabel selects the vault subkey that keys content_digest.
 	eventsContentDigestLabel = "ztd-audit-content-digest-v1"
+
+	// EventsChainCheckpointDomain is the domain separator for signed checkpoints.
+	EventsChainCheckpointDomain = "ztd.checkpoint.v1"
+	// EventsChainCheckpointVersion is the format version for signed checkpoints.
+	EventsChainCheckpointVersion = "ztd.checkpoint.v1"
 )
 
 // AuditChainCheckpoint is a durable pruning anchor for chain verification.
@@ -42,6 +52,10 @@ type AuditChainCheckpoint struct {
 	PrunedThroughHash string
 	PrunedCount       int64
 	CheckpointHash    string
+	CreatedAtUnixMs   int64
+	AuditorKeyID      string
+	Signature         string
+	FormatVersion     string
 	CreatedAt         time.Time
 }
 
@@ -50,10 +64,47 @@ type eventsChainHead struct {
 	PrevHash string
 }
 
-type eventsChainCheckpointPayload struct {
-	PrunedThroughSeq  int64  `json:"pruned_through_seq"`
-	PrunedThroughHash string `json:"pruned_through_hash"`
-	PrunedCount       int64  `json:"pruned_count"`
+// CanonicalizeCheckpoint returns domain-separated canonical bytes for signing a checkpoint.
+func CanonicalizeCheckpoint(
+	prunedThroughSeq int64,
+	prunedThroughHash string,
+	eventsPrunedCount int64,
+	checkpointHash string,
+	createdAtUnixMs int64,
+	auditorKeyID string,
+	formatVersion string,
+) ([]byte, error) {
+	if prunedThroughHash == "" || checkpointHash == "" || auditorKeyID == "" || formatVersion == "" {
+		return nil, constants.ErrAuditCheckpointUntrustedSigner
+	}
+	var payload bytes.Buffer
+	payload.WriteString(EventsChainCheckpointDomain)
+
+	var num [8]byte
+	binary.BigEndian.PutUint64(num[:], uint64(prunedThroughSeq))
+	payload.Write(num[:])
+
+	writeCanonicalString(&payload, prunedThroughHash)
+
+	binary.BigEndian.PutUint64(num[:], uint64(eventsPrunedCount))
+	payload.Write(num[:])
+
+	writeCanonicalString(&payload, checkpointHash)
+
+	binary.BigEndian.PutUint64(num[:], uint64(createdAtUnixMs))
+	payload.Write(num[:])
+
+	writeCanonicalString(&payload, auditorKeyID)
+	writeCanonicalString(&payload, formatVersion)
+
+	return payload.Bytes(), nil
+}
+
+func writeCanonicalString(payload *bytes.Buffer, value string) {
+	var length [4]byte
+	binary.BigEndian.PutUint32(length[:], uint32(len(value)))
+	payload.Write(length[:])
+	payload.WriteString(value)
 }
 
 type eventContentDigestInput struct {
@@ -114,7 +165,7 @@ func computeEventHash(seq int64, prevHash, eventType, sessionID, timestamp, cont
 	return hex.EncodeToString(sum[:])
 }
 
-func loadEventsChainHeadConn(ctx context.Context, conn *sql.Conn) (eventsChainHead, error) {
+func loadEventsChainHeadConn(ctx context.Context, conn *sql.Conn, pinnedAuditorKey ed25519.PublicKey, encryptionVault *vault.Vault) (eventsChainHead, error) {
 	var head eventsChainHead
 	err := conn.QueryRowContext(ctx, `
 		SELECT seq, hash FROM events WHERE seq IS NOT NULL ORDER BY seq DESC LIMIT 1
@@ -126,17 +177,30 @@ func loadEventsChainHeadConn(ctx context.Context, conn *sql.Conn) (eventsChainHe
 		return eventsChainHead{}, fmt.Errorf("audit chain: select head: %w", err)
 	}
 
-	var checkpointHash string
+	var (
+		cp           AuditChainCheckpoint
+		createdAtStr string
+	)
 	err = conn.QueryRowContext(ctx, `
-		SELECT pruned_through_hash FROM audit_chain_checkpoints ORDER BY pruned_through_seq DESC LIMIT 1
-	`).Scan(&checkpointHash)
+		SELECT pruned_through_seq, pruned_through_hash, pruned_count, checkpoint_hash,
+		       created_at_unix_ms, auditor_key_id, signature, format_version, created_at
+		FROM audit_chain_checkpoints ORDER BY pruned_through_seq DESC LIMIT 1
+	`).Scan(
+		&cp.PrunedThroughSeq, &cp.PrunedThroughHash, &cp.PrunedCount, &cp.CheckpointHash,
+		&cp.CreatedAtUnixMs, &cp.AuditorKeyID, &cp.Signature, &cp.FormatVersion, &createdAtStr,
+	)
 	if err == sql.ErrNoRows {
 		return eventsChainHead{Seq: 0, PrevHash: eventsChainGenesisPrevHash}, nil
 	}
 	if err != nil {
 		return eventsChainHead{}, fmt.Errorf("audit chain: select checkpoint: %w", err)
 	}
-	return eventsChainHead{Seq: 0, PrevHash: checkpointHash}, nil
+
+	if err := verifyCheckpointAnchor(ctx, conn, &cp, pinnedAuditorKey, encryptionVault); err != nil {
+		return eventsChainHead{}, err
+	}
+
+	return eventsChainHead{Seq: cp.PrunedThroughSeq, PrevHash: cp.PrunedThroughHash}, nil
 }
 
 // EventReceiptColumns is the current event receipt stored on one chain event.
@@ -165,17 +229,18 @@ type EventReceiptColumns struct {
 // the gzip-compressed command output; AppendPreparedEvent encrypts every content
 // column under the vault once the chain sequence that identifies the row is assigned.
 type PreparedEventInsert struct {
-	Event        *Event
-	TimestampStr string
-	Vault        *vault.Vault
-	Stdout       []byte
-	Stderr       []byte
-	EventReceipt *EventReceiptColumns
+	Event            *Event
+	TimestampStr     string
+	Vault            *vault.Vault
+	Stdout           []byte
+	Stderr           []byte
+	EventReceipt     *EventReceiptColumns
+	PinnedAuditorKey ed25519.PublicKey
 }
 
 // AppendPreparedEvent appends one event to the audit chain under SQLite's write lock.
 func AppendPreparedEvent(ctx context.Context, conn *sql.Conn, prepared PreparedEventInsert) (int64, int64, string, error) {
-	head, err := loadEventsChainHeadConn(ctx, conn)
+	head, err := loadEventsChainHeadConn(ctx, conn, prepared.PinnedAuditorKey, prepared.Vault)
 	if err != nil {
 		return 0, 0, "", err
 	}
@@ -267,53 +332,169 @@ func AppendPreparedEvent(ctx context.Context, conn *sql.Conn, prepared PreparedE
 	return eventID, nextSeq, hash, nil
 }
 
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func verifyCheckpointAnchor(
+	ctx context.Context,
+	conn queryRower,
+	cp *AuditChainCheckpoint,
+	pinnedAuditorKey ed25519.PublicKey,
+	encryptionVault *vault.Vault,
+) error {
+	if cp == nil {
+		return constants.ErrAuditCheckpointUnsigned
+	}
+	if cp.Signature == "" {
+		return constants.ErrAuditCheckpointUnsigned
+	}
+	if len(pinnedAuditorKey) != ed25519.PublicKeySize {
+		return constants.ErrAuditCheckpointUntrustedSigner
+	}
+	if cp.AuditorKeyID != hex.EncodeToString(pinnedAuditorKey) {
+		return constants.ErrAuditCheckpointUntrustedSigner
+	}
+
+	canonical, err := CanonicalizeCheckpoint(
+		cp.PrunedThroughSeq,
+		cp.PrunedThroughHash,
+		cp.PrunedCount,
+		cp.CheckpointHash,
+		cp.CreatedAtUnixMs,
+		cp.AuditorKeyID,
+		cp.FormatVersion,
+	)
+	if err != nil {
+		return err
+	}
+
+	sigBytes, err := hex.DecodeString(cp.Signature)
+	if err != nil {
+		return fmt.Errorf("%w: decode checkpoint signature: %w", constants.ErrAuditCheckpointSignatureInvalid, err)
+	}
+	if len(sigBytes) != ed25519.SignatureSize || !ed25519.Verify(pinnedAuditorKey, canonical, sigBytes) {
+		return constants.ErrAuditCheckpointSignatureInvalid
+	}
+
+	var (
+		eventSeq    int64
+		contentBlob []byte
+	)
+	err = conn.QueryRowContext(ctx, `
+		SELECT seq, content_text FROM events WHERE hash = ? AND type = ?
+	`, cp.CheckpointHash, string(constants.EventPlatformAuditChainCheckpointed)).Scan(&eventSeq, &contentBlob)
+	if errors.Is(err, sql.ErrNoRows) {
+		return constants.ErrAuditCheckpointEventMissing
+	}
+	if err != nil {
+		return fmt.Errorf("audit chain verify: checkpoint event lookup: %w", err)
+	}
+
+	if encryptionVault == nil || !encryptionVault.IsUnlocked() {
+		return constants.ErrLocalFirstEventsStoreVaultLocked
+	}
+	decryptedText, err := decryptEventsContent(encryptionVault, eventColumnContentText, eventRowID(eventSeq), contentBlob)
+	if err != nil {
+		return fmt.Errorf("%w: decrypt checkpoint payload: %w", constants.ErrAuditCheckpointPayloadMismatch, err)
+	}
+
+	var payload operatorv1.AuditChainCheckpointPayload
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal([]byte(decryptedText), &payload); err != nil {
+		return fmt.Errorf("%w: unmarshal checkpoint payload: %w", constants.ErrAuditCheckpointPayloadMismatch, err)
+	}
+
+	if payload.PrunedThroughSeq != cp.PrunedThroughSeq ||
+		payload.PrunedThroughHash != cp.PrunedThroughHash ||
+		payload.EventsPrunedCount != cp.PrunedCount {
+		return constants.ErrAuditCheckpointPayloadMismatch
+	}
+
+	return nil
+}
+
 func appendEventsChainCheckpoint(
 	ctx context.Context,
 	conn *sql.Conn,
 	encryptionVault *vault.Vault,
+	checkpointSigner CheckpointSigner,
 	prunedThroughSeq int64,
 	prunedThroughHash string,
 	prunedCount int64,
 ) (string, error) {
-	payload, err := json.Marshal(eventsChainCheckpointPayload{
+	if checkpointSigner == nil || checkpointSigner.KeyID() == "" {
+		return "", constants.ErrAuditCheckpointUntrustedSigner
+	}
+
+	now := time.Now().UTC()
+	nowUnixMs := now.UnixMilli()
+
+	payloadMsg := &operatorv1.AuditChainCheckpointPayload{
 		PrunedThroughSeq:  prunedThroughSeq,
 		PrunedThroughHash: prunedThroughHash,
-		PrunedCount:       prunedCount,
-	})
+		EventsPrunedCount: prunedCount,
+		CreatedAtUnixMs:   nowUnixMs,
+		FormatVersion:     EventsChainCheckpointVersion,
+	}
+	payloadBytes, err := protojson.Marshal(payloadMsg)
 	if err != nil {
 		return "", fmt.Errorf("audit chain checkpoint: marshal payload: %w", err)
 	}
 
-	now := time.Now().UTC()
 	checkpointEvent := &Event{
 		Timestamp:   now,
 		Type:        constants.EventPlatformAuditChainCheckpointed,
-		ContentText: string(payload),
+		ContentText: string(payloadBytes),
 	}
-	// The checkpoint payload is metadata (sequence, hash, count), but it is written
-	// to events.content_text, so the append encrypts it like every other content column.
+	var signerPub ed25519.PublicKey
+	if pubBytes, err := hex.DecodeString(checkpointSigner.KeyID()); err == nil && len(pubBytes) == ed25519.PublicKeySize {
+		signerPub = pubBytes
+	}
 	prepared := PreparedEventInsert{
-		Event:        checkpointEvent,
-		TimestampStr: timesvc.FormatTimestamp(now),
-		Vault:        encryptionVault,
+		Event:            checkpointEvent,
+		TimestampStr:     timesvc.FormatTimestamp(now),
+		Vault:            encryptionVault,
+		PinnedAuditorKey: signerPub,
 	}
 	if _, _, _, err := AppendPreparedEvent(ctx, conn, prepared); err != nil {
 		return "", err
 	}
 
-	head, err := loadEventsChainHeadConn(ctx, conn)
+	head, err := loadEventsChainHeadConn(ctx, conn, signerPub, encryptionVault)
+	if err != nil {
+		return "", err
+	}
+	checkpointHash := head.PrevHash
+
+	canonical, err := CanonicalizeCheckpoint(
+		prunedThroughSeq,
+		prunedThroughHash,
+		prunedCount,
+		checkpointHash,
+		nowUnixMs,
+		checkpointSigner.KeyID(),
+		EventsChainCheckpointVersion,
+	)
 	if err != nil {
 		return "", err
 	}
 
+	sigBytes, err := checkpointSigner.Sign(canonical)
+	if err != nil {
+		return "", fmt.Errorf("audit chain checkpoint: sign: %w", err)
+	}
+	sigHex := hex.EncodeToString(sigBytes)
+
 	if _, err := conn.ExecContext(ctx, `
 		INSERT INTO audit_chain_checkpoints (
-			pruned_through_seq, pruned_through_hash, pruned_count, checkpoint_hash, created_at
-		) VALUES (?, ?, ?, ?, ?)
-	`, prunedThroughSeq, prunedThroughHash, prunedCount, head.PrevHash, timesvc.FormatTimestamp(now)); err != nil {
+			pruned_through_seq, pruned_through_hash, pruned_count, checkpoint_hash,
+			created_at_unix_ms, auditor_key_id, signature, format_version, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, prunedThroughSeq, prunedThroughHash, prunedCount, checkpointHash,
+		nowUnixMs, checkpointSigner.KeyID(), sigHex, EventsChainCheckpointVersion, timesvc.FormatTimestamp(now)); err != nil {
 		return "", fmt.Errorf("audit chain checkpoint: persist anchor: %w", err)
 	}
-	return head.PrevHash, nil
+	return checkpointHash, nil
 }
 
 // chainVerifyStart resolves the first sequence to verify and the hash that must precede it.
@@ -325,18 +506,28 @@ func (ass *LocalFirstEventsStore) chainVerifyStart(ctx context.Context, fromSeq 
 		if startSeq > 1 {
 			err := ass.db.QueryRowWithRetry(ctx, `SELECT hash FROM events WHERE seq = ?`, startSeq-1).Scan(&expectedPrevHash)
 			if err == sql.ErrNoRows {
-				var checkpoint AuditChainCheckpoint
+				var (
+					checkpoint   AuditChainCheckpoint
+					createdAtStr string
+				)
 				err = ass.db.QueryRowWithRetry(ctx, `
-					SELECT pruned_through_seq, pruned_through_hash
+					SELECT pruned_through_seq, pruned_through_hash, pruned_count, checkpoint_hash,
+					       created_at_unix_ms, auditor_key_id, signature, format_version, created_at
 					FROM audit_chain_checkpoints
 					WHERE pruned_through_seq < ?
 					ORDER BY pruned_through_seq DESC
 					LIMIT 1
-				`, startSeq).Scan(&checkpoint.PrunedThroughSeq, &checkpoint.PrunedThroughHash)
+				`, startSeq).Scan(
+					&checkpoint.PrunedThroughSeq, &checkpoint.PrunedThroughHash, &checkpoint.PrunedCount, &checkpoint.CheckpointHash,
+					&checkpoint.CreatedAtUnixMs, &checkpoint.AuditorKeyID, &checkpoint.Signature, &checkpoint.FormatVersion, &createdAtStr,
+				)
 				if err != nil && err != sql.ErrNoRows {
 					return 0, "", fmt.Errorf("audit chain verify: checkpoint lookup: %w", err)
 				}
 				if err == nil && checkpoint.PrunedThroughSeq == startSeq-1 {
+					if err := verifyCheckpointAnchor(ctx, ass.db, &checkpoint, ass.pinnedAuditorKey, ass.encryptionVault); err != nil {
+						return 0, "", err
+					}
 					expectedPrevHash = checkpoint.PrunedThroughHash
 				} else {
 					return 0, "", fmt.Errorf("audit chain verify: missing predecessor for seq %d", startSeq)
@@ -346,22 +537,31 @@ func (ass *LocalFirstEventsStore) chainVerifyStart(ctx context.Context, fromSeq 
 			}
 		}
 	} else {
-		var checkpointSeq int64
-		var checkpointHash string
+		var (
+			checkpoint   AuditChainCheckpoint
+			createdAtStr string
+		)
 		err := ass.db.QueryRowWithRetry(ctx, `
-			SELECT pruned_through_seq, pruned_through_hash
+			SELECT pruned_through_seq, pruned_through_hash, pruned_count, checkpoint_hash,
+			       created_at_unix_ms, auditor_key_id, signature, format_version, created_at
 			FROM audit_chain_checkpoints
 			ORDER BY pruned_through_seq DESC
 			LIMIT 1
-		`).Scan(&checkpointSeq, &checkpointHash)
+		`).Scan(
+			&checkpoint.PrunedThroughSeq, &checkpoint.PrunedThroughHash, &checkpoint.PrunedCount, &checkpoint.CheckpointHash,
+			&checkpoint.CreatedAtUnixMs, &checkpoint.AuditorKeyID, &checkpoint.Signature, &checkpoint.FormatVersion, &createdAtStr,
+		)
 		if err == sql.ErrNoRows {
 			startSeq = 1
 			expectedPrevHash = eventsChainGenesisPrevHash
 		} else if err != nil {
 			return 0, "", fmt.Errorf("audit chain verify: latest checkpoint: %w", err)
 		} else {
-			startSeq = checkpointSeq + 1
-			expectedPrevHash = checkpointHash
+			if err := verifyCheckpointAnchor(ctx, ass.db, &checkpoint, ass.pinnedAuditorKey, ass.encryptionVault); err != nil {
+				return 0, "", err
+			}
+			startSeq = checkpoint.PrunedThroughSeq + 1
+			expectedPrevHash = checkpoint.PrunedThroughHash
 		}
 	}
 	return startSeq, expectedPrevHash, nil
@@ -379,6 +579,41 @@ func (ass *LocalFirstEventsStore) VerifyChain(ctx context.Context, fromSeq int64
 	startSeq, expectedPrevHash, err := ass.chainVerifyStart(ctx, fromSeq)
 	if err != nil {
 		return err
+	}
+
+	// Verify all checkpoints in audit_chain_checkpoints table
+	cpRows, err := ass.db.QueryWithRetry(ctx, `
+		SELECT pruned_through_seq, pruned_through_hash, pruned_count, checkpoint_hash,
+		       created_at_unix_ms, auditor_key_id, signature, format_version, created_at
+		FROM audit_chain_checkpoints
+		ORDER BY pruned_through_seq ASC
+	`)
+	if err != nil {
+		return fmt.Errorf("audit chain verify: query checkpoints: %w", err)
+	}
+	defer cpRows.Close()
+
+	for cpRows.Next() {
+		var (
+			cp           AuditChainCheckpoint
+			createdAtStr string
+		)
+		if err := cpRows.Scan(
+			&cp.PrunedThroughSeq, &cp.PrunedThroughHash, &cp.PrunedCount, &cp.CheckpointHash,
+			&cp.CreatedAtUnixMs, &cp.AuditorKeyID, &cp.Signature, &cp.FormatVersion, &createdAtStr,
+		); err != nil {
+			return fmt.Errorf("audit chain verify: scan checkpoint: %w", err)
+		}
+		if err := verifyCheckpointAnchor(ctx, ass.db, &cp, ass.pinnedAuditorKey, ass.encryptionVault); err != nil {
+			if errors.Is(err, constants.ErrAuditCheckpointEventMissing) && cp.PrunedThroughSeq < startSeq-1 {
+				// Superseded checkpoints have their checkpointed events deleted by subsequent prunes.
+				continue
+			}
+			return err
+		}
+	}
+	if err := cpRows.Err(); err != nil {
+		return fmt.Errorf("audit chain verify: checkpoint rows: %w", err)
 	}
 
 	rows, err := ass.db.QueryWithRetry(ctx, `
@@ -530,7 +765,7 @@ func verifyEventContent(v *vault.Vault, row eventContentRow) (*Event, error) {
 }
 
 // PruneChainedEvents checkpoints and deletes chained audit events older than cutoff.
-func PruneChainedEvents(ctx context.Context, db *sqliteutil.DB, logger *slog.Logger, encryptionVault *vault.Vault, cutoff string) error {
+func PruneChainedEvents(ctx context.Context, db *sqliteutil.DB, logger *slog.Logger, encryptionVault *vault.Vault, checkpointSigner CheckpointSigner, cutoff string) error {
 	if db == nil {
 		return nil
 	}
@@ -540,9 +775,8 @@ func PruneChainedEvents(ctx context.Context, db *sqliteutil.DB, logger *slog.Log
 		err := conn.QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM events
 			WHERE timestamp < ?
-			AND type != ?
 			AND seq IS NOT NULL
-		`, cutoff, string(constants.EventPlatformAuditChainCheckpointed)).Scan(&pruneCount)
+		`, cutoff).Scan(&pruneCount)
 		if err != nil {
 			return fmt.Errorf("audit chain prune: count: %w", err)
 		}
@@ -557,24 +791,22 @@ func PruneChainedEvents(ctx context.Context, db *sqliteutil.DB, logger *slog.Log
 		err = conn.QueryRowContext(ctx, `
 			SELECT seq, hash FROM events
 			WHERE timestamp < ?
-			AND type != ?
 			AND seq IS NOT NULL
 			ORDER BY seq DESC
 			LIMIT 1
-		`, cutoff, string(constants.EventPlatformAuditChainCheckpointed)).Scan(&prunedThroughSeq, &prunedThroughHash)
+		`, cutoff).Scan(&prunedThroughSeq, &prunedThroughHash)
 		if err != nil {
 			return fmt.Errorf("audit chain prune: select tail: %w", err)
 		}
 
-		if _, err := appendEventsChainCheckpoint(ctx, conn, encryptionVault, prunedThroughSeq, prunedThroughHash, pruneCount); err != nil {
+		if _, err := appendEventsChainCheckpoint(ctx, conn, encryptionVault, checkpointSigner, prunedThroughSeq, prunedThroughHash, pruneCount); err != nil {
 			return err
 		}
 
 		result, err := conn.ExecContext(ctx, `
 			DELETE FROM events
-			WHERE timestamp < ?
-			AND type != ?
-		`, cutoff, string(constants.EventPlatformAuditChainCheckpointed))
+			WHERE seq <= ?
+		`, prunedThroughSeq)
 		if err != nil {
 			return fmt.Errorf("audit chain prune: delete: %w", err)
 		}

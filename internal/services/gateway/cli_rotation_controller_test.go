@@ -173,9 +173,7 @@ func TestCLIRotationController_Rotate_OldSessionDeactivated(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, oldDoc)
 	var oldSession models.CLISession
-	dataBytes, err := json.Marshal(oldDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &oldSession))
+	require.NoError(t, oldDoc.DecodeData(&oldSession))
 	assert.False(t, oldSession.IsActive, "old session must be deactivated after rotation")
 }
 
@@ -195,9 +193,7 @@ func TestCLIRotationController_Rotate_NewCertUsableForMTLS(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, newDoc)
 	var newSession models.CLISession
-	dataBytes, err := json.Marshal(newDoc.Data)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(dataBytes, &newSession))
+	require.NoError(t, newDoc.DecodeData(&newSession))
 	assert.True(t, newSession.IsActive, "new session must be active")
 	assert.Equal(t, user.ID, newSession.UserID)
 	assert.NotEmpty(t, newSession.CertFingerprint)

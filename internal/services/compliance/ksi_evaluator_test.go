@@ -189,6 +189,8 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 	committedAt := time.UnixMilli(commitment.CommittedAtUnixMs).UTC()
 	now := time.Now().UTC()
 	return EvaluatorDeps{
+		AuditorTrust:  governance.NewPinnedSignerSource(privateKey.Public().(ed25519.PublicKey)),
+		ActuatorTrust: governance.NewPinnedSignerSource(privateKey.Public().(ed25519.PublicKey)),
 		Audit: &mockAuditReader{
 			receipts: []*models.EventReceiptRecord{{
 				TransactionID: receipt.TransactionId, TransactionHash: receipt.TransactionHash,
@@ -998,6 +1000,13 @@ func TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification(t *testin
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, satisfied)
 			assert.NotEmpty(t, evidence)
+			if tt.want {
+				assert.Equal(t, "verified", evidence[0].VerificationStatus)
+				assert.Equal(t, constants.KSIMethodVerifierID, evidence[0].VerifierId)
+				assert.Equal(t, constants.KSIMethodVerifierVersion, evidence[0].VerifierVersion)
+				require.NotNil(t, evidence[0].VerifiedAt)
+				assert.Len(t, evidence[0].Sha256, 64)
+			}
 		})
 	}
 }
@@ -1111,6 +1120,50 @@ func TestDefaultMethods_CommitmentCryptographicVerification(t *testing.T) {
 			} else if len(evidence) > 0 {
 				assert.Equal(t, "failed", evidence[0].VerificationStatus)
 			}
+		})
+	}
+}
+
+func TestDefaultMethods_ForeignKeysFail(t *testing.T) {
+	for _, kind := range []string{"receipt", "commitment"} {
+		t.Run(kind, func(t *testing.T) {
+			deps := fullDeps(t)
+			publicKey, privateKey, err := ed25519.GenerateKey(nil)
+			require.NoError(t, err)
+			keyID := hex.EncodeToString(publicKey)
+			ksiID, methodIndex := "KSI-MLA-07", 1
+			if kind == "receipt" {
+				ksiID, methodIndex = "KSI-MLA-08", 0
+				record := deps.Audit.(*mockAuditReader).receipts[0]
+				receipt := record.EventReceipt
+				receipt.SignerKeyId = keyID
+				payload, err := governance.CanonicalizeEventReceipt(receipt)
+				require.NoError(t, err)
+				receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+				persistence := receipt.FinalPersistenceAttestation
+				persistence.SignerKeyId = keyID
+				persistence.ReceiptSignatureDigest = governance.SignatureDigest([]string{receipt.Signature})
+				payload, err = governance.CanonicalizeReceiptPersistenceAttestation(persistence)
+				require.NoError(t, err)
+				persistence.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+				record.SignerKeyID, record.Signature = keyID, receipt.Signature
+			} else {
+				row := deps.Commitments.(*mockCommitmentReader).commitments[0]
+				attestation := &operatorv1.CommitmentAttestation{}
+				require.NoError(t, compliancev1.UnmarshalCanonical(row.AttestationJSON, attestation))
+				attestation.AuditorKeyId = keyID
+				payload, err := governance.CanonicalizeCommitmentAttestation(attestation)
+				require.NoError(t, err)
+				digest := sha256.Sum256(payload)
+				attestation.Hash = hex.EncodeToString(digest[:])
+				attestation.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+				row.AttestationJSON, err = compliancev1.MarshalCanonical(attestation)
+				require.NoError(t, err)
+				row.Hash, row.Signature, row.AuditorKeyID = attestation.Hash, attestation.Signature, keyID
+			}
+			verified, _, err := DefaultMethods(deps)[ksiID][methodIndex].evaluate(context.Background())
+			require.NoError(t, err)
+			assert.False(t, verified, "foreign self-certified key must not establish trust")
 		})
 	}
 }

@@ -39,10 +39,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
@@ -263,7 +265,7 @@ func isCLICredentialTier(tierName string) bool {
 // Cert and key are resolved as pairs per tier; supplying only one half fails closed.
 // CA bundle resolves: --ca-bundle flag → auth.ReadTrustBundle.
 // Gateway URL resolves: --gateway-url flag → cfg.OperatorHTTPURL() + "/mcp".
-func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags) (*gatewayConn, error) {
+func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags, loggers ...*slog.Logger) (*gatewayConn, error) {
 	var appCert, appKey string
 	if flags.App != "" {
 		appCert = cfg.AppCertFile(flags.App)
@@ -328,7 +330,7 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 	session := &gatewayConn{
 		openBrowser: platform.OpenBrowser,
 		client: &http.Client{
-			Transport: &http.Transport{TLSClientConfig: tlsCfg},
+			Transport: httpclient.NewIPv4Transport(tlsCfg),
 			Timeout:   gatewayCallTimeout,
 		},
 		gatewayURL: gatewayURL,
@@ -367,7 +369,15 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 		gatewayAddr.Host = net.JoinHostPort(constants.LocalhostIP, port)
 	}
 	session.gatewayURL = gatewayAddr.String()
-	slog.Info("ztd.local DNS resolution failed, falling back to loopback", "ip", constants.LocalhostIP)
+	var fallbackLogger *slog.Logger
+	if len(loggers) > 0 && loggers[0] != nil {
+		fallbackLogger = loggers[0]
+	} else {
+		fallbackLogger, _ = logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	}
+	if fallbackLogger != nil {
+		fallbackLogger.Info("ztd.local DNS resolution failed, falling back to loopback", "ip", constants.LocalhostIP)
+	}
 
 	return session, nil
 }
@@ -375,7 +385,11 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 // readCABundle reads a CA bundle from a path, preferring fileSvc.ReadFile when the
 // path is under the .ztd/ runtime root, falling back to os.ReadFile for external paths.
 func readCABundle(fileSvc fs.RuntimeFileService, caPath string) ([]byte, error) {
-	if rel, err := fileSvc.Rel(caPath); err == nil {
+	rel, inRuntime, err := fs.RuntimeRelativePath(fileSvc, caPath)
+	if err != nil {
+		return nil, err
+	}
+	if inRuntime {
 		return fileSvc.ReadFile(context.Background(), rel)
 	}
 	return os.ReadFile(caPath)
@@ -387,12 +401,15 @@ func runMCPStdioProxy(cmd *cobra.Command, _ []string, fileSvcFactory func(string
 		return fmt.Errorf("mcp: load config: %w", err)
 	}
 
-	fileSvc, err := fileSvcFactory("", slog.Default())
+	logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("mcp: configure logger: %w", err)
+	}
+
+	fileSvc, err := fileSvcFactory("", logger)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// Parse credential flags from the stdio subcommand. Empty fields fall through
 	// to the enrolled CLI credentials on disk.
@@ -415,7 +432,7 @@ func ServeStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *c
 func serveStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, credFlags stdioCredentialFlags, in io.Reader, out io.Writer, logger *slog.Logger) error {
 	// Build the mTLS gateway connection once. Identity is in the application cert's
 	// URI SANs — no session object or headers. All proxy calls reuse this connection.
-	conn, err := buildGatewayConn(fileSvc, cfg, credFlags)
+	conn, err := buildGatewayConn(fileSvc, cfg, credFlags, logger)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrGatewayNotReady, err)
 	}
@@ -841,6 +858,11 @@ LAUNCH AN AGENT (one command does everything):
 
   Extra args are forwarded to the agent:
     ztd mcp agent run claude -- -p "fix the failing tests"
+    ztd mcp agent run goose -- --provider ollama --model <tag> -t "run echo, then a denied command"
+
+  Goose starts an interactive session unless the forwarded args are a one-shot
+  (-t/--text, -i/--instructions, or --recipe). Those start goose run, which
+  accepts them. goose session does not.
 
 EXTERNAL MCP SERVERS:
   To govern external third-party MCP servers (stdio subprocess or HTTP), attach
@@ -862,11 +884,11 @@ AUDIT TRAIL:
 
 APPLICATION ENROLLMENT MODEL:
   Each agent is an application enrolled through the owner-approved platform
-  enrollment protocol. The first launch submits an
-  enrollment request and waits; approve it in the Console or with
-ztd auth enroll approve <request-id> --yes
-The launcher never approves its own
-  request. The approved mTLS certificate (7-day validity, revocable by request ID)
+  enrollment protocol. The first launch submits the enrollment. Under doctrine
+  and consensus the authenticated owner CLI approves that enrollment in-line,
+  with no passkey and no second command. Under ratify and notary the decision
+  suspends for a passkey approval at the URL the launcher prints. The approved
+  mTLS certificate (7-day validity, revocable by request ID)
   carries both identities:
   - App SPIFFE ID: spiffe://ztd.local/app/<agent-name> (the agent's policy identity)
   - Approving User ID: spiffe://ztd.local/user/<id> (the human who approved the agent)
@@ -1000,6 +1022,12 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 			return "", err
 		}
 		fmt.Fprintf(os.Stderr, "[ztd] Gateway already running (PID %d, posture: %s)\n", pid, posture)
+		// The root command recorded these ports before this command ran. Record
+		// them again so a profile written by an earlier start in this process
+		// is what enrollment dials.
+		if profile, perr := serve.ReadLaunchProfile(fileSvc); perr == nil {
+			config.SetLocalGatewayPorts(profile.Config.HTTPPort, profile.Config.HTTPSPort)
+		}
 	} else {
 		gatewayCfg, err := resolveGatewayLaunchConfig(fileSvc, requestedPosture)
 		if err != nil {
@@ -1008,7 +1036,7 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 		posture = gatewayCfg.Posture
 		fmt.Fprintf(os.Stderr, "[ztd] Starting gateway (posture: %s)...\n", posture)
 		startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: os.Stderr}
-		if err := pm.StartOperator(&startOpts); err != nil {
+		if err := pm.StartOperator(context.Background(), &startOpts); err != nil {
 			return "", fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 		}
 		if err := serve.WriteLaunchProfile(fileSvc, startOpts.GatewayConfig); err != nil {
@@ -1017,12 +1045,21 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 			}
 			return "", fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)
 		}
+		// gw start may move both listeners when the requested HTTP port is busy.
+		// The root command already chose ports from the profile that existed at
+		// process start, which did not include this Gateway. Enrollment has to
+		// dial the listeners just bound, not the protocol defaults (which may
+		// be a different Gateway).
+		config.SetLocalGatewayPorts(startOpts.HTTPPort, startOpts.HTTPSPort)
 
 		// Poll plain HTTP health until the gateway is ready.
 		// mTLS certs do not exist yet at this stage, so HTTP is the only
 		// option. HTTP is only ever used here for this bootstrap health check.
 		healthURL := network.LocalhostHTTPURL(startOpts.HTTPPort) + constants.APIPaths.Health
-		plainClient := &http.Client{Timeout: 2 * time.Second}
+		plainClient := &http.Client{
+			Transport: httpclient.NewIPv4Transport(nil),
+			Timeout:   2 * time.Second,
+		}
 		const (
 			maxAttempts  = 30
 			pollInterval = 500 * time.Millisecond
@@ -1179,6 +1216,7 @@ func launchAgentProcess(integration agent.Integration, extraArgs, launchArgs []s
 	if integration.ToolLockdown == agent.LockdownPartial {
 		fmt.Fprintf(os.Stderr, "[ztd] WARNING: %s cannot disable its native tools; actions it takes without MCP bypass ztd governance\n", integration.ID)
 	}
+	launchArgs = agent.RewriteGooseLaunch(launchArgs, extraArgs)
 	fmt.Fprintf(os.Stderr, "[ztd] Launching %s with L1-L5 governance via gateway\n", integration.ID)
 
 	agentCmd := exec.Command(agentBin, append(launchArgs, extraArgs...)...) //nolint:gosec

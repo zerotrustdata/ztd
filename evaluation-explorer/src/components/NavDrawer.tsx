@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { useEffect, useRef, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+import { RunsPanel } from './RunsPanel';
 
 interface NavItemConfig {
   to: string;
@@ -21,114 +21,48 @@ const NAV_ITEMS: NavItemConfig[] = [
   { to: '/sponsors', label: 'Sponsors', description: 'Top sponsors & project sustainability' },
 ];
 
-export function NavDrawer() {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const location = useLocation();
+interface NavDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
 
-  // Close on route change
-  useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname]);
-
-  // Close on outside click or Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-        buttonRef.current?.focus();
-      }
-    }
-
-    document.addEventListener('pointerdown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('pointerdown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen]);
-
+export function NavDrawer({ isOpen, onClose }: NavDrawerProps) {
   return (
-    <div className="nav-drawer-wrapper" ref={menuRef}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`nav-hamburger-btn${isOpen ? ' is-active' : ''}`}
-        onClick={() => setIsOpen((prev) => !prev)}
-        aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-        aria-controls="nav-dropdown-drawer"
-        title="Navigation menu"
-      >
-        <span className="nav-hamburger-icon" aria-hidden="true">
-          <span className="hamburger-line line-1" />
-          <span className="hamburger-line line-2" />
-          <span className="hamburger-line line-3" />
-        </span>
-      </button>
-
-      {isOpen ? (
-        <>
-          <div
-            className="nav-drawer-backdrop"
-            onClick={() => setIsOpen(false)}
-            aria-hidden="true"
-          />
-          <div
-            id="nav-dropdown-drawer"
-            className="nav-dropdown-drawer"
-            role="menu"
-            aria-label="Primary navigation drawer"
+    <aside
+      id="navigation-drawer"
+      className="nav-drawer"
+      aria-label="Navigation and runs"
+      inert={!isOpen}
+    >
+      <div className="nav-drawer-header">
+        <span className="nav-drawer-kicker">Navigation</span>
+        <button
+          type="button"
+          className="nav-drawer-close-btn"
+          onClick={onClose}
+          aria-label="Close navigation drawer"
+        >
+          ✕
+        </button>
+      </div>
+      <nav className="nav-drawer-items" aria-label="Primary navigation">
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            title={item.description}
+            className={({ isActive }) => `nav-drawer-item${isActive ? ' active' : ''}`}
           >
-            <div className="nav-drawer-header">
-              <span className="nav-drawer-kicker">Navigation</span>
-              <button
-                type="button"
-                className="nav-drawer-close-btn"
-                onClick={() => setIsOpen(false)}
-                aria-label="Close navigation drawer"
-              >
-                ✕
-              </button>
+            <div className="nav-drawer-item-content">
+              <span className="nav-drawer-item-label">{item.label}</span>
+              <span className="nav-drawer-item-desc">{item.description}</span>
             </div>
-            <nav className="nav-drawer-items" aria-label="Dropdown navigation">
-              {NAV_ITEMS.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    `nav-drawer-item${isActive ? ' active' : ''}`
-                  }
-                  role="menuitem"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <div className="nav-drawer-item-content">
-                    <div className="nav-drawer-item-title-row">
-                      <span className="nav-drawer-item-label">{item.label}</span>
-                    </div>
-                    <span className="nav-drawer-item-desc">{item.description}</span>
-                  </div>
-                  <span className="nav-drawer-item-arrow" aria-hidden="true">
-                    →
-                  </span>
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-        </>
-      ) : null}
-    </div>
+            <span className="nav-drawer-item-arrow" aria-hidden="true">→</span>
+          </NavLink>
+        ))}
+      </nav>
+      <RunsPanel />
+    </aside>
   );
 }

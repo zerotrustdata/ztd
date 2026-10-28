@@ -114,8 +114,14 @@ type cachedBootstrapSnapshot struct {
 	sequence         int64
 	feedChainHash    string
 	withdrawalDigest string
+	freshness        models.CampaignFreshness
 	proofCount       int
-	bootstrap        models.PublicFeedBootstrap
+	proofByteSize    int64
+	proofRoot        string
+	proofGeneratedAt time.Time
+	etag             string
+	jsonBytes        []byte
+	gzipBytes        []byte
 }
 
 // mirrorSSESubscriber represents one active SSE connection.
@@ -663,7 +669,7 @@ func (m *PublicMirrorServer) PublicHandler() http.Handler {
 
 func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle("/bootstrap", m.withGzip(http.HandlerFunc(m.handleBootstrap)))
+	mux.HandleFunc("/bootstrap", m.handleBootstrap)
 	mux.Handle("/snapshot", m.withGzip(http.HandlerFunc(m.handleSnapshot)))
 	mux.Handle("/history", m.withGzip(http.HandlerFunc(m.handleHistory)))
 	mux.HandleFunc("/stream", m.handleStream)
@@ -676,25 +682,50 @@ func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 
 type gzipResponseWriter struct {
 	http.ResponseWriter
-	writer *gzip.Writer
+	writer      *gzip.Writer
+	statusCode  int
+	wroteHeader bool
 }
 
-func (w gzipResponseWriter) Write(body []byte) (int, error) {
+func (w *gzipResponseWriter) WriteHeader(code int) {
+	if w.wroteHeader {
+		return
+	}
+	w.statusCode = code
+	w.wroteHeader = true
+	if code == http.StatusNotModified || code == http.StatusNoContent {
+		w.Header().Del("Content-Encoding")
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *gzipResponseWriter) Write(body []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.statusCode == http.StatusNotModified || w.statusCode == http.StatusNoContent {
+		return 0, nil
+	}
 	return w.writer.Write(body)
 }
 
 func (m *PublicMirrorServer) withGzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add("Vary", "Accept-Encoding")
+		w.Header().Add(constants.HeaderVary, "Accept-Encoding")
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
 			return
 		}
 		w.Header().Set("Content-Encoding", "gzip")
 		writer := gzip.NewWriter(w)
-		next.ServeHTTP(gzipResponseWriter{ResponseWriter: w, writer: writer}, r)
-		if err := writer.Close(); err != nil {
-			m.logResponseError("mirror: close gzip response", err)
+		gw := &gzipResponseWriter{ResponseWriter: w, writer: writer}
+		next.ServeHTTP(gw, r)
+		if gw.statusCode != http.StatusNotModified && gw.statusCode != http.StatusNoContent {
+			if err := writer.Close(); err != nil {
+				m.logResponseError("mirror: close gzip response", err)
+			}
 		}
 	})
 }
@@ -757,7 +788,9 @@ func isValidPublicMirrorClientIP(ip net.IP) bool {
 
 func (m *PublicMirrorServer) allowAnonymousRead(r *http.Request) bool {
 	host := m.publicMirrorClientID(r)
-	now := m.now().UTC()
+	// Rate windows live only in memory. Keep the monotonic clock reading so a
+	// wall-clock correction cannot hold a client inside an expired window.
+	now := m.now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.expireAnonymousRateWindows(now)
@@ -811,11 +844,11 @@ func (m *PublicMirrorServer) expireAnonymousRateWindows(now time.Time) {
 func (m *PublicMirrorServer) withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if publicMirrorAnonymousReadPath(r.URL.Path) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID, If-None-Match")
+			w.Header().Set(constants.HeaderAccessControlAllowOrigin, "*")
+			w.Header().Set(constants.HeaderAccessControlAllowMethods, "GET, OPTIONS")
+			w.Header().Set(constants.HeaderAccessControlAllowHeaders, constants.HeaderContentType+", "+constants.HeaderLastEventID+", If-None-Match")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag")
-			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.Header().Set(constants.HeaderAccessControlMaxAge, "86400")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -841,8 +874,8 @@ func (m *PublicMirrorServer) ingestAuthorized(r *http.Request) error {
 		m.logger.Warn("mirror: ingest token is not configured; rejecting request", "path", r.URL.Path)
 		return fmt.Errorf("mirror ingest: %w", constants.ErrPublicFeedIngestTokenRequired)
 	}
-	provided := r.Header.Get("Authorization")
-	expected := "Bearer " + token
+	provided := r.Header.Get(constants.HeaderAuthorization)
+	expected := constants.BearerScheme + token
 	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 		return constants.ErrPublicFeedIngestUnauthorized
 	}
@@ -1244,74 +1277,108 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
-	if summary != nil {
-		etag := fmt.Sprintf(`"%s:%d:%s:%s"`, sourceID, summary.HighWaterSequence, summary.FeedChainHash, mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs))
-		w.Header().Set("ETag", etag)
-		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
-		if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
-			if strings.Trim(ifNoneMatch, "W/") == strings.Trim(etag, "W/") {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
-	}
-	bootstrap, err := m.currentBootstrap(r.Context(), r.URL.Query().Get("source"))
+	cached, err := m.currentBootstrapCached(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: read current snapshot", err)
 		return
 	}
-	m.writeJSON(w, http.StatusOK, bootstrap)
+	w.Header().Set(constants.HeaderVary, "Accept-Encoding")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	w.Header().Set(constants.HeaderCacheControl, "public, max-age=0, must-revalidate")
+	if cached.etag != "" {
+		w.Header().Set("ETag", cached.etag)
+		if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" && strings.Trim(ifNoneMatch, "W/") == strings.Trim(cached.etag, "W/") {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	body := cached.jsonBytes
+	if strings.Contains(strings.ToLower(r.Header.Get("Accept-Encoding")), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		body = cached.gzipBytes
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(body); err != nil {
+		m.logResponseError("mirror: write bootstrap response", err)
+	}
 }
 
-// currentBootstrap captures records, proofs, withdrawals and cursor under the
-// same mutation lock, releasing it before writing to a potentially slow client.
+// currentBootstrap returns the decoded view for internal callers.
 func (m *PublicMirrorServer) currentBootstrap(ctx context.Context, requestedSource string) (models.PublicFeedBootstrap, error) {
+	cached, err := m.currentBootstrapCached(ctx, requestedSource)
+	if err != nil {
+		return models.PublicFeedBootstrap{}, err
+	}
+	var bootstrap models.PublicFeedBootstrap
+	if err := json.Unmarshal(cached.jsonBytes, &bootstrap); err != nil {
+		return models.PublicFeedBootstrap{}, fmt.Errorf("mirror: decode cached bootstrap: %w", err)
+	}
+	return bootstrap, nil
+}
+
+// currentBootstrapCached captures a coherent mirror version while mutations
+// are excluded, then decodes and compresses the potentially large response
+// after releasing writeMu.
+func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, requestedSource string) (cachedBootstrapSnapshot, error) {
 	m.writeMu.Lock()
-	defer m.writeMu.Unlock()
 	sourceID, summary := m.sourceView(requestedSource)
 	if summary == nil {
-		return models.PublicFeedBootstrap{
+		m.writeMu.Unlock()
+		bootstrap := models.PublicFeedBootstrap{
 			ProtocolVersion:     constants.PublicFeedProtocolVersion,
 			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
 			SourceFreshness:     models.CampaignFreshnessSourceOffline,
 			RecentProjections:   []models.PublicFeedObject{},
 			ProofCatalogSummary: models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0},
 			GeneratedAt:         time.Now().UTC(),
-		}, nil
+		}
+		return buildCachedBootstrap(bootstrap, sourceID, nil, models.CampaignFreshnessSourceOffline, PublicMirrorProofSummary{})
 	}
 
 	withdrawalDigest := mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs)
 	proofSummary, hasProof, err := m.store.proofSummary(ctx, sourceID)
 	if err != nil {
-		return models.PublicFeedBootstrap{}, err
+		m.writeMu.Unlock()
+		return cachedBootstrapSnapshot{}, err
 	}
 	catalogSummary := models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0}
+	proofKey := PublicMirrorProofSummary{}
 	if hasProof && proofSummary.ArtifactCount > 0 {
+		proofKey = proofSummary
 		catalogSummary.ArtifactCount = proofSummary.ArtifactCount
 		catalogSummary.TotalByteSize = proofSummary.TotalByteSize
 		catalogSummary.LastGeneratedAt = &proofSummary.GeneratedAt
 	}
 
+	freshness := m.sourceFreshness(summary)
 	if cached, ok := m.bootstrapCache[sourceID]; ok &&
 		cached.sequence == summary.HighWaterSequence &&
 		cached.feedChainHash == summary.FeedChainHash &&
 		cached.withdrawalDigest == withdrawalDigest &&
-		cached.proofCount == catalogSummary.ArtifactCount {
-		return cached.bootstrap, nil
+		cached.freshness == freshness &&
+		cached.proofCount == catalogSummary.ArtifactCount &&
+		cached.proofByteSize == catalogSummary.TotalByteSize &&
+		cached.proofRoot == proofKey.ProofRootSHA256 && cached.proofGeneratedAt.Equal(proofKey.GeneratedAt) {
+		m.writeMu.Unlock()
+		return cached, nil
 	}
 
 	records, err := m.store.snapshotRecords(ctx, sourceID)
 	if err != nil {
-		return models.PublicFeedBootstrap{}, err
+		m.writeMu.Unlock()
+		return cachedBootstrapSnapshot{}, err
 	}
+	summaryCopy := *summary
+	m.writeMu.Unlock()
+
 	// Preserve the transport's newest-first ordering. Unlike a history tail,
 	// these are the latest records for every current entity plus recent activity.
 	recent := make([]models.PublicFeedObject, 0, len(records))
 	for i := len(records) - 1; i >= 0; i-- {
 		var item models.PublicFeedObject
 		if err := json.Unmarshal([]byte(records[i].RecordBytes), &item); err != nil {
-			return models.PublicFeedBootstrap{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
+			return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
 		}
 		item.SetInt64Field("sequence", records[i].Sequence)
 		recent = append(recent, item)
@@ -1319,23 +1386,76 @@ func (m *PublicMirrorServer) currentBootstrap(ctx context.Context, requestedSour
 
 	result := models.PublicFeedBootstrap{
 		ProtocolVersion:     constants.PublicFeedProtocolVersion,
-		Snapshot:            m.snapshotOf(sourceID, summary),
-		SourceFreshness:     m.sourceFreshness(summary),
+		Snapshot:            m.snapshotOf(sourceID, &summaryCopy),
+		SourceFreshness:     freshness,
 		RecentProjections:   recent,
 		ProofCatalogSummary: catalogSummary,
 		GeneratedAt:         time.Now().UTC(),
 	}
-	if m.bootstrapCache == nil {
-		m.bootstrapCache = make(map[string]cachedBootstrapSnapshot)
+	result.Snapshot.Freshness = freshness
+	cachedResult, err := buildCachedBootstrap(result, sourceID, &summaryCopy, freshness, proofKey)
+	if err != nil {
+		return cachedBootstrapSnapshot{}, err
 	}
-	m.bootstrapCache[sourceID] = cachedBootstrapSnapshot{
-		sequence:         summary.HighWaterSequence,
-		feedChainHash:    summary.FeedChainHash,
-		withdrawalDigest: withdrawalDigest,
-		proofCount:       catalogSummary.ArtifactCount,
-		bootstrap:        result,
+
+	m.writeMu.Lock()
+	currentID, currentSummary := m.sourceView(sourceID)
+	currentProofSummary, currentHasProof, currentProofErr := m.store.proofSummary(ctx, sourceID)
+	currentProofCount, currentProofByteSize := 0, int64(0)
+	if currentProofErr == nil && currentHasProof {
+		currentProofCount, currentProofByteSize = currentProofSummary.ArtifactCount, currentProofSummary.TotalByteSize
 	}
-	return result, nil
+	currentProofRoot, currentProofGeneratedAt := "", time.Time{}
+	if currentProofErr == nil && currentHasProof && currentProofSummary.ArtifactCount > 0 {
+		currentProofRoot, currentProofGeneratedAt = currentProofSummary.ProofRootSHA256, currentProofSummary.GeneratedAt
+	}
+	if currentProofErr == nil && currentID == sourceID && currentSummary != nil &&
+		currentSummary.HighWaterSequence == cachedResult.sequence && currentSummary.FeedChainHash == cachedResult.feedChainHash &&
+		mirrorWithdrawalDigest(currentSummary.WithdrawnDatasetIDs) == cachedResult.withdrawalDigest &&
+		m.sourceFreshness(currentSummary) == cachedResult.freshness && currentProofCount == cachedResult.proofCount &&
+		currentProofByteSize == cachedResult.proofByteSize && currentProofRoot == cachedResult.proofRoot &&
+		currentProofGeneratedAt.Equal(cachedResult.proofGeneratedAt) {
+		if m.bootstrapCache == nil {
+			m.bootstrapCache = make(map[string]cachedBootstrapSnapshot)
+		}
+		m.bootstrapCache[sourceID] = cachedResult
+	}
+	m.writeMu.Unlock()
+	return cachedResult, nil
+}
+
+func buildCachedBootstrap(bootstrap models.PublicFeedBootstrap, sourceID string, summary *PublicMirrorSourceSummary, freshness models.CampaignFreshness, proofSummary PublicMirrorProofSummary) (cachedBootstrapSnapshot, error) {
+	var jsonBuffer bytes.Buffer
+	if err := json.NewEncoder(&jsonBuffer).Encode(bootstrap); err != nil {
+		return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: encode bootstrap snapshot: %w", err)
+	}
+	jsonBytes := jsonBuffer.Bytes()
+	var gzipBuffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&gzipBuffer)
+	if _, err := gzipWriter.Write(jsonBytes); err != nil {
+		_ = gzipWriter.Close()
+		return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: compress bootstrap snapshot: %w", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: finish compressed bootstrap snapshot: %w", err)
+	}
+	cached := cachedBootstrapSnapshot{
+		freshness:        freshness,
+		proofCount:       proofSummary.ArtifactCount,
+		proofByteSize:    proofSummary.TotalByteSize,
+		proofRoot:        proofSummary.ProofRootSHA256,
+		proofGeneratedAt: proofSummary.GeneratedAt,
+		jsonBytes:        jsonBytes,
+		gzipBytes:        gzipBuffer.Bytes(),
+	}
+	if summary != nil {
+		cached.sequence = summary.HighWaterSequence
+		cached.feedChainHash = summary.FeedChainHash
+		cached.withdrawalDigest = mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs)
+		bodyDigest := sha256.Sum256(jsonBytes)
+		cached.etag = fmt.Sprintf(`W/"%s:%d:%s:%s:%s:%d:%d:%s:%s:%s"`, sourceID, cached.sequence, cached.feedChainHash, cached.withdrawalDigest, freshness, cached.proofCount, cached.proofByteSize, cached.proofRoot, cached.proofGeneratedAt.UTC().Format(time.RFC3339Nano), hex.EncodeToString(bodyDigest[:]))
+	}
+	return cached, nil
 }
 
 // handleSnapshot handles GET /snapshot — current high-water sequence and
@@ -1495,7 +1615,7 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 	requestedSource := r.URL.Query().Get("source")
 	sinceIDStr := r.URL.Query().Get("since_id")
 	if sinceIDStr == "" {
-		sinceIDStr = r.Header.Get("Last-Event-ID")
+		sinceIDStr = r.Header.Get(constants.HeaderLastEventID)
 	}
 	sinceID := int64(0)
 	if sinceIDStr != "" {
@@ -1504,10 +1624,10 @@ func (m *PublicMirrorServer) handleStream(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueTextEvent)
+	w.Header().Set(constants.HeaderCacheControl, "no-cache, no-transform")
+	w.Header().Set(constants.HeaderConnection, constants.HeaderValueKeepAlive)
+	w.Header().Set(constants.HeaderXAccelBuffering, "no")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -1726,6 +1846,27 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// fillProofSigningKey returns the segment's published key, or the mirror's
+// registered key when the segment omits it and that key's SHA-256 equals keyID.
+// The response is the only place the key is added. Stored segment bytes stay
+// as signed.
+func (m *PublicMirrorServer) fillProofSigningKey(sourceID, keyID, published string) string {
+	if published != "" {
+		return published
+	}
+	m.mu.RLock()
+	key, ok := m.keys.Registry[publicMirrorKeyRegistryID(sourceID, keyID)]
+	m.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	filled, ok := models.PublicProofSigningKeyHex(key, keyID)
+	if !ok {
+		return ""
+	}
+	return filled
+}
+
 // handleProofHead handles GET /proof-head without loading the artifact catalog.
 func (m *PublicMirrorServer) handleProofHead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1750,6 +1891,7 @@ func (m *PublicMirrorServer) handleProofHead(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "proof head not found", http.StatusNotFound)
 		return
 	}
+	head.SigningPublicKey = m.fillProofSigningKey(sourceID, head.SigningKeyID, head.SigningPublicKey)
 	m.writeJSON(w, http.StatusOK, head)
 }
 
@@ -1781,6 +1923,9 @@ func (m *PublicMirrorServer) handleProofSegments(w http.ResponseWriter, r *http.
 	}
 	if segments == nil {
 		segments = []models.PublicProofManifestSegment{}
+	}
+	for index := range segments {
+		segments[index].SigningPublicKey = m.fillProofSigningKey(segments[index].SourceID, segments[index].SigningKeyID, segments[index].SigningPublicKey)
 	}
 	m.writeJSON(w, http.StatusOK, models.PublicProofSegmentsResponse{
 		SchemaVersion: constants.PublicProofSegmentSchemaVersion,
@@ -1839,13 +1984,13 @@ func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.
 	}
 
 	if artifact.Entry != nil {
-		w.Header().Set("Content-Type", artifact.Entry.MediaType)
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", artifact.Entry.Filename))
+		w.Header().Set(constants.HeaderContentType, artifact.Entry.MediaType)
+		w.Header().Set(constants.HeaderContentDisposition, fmt.Sprintf("attachment; filename=\"%s\"", artifact.Entry.Filename))
 	} else {
-		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set(constants.HeaderContentType, constants.HeaderValueOctetStream)
 	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("Content-Length", strconv.FormatInt(artifact.ByteSize, 10))
+	w.Header().Set(constants.HeaderCacheControl, "public, max-age=31536000, immutable")
+	w.Header().Set(constants.HeaderContentLength, strconv.FormatInt(artifact.ByteSize, 10))
 	if _, err := io.CopyN(w, file, artifact.ByteSize); err != nil {
 		m.logResponseError("mirror: write proof response", err)
 	}
@@ -1926,7 +2071,7 @@ func (s *mirrorSSESubscriber) close() {
 
 // writeJSON writes a JSON response with the given status code.
 func (m *PublicMirrorServer) writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		m.logResponseError("mirror: encode JSON response", err)
@@ -1955,9 +2100,14 @@ func sseWriteRecord(w http.ResponseWriter, flusher http.Flusher, rec models.Publ
 	flusher.Flush()
 }
 
+// publicMirrorSentinelPayload is the data body of a sentinel SSE event.
+type publicMirrorSentinelPayload struct {
+	Reason string `json:"reason"`
+}
+
 // sseWriteSentinel writes a sentinel SSE event (truncated or error).
 func sseWriteSentinel(w http.ResponseWriter, flusher http.Flusher, sentinelType, reason string) {
-	payload, _ := json.Marshal(map[string]string{"reason": reason})
+	payload, _ := json.Marshal(publicMirrorSentinelPayload{Reason: reason})
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sentinelType, string(payload))
 	flusher.Flush()
 }

@@ -35,7 +35,7 @@ opendevops.ai.zerotrustdata.io instead of opendevops.ai) because cloudflared log
 authorized a different domain.
 
 Requires a Cloudflare API token with DNS edit permission for the target zone.
-Set CLOUDFLARE_API_TOKEN or pass --api-token.`,
+Set CLOUDFLARE_API_TOKEN or pass --cloudflare-api-token.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkCloudflared(); err != nil {
@@ -51,7 +51,7 @@ Set CLOUDFLARE_API_TOKEN or pass --api-token.`,
 				token = strings.TrimSpace(os.Getenv(string(constants.EnvVar.CloudflareAPIToken)))
 			}
 			if token == "" {
-				return fmt.Errorf("%w: set CLOUDFLARE_API_TOKEN or pass --api-token", constants.ErrMissingRequiredField)
+				return fmt.Errorf("%w: set CLOUDFLARE_API_TOKEN or pass --cloudflare-api-token", constants.ErrMissingRequiredField)
 			}
 
 			tunnelID, err := getTunnelID(tunnelName)
@@ -80,7 +80,7 @@ Set CLOUDFLARE_API_TOKEN or pass --api-token.`,
 	}
 
 	cmd.Flags().StringVar(&tunnelName, "name", "", "Tunnel name (required)")
-	cmd.Flags().StringVar(&apiToken, "api-token", "", "Cloudflare API token (default: CLOUDFLARE_API_TOKEN)")
+	cmd.Flags().StringVar(&apiToken, "cloudflare-api-token", "", "Cloudflare API token (default: CLOUDFLARE_API_TOKEN)")
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd

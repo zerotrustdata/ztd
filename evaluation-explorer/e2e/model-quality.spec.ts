@@ -186,6 +186,7 @@ test('shows frozen deployment specifications and filters installed artifact budg
   await expect(catalog.getByRole('link', { name: 'Large artifact' })).not.toBeVisible();
   await expect(catalog.getByRole('link', { name: 'Unknown artifact' })).not.toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
   const card = page.getByRole('article').filter({ has: page.getByRole('link', { name: 'Deployed Gemma' }) });
   await expect(card).toContainText('Q8_0');
   await expect(card).toContainText('4.00 GiB');

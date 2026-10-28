@@ -12,6 +12,7 @@ package testcmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,6 +45,10 @@ type releaseSmokeApprovalResult struct {
 	stdout          string
 	stderr          string
 	err             error
+	// executionFailed marks an answer the Gateway recorded whose governed
+	// action then failed in execution (ExitCodeActionExecutionFailed), such as
+	// a final file-state read of a file the scenario expects to be absent.
+	executionFailed bool
 }
 
 // releaseSmokeApprovalDecision is the owner's answer to one pending transaction.
@@ -96,7 +101,7 @@ func (a *releaseSmokeCLIApprovalResponder) Count() int {
 	defer a.mu.Unlock()
 	count := 0
 	for _, result := range a.results {
-		if result.err == nil {
+		if result.err == nil || result.executionFailed {
 			count++
 		}
 	}
@@ -108,7 +113,7 @@ func (a *releaseSmokeCLIApprovalResponder) Errors() []error {
 	defer a.mu.Unlock()
 	var errs []error
 	for _, result := range a.results {
-		if result.err != nil {
+		if result.err != nil && !result.executionFailed {
 			errs = append(errs, fmt.Errorf("approve transaction %s: %w", result.transactionHash, result.err))
 		}
 	}
@@ -332,9 +337,14 @@ func (a *releaseSmokeCLIApprovalResponder) answer(ctx context.Context, hash, fla
 	// The exit status is authoritative: a command that prints the success marker
 	// and then exits non-zero has failed, so it must not be counted as answered.
 	err := cmd.Run()
-	if err != nil {
+	var exitErr *exec.ExitError
+	executionFailed := errors.As(err, &exitErr) && exitErr.ExitCode() == constants.ExitCodeActionExecutionFailed
+	switch {
+	case executionFailed:
+		slog.Info("CLI answer recorded; the approved action failed in execution", "hash", hash, "flag", flag, "stderr", strings.TrimSpace(stderr.String()))
+	case err != nil:
 		slog.Error("CLI answer failed", "hash", hash, "flag", flag, "error", err, "stdout", stdout.String(), "stderr", stderr.String())
-	} else {
+	default:
 		slog.Info("CLI answer succeeded", "hash", hash, "flag", flag, "stdout", strings.TrimSpace(stdout.String()))
 	}
 	a.record(releaseSmokeApprovalResult{
@@ -342,5 +352,6 @@ func (a *releaseSmokeCLIApprovalResponder) answer(ctx context.Context, hash, fla
 		stdout:          stdout.String(),
 		stderr:          stderr.String(),
 		err:             err,
+		executionFailed: executionFailed,
 	})
 }

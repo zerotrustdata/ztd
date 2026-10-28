@@ -877,9 +877,7 @@ func TestPasskeyHandler_BindEmbeddedOperatorToWebSession(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 		var bDoc models.BoundSessionsDocumentGo
-		b, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		require.NoError(t, json.Unmarshal(b, &bDoc))
+		require.NoError(t, doc.DecodeData(&bDoc))
 		assert.Equal(t, user.ID, bDoc.UserID)
 		assert.Contains(t, bDoc.OperatorIDs, operatorID)
 		assert.Contains(t, bDoc.OperatorSessionIDs, operatorSessionID)

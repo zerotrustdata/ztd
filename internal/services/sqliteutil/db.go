@@ -21,6 +21,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // DefaultBusyTimeoutMs bounds the uninterruptible driver busy wait. Longer
@@ -42,12 +43,12 @@ type DBConfig struct {
 	// Default: DefaultBusyTimeoutMs
 	BusyTimeoutMs int
 
-	// MaxRetries is the maximum number of retry attempts for SQLITE_BUSY errors.
+	// MaxRetries is how many times a busy statement is attempted.
 	// Default: 10
 	MaxRetries int
 
 	// RetryBaseDelayMs is the base delay in milliseconds for retry backoff.
-	// Actual delay is (attempt + 1) * RetryBaseDelayMs.
+	// The delay is RetryBaseDelayMs*2^attempt, plus up to 25% jitter.
 	// Default: 50
 	RetryBaseDelayMs int
 }
@@ -99,8 +100,9 @@ type DB struct {
 // OpenDB opens (or creates) a SQLite database with best-practice settings.
 // The database file is created 0600, and SQLite gives its WAL and shared-memory
 // files the same mode; an existing database and its sidecars are tightened to
-// 0600. Callers own the parent directory and its mode.
-func OpenDB(cfg DBConfig, logger *slog.Logger) (*DB, error) {
+// 0600. Callers own the parent directory and its mode. File databases must
+// resolve through fileSvc; nil is accepted only for SQLite in-memory paths.
+func OpenDB(fileSvc fs.RuntimeFileService, cfg DBConfig, logger *slog.Logger) (*DB, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("sqliteutil: database path is required: %w", constants.ErrMissingRequiredField)
 	}
@@ -108,14 +110,18 @@ func OpenDB(cfg DBConfig, logger *slog.Logger) (*DB, error) {
 		logger = slog.Default()
 	}
 
-	if err := securePrivateDatabaseFiles(cfg.Path); err != nil {
+	if !isMemoryDatabasePath(cfg.Path) && fileSvc == nil {
+		return nil, fmt.Errorf("sqliteutil: runtime file service is required for file database: %w", constants.ErrMissingRequiredField)
+	}
+	if err := securePrivateDatabaseFiles(fileSvc, cfg.Path); err != nil {
 		return nil, err
 	}
 
 	// modernc applies _pragma parameters to every physical connection. Setting
 	// PRAGMAs through sql.DB.Exec configures only the connection it happens to
 	// acquire; later connections would keep FULL synchronization and no busy
-	// timeout. The driver does not recognize _synchronous or _busy_timeout.
+	// timeout. Every setting goes through _pragma. The driver also accepts
+	// _busy_timeout and _synchronous shorthands; this package does not use them.
 	params := url.Values{}
 	for _, pragma := range []string{
 		fmt.Sprintf("busy_timeout(%d)", cfg.BusyTimeoutMs),
@@ -245,6 +251,8 @@ func (db *DB) noteCommit() {
 // OpenReadOnlyDB opens an existing SQLite database without creating or
 // modifying the database file. SQLite's read-only mode observes the current
 // WAL state while preventing schema, migration, pruning, and write side effects.
+// The path is not checked against a RuntimeFileService and file modes are left
+// unchanged; callers pass a path they already trust.
 func OpenReadOnlyDB(cfg DBConfig, logger *slog.Logger) (*DB, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("sqliteutil: read-only database path is required: %w", constants.ErrMissingRequiredField)
@@ -331,9 +339,10 @@ func (db *DB) GetPath() string {
 	return db.path
 }
 
-// RunIncrementalVacuum runs an incremental vacuum to reclaim free pages.
+// RunIncrementalVacuum reclaims free pages. Incremental vacuum writes, so it
+// takes the writer gate like every other write.
 func (db *DB) RunIncrementalVacuum(pages int) error {
-	_, err := db.Exec(fmt.Sprintf("PRAGMA incremental_vacuum(%d)", pages))
+	_, err := db.ExecWithRetry(context.Background(), fmt.Sprintf("PRAGMA incremental_vacuum(%d)", pages))
 	if err != nil {
 		return fmt.Errorf("sqliteutil: incremental vacuum: %w", err)
 	}
@@ -444,6 +453,10 @@ func (db *DB) QueryRowWithRetry(ctx context.Context, query string, args ...inter
 		if err == nil {
 			return row
 		}
+		if ctx.Err() != nil {
+			// A fresh query on the canceled context surfaces ctx.Err() from Scan.
+			return db.QueryRowContext(ctx, query, args...)
+		}
 
 		lastRow = row
 		if IsBusyError(err) {
@@ -474,7 +487,10 @@ func IsBusyError(err error) bool {
 	return errors.As(err, &sqliteErr) && sqliteErr.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
-// IsUniqueConstraintError checks if an error is a UNIQUE constraint violation.
+// IsUniqueConstraintError reports a uniqueness violation from the SQLite driver.
+// A PRIMARY KEY collision is SQLITE_CONSTRAINT_PRIMARYKEY; a separate UNIQUE
+// column or index is SQLITE_CONSTRAINT_UNIQUE. Nonce reservation and document
+// create hit the primary-key code. NOT NULL and CHECK constraints do not match.
 func IsUniqueConstraintError(err error) bool {
 	if err == nil {
 		return false
@@ -482,7 +498,16 @@ func IsUniqueConstraintError(err error) bool {
 	if errors.Is(err, constants.ErrAlreadyExists) {
 		return true
 	}
-	return contains(err.Error(), "UNIQUE constraint failed")
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	switch sqliteErr.Code() {
+	case int(sqlite3.SQLITE_CONSTRAINT_UNIQUE), int(sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY):
+		return true
+	default:
+		return false
+	}
 }
 
 // backoff implements exponential backoff with jitter to avoid thundering herd.
@@ -505,25 +530,10 @@ func (db *DB) backoff(ctx context.Context, attempt int) error {
 	}
 }
 
-// contains is a simple string contains helper to avoid importing strings.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-// findSubstring checks if substr exists in s.
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// ExecInTxWithRetry executes a function within a transaction with automatic retry on SQLITE_BUSY.
-// The function receives the transaction and should return an error if the transaction should be rolled back.
-// If the function returns nil, the transaction is committed.
-// This handles SQLITE_BUSY errors at both the Begin() and Commit() stages.
+// ExecInTxWithRetry runs fn inside a deferred transaction and retries SQLITE_BUSY.
+// A non-nil error from fn rolls the transaction back. A nil error commits.
+// BeginTx, fn, and Commit are all retried, and a busy result runs fn again, so
+// fn must be safe to repeat.
 func (db *DB) ExecInTxWithRetry(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	if err := db.acquireWriter(ctx); err != nil {
 		return err
@@ -596,7 +606,8 @@ func (db *DB) ExecInTxWithRetry(ctx context.Context, fn func(tx *sql.Tx) error) 
 
 // ExecInImmediateTxWithRetry executes a SQLite BEGIN IMMEDIATE transaction on one connection and retries SQLITE_BUSY failures.
 // The writer gate is held for the whole call, so fn must not start another
-// gated write on db; it must do all of its work through conn.
+// gated write on db; it must do all of its work through conn. A busy result
+// runs fn again, so fn must be safe to repeat.
 func (db *DB) ExecInImmediateTxWithRetry(ctx context.Context, fn func(*sql.Conn) error) error {
 	if err := db.acquireWriter(ctx); err != nil {
 		return err

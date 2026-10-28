@@ -142,6 +142,36 @@ func TestReceiptProjectionAllowsTerminalReplacement(t *testing.T) {
 	require.Equal(t, "re-signed final stage", got.ResultSummary)
 }
 
+func TestReceiptProjectionKeepsExecutedReceiptAgainstReplayRejection(t *testing.T) {
+	store := newIntegrationEventsStore(t)
+	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
+
+	executed := sampleEventReceiptRecord(t, "projection-session")
+	require.NoError(t, store.RecordEventReceipt(executed))
+
+	// A replayed envelope carries the admitted transaction_id, so its rejection
+	// receipt must not replace the executed receipt its commitment is bound to.
+	rejected := sampleEventReceiptRecord(t, "projection-session")
+	rejected.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+	rejected.ResultSummary = "rejected: REPLAY_DETECTED"
+	rejected.EventReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+	rejected.EventReceipt.ResultSummary = rejected.ResultSummary
+	rejected.EventReceipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+	require.NoError(t, store.RecordEventReceipt(rejected))
+
+	got, err := store.GetEventReceipt(executed.TransactionID)
+	require.NoError(t, err)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.Status)
+	require.Equal(t, "completed successfully", got.ResultSummary)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.EventReceipt.GetStatus())
+	require.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED, got.EventReceipt.GetFailureCode())
+
+	// The rejection is still evidence: both writes append a chained receipt fact.
+	var facts int
+	require.NoError(t, store.db.QueryRow("SELECT count(*) FROM events WHERE type = ?", string(constants.EventOperatorReceiptRecorded)).Scan(&facts))
+	require.Equal(t, 2, facts)
+}
+
 func TestReceiptProjectionKeepsTransactionsIndependent(t *testing.T) {
 	store := newIntegrationEventsStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))

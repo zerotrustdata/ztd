@@ -539,7 +539,7 @@ func (pki *PKIAuthority) NewConsensusAppHTTPClient(appID string) (*http.Client, 
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsCfg
-	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
+	return &http.Client{Transport: transport, Timeout: httpclient.DefaultTimeout}, nil
 }
 
 // RevokeCertificate adds a certificate serial to the revocation list.
@@ -927,7 +927,7 @@ func (pki *PKIAuthority) generateRootCA(certPath string) error {
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   constants.RootCACommonName,
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 			Country:      []string{"US"},
 		},
 		NotBefore:             now.Add(-1 * time.Minute),
@@ -984,7 +984,7 @@ func (pki *PKIAuthority) generateIntermediateCA(certPath string, parentCert *x50
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   commonName,
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 			Country:      []string{"US"},
 		},
 		NotBefore:             now.Add(-1 * time.Minute),
@@ -1029,7 +1029,7 @@ func (pki *PKIAuthority) generateIntermediateCA(certPath string, parentCert *x50
 		return constants.ErrPKIPrivateKeyRequired
 	}
 	if caType == "" {
-		return fmt.Errorf("%s: %s", constants.ErrPKIUnknownCACommonName, commonName)
+		return fmt.Errorf("%w: %s", constants.ErrPKIUnknownCACommonName, commonName)
 	}
 	if err := pki.secretManager.StoreCAPrivateKey(string(caType), keyDER); err != nil {
 		return fmt.Errorf("%s %s: %w", constants.ErrPKIStorePrivateKey, caType, err)
@@ -1087,7 +1087,7 @@ func (pki *PKIAuthority) generateServiceCertWithNames(extraIPs []net.IP, extraDN
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			CommonName:   string(constants.ServiceNameOperatorGateway),
-			Organization: []string{"ztd"},
+			Organization: []string{constants.BinaryImageName},
 			Country:      []string{"US"},
 		},
 		NotBefore:             now.Add(-1 * time.Minute),

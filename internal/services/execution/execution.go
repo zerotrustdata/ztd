@@ -740,19 +740,18 @@ func (es *ExecutionService) createTerminalOutput(command string, args []string, 
 	}
 }
 
-// errorToReturnCode maps common errors to standard shell return codes
+// errorToReturnCode maps a failed start or wait to a shell status.
+// Identity comes from the exec and os sentinels (INV-ERR-06). A message that
+// only mentions "command not found" or "permission denied" stays a general
+// failure: that text is command output, not the error's cause.
 func (es *ExecutionService) errorToReturnCode(err error) int {
 	if err == nil {
 		return constants.ExitCodeSuccess
 	}
-	errStr := strings.ToLower(err.Error())
-	if strings.Contains(errStr, "executable file not found") ||
-		strings.Contains(errStr, "no such file or directory") ||
-		strings.Contains(errStr, "command not found") {
+	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
 		return constants.ExitCodeCommandNotFound
 	}
-	if strings.Contains(errStr, "permission denied") ||
-		strings.Contains(errStr, "access denied") {
+	if errors.Is(err, os.ErrPermission) {
 		return constants.ExitCodeCannotExecute
 	}
 	return constants.ExitCodeGeneral

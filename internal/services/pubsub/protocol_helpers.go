@@ -134,12 +134,17 @@ func buildResultEnvelope(
 	webSessionID string,
 	cliSessionID string,
 ) (*commonv1.GovernanceEnvelope, error) {
+	if outcomeEntry, ok := constants.Registry.Lookup(outcomeEvent); !ok {
+		return nil, fmt.Errorf("pubsub: outcome %q: %w", outcomeEvent, constants.ErrTxUnknownEventType)
+	} else if !outcomeEntry.HasTransport("pubsub") {
+		return nil, fmt.Errorf("pubsub: outcome %q: %w", outcomeEvent, constants.ErrEventTransportViolation)
+	}
 	if requestEvent != "" {
 		if err := constants.ValidateGovernedResultEnvelope(requestEvent, outcomeEvent, originatingActionType); err != nil {
 			return nil, fmt.Errorf("validate governed result envelope: %w", err)
 		}
 	} else if originatingActionType == "" {
-		return nil, fmt.Errorf("originating action type required for outcome %q", outcomeEvent)
+		return nil, fmt.Errorf("originating action type required for outcome %q: %w", outcomeEvent, constants.ErrMissingRequiredField)
 	}
 	payloadBytes, err := proto.Marshal(payload)
 	if err != nil {
@@ -260,10 +265,11 @@ func unmarshalPayload(eventType constants.EventType, payload []byte) (proto.Mess
 		constants.EventPlatformEnrollmentPersistPolicyRequested,
 		constants.EventPlatformEnrollmentCreateSessionRequested,
 		constants.EventPlatformEnrollmentRevokeRequested,
-		constants.EventPlatformEnrollmentBindConsensusRequested:
+		constants.EventPlatformEnrollmentBindConsensusRequested,
+		constants.EventPlatformEnrollmentUnbindConsensusRequested:
 		m = &commonv1.PlatformEnrollmentGovernancePayload{}
 	default:
-		return nil, fmt.Errorf("unknown event type for unmarshaling: %s", eventType)
+		return nil, fmt.Errorf("unknown event type for unmarshaling: %s: %w", eventType, constants.ErrTxPayloadDecoderMissing)
 	}
 
 	if err := proto.Unmarshal(payload, m); err != nil {

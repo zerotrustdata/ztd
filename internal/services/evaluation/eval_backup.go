@@ -81,6 +81,7 @@ type EvalRestoreReport struct {
 	Snapshots int
 	Restored  []EvalBackupFile
 	Unchanged []EvalBackupFile
+	Skipped   []EvalBackupFile
 }
 
 // evalBackupSource is one file to restore, where its verified content is
@@ -329,12 +330,12 @@ func (b *EvalBackup) commitSnapshot(ctx context.Context, destRoot string, report
 		}
 		snapshotDir = fmt.Sprintf("%s-%06d", snapshotBase, sequence)
 	}
-	manifest, err := json.MarshalIndent(EvalBackupManifest{
+	manifest, err := json.Marshal(EvalBackupManifest{
 		SchemaVersion: evalBackupManifestVersion,
 		CreatedAt:     report.CreatedAt.Format(time.RFC3339),
 		Files:         report.Files,
 		KeyChain:      report.KeyChain,
-	}, "", "  ")
+	})
 	if err == nil {
 		err = os.WriteFile(filepath.Join(snapshotDir, constants.EvaluationBackupManifestFilename), manifest, constants.PermFilePrivate)
 	}
@@ -417,22 +418,19 @@ func planEvalBackupPurge(backupDir string, relPaths []string) (*evalBackupPurge,
 		roots = append(roots, root)
 	}
 	plan := &evalBackupPurge{}
-	snapshots, err := AllEvalBackupSnapshots(backupDir)
+	loaded, _, err := loadEvalBackupSnapshots(backupDir)
 	if errors.Is(err, constants.ErrEvaluationBackupNone) {
 		return plan, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	plan.backupRoot = filepath.Dir(snapshots[0])
+	plan.backupRoot = filepath.Dir(loaded[0].dir)
 	referenced := make(map[string]struct{})
 	candidates := make(map[string]struct{})
-	for _, snapshotDir := range snapshots {
-		manifest, err := readEvalBackupManifest(snapshotDir)
-		if err != nil {
-			return nil, err
-		}
-		entry := evalBackupSnapshotPurge{dir: snapshotDir, manifest: *manifest}
+	for _, snap := range loaded {
+		manifest := snap.manifest
+		entry := evalBackupSnapshotPurge{dir: snap.dir, manifest: *manifest}
 		entry.manifest.Files = nil
 		for _, file := range manifest.Files {
 			if evalBackupPathUnder(file.Path, roots) {
@@ -494,13 +492,22 @@ func (s evalBackupSnapshotPurge) rewrite() error {
 		}
 		return nil
 	}
-	raw, err := json.MarshalIndent(s.manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("evaluation: backup purge: encode manifest for %s: %w", s.dir, err)
+	if _, err := writeEvalBackupManifestAtomic(s.dir, s.manifest); err != nil {
+		return fmt.Errorf("evaluation: backup purge: %w", err)
 	}
-	temp, err := os.CreateTemp(s.dir, ".tmp-*")
+	return nil
+}
+
+// writeEvalBackupManifestAtomic encodes manifest as compact JSON and replaces
+// the manifest in snapshotDir via temp-file + rename, returning the written byte length.
+func writeEvalBackupManifestAtomic(snapshotDir string, manifest EvalBackupManifest) (int64, error) {
+	raw, err := json.Marshal(manifest)
 	if err != nil {
-		return fmt.Errorf("evaluation: backup purge: rewrite manifest in %s: %w", s.dir, err)
+		return 0, fmt.Errorf("encode manifest for %s: %w", snapshotDir, err)
+	}
+	temp, err := os.CreateTemp(snapshotDir, ".tmp-*")
+	if err != nil {
+		return 0, fmt.Errorf("rewrite manifest in %s: %w", snapshotDir, err)
 	}
 	tempName := temp.Name()
 	_, err = temp.Write(raw)
@@ -511,13 +518,13 @@ func (s evalBackupSnapshotPurge) rewrite() error {
 		err = os.Chmod(tempName, constants.PermFilePrivate)
 	}
 	if err == nil {
-		err = os.Rename(tempName, filepath.Join(s.dir, constants.EvaluationBackupManifestFilename))
+		err = os.Rename(tempName, filepath.Join(snapshotDir, constants.EvaluationBackupManifestFilename))
 	}
 	if err != nil {
 		_ = os.Remove(tempName)
-		return fmt.Errorf("evaluation: backup purge: rewrite manifest in %s: %w", s.dir, err)
+		return 0, fmt.Errorf("rewrite manifest in %s: %w", snapshotDir, err)
 	}
-	return nil
+	return int64(len(raw)), nil
 }
 
 // evalBackupPathUnder reports whether relPath is one of roots or beneath one.
@@ -618,24 +625,79 @@ func LatestEvalBackupSnapshot(backupDir string) (string, error) {
 	return "", fmt.Errorf("%w: %s", constants.ErrEvaluationBackupNone, abs)
 }
 
+// loadedEvalSnapshot is a complete snapshot directory paired with its parsed
+// manifest and the on-disk size of its manifest file.
+type loadedEvalSnapshot struct {
+	dir           string
+	manifest      *EvalBackupManifest
+	manifestBytes int64
+}
+
+// loadEvalBackupSnapshots scans backupDir once, returning all complete
+// snapshots in creation order (oldest first) and any incomplete snapshot
+// directories whose manifest is missing or invalid. It returns
+// ErrEvaluationBackupNone when no complete snapshot exists.
+func loadEvalBackupSnapshots(backupDir string) ([]loadedEvalSnapshot, []string, error) {
+	abs, names, err := evalBackupSnapshotNames(backupDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	var complete []loadedEvalSnapshot
+	var incomplete []string
+	for _, name := range names {
+		dir := filepath.Join(abs, name)
+		manifestPath := filepath.Join(dir, constants.EvaluationBackupManifestFilename)
+		info, statErr := os.Stat(manifestPath)
+		manifest, err := readEvalBackupManifest(dir)
+		if err != nil {
+			incomplete = append(incomplete, dir)
+			continue
+		}
+		var manifestBytes int64
+		if statErr == nil {
+			manifestBytes = info.Size()
+		}
+		complete = append(complete, loadedEvalSnapshot{
+			dir:           dir,
+			manifest:      manifest,
+			manifestBytes: manifestBytes,
+		})
+	}
+	if len(complete) == 0 {
+		return nil, incomplete, fmt.Errorf("%w: %s", constants.ErrEvaluationBackupNone, abs)
+	}
+	return complete, incomplete, nil
+}
+
+// mergeEvalBackupSources returns the newest-wins union of sources across loaded
+// snapshots, sorted by path.
+func mergeEvalBackupSources(loaded []loadedEvalSnapshot) []evalBackupSource {
+	merged := make(map[string]evalBackupSource)
+	for _, snap := range loaded {
+		for _, source := range snapshotSources(snap.dir, snap.manifest) {
+			merged[source.file.Path] = source
+		}
+	}
+	sources := make([]evalBackupSource, 0, len(merged))
+	for _, source := range merged {
+		sources = append(sources, source)
+	}
+	sort.Slice(sources, func(i, j int) bool { return sources[i].file.Path < sources[j].file.Path })
+	return sources
+}
+
 // AllEvalBackupSnapshots returns all complete snapshot directories in backupDir,
 // sorted oldest first (creation order). A snapshot without a valid manifest is
 // an interrupted backup and is skipped. It returns ErrEvaluationBackupNone when
 // there are no such snapshots.
 func AllEvalBackupSnapshots(backupDir string) ([]string, error) {
-	abs, names, err := evalBackupSnapshotNames(backupDir)
+	loaded, _, err := loadEvalBackupSnapshots(backupDir)
 	if err != nil {
 		return nil, err
 	}
-	var snapshots []string
-	for _, name := range names {
-		dir := filepath.Join(abs, name)
-		if _, err := readEvalBackupManifest(dir); err == nil {
-			snapshots = append(snapshots, dir)
-		}
-	}
-	if len(snapshots) == 0 {
-		return nil, fmt.Errorf("%w: %s", constants.ErrEvaluationBackupNone, abs)
+	snapshots := make([]string, 0, len(loaded))
+	for _, snap := range loaded {
+		snapshots = append(snapshots, snap.dir)
 	}
 	return snapshots, nil
 }
@@ -680,9 +742,8 @@ func snapshotSources(snapshotDir string, manifest *EvalBackupManifest) []evalBac
 	return sources
 }
 
-// Restore restores one snapshot into the runtime tree. Existing files with
-// identical content are left alone; differing ones fail the restore before any
-// write unless overwrite is set.
+// Restore restores one snapshot into the runtime tree. Existing files are
+// skipped by default; differing ones are replaced when overwrite is set.
 func (b *EvalBackup) Restore(ctx context.Context, snapshotDir string, overwrite bool) (*EvalRestoreReport, error) {
 	snapshotDir, err := filepath.Abs(snapshotDir)
 	if err != nil {
@@ -711,58 +772,45 @@ func (b *EvalBackup) Restore(ctx context.Context, snapshotDir string, overwrite 
 // snapshot no longer lists (lost in a wipe after an older snapshot, say) is
 // still recovered, and the work is one pass over the merged set rather than
 // one restore per snapshot. Evidence removed by a Deleter is purged from the
-// backups too, so it is never restored.
+// backups too, so it is never restored. Existing files are skipped by default;
+// differing ones are replaced when overwrite is set.
 func (b *EvalBackup) RestoreAll(ctx context.Context, backupDir string, overwrite bool) (*EvalRestoreReport, error) {
 	held, err := b.sharedLock(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = held.Close() }()
-	snapshots, err := AllEvalBackupSnapshots(backupDir)
+	loaded, _, err := loadEvalBackupSnapshots(backupDir)
 	if err != nil {
 		return nil, err
 	}
-	merged := make(map[string]evalBackupSource)
-	for _, snapshotDir := range snapshots {
-		manifest, err := readEvalBackupManifest(snapshotDir)
-		if err != nil {
-			return nil, err
-		}
-		for _, source := range snapshotSources(snapshotDir, manifest) {
-			merged[source.file.Path] = source
-		}
-	}
-	sources := make([]evalBackupSource, 0, len(merged))
-	for _, source := range merged {
-		sources = append(sources, source)
-	}
-	sort.Slice(sources, func(i, j int) bool { return sources[i].file.Path < sources[j].file.Path })
+	sources := mergeEvalBackupSources(loaded)
 	report, err := b.restoreSources(ctx, sources, overwrite)
 	if err != nil {
 		return nil, err
 	}
-	report.SnapshotDir = filepath.Dir(snapshots[0])
-	report.Snapshots = len(snapshots)
+	report.SnapshotDir = filepath.Dir(loaded[0].dir)
+	report.Snapshots = len(loaded)
 	return report, nil
 }
 
-// restoreSources writes the sources into the runtime tree as the runtime held
-// them: every record under a sealed root is opened with its snapshot's vault
-// and written through the evidence file service, sealing it under the runtime
-// vault whatever vault the snapshot was taken under; files outside the sealed
-// roots are written back byte for byte. Content is read, verified against its
-// digest, and opened one file at a time, so memory stays near one file. Every
-// source is read and opened before the first write, so a corrupt backup, a key
-// chain the key store cannot open, or a record its key chain does not
-// authenticate changes nothing.
-func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSource, overwrite bool) (*EvalRestoreReport, error) {
+// evalRestorePlan holds the verified classification of sources against the
+// runtime tree before any write takes place.
+type evalRestorePlan struct {
+	wouldRestore []evalBackupSource
+	unchanged    []EvalBackupFile
+	conflicts    []evalBackupSource
+	totalBytes   int64
+}
+
+// planRestoreSources reads, hash-checks, and opens every source under its
+// snapshot's key chain, then compares the verified content against the runtime
+// tree without writing anything.
+func (b *EvalBackup) planRestoreSources(ctx context.Context, sources []evalBackupSource, vaults map[string]EvidenceVault) (*evalRestorePlan, error) {
 	if b.evidence == nil {
 		return nil, fmt.Errorf("evaluation: restore: %w", constants.ErrEvaluationEvidenceVaultRequired)
 	}
-	vaults := make(map[string]EvidenceVault)
-	report := &EvalRestoreReport{}
-	var pending []evalBackupSource
-	var conflicts []EvalBackupFile
+	plan := &evalRestorePlan{}
 	var unopenable []string
 	for _, source := range sources {
 		if err := ctx.Err(); err != nil {
@@ -776,25 +824,55 @@ func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSou
 		if err != nil {
 			return nil, err
 		}
+		plan.totalBytes += source.file.Size
 		same, exists, err := b.matchesExisting(ctx, source.file.Path, content)
 		if err != nil {
 			return nil, err
 		}
 		switch {
 		case exists && same:
-			report.Unchanged = append(report.Unchanged, source.file)
-		case exists && !overwrite:
-			conflicts = append(conflicts, source.file)
+			plan.unchanged = append(plan.unchanged, source.file)
+		case exists:
+			plan.conflicts = append(plan.conflicts, source)
 		default:
-			pending = append(pending, source)
+			plan.wouldRestore = append(plan.wouldRestore, source)
 		}
 	}
 	if len(unopenable) > 0 {
 		return nil, fmt.Errorf("evaluation: restore: %d file(s) do not authenticate under the key chain of the snapshot that holds them (%s); delete the runs or campaigns that hold them: %w",
 			len(unopenable), evalBackupPathSample(unopenable), constants.ErrEvaluationBackupEvidenceUnopenable)
 	}
-	if len(conflicts) > 0 {
-		return nil, evalBackupConflictError(conflicts)
+	return plan, nil
+}
+
+// restoreSources writes the sources into the runtime tree as the runtime held
+// them: every record under a sealed root is opened with its snapshot's vault
+// and written through the evidence file service, sealing it under the runtime
+// vault whatever vault the snapshot was taken under; files outside the sealed
+// roots are written back byte for byte. Content is read, verified against its
+// digest, and opened one file at a time, so memory stays near one file. Every
+// source is read and opened before the first write, so a corrupt backup, a key
+// chain the key store cannot open, or a record its key chain does not
+// authenticate changes nothing.
+func (b *EvalBackup) restoreSources(ctx context.Context, sources []evalBackupSource, overwrite bool) (*EvalRestoreReport, error) {
+	vaults := make(map[string]EvidenceVault)
+	plan, err := b.planRestoreSources(ctx, sources, vaults)
+	if err != nil {
+		return nil, err
+	}
+	pending := make([]evalBackupSource, 0, len(plan.wouldRestore)+len(plan.conflicts))
+	pending = append(pending, plan.wouldRestore...)
+	report := &EvalRestoreReport{
+		Unchanged: plan.unchanged,
+	}
+	if overwrite {
+		pending = append(pending, plan.conflicts...)
+		sort.Slice(pending, func(i, j int) bool { return pending[i].file.Path < pending[j].file.Path })
+	} else if len(plan.conflicts) > 0 {
+		for _, source := range plan.conflicts {
+			report.Skipped = append(report.Skipped, source.file)
+		}
+		sort.Slice(report.Skipped, func(i, j int) bool { return report.Skipped[i].Path < report.Skipped[j].Path })
 	}
 	for _, source := range pending {
 		if err := ctx.Err(); err != nil {
@@ -904,15 +982,6 @@ func (b *EvalBackup) matchesExisting(ctx context.Context, relPath string, want e
 		return false, true, fmt.Errorf("evaluation: restore: read existing %s: %w", relPath, err)
 	}
 	return bytes.Equal(current, want.data), true, nil
-}
-
-func evalBackupConflictError(conflicts []EvalBackupFile) error {
-	paths := make([]string, 0, len(conflicts))
-	for _, file := range conflicts {
-		paths = append(paths, file.Path)
-	}
-	return fmt.Errorf("evaluation: restore: %d file(s) differ from the backup (%s); pass --overwrite to replace them: %w",
-		len(conflicts), evalBackupPathSample(paths), constants.ErrEvaluationBackupConflict)
 }
 
 // evalBackupPathSample names the first evalBackupConflictSample paths and

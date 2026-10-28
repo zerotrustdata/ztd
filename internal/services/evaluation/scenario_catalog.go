@@ -43,7 +43,7 @@ type ScenarioArtifacts struct {
 
 // DefaultSuiteScenarioCount is the number of scenarios in the built-in default
 // suite.
-const DefaultSuiteScenarioCount = 27
+const DefaultSuiteScenarioCount = 35
 
 // buildSuiteCatalog materializes one suite's blueprints into a catalog and its
 // content-addressed fixture artifacts, preserving authored workflow order. Every
@@ -102,24 +102,39 @@ func LoadScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]Scenar
 const SmokeSuiteID = "smoke-suite"
 
 // SmokeGateScenarioCount is the number of discriminative scenarios in Tier 1 screening.
-const SmokeGateScenarioCount = 5
+const SmokeGateScenarioCount = 10
 
-// SmokeGateScenarioIDs lists the 5 high-discriminative scenarios for Tier 1 screening.
-var SmokeGateScenarioIDs = []string{
-	"instruction-exact-format",
-	"tool-select-file-read",
-	"tech-error-diagnosis",
-	"security-policy-deny-delete",
-	"recovery-tool-failure",
+// SmokeGateScenarioIDs returns the Tier 1 screening scenario IDs. A rollout
+// smoke gate passes a model whose smoke run completes and verifies, so the set
+// exercises every role, every trajectory policy, and each grading path a full
+// run depends on (exact and leading labels, JSON fields, judged criteria,
+// history retrieval, tool arguments, guided recovery, governed denial, and
+// file state). Within that coverage it keeps the scenarios that best separated
+// models in the eval-init campaigns. It returns a fresh slice on every call, so
+// a caller cannot mutate the shared smoke selection.
+func SmokeGateScenarioIDs() []string {
+	return []string{
+		"instruction-exact-format",
+		"tech-log-parse",
+		"verify-contradiction",
+		"route-primary-ownership",
+		"tool-select-file-read",
+		"tool-select-investigation",
+		"tool-arg-file-path",
+		"recovery-tool-failure",
+		"recovery-error-guided-retry",
+		"security-policy-deny-delete",
+	}
 }
 
 // smokeSuiteBlueprints selects the smoke scenarios from the default suite.
 func smokeSuiteBlueprints() []ScenarioBlueprint {
-	smokeIDs := make(map[string]struct{}, len(SmokeGateScenarioIDs))
-	for _, id := range SmokeGateScenarioIDs {
+	ids := SmokeGateScenarioIDs()
+	smokeIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
 		smokeIDs[id] = struct{}{}
 	}
-	blueprints := make([]ScenarioBlueprint, 0, len(SmokeGateScenarioIDs))
+	blueprints := make([]ScenarioBlueprint, 0, len(ids))
 	for _, blueprint := range scenarioBlueprints() {
 		if _, ok := smokeIDs[blueprint.ScenarioID]; ok {
 			blueprints = append(blueprints, blueprint)
@@ -128,10 +143,10 @@ func smokeSuiteBlueprints() []ScenarioBlueprint {
 	return blueprints
 }
 
-// BuildSmokeGateScenarioCatalog materializes the 5-scenario screening catalog
+// BuildSmokeGateScenarioCatalog materializes the screening catalog
 // and its content-addressed fixture artifacts.
 func BuildSmokeGateScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]ScenarioArtifacts, error) {
-	return buildSuiteCatalog(&compliancev1.VersionedReference{Id: SmokeSuiteID, Version: DefaultSuiteVersion}, smokeSuiteBlueprints())
+	return buildSuiteCatalog(&compliancev1.VersionedReference{Id: SmokeSuiteID, Version: SmokeSuiteVersion}, smokeSuiteBlueprints())
 }
 
 // LoadSmokeGateScenarioCatalog returns the validated built-in smoke suite catalog.
@@ -146,16 +161,16 @@ func LoadSmokeGateScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[stri
 	return catalog, artifacts, nil
 }
 
-// ValidateSmokeGateScenarioCatalog verifies the built-in 5-scenario smoke suite.
+// ValidateSmokeGateScenarioCatalog verifies the built-in smoke suite.
 func ValidateSmokeGateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog, artifacts map[string]ScenarioArtifacts) error {
 	if catalog == nil || catalog.GetCatalogRef() == nil {
 		return fmt.Errorf("evaluation: validate smoke scenario catalog: %w", constants.ErrMissingRequiredField)
 	}
-	if catalog.GetCatalogRef().GetId() != SmokeSuiteID || catalog.GetCatalogRef().GetVersion() != DefaultSuiteVersion {
+	if catalog.GetCatalogRef().GetId() != SmokeSuiteID || catalog.GetCatalogRef().GetVersion() != SmokeSuiteVersion {
 		return fmt.Errorf("evaluation: validate smoke scenario catalog: catalog identity: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	if len(catalog.GetScenarios()) != SmokeGateScenarioCount {
-		return fmt.Errorf("evaluation: validate smoke scenario catalog: expected %d scenarios, got %d", SmokeGateScenarioCount, len(catalog.GetScenarios()))
+		return fmt.Errorf("evaluation: validate smoke scenario catalog: %w: expected %d scenarios, got %d", constants.ErrEvaluationScenarioContractInvalid, SmokeGateScenarioCount, len(catalog.GetScenarios()))
 	}
 	return ValidateScenarioCatalog(catalog, artifacts)
 }
@@ -205,30 +220,30 @@ func ValidateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog, artifact
 		}
 		key := scenario.GetScenarioId() + "@" + scenario.GetScenarioVersion()
 		if _, exists := seen[key]; exists {
-			return fmt.Errorf("evaluation: validate scenario catalog: duplicate scenario %s", key)
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: duplicate scenario %s", constants.ErrEvaluationScenarioContractInvalid, key)
 		}
 		seen[key] = struct{}{}
 		if scenario.GetCategory() == evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_UNSPECIFIED {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s has unspecified category", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s has unspecified category", constants.ErrEvaluationScenarioContractInvalid, scenario.GetScenarioId())
 		}
 		if scenario.GetPublicDescription() == "" {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s missing public description", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s missing public description", constants.ErrEvaluationScenarioContractInvalid, scenario.GetScenarioId())
 		}
 		if scenario.GetGradingMethod() == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_UNSPECIFIED {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s has unspecified grading method", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s has unspecified grading method", constants.ErrEvaluationScenarioContractInvalid, scenario.GetScenarioId())
 		}
 		if err := validatePublicScenarioCriteria(scenario); err != nil {
-			return fmt.Errorf("evaluation: validate scenario catalog: %w: %v", constants.ErrEvaluationScenarioContractInvalid, err)
+			return fmt.Errorf("evaluation: validate scenario catalog: %w", err)
 		}
 		if scenario.GetInputFixtureRef() == nil || scenario.GetGoldCriteriaRef() == nil {
-			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s missing fixture references", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: scenario %s missing fixture references", constants.ErrMissingRequiredField, scenario.GetScenarioId())
 		}
 		if _, err := scenarioEligibleRoles(scenario); err != nil {
 			return fmt.Errorf("evaluation: validate scenario catalog: %w", err)
 		}
 		pair, ok := artifacts[scenario.GetScenarioId()]
 		if !ok {
-			return fmt.Errorf("evaluation: validate scenario catalog: missing artifacts for scenario %s", scenario.GetScenarioId())
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: missing artifacts for scenario %s", constants.ErrMissingRequiredField, scenario.GetScenarioId())
 		}
 		if err := validateScenarioArtifactBinding(scenario.GetInputFixtureRef(), pair.Input); err != nil {
 			return fmt.Errorf("evaluation: validate scenario catalog: scenario %s input fixture: %w", scenario.GetScenarioId(), err)
@@ -276,10 +291,30 @@ func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, c
 		GoldCriteriaRef:           goldArtifact.Reference,
 		TrajectoryPolicy:          blueprint.TrajectoryPolicy,
 		TribunalCommands:          blueprint.TribunalCommands,
+		ExcludeWhenL2Enforced:     scenarioRequiresL2(blueprint),
 		PromptHint:                publicPromptHint(blueprint.Gold.PromptHint),
 		PublicCriteria:            publicCriteria,
 		PublicToolScoreDimensions: publicToolScoreDimensionsForBlueprint(blueprint),
 	}, ScenarioArtifacts{Input: inputArtifact, Gold: goldArtifact}, nil
+}
+
+// scenarioRequiresL2 derives frozen posture eligibility from the action
+// classification used by governance.L2Enforced. Required state-changing tools
+// and expected successful/error seed actions are excluded under L2-enforcing
+// postures. Expected denials and refusals remain scoreable.
+func scenarioRequiresL2(blueprint ScenarioBlueprint) bool {
+	for _, tool := range blueprint.ExpectedTools {
+		if constants.ActionTypeMcpCall.ChangesState(tool) {
+			return true
+		}
+	}
+	for _, call := range blueprint.Input.Seed.ToolCalls {
+		if call.Outcome != scenarioSeedDeny && call.Outcome != scenarioSeedRefusal &&
+			constants.ActionTypeMcpCall.ChangesState(call.ToolName) {
+			return true
+		}
+	}
+	return false
 }
 
 // publicPromptHint projects the private hint to its public form. Values are
@@ -317,14 +352,14 @@ func validateScenarioArtifactBinding(reference *compliancev1.ComplianceEvidenceR
 
 func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDefinition) error {
 	expected := map[evalv1.EvaluationScenarioCategory]int{
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 4,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 5,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION:        4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT:         3,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    4,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    5,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION:    3,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          2,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       3,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              3,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       8,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE:        1,
 	}
 	counts := make(map[evalv1.EvaluationScenarioCategory]int, len(expected))
@@ -333,7 +368,7 @@ func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDe
 	}
 	for category, want := range expected {
 		if counts[category] != want {
-			return fmt.Errorf("evaluation: validate scenario catalog: category %s expected %d scenarios, got %d", category.String(), want, counts[category])
+			return fmt.Errorf("evaluation: validate scenario catalog: %w: category %s expected %d scenarios, got %d", constants.ErrEvaluationScenarioContractInvalid, category.String(), want, counts[category])
 		}
 	}
 	return nil

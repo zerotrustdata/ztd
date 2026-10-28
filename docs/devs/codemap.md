@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -67,6 +67,7 @@ Defines package and runtime ownership for the ztd repository. The current workin
   - [Test commands (`INV-TESTMAP`)](#test-commands-inv-testmap)
 - [Owned surfaces](#owned-surfaces)
   - [Repository structure](#repository-structure)
+  - [Assignable code surfaces and agent boundaries](#assignable-code-surfaces-and-agent-boundaries)
   - [Process entry](#process-entry)
   - [CLI packages](#cli-packages)
   - [Runtime modes](#runtime-modes)
@@ -82,6 +83,7 @@ Defines package and runtime ownership for the ztd repository. The current workin
   - [Build and validation](#build-and-validation)
 - [Procedures](#procedures)
   - [Find an owner](#find-an-owner)
+  - [Identify and assign an agent work boundary](#identify-and-assign-an-agent-work-boundary)
   - [Confirm the Cobra inventory](#confirm-the-cobra-inventory)
   - [Confirm a runtime mode](#confirm-a-runtime-mode)
   - [Confirm a generator before editing output](#confirm-a-generator-before-editing-output)
@@ -98,6 +100,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | :--- | :--- |
 | INV-MAP-01 | Package and runtime ownership MUST be maintained in this file. Coding invariants MUST stay in [Developer Guidelines](devs.md). Test selection, fixtures, race, coverage, and CI MUST stay in [Testing Guide](tests.md). Documentation audit, catalog, and generation policy MUST stay in [Documentation Guide](docs.md). Release procedure MUST stay in [Release Process](release_process.md). Diagnostics and recovery MUST stay in [Troubleshooting Guide](troubleshooting.md). This file MUST NOT duplicate those topics. |
 | INV-MAP-02 | A mapped owner MUST be a repository-relative path that exists in the tree. A claim the tree no longer supports MUST be removed in the same change. CLI flags MUST be read from `./ztd <command> --help` (`INV-ENV-03`). |
+| INV-MAP-03 | Repository surfaces MUST be partitioned into discrete, non-overlapping assignable domains for agent delegation and CI/CD lifecycle management. An agent assigned to an explicit surface MUST NOT modify files outside its assigned boundary. Overlapping file modifications between concurrent agents or tasks are prohibited to prevent merge conflicts, inconsistent state, and cache thrashing. |
 
 ### Mode separation (`INV-MODE`)
 
@@ -142,6 +145,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `internal/ollama/` | Minimal HTTP client for Ollama model-maintenance endpoints. |
 | `internal/infra/cloudflaredns/` | Cloudflare DNS client. |
 | `internal/pkg/certutil/`, `internal/pkg/ssh/` | Certificate and SSH helpers. |
+| `internal/fileidentity/`, `internal/llamacpp/` | Binary and file identity hashing, local llama.cpp bindings. |
 | `internal/buildinfo/`, `internal/exitcode/`, `internal/httpclient/`, `internal/jsonschema/`, `internal/marshaler/`, `internal/pathutil/`, `internal/response/`, `internal/security/`, `internal/testutil/`, `internal/timesvc/`, `internal/uuid/`, `internal/certs/` | Shared build metadata, exit handling, HTTP, schema validation, serialization, path utilities, responses, security helpers, test infrastructure, time, UUIDs, and certificates. |
 | `protocol/` | Protobuf schemas, generated bindings, JSON registries, model schemas, conformance tests, vectors, and protocol documentation. |
 | `test/` | Cross-package integration tests, `test/fixtures/`, and `test/e2e/`. |
@@ -150,12 +154,30 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `ztd-adapter/` | Audited browser adapter and deterministic contract pack for generated observe frontends. |
 | `evaluation-explorer/` | Evaluation explorer SPA; build artifacts embedded in `internal/services/gateway/explorer/static`. |
 | `examples/` | Runnable Go platform examples, external console app, and MCP client configuration templates. |
+| `demos/` | End-to-end multi-agent scenario demonstrations (e.g. `demos/zero-trust-paper-company/`). |
+| `deploy/` | Reference infrastructure deployment configurations (e.g. `deploy/cloud_gateway/`). |
+| `claude-plugin/` | Claude Code plugin: marketplace hooks, scripts, skills, and validation tests. |
 | `release-evidence/` | Git-ignored local output of `ztd compliance release-prepare` (`release-evidence/<version>/report-bundle/`). Not committed; procedure: [Release Process](release_process.md). |
 | `docs/` | Architecture, guides, references, developer docs, and release notes. |
 | `scripts/` | Validation, generation, release, onboarding, and build support scripts. Host lifecycle entry points are root Makefile targets (`quickstart`, `up`, `up-public`, `gw`, `gw-public`, `operator`, `status`, `down`). `scripts/configure-gateway-lan.ps1` is the Windows-to-WSL Gateway LAN helper. `scripts/ci/` holds onboarding smoke and operator deploy lifecycle workflows. Catalog: [Automation Scripts](../architecture/scripts.md). |
 | `website/` | Static site generator and Cloudflare Worker packaging. Source overview is root `README.md`. |
 | `vendor/` | Third-party Go modules. Not a ztd product owner. |
 | `Makefile` | Repository build and host lifecycle orchestration. |
+
+### Assignable code surfaces and agent boundaries
+
+To enable deterministic multi-agent delegation, parallel execution without merge conflicts, and automated CI/CD lifecycle operations, repository paths are partitioned into eight discrete assignable surfaces (`INV-MAP-03`). Each surface defines strict path boundaries, authorized agent roles, work scopes, and canonical validation commands:
+
+| Surface | Assigned paths | Authorized agent role | Work scope & invariants | Verification command |
+| :--- | :--- | :--- | :--- | :--- |
+| **Core Platform & CLI** (`surface-core-go`) | `cmd/ztd/`, `internal/cli/`, `internal/services/` (excluding gateway static embeds and `internal/services/evaluation/`), `internal/config/`, `internal/constants/` (excluding generated files), `internal/fileidentity/`, `internal/governance/`, `internal/infra/`, `internal/llamacpp/`, `internal/models/`, `internal/netutil/`, `internal/paths/`, `internal/pkg/`, `internal/security/`, `internal/timesvc/`, `internal/uuid/` | Core Platform Engineer / Platform Agent | Core Go execution, HTTP routing, PKI, SQLite queries/schema, storage, CLI flags, process lifecycle, runtime file service, and daemon logic. Bounded to Go backend sources. | `./ztd test unit`, `./ztd test integration --pkg <package>` |
+| **Protocol & Serialization Contracts** (`surface-protocol`) | `protocol/proto/ztd/`, `protocol/constants/`, `protocol/models/`, `protocol/schemas/`, `protocol/vectors/`, `protocol/conformance/`, `protocol/node/`, `internal/tools/constgen/`, `buf.gen.yaml`, `protocol/node/buf.gen.yaml` | Protocol & Code Generation Auditor | Canonical Protobuf schemas, JSON constant registries, generated Go and TypeScript bindings, doctrine definitions, wire models, and cross-language conformance vectors. Hand edits restricted to source `.proto` and JSON registries (`INV-GEN-01`, `INV-PROTO-01`). | `make proto-generate && make constants-check && make doctrines-validate` |
+| **Documentation, Guides & References** (`surface-docs`) | `docs/devs/`, `docs/architecture/`, `docs/core/`, `docs/guides/`, `docs/reference/`, `docs/release_notes/`, `protocol/docs/`, `README.md`, `CHANGELOG.md`, `.github/CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, `EARLY_TESTERS.md`, `THIRD_PARTY_NOTICES.md` | Release Notes & Documentation Auditor / Tech Writer Agent | Platform architecture specifications, developer guidelines, quick starts, release notes, changelog indexing, contributor guidance, and agent operational instructions. Formatting strictly governed by `docs/devs/docs.md`. | Link verification, `make doctrines-validate`, `make third-party-notices-check`, `docs/devs/docs.md` audit checklist |
+| **Frontends, Adapters & Web Distribution** (`surface-frontend`) | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Frontend Embed & Web Asset Builder | Browser SPAs (React + TypeScript + Vite), observe-frontend contract pack, Cloudflare Worker + Astro website, and Gateway-embedded production asset builds. Hand edits in frontend source trees; static embed trees refreshed exclusively via build targets (`INV-REL-VER-06`, `INV-REL-VER-07`, `INV-DOC-GEN-04`, `INV-DOC-GEN-06`). | `make console-lint console-test console-embed-check && make explorer-lint explorer-test explorer-embed && make website-test website-build` |
+| **Evaluation, Conformance & Benchmarks** (`surface-eval`) | `eval/`, `internal/services/evaluation/`, `internal/cli/cmd/eval/`, `examples/eval/` | Evaluation & Benchmark Engineer / Eval Qualification Agent | Evaluation campaign schemas, test scenarios, benchmark datasets, model tournament logic, cross-process eval loop qualification, and governance conformance runner (`INV-REL-VER-05`). | `./ztd test eval-loop`, `./ztd test conformance-loop` |
+| **Integrations, Plugins & Examples** (`surface-examples`) | `examples/` (`examples/external-console/`, `examples/governance-envelope/`, `examples/mcp-client-configs/`, `examples/workload-identity/`), `demos/`, `claude-plugin/` | Integrations & Plugins Agent | Standalone runnable reference code, Claude Code integration hooks and skills, external client configurations, and sample application demonstrations. | `make claude-plugin-test`, targeted example execution |
+| **Release Orchestration, CI/CD & Compliance Evidence** (`surface-release-ci`) | `VERSION`, `Makefile`, `.github/workflows/`, `scripts/`, `internal/tools/versionsync/`, `internal/tools/ztdbinaries/`, `internal/tools/treehash/`, `release-evidence/` | Lead Release Orchestrator / Version Synchronizer / Compliance Evidence Generator / Smoke Runner | Platform version synchronization, GitHub Actions workflow definitions, release verification and preflight scripts, smoke test harness orchestration, and signed compliance bundle generation (`INV-REL-DUTY`, `INV-REL-VER`, `INV-REL-COMP`, `INV-REL-SMOKE`). | `make version-sync-check && make test-release-scripts && ./ztd test release-smoke && ./ztd compliance release-prepare` |
+| **Test Suites & Fixtures** (`surface-tests`) | `test/` (`test/e2e/`, `test/fixtures/`, `test/capacity/`), `internal/tools/chaos/` | Quality & Test Engineer | Cross-package Tier 2 integration suites, Tier 3 e2e suites, test fixtures, fault injection, and chaos harnesses. | `./ztd test integration`, `./ztd test e2e`, `./ztd test chaos` |
 
 ### Process entry
 
@@ -410,7 +432,7 @@ In-depth test rules reside in [Testing Guide](tests.md).
 | `./ztd test integration` | 2 | `integration` build tag. Cross-package suites in `test/`. Reusable setup in `test/fixtures/`. |
 | `./ztd test e2e` | 3 | `e2e` build tag. Tests in `test/e2e/`. Expects an already running platform. |
 | `./ztd test coverage` | | Coverage entry in `internal/cli/cmd/test/test.go`. Report layout: [Testing Guide](tests.md). |
-| `./ztd test lint` | | CLI lint entry. Repository lint target is `make lint`. |
+| `./ztd test lint` | | CLI lint entry. Prefers the Go bin dir golangci-lint and offers `make golangci-lint-install` when it is missing or stale. Repository lint target is `make lint`. |
 | `./ztd test chaos` | | Chaos command in `internal/cli/cmd/test/chaos.go`. Engine: `internal/tools/chaos/`. |
 | `./ztd test summary` | | Reads chaos summary from test vault. |
 | `./ztd test public-loop` | | Provider-free public-feed qualification. Stays in `testcmd` (`INV-PKG-02`). |
@@ -447,6 +469,13 @@ The Go tools under `internal/tools/` are catalogued in [Automation Scripts](../a
 1. Start with the table in [Owned surfaces](#owned-surfaces). Open the repository-relative path in the corresponding row.
 2. If the question is a coding rule, consult [Developer Guidelines](devs.md). If it concerns test execution or fixtures, consult [Testing Guide](tests.md). If it concerns failure triage, consult [Troubleshooting Guide](troubleshooting.md).
 3. Confirm CLI flags with `./ztd <command> --help` before documenting (`INV-MAP-02`).
+
+### Identify and assign an agent work boundary
+
+1. When orchestrating multi-agent tasks, release preparation, or CI/CD pipelines, identify the target assignable surface from [Assignable code surfaces and agent boundaries](#assignable-code-surfaces-and-agent-boundaries).
+2. Constrain the subagent's role, instructions, and workspace path boundaries strictly to that surface. Subagents MUST be instructed not to inspect or mutate files outside their assigned scope (`INV-MAP-03`).
+3. For multi-agent releases (governed by [Release Process](release_process.md)), assign tasks across distinct surfaces to run in parallel without risk of merge collision or cache invalidation.
+4. Run the surface's canonical verification command upon subagent completion before accepting deliverables into the coordinating agent's context.
 
 ### Confirm the Cobra inventory
 
@@ -491,6 +520,7 @@ make swagger-generate
 
 ## Anti-patterns
 
+- Assigning an agent a monolithic or uncoordinated task spanning overlapping assignable surfaces, or allowing subagents to mutate files outside their assigned boundary (`INV-MAP-03`).
 - Pasting a coding, filesystem, dependency-construction, or native-tool essay that already has an ID in [Developer Guidelines](devs.md) (`INV-MAP-01`, `INV-MCP-03`).
 - Copying the `RegisterNativeTools` list into this file or another document (`INV-MCP-03`).
 - Calling `ZtdoService` the embedded substrate, or moving the embedded document owner out of `internal/services/gateway/embedded/` (`INV-MODE-01`, `INV-MODE-02`).

@@ -355,7 +355,7 @@ func (w *L5Actuator) buildInitialReceipt(ctx context.Context, vt *VerifiedTransa
 		EventType:                  vt.Envelope.EventType,
 		ActionType:                 vt.Envelope.ActionType,
 		Status:                     operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-		ResultSummary:              "executing",
+		ResultSummary:              string(constants.ExecutionStatusExecuting),
 		StateRootBefore:            stateBefore,
 		ExecutedAtUnixMs:           time.Now().UnixMilli(),
 		SignerKeyId:                w.KeyID,
@@ -514,6 +514,10 @@ func SignatureDigest(signatures []string) string {
 // opaque in an INFERENCE prompt, where the model reads the token and never its
 // value; in any other action it fails the payload, since the handler would act
 // on the token text instead of the value it stands for.
+//
+// The payload is the action's protobuf message. Tokens are restored in the
+// decoded message, which is re-marshaled only when a field changed; replacing
+// a token in the wire bytes would corrupt the length-delimited field around it.
 func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) error {
 	if cmdMsg == nil {
 		return nil
@@ -522,8 +526,13 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 	if len(p) == 0 {
 		return nil
 	}
+	msg, err := DecodePayloadForAction(vt.ActionType, p)
+	if err != nil {
+		w.Logger.Error("Fail-closed: Failed to decode payload for rehydration", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
+		return fmt.Errorf("%w: decode payload: %w", constants.ErrL5ActuatorRehydrate, err)
+	}
 	if w.Scrubbing == nil {
-		if scrubbing.ContainsToken(p) {
+		if scrubbing.MessageContainsToken(msg) {
 			w.Logger.Error("Fail-closed: payload holds a UEI token and no scrubbing service is configured", string(constants.ConnectionStateError), constants.ErrScrubbingTokenUnresolved, "message_id", vt.Envelope.Id)
 			return fmt.Errorf("%w: no scrubbing service: %w", constants.ErrL5ActuatorRehydrate, constants.ErrScrubbingTokenUnresolved)
 		}
@@ -533,10 +542,18 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 	if vt.ActionType == constants.ActionTypeInference {
 		foreign = scrubbing.ForeignTokenOpaque
 	}
-	rehydrated, err := w.Scrubbing.RehydratePayload(ctx, p, foreign)
+	changed, err := w.Scrubbing.RehydrateMessage(ctx, msg, foreign)
 	if err != nil {
 		w.Logger.Error("Fail-closed: Failed to rehydrate payload", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, err)
+	}
+	if !changed {
+		return nil
+	}
+	rehydrated, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
+	if err != nil {
+		w.Logger.Error("Fail-closed: Failed to marshal rehydrated payload", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
+		return fmt.Errorf("%w: marshal payload: %w", constants.ErrL5ActuatorRehydrate, err)
 	}
 	cmdMsg.SetPayload(rehydrated)
 	return nil
@@ -549,7 +566,7 @@ func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.Ev
 	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	if execErr != nil {
 		status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), "failed", classifyReceiptFailure(execErr), execErr)
+		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), string(constants.ExecutionStatusFailed), classifyReceiptFailure(execErr), execErr)
 	} else {
 		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest, eventReceiptListSummary)
 	}
@@ -598,9 +615,9 @@ func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, infer
 	case eventReceiptListSummary != "":
 		return eventReceiptListSummary
 	case summary == "":
-		return "completed"
+		return string(constants.ExecutionStatusCompleted)
 	case !w.scrubberActive():
-		return "completed"
+		return string(constants.ExecutionStatusCompleted)
 	default:
 		return w.Scrubbing.ScrubText(ctx, summary)
 	}
@@ -711,6 +728,8 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND
 	case errors.Is(execErr, constants.ErrInferenceProviderResponseInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID
+	case errors.Is(execErr, constants.ErrInferenceProviderStreamError):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR
 	case errors.Is(execErr, constants.ErrInferenceGenerationOptionsInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID
 	case errors.Is(execErr, constants.ErrInferenceCapabilityUnsupported):
@@ -731,7 +750,8 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
 	case errors.Is(execErr, constants.ErrInferenceCampaignBindingInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
-	case errors.Is(execErr, constants.ErrScrubbingTokenUnresolved),
+	case errors.Is(execErr, constants.ErrL5ActuatorRehydrate),
+		errors.Is(execErr, constants.ErrScrubbingTokenUnresolved),
 		errors.Is(execErr, constants.ErrScrubbingKeyCollision):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
 	default:
@@ -852,14 +872,6 @@ func (w *L5Actuator) signReceiptPersistenceAttestation(receipt *operatorv1.Event
 	}
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(w.SigningKey, payload))
 	return attestation, nil
-}
-
-func SignerPublicKey(keyID string) (ed25519.PublicKey, error) {
-	decoded, err := hex.DecodeString(keyID)
-	if err != nil || len(decoded) != ed25519.PublicKeySize {
-		return nil, constants.ErrTrustedSignerKeyNotFound
-	}
-	return ed25519.PublicKey(decoded), nil
 }
 
 func DeterministicStageActionType(receipt *operatorv1.EventReceipt) (string, error) {

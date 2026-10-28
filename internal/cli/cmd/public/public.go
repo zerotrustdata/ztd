@@ -67,7 +67,7 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 			if strings.TrimSpace(sourceID) == "" {
 				return constants.ErrPublicFeedSourceIDRequired
 			}
-			if err := validatePublicMirrorOrigin(mirrorOrigin); err != nil {
+			if err := gateway.ValidatePublicMirrorOrigin(mirrorOrigin); err != nil {
 				return err
 			}
 			cfg, err := configLoader("")
@@ -79,58 +79,14 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			for _, relPath := range []string{constants.PublicFeedExportConfigPath, constants.PublicFeedSigningKeyPath, constants.PublicFeedIngestTokenPath} {
-				exists, existsErr := fileSvc.FileExists(ctx, relPath)
-				if existsErr != nil {
-					return fmt.Errorf("public-feed: inspect initialization path: %w", existsErr)
-				}
-				if exists {
-					return constants.ErrPublicFeedConfigExists
-				}
-			}
-			if err := fileSvc.MkdirAll(ctx, constants.PublicFeedDirname, constants.PermDirPrivate); err != nil {
-				return fmt.Errorf("public-feed: create runtime directory: %w", err)
-			}
-			createdPaths := make([]string, 0, 3)
-			rollback := func(cause error) error {
-				result := cause
-				for index := len(createdPaths) - 1; index >= 0; index-- {
-					if removeErr := fileSvc.Remove(ctx, createdPaths[index]); removeErr != nil {
-						result = errors.Join(result, fmt.Errorf("public-feed: roll back initialization path %s: %w", createdPaths[index], removeErr))
-					}
-				}
-				return result
-			}
-			publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-			if err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrPublicFeedKeyGenFailed, err)
-			}
-			token := make([]byte, constants.PublicFeedIngestTokenBytes)
-			if _, err := rand.Read(token); err != nil {
-				return fmt.Errorf("public-feed: generate ingest token: %w", err)
-			}
-			keyDigest := sha256.Sum256(publicKey)
-			exportConfig := models.DefaultPublicExportConfig()
-			exportConfig.Enabled = true
-			exportConfig.SourceID = sourceID
-			exportConfig.MirrorOrigin = mirrorOrigin
-			exportConfig.SigningKeyID = hex.EncodeToString(keyDigest[:])
 			ks, err := publicKeystore(fileSvc)
 			if err != nil {
 				return err
 			}
-			if err := gateway.WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedSigningKeyPath, privateKey); err != nil {
-				return fmt.Errorf("public-feed: write signing key: %w", err)
+			_, err = gateway.InitializeLocalPublicFeed(ctx, fileSvc, ks, sourceID, mirrorOrigin)
+			if err != nil {
+				return err
 			}
-			createdPaths = append(createdPaths, constants.PublicFeedSigningKeyPath)
-			if err := gateway.WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedIngestTokenPath, token); err != nil {
-				return rollback(fmt.Errorf("public-feed: write ingest token: %w", err))
-			}
-			createdPaths = append(createdPaths, constants.PublicFeedIngestTokenPath)
-			if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
-				return rollback(err)
-			}
-			createdPaths = append(createdPaths, constants.PublicFeedExportConfigPath)
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Public feed initialized for source %s\n", sourceID)
 			return err
 		},
@@ -159,7 +115,7 @@ func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			exportConfig, err := readPublicExportConfig(ctx, fileSvc)
+			exportConfig, err := gateway.ReadPublicExportConfig(ctx, fileSvc)
 			if err != nil {
 				return err
 			}
@@ -169,10 +125,10 @@ func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 			if cmd.Flags().Changed("enabled") {
 				exportConfig.Enabled = enabled
 			}
-			if err := validatePublicExportConfig(exportConfig); err != nil {
+			if err := gateway.ValidatePublicExportConfig(exportConfig); err != nil {
 				return err
 			}
-			if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
+			if err := gateway.WritePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Public feed configuration updated")
@@ -222,66 +178,6 @@ func publicSourceTransitionCmdWithConfig(configLoader publicConfigLoader, fileSv
 	return cmd
 }
 
-func readPublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService) (models.PublicExportConfig, error) {
-	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedExportConfigPath)
-	if err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: %v", constants.ErrPublicFeedConfigRequired, err)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var exportConfig models.PublicExportConfig
-	if err := decoder.Decode(&exportConfig); err != nil {
-		return models.PublicExportConfig{}, fmt.Errorf("%w: decode: %v", constants.ErrPublicFeedConfigRequired, err)
-	}
-	if err := rejectTrailingPublicJSON(decoder); err != nil {
-		return models.PublicExportConfig{}, err
-	}
-	if err := validatePublicExportConfig(exportConfig); err != nil {
-		return models.PublicExportConfig{}, err
-	}
-	return exportConfig, nil
-}
-
-func writePublicExportConfig(ctx context.Context, fileSvc fs.RuntimeFileService, exportConfig models.PublicExportConfig) error {
-	if err := validatePublicExportConfig(exportConfig); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(exportConfig, "", "  ")
-	if err != nil {
-		return fmt.Errorf("public-feed: encode export config: %w", err)
-	}
-	data = append(data, '\n')
-	if err := fileSvc.WriteFile(ctx, constants.PublicFeedExportConfigPath, data, constants.PermFilePrivate); err != nil {
-		return fmt.Errorf("public-feed: write export config: %w", err)
-	}
-	return nil
-}
-
-func validatePublicExportConfig(exportConfig models.PublicExportConfig) error {
-	if strings.TrimSpace(exportConfig.SourceID) == "" {
-		return constants.ErrPublicFeedSourceIDRequired
-	}
-	if strings.TrimSpace(exportConfig.SigningKeyID) == "" {
-		return constants.ErrPublicFeedSigningKeyIDRequired
-	}
-	if exportConfig.BatchMaxRecords <= 0 || exportConfig.BatchMaxRecords > constants.PublicFeedBatchMaxRecords || exportConfig.BatchMaxBytes <= 0 || exportConfig.BatchMaxBytes > constants.PublicFeedBatchMaxBytes || exportConfig.RetryMaxAttempts <= 0 || exportConfig.RetryInitialBackoffSecs < 0 || exportConfig.RetryMaxBackoffSecs < exportConfig.RetryInitialBackoffSecs || exportConfig.AckWindowSecs <= 0 {
-		return constants.ErrPublicFeedConfigRequired
-	}
-	return validatePublicMirrorOrigin(exportConfig.MirrorOrigin)
-}
-
-func validatePublicMirrorOrigin(origin string) error {
-	return gateway.ValidatePublicMirrorOrigin(origin)
-}
-
-func rejectTrailingPublicJSON(decoder *json.Decoder) error {
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return fmt.Errorf("%w: trailing JSON", constants.ErrPublicFeedConfigRequired)
-	}
-	return nil
-}
-
 func Cmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "public", Short: "Manage the public spectator feed"}
 	configCmd := &cobra.Command{Use: "config", Short: "Manage public-feed configuration"}
@@ -305,9 +201,10 @@ func Cmd() *cobra.Command {
 	return cmd
 }
 
-// publicProofKeyRegistry maps a signing key ID to its pinned Ed25519 public key.
+// publicProofKeyRegistry maps a signing key ID to a pinned Ed25519 public key.
 // The entry under "*", set by --public-key, verifies a segment whose key ID is
-// not otherwise registered.
+// not otherwise registered. An empty registry means each segment is verified
+// under the key published in the log.
 type publicProofKeyRegistry map[string]ed25519.PublicKey
 
 // publicProofChain is a verified proof segment log and the artifacts it leaves
@@ -322,13 +219,13 @@ type publicProofChain struct {
 	ActiveIDs []string
 }
 
-// loadPublicProofKeyRegistry pins the trusted signing keys named by --public-key
-// and --key-registry. At least one of the two must be set.
+// loadPublicProofKeyRegistry loads the optional pins named by --public-key and
+// --key-registry. Both may be empty; verification then uses signing_public_key.
 func loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath string) (publicProofKeyRegistry, error) {
-	if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
-		return nil, constants.ErrMissingRequiredField
-	}
 	keyRegistry := make(publicProofKeyRegistry)
+	if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
+		return keyRegistry, nil
+	}
 	if strings.TrimSpace(publicKeyHex) != "" {
 		pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(publicKeyHex))
 		if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
@@ -343,7 +240,7 @@ func loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath string) (publicPro
 		}
 		var rawMap map[string]string
 		if err := json.Unmarshal(regData, &rawMap); err != nil {
-			return nil, fmt.Errorf("%w: decode key registry: %v", constants.ErrPublicFeedProofSegmentInvalid, err)
+			return nil, fmt.Errorf("%w: decode key registry: %w", constants.ErrPublicFeedProofSegmentInvalid, err)
 		}
 		for k, hexStr := range rawMap {
 			pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(hexStr))
@@ -374,7 +271,7 @@ func readPublicProofSegments(segmentsPath string) ([]models.PublicProofManifestS
 		decoder := json.NewDecoder(strings.NewReader(line))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&seg); err != nil {
-			return nil, fmt.Errorf("%w: segment line %d: %v", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
+			return nil, fmt.Errorf("%w: segment line %d: %w", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
 		}
 		var trailing json.RawMessage
 		if err := decoder.Decode(&trailing); err != io.EOF {
@@ -385,14 +282,68 @@ func readPublicProofSegments(segmentsPath string) ([]models.PublicProofManifestS
 	return segments, nil
 }
 
+// publishedProofKeys collects signing_public_key values by signing key ID.
+// A key must hash to that segment's signing_key_id. One key ID has one key.
+func publishedProofKeys(segments []models.PublicProofManifestSegment) (map[string]ed25519.PublicKey, error) {
+	published := make(map[string]ed25519.PublicKey)
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.SigningPublicKey) == "" {
+			continue
+		}
+		key, err := models.DecodePublicProofSigningKey(seg.SigningPublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: %w", seg.SegmentIndex, err)
+		}
+		if models.PublicProofSigningKeyID(key) != seg.SigningKeyID {
+			return nil, fmt.Errorf("%w: segment %d signing_public_key does not match signing_key_id", constants.ErrPublicFeedProofSegmentInvalid, seg.SegmentIndex)
+		}
+		if existing, ok := published[seg.SigningKeyID]; ok && !bytes.Equal(existing, key) {
+			return nil, fmt.Errorf("%w: segment %d signing_public_key conflicts with an earlier segment", constants.ErrPublicFeedProofSegmentInvalid, seg.SegmentIndex)
+		}
+		published[seg.SigningKeyID] = key
+	}
+	return published, nil
+}
+
+// selectSegmentVerificationKey chooses the Ed25519 key for one segment. A pin
+// overrides the published key and must equal it when the log publishes one.
+// Without a pin, a key published on any segment with the same signing_key_id
+// verifies this segment.
+func selectSegmentVerificationKey(seg models.PublicProofManifestSegment, pinned publicProofKeyRegistry, published map[string]ed25519.PublicKey) (ed25519.PublicKey, error) {
+	var pinnedKey ed25519.PublicKey
+	hasPin := false
+	if key, ok := pinned[seg.SigningKeyID]; ok {
+		pinnedKey, hasPin = key, true
+	} else if key, ok := pinned[seg.SourceID+":"+seg.SigningKeyID]; ok {
+		pinnedKey, hasPin = key, true
+	} else if key, ok := pinned["*"]; ok {
+		pinnedKey, hasPin = key, true
+	}
+	publishedKey, hasPublished := published[seg.SigningKeyID]
+	if hasPin {
+		if hasPublished && !bytes.Equal(pinnedKey, publishedKey) {
+			return nil, fmt.Errorf("%w: segment %d pinned key does not match signing_public_key", constants.ErrPublicFeedSignatureInvalid, seg.SegmentIndex)
+		}
+		return pinnedKey, nil
+	}
+	if hasPublished {
+		return publishedKey, nil
+	}
+	return nil, fmt.Errorf("%w: segment %d has no signing_public_key for %s; pass --public-key or --key-registry to pin one", constants.ErrPublicFeedProofSegmentInvalid, seg.SegmentIndex, seg.SigningKeyID)
+}
+
 // verifyPublicProofChain checks a proof segment log from its zero root: indexes
 // and previous roots link consecutively, each root and signature verifies under
-// its registered key, withdrawals name only artifacts already listed and not yet
-// withdrawn, and no artifact is listed twice. It returns the artifacts still
-// active at the head.
+// its published or pinned key, withdrawals name only artifacts already listed
+// and not yet withdrawn, and no artifact is listed twice. It returns the
+// artifacts still active at the head.
 func verifyPublicProofChain(segments []models.PublicProofManifestSegment, keyRegistry publicProofKeyRegistry) (publicProofChain, error) {
 	if len(segments) == 0 {
 		return publicProofChain{}, fmt.Errorf("%w: segments log is empty", constants.ErrPublicFeedProofSegmentInvalid)
+	}
+	published, err := publishedProofKeys(segments)
+	if err != nil {
+		return publicProofChain{}, err
 	}
 	withdrawn := make(map[string]bool)
 	type orderedEntry struct {
@@ -415,17 +366,10 @@ func verifyPublicProofChain(segments []models.PublicProofManifestSegment, keyReg
 			return publicProofChain{}, fmt.Errorf("%w: segment %d previous root %s != expected %s", constants.ErrPublicFeedProofSegmentLinkMismatch, seg.SegmentIndex, seg.PreviousRoot, expectedPrevRoot)
 		}
 
-		var segKey ed25519.PublicKey
-		if k, ok := keyRegistry[seg.SigningKeyID]; ok {
-			segKey = k
-		} else if k, ok := keyRegistry[seg.SourceID+":"+seg.SigningKeyID]; ok {
-			segKey = k
-		} else if k, ok := keyRegistry["*"]; ok {
-			segKey = k
-		} else {
-			return publicProofChain{}, fmt.Errorf("%w: unknown signing key %s for segment %d", constants.ErrPublicFeedProofSegmentInvalid, seg.SigningKeyID, seg.SegmentIndex)
+		segKey, err := selectSegmentVerificationKey(seg, keyRegistry, published)
+		if err != nil {
+			return publicProofChain{}, err
 		}
-
 		if err := models.VerifyPublicProofSegment(segments[0].SourceID, seg, segKey); err != nil {
 			return publicProofChain{}, fmt.Errorf("public-feed: verify segment %d: %w", seg.SegmentIndex, err)
 		}
@@ -472,6 +416,11 @@ func publicVerifyProofCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify-proof",
 		Short: "Verify a published proof package offline",
+		Long: `Recomputes the segment hash chain from the zero root, checks each Ed25519
+signature under that segment's signing_public_key, and hashes active artifacts.
+--public-key and --key-registry are optional pins. The default command checks
+the published signatures and hash chain. It does not establish an out-of-band
+publisher identity.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(segmentsPath) == "" || strings.TrimSpace(artifactsPath) == "" {
 				return constants.ErrMissingRequiredField
@@ -523,8 +472,8 @@ func publicVerifyProofCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
 	cmd.Flags().StringVar(&artifactsPath, "artifacts", "", "Path to directory containing proof artifact files")
-	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Hex-encoded Ed25519 public key")
-	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Path to JSON file containing pinned key registry {key_id: public_key_hex}")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
 	_ = cmd.MarkFlagRequired("segments")
 	_ = cmd.MarkFlagRequired("artifacts")
 	return cmd
@@ -577,6 +526,9 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify-assignment",
 		Short: "Verify an assignment audit database against its signed proof segments",
+		Long: `Verifies the segment log, requires the database SHA-256 to be an active
+artifact of that log, then checks the database's live events. The segment log
+supplies signing_public_key unless --public-key or --key-registry is set.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(segmentsPath) == "" {
 				return constants.ErrMissingRequiredField
@@ -611,8 +563,8 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dbPath, "db", "", "Path to the assignment audit SQLite file")
 	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
-	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Hex-encoded Ed25519 public key")
-	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Path to JSON file containing pinned key registry {key_id: public_key_hex}")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
 	_ = cmd.MarkFlagRequired("db")
 	_ = cmd.MarkFlagRequired("segments")
 	return cmd
@@ -627,7 +579,7 @@ func loadPublicCommandRuntimeUnchecked(cmd *cobra.Command, configLoader publicCo
 	if err != nil {
 		return nil, models.PublicExportConfig{}, fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
-	exportConfig, err := readPublicExportConfig(shared.CommandContext(cmd), fileSvc)
+	exportConfig, err := gateway.ReadPublicExportConfig(shared.CommandContext(cmd), fileSvc)
 	if err != nil {
 		return nil, models.PublicExportConfig{}, err
 	}
@@ -683,7 +635,7 @@ func publicPublishCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory 
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
 				count, err := gwremote.PublishJSONLViaGateway(ctx, fileSvc, cfg, args[0])
 				if err != nil {
 					return err
@@ -744,7 +696,7 @@ func publicRepairOutboxCmdWithConfig(configLoader publicConfigLoader, fileSvcFac
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
 				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Gateway-owned public mirror outbox is managed by the Gateway")
 				return err
 			}
@@ -779,7 +731,7 @@ func publicPushCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
 				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Gateway-owned public mirror is already synchronized")
 				return err
 			}
@@ -804,7 +756,8 @@ func publicPushCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 }
 
 func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
-	return &cobra.Command{
+	var mirrorOrigin string
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show public-feed publication state",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -817,8 +770,8 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			ctx := shared.CommandContext(cmd)
-			if gwremote.ShouldPublishViaGateway(ctx, fileSvc) {
-				status, err := gwremote.GatewayPublisherStatus(ctx, fileSvc, cfg)
+			if gwremote.ShouldPublishViaConfiguredGateway(ctx, fileSvc, cfg) {
+				status, err := gwremote.GatewayPublisherStatusWithOrigin(ctx, fileSvc, cfg, mirrorOrigin)
 				if err != nil {
 					return err
 				}
@@ -832,6 +785,12 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 			fileSvc, exportConfig, err := loadPublicCommandRuntime(cmd, configLoader, fileSvcFactory)
 			if err != nil {
 				return err
+			}
+			if mirrorOrigin != "" {
+				if err := gateway.ValidatePublicMirrorOrigin(mirrorOrigin); err != nil {
+					return err
+				}
+				exportConfig.MirrorOrigin = mirrorOrigin
 			}
 			publisher, err := newPublicPublisherForCommand(cmd, fileSvc, exportConfig)
 			if err != nil {
@@ -860,6 +819,8 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Override the public mirror read origin (default: derived from --endpoint or http://127.0.0.1:8082)")
+	return cmd
 }
 
 // publicKeyRotationBinding binds the sealed rotation key to the key ID its
@@ -880,13 +841,13 @@ func readPublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileService, k
 	}
 	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedKeyRotationPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: read state: %v", constants.ErrPublicFeedKeyRotationPending, err)
+		return nil, nil, fmt.Errorf("%w: read state: %w", constants.ErrPublicFeedKeyRotationPending, err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var state models.PublicKeyRotationState
 	if err := decoder.Decode(&state); err != nil {
-		return nil, nil, fmt.Errorf("%w: decode state: %v", constants.ErrPublicFeedKeyRotationPending, err)
+		return nil, nil, fmt.Errorf("%w: decode state: %w", constants.ErrPublicFeedKeyRotationPending, err)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
@@ -894,7 +855,7 @@ func readPublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileService, k
 	}
 	privateKeyHex, err := ks.Decrypt(publicKeyRotationBinding(state.NewKeyID), state.SealedNewPrivateKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: unseal new signing key: %v", constants.ErrPublicFeedKeyRotationPending, err)
+		return nil, nil, fmt.Errorf("%w: unseal new signing key: %w", constants.ErrPublicFeedKeyRotationPending, err)
 	}
 	privateKey, err := hex.DecodeString(privateKeyHex)
 	if err != nil || len(privateKey) != ed25519.PrivateKeySize || state.SourceID == "" || state.OldKeyID == "" || state.NewKeyID == "" || state.OldKeyID == state.NewKeyID {
@@ -936,11 +897,11 @@ func publicKeyRotationOutboxStatus(ctx context.Context, fileSvc fs.RuntimeFileSe
 		}
 		var entry models.PublicOutboxEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
-			return false, false, fmt.Errorf("%w: rotation outbox line %d: %v", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+			return false, false, fmt.Errorf("%w: rotation outbox line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
 		}
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return false, false, fmt.Errorf("%w: rotation batch line %d: %v", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+			return false, false, fmt.Errorf("%w: rotation batch line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
 		}
 		for _, record := range batch.Records {
 			if record.RecordType != models.PublicFeedRecordTypeKeyRevocation {
@@ -948,7 +909,7 @@ func publicKeyRotationOutboxStatus(ctx context.Context, fileSvc fs.RuntimeFileSe
 			}
 			var revocation models.PublicKeyRevocationRecord
 			if err := json.Unmarshal([]byte(record.RecordBytes), &revocation); err != nil {
-				return false, false, fmt.Errorf("%w: rotation record line %d: %v", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+				return false, false, fmt.Errorf("%w: rotation record line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
 			}
 			if revocation.SourceID == rotation.SourceID && revocation.RevokedKeyID == rotation.OldKeyID && revocation.NewKeyID == rotation.NewKeyID {
 				return true, entry.Status == models.PublicFeedOutboxStatusAcknowledged, nil
@@ -963,7 +924,7 @@ func finalizePublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileServic
 		return fmt.Errorf("public-feed: persist rotated signing key: %w", err)
 	}
 	exportConfig.SigningKeyID = rotation.NewKeyID
-	if err := writePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
+	if err := gateway.WritePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
 		return err
 	}
 	if err := fileSvc.Remove(ctx, constants.PublicFeedKeyRotationPath); err != nil {
@@ -993,7 +954,7 @@ func publicRotateKeyCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 			if rotation == nil {
 				publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 				if err != nil {
-					return fmt.Errorf("%w: %v", constants.ErrPublicFeedKeyGenFailed, err)
+					return fmt.Errorf("%w: %w", constants.ErrPublicFeedKeyGenFailed, err)
 				}
 				digest := sha256.Sum256(publicKey)
 				newKeyID := hex.EncodeToString(digest[:])

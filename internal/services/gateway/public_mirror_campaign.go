@@ -41,19 +41,13 @@ func mirrorProjectionMatchesCampaignRun(item models.PublicFeedObject, runID stri
 		return true
 	}
 	if recordBytes, ok := item["record"]; ok {
-		var record map[string]json.RawMessage
+		var record models.PublicFeedObject
 		if err := json.Unmarshal(recordBytes, &record); err == nil {
-			if raw, ok := record["run_id"]; ok {
-				var nestedRunID string
-				if err := json.Unmarshal(raw, &nestedRunID); err == nil && nestedRunID == runID {
-					return true
-				}
+			if id, ok := record.StringField("run_id"); ok && id == runID {
+				return true
 			}
-			if raw, ok := record["dataset_id"]; ok {
-				var nestedDatasetID string
-				if err := json.Unmarshal(raw, &nestedDatasetID); err == nil && nestedDatasetID == datasetID {
-					return true
-				}
+			if id, ok := record.StringField("dataset_id"); ok && id == datasetID {
+				return true
 			}
 		}
 	}

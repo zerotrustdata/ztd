@@ -1176,7 +1176,7 @@ func TestBuildPlannedModelRoleInvocationSignals_EmitsHeterogeneousRoles(t *testi
 		RunId:        "run-hetero",
 		ScenarioId:   "scenario-1",
 		Target: &evalv1.EvaluationAssignment_Heterogeneous{
-			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
+			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY},
 		},
 	}
 	signals := buildPlannedModelRoleInvocationSignals(assignment, "2026-09-25T00:00:00Z", 1, 5)
@@ -1198,7 +1198,7 @@ func TestBuildRunVerificationApplicability_BindsHeterogeneousStackPopulation(t *
 		ScenarioId:            "scenario-1",
 		LifecycleStatus:       evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		Target: &evalv1.EvaluationAssignment_Heterogeneous{
-			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
+			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY},
 		},
 	}
 	result := &evalv1.EvaluationAssignmentResult{
@@ -1226,6 +1226,7 @@ func TestBuildRunVerificationApplicability_BindsHeterogeneousStackPopulation(t *
 		catalog,
 		[]*evalv1.EvaluationAssignment{assignment},
 		map[string]*evalv1.EvaluationAssignmentResult{assignment.GetAssignmentId(): result},
+		1,
 		report,
 	)
 	require.NoError(t, err)

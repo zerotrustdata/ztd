@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	pubsubtest "github.com/zerotrustdata/ztd/internal/services/pubsub/pubsubtest"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
@@ -39,8 +40,8 @@ type ollamaMaintenanceEnv struct {
 }
 
 // newOllamaMaintenanceEnv wires the service to an in-memory pub/sub client and
-// the given provider endpoint. An empty endpoint exercises the invalid-endpoint
-// path.
+// an Ollama provider at the given endpoint. An empty endpoint wires no
+// provider, as on an Operator without inference.
 func newOllamaMaintenanceEnv(t *testing.T, endpoint string) *ollamaMaintenanceEnv {
 	t.Helper()
 	return newOllamaMaintenanceEnvWithEventsStore(t, endpoint, storagetest.NewTestEventsStore(t, ollamaTestSessionID))
@@ -50,10 +51,15 @@ func newOllamaMaintenanceEnv(t *testing.T, endpoint string) *ollamaMaintenanceEn
 func newOllamaMaintenanceEnvWithEventsStore(t *testing.T, endpoint string, eventsStore *storage.LocalFirstEventsStore) *ollamaMaintenanceEnv {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
-	cfg.Inference.OllamaEndpoint = endpoint
 	client := pubsubtest.NewMockOperatorPubSubClient()
 	logger := testutil.NewTestLogger()
-	svc, err := NewOllamaMaintenanceService(cfg, logger, client, mustNewScrubbingSvc(t, logger), eventsStore)
+	var provider inference.Provider
+	if endpoint != "" {
+		backend, err := inference.NewOllamaBackend(endpoint, logger)
+		require.NoError(t, err)
+		provider = backend
+	}
+	svc, err := NewOllamaMaintenanceService(cfg, logger, client, mustNewScrubbingSvc(t, logger), eventsStore, provider)
 	require.NoError(t, err)
 	return &ollamaMaintenanceEnv{svc: svc, client: client, cfg: cfg, eventsStore: eventsStore}
 }
@@ -155,14 +161,14 @@ func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.eventsStore)
+			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.eventsStore, nil)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})
 	}
 
 	t.Run("accepts every dependency", func(t *testing.T) {
-		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, eventsStore)
+		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, eventsStore, nil)
 		require.NoError(t, err)
 		assert.NotNil(t, svc)
 	})

@@ -186,8 +186,20 @@ test('installer installs ./ztd when the download and checksum match', { skip: !h
   assert.deepEqual(requestedUrls(fixture), [
     'https://zerotrustdata.io/latest.json',
     'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64',
-    'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64.sha256'
+    'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64.sha256',
+    'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64.sigstore.json'
   ]);
+  assert.match(result.stdout, /signature not checked/);
+  assertNoLeftovers(fixture);
+});
+
+test('ZTD_REQUIRE_SIGSTORE=1 fails closed when cosign is not installed', (t) => {
+  const fixture = setup(t, { shasum: true, sha256sum: hasSha256sum });
+  const result = runInstaller(fixture, { ZTD_REQUIRE_SIGSTORE: '1' });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cosign is not installed/);
+  assert.equal(existsSync(join(fixture.work, 'ztd')), false, 'a failed signature requirement must not leave a binary');
   assertNoLeftovers(fixture);
 });
 
@@ -242,7 +254,8 @@ test('ZTD_VERSION pins the version and skips latest.json', (t) => {
   assert.match(result.stdout, /Installing ztd 2\.4\.0-rc\.1/);
   assert.deepEqual(requestedUrls(fixture), [
     'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64',
-    'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64.sha256'
+    'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64.sha256',
+    'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64.sigstore.json'
   ]);
   assert.equal(readFileSync(join(fixture.work, 'ztd'), 'utf8'), '#!/bin/sh\necho ztd\n');
   assertNoLeftovers(fixture);

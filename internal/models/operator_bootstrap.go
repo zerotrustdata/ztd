@@ -72,6 +72,7 @@ type OperatorBootstrapBundle struct {
 // Warden verifies L2 votes against it; a member with no key here cannot count
 // toward quorum.
 type OperatorL2Trust struct {
+	BindingVersion  int64            `json:"binding_version,omitempty"`
 	ConsensusSetID  string           `json:"consensus_set_id"`
 	MemberKeyIDs    []string         `json:"member_key_ids"`
 	Quorum          int              `json:"quorum"`

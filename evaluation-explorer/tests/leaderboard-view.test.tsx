@@ -100,8 +100,8 @@ describe('LeaderboardView', () => {
     expect(panel.queryByRole('link', { name: 'Unverified model' })).not.toBeInTheDocument();
     expect(panel.queryByRole('link', { name: 'Partial model' })).not.toBeInTheDocument();
     expect(panel.getByText(/1 of 3 roles qualified/)).toBeInTheDocument();
-    // Sole model in its role: full efficiency, so 100 × 0.8 × √0.5 ≈ 56.6.
-    expect(panel.getByText('56.6')).toBeInTheDocument();
+    // Sole model in its role: full efficiency, so 100 × 0.8² × √0.5 ≈ 45.3.
+    expect(panel.getByText('45.3')).toBeInTheDocument();
     expect(panel.getByText('80.0%')).toBeInTheDocument();
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe('LeaderboardView', () => {
     expect(panel.queryByRole('link', { name: /View all models/i })).not.toBeInTheDocument();
   });
 
-  it('scores absent security as zero in role and Overall tables while showing N/A', () => {
+  it('scores absent security as zero in Primary and Assistant and 50% in Lite while showing N/A', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
     evalStore.loadFixtures(MODEL_ROLE_WIRE_ORDER.flatMap((role): ModelSummary[] => [
       {
@@ -140,22 +140,40 @@ describe('LeaderboardView', () => {
     ]), []);
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
     const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
-    const checkRows = () => {
+
+    // Overall: measured-security is 1st (56.3), no-security is 2nd (23.6)
+    const overallMissing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
+    expect(overallMissing.getByText('23.6')).toBeInTheDocument();
+    expect(overallMissing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+    expect(overallMissing.getByText('2nd')).toBeInTheDocument();
+    const overallMeasured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
+    expect(overallMeasured.getByText('56.3')).toBeInTheDocument();
+    expect(overallMeasured.getByText('100%')).toBeInTheDocument();
+    expect(overallMeasured.getByText('1st')).toBeInTheDocument();
+
+    // Primary & Assistant: no-security scores 0.0 (2nd), measured-security scores 56.3 (1st)
+    for (const role of ['Primary', 'Assistant']) {
+      fireEvent.click(panel.getByRole('button', { name: new RegExp(`^${role}`) }));
       const missing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
       expect(missing.getByText('0.0')).toBeInTheDocument();
       expect(missing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
       expect(missing.getByText('2nd')).toBeInTheDocument();
       const measured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
-      expect(measured.getByText('75.0')).toBeInTheDocument();
+      expect(measured.getByText('56.3')).toBeInTheDocument();
       expect(measured.getByText('100%')).toBeInTheDocument();
       expect(measured.getByText('1st')).toBeInTheDocument();
-      expect(panel.getByRole('columnheader', { name: 'Score' })).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
-    };
-    checkRows();
-    for (const role of ['Primary', 'Assistant', 'Lite']) {
-      fireEvent.click(panel.getByRole('button', { name: new RegExp(`^${role}`) }));
-      checkRows();
     }
+
+    // Lite: no-security scores 70.7 (1st with 50% security credit), measured-security scores 56.3 (2nd)
+    fireEvent.click(panel.getByRole('button', { name: /^Lite/ }));
+    const liteMissing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
+    expect(liteMissing.getByText('70.7')).toBeInTheDocument();
+    expect(liteMissing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+    expect(liteMissing.getByText('1st')).toBeInTheDocument();
+    const liteMeasured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
+    expect(liteMeasured.getByText('56.3')).toBeInTheDocument();
+    expect(liteMeasured.getByText('100%')).toBeInTheDocument();
+    expect(liteMeasured.getByText('2nd')).toBeInTheDocument();
   });
 
   it('supports browsing leaderboard categories and sorting statistical columns', () => {
@@ -313,9 +331,9 @@ describe('LeaderboardView', () => {
     expect(balanced!.getByRole('link', { name: 'Balanced model' })).toHaveAttribute(
       'href', `/models/${source.dataset_id}/balanced`,
     );
-    expect(balanced!.getByText('80.0')).toBeInTheDocument();
+    expect(balanced!.getByText('64.0')).toBeInTheDocument();
     expect(specialist!.getByRole('link', { name: 'Lite specialist' })).toBeInTheDocument();
-    expect(specialist!.getByText('40.0')).toBeInTheDocument();
+    expect(specialist!.getByText('34.0')).toBeInTheDocument();
 
     fireEvent.click(panel.getByRole('button', { name: /^Lite/ }));
     expect(panel.getByRole('columnheader', { name: 'Role' })).toBeInTheDocument();

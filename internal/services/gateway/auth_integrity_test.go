@@ -78,10 +78,7 @@ func TestAuthIntegrity_RetiredUserBlocked(t *testing.T) {
 	assert.NotNil(t, cliDoc)
 
 	var loadedCLISession models.CLISession
-	b, err := json.Marshal(cliDoc.Data)
-	require.NoError(t, err)
-	err = json.Unmarshal(b, &loadedCLISession)
-	require.NoError(t, err)
+	require.NoError(t, cliDoc.DecodeData(&loadedCLISession))
 	assert.Equal(t, userID, loadedCLISession.UserID)
 
 	// The actual HTTP authentication in gateway_auth.go would return 403 Forbidden for this user

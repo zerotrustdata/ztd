@@ -27,7 +27,7 @@ import (
 func newObserveProducerLiveTestEnv(t *testing.T) (*ObserveProducerService, *DocumentStoreService, *SSEEventService) {
 	t.Helper()
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)
@@ -118,7 +118,7 @@ func TestStartCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.CycleStateProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, userID, persisted.UserID)
 	assert.Equal(t, "cycle-1", persisted.CycleID)
 	assert.Equal(t, models.CampaignCycleStatusRunning, persisted.Status)
@@ -173,7 +173,7 @@ func TestCompleteCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.CycleStateProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, userID, persisted.UserID)
 	assert.NotNil(t, persisted.CompletedAt)
 
@@ -227,7 +227,7 @@ func TestStartAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.AssignmentProgressProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, userID, persisted.UserID)
 	assert.Equal(t, models.AssignmentProgressStatusRunning, persisted.Status)
 	assert.NotNil(t, persisted.StartedAt)
@@ -282,7 +282,7 @@ func TestCompleteAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.AssignmentProgressProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, models.TerminalOutcomeStatusCompleted, persisted.TerminalStatus)
 	assert.NotNil(t, persisted.CompletedAt)
 
@@ -488,7 +488,7 @@ func TestCompletePublication_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.PublicationProgressProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, models.PublicationStatusPublished, persisted.PublicationStatus)
 	assert.NotNil(t, persisted.CompletedAt)
 
@@ -530,7 +530,7 @@ func TestEmitHeartbeat_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.SourceFreshnessProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, "source-1", persisted.SourceID)
 	assert.Equal(t, "campaign-h", persisted.CampaignID)
 	assert.Equal(t, models.CampaignFreshnessActive, persisted.Freshness)
@@ -575,7 +575,7 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.SupervisorStateProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, models.SupervisorStatusStopped, persisted.Status)
 	assert.Equal(t, models.StopReasonGraceful, persisted.StopReason)
 	assert.Equal(t, models.CampaignFreshnessIntentionallyStopped, persisted.Freshness)
@@ -661,7 +661,7 @@ func TestRequestStop_SafetyStopSetsSafetyStoppedFreshness(t *testing.T) {
 		UserID string `json:"user_id"`
 		models.SupervisorStateProjection
 	}
-	require.NoError(t, unmarshalDocData(doc, &persisted))
+	require.NoError(t, doc.DecodeData(&persisted))
 	assert.Equal(t, models.SupervisorStatusSafetyStopped, persisted.Status)
 	assert.Equal(t, models.CampaignFreshnessSafetyStopped, persisted.Freshness)
 }
@@ -737,7 +737,7 @@ func TestDuplicateEventIDSuppression(t *testing.T) {
 func TestPersistBeforeEvent_NoSSEOnPersistenceFailure(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 
 	_, err = db.Exec(gatewaySchema)

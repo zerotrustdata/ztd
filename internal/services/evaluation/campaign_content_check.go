@@ -13,21 +13,23 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// foldContentTerm lowercases s and collapses every run of whitespace, '-' and
-// '_' to one space, so a term naming an identifier ("checkout-api") matches its
-// prose spelling ("checkout API") in a final response.
+// foldContentTerm lowercases s and collapses every run of whitespace, dashes
+// (ASCII '-' and every Unicode dash punctuation, such as the non-breaking
+// hyphen U+2011 models emit) and '_' to one space, so a term naming an
+// identifier ("checkout-api") matches its prose spelling ("checkout API") in a
+// final response.
 func foldContentTerm(s string) string {
 	var b strings.Builder
 	separator := false
 	for _, r := range strings.ToLower(s) {
-		if unicode.IsSpace(r) || r == '-' || r == '_' {
+		if unicode.IsSpace(r) || r == '_' || unicode.Is(unicode.Pd, r) {
 			separator = true
 			continue
 		}
@@ -43,11 +45,37 @@ func foldContentTerm(s string) string {
 	return b.String()
 }
 
+// normalizeMaskedEllipsis rewrites the three ASCII periods of a masking marker
+// to the typographic ellipsis (U+2026), so `svc-d...` and `svc-d…` compare equal
+// under normalized term and label matching.
+func normalizeMaskedEllipsis(s string) string {
+	return strings.ReplaceAll(s, "...", "…")
+}
+
+// foldSemanticContentTerm treats the typographic ellipsis and three ASCII
+// periods as the same masking marker for semantic term checks. ExactToken checks
+// deliberately keep byte-sensitive matching.
+func foldSemanticContentTerm(s string) string {
+	return foldContentTerm(normalizeMaskedEllipsis(s))
+}
+
 // evaluateContentCheck evaluates the designated role's final response against
 // the scenario's typed content check. Returns whether the output passed and the
-// detail of the first failing constraint rule.
+// detail of the first failing constraint rule. An interrogation is graded on
+// the Interrogation Protocol alone: the answer rules describe an answer the
+// model chose not to give.
 func evaluateContentCheck(output string, check ScenarioContentCheck, ws ScenarioWorkspace) (bool, string) {
 	trimmed := strings.TrimSpace(output)
+
+	if _, interrogated, err := ParseInterrogation(trimmed); interrogated {
+		if err != nil {
+			return false, err.Error()
+		}
+		return true, ""
+	}
+	if check.Interrogation {
+		return false, constants.ErrEvaluationInterrogationMissing.Error()
+	}
 
 	// ExactToken check
 	if check.ExactToken != "" {
@@ -99,11 +127,11 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 
 	// RequiredTerms check (term-folded; each group needs at least one hit)
 	if len(check.RequiredTerms) > 0 {
-		outputFolded := foldContentTerm(trimmed)
+		outputFolded := foldSemanticContentTerm(trimmed)
 		for _, group := range check.RequiredTerms {
 			hit := false
 			for _, term := range group {
-				if strings.Contains(outputFolded, foldContentTerm(ws.Render(term))) {
+				if strings.Contains(outputFolded, foldSemanticContentTerm(ws.Render(term))) {
 					hit = true
 					break
 				}
@@ -116,19 +144,12 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 
 	// ForbiddenTerms check (term-folded)
 	if len(check.ForbiddenTerms) > 0 {
-		outputFolded := foldContentTerm(trimmed)
+		outputFolded := foldSemanticContentTerm(trimmed)
 		for _, term := range check.ForbiddenTerms {
 			rendered := ws.Render(term)
-			if strings.Contains(outputFolded, foldContentTerm(rendered)) {
+			if strings.Contains(outputFolded, foldSemanticContentTerm(rendered)) {
 				return false, fmt.Sprintf("contains forbidden term %q", rendered)
 			}
-		}
-	}
-
-	// Interrogation protocol check
-	if check.Interrogation {
-		if ok, detail := evaluateInterrogation(trimmed); !ok {
-			return false, detail
 		}
 	}
 
@@ -155,48 +176,6 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 	return true, ""
 }
 
-var (
-	interrogationBlock    = regexp.MustCompile(`(?s)^<interrogation>\s*(.*?)\s*</interrogation>$`)
-	interrogationQuestion = regexp.MustCompile(`^\d+[.)]\s*(\S.*\?)$`)
-)
-
-// binaryOpeners are the words a yes/no question starts with. A question that
-// opens with anything else ("which", "what", "how", ...) asks for an answer
-// other than yes or no.
-var binaryOpeners = []string{
-	"is", "are", "was", "were", "do", "does", "did", "can", "could", "has", "have", "had",
-	"will", "would", "should", "shall", "may", "might", "must",
-}
-
-// evaluateInterrogation checks the Interrogation Protocol: the entire answer is
-// one <interrogation> block of exactly three numbered yes/no questions.
-func evaluateInterrogation(output string) (bool, string) {
-	match := interrogationBlock.FindStringSubmatch(output)
-	if match == nil {
-		return false, "the answer is not a single <interrogation> block"
-	}
-	var lines []string
-	for _, line := range strings.Split(match[1], "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			lines = append(lines, line)
-		}
-	}
-	if len(lines) != 3 {
-		return false, fmt.Sprintf("the interrogation block has %d questions, want exactly 3", len(lines))
-	}
-	for _, line := range lines {
-		question := interrogationQuestion.FindStringSubmatch(line)
-		if question == nil {
-			return false, fmt.Sprintf("interrogation line %q is not a numbered question", line)
-		}
-		words := strings.Fields(strings.ToLower(question[1]))
-		if !slices.Contains(binaryOpeners, strings.Trim(words[0], ",")) || slices.Contains(words, "or") {
-			return false, fmt.Sprintf("interrogation question %q is not strictly yes/no", question[1])
-		}
-	}
-	return true, ""
-}
-
 // leadingWord returns the lowercased first alphanumeric word of text, ignoring
 // leading emphasis and quote marks, so "Yes, they contradict" and "**Yes**."
 // both lead with "yes" while "Yesterday" does not. A LeadingLabel is therefore
@@ -213,8 +192,11 @@ func leadingWord(text string) string {
 	return strings.ToLower(cleaned[:end])
 }
 
+// cleanContentLabel normalizes a label for ExactLabels and LeadingLabel
+// comparison: masked ellipses are folded first so the trailing-punctuation trim
+// below cannot strip the three-period form down to a shorter identifier.
 func cleanContentLabel(s string) string {
-	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.TrimSpace(strings.ToLower(normalizeMaskedEllipsis(s)))
 	for {
 		trimmed := false
 		s = strings.TrimRight(s, ".!")
@@ -241,7 +223,7 @@ func cleanContentLabel(s string) string {
 }
 
 func countSentences(text string) int {
-	text = strings.TrimSpace(text)
+	text = strings.TrimSpace(normalizeMaskedEllipsis(text))
 	if text == "" {
 		return 0
 	}

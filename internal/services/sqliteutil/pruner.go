@@ -49,7 +49,8 @@ func NewPruner(db *DB, logger *slog.Logger, interval time.Duration, fn PruneFunc
 }
 
 // Start begins the background pruning goroutine.
-// It is safe to call Start multiple times (subsequent calls are no-ops).
+// Calls while a run is already active do nothing. Stop cancels the pruner
+// for good: a later Start does not invoke fn.
 func (p *Pruner) Start() {
 	p.mu.Lock()
 	if p.started {
@@ -71,9 +72,15 @@ func (p *Pruner) Start() {
 			case <-p.ctx.Done():
 				return
 			case <-ticker.C:
+				if p.fn == nil {
+					continue
+				}
 				if err := p.fn(p.ctx, p.db, p.logger); err != nil {
-					wrappedErr := fmt.Errorf("pruner: prune function failed: %w", err)
-					p.logger.Error("pruner: prune function failed", "error", wrappedErr)
+					logger := p.logger
+					if logger == nil {
+						logger = slog.Default()
+					}
+					logger.Error("pruner: prune function failed", "error", fmt.Errorf("pruner: prune function failed: %w", err))
 				}
 			}
 		}

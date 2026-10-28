@@ -31,8 +31,10 @@ import (
 
 // FsGrepService handles recursive grep operations
 type FsGrepService struct {
-	workDir string
-	logger  *slog.Logger
+	workDir         string
+	logger          *slog.Logger
+	maxWalkEntries  int
+	maxWalkDuration time.Duration
 }
 
 // fsGrepTarget is the kind of search root a grep accepts.
@@ -54,8 +56,10 @@ func NewFsGrepService(workDir string, logger *slog.Logger) (*FsGrepService, erro
 		return nil, fmt.Errorf("fs_grep service: logger: %w", constants.ErrMissingRequiredField)
 	}
 	return &FsGrepService{
-		workDir: workDir,
-		logger:  logger,
+		workDir:         workDir,
+		logger:          logger,
+		maxWalkEntries:  constants.FsGrepMaxWalkEntries,
+		maxWalkDuration: constants.FsGrepMaxWalkDuration,
 	}, nil
 }
 
@@ -155,6 +159,10 @@ func (s *FsGrepService) grep(ctx context.Context, req *models.FsGrepRequest, tar
 
 	matches := []models.FsGrepMatch{}
 	truncated := false
+	// The walk is bounded by entries visited and by elapsed time; reaching
+	// either bound ends the search with a truncated result, not a failure.
+	walkDeadline := startTime.Add(s.maxWalkDuration)
+	walkEntries := 0
 
 	err = filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -166,6 +174,15 @@ func (s *FsGrepService) grep(ctx context.Context, req *models.FsGrepRequest, tar
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		walkEntries++
+		if walkEntries > s.maxWalkEntries || time.Now().After(walkDeadline) {
+			s.logger.Warn("fs_grep walk bound reached; returning truncated result",
+				"execution_id", req.ExecutionID,
+				"entries", walkEntries-1)
+			truncated = true
+			return io.EOF
 		}
 
 		// Security: Check for symlinks and enforce boundary constraints
@@ -232,7 +249,7 @@ func (s *FsGrepService) grep(ctx context.Context, req *models.FsGrepRequest, tar
 		}
 
 		// Search in file
-		fileMatches, err := s.searchInFile(path, re, maxMatches-len(matches))
+		fileMatches, err := s.searchInFile(path, re, maxMatches-len(matches), walkDeadline)
 		if err != nil {
 			s.logger.Debug("Skipping file that cannot be read", slog.String("execution_id", req.ExecutionID), logging.ErrorKind(err))
 			return nil // Skip files we can't read
@@ -240,7 +257,7 @@ func (s *FsGrepService) grep(ctx context.Context, req *models.FsGrepRequest, tar
 
 		matches = append(matches, fileMatches...)
 
-		if len(matches) >= maxMatches {
+		if len(matches) >= maxMatches || time.Now().After(walkDeadline) {
 			truncated = true
 			return io.EOF // Stop walking
 		}
@@ -270,7 +287,16 @@ func (s *FsGrepService) grep(ctx context.Context, req *models.FsGrepRequest, tar
 	return result, nil
 }
 
-func (s *FsGrepService) searchInFile(path string, re *regexp.Regexp, limit int) ([]models.FsGrepMatch, error) {
+func (s *FsGrepService) searchInFile(path string, re *regexp.Regexp, limit int, deadline time.Time) ([]models.FsGrepMatch, error) {
+	// Only regular files are read: opening a FIFO, device or socket, directly
+	// or through a symlink, can block indefinitely.
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("fs_grep: stat %s: %w: %w", path, constants.ErrStatFailed, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("fs_grep: failed to open file %s: %w", path, constants.ErrFileOpenFailed)
@@ -285,6 +311,9 @@ func (s *FsGrepService) searchInFile(path string, re *regexp.Regexp, limit int) 
 
 	lineNum := 0
 	for scanner.Scan() {
+		if time.Now().After(deadline) {
+			break
+		}
 		lineNum++
 		text := scanner.Text()
 		if re.MatchString(text) {

@@ -27,8 +27,12 @@ type InferenceOperatorStatus struct {
 	OperatorSessionID string
 	Status            string
 	InferenceEnabled  bool
-	OllamaEndpoint    string
-	Embedded          bool
+	// Provider is the provider class the Operator serves
+	// (constants.InferenceProviderOllama or constants.InferenceProviderLlamaCpp)
+	// and ProviderEndpoint its approved endpoint.
+	Provider         string
+	ProviderEndpoint string
+	Embedded         bool
 }
 
 // ActiveInferenceOperators returns every active remote or configured embedded
@@ -59,12 +63,14 @@ func activeInferenceOperatorDocs(operators []*operatorv1.OperatorDocument, syste
 }
 
 func inferenceOperatorStatus(op *operatorv1.OperatorDocument) InferenceOperatorStatus {
+	provider, endpoint := operatorcapability.InferenceProvider(op.GetRuntimeConfig())
 	return InferenceOperatorStatus{
 		OperatorID:        op.GetId(),
 		OperatorSessionID: op.GetOperatorSessionId(),
 		Status:            op.GetStatus(),
 		InferenceEnabled:  true,
-		OllamaEndpoint:    inferenceOperatorOllamaEndpoint(op),
+		Provider:          provider,
+		ProviderEndpoint:  endpoint,
 		Embedded:          op.GetOperatorType() == string(constants.OperatorTypeEmbedded),
 	}
 }
@@ -115,16 +121,11 @@ func SelectInferenceOperatorForHardware(
 	}
 }
 
-func inferenceOperatorOllamaEndpoint(op *operatorv1.OperatorDocument) string {
-	if op.RuntimeConfig == nil {
-		return ""
-	}
-	return strings.TrimSpace(op.RuntimeConfig.InferenceOllamaEndpoint)
-}
-
-// GovernedInferenceOllamaEndpoint returns the approved provider endpoint from
-// the exact Inference Operator runtime_config. Campaign-host environment
-// overrides are intentionally rejected.
+// GovernedInferenceOllamaEndpoint returns the approved Ollama endpoint from
+// the exact Inference Operator runtime_config, for the `ztd operator model`
+// pull commands that only Ollama serves. Campaign-host environment overrides
+// are intentionally rejected, and an Operator serving another provider fails
+// closed with constants.ErrInferenceProviderOllamaRequired.
 func GovernedInferenceOllamaEndpoint(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (string, error) {
 	if inferenceSessionID == "" {
 		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", constants.ErrMissingRequiredField)
@@ -133,7 +134,10 @@ func GovernedInferenceOllamaEndpoint(operators []*operatorv1.OperatorDocument, i
 	if err != nil {
 		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", err)
 	}
-	endpoint := strings.TrimSpace(selected.OllamaEndpoint)
+	if selected.Provider != constants.InferenceProviderOllama {
+		return "", fmt.Errorf("evaluation: governed inference endpoint: session %s serves %s: %w", inferenceSessionID, selected.Provider, constants.ErrInferenceProviderOllamaRequired)
+	}
+	endpoint := selected.ProviderEndpoint
 	if endpoint == "" {
 		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", constants.ErrInferenceEndpointInvalid)
 	}

@@ -71,10 +71,14 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 	require.NoError(t, err)
 	scope, err := catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}, TribunalCommands: useTribunal})
 	require.NoError(t, err)
+	variant := &evalv1.ModelVariant{VariantId: "variant-1", ServedModelTag: "model:tag", ModelDigest: "digest"}
 	assignment := &evalv1.EvaluationAssignment{
 		RunId: "run-1", AssignmentId: "assignment-1", CampaignId: "campaign-1", ScenarioId: "scenario-1",
+		Target: &evalv1.EvaluationAssignment_Homogeneous{Homogeneous: &evalv1.HomogeneousAssignmentTarget{
+			DesignatedRole:   evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
+			CandidateVariant: variant,
+		}},
 	}
-	variant := &evalv1.ModelVariant{VariantId: "variant-1", ServedModelTag: "model:tag", ModelDigest: "digest"}
 	return &agentRun{
 		executor: &CampaignAgentExecutor{
 			inference: inference, tools: tools,
@@ -82,12 +86,16 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 		},
 		req: AssignmentExecutionRequest{
 			Assignment: assignment, AttemptID: "attempt-1",
+			Binding: CampaignExecutionBinding{
+				ModelVariants: []*evalv1.ModelVariant{variant},
+				ModelRegistry: []*operatorv1.InferenceModelVariant{{Model: variant.GetServedModelTag(), Digest: variant.GetModelDigest()}},
+			},
 			ScenarioTools: ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}, TribunalCommands: useTribunal},
 		},
 		designated: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 		variants:   map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY: variant},
 		registry:   nil,
-		workspace:  ScenarioWorkspace{OperatorWorkingDirectory: "/operator/workspace"},
+		workspace:  ScenarioWorkspace{Root: "/operator/workspace/case-1", OperatorWorkingDirectory: "/operator/workspace"},
 		tools:      scope,
 		target:     Target{OperatorID: "operator-1", SessionID: "operator-session-1"},
 		trace:      &AgentTrace{RunID: "run-1", AssignmentID: "assignment-1", ScenarioID: "scenario-1", EvaluationAttemptID: "attempt-1", InvestigationID: "investigation-1", ModelRegistryDigest: "", Inference: AgentTraceRuntime{SessionID: "inference-session-1"}},
@@ -119,7 +127,7 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 	t.Run("signed L2 rejection is retained as governance outcome", func(t *testing.T) {
 		run := newRun()
 		failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{member})
-		assert.Equal(t, tribunalGovernanceRejected, failure)
+		assert.Equal(t, modelCallGovernanceRejected, failure)
 		assert.Empty(t, run.trace.ProviderFailure)
 		assert.Empty(t, run.trace.ProviderFailureClass)
 		require.Len(t, run.trace.ModelCalls, 1)
@@ -221,7 +229,7 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		var payload operatorv1.McpCallRequested
 		require.NoError(t, proto.Unmarshal(tools.payload, &payload))
 		assert.Equal(t, constants.MCPToolRunShellCommand, payload.GetToolName())
-		assert.JSONEq(t, proposal, payload.GetArgumentsJson())
+		assert.JSONEq(t, `{"command":"echo","args":["hello"],"working_dir":"/operator/workspace/case-1"}`, payload.GetArgumentsJson())
 	})
 
 	t.Run("Tribunal uses intent and does not dispatch native MCP", func(t *testing.T) {
@@ -233,7 +241,7 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		assert.False(t, call.Success)
 		assert.Equal(t, 1, inference.intentCalls)
 		assert.Equal(t, `{"args":["hello"],"command":"echo"}`, inference.intent.GetRequest(), "the intent carries the proposal in canonical sorted-key form") //nolint:testifylint // exact bytes, not JSON equivalence
-		assert.Equal(t, "/operator/workspace", inference.intent.GetWorkingDirectory())
+		assert.Equal(t, "/operator/workspace/case-1", inference.intent.GetWorkingDirectory())
 		assert.Equal(t, int32(constants.DefaultShellCommandTimeout), inference.intent.GetTimeoutSeconds())
 		assert.Zero(t, tools.dispatches)
 		assert.Zero(t, inference.probeCalls)

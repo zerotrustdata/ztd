@@ -159,17 +159,5 @@ func (t *NetSSHKnownHostsTool) Execute(ctx context.Context, args json.RawMessage
 		KnownHostsPath: knownHostsPath,
 	}
 
-	resultJSON, err := json.Marshal(result)
-	if err != nil {
-		return CallToolResult{}, fmt.Errorf("net_ssh_known_hosts: %w", constants.ErrMCPMarshalResult)
-	}
-
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
+	return marshalResult(t.Name(), result)
 }

@@ -85,6 +85,7 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 		failures = append(failures, "result digest validation failed: "+err.Error())
 	}
 	failures = append(failures, v.verifyHomogeneousAssignment(req)...)
+	failures = append(failures, verifyAssignmentJudge(req.Binding, req.Result)...)
 	if req.ProviderObservationReader != nil && len(scoredModelInferences(req.Result)) > 0 {
 		observationFailures, _ := req.ProviderObservationReader.VerifyAssignmentProviderObservations(ctx, req.Result, req.ProviderObservationPolicy)
 		failures = append(failures, observationFailures...)
@@ -94,6 +95,29 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 		failures = append(failures, provenanceFailures...)
 	}
 	return finalizeCampaignVerificationReport(report, failures), nil
+}
+
+// verifyAssignmentJudge binds every stored semantic grade and grader call to
+// the campaign's frozen judge, so a result graded by any other model, the
+// subject included, does not verify. A campaign frozen before pinned judging
+// has no judge to bind and keeps its stored attribution.
+func verifyAssignmentJudge(binding CampaignExecutionBinding, result *evalv1.EvaluationAssignmentResult) []string {
+	if binding.JudgeVariant == nil {
+		return nil
+	}
+	judgeID := binding.JudgeVariant.GetVariantId()
+	var failures []string
+	for _, grade := range result.GetSemanticGrades() {
+		if grade.GetJudgeVariantId() != judgeID {
+			failures = append(failures, fmt.Sprintf("semantic grade %s judged by %q, not the frozen judge %q", grade.GetGradeId(), grade.GetJudgeVariantId(), judgeID))
+		}
+	}
+	for _, call := range result.GetGraderCalls() {
+		if call.GetJudgeVariantId() != judgeID {
+			failures = append(failures, fmt.Sprintf("grader call %s made by %q, not the frozen judge %q", call.GetGraderCallId(), call.GetJudgeVariantId(), judgeID))
+		}
+	}
+	return failures
 }
 
 // verifyHomogeneousAssignment binds a model-role result to its persisted agent
@@ -138,7 +162,10 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		FormationStackSet: req.FormationStackSet,
 	}
 	if trace.CarriesModelIdentity() {
-		expected, _ := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
+		expected, _, err := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
+		if err != nil {
+			return append(failures, "agent trace model inference records failed: "+err.Error())
+		}
 		if len(expected) != len(req.Result.GetModelInferences()) {
 			failures = append(failures, "result inference count does not match agent trace")
 		} else {
@@ -181,6 +208,9 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	if !gradesEquivalent(req.Result.GetDeterministicGrades(), grading.DeterministicGrades) {
 		failures = append(failures, "stored deterministic grades do not match agent trace recomputation")
 	}
+	if !contentGradesMatch(req.Result.GetSemanticGrades(), grading.SemanticGrades) {
+		failures = append(failures, "stored judged content grades do not match the verdicts sealed in the agent trace")
+	}
 	if req.Result.GetTrajectoryOutcome() != grading.Trajectory.Outcome {
 		failures = append(failures, fmt.Sprintf("stored trajectory outcome %s does not match agent trace recomputation %s", req.Result.GetTrajectoryOutcome(), grading.Trajectory.Outcome))
 	}
@@ -221,9 +251,9 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 		}
 		resolved = map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{target.GetDesignatedRole(): target.GetCandidateVariant()}
 	}
-	designated := req.Assignment.GetHomogeneous().GetDesignatedRole()
-	if system {
-		designated = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	designated, err := AssignmentDesignatedRole(req.Assignment)
+	if err != nil {
+		return err
 	}
 	variant := resolved[designated]
 	label, err := modelCampaignRoleLabel(designated)
@@ -237,7 +267,7 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 				return fmt.Errorf("unknown model call purpose %q: %w", call.Purpose, constants.ErrEvaluationEvidenceTraceMismatch)
 			}
 			if system {
-				role = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+				role = formationTribunalRole
 			}
 		}
 		model := resolved[role]

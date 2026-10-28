@@ -831,7 +831,7 @@ func evaluationCandidateInWindow(ctx context.Context, store *evaluation.Store, c
 		}
 		record := &evalv1.ConformanceRunRecord{}
 		if err := evalv1.UnmarshalCanonical(raw, record); err != nil {
-			return false, false, fmt.Errorf("%w: decode conformance eval candidate %s: %v", constants.ErrEvidenceArtifactMalformed, candidate.RunID, err)
+			return false, false, fmt.Errorf("%w: decode conformance eval candidate %s: %w", constants.ErrEvidenceArtifactMalformed, candidate.RunID, err)
 		}
 		started, completed = record.GetStartedAt(), record.GetFinishedAt()
 	case evaluation.RunKindCampaign:
@@ -1067,6 +1067,12 @@ func (r *explicitSourceReader) EnforceDirPermissions(context.Context, string, os
 }
 func (r *explicitSourceReader) EnforceFilePermissions(context.Context, string, os.FileMode) error {
 	return constants.ErrReadOnlyEvidenceSource
+}
+func (r *explicitSourceReader) CreateOrRestrictFile(context.Context, string, os.FileMode) error {
+	return constants.ErrReadOnlyEvidenceSource
+}
+func (r *explicitSourceReader) RestrictFileIfExists(context.Context, string, os.FileMode) (bool, error) {
+	return false, constants.ErrReadOnlyEvidenceSource
 }
 func (r *explicitSourceReader) Resolve(sourcePath string) string             { return sourcePath }
 func (r *explicitSourceReader) Rel(sourcePath string) (string, error)        { return sourcePath, nil }

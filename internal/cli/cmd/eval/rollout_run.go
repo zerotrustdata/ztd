@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -80,7 +81,6 @@ func rolloutResumeCmd(deps nativeEvalDeps) *cobra.Command {
 func rolloutExecuteCmd(deps nativeEvalDeps, pendingOnly bool) *cobra.Command {
 	opts := rolloutRunOptions{SkipVerified: !pendingOnly, PendingOnly: pendingOnly}
 	named := namedRolloutOptions{Resume: pendingOnly, Repeat: 1}
-	var continueOnFailure bool
 	action := "run"
 	if pendingOnly {
 		action = "resume"
@@ -93,8 +93,7 @@ campaign order. Each campaign runs to completion with strict witness verificatio
 before the next starts. Existing campaign suites, lanes, and conditions are
 preserved. --repeat repeats the entire sequence; --until limits the number of
 campaigns attempted in this invocation. Use rollout resume <name> to continue
-without repeating successful steps. --continue-on-failure overrides the saved
-failure policy for this execution. Every execution retains its own progress and
+without repeating successful steps. Every execution retains its own progress and
 run references. --dry-run validates and previews without writing or executing.
 
 Without a name, qualify each selected queue entry: freeze a single-model campaign over the
@@ -116,7 +115,7 @@ pending. The batch holds the queue lock, so 'rollout add', 'remove', 'retry',
 
 Examples:
   ztd eval rollout run nightly
-  ztd eval rollout run compare --repeat 3 --continue-on-failure
+  ztd eval rollout run compare --repeat 3
   ztd eval rollout run nightly --until 2
   ztd eval rollout run --until 1
   ztd eval rollout run --gate-smoke --promote-on-pass
@@ -148,14 +147,11 @@ Examples:
 						}
 					}
 					named.DryRun, named.Until = opts.DryRun, opts.Until
-					if cmd.Flags().Changed("continue-on-failure") {
-						named.ContinueOnFailure = &continueOnFailure
-					}
 					return runNamedRollout(cmd, deps, files, args[0], named, productionNamedRolloutRunner(deps, files))
 				}
 			}
-			if cmd.Flags().Changed("repeat") || cmd.Flags().Changed("continue-on-failure") {
-				return fmt.Errorf("evaluation: --repeat and --continue-on-failure require a named rollout: %w", constants.ErrEvaluationFlagsInvalid)
+			if cmd.Flags().Changed("repeat") {
+				return fmt.Errorf("evaluation: --repeat requires a named rollout: %w", constants.ErrEvaluationFlagsInvalid)
 			}
 			opts.CampaignIDs = args
 			return runRollout(cmd, deps, opts)
@@ -168,7 +164,7 @@ Examples:
 sequence order, skipping successful steps. Stopped steps resume their existing
 run; failed steps start a new run and retain earlier attempts. A definition
 update affects fresh executions only. --until limits campaigns attempted in this
-invocation; --continue-on-failure overrides this execution's failure policy.
+invocation.
 
 Otherwise continue qualification of pending campaigns in rollout queue order. With no
 arguments, select every pending campaign; otherwise select the named campaign
@@ -194,7 +190,6 @@ Examples:
 	if !pendingOnly {
 		cmd.Flags().IntVar(&named.Repeat, "repeat", 1, "For a named rollout, repeat the entire campaign sequence this many times")
 	}
-	cmd.Flags().BoolVar(&continueOnFailure, "continue-on-failure", false, "For a named rollout, continue after a campaign failure (overrides the saved policy)")
 	cmd.Flags().IntVar(&opts.Until, "until", 0, "Attempt at most this many campaigns or queued models in this invocation (0 means all)")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Print the rollout plan without executing")
 	cmd.Flags().BoolVar(&opts.GateSmoke, "gate-smoke", false, "Screen each model with the fast smoke campaign before any full run")
@@ -212,7 +207,8 @@ type rolloutGateRunner func(cmd *cobra.Command, entry evaluation.CampaignQueueMo
 type rolloutGateFactory func(fileSvc fs.RuntimeFileService, registry []*evalv1.ModelVariant) rolloutGateRunner
 
 // productionRolloutGates creates each gate's campaign from the entry's registry
-// model and starts a run of it with strict witness verification.
+// model, judged by the registry's default judge, and starts a run of it with
+// strict witness verification.
 func productionRolloutGates(deps nativeEvalDeps) rolloutGateFactory {
 	return func(fileSvc fs.RuntimeFileService, registry []*evalv1.ModelVariant) rolloutGateRunner {
 		return func(cmd *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
@@ -220,7 +216,11 @@ func productionRolloutGates(deps nativeEvalDeps) rolloutGateFactory {
 			if variant == nil {
 				return nil, fmt.Errorf("model %q is not in the registry\nImport it with:\nztd eval models import %s\n%w", entry.VariantID, entry.ServedModelTag, constants.ErrInferenceModelNotFound)
 			}
-			return runRolloutGate(cmd, deps, fileSvc, variant, entry, gate)
+			judge, err := evaluation.ResolveCampaignJudge(registry, evaluation.DefaultJudgeServedModelTag)
+			if err != nil {
+				return nil, fmt.Errorf("default judge %q must be in the registry\nImport it with:\nztd eval models import %s\n%w", evaluation.DefaultJudgeServedModelTag, evaluation.DefaultJudgeServedModelTag, err)
+			}
+			return runRolloutGate(cmd, deps, fileSvc, variant, judge, entry, gate)
 		}
 	}
 }
@@ -421,7 +421,7 @@ func qualifyRolloutEntry(cmd *cobra.Command, fileSvc fs.RuntimeFileService, runG
 // runRolloutGate creates the campaign for one gate of one model and starts a
 // run of it with strict witness verification. The returned run is non-nil
 // whenever a run was started, including when it then failed.
-func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, variant *evalv1.ModelVariant, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
+func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, variant, judge *evalv1.ModelVariant, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
 	campaignID := entry.CampaignID
 	suiteID := evaluation.DefaultSuiteID
 	if gate == rolloutGateSmoke {
@@ -435,6 +435,7 @@ func runRolloutGate(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeF
 		SuiteID:                suiteID,
 		VersionOnCatalogChange: true,
 		Platform:               platformIdentity(cmd),
+		Judge:                  judge,
 	})
 	if err != nil {
 		return nil, err
@@ -631,7 +632,11 @@ func checkHTTPReachable(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout:   httpclient.DefaultTimeout,
+		Transport: httpclient.NewIPv4Transport(nil),
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

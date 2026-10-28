@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Operations Guide
 audience: platform operators, release managers, publication reviewers
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/guides/public_spectator.md
   - internal/cli/cmd/public/
@@ -103,6 +103,18 @@ The tunnel origin is the read-only public listener (`8082`), never the private l
 ```
 
 Start the Gateway with `--public-base-url https://opendevops.ai` so the embedded explorer points at the public origin.
+
+## Publish to a remote Cloud Gateway
+
+When the Gateway runs on a cloud VM with direct mirror ingress (`--public-spectator-public-listen 0.0.0.0:8082 --public-spectator-allow-container-bind`; see [cloud deployment](../devs/cloud_deployment.md)), publish and restore from a workstation with `-e / --endpoint`. The CLI derives the anonymous mirror read origin `http://<gateway-host>:8082` from the endpoint host. Pass `--mirror-origin` to override it, for example when the mirror is fronted by a domain:
+
+```bash
+./ztd -e <GATEWAY_IP> public restore --queue
+./ztd -e <GATEWAY_IP> eval runs publish --mirror-origin https://opendevops.ai
+./ztd -e <GATEWAY_IP> public status --mirror-origin http://<GATEWAY_IP>:8082
+```
+
+`--mirror-origin` is the public read origin, never the private ingest listener (`127.0.0.1:8081`). Writes still reach the Gateway over its authenticated API; the mirror origin is used only for anonymous presence and status reads.
 
 ## External acceptance
 

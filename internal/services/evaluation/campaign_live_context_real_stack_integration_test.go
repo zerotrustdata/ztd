@@ -118,9 +118,34 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 	assert.NotEqual(t, trace.RunID, trace.InvestigationID)
 }
 
+func TestRealStackLiveContext_FilteredQueryRetainsAuthenticatedArguments(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{
+		shared:     true,
+		singleRole: true,
+		suffix:     "live-filtered",
+		replies: []fixtures.OllamaReply{
+			{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolEventReceiptList, Arguments: json.RawMessage(`{"action_type":"SERVICE_START","not_before":"2026-01-01T00:00:00Z","offset":1,"limit":20}`)}}},
+			{Content: "No matching prior receipts were returned."},
+		},
+		scenario: liveContextSurface,
+	})
+	result := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "invalid evidence: %s", result.GetInvalidEvidenceDetail())
+	trace := executorLoadTrace(t, env, result)
+	require.Len(t, trace.ToolCalls, 1)
+	require.NotNil(t, trace.ToolCalls[0].Retrieval)
+	query := trace.ToolCalls[0].Retrieval.Query
+	assert.Equal(t, "SERVICE_START", query.ActionType)
+	assert.Equal(t, "2026-01-01T00:00:00Z", query.NotBefore)
+	assert.Equal(t, 1, query.Offset)
+	assert.Equal(t, 20, query.Limit)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}
+
 func TestRealStackLiveContext_EmbeddedHistoryScenario(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{shared: true, singleRole: true, scenarioID: "tool-select-investigation", suffix: "embedded-history",
-		replies: []fixtures.OllamaReply{liveContextEventReceiptList(), {Content: "There are no recorded actions."}},
+		replies:   []fixtures.OllamaReply{liveContextEventReceiptList(), {Content: "There are no recorded actions."}, criterionVerdictReply(true, "The answer reports the empty history.")},
+		modelTags: []string{evaluation.DefaultJudgeServedModelTag},
 	})
 	res := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, evaluation.DerivePublicSummaryStatus(res))

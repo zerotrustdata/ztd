@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"net/http"
@@ -161,7 +162,12 @@ func (mg *mockBootstrapGateway) serve(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	fingerprints := models.PlatformEnrollmentCSRFingerprints{Operator: operatorFP, CLI: cliFP}
+	auditorKey, err := models.DecodeAuditorPublicKey(req.Enrollment.Operator.AuditorPublicKey)
+	if err != nil {
+		return
+	}
+	auditorDigest := sha256.Sum256(auditorKey)
+	fingerprints := models.PlatformEnrollmentCSRFingerprints{Operator: operatorFP, CLI: cliFP, AuditorKey: hex.EncodeToString(auditorDigest[:])}
 	if err := conn.WriteJSON(models.OperatorBootstrapFrame{Type: models.OperatorBootstrapFrameCreated, Created: &models.PlatformEnrollmentCreateResponse{
 		RequestID:     mockBootstrapRequestID,
 		ComponentKind: models.PlatformComponentOperator,
@@ -180,7 +186,7 @@ func (mg *mockBootstrapGateway) serve(w http.ResponseWriter, r *http.Request) {
 	if err := conn.ReadJSON(&frame); err != nil || frame.Type != models.OperatorBootstrapFrameComplete || frame.Complete == nil {
 		return
 	}
-	transcript, err := buildOperatorCompletionTranscript(mockBootstrapRequestID, req.Enrollment.TokenHash, req.Enrollment.InstanceID, operatorFP, cliFP)
+	transcript, err := buildOperatorCompletionTranscript(mockBootstrapRequestID, req.Enrollment.TokenHash, req.Enrollment.InstanceID, operatorFP, cliFP, fingerprints.AuditorKey)
 	if err != nil {
 		return
 	}
@@ -246,6 +252,7 @@ func newTestBootstrapClient(t *testing.T, mg *mockBootstrapGateway, launchID str
 		Deployment:        deployment,
 		Logger:            testLogger(),
 		ActuatorPublicKey: strings.Repeat("ab", 32),
+		AuditorPublicKey:  strings.Repeat("cd", 32),
 	})
 	require.NoError(t, err)
 	return client, fileSvc
@@ -367,6 +374,11 @@ func TestOperatorBootstrap_RecordsItsKeysBeforeTheRequestIsAnnounced(t *testing.
 		obs.requested.CLI, cliErr = auth.CSRFingerprint(req.Enrollment.Operator.CLICSRPEM)
 		assert.NoError(t, opErr)
 		assert.NoError(t, cliErr)
+		key, keyErr := models.DecodeAuditorPublicKey(req.Enrollment.Operator.AuditorPublicKey)
+		if assert.NoError(t, keyErr) {
+			digest := sha256.Sum256(key)
+			obs.requested.AuditorKey = hex.EncodeToString(digest[:])
+		}
 		seen <- obs
 	}
 
@@ -402,6 +414,7 @@ func TestOperatorBootstrap_WSSVerifiesTheGatewayAgainstThePinnedBundle(t *testin
 			Deployment:        deployment,
 			Logger:            testLogger(),
 			ActuatorPublicKey: strings.Repeat("ab", 32),
+			AuditorPublicKey:  strings.Repeat("cd", 32),
 		})
 		require.NoError(t, err)
 		return client

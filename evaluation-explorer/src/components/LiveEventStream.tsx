@@ -324,16 +324,18 @@ function SortHeader({
   sortField,
   sortDirection,
   onSort,
+  className,
 }: {
   label: string;
   field: StreamSortField;
   sortField: StreamSortField | undefined;
   sortDirection: StreamSortDirection;
   onSort: (field: StreamSortField) => void;
+  className?: string;
 }) {
   const isSorted = sortField === field;
   return (
-    <th scope="col" aria-sort={isSorted ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <th scope="col" className={className} aria-sort={isSorted ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button type="button" className="th-sort stream-sort" onClick={() => onSort(field)} aria-label={`Sort by ${label}`}>
         {label}
         <span className="sort-indicator" aria-hidden="true">
@@ -421,6 +423,7 @@ export function LiveEventStream({
   const pageCount = Math.ceil(sortedVisible.length / STREAM_PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
   const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
+  const showTribunal = pageEvents.some((event) => event.assignment_id && tribunalVotes.has(assignmentRowKey(event)));
 
   function handleSort(field: StreamSortField): void {
     if (sortField === field) setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc');
@@ -484,9 +487,9 @@ export function LiveEventStream({
               <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              <th scope="col"><span className="sr-only">Tribunal</span></th>
-              {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
-              <SortHeader label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              {showTribunal ? <th scope="col" className="stream-tribunal-header"><span className="sr-only">Tribunal</span></th> : null}
+              {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} className="stream-metric-header" label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
+              <SortHeader className="stream-time-header" label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             </tr></thead>
             <tbody>
               {pageEvents.map((event) => {
@@ -520,14 +523,14 @@ export function LiveEventStream({
                       {modelHref ? <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>{model?.served_model_tag ?? event.variant_id}</Link> : <span>Platform</span>}
                       {event.assignment_id || event.role ? <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span> : null}
                     </td>
-                    <td className="stream-tribunal-cell">
+                    {showTribunal ? <td className="stream-tribunal-cell">
                       {rowVotes ? <TribunalVotes votes={rowVotes} /> : null}
-                    </td>
+                    </td> : null}
                     {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label, format }) => {
                       const displayed = event.assignment_id
                         ? streamMetricDisplay(assignmentMetric(event, assignment, key), format)
                         : { text: STREAM_EMPTY_METRIC, unavailable: true, reason: 'not applicable' };
-                      return <td className="stream-metric-cell" key={key} data-label={label}>
+                      return <td className="stream-metric-cell" key={key} data-label={label} data-metric={key}>
                         <span className={`stream-metric-value${displayed.unavailable ? ' unavailable' : ''}`}
                           title={displayed.unavailable ? displayed.reason?.replaceAll('_', ' ') : undefined}>
                           {displayed.text}

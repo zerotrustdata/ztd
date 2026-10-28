@@ -88,45 +88,6 @@ func consensusIdentity(binding *models.ConsensusPolicy) (*evalv1.EvaluationConse
 	}, nil
 }
 
-// ValidateFormationTribunal requires one Tribunal per formation run. Tribunal
-// authoring runs on each formation's Assistant slot (INV-EVAL-CAMP-02), so
-// where posture enforces L2 on a Tribunal binding, the bound generative vote
-// model must be that same Assistant variant, tag and digest, in every stack.
-// Otherwise the panel that authors a command and the panel that votes on it
-// would be different models. Unenforced L2 and the application provider are
-// out of scope.
-func (g RunGovernance) ValidateFormationTribunal(set *HeterogeneousStackSet, variants []*evalv1.ModelVariant) error {
-	posture, err := cases.GovernancePosture(g.Posture)
-	if err != nil {
-		return fmt.Errorf("evaluation: formation tribunal: %w: %w", constants.ErrEvaluationPostureUnsupported, err)
-	}
-	consensus := g.Consensus
-	if !posture.RequiresL2() || !consensus.GetBound() || consensus.GetProvider() != string(constants.ConsensusProviderTribunal) {
-		return nil
-	}
-	if set == nil {
-		return fmt.Errorf("evaluation: formation tribunal: stack set: %w", constants.ErrMissingRequiredField)
-	}
-	if kind := consensus.GetVoteKind(); kind != "" && kind != models.ConsensusVoteKindGenerative {
-		return fmt.Errorf("evaluation: formation tribunal: %s votes cannot run on an Assistant slot; rebind generative: %w", kind, constants.ErrEvaluationTribunalNotAssistant)
-	}
-	registry := make(map[string]*evalv1.ModelVariant, len(variants))
-	for _, variant := range variants {
-		registry[variant.GetVariantId()] = variant
-	}
-	for _, stack := range set.Stacks {
-		assistant := registry[stack.GetAssistantSlot().GetVariantId()]
-		if assistant == nil {
-			return fmt.Errorf("evaluation: formation tribunal: stack %q assistant variant %q: %w", stack.GetStackId(), stack.GetAssistantSlot().GetVariantId(), constants.ErrFormationRegistryBinding)
-		}
-		if assistant.GetServedModelTag() != consensus.GetModelTag() || assistant.GetModelDigest() != consensus.GetModelDigest() {
-			return fmt.Errorf("evaluation: formation tribunal: stack %q Assistant slot is %s, Tribunal votes on %s; rebind with ztd consensus enroll tribunal --model %s, one Assistant model per campaign: %w",
-				stack.GetStackId(), assistant.GetServedModelTag(), consensus.GetModelTag(), assistant.GetServedModelTag(), constants.ErrEvaluationTribunalNotAssistant)
-		}
-	}
-	return nil
-}
-
 // ValidateRunGovernance requires the live Gateway governance to equal what the
 // run froze at start. A run started before the consensus freeze existed has no
 // frozen binding and never executes again.

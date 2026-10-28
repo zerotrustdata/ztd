@@ -32,6 +32,7 @@ type Attestor interface {
 // campaign model digest.
 type OllamaStorageAttestor struct {
 	modelStorageRoot string
+	blobsDir         string
 	operatorID       string
 	blobs            *blobVerifier
 }
@@ -46,7 +47,12 @@ func NewOllamaStorageAttestor(modelStorageRoot, operatorID string) (*OllamaStora
 	if operatorID == "" {
 		operatorID = "ztd-model-provenance-operator"
 	}
-	return &OllamaStorageAttestor{modelStorageRoot: root, operatorID: operatorID, blobs: newBlobVerifier(filepath.Join(root, "blobs"), time.Now)}, nil
+	return &OllamaStorageAttestor{modelStorageRoot: root, blobsDir: filepath.Join(root, "blobs"), operatorID: operatorID, blobs: newBlobVerifier(time.Now)}, nil
+}
+
+// blobPath is the content-addressed path of the blob with digestHex.
+func (a *OllamaStorageAttestor) blobPath(digestHex string) string {
+	return filepath.Join(a.blobsDir, "sha256-"+digestHex)
 }
 
 // ollamaRunnerManifestMediaType marks a wrapper layer that is itself one
@@ -73,7 +79,7 @@ func (a *OllamaStorageAttestor) Attest(ctx context.Context, servedModelTag, expe
 		return nil, fmt.Errorf("model provenance attestor: %w", constants.ErrMissingRequiredField)
 	}
 	if !models.IsSHA256Hex(expectedModelDigest) {
-		return nil, fmt.Errorf("model provenance attestor: invalid expected digest")
+		return nil, fmt.Errorf("model provenance attestor: invalid expected digest: %w", constants.ErrInferenceEvidenceHashInvalid)
 	}
 
 	manifestPath, err := resolveOllamaManifestPath(a.modelStorageRoot, servedModelTag)
@@ -153,12 +159,12 @@ func (a *OllamaStorageAttestor) readRunnerManifest(wrapper ollamaManifest, expec
 		if err != nil {
 			return "", nil, false, err
 		}
-		body, err := os.ReadFile(filepath.Join(a.modelStorageRoot, "blobs", "sha256-"+digestHex))
+		body, err := os.ReadFile(a.blobPath(digestHex))
 		if err != nil {
 			return "", nil, false, fmt.Errorf("model provenance attestor: read runner manifest %s: %w", digestHex, err)
 		}
 		if models.SHA256Hex(body) != digestHex {
-			return "", nil, false, fmt.Errorf("model provenance attestor: runner manifest digest mismatch for %s", digestHex)
+			return "", nil, false, fmt.Errorf("model provenance attestor: runner manifest digest mismatch for %s: %w", digestHex, constants.ErrModelProvenanceBlobDigestMismatch)
 		}
 		return digestHex, body, true, nil
 	}
@@ -170,12 +176,12 @@ func (a *OllamaStorageAttestor) attestBlob(ctx context.Context, digestRef, media
 	if err != nil {
 		return nil, err
 	}
-	verification, err := a.blobs.verify(ctx, digestHex)
+	verification, err := a.blobs.verify(ctx, a.blobPath(digestHex), digestHex)
 	if err != nil {
 		return nil, err
 	}
 	if declaredSize > 0 && verification.sizeBytes != declaredSize {
-		return nil, fmt.Errorf("model provenance attestor: blob size mismatch for %s", digestHex)
+		return nil, fmt.Errorf("model provenance attestor: blob size mismatch for %s: %w", digestHex, constants.ErrModelProvenanceBlobDigestMismatch)
 	}
 	return &evalv1.ModelWeightAttestation{
 		BlobDigest:                digestHex,
@@ -189,7 +195,7 @@ func (a *OllamaStorageAttestor) attestBlob(ctx context.Context, digestRef, media
 func resolveOllamaManifestPath(storageRoot, servedModelTag string) (string, error) {
 	name := ollama.ParseName(servedModelTag)
 	if !name.IsFullyQualified() {
-		return "", fmt.Errorf("model provenance attestor: invalid served model tag %q", servedModelTag)
+		return "", fmt.Errorf("model provenance attestor: invalid served model tag %q: %w", servedModelTag, constants.ErrInferenceModelTagInvalid)
 	}
 	manifestPath := filepath.Join(storageRoot, "manifests", name.ManifestFilepath())
 	if _, err := os.Stat(manifestPath); err != nil {
@@ -202,7 +208,7 @@ func digestRefToHex(digestRef string) (string, error) {
 	digestRef = strings.TrimSpace(digestRef)
 	digestRef = strings.TrimPrefix(digestRef, "sha256:")
 	if !models.IsSHA256Hex(digestRef) {
-		return "", fmt.Errorf("model provenance attestor: invalid digest ref %q", digestRef)
+		return "", fmt.Errorf("model provenance attestor: invalid digest ref %q: %w", digestRef, constants.ErrInferenceEvidenceHashInvalid)
 	}
 	return digestRef, nil
 }

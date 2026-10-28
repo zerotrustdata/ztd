@@ -9,6 +9,7 @@ package autochthoncmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"slices"
@@ -23,6 +24,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 )
 
+type fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)
+
 // autochthonFlags are the only flags ztd autochthon accepts. The inherited
 // root --endpoint and --port configure a Gateway and are refused.
 var autochthonFlags = []string{"working-dir", "log"}
@@ -32,6 +35,10 @@ var statusFlags = []string{"working-dir", "generations", "surprises", "anchor", 
 
 // Cmd runs the Gateway-less autochthon in the foreground until SIGINT or SIGTERM.
 func Cmd() *cobra.Command {
+	return cmdWithConfig(shared.NewFileSvc)
+}
+
+func cmdWithConfig(newFileSvc fileSvcFactory) *cobra.Command {
 	var workingDir string
 	var logLevel string
 
@@ -44,7 +51,7 @@ Only --working-dir and --log are accepted; any other flag, including the inherit
 ztd autochthon status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmd, workingDir, logLevel)
+			return run(cmd, workingDir, logLevel, newFileSvc)
 		},
 	}
 
@@ -52,7 +59,7 @@ ztd autochthon status`,
 	cmd.Flags().StringVar(&workingDir, "working-dir", "", "Runtime root; state is written under .ztd/autochthon/")
 	cmd.Flags().StringVarP(&logLevel, "log", "l", "info", "Log level: info, error, debug")
 
-	cmd.AddCommand(statusCmd())
+	cmd.AddCommand(statusCmdWithConfig(newFileSvc))
 	return cmd
 }
 
@@ -68,7 +75,7 @@ func refuseFlags(cmd *cobra.Command, allowed []string) error {
 }
 
 // run refuses Gateway-facing flags, then runs until SIGINT or SIGTERM.
-func run(cmd *cobra.Command, workingDir, logLevel string) error {
+func run(cmd *cobra.Command, workingDir, logLevel string, newFileSvc fileSvcFactory) error {
 	if err := refuseFlags(cmd, autochthonFlags); err != nil {
 		return err
 	}
@@ -76,9 +83,9 @@ func run(cmd *cobra.Command, workingDir, logLevel string) error {
 	if err != nil {
 		return err
 	}
-	files, err := fs.NewRuntimeFileService(workingDir, logger)
+	files, err := newFileSvc(workingDir, logger)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

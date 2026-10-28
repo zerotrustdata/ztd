@@ -101,10 +101,8 @@ func TestCLIRecovery_CreateRequest_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
-	dataBytes, err := json.Marshal(doc.Data)
-	require.NoError(t, err)
 	var stored models.CLIRecoveryRequest
-	require.NoError(t, json.Unmarshal(dataBytes, &stored))
+	require.NoError(t, doc.DecodeData(&stored))
 
 	assert.Equal(t, requestID, stored.ID)
 	assert.Equal(t, tokenHash, stored.TokenHash, "stored token_hash must be SHA-256 of the raw token")
@@ -166,9 +164,8 @@ func TestCLIRecovery_GetByToken_ExpiredAutoTransitions(t *testing.T) {
 	require.NotNil(t, doc)
 
 	pastTime := time.Now().UTC().Add(-1 * time.Minute)
-	dataBytes, _ := json.Marshal(doc.Data)
 	var req models.CLIRecoveryRequest
-	require.NoError(t, json.Unmarshal(dataBytes, &req))
+	require.NoError(t, doc.DecodeData(&req))
 	req.ExpiresAt = pastTime
 	updatedData, _ := json.Marshal(&req)
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash, updatedData))
@@ -180,9 +177,8 @@ func TestCLIRecovery_GetByToken_ExpiredAutoTransitions(t *testing.T) {
 	doc2, err := svc.db.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash)
 	require.NoError(t, err)
 	require.NotNil(t, doc2)
-	dataBytes2, _ := json.Marshal(doc2.Data)
 	var req2 models.CLIRecoveryRequest
-	require.NoError(t, json.Unmarshal(dataBytes2, &req2))
+	require.NoError(t, doc2.DecodeData(&req2))
 	assert.Equal(t, models.CLIRecoveryStateExpired, req2.State)
 
 	_ = requestID // unused but kept for clarity
@@ -288,9 +284,8 @@ func TestCLIRecovery_Approve_ExpiredRequest(t *testing.T) {
 	tokenHash := hashToken(token)
 	doc, err := svc.db.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash)
 	require.NoError(t, err)
-	dataBytes, _ := json.Marshal(doc.Data)
 	var req models.CLIRecoveryRequest
-	require.NoError(t, json.Unmarshal(dataBytes, &req))
+	require.NoError(t, doc.DecodeData(&req))
 	req.ExpiresAt = time.Now().UTC().Add(-1 * time.Minute)
 	updatedData, _ := json.Marshal(&req)
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash, updatedData))
@@ -384,9 +379,8 @@ func TestCLIRecovery_Complete_ExpiredRequest(t *testing.T) {
 	tokenHash := hashToken(token)
 	doc, err := svc.db.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash)
 	require.NoError(t, err)
-	dataBytes, _ := json.Marshal(doc.Data)
 	var req models.CLIRecoveryRequest
-	require.NoError(t, json.Unmarshal(dataBytes, &req))
+	require.NoError(t, doc.DecodeData(&req))
 	req.ExpiresAt = time.Now().UTC().Add(-1 * time.Minute)
 	updatedData, _ := json.Marshal(&req)
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash, updatedData))
@@ -591,9 +585,8 @@ func TestCLIRecovery_CleanupExpired(t *testing.T) {
 	tokenHash1 := hashToken(token1)
 	doc, err := svc.db.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash1)
 	require.NoError(t, err)
-	dataBytes, _ := json.Marshal(doc.Data)
 	var req1 models.CLIRecoveryRequest
-	require.NoError(t, json.Unmarshal(dataBytes, &req1))
+	require.NoError(t, doc.DecodeData(&req1))
 	req1.ExpiresAt = time.Now().UTC().Add(-5 * time.Minute)
 	updatedData, _ := json.Marshal(&req1)
 	require.NoError(t, svc.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLIRecoveryRequests), tokenHash1, updatedData))

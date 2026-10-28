@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"runtime"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
@@ -811,7 +812,14 @@ func (c *EnrollmentCoordinator) cleanupStaleAnchors(ctx context.Context, keepFin
 	// Print the stale anchors and prompt the user.
 	c.out("Found %d stale ztd root CA anchor(s) from a previous gateway instance:", len(staleAnchors))
 	for i, a := range staleAnchors {
-		c.out("  %d. %s (fingerprint %s)", i+1, a.CommonName, a.Fingerprint)
+		if where := a.Where(); where != "" {
+			c.out("  %d. %s (fingerprint %s, %s)", i+1, a.CommonName, a.Fingerprint, where)
+		} else {
+			c.out("  %d. %s (fingerprint %s)", i+1, a.CommonName, a.Fingerprint)
+		}
+	}
+	if platform.StaleAnchorsNeedAdmin(staleAnchors) {
+		c.out("A System keychain anchor is machine-wide. Removing it runs sudo and affects every account on this Mac. A login keychain anchor is removed for your account only.")
 	}
 	prompt := fmt.Sprintf("Remove these %d stale anchor(s) before enrolling? [y/N]: ", len(staleAnchors))
 	if !c.confirm(prompt) {
@@ -933,9 +941,26 @@ func (c *EnrollmentCoordinator) installSystemTrust(ctx context.Context, artifact
 		return false, nil
 	}
 
-	// Step 5: InstallRoot. If ErrSystemTrustUnsupported, warn and return.
-	// On success print "installed". On any other error return wrapped
-	// ErrSystemTrustInstallFailed.
+	// Step 5: Consent, then InstallRoot. login web reaches sudo here with
+	// no earlier prompt. Say what the password is for before asking.
+	// If ErrSystemTrustUnsupported, warn and return. On success print
+	// "installed". On any other error return wrapped ErrSystemTrustInstallFailed.
+	c.out("Gateway root CA fingerprint (SHA-256): %s", keepFingerprint)
+	var trustPrompt string
+	if runtime.GOOS == "darwin" {
+		c.out("This adds the Gateway CA to your login keychain as an HTTPS trust root, for your account only. It is not trusted for code signing. Other accounts on this Mac stay unchanged. This step does not use sudo.")
+		c.out("The CA private key stays in the local vault. macOS may show its own confirmation.")
+		c.out("To skip it, rerun with: ./ztd login web --no-system-trust")
+		trustPrompt = "Install the Gateway root CA into your login keychain? [y/N]: "
+	} else {
+		c.out("This adds the Gateway CA to the OS trust store so browsers accept its HTTPS certificate. The CA private key stays on this host.")
+		c.out("To skip it, rerun with --no-system-trust.")
+		trustPrompt = "Install the Gateway root CA into the OS trust store? [y/N]: "
+	}
+	if !c.confirm(trustPrompt) {
+		c.out("OS trust installation declined. Rerun with --no-system-trust to continue without it.")
+		return false, fmt.Errorf("%w: %w", constants.ErrManualBrowserTrustRequired, constants.ErrConfirmationAborted)
+	}
 	if err := c.trust.InstallRoot(ctx, primary, keepFingerprint); err != nil {
 		if errors.Is(err, constants.ErrSystemTrustUnsupported) {
 			c.out("Warning: OS trust store installation is unsupported on this platform (%v). Skipping system trust installation.", err)

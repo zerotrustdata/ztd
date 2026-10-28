@@ -11,7 +11,7 @@
 
 import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
 
-export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8'] as const;
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
 /** One canonical protojson message retained for offline signature verification. */
@@ -104,6 +104,8 @@ export interface AgentTraceConsensusInference {
 
 export interface AgentTraceToolCall {
   consensus_inferences?: AgentTraceConsensusInference[];
+  request_envelope?: AgentTraceProto;
+  ingress_refusal_code?: number;
   call_id: string;
   model_call_id: string;
   provider_call_id?: string;
@@ -122,6 +124,30 @@ export interface AgentTraceToolCall {
   approved_arguments_json?: string;
   receipt?: AgentTraceProto;
   retrieval?: AgentTraceRetrieval;
+}
+
+export interface AgentTraceObservation {
+  kind: 'seed' | 'file_state' | 'probe';
+  call: AgentTraceToolCall;
+}
+
+/**
+ * One pinned-judge verdict on one judged content criterion (agent-trace.v10).
+ * The verdict is decoded from the signed inference result named by its receipt.
+ */
+export interface AgentTraceContentJudgment {
+  criterion_id: string;
+  provider_attempt_id: string;
+  transaction_id: string;
+  judge_variant_id: string;
+  served_model_tag: string;
+  model_digest: string;
+  rubric_version: string;
+  messages: AgentTraceMessage[];
+  met: boolean;
+  rationale: string;
+  inference_result: AgentTraceProto;
+  receipt: AgentTraceProto;
 }
 
 /** The typed query that the local Operator answered for a v6 context call. */
@@ -165,6 +191,8 @@ export interface AgentTrace {
   input?: AgentTraceInput;
   model_calls: AgentTraceModelCall[];
   tool_calls: AgentTraceToolCall[];
+  observations?: AgentTraceObservation[];
+  content_judgments?: AgentTraceContentJudgment[];
   final_output: string;
   terminal_classification?: string;
   clarifications?: { loop_turn: number; questions: string[]; selected_branch?: string; user_response?: string }[];
@@ -177,8 +205,11 @@ export interface AgentTrace {
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 
-const isV7OrV8 = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v7' || schemaVersion === 'agent-trace.v8';
-const isLiveContext = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v6' || isV7OrV8(schemaVersion);
+const isV7OrLater = (schemaVersion: string): boolean => ['agent-trace.v7', 'agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10'].includes(schemaVersion);
+const isV8OrLater = (schemaVersion: string): boolean => ['agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10'].includes(schemaVersion);
+const isV9OrLater = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v9' || schemaVersion === 'agent-trace.v10';
+const isV10 = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v10';
+const isLiveContext = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v6' || isV7OrLater(schemaVersion);
 
 function optionalString(value: Record<string, unknown>, key: string, path: string): void {
   if (value[key] !== undefined) assertString(value[key], `${path}.${key}`);
@@ -216,16 +247,17 @@ function parseRuntime(value: unknown, path: string): AgentTraceRuntime {
   return value as unknown as AgentTraceRuntime;
 }
 
+function parseMessage(value: unknown, path: string): AgentTraceMessage {
+  assertObject(value, path);
+  rejectUnknown(value, ['role', 'text'], path);
+  requiredStrings(value, ['role', 'text'], path);
+  return value as unknown as AgentTraceMessage;
+}
+
 function parseInput(value: unknown, path: string): AgentTraceInput {
   assertObject(value, path);
   rejectUnknown(value, ['messages', 'tools'], path);
-  const messages = list(value.messages, `${path}.messages`);
-  messages.forEach((message, index) => {
-    const messagePath = `${path}.messages[${index}]`;
-    assertObject(message, messagePath);
-    rejectUnknown(message, ['role', 'text'], messagePath);
-    requiredStrings(message, ['role', 'text'], messagePath);
-  });
+  const messages = list(value.messages, `${path}.messages`).map((message, index) => parseMessage(message, `${path}.messages[${index}]`));
   const tools = list(value.tools, `${path}.tools`);
   tools.forEach((tool, index) => {
     const toolPath = `${path}.tools[${index}]`;
@@ -233,7 +265,29 @@ function parseInput(value: unknown, path: string): AgentTraceInput {
     rejectUnknown(tool, ['name', 'description', 'json_schema'], toolPath);
     requiredStrings(tool, ['name', 'description', 'json_schema'], toolPath);
   });
-  return { messages: messages as AgentTraceMessage[], tools: tools as AgentTraceTool[] };
+  return { messages, tools: tools as AgentTraceTool[] };
+}
+
+const CONTENT_JUDGMENT_STRING_FIELDS = [
+  'criterion_id', 'provider_attempt_id', 'transaction_id', 'judge_variant_id', 'served_model_tag', 'model_digest', 'rubric_version', 'rationale',
+] as const;
+
+function parseContentJudgment(value: unknown, path: string): AgentTraceContentJudgment {
+  assertObject(value, path);
+  rejectUnknown(value, [...CONTENT_JUDGMENT_STRING_FIELDS, 'messages', 'met', 'inference_result', 'receipt'], path);
+  requiredStrings(value, CONTENT_JUDGMENT_STRING_FIELDS, path);
+  for (const key of ['criterion_id', 'served_model_tag']) {
+    assert((value[key] as string).length > 0, `${path}.${key}`, 'expected non-empty judge identity');
+  }
+  assert(SHA256.test(value.model_digest as string), `${path}.model_digest`, 'expected lowercase SHA-256');
+  const messages = list(value.messages, `${path}.messages`).map((message, index) => parseMessage(message, `${path}.messages[${index}]`));
+  assertBoolean(value.met, `${path}.met`);
+  return {
+    ...(value as unknown as AgentTraceContentJudgment),
+    messages,
+    inference_result: proto(value.inference_result, `${path}.inference_result`),
+    receipt: proto(value.receipt, `${path}.receipt`),
+  };
 }
 
 function parseWorkspace(value: unknown, path: string): AgentTrace['workspace'] {
@@ -294,7 +348,7 @@ const MODEL_CALL_FIELDS = [
 function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion): AgentTraceModelCall {
   assertObject(value, path);
   const identity = ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest', 'inference_result'];
-  rejectUnknown(value, isV7OrV8(schemaVersion) ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
+  rejectUnknown(value, isV7OrLater(schemaVersion) ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
   requiredStrings(value, ['provider_attempt_id', 'transaction_id', 'purpose', 'result_digest'], path);
   for (const key of ['loop_turn', 'prompt_tokens', 'completion_tokens', 'retry_count', 'tool_call_count']) {
     assertInteger(value[key], `${path}.${key}`);
@@ -311,7 +365,7 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
   }
   optionalString(value, 'tool_call_id', path);
   optionalString(value, 'persona', path);
-  if (isV7OrV8(schemaVersion)) {
+  if (isV7OrLater(schemaVersion)) {
     requiredStrings(value, identity.filter((key) => key !== 'inference_result'), path);
     for (const key of ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest']) {
       assert((value[key] as string).length > 0, `${path}.${key}`, 'expected non-empty model identity');
@@ -382,7 +436,9 @@ function parseConsensusInference(value: unknown, path: string): AgentTraceConsen
 function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion, investigationId?: string): AgentTraceToolCall {
   assertObject(value, path);
   const liveFields = isLiveContext(schemaVersion) ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
-  const fields = schemaVersion === 'agent-trace.v8' ? [...liveFields, 'approved_arguments_json', 'consensus_inferences'] : liveFields;
+  const fields = isV8OrLater(schemaVersion)
+    ? [...liveFields, 'approved_arguments_json', 'consensus_inferences', ...(isV9OrLater(schemaVersion) ? ['request_envelope', 'ingress_refusal_code'] : [])]
+    : liveFields;
   rejectUnknown(value, fields, path);
   requiredStrings(value, ['call_id', 'model_call_id', 'tool_name', 'arguments_json'], path);
   for (const key of ['provider_call_id', 'command', 'result_json', 'error_type', 'error', 'action_type', 'transaction_id', 'policy_decision']) {
@@ -396,6 +452,20 @@ function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSc
   assertBoolean(value.is_operator_tool, `${path}.is_operator_tool`);
   assertInteger(value.loop_turn, `${path}.loop_turn`);
   optionalProto(value, 'receipt', path);
+  optionalProto(value, 'request_envelope', path);
+  if (value.ingress_refusal_code !== undefined) {
+    assertInteger(value.ingress_refusal_code, `${path}.ingress_refusal_code`);
+    assert(isV9OrLater(schemaVersion), `${path}.ingress_refusal_code`, `${schemaVersion} never carries ingress refusal codes`);
+    assert((value.ingress_refusal_code as number) >= 1 && (value.ingress_refusal_code as number) <= 20, `${path}.ingress_refusal_code`, 'expected a known ingress refusal code');
+    assert(!value.success && value.receipt === undefined && value.request_envelope === undefined, `${path}.ingress_refusal_code`, 'pre-envelope refusal has no receipt or admitted request');
+  }
+  if (value.request_envelope !== undefined) {
+    assert(isV9OrLater(schemaVersion), `${path}.request_envelope`, `${schemaVersion} never carries request envelopes`);
+    assertObject(value.receipt, `${path}.receipt`);
+    const envelopeHash = (value.request_envelope as Record<string, unknown>).transaction_hash;
+    assertString(envelopeHash, `${path}.request_envelope.transaction_hash`);
+    assert(envelopeHash === value.receipt.transaction_hash, `${path}.request_envelope.transaction_hash`, 'must match the signed receipt transaction hash');
+  }
   let retrieval: AgentTraceRetrieval | undefined;
   if (value.retrieval !== undefined) retrieval = parseRetrieval(value.retrieval, `${path}.retrieval`, investigationId);
   let consensusInferences: AgentTraceConsensusInference[] | undefined;
@@ -467,7 +537,12 @@ function validateV6ContextRetrievals(calls: AgentTraceToolCall[], investigationI
 export function parseAgentTrace(value: unknown): AgentTrace {
   const path = 'agent_trace';
   assertObject(value, path);
-  rejectUnknown(value, TRACE_FIELDS, path);
+  const versionText = typeof value.schema_version === 'string' ? value.schema_version : '';
+  rejectUnknown(value, [
+    ...TRACE_FIELDS,
+    ...(isV9OrLater(versionText) ? ['observations'] : []),
+    ...(isV10(versionText) ? ['content_judgments'] : []),
+  ], path);
   assert(
     typeof value.schema_version === 'string' && (AGENT_TRACE_SCHEMA_VERSIONS as readonly string[]).includes(value.schema_version),
     `${path}.schema_version`,
@@ -508,6 +583,25 @@ export function parseAgentTrace(value: unknown): AgentTrace {
   }
   const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`, schemaVersion));
   const toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => parseToolCall(call, `${path}.tool_calls[${index}]`, schemaVersion, value.investigation_id as string | undefined));
+  let observations: AgentTraceObservation[] | undefined;
+  if (value.observations !== undefined) {
+    assert(isV9OrLater(schemaVersion), `${path}.observations`, `${schemaVersion} never carries harness observations`);
+    observations = list(value.observations, `${path}.observations`).map((observation, index) => {
+      const observationPath = `${path}.observations[${index}]`;
+      assertObject(observation, observationPath);
+      rejectUnknown(observation, ['kind', 'call'], observationPath);
+      assert(typeof observation.kind === 'string' && ['seed', 'file_state', 'probe'].includes(observation.kind), `${observationPath}.kind`, 'expected seed, file_state, or probe');
+      return {
+        kind: observation.kind as AgentTraceObservation['kind'],
+        call: parseToolCall(observation.call, `${observationPath}.call`, schemaVersion, value.investigation_id as string | undefined),
+      };
+    });
+  }
+  let contentJudgments: AgentTraceContentJudgment[] | undefined;
+  if (value.content_judgments !== undefined) {
+    contentJudgments = list(value.content_judgments, `${path}.content_judgments`)
+      .map((judgment, index) => parseContentJudgment(judgment, `${path}.content_judgments[${index}]`));
+  }
   if (liveContext) validateV6ContextRetrievals(toolCalls, value.investigation_id as string | undefined);
   optionalString(value, 'terminal_classification', path);
   if (value.steps !== undefined) list(value.steps, `${path}.steps`).forEach((step, index) => proto(step, `${path}.steps[${index}]`));
@@ -540,6 +634,8 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     input,
     model_calls: modelCalls,
     tool_calls: toolCalls,
+    observations,
+    content_judgments: contentJudgments,
     bracket,
   };
 }

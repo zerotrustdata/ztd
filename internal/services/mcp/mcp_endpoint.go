@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
@@ -127,7 +128,7 @@ func (g *GatewayService) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.JSONRPC != "2.0" {
+	if req.JSONRPC != constants.JSONRPCVersion {
 		g.writeDispatchError(w, req.ID, g.rpcRefusal(-32600, fmt.Errorf("mcp endpoint: %w", constants.ErrJSONRPCVersionInvalid)))
 		return
 	}
@@ -414,7 +415,7 @@ func (g *GatewayService) proxyMCPMethod(ctx context.Context, method string, para
 	}
 
 	reqBody, err := json.Marshal(downstreamJSONRPCRequest{
-		JSONRPC: "2.0",
+		JSONRPC: constants.JSONRPCVersion,
 		ID:      1,
 		Method:  method,
 		Params:  params,
@@ -426,10 +427,9 @@ func (g *GatewayService) proxyMCPMethod(ctx context.Context, method string, para
 	if err != nil {
 		return nil, fmt.Errorf("mcp_endpoint: failed to build downstream request: %w", err)
 	}
-	httpReq.Header.Set(constants.HeaderContentType, "application/json")
+	httpReq.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
+	resp, err := httpclient.WithTimeout(g.getHTTPClient(), 10*time.Second).Do(httpReq)
 	if err != nil {
 		g.recordFailure()
 		return nil, fmt.Errorf("mcp_endpoint: query downstream MCP server: %w: %w", constants.ErrGatewayDownstreamUnavailable, err)
@@ -460,11 +460,11 @@ func (g *GatewayService) proxyMCPMethod(ctx context.Context, method string, para
 // This is used by Claude Code and other MCP clients that support SSE transport.
 func (g *GatewayService) handleMCPSSE(w http.ResponseWriter, r *http.Request) {
 	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("X-Accel-Buffering", "no") // For Nginx
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueTextEvent)
+	w.Header().Set(constants.HeaderCacheControl, constants.HeaderValueNoCache)
+	w.Header().Set(constants.HeaderConnection, constants.HeaderValueKeepAlive)
+	w.Header().Set(constants.HeaderAccessControlAllowOrigin, "*")
+	w.Header().Set(constants.HeaderXAccelBuffering, "no") // For Nginx
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

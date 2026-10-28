@@ -493,13 +493,9 @@ func isTerminalState(state models.CLIRecoveryState) bool {
 
 // decodeCLIRecoveryRequest deserializes a Document into a CLIRecoveryRequest.
 func decodeCLIRecoveryRequest(doc *models.Document) (*models.CLIRecoveryRequest, error) {
-	dataBytes, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal document data: %w", err)
-	}
 	var req models.CLIRecoveryRequest
-	if err := json.Unmarshal(dataBytes, &req); err != nil {
-		return nil, fmt.Errorf("unmarshal recovery request: %w", err)
+	if err := doc.DecodeData(&req); err != nil {
+		return nil, fmt.Errorf("decode recovery request: %w", err)
 	}
 	return &req, nil
 }

@@ -46,7 +46,7 @@ func loadTestRollout(t *testing.T, env *runEnv, name string) *evaluation.NamedRo
 
 func TestNamedRollout_DefineListShowAndUpdate(t *testing.T) {
 	env := newNamedRolloutEnv(t)
-	env.mustRun(t, "rollout", "create", "nightly", "longitudinal", "control", "longitudinal", "--continue-on-failure")
+	env.mustRun(t, "rollout", "create", "nightly", "longitudinal", "control", "longitudinal")
 	env.mustRun(t, "rollout", "create", "quick", "control")
 	var listed rolloutListJSON
 	require.NoError(t, env.runJSON(t, &listed, "rollout", "list"))
@@ -57,11 +57,9 @@ func TestNamedRollout_DefineListShowAndUpdate(t *testing.T) {
 	var shown evaluation.NamedRollout
 	require.NoError(t, env.runJSON(t, &shown, "rollout", "show", "nightly"))
 	assert.Equal(t, []string{"longitudinal", "control", "longitudinal"}, shown.Campaigns)
-	assert.True(t, shown.ContinueOnFailure)
 	_, err := env.run(t, "rollout", "create", "nightly", "control")
 	require.ErrorIs(t, err, constants.ErrAlreadyExists)
 	env.mustRun(t, "rollout", "update", "nightly", "control", "longitudinal")
-	assert.True(t, loadTestRollout(t, env, "nightly").ContinueOnFailure, "update preserves unspecified failure policy")
 	_, err = env.run(t, "rollout", "update", "absent", "control")
 	require.ErrorIs(t, err, constants.ErrNotFound)
 }
@@ -73,15 +71,13 @@ func TestNamedRollout_ListSeparatesDefinitionsFromModelQueue(t *testing.T) {
 	assert.Contains(t, out, "No named rollouts found")
 	assert.Contains(t, out, "rollout create <name> <campaign...>")
 	assert.NotContains(t, out, "qwen3:4b")
-	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal", "--continue-on-failure")
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
 	env.mustRun(t, "rollout", "create", "quick", "control")
 	out = env.mustRun(t, "rollout", "list")
 	assert.Contains(t, out, "NAME")
 	assert.Contains(t, out, "CAMPAIGNS")
 	assert.Contains(t, out, "nightly")
 	assert.Contains(t, out, "quick")
-	assert.Contains(t, out, "continue")
-	assert.Contains(t, out, "stop")
 	assert.NotContains(t, out, "qwen3:4b")
 	var definitions, queue rolloutListJSON
 	require.NoError(t, env.runJSON(t, &definitions, "rollout", "list"))
@@ -236,46 +232,33 @@ func TestNamedRollout_OrderLimitResumeSnapshotAndFreshRerun(t *testing.T) {
 }
 
 func TestNamedRollout_FailurePolicyAndRetry(t *testing.T) {
-	for _, keepGoing := range []bool{false, true} {
-		t.Run(fmt.Sprint(keepGoing), func(t *testing.T) {
-			env := newNamedRolloutEnv(t)
-			env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
-			var called []string
-			err := runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1, ContinueOnFailure: &keepGoing}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
-				called = append(called, campaignID)
-				if campaignID == "control" {
-					return fmt.Errorf("private provider text: %w", constants.ErrEvalRunVerificationFailed)
-				}
-				return nil
-			})
-			require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
-			if keepGoing {
-				assert.Equal(t, []string{"control", "longitudinal"}, called)
-			} else {
-				assert.Equal(t, []string{"control"}, called)
-			}
-			rollout := loadTestRollout(t, env, "nightly")
-			assert.Equal(t, evaluation.ExecutionFailureVerification, rollout.Executions[0].Steps[0].Attempts[0].FailureClass)
-			assert.NotContains(t, env.mustRun(t, "rollout", "show", "nightly"), "private provider text")
-			called = nil
-			require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1, Resume: true}, func(_ *cobra.Command, campaignID, _ string, resume bool) error {
-				assert.False(t, resume, "failed campaigns start new runs")
-				called = append(called, campaignID)
-				return nil
-			}))
-			if keepGoing {
-				assert.Equal(t, []string{"control"}, called, "already successful later steps stay excluded")
-			} else {
-				assert.Equal(t, []string{"control", "longitudinal"}, called)
-			}
-			assert.Len(t, loadTestRollout(t, env, "nightly").Executions[0].Steps[0].Attempts, 2)
-		})
-	}
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
+	var called []string
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
+		called = append(called, campaignID)
+		if campaignID == "control" {
+			return fmt.Errorf("private provider text: %w", constants.ErrEvalRunVerificationFailed)
+		}
+		return nil
+	}))
+	assert.Equal(t, []string{"control", "longitudinal"}, called)
+	rollout := loadTestRollout(t, env, "nightly")
+	assert.Equal(t, evaluation.ExecutionFailureVerification, rollout.Executions[0].Steps[0].Attempts[0].FailureClass)
+	assert.NotContains(t, env.mustRun(t, "rollout", "show", "nightly"), "private provider text")
+	called = nil
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1, Resume: true}, func(_ *cobra.Command, campaignID, _ string, resume bool) error {
+		assert.False(t, resume, "failed campaigns start new runs")
+		called = append(called, campaignID)
+		return nil
+	}))
+	assert.Equal(t, []string{"control"}, called, "already successful later steps stay excluded")
+	assert.Len(t, loadTestRollout(t, env, "nightly").Executions[0].Steps[0].Attempts, 2)
 }
 
 func TestNamedRollout_StopResumesSameRunAndNeverStartsLaterCampaign(t *testing.T) {
 	env := newNamedRolloutEnv(t)
-	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal", "--continue-on-failure")
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
 	var stoppedID string
 	err := runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1}, func(_ *cobra.Command, campaignID, runID string, resume bool) error {
 		assert.Equal(t, "control", campaignID)
@@ -322,7 +305,7 @@ func TestNamedRollout_LockExcludesEditsAndOtherRunsButAllowsDryRun(t *testing.T)
 
 func TestNamedRollout_ResumeGuardsRetainRunAndStopBatch(t *testing.T) {
 	env := newNamedRolloutEnv(t)
-	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal", "--continue-on-failure")
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
 	var originalID string
 	err := runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1}, func(_ *cobra.Command, _, runID string, _ bool) error {
 		originalID = runID
@@ -352,7 +335,7 @@ func TestNamedRollout_RequiresCompletePopulation(t *testing.T) {
 
 func TestNamedRollout_CanceledCampaignEndsBatchAndRetriesFresh(t *testing.T) {
 	env := newNamedRolloutEnv(t)
-	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal", "--continue-on-failure")
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
 	var canceledID string
 	err := runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1}, func(_ *cobra.Command, campaignID, runID string, _ bool) error {
 		assert.Equal(t, "control", campaignID)

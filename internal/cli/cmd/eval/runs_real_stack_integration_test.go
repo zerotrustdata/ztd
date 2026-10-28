@@ -96,7 +96,6 @@ func bindRunTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, id
 	require.NoError(t, store.AddConsensus(ctx, models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
 		Provider:        string(constants.ConsensusProviderTribunal),
-		EndpointURL:     fixtureBinding.EndpointURL,
 		MemberAppIDs:    memberAppIDs,
 		Quorum:          3,
 		RequireDistinct: true,
@@ -160,6 +159,7 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 			InvestigationId: "real-stack-investigation",
 			DataOperatorId:  dataWorkload.OperatorID,
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 	return run
@@ -211,7 +211,7 @@ func newRealStackEnvironment(t *testing.T, opts fixtures.EvalStackOptions, runCo
 	cfg, err := cfgLoader(root)
 	require.NoError(t, err)
 	stack.Identity.InstallCLIRuntime(t, stack.Gateway, fileSvc, cfg)
-	writeTestFrozenInventory(t, root, testQwenVariant())
+	writeTestFrozenInventory(t, root, testQwenVariant(), testJudgeVariant())
 	evidenceFiles, err := deps.fileSvcFactory(root, slog.Default())
 	require.NoError(t, err)
 	return &realStackRun{ctx: ctx, root: root, stack: stack, deps: deps, cfg: cfg, fileSvc: evidenceFiles}
@@ -361,7 +361,7 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	// Neither the strict-run preflight residency read nor the typed release is
 	// a state change, so under consensus neither runs a Tribunal vote round.
 	require.NoError(t, releaseProviderModels(cmd, run.deps, runExecuteOptions{RunID: "tribunal-release"}, run.cfg, authContext,
-		inferenceWorkload.OperatorSessionID, run.stack.Provider.Endpoint(), "resident", nil))
+		inferenceWorkload.OperatorSessionID, "resident", nil))
 	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "residency and release must not add Tribunal vote inferences")
 
 	provider, err := inference.NewOllamaBackend(run.stack.Provider.Endpoint(), slog.Default())

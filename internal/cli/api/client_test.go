@@ -294,6 +294,30 @@ func TestStatusError(t *testing.T) {
 	assert.False(t, IsUnauthorized(constants.ErrHTTPStatusError))
 }
 
+func TestDecodeGatewayError_PreservesRecoveryErrorIdentity(t *testing.T) {
+	for _, sentinel := range []error{
+		constants.ErrOperatorBindingMismatch,
+		constants.ErrPublicFeedSequenceOutOfOrder,
+		constants.ErrPublicFeedSnapshotNotFound,
+		constants.ErrPublicFeedOutboxEquivocation,
+		constants.ErrPublicFeedOutboxCorrupt,
+		constants.ErrPublicFeedHashChainMismatch,
+		constants.ErrCLISessionExpired,
+		constants.ErrCLISessionInvalid,
+		constants.ErrMTLSCertRevoked,
+	} {
+		t.Run(sentinel.Error(), func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"error":%q}`, sentinel.Error()+": details"))
+			err := fmt.Errorf("gateway operation: %w", DecodeGatewayError(http.StatusConflict, body))
+			require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+			require.ErrorIs(t, err, sentinel)
+			assert.NotErrorIs(t, DecodeGatewayError(http.StatusConflict, []byte(fmt.Sprintf(`{"error":%q}`, "unrelated: "+sentinel.Error()))), sentinel)
+		})
+	}
+	require.ErrorIs(t, DecodeGatewayError(http.StatusNotFound, nil), constants.ErrNotFound)
+	assert.NotErrorIs(t, DecodeGatewayError(http.StatusServiceUnavailable, []byte(`{"error":"status 404"}`)), constants.ErrNotFound)
+}
+
 func TestDecodeGatewayError_PlatformEnrollmentRequiresBootstrap(t *testing.T) {
 	body := []byte(fmt.Sprintf(`{"error":%q}`, constants.ErrPlatformEnrollmentRequiresBootstrap.Error()))
 	err := DecodeGatewayError(http.StatusForbidden, body)

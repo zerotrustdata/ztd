@@ -15,8 +15,6 @@ import (
 	"slices"
 	"time"
 
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -34,10 +32,7 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-const (
-	assignmentTimeout      = 8 * time.Minute
-	campaignAgentPersonaID = "ztd-eval-campaign"
-)
+const campaignAgentPersonaID = "ztd-eval-campaign"
 
 type runExecuteOptions struct {
 	RunID        string
@@ -49,6 +44,17 @@ type runExecuteOptions struct {
 	ResultOutput func(*evalv1.EvaluationAssignmentResult)
 	// Zero disables the rollout generation-failure limit.
 	ProviderFailureLimit int
+	AssignmentTimeout    time.Duration
+}
+
+// assignmentContext adds a wall-clock deadline only when explicitly requested.
+// Without one, the executor's loop limits and each governed stage's deadlines
+// bound the work. Every assignment still gets an independent cancellation scope.
+func assignmentContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout > 0 {
+		return context.WithTimeout(parent, timeout)
+	}
+	return context.WithCancel(parent)
 }
 
 // runProviderFailureError stops repeated provider generation failures without
@@ -70,6 +76,9 @@ func (e *runProviderFailureError) Unwrap() error { return constants.ErrInference
 // streams only: it quotes grade detail and model-derived text, so it is never
 // written to a file under the runtime root.
 func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions) (executed int, runErr error) {
+	if opts.AssignmentTimeout < 0 {
+		return 0, fmt.Errorf("evaluation: assignment timeout must be nonnegative: %w", constants.ErrEvaluationFlagsInvalid)
+	}
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return 0, err
@@ -263,14 +272,8 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
 	}
-	governance, err := evalPreflightGatewayGovernance(cmd, gatewayDeps, cfg, authContext, spec, summary.Run)
-	if err != nil {
+	if _, err := evalPreflightGatewayGovernance(cmd, gatewayDeps, cfg, authContext, spec, summary.Run); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
-	}
-	if stackSet != nil {
-		if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
-			return 0, fmt.Errorf("evaluation: run execute: %w", err)
-		}
 	}
 	operators, err := evalListOperators(cmd, gatewayDeps, cfg, authContext)
 	if err != nil {
@@ -326,6 +329,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ModelRegistryDigest: spec.GetModelRegistryDigest(),
 		ModelRegistry:       evaluation.InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
 		ModelVariants:       spec.GetModelRegistry(),
+		JudgeVariant:        spec.GetJudgeVariant(),
 	}
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
@@ -343,17 +347,13 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			if runErr == nil || finished {
 				return
 			}
-			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec)
+			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, spec)
 			if cleanupErr == nil {
 				return
 			}
 			runErr = errors.Join(runErr, fmt.Errorf("evaluation: run execute: release provider models: %w", cleanupErr))
 		}()
-		endpoint, err := resolveCampaignOllamaEndpoint(operators, topology.Inference.OperatorSessionID)
-		if err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
-		if err := releaseResidentProviderModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, endpoint); err != nil {
+		if err := releaseResidentProviderModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}
@@ -365,7 +365,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			stopped = true
 			break
 		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), assignmentTimeout)
+		ctx, cancel := assignmentContext(cmd.Context(), opts.AssignmentTimeout)
 		result, ok, err := controller.ExecuteNextAssignment(ctx, opts.RunID, executionBinding, artifacts)
 		cancel()
 		if ok && errors.Is(err, constants.ErrEvaluationPublicationFailed) {
@@ -422,7 +422,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
-		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, cfg, authContext, operators, topology, spec, witness, publication, strictProvenance, strictObservation)
+		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, cfg, authContext, topology, spec, witness, publication, strictProvenance, strictObservation)
 		if err != nil {
 			return executed, err
 		}
@@ -438,7 +438,6 @@ func finalizeRunExecution(
 	opts runExecuteOptions,
 	cfg *config.Config,
 	authContext *auth.ClientAuthContext,
-	operators []*operatorv1.OperatorDocument,
 	topology evaluation.CampaignOperatorTopology,
 	spec *evalv1.EvaluationCampaignSpec,
 	witness *evaluation.CampaignWitnessCapture,
@@ -468,7 +467,7 @@ func finalizeRunExecution(
 			return nil, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}
-	if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec); err != nil {
+	if err := releaseRunModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, spec); err != nil {
 		return nil, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	var publicationErrs []error
@@ -513,18 +512,14 @@ func waitForRunEvidence(cmd *cobra.Command, runID, kind string, timeout time.Dur
 
 // releaseResidentProviderModels unloads every model resident on the provider
 // before scored work, so a run never starts against a warm, foreign model.
-func releaseResidentProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID, endpoint string) error {
-	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, endpoint, "resident", nil)
+func releaseResidentProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID string) error {
+	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, "resident", nil)
 }
 
 // releaseRunModels unloads the campaign's own models once the run is done.
-func releaseRunModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, operators []*operatorv1.OperatorDocument, inferenceSessionID string, spec *evalv1.EvaluationCampaignSpec) error {
+func releaseRunModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID string, spec *evalv1.EvaluationCampaignSpec) error {
 	if inferenceSessionID == "" || spec == nil || len(spec.GetModelRegistry()) == 0 {
 		return nil
-	}
-	endpoint, err := resolveCampaignOllamaEndpoint(operators, inferenceSessionID)
-	if err != nil {
-		return err
 	}
 	modelTags := make([]string, 0, len(spec.GetModelRegistry()))
 	for _, variant := range spec.GetModelRegistry() {
@@ -535,20 +530,21 @@ func releaseRunModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOp
 	if len(modelTags) == 0 {
 		return nil
 	}
-	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, endpoint, "campaign", modelTags)
+	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, "campaign", modelTags)
 }
 
 // releaseProviderModels releases the resident provider models, limited to
 // only when it is non-nil, through the exact Inference Operator session and
-// waits until the provider reports them absent.
-func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID, endpoint, label string, only []string) error {
+// waits until the provider reports them absent. Residency and release are
+// typed commands the Operator serves from its own configured provider, so no
+// endpoint travels with them.
+func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID, label string, only []string) error {
 	dispatcher, err := newHarnessOllamaModelCommandDispatcher(cfg, authContext, deps.gatewayDeps())
 	if err != nil {
 		return err
 	}
 	maintenance := evaluation.OllamaModelMaintenanceContext{
 		TargetOperatorSessionID: inferenceSessionID,
-		Environment:             modelCommandEnvironment(endpoint),
 		CaseID:                  opts.RunID,
 		NewID:                   adaptNewID(deps.newID),
 	}
@@ -565,7 +561,7 @@ func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExec
 	if len(residentTags) == 0 {
 		return nil
 	}
-	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.Environment, maintenance.NewID); err != nil {
+	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.NewID); err != nil {
 		return err
 	}
 	if !opts.JSONOutput {
@@ -613,14 +609,6 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
 }
 
-func resolveCampaignOllamaEndpoint(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (string, error) {
-	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(operators, inferenceSessionID)
-	if err != nil {
-		return "", fmt.Errorf("evaluation: run execute: %w", err)
-	}
-	return endpoint, nil
-}
-
 // reconcileStopRequest reads the run's lease and marks the watcher requested when
 // a cancel is recorded there. The stream runs it on every connection, so a stop
 // sent while the stream was down is still seen. A lease that cannot be read may
@@ -652,13 +640,14 @@ type runStateReporter interface {
 // command, so the run never continues or ends behind a projection it failed to
 // write.
 type runLifecycle struct {
-	client       runStateReporter
-	live         evaluation.LeaseLiveness
-	deps         nativeEvalDeps
-	store        *evaluation.Store
-	cliSessionID string
-	runID        string
-	startedAt    time.Time
+	client         runStateReporter
+	live           evaluation.LeaseLiveness
+	deps           nativeEvalDeps
+	store          *evaluation.Store
+	cliSessionID   string
+	runID          string
+	startedAt      time.Time
+	lastObservedAt time.Time
 	// running is set once RUNNING is attempted. The Gateway's state after an
 	// attempt is unknown, so the release reports even when the attempt failed.
 	running bool
@@ -676,7 +665,7 @@ func (l *runLifecycle) reportRunning(ctx context.Context) error {
 		return nil
 	}
 	l.running = true
-	err = l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+	err = l.post(ctx, models.RunLifecycleStatusRunning, row)
 	// running is refused only from a terminal projection. A run the store has
 	// not cancelled is resumable, so the projection contradicts the store.
 	var refused *models.ObserveTransitionError
@@ -701,7 +690,7 @@ func (l *runLifecycle) reconcileProjection(ctx context.Context) (models.RunLifec
 	if row.Queued == 0 || releasedRunStatus(row) != models.RunLifecycleStatusWaiting {
 		return "", nil
 	}
-	err = l.post(ctx, models.RunLifecycleStatusWaiting, row, nil)
+	err = l.post(ctx, models.RunLifecycleStatusWaiting, row)
 	var refused *models.ObserveTransitionError
 	if err == nil || !errors.As(err, &refused) {
 		return "", err
@@ -727,8 +716,8 @@ func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) e
 	if err != nil {
 		return err
 	}
-	endedAt := l.deps.now().UTC()
-	return l.post(ctx, releasedRunStatus(row), row, &endedAt)
+	endedAt := l.nextObservedAt()
+	return l.sendAt(ctx, releasedRunStatus(row), row, &endedAt, endedAt, "")
 }
 
 // releasedRunStatus is the projected status of a released run, read from the row
@@ -769,13 +758,29 @@ func (l *runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
 	return row, nil
 }
 
-func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
-	return l.send(ctx, status, row, endedAt, "")
+func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow) error {
+	return l.send(ctx, status, row, nil, "")
 }
 
 // send posts status, replacing the terminal projected status reopens when it is
 // set. Only reconcileProjection reopens.
 func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time, reopens models.RunLifecycleStatus) error {
+	observedAt := l.nextObservedAt()
+	return l.sendAt(ctx, status, row, endedAt, observedAt, reopens)
+}
+
+func (l *runLifecycle) sendAt(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time, observedAt time.Time, reopens models.RunLifecycleStatus) error {
+	if endedAt != nil {
+		end := *endedAt
+		if end.Before(l.startedAt) {
+			end = l.startedAt
+		}
+		if observedAt.Before(end) {
+			observedAt = end
+			l.lastObservedAt = end
+		}
+		endedAt = &end
+	}
 	startedAt := l.startedAt
 	err := l.client.UpdateRunState(ctx, models.ObserveProducerRunStateRequest{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
@@ -787,7 +792,7 @@ func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatu
 		TotalTasks:     int(row.ExpectedAssignments),
 		StartedAt:      &startedAt,
 		EndedAt:        endedAt,
-		ObservedAt:     l.deps.now().UTC(),
+		ObservedAt:     observedAt,
 		Reopens:        reopens,
 		CLISessionID:   l.cliSessionID,
 	})
@@ -795,4 +800,20 @@ func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatu
 		return fmt.Errorf("evaluation: report run %s status %s: %w", l.runID, status, err)
 	}
 	return nil
+}
+
+// nextObservedAt preserves the ordering of lifecycle updates from this run
+// when the host wall clock moves backwards between RUNNING and its released
+// status. The Gateway rejects an older observed_at value, so without this clamp
+// a completed local run could fail only while projecting its final status.
+func (l *runLifecycle) nextObservedAt() time.Time {
+	now := l.deps.now().UTC()
+	if now.Before(l.startedAt) {
+		now = l.startedAt
+	}
+	if now.Before(l.lastObservedAt) {
+		now = l.lastObservedAt
+	}
+	l.lastObservedAt = now
+	return now
 }

@@ -8,12 +8,15 @@
 package evaluation
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"slices"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -32,12 +35,35 @@ var scenarioEvidenceTypes = map[string]struct{}{
 	"final_response":    {},
 }
 
+// scenarioFailure builds a scenario failure carrying its sentinel class. When
+// cause is non-nil it is wrapped with %w, so errors.Is and errors.As reach it
+// through the returned error's Unwrap chain.
+func scenarioFailure(sentinel error, blueprint ScenarioBlueprint, cause error, format string, args ...any) error {
+	message := fmt.Sprintf(format, args...)
+	if cause == nil {
+		return fmt.Errorf("evaluation: scenario %s: %w: %s", blueprint.ScenarioID, sentinel, message)
+	}
+	return fmt.Errorf("evaluation: scenario %s: %w: %s: %w", blueprint.ScenarioID, sentinel, message, cause)
+}
+
 func scenarioContractError(blueprint ScenarioBlueprint, format string, args ...any) error {
-	return fmt.Errorf("evaluation: scenario %s: %w: %s", blueprint.ScenarioID, constants.ErrEvaluationScenarioContractInvalid, fmt.Sprintf(format, args...))
+	return scenarioFailure(constants.ErrEvaluationScenarioContractInvalid, blueprint, nil, format, args...)
+}
+
+// scenarioContractErrorWithCause is scenarioContractError for a failure that
+// has an underlying cause, which stays reachable with errors.Is/errors.As.
+func scenarioContractErrorWithCause(blueprint ScenarioBlueprint, cause error, format string, args ...any) error {
+	return scenarioFailure(constants.ErrEvaluationScenarioContractInvalid, blueprint, cause, format, args...)
 }
 
 func scenarioUnanswerableError(blueprint ScenarioBlueprint, format string, args ...any) error {
-	return fmt.Errorf("evaluation: scenario %s: %w: %s", blueprint.ScenarioID, constants.ErrEvaluationPromptUnanswerable, fmt.Sprintf(format, args...))
+	return scenarioFailure(constants.ErrEvaluationPromptUnanswerable, blueprint, nil, format, args...)
+}
+
+// scenarioUnanswerableErrorWithCause is scenarioUnanswerableError for a failure
+// that has an underlying cause, which stays reachable with errors.Is/errors.As.
+func scenarioUnanswerableErrorWithCause(blueprint ScenarioBlueprint, cause error, format string, args ...any) error {
+	return scenarioFailure(constants.ErrEvaluationPromptUnanswerable, blueprint, cause, format, args...)
 }
 
 // validateScenarioContract fails closed on any breach of the scenario
@@ -49,6 +75,15 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	}
 	if err := validateSeedCaseTitle(blueprint); err != nil {
 		return err
+	}
+	if err := validateScenarioContext(blueprint, catalog); err != nil {
+		return err
+	}
+	if _, err := investigation.ValidateFileStates(blueprint.Gold.FileState); err != nil {
+		return scenarioContractErrorWithCause(blueprint, err, "invalid final file-state objective")
+	}
+	if probe := blueprint.Gold.GovernedProbe; probe != nil && !models.ValidExecutableName(probe.Command) {
+		return scenarioContractError(blueprint, "verification probe must name one executable")
 	}
 	if err := validateScenarioToolNames(blueprint, catalog); err != nil {
 		return err
@@ -68,6 +103,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
 	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
+		return err
+	}
+	if err := validateJudgedCriteria(blueprint, blueprint.Gold.ContentCheck); err != nil {
 		return err
 	}
 	if err := validateArgumentValidators(blueprint, catalog); err != nil {
@@ -126,6 +164,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Command != nil && players.Command.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
+	if players.Command != nil && (len(players.Command.JudgedCriteria) > 0 || players.Command.RefusalCriterion != "") {
+		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
+	}
 	if marshal := players.Marshal; marshal != nil {
 		if len(marshal.Risk) == 0 {
 			return scenarioContractError(blueprint, "marshal expectation accepts no risk level")
@@ -142,6 +183,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Codex != nil && players.Codex.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
+	if players.Codex != nil && (len(players.Codex.JudgedCriteria) > 0 || players.Codex.RefusalCriterion != "") {
+		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
+	}
 	return nil
 }
 
@@ -153,6 +197,38 @@ func validateSeedCaseTitle(blueprint ScenarioBlueprint) error {
 	lowered := strings.ToLower(title)
 	if strings.Contains(lowered, "eval") || strings.Contains(lowered, "{{") {
 		return scenarioContractError(blueprint, "seed case title %q must read like a real case and never name the evaluation", title)
+	}
+	return nil
+}
+
+func validateScenarioContext(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
+	if strings.TrimSpace(blueprint.Input.UserPrompt) == "" {
+		return scenarioContractError(blueprint, "user prompt is empty")
+	}
+	lite := slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	if lite && (len(blueprint.AllowedTools)+len(blueprint.ForbiddenTools)+len(blueprint.Input.Seed.ToolCalls) > 0) {
+		return scenarioContractError(blueprint, "Lite receives injected context and cannot retrieve or seed tool calls")
+	}
+	if !lite && blueprint.Input.Seed.CaseMemory != nil && !slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile) {
+		return scenarioUnanswerableError(blueprint, "case memory requires read_file for responder retrieval")
+	}
+	for _, turn := range blueprint.Input.Seed.Turns {
+		if !slices.Contains([]string{"user", "primary", "assistant"}, turn.Sender) || strings.TrimSpace(turn.Content) == "" {
+			return scenarioContractError(blueprint, "invalid or empty seed conversation turn")
+		}
+	}
+	if budget := blueprint.Input.Budget; budget != nil {
+		if budget.ToolTurnLimit < 1 || budget.ToolTurnLimit > investigation.MaxToolTurns || budget.WallClockLimitMS < 1 || budget.WallClockLimitMS > investigation.MaxWallClockMS {
+			return scenarioContractError(blueprint, "invalid investigation budget")
+		}
+	}
+	for _, call := range blueprint.Input.Seed.ToolCalls {
+		if _, ok := catalog.Tool(call.ToolName); !ok || !json.Valid(call.Arguments) {
+			return scenarioContractError(blueprint, "invalid seed tool %q or arguments", call.ToolName)
+		}
+		if !slices.Contains([]string{scenarioSeedSuccess, scenarioSeedError, scenarioSeedDeny, scenarioSeedRefusal}, call.Outcome) {
+			return scenarioContractError(blueprint, "seed tool %s has unspecified outcome", call.ToolName)
+		}
 	}
 	return nil
 }
@@ -232,7 +308,44 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 	}
 	return check.ExactToken != "" || len(check.ExactLabels) > 0 || check.LeadingLabel != "" || check.WordCount > 0 ||
 		check.MaxSentences > 0 || len(check.RequiredTerms) > 0 || len(check.ForbiddenTerms) > 0 ||
-		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != ""
+		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != "" ||
+		len(check.JudgedCriteria) > 0
+}
+
+// validateJudgedCriteria fails closed on a judged criterion the judge could not
+// decide or the grader could not attribute: an ID that is not kebab-case or is
+// repeated, an empty statement, or a refusal criterion that names no criterion.
+// A scenario that grades a policy decision must judge refusal, because a
+// refusal is otherwise unobservable and would read as "did not refuse".
+func validateJudgedCriteria(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
+	refusalRequired := slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "policy_decision")
+	if check == nil {
+		if refusalRequired {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "scenario has no content check")
+		}
+		return nil
+	}
+	seen := make(map[string]struct{}, len(check.JudgedCriteria))
+	for _, criterion := range check.JudgedCriteria {
+		if !investigation.ValidID(criterion.ID) {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "criterion ID %q is not lowercase kebab-case", criterion.ID)
+		}
+		if _, dup := seen[criterion.ID]; dup {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "criterion %q is repeated", criterion.ID)
+		}
+		seen[criterion.ID] = struct{}{}
+		if strings.TrimSpace(criterion.Statement) == "" {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "criterion %q has no statement", criterion.ID)
+		}
+	}
+	if check.RefusalCriterion != "" {
+		if _, ok := seen[check.RefusalCriterion]; !ok {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "refusal criterion %q is not a judged criterion", check.RefusalCriterion)
+		}
+	} else if refusalRequired {
+		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "no refusal criterion is declared")
+	}
+	return nil
 }
 
 func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
@@ -356,14 +469,20 @@ func validateWorkspaceFiles(blueprint ScenarioBlueprint) error {
 	files := blueprint.Input.WorkspaceFiles
 	seen := make(map[string]struct{}, len(files))
 	real := 0
+	if blueprint.Input.Seed.CaseMemory != nil {
+		real++ // materializeCaseMemory writes the typed notes before the scored turn
+	}
 	for _, file := range files {
 		if err := validateWorkspaceRelPath(file.RelPath); err != nil {
-			return scenarioContractError(blueprint, "%v", err)
+			return scenarioContractErrorWithCause(blueprint, err, "workspace file %q is not a clean relative path", file.RelPath)
 		}
 		if _, dup := seen[file.RelPath]; dup {
 			return scenarioContractError(blueprint, "duplicate workspace file %q", file.RelPath)
 		}
 		seen[file.RelPath] = struct{}{}
+		if file.RelPath == scenarioCaseMemoryFile && blueprint.Input.Seed.CaseMemory != nil {
+			return scenarioContractError(blueprint, "workspace file collides with the seeded case notes")
+		}
 		if !file.Decoy {
 			real++
 		}
@@ -407,7 +526,7 @@ func stringSet(values []string) map[string]struct{} {
 
 func validateWorkspaceRelPath(relPath string) error {
 	if relPath == "" || path.IsAbs(relPath) || path.Clean(relPath) != relPath || relPath == "." || strings.HasPrefix(relPath, "../") || strings.Contains(relPath, "\x00") {
-		return fmt.Errorf("evaluation: workspace file path %q must be a clean relative path inside the workspace", relPath)
+		return fmt.Errorf("evaluation: workspace file path %q must be a clean relative path inside the workspace: %w", relPath, constants.ErrPathValidation)
 	}
 	return nil
 }

@@ -112,7 +112,7 @@ func inferenceDispatchHTTPRequest(t *testing.T, body []byte, appID, userID strin
 		ctx = context.WithValue(ctx, constants.ContextKeyAppID, appID)
 	}
 	if userID != "" {
-		ctx = context.WithValue(ctx, constants.ContextKeyUserID, userID)
+		ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, userID)
 	}
 	return req.WithContext(ctx)
 }

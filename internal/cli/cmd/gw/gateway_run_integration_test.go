@@ -30,6 +30,7 @@ func TestGatewayRestartCmd_NoConfigReturnsError(t *testing.T) {
 	cmdtest.ChdirTemp(t)
 
 	cmd := gatewayRestartCmd()
+	cmd.SetContext(t.Context())
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -42,6 +43,7 @@ func TestGatewayStartCmd_ValidPostureDoesNotReturnPostureError(t *testing.T) {
 	setupGatewayTestEnv(t)
 
 	cmd := gatewayStartCmd()
+	cmd.SetContext(t.Context())
 	cmd.Flags().Set("posture", "consensus")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)

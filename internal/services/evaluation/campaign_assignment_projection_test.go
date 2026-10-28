@@ -51,7 +51,10 @@ func TestMarshalAssignmentResultProjectionEnvelopeUsesCanonicalExtensions(t *tes
 	assert.Equal(t, campaignProjectionEnvelopeEnrichedVersion, projectionStringValue(t, envelope["schema_version"]))
 	var projected map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(envelope["record"], &projected))
+	assert.Contains(t, projected, "assignment_id", "canonical protobuf fields stay at the record's top level")
 	assert.Contains(t, projected, "resource_summary")
+	assert.NotContains(t, projected, "projection")
+	assert.NotContains(t, projected, "extensions")
 	require.NoError(t, ValidatePublicAssignmentRecord(campaignProjectionEnvelopeEnrichedVersion, body))
 }
 

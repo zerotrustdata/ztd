@@ -13,7 +13,8 @@ vi.mock('../src/state/feed', () => ({
 }));
 
 const sliceHash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-const verifyCommand = 'ztd public verify-assignment --db assignment-1.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>';
+const publishedCommand = 'ztd public verify-assignment --db assignment-1.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>';
+const verifyCommand = 'ztd public verify-assignment --db assignment-1.db --segments proof-segments.jsonl';
 
 function catalogEntry(sha256: string, filename: string, byteSize = 4096): ProofCatalogEntry {
   return {
@@ -25,7 +26,7 @@ function catalogEntry(sha256: string, filename: string, byteSize = 4096): ProofC
     classification: 'public_safe',
     campaign_id: 'campaign-1',
     generated_at: '2026-09-20T00:00:00Z',
-    verification_command: verifyCommand,
+    verification_command: publishedCommand,
     immutable_url: `/proofs/${sha256}`,
   };
 }
@@ -66,6 +67,7 @@ describe('AssignmentAuditProofRow', () => {
     expect(screen.queryByText(/vault/i)).not.toBeInTheDocument();
     expect(screen.getByText('8.0 KiB')).toBeInTheDocument();
     expect(screen.getByText(verifyCommand)).toBeInTheDocument();
+    expect(screen.queryByText(publishedCommand)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy verify command' })).toBeInTheDocument();
   });
 

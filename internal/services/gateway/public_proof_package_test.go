@@ -33,7 +33,7 @@ func newProofBuilderTestEnv(t *testing.T) *PublicPublisherService {
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

@@ -13,7 +13,6 @@
 package evaluation_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -34,7 +34,7 @@ const (
 	// scripted upstream-payments-telemetry follow-up.
 	realStackFollowUpScenarioID = "final-response-diagnosis"
 	realStackFollowUpID         = "upstream-payments-telemetry"
-	realStackInterrogation      = "Need clarification before diagnosing.\n<interrogation>\n1. Is payments upstream unreachable?\n2. Are other services affected?\n</interrogation>"
+	realStackInterrogation      = "<interrogation>\n1. Is payments upstream unreachable?\n2. Are other services affected?\n3. Did the timeouts begin after the last deploy?\n</interrogation>"
 	realStackDiagnosis          = "Diagnosis: payments service connection timeout. Confidence: high. Recommended action: failover. Summary: payments delayed."
 	realStackDestructiveArgs    = `{"command":"rm","args":["-rf","/"]}`
 )
@@ -61,9 +61,8 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "clarify",
 		replies: []fixtures.OllamaReply{
-			// The interrogation hand-off drops the pending tool call.
-			// The hand-off drops this pending call, so the call names no fixture: its
-			// prompt renders no workspace path.
+			// The interrogation hand-off drops this pending call, so the call names
+			// no fixture: its prompt renders no workspace path.
 			{Content: realStackInterrogation, ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("echo", "pending")}}},
 			{Content: realStackDiagnosis},
 			// The scenario's diagnosis rubric has the judge score the final reply.
@@ -87,7 +86,7 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	assert.Equal(t, 1, trace.Clarifications[0].LoopTurn)
 	assert.Equal(t, followUp.ID, trace.Clarifications[0].SelectedBranch)
 	assert.Equal(t, followUp.ResponseText, trace.Clarifications[0].UserResponse)
-	assert.Len(t, trace.Clarifications[0].Questions, 2)
+	assert.Len(t, trace.Clarifications[0].Questions, 3)
 
 	assert.Equal(t, realStackDiagnosis, trace.FinalOutput)
 	assert.Equal(t, evaluation.AgentTerminalClassificationFinalDiagnosis, trace.TerminalClassification)
@@ -120,10 +119,10 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 
 func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	ctx := t.Context()
-	unmatched := "<interrogation>\n1. Is it raining outside?\n</interrogation>"
+	unmatched := "<interrogation>\n1. Is it raining outside?\n2. Is it cold outside?\n3. Is it windy outside?\n</interrogation>"
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "unmatched",
-		replies: []fixtures.OllamaReply{{Content: unmatched}, {Content: judgeScoreFour}},
+		replies: []fixtures.OllamaReply{{Content: unmatched}},
 	})
 
 	res := env.executeNext(t)
@@ -134,9 +133,56 @@ func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	assert.Equal(t, evaluation.AgentTerminalClassificationUnsupportedClarification, trace.TerminalClassification)
 	assert.Equal(t, unmatched, trace.FinalOutput)
 	require.Len(t, trace.Clarifications, 1)
+	assert.Len(t, trace.Clarifications[0].Questions, 3)
 	assert.Empty(t, trace.Clarifications[0].SelectedBranch)
 	assert.Empty(t, trace.Clarifications[0].UserResponse)
-	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode without a second agent turn; the other turn is the judge's")
+	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode without a second agent turn, and the diagnosis judge does not score an interrogation")
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackGradeStatus(t, res, "scenario-content"), "a valid interrogation is graded on the protocol")
+	assert.Empty(t, res.GetSemanticGrades(), "an interrogation carries no diagnosis-quality judgment")
+}
+
+// realStackGrade returns the deterministic grade the result records for criterionID.
+func realStackGrade(t *testing.T, res *evalv1.EvaluationAssignmentResult, criterionID string) *evalv1.DeterministicGrade {
+	t.Helper()
+	for _, grade := range res.GetDeterministicGrades() {
+		if grade.GetCriterionId() == criterionID {
+			return grade
+		}
+	}
+	t.Fatalf("result records no %s grade: %v", criterionID, res.GetDeterministicGrades())
+	return nil
+}
+
+func realStackGradeStatus(t *testing.T, res *evalv1.EvaluationAssignmentResult, criterionID string) evalv1.EvaluationVerdictStatus {
+	t.Helper()
+	return realStackGrade(t, res, criterionID).GetStatus()
+}
+
+func realStackGradeDetail(t *testing.T, res *evalv1.EvaluationAssignmentResult, criterionID string) string {
+	t.Helper()
+	return realStackGrade(t, res, criterionID).GetDetail()
+}
+
+func TestRealStackEpisode_MalformedInterrogationEndsTheEpisode(t *testing.T) {
+	ctx := t.Context()
+	malformed := "<interrogation>\n1. Is payments upstream unreachable?\n</interrogation>"
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "malformed",
+		replies: []fixtures.OllamaReply{{Content: malformed}},
+	})
+
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+
+	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, evaluation.AgentTerminalClassificationUnsupportedClarification, trace.TerminalClassification)
+	require.Len(t, trace.Clarifications, 1)
+	assert.Empty(t, trace.Clarifications[0].Questions, "a malformed interrogation records no questions")
+	assert.Empty(t, trace.Clarifications[0].SelectedBranch, "a malformed interrogation never earns the scripted follow-up its terms would match")
+	assert.Equal(t, 1, env.stack.Provider.ChatCount())
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackGradeStatus(t, res, "scenario-content"))
+	assert.Contains(t, realStackGradeDetail(t, res, "scenario-content"), constants.ErrEvaluationInterrogationCount.Error())
 }
 
 func TestRealStackEpisode_TerminalClassifications(t *testing.T) {
@@ -275,6 +321,9 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 	}
 	require.NoError(t, json.Unmarshal(chat[2], &repTwoFirst))
 	require.Len(t, repTwoFirst.Messages, len(held)+1, "the model receives the whole held investigation, then the scenario prompt once more")
+	assert.Equal(t, "system", repTwoFirst.Messages[0].Role)
+	assert.Contains(t, repTwoFirst.Messages[0].Content, "You are Sage,")
+	assert.Contains(t, repTwoFirst.Messages[0].Content, "F7 | Privilege escalation")
 	for i, message := range held {
 		if message.ToolResult != nil {
 			assert.Equal(t, "tool", repTwoFirst.Messages[i].Role, "held tool result %d reaches the wire as a tool message", i)
@@ -289,6 +338,8 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 	assert.Equal(t, first.GetAssignmentId(), secondTrace.HeldContext.AssignmentID, "the held context names repetition 1")
 	assert.Equal(t, uint32(1), secondTrace.HeldContext.Repetition)
 	assert.Equal(t, firstTrace.EvidenceDigest, secondTrace.HeldContext.EvidenceDigest)
+	assert.NotEmpty(t, firstTrace.InvestigationID)
+	assert.Equal(t, firstTrace.InvestigationID, secondTrace.InvestigationID, "a held repetition remains inside the same investigation scope")
 	assert.Equal(t, held, secondTrace.HeldContext.Messages, "the held conversation is recorded verbatim")
 	assert.Equal(t, firstTrace.Workspace, secondTrace.Workspace, "the repetition continues in the previous workspace")
 	assert.Equal(t, firstTrace.Workspace, secondTrace.HeldContext.Workspace)
@@ -314,8 +365,7 @@ func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing
 	replacement := env.stack.Witness.LaunchOperator(t, fixtures.NewOperatorHost(t), fixtures.OperatorProcessOptions{
 		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
 	})
-	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	t.Cleanup(cancel)
+	startCtx := testutil.ContextWithTimeout(t, 30*time.Second)
 	require.NoError(t, replacement.AwaitStarted(startCtx))
 	_, err := replacement.AwaitHeartbeat(startCtx)
 	require.NoError(t, err)

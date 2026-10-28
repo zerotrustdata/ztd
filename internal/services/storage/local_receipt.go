@@ -47,7 +47,7 @@ func ReadLocalEventReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, o
 	if err := v.Unlock(key); err != nil {
 		return nil, fmt.Errorf("local receipt: unlock vault: %w", err)
 	}
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	if err != nil {
 		return nil, fmt.Errorf("local receipt: %w", err)
 	}

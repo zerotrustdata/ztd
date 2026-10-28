@@ -3,8 +3,8 @@ doc_id: build_operator
 title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/guides/
   - cmd/ztd
@@ -136,6 +136,7 @@ Run `./ztd operator start --help` for the complete flag set. The options below g
 2. **Connectivity**: Operators share the same Gateway endpoint and connect outbound. They bind no inbound ports.
 3. **Capabilities**: Enable capabilities via `--capabilities`:
    - Inference Operator: `--capabilities inference --inference-ollama-endpoint <url>`
+   - Inference and Provenance Operator on llama.cpp: `--capabilities inference,provenance --inference-llamacpp-endpoint <url> --inference-llamacpp-model-root <models-dir> --model-storage-root <models-dir> --model-storage-format llamacpp`. The llama.cpp endpoint selects the llama.cpp provider instead of Ollama, and `--inference-llamacpp-model-root` is required with it. Setting both an Ollama and a llama.cpp endpoint fails. With llama.cpp, `--inference-keep-alive` accepts `-1` or `0`. `--model-storage-format` defaults to `ollama`.
    - Provenance Operator: `--capabilities provenance --model-storage-root <path>`
    - Observer Operator: `--capabilities observer --provider-boundary-observer-id <id>`
    - Data Operator: `--capabilities data`

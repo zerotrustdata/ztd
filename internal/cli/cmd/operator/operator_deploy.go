@@ -320,7 +320,7 @@ func (c *sshRemoteDeployClient) UploadBinary(ctx context.Context, sourceBinary, 
 		}
 
 		targetBinDir := path.Join(remoteDir, constants.DeployBinDirname)
-		c.agentPath = path.Join(targetBinDir, "ztd")
+		c.agentPath = path.Join(targetBinDir, constants.BinaryImageName)
 		return targetBinDir, nil
 	}
 
@@ -354,7 +354,7 @@ func (c *sshRemoteDeployClient) UploadBinary(ctx context.Context, sourceBinary, 
 		return "", fmt.Errorf("close %s on %s: %w", stagingPath, c.host, err)
 	}
 
-	finalPath := path.Join(targetBinDir, "ztd")
+	finalPath := path.Join(targetBinDir, constants.BinaryImageName)
 	if err := c.sftpClient.PosixRename(stagingPath, finalPath); err != nil {
 		_ = c.sftpClient.Remove(finalPath)
 		if err := c.sftpClient.Rename(stagingPath, finalPath); err != nil {
@@ -837,9 +837,9 @@ func (s deploySSH) markReady(context.Context, string) error { return nil }
 
 func (s deploySSH) binaryName() string {
 	if s.local && runtime.GOOS == "windows" {
-		return "ztd.exe"
+		return constants.BinaryImageNameWindows
 	}
-	return "ztd"
+	return constants.BinaryImageName
 }
 
 // prepareDir creates dir on the host and returns its absolute path, which is
@@ -885,7 +885,7 @@ func (s deploySSH) installBinary(ctx context.Context, sourceBinary, dir string) 
 		Action:    models.DeployHostActionLink,
 		BinaryDir: s.binaryDir,
 		DestDir:   dir,
-		Binary:    "ztd",
+		Binary:    constants.BinaryImageName,
 	})
 	return err
 }
@@ -914,7 +914,7 @@ func (s deploySSH) startOperator(ctx context.Context, dir, endpoint string, star
 	_, err := s.remoteClient.ExecuteAgent(ctx, models.DeployHostRequest{
 		Action:     models.DeployHostActionStart,
 		WorkingDir: dir,
-		Binary:     "ztd",
+		Binary:     constants.BinaryImageName,
 		Args:       args,
 	})
 	return err
@@ -950,8 +950,9 @@ func (s deploySSH) readDeploymentState(ctx context.Context, dir string) (*models
 
 // Reuse start's flag definitions so deploy and start cannot drift in types/defaults.
 var operatorDeployForwardFlags = []string{
-	"capabilities", "inference-ollama-endpoint", "inference-keep-alive", "allow-hosted-decision", "decision-model", "decision-only",
-	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root",
+	"capabilities", "inference-ollama-endpoint", "inference-llamacpp-endpoint", "inference-llamacpp-model-root",
+	"inference-keep-alive", "allow-hosted-decision", "decision-model", "decision-only",
+	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root", "model-storage-format",
 	"gateway-http-port", "gateway-https-port",
 	"heartbeat-interval", "log", "trust-bundle",
 }

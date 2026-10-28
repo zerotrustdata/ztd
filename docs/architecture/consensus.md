@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - internal/services/governance/l2_consensus.go
   - internal/services/governance/l4_warden.go
@@ -77,10 +77,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-CON-POL-02 | The Gateway MUST record at most one bound consensus policy (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`), with unique actor-owned enrolled signing applications and a quorum from one through the member count (`application`) or as INV-CON-POL-07 states (`tribunal`). The bound policy's primary application ID (`app_id` / `PrimaryAppID()`) designates the target application for HTTPS deliberation dispatch under the `application` provider, and is `tribunal-axiom` under the `tribunal` provider. |
 | INV-CON-POL-03 | Binding a consensus member set MUST traverse the governance pipeline as the bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`), validating every member's ownership, existing enrollment policy, and enabled `TrustedSigner` in the Gateway's signer store. |
 | INV-CON-POL-04 | `PLATFORM_ENROLLMENT_BIND_CONSENSUS` is a mutation that is NOT exempt from L3 via `_authorized_by_decision`: it MUST require L3 human authorization under `ratify` and `notary` postures (`posture.RequiresL3() == true`). |
-| INV-CON-POL-05 | Outbound Operators MUST receive each bound consensus member's identity and Ed25519 public key in their signed enrollment bundle and in-band certificate renewal bundle (`OperatorL2Trust`). |
+| INV-CON-POL-05 | Outbound Operators MUST receive the Gateway's current L2 trust snapshot in their signed enrollment bundle, certificate renewal response, and certificate-authenticated session-validation response (`OperatorL2Trust`). They MUST replace trust atomically, never to an older binding version; session validation replaces only on an advance, renewal also accepts the same version, and once trust is bound a missing or unversioned snapshot MUST be rejected. |
 | INV-CON-POL-06 | The binding's `provider` MUST be `application` or `tribunal` (`constants.ParseConsensusProvider`). The provider is required; an empty stored or requested value is rejected. `models.ResolveConsensusBinding` is the single validator for both providers and MUST run at Gateway admission and in the L5 handler. An `application` binding MUST carry an absolute HTTPS `endpoint_url` (INV-CON-VOTE-04 TLS rules apply) and MUST NOT pin a model. A `tribunal` binding MUST NOT carry an endpoint and MUST pin `model_tag` plus `model_digest`, except an explicitly allowed hosted decision binding MUST use a versioned Jev tag with an empty digest and record `hosted-unpinned` provenance. |
 | INV-CON-POL-07 | A `tribunal` binding MUST bind exactly the five canonical Tribunal member application IDs in canonical order (`constants.TribunalConsensusMemberAppIDs`): `tribunal-axiom` (primary), `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, `tribunal-nemesis`. Its quorum MUST be from 3 through 5 and defaults to 3 when omitted. Each member MUST pass the per-member owner and enabled `TrustedSigner` checks of INV-CON-POL-03. Each member's private key MUST be sealed on the Gateway host. A `tribunal-*` application enrolled on another host cannot vote here and fails closed. |
-| INV-CON-POL-08 | Rebinding MUST re-run the bind. `PLATFORM_ENROLLMENT_BIND_CONSENSUS` replaces the single bound record at `constants.DocIDConsensusBinding`, and every rebind remains L3-gated under `ratify` and `notary` (INV-CON-POL-04). No governed unbind exists. Disabling a member application through the existing application revoke disables its trusted signer, and consensus MUST then fail closed while enabled members are fewer than the quorum. |
+| INV-CON-POL-08 | Rebinding MUST re-run the bind. `PLATFORM_ENROLLMENT_BIND_CONSENSUS` replaces the single bound record at `constants.DocIDConsensusBinding`, and every rebind remains L3-gated under `ratify` and `notary` (INV-CON-POL-04). Governed unbind disables the bound record and advances its binding version. Disabling a member application through the existing application revoke disables its trusted signer, and consensus MUST then fail closed while enabled members are fewer than the quorum. |
 | INV-CON-POL-09 | Decision voting MUST freeze a stable Inference Operator ID and exactly five finite member thresholds between 0.5 and 1 in canonical order. Hosted access MUST require explicit binding and executing Operator opt-in. Rebinding MUST govern any threshold or provider identity change. |
 
 ### Deliberation and Proof Production (`INV-CON-VOTE`)
@@ -170,6 +170,7 @@ The single bound consensus record at `constants.DocIDConsensusBinding` names a `
 
 Consensus management commands:
 - `ztd consensus status` shows the bound provider, members, quorum, model, posture, and whether L2 is enforced.
+- `ztd consensus unbind` clears the bound consensus through the governed `PLATFORM_ENROLLMENT_UNBIND_CONSENSUS` action (`DELETE /api/v1/auth/platform-enrollments/consensus`). It is owner-only and a bootstrap action like bind. Under `ratify` and `notary` it is L3-gated and returns a pending approval (HTTP 202) that the CLI prints with its approval URL and transaction, as `enroll` does. On success the Gateway returns the cleared record with `enabled: false`. `--json` prints the typed suspension body or the cleared record.
 - Rebinding re-runs the enroll command for the chosen provider. The new bind replaces the bound record and is L3-gated under `ratify` and `notary` (INV-CON-POL-08).
 - Revoking a member application is handled by the application enrollment owner, not by a consensus subcommand (INV-CON-POL-08).
 - `ztd auth enroll consensus` is removed. No alias exists.
@@ -183,7 +184,7 @@ Consensus management commands:
 
 Under `ratify` or `notary`, each approval is an L3 passkey step whose URL the command prints. Each member's private key is sealed on the Gateway host (INV-CON-POL-07).
 
-Outbound Operators load the binding's `OperatorL2Trust` only from their enrollment and certificate-renewal bundles (INV-CON-POL-05). An Operator already running when the bind completes keeps its earlier trust. Until it restarts or renews its certificate, its L4 Warden rejects Tribunal votes with `ErrTxL2SignatureInvalid`. Restart running outbound Operators after the bind.
+Outbound Operators receive current `OperatorL2Trust` during certificate-authenticated session validation as well as enrollment and certificate renewal (INV-CON-POL-05). Validation runs before every command subscription, including reconnects, and every 30 seconds while connected. A newer binding version atomically replaces the L4 trust snapshot; a stale out-of-order response is ignored. The Gateway does not push trust updates to an established connection, so an unbind or rebind can leave the prior trust active for up to 30 seconds plus validation request time. If periodic validation or trust replacement fails, the Operator stops execution. This refresh path bounds staleness but does not provide immediate revocation.
 
 ### Consensus Application Enrollment and Binding
 

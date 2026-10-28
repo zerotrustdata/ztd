@@ -295,6 +295,8 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "scenario contract", err: assignmentExecutionError("scope tools", constants.ErrEvaluationScenarioContractInvalid), want: ExecutionFailureScenarioContract},
 		{name: "verification", err: fmt.Errorf("verify: %w", constants.ErrEvalRunVerificationFailed), want: ExecutionFailureVerification},
 		{name: "inference backend", err: fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable), want: ExecutionFailureProvider},
+		{name: "provider stream error", err: fmt.Errorf("infer: %w", constants.ErrInferenceProviderStreamError), want: ExecutionFailureProvider},
+		{name: "rehydration", err: fmt.Errorf("infer: %w", constants.ErrL5ActuatorRehydrate), want: ExecutionFailureRehydration},
 		{name: "unrecognized", err: fmt.Errorf("opaque failure"), want: ExecutionFailureInternal},
 	}
 	for _, tt := range tests {

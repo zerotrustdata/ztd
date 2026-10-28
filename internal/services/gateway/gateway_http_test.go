@@ -171,14 +171,6 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			Responder:   infra.Responder,
 			CrossOrigin: len(infra.Cfg.Gateway.AllowedOrigins) > 0,
 		},
-		AdminControllerDeps: AdminControllerDeps{
-			Cfg:         infra.Cfg,
-			Logger:      infra.Logger,
-			DocStore:    infra.DocStore,
-			SignerStore: infra.SignerStore,
-			UserSvc:     infra.UserSvc,
-			Responder:   infra.Responder,
-		},
 		OperatorControllerDeps: OperatorControllerDeps{
 			Cfg:       infra.Cfg,
 			Logger:    infra.Logger,
@@ -335,7 +327,6 @@ func TestNewHTTPHandler(t *testing.T) {
 	assert.NotNil(t, h.bootstrapController.cliSessionSvc)
 	assert.NotNil(t, h.bootstrapController.operatorSessionSvc)
 	assert.NotNil(t, h.GetPasskeyHandler())
-	assert.NotNil(t, h.adminController.userSvc)
 	assert.NotNil(t, h.responder)
 	assert.NotNil(t, h.GetMCPGateway())
 	assert.NotNil(t, h.pkiController)
@@ -344,7 +335,6 @@ func TestNewHTTPHandler(t *testing.T) {
 	assert.NotNil(t, h.enrollmentTokenController)
 	assert.NotNil(t, h.userController)
 	assert.NotNil(t, h.webSessionController)
-	assert.NotNil(t, h.adminController)
 	assert.NotNil(t, h.operatorController)
 	assert.Equal(t, cfg, h.cfg)
 }

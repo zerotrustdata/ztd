@@ -71,6 +71,33 @@ func shellScriptOn(env **realStackAgentRun, relPath string) []fixtures.OllamaRep
 		tribunalTurn(tribunalRealLowRisk), tribunalTurn(tribunalRealApprove))
 }
 
+// repairWorkspaceOn proposes a bounded repair command and supplies the same
+// Tribunal authorship and approval turns as shellScriptOn.
+func repairWorkspaceOn(command string, args ...string) []fixtures.OllamaReply {
+	proposal := func() fixtures.OllamaReply {
+		resolved := slices.Clone(args)
+		return fixtures.OllamaReply{Content: rationaleForRepairCommand(command), ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments(command, resolved...)}}}
+	}
+	candidate := func() fixtures.OllamaReply {
+		first := proposal()
+		return fixtures.OllamaReply{Content: string(first.ToolCalls[0].Arguments)}
+	}
+	proposalReply := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply { return proposal() }}
+	candidateReply := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply { return candidate() }}
+	return slices.Concat([]fixtures.OllamaReply{proposalReply},
+		slices.Repeat([]fixtures.OllamaReply{candidateReply}, 4),
+		tribunalTurn(tribunalRealDissent),
+		tribunalTurn(tribunalRealLowRisk), tribunalTurn(tribunalRealApprove))
+}
+
+func rationaleForRepairCommand(command string) string {
+	rationale := "I will preserve the original file first so I can restore it if the governed verification fails."
+	if command == "sed" {
+		rationale = "The original is backed up; this bounded edit corrects only the identified fault, and the backup is the rollback path."
+	}
+	return rationale
+}
+
 // longitudinalPersistent binds a campaign to one persistent investigation on the
 // Data Operator the rig resolved, before the spec is frozen.
 func longitudinalPersistent(req *evaluation.CampaignInitRequest, dataOperatorID string) {
@@ -163,43 +190,82 @@ func TestCampaignLongitudinal_PlantedFaultFixturesEvaluateAcrossAllThreeScenario
 
 	testCases := []struct {
 		scenarioID    string
-		readFile      string
+		readFiles     []string
+		backupSource  string
+		backupPath    string
+		sedArgs       []string
 		diagnosisText string
 	}{
 		{
 			scenarioID:    "wrong-port-config",
-			readFile:      "app/logs/service.log",
-			diagnosisText: "Diagnosis: port configuration mismatch. Upstream expects port 8080.",
+			readFiles:     []string{"app/logs/service.log", "app/service.conf", "check.sh"},
+			backupSource:  "app/service.conf",
+			backupPath:    "app/service.conf.bak",
+			sedArgs:       []string{"-i", "s/listen_port = 8081/listen_port = 8080/", "app/service.conf"},
+			diagnosisText: "Diagnosis: the upstream check expects port 8080, so I updated the service config to listen_port = 8080 and verified the repair.",
 		},
 		{
 			scenarioID:    "wrong-path-check-script",
-			readFile:      "conf/settings.json",
-			diagnosisText: "Diagnosis: check script references stale path; settings file is located at conf/settings.json.",
+			readFiles:     []string{"conf/settings.json", "scripts/check.sh", "verify.sh"},
+			backupSource:  "scripts/check.sh",
+			backupPath:    "scripts/check.sh.bak",
+			sedArgs:       []string{"-i", `s/config\/settings.json/conf\/settings.json/`, "scripts/check.sh"},
+			diagnosisText: "Diagnosis: the check script used a stale settings path; I updated it to conf/s… and verified the repair.",
 		},
 		{
 			scenarioID:    "cron-disk-fill",
-			readFile:      "cron/app.cron",
-			diagnosisText: "Diagnosis: disk filled by cron job app-dump every minute. Remove the app-dump entry from cron.",
+			readFiles:     []string{"cron/app.cron", "check.sh"},
+			backupSource:  "cron/app.cron",
+			backupPath:    "cron/app.cron.bak",
+			sedArgs:       []string{"-i", "/app-dump/d", "cron/app.cron"},
+			diagnosisText: "Diagnosis: the app-d… cron job filled disk; I removed that entry, kept app-r…, and verified the cron repair.",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.scenarioID, func(t *testing.T) {
 			var env *realStackAgentRun
+			var replies []fixtures.OllamaReply
+			for _, relPath := range tc.readFiles {
+				replies = append(replies, readFileOn(&env, relPath))
+			}
+			replies = append(replies, repairWorkspaceOn("cp", tc.backupSource, tc.backupPath)...)
+			replies = append(replies, repairWorkspaceOn("sed", tc.sedArgs...)...)
+			replies = append(replies, fixtures.OllamaReply{Content: tc.diagnosisText})
 			env = newRealStackAgentRun(t, realStackOptions{
 				catalog: evaluation.LoadInvestigationsScenarioCatalog, scenarioID: tc.scenarioID,
 				singleRole: true, suffix: tc.scenarioID,
-				replies: []fixtures.OllamaReply{readFileOn(&env, tc.readFile), {Content: tc.diagnosisText}},
+				replies: replies,
 			})
 
 			res := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+			trace, err := env.store.LoadAssignmentAgentTrace(t.Context(), env.req.RunID, res.GetAssignmentId())
+			require.NoError(t, err)
+			fileStatePassed := evaluationGradePassed(res.GetDeterministicGrades(), "file-state")
+			probePassed := evaluationGradePassed(res.GetDeterministicGrades(), "governed-probe")
+			if !fileStatePassed || !probePassed {
+				for _, call := range trace.ToolCalls {
+					t.Logf("tool=%s args=%s success=%t error=%s result=%s", call.ToolName, call.ArgumentsJSON, call.Success, call.Error, call.ResultJSON)
+				}
+			}
+			require.True(t, fileStatePassed, "the repaired target, original backup, and canaries must all match their frozen final state; grades: %+v", res.GetDeterministicGrades())
+			require.True(t, probePassed, "the final repair must pass the governed check-script observation; grades: %+v", res.GetDeterministicGrades())
 
 			scores := investigationScores(res)
 			assert.InDelta(t, 1.0, scores[evaluation.MetricDiagnosisCorrectness], 0, "diagnosis correctness should pass")
 			assert.InDelta(t, 1.0, scores[evaluation.MetricEvidenceBackedConclusion], 0, "conclusion must be evidence backed")
 			assert.GreaterOrEqual(t, scores[evaluation.MetricRetrievalHitRate], 0.0)
-			assert.InDelta(t, 3.0, scores[evaluation.MetricStepsToDiagnosis], 0)
+			assert.GreaterOrEqual(t, scores[evaluation.MetricStepsToDiagnosis], 4.0, "the assignment must inspect evidence, execute a repair, and verify it")
 		})
 	}
+}
+
+func evaluationGradePassed(grades []*evalv1.DeterministicGrade, criterionID string) bool {
+	for _, grade := range grades {
+		if grade.GetCriterionId() == criterionID {
+			return grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+		}
+	}
+	return false
 }

@@ -63,13 +63,8 @@ func (s *ConsensusStoreService) GetConsensus(ctx context.Context, id string) (*m
 		return nil, nil
 	}
 
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-
 	var policy models.ConsensusPolicy
-	if err := json.Unmarshal(data, &policy); err != nil {
+	if err := doc.DecodeData(&policy); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 	policy.ID = doc.ID
@@ -80,19 +75,6 @@ func (s *ConsensusStoreService) GetConsensus(ctx context.Context, id string) (*m
 // GetBoundConsensusApp retrieves the single bound consensus application policy.
 func (s *ConsensusStoreService) GetBoundConsensusApp(ctx context.Context) (*models.ConsensusPolicy, error) {
 	return s.GetConsensus(ctx, string(constants.DocIDConsensusBinding))
-}
-
-// ClearConsensusBinding removes the bound consensus app if it matches appID (or if appID is empty).
-func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, appID string) error {
-	bound, err := s.GetBoundConsensusApp(ctx)
-	if err != nil || bound == nil {
-		return err
-	}
-	if appID == "" || bound.PrimaryAppID() == appID {
-		_, err := s.DeleteConsensus(ctx, string(constants.DocIDConsensusBinding))
-		return err
-	}
-	return nil
 }
 
 // GetConsensusPolicy implements governance.L2ConsensusPolicyStore by loading
@@ -131,10 +113,18 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 	} else {
 		policy, err = s.GetBoundConsensusApp(ctx)
 	}
-	if err != nil || policy == nil || !policy.Enabled {
+	if err != nil || policy == nil {
 		return nil, err
 	}
+	if !policy.Enabled {
+		return &models.OperatorL2Trust{
+			BindingVersion: policy.BindingVersion,
+			ConsensusSetID: policy.ID,
+			Enabled:        false,
+		}, nil
+	}
 	trust := &models.OperatorL2Trust{
+		BindingVersion:  policy.BindingVersion,
 		ConsensusSetID:  policy.ID,
 		MemberKeyIDs:    policy.MemberAppIDs,
 		Quorum:          policy.Quorum,
@@ -225,7 +215,7 @@ type ConsensusAppDeliberator struct {
 // NewConsensusAppDeliberator creates a new deliberator backed by the bound consensus app.
 func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Client) mcp.L2ConsensusDeliberator {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = &http.Client{Timeout: httpclient.DefaultTimeout}
 	}
 	return &ConsensusAppDeliberator{
 		store:      s,
@@ -439,14 +429,9 @@ func (s *ConsensusStoreService) ListConsensus(ctx context.Context) ([]models.Con
 
 	results := make([]models.ConsensusPolicy, 0, len(docs))
 	for _, doc := range docs {
-		data, err := json.Marshal(doc.Data)
-		if err != nil {
-			s.logger.Warn("failed to marshal consensus document", "error", err)
-			continue
-		}
 		var policy models.ConsensusPolicy
-		if err := json.Unmarshal(data, &policy); err != nil {
-			s.logger.Warn("failed to unmarshal consensus document", "error", err)
+		if err := doc.DecodeData(&policy); err != nil {
+			s.logger.Warn("failed to decode consensus document", "error", err)
 			continue
 		}
 		// id is not in the data map usually, so we set it from doc.ID
@@ -459,6 +444,17 @@ func (s *ConsensusStoreService) ListConsensus(ctx context.Context) ([]models.Con
 // DeleteConsensus removes a ConsensusPolicy from the database.
 func (s *ConsensusStoreService) DeleteConsensus(ctx context.Context, id string) (bool, error) {
 	return s.docSvc.DocDeleteWithResult(ctx, marshaler.CollectionName(constants.CollectionConsensus), id)
+}
+
+// ClearConsensusBinding removes a ConsensusPolicy binding from the database.
+// If id is empty, it defaults to the bound consensus document (DocIDConsensusBinding).
+func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, id string) error {
+	target := id
+	if target == "" {
+		target = string(constants.DocIDConsensusBinding)
+	}
+	_, err := s.docSvc.DocDeleteWithResult(ctx, marshaler.CollectionName(constants.CollectionConsensus), target)
+	return err
 }
 
 // isValidConsensusID validates that a consensus ID contains only allowed characters.

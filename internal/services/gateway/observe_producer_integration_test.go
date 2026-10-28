@@ -33,7 +33,7 @@ func newObserveProducerTestEnv(t *testing.T) (*ObserveProducerService, *SSEEvent
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -75,7 +75,7 @@ func TestObserveProducer_UpdateAgentState_PersistsProjectionBeforeSSEEvent(t *te
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 	var proj agentStateProjection
-	require.NoError(t, unmarshalDocData(doc, &proj))
+	require.NoError(t, doc.DecodeData(&proj))
 	assert.Equal(t, "user-1", proj.UserID)
 	assert.Equal(t, "agent-triage", proj.AgentID)
 	assert.Equal(t, models.AgentLifecycleStatusRunning, proj.Status)
@@ -159,7 +159,7 @@ func TestObserveProducer_UpdateRunState_PersistsProjectionBeforeSSEEvent(t *test
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 	var proj runProjection
-	require.NoError(t, unmarshalDocData(doc, &proj))
+	require.NoError(t, doc.DecodeData(&proj))
 	assert.Equal(t, "user-3", proj.UserID)
 	assert.Equal(t, "run-investigation-1", proj.RunID)
 	assert.Equal(t, models.RunKindInvestigation, proj.RunKind)
@@ -235,7 +235,7 @@ func TestObserveProducer_ReopenRunState_ReplacesOnlyTheNamedTerminalStatus(t *te
 		doc, err := docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionObserveRuns), runID)
 		require.NoError(t, err)
 		var proj runProjection
-		require.NoError(t, unmarshalDocData(doc, &proj))
+		require.NoError(t, doc.DecodeData(&proj))
 		return proj.Status
 	}
 
@@ -297,7 +297,7 @@ func TestObserveProducer_InvalidTransitionRejected_NoProjectionNoEvent(t *testin
 	doc, err := docStore.DocGet(t.Context(), collection, "run-terminal-1")
 	require.NoError(t, err)
 	var proj runProjection
-	require.NoError(t, unmarshalDocData(doc, &proj))
+	require.NoError(t, doc.DecodeData(&proj))
 	assert.Equal(t, models.RunLifecycleStatusCompleted, proj.Status, "projection must not regress")
 
 	// Only one SSE event (the initial completion), no event for the rejected transition.
@@ -544,7 +544,7 @@ func TestObserveProducer_UpdateRunState_PreservesTasksAndEvidenceFromExisting(t 
 	doc, err := docStore.DocGet(t.Context(), collection, "run-preserve-1")
 	require.NoError(t, err)
 	var proj runProjection
-	require.NoError(t, unmarshalDocData(doc, &proj))
+	require.NoError(t, doc.DecodeData(&proj))
 	assert.Equal(t, models.RunLifecycleStatusCompleted, proj.Status)
 	assert.Len(t, proj.Tasks, 2, "tasks must be preserved from existing projection")
 	assert.Len(t, proj.EvidenceSafeLinks, 1, "evidence links must be preserved")

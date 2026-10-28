@@ -42,7 +42,7 @@ func newPublicPublisherTestEnv(t *testing.T) (*PublicPublisherService, *Document
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -772,7 +772,7 @@ func TestRecoverOutbox_UsesRuntimeFileStateAfterDatabaseReplacement(t *testing.T
 	require.NoError(t, err)
 
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)
@@ -831,7 +831,7 @@ func TestRecoverOutbox_RejectsSnapshotEquivocationAtHighWater(t *testing.T) {
 func TestExportBatch_DisabledReturnsError(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)
@@ -1125,7 +1125,7 @@ func TestExportBatch_NeverMutatesAuthoritativeReports(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 	var afterProj evalProjection
-	require.NoError(t, unmarshalDocData(doc, &afterProj))
+	require.NoError(t, doc.DecodeData(&afterProj))
 	assert.Equal(t, originalProj.RunID, afterProj.RunID)
 	assert.Equal(t, originalProj.Status, afterProj.Status)
 }
@@ -1153,7 +1153,7 @@ func TestAssignmentAuditProofPlan_AddsAgentTraceOnlyWhenCaptured(t *testing.T) {
 	require.Len(t, plan.artifacts, 1, "the database alone: no vault key is published")
 	database := plan.artifacts[0]
 	assert.Equal(t, "assignment-assignment-1.db", database.Filename)
-	assert.Equal(t, "ztd public verify-assignment --db assignment-assignment-1.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>", database.VerificationCommand)
+	assert.Equal(t, models.PublicAssignmentAuditVerificationCommand("assignment-assignment-1.db"), database.VerificationCommand)
 	assert.Empty(t, plan.response.AgentTraceSHA256)
 
 	request.AgentTrace = []byte(`{"evidence_digest":"x","final_output":"spiffe://ztd.local/operator/x"}`)

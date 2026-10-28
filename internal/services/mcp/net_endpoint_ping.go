@@ -18,22 +18,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// marshalResult converts a result struct to a CallToolResult with JSON text content.
-func marshalResult(result interface{}) (CallToolResult, error) {
-	resultJSON, err := json.Marshal(result)
-	if err != nil {
-		return CallToolResult{}, fmt.Errorf("net_endpoint_ping: failed to marshal result: %w", err)
-	}
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
-}
-
 // NetEndpointPingTool performs TCP handshake to verify connectivity.
 type NetEndpointPingTool struct{}
 
@@ -96,7 +80,7 @@ func (t *NetEndpointPingTool) Execute(ctx context.Context, args json.RawMessage)
 			LatencyMs: latency,
 			Error:     err.Error(),
 		}
-		return marshalResult(result)
+		return marshalResult(t.Name(), result)
 	}
 	defer conn.Close()
 
@@ -104,5 +88,5 @@ func (t *NetEndpointPingTool) Execute(ctx context.Context, args json.RawMessage)
 		Reachable: true,
 		LatencyMs: latency,
 	}
-	return marshalResult(result)
+	return marshalResult(t.Name(), result)
 }

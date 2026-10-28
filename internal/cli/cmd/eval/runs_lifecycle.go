@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -43,6 +44,7 @@ type runStartFlowOptions struct {
 	// ProviderFailureLimit bounds consecutive generation failures in rollout
 	// runs. Zero keeps explicit campaign runs exhaustive.
 	ProviderFailureLimit int
+	AssignmentTimeout    time.Duration
 }
 
 type runStartFlowResult struct {
@@ -118,6 +120,9 @@ func writeRunStartPlan(cmd *cobra.Command, plan runStartPlanJSON, jsonOutput boo
 // sessions, persists the run and its assignment matrix, and unless prepared
 // only, executes and optionally verifies it.
 func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOptions) (*runStartFlowResult, error) {
+	if opts.AssignmentTimeout < 0 {
+		return nil, fmt.Errorf("evaluation: assignment timeout must be nonnegative: %w", constants.ErrEvaluationFlagsInvalid)
+	}
 	cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return nil, err
@@ -168,15 +173,16 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
-		if stackSet != nil {
-			if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
-				return nil, fmt.Errorf("evaluation: runs start: %w", err)
-			}
-		}
 		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
+	}
+	cellPosture := governance.Posture
+	if cellPosture == evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
+		// Dry runs do not query live Gateway governance; retain the legacy
+		// posture-neutral (doctrine-sized) planning count.
+		cellPosture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	}
 	runID := opts.RunID
 	if runID == "" {
@@ -186,7 +192,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		CampaignID: opts.CampaignID,
 		RunID:      runID,
 		Lane:       laneName,
-		Cells:      campaignCells(catalog, spec, laneName, stacks),
+		Cells:      campaignCells(catalog, spec, laneName, stacks, cellPosture),
 		Topology:   topology,
 
 		SessionsResolved: !opts.DryRun,
@@ -252,6 +258,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		NoAutoBind:           opts.NoAutoBind,
 		JSONOutput:           opts.JSONOutput,
 		ProviderFailureLimit: opts.ProviderFailureLimit,
+		AssignmentTimeout:    opts.AssignmentTimeout,
 	})
 	// A publication failure leaves every result persisted, so the run still
 	// verifies; the failure is returned once verification has run.
@@ -355,6 +362,7 @@ Examples:
 	cmd.Flags().BoolVar(&opts.RequireProvenance, "require-provenance", false, "Fail verification when model provenance attestation windows are missing")
 	cmd.Flags().BoolVar(&opts.RequireObservation, "require-observation", false, "Fail verification when provider-boundary observation windows are missing")
 	cmd.Flags().BoolVar(&opts.NoAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
+	cmd.Flags().DurationVar(&opts.AssignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
 }
 
@@ -399,9 +407,11 @@ type runResumeJSON struct {
 func runsResumeCmd(deps nativeEvalDeps) *cobra.Command {
 	var limit uint32
 	var noAutoBind, publish, daemon, verify bool
+	var assignmentTimeout time.Duration
 	cmd := &cobra.Command{
-		Use:   "resume <run>",
-		Short: "Execute the remaining queued assignments of a run",
+		Use:     "resume <run>",
+		Aliases: []string{"execute"},
+		Short:   "Execute the remaining queued assignments of a run",
 		Long: `Execute queued assignments of an existing run. A model-role assignment runs
 as a tool-calling agent (each turn an Inference Operator dispatch, each tool
 call a governed Data Operator action). By default one assignment runs; --limit raises
@@ -415,12 +425,13 @@ Verification runs after execution by default; use --verify=false to skip it.`,
 			jsonOutput := output.JSONEnabled(cmd)
 			results := make([]runResumeResult, 0)
 			executed, err := executeRun(cmd, deps, runExecuteOptions{
-				RunID:      runID,
-				Publish:    publish,
-				Daemon:     daemon,
-				Limit:      limit,
-				NoAutoBind: noAutoBind,
-				JSONOutput: jsonOutput,
+				RunID:             runID,
+				Publish:           publish,
+				Daemon:            daemon,
+				Limit:             limit,
+				NoAutoBind:        noAutoBind,
+				JSONOutput:        jsonOutput,
+				AssignmentTimeout: assignmentTimeout,
 				ResultOutput: func(result *evalv1.EvaluationAssignmentResult) {
 					if jsonOutput && !daemon {
 						results = append(results, runResumeResult{
@@ -486,6 +497,7 @@ Verification runs after execution by default; use --verify=false to skip it.`,
 	cmd.Flags().BoolVar(&verify, "verify", true, "Verify the run after execution")
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish assignment lifecycle and terminal result projections to the public mirror")
 	cmd.Flags().BoolVar(&noAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
+	cmd.Flags().DurationVar(&assignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
 }
 
@@ -602,7 +614,7 @@ public mirror, so the explorer stops reporting the run as running.`,
 			return err
 		},
 	}
-	cmd.Flags().BoolVar(&publish, "publish", true, "Publish the stopped assignments and run summary to the public mirror")
+	cmd.Flags().BoolVar(&publish, "publish", false, "Publish the stopped assignments and run summary to the public mirror")
 	return cmd
 }
 

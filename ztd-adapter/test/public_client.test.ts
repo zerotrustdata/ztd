@@ -23,7 +23,7 @@ describe('public spectator typed client', () => {
       { protocol_version: '1.0.0', items: [], has_more: false, limit: 20 },
       snapshot,
       snapshot,
-      { schema_version: '1.0.0', generated_at: '2026-09-13T00:00:00Z', entries: [{ artifact_id: artifactID, filename: 'proof.db', media_type: 'application/vnd.sqlite3', byte_size: 12, sha256: artifactID, classification: 'public_safe', campaign_id: 'campaign-1', generated_at: '2026-09-13T00:00:00Z', verification_command: 'ztd public verify-assignment --db proof.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>', immutable_url: `/proofs/${artifactID}` }] },
+      { schema_version: '1.0.0', generated_at: '2026-09-13T00:00:00Z', entries: [{ artifact_id: artifactID, filename: 'proof.db', media_type: 'application/vnd.sqlite3', byte_size: 12, sha256: artifactID, classification: 'public_safe', campaign_id: 'campaign-1', generated_at: '2026-09-13T00:00:00Z', verification_command: 'ztd public verify-assignment --db proof.db --segments proof-segments.jsonl', immutable_url: `/proofs/${artifactID}` }] },
     ];
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify(responses.shift()), { status: 200 }));
     const client = createPublicClient(parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: 'https://feed.example.com' }), fetchImpl);

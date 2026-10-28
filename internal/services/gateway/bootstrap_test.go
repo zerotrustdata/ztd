@@ -129,10 +129,10 @@ func TestBootstrapFlow(t *testing.T) {
 	// 4. Verify the first user is active and is the admin (first user). There
 	// is no ephemeral bootstrap-user concept and no retirement flow: the user
 	// created by bootstrap IS the first human enrollee and stays active.
-	user, err := h.adminController.userSvc.GetByID(t.Context(), bootstrapUserID)
+	user, err := h.userController.userSvc.GetByID(t.Context(), bootstrapUserID)
 	require.NoError(t, err)
 	assert.True(t, user.IsActive())
-	isFirst, err := h.adminController.userSvc.IsFirstUser(t.Context(), bootstrapUserID)
+	isFirst, err := h.userController.userSvc.IsFirstUser(t.Context(), bootstrapUserID)
 	require.NoError(t, err)
 	assert.True(t, isFirst, "the bootstrap-created user is the first user (admin)")
 
@@ -144,7 +144,7 @@ func TestBootstrapFlow(t *testing.T) {
 	// 6. Verify the user remains active (no retirement). The old
 	// create-then-retire dance is gone; the first user is a real user that
 	// is never disabled by a later login.
-	user, err = h.adminController.userSvc.GetByID(t.Context(), bootstrapUserID)
+	user, err = h.userController.userSvc.GetByID(t.Context(), bootstrapUserID)
 	require.NoError(t, err)
 	assert.True(t, user.IsActive(), "the first user is never retired by a later enrollment")
 }

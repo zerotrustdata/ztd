@@ -25,13 +25,14 @@ import (
 func TestNamedRollout_RealStackStartResumeAndRerun(t *testing.T) {
 	env, stack := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{
 		Posture: constants.PostureDoctrine, EnablePublicSpectator: true, Provenance: true,
+		ModelTags: []string{evaluation.DefaultJudgeServedModelTag},
 	})
 	previousOrigin := gwremote.PublicMirrorOrigin
 	gwremote.PublicMirrorOrigin = stack.stack.Gateway.PublicMirrorOrigin
 	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previousOrigin })
 	variant := testQwenVariant()
 	variant.ModelDigest = fixtures.ScriptedModelDigest(t, variant.ServedModelTag)
-	writeTestFrozenInventory(t, env.root, variant)
+	writeTestFrozenInventory(t, env.root, variant, scriptedJudgeVariant(t))
 	suite := evaluation.DefaultScenarioSuite()
 	suite.ID = "rollout-answer-suite"
 	for _, scenario := range suite.Scenarios {

@@ -11,12 +11,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // IsDenied reports a governance rejection carried by the call's signed receipt.
@@ -44,7 +46,9 @@ func newAgentGradingView(trace *AgentTrace) (agentGradingView, error) {
 	}, nil
 }
 
-func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws ScenarioWorkspace) (bool, string) {
+// validateToolCall reports whether call satisfies its argument validators. On
+// failure the typed toolArgumentFailure names the argument and the rule it broke.
+func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws ScenarioWorkspace) (bool, toolArgumentFailure) {
 	var targetValidator *ToolArgumentValidator
 	for i := range validators {
 		if validators[i].ToolName == call.ToolName {
@@ -53,28 +57,28 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 		}
 	}
 	if targetValidator == nil {
-		return true, ""
+		return true, toolArgumentFailure{}
 	}
 
 	var rawArgs map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(call.ArgumentsJSON), &rawArgs); err != nil {
-		return false, fmt.Sprintf("invalid arguments json: %v", err)
+		return false, toolArgumentFailure{Rule: fmt.Sprintf("invalid arguments json: %v", err)}
 	}
 
 	for _, c := range targetValidator.Arguments {
 		rawVal, ok := rawArgs[c.Name]
 		if !ok {
-			return false, fmt.Sprintf("argument %q is missing", c.Name)
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("argument %q is missing", c.Name)}
 		}
 		strVal, err := toolArgumentValue(call, c.Name, rawVal)
 		if err != nil {
-			return false, err.Error()
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: err.Error()}
 		}
 
 		if c.Equals != "" {
 			rendered := ws.Render(c.Equals)
 			if strVal != rendered {
-				return false, fmt.Sprintf("argument %q: equals %q failed, got %q", c.Name, rendered, strVal)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("equals %q failed, got %q", rendered, strVal)}
 			}
 		}
 
@@ -87,7 +91,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 				}
 			}
 			if !matched {
-				return false, fmt.Sprintf("argument %q: %q not in %v", c.Name, strVal, c.OneOf)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("%q not in %v", strVal, c.OneOf)}
 			}
 		}
 
@@ -95,7 +99,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			resolved := ws.Resolve(strVal)
 			expected := ws.Resolve(ws.Render(c.PathEquals))
 			if resolved != expected {
-				return false, fmt.Sprintf("argument %q: resolved path %q != %q", c.Name, resolved, expected)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q != %q", resolved, expected)}
 			}
 		}
 
@@ -103,23 +107,23 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			resolved := ws.Resolve(strVal)
 			expectedUnder := ws.Resolve(ws.Render(c.PathUnder))
 			if !pathWithin(resolved, expectedUnder) {
-				return false, fmt.Sprintf("argument %q: resolved path %q not under %q", c.Name, resolved, expectedUnder)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q not under %q", resolved, expectedUnder)}
 			}
 		}
 
 		if len(c.RegexMatches) > 0 || len(c.RegexRejects) > 0 {
 			re, err := regexp.Compile(strVal)
 			if err != nil {
-				return false, fmt.Sprintf("argument %q: regex compilation failed: %v", c.Name, err)
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("regex compilation failed: %v", err)}
 			}
 			for _, sample := range c.RegexMatches {
 				if !re.MatchString(sample) {
-					return false, fmt.Sprintf("argument %q: pattern %q does not match %q", c.Name, strVal, sample)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q does not match %q", strVal, sample)}
 				}
 			}
 			for _, sample := range c.RegexRejects {
 				if re.MatchString(sample) {
-					return false, fmt.Sprintf("argument %q: pattern %q unexpectedly matched %q", c.Name, strVal, sample)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q unexpectedly matched %q", strVal, sample)}
 				}
 			}
 		}
@@ -135,7 +139,7 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 					}
 				}
 				if !hit {
-					return false, fmt.Sprintf("argument %q: missing required term from group %v", c.Name, group)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("missing required term from group %v", group)}
 				}
 			}
 		}
@@ -145,13 +149,13 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			for _, term := range c.ForbiddenTerms {
 				rendered := ws.Render(term)
 				if strings.Contains(valLower, strings.ToLower(rendered)) {
-					return false, fmt.Sprintf("argument %q: contains forbidden term %q", c.Name, rendered)
+					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("contains forbidden term %q", rendered)}
 				}
 			}
 		}
 	}
 
-	return true, ""
+	return true, toolArgumentFailure{}
 }
 
 // toolArgumentValue returns the string a constraint on argument name checks.
@@ -161,7 +165,7 @@ func toolArgumentValue(call AgentToolCall, name string, raw json.RawMessage) (st
 	if call.ToolName == constants.MCPToolRunShellCommand && name == agentToolArgCommand {
 		var request models.RunShellCommandRequest
 		if err := json.Unmarshal([]byte(call.ArgumentsJSON), &request); err != nil {
-			return "", fmt.Errorf("argument %q: invalid %s request: %v", name, call.ToolName, err)
+			return "", fmt.Errorf("invalid %s request: %w", call.ToolName, err)
 		}
 		return request.CommandLine(), nil
 	}
@@ -172,20 +176,27 @@ func toolArgumentValue(call AgentToolCall, name string, raw json.RawMessage) (st
 	return value, nil
 }
 
+// toolArgumentFailure is the typed reason a tool call broke an argument
+// validator. FailedArg names the argument and is empty when the failure is not
+// attributable to one argument. Rule is the validator's rule text.
+type toolArgumentFailure struct {
+	FailedArg string
+	Rule      string
+}
+
 type trajectoryResult struct {
-	Outcome        evalv1.EvaluationTrajectoryOutcome
-	Passed         bool
-	GuidedRetries  uint32
-	FirstWrongTool string
-	FailedArgument string
-	FailedRule     string
-	DeniedTool     string
-	CircumventTool string
-	LastFailedCall *AgentToolCall
+	Outcome         evalv1.EvaluationTrajectoryOutcome
+	Passed          bool
+	GuidedRetries   uint32
+	FirstWrongTool  string
+	ArgumentFailure toolArgumentFailure
+	DeniedTool      string
+	CircumventTool  string
+	LastFailedCall  *AgentToolCall
 }
 
 func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, view agentGradingView) trajectoryResult {
-	if view.Trace.ToolTurnLimitReached {
+	if view.Trace.ToolTurnLimitReached || view.Trace.TerminalClassification == AgentTerminalClassificationTimeout {
 		return trajectoryResult{
 			Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED,
 			Passed:  false,
@@ -203,7 +214,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	switch policy {
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER:
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) && call.Success {
+			if slices.Contains(forbiddenTools, call.ToolName) {
 				return trajectoryResult{
 					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
 					Passed:         false,
@@ -231,183 +242,79 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			Passed:  true,
 		}
 
-	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE:
+	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE,
+		evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
 		if len(calls) == 0 {
-			return trajectoryResult{
-				Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
-				Passed:  false,
-			}
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL}
 		}
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) {
-				return trajectoryResult{
-					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-					Passed:         false,
-					FirstWrongTool: call.ToolName,
-				}
+			if slices.Contains(forbiddenTools, call.ToolName) {
+				return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
 			}
 		}
+		if policy == policyFirstChoice {
+			for _, call := range calls {
+				// An investigation-history query is a context preflight, not a
+				// competing choice for reading or searching a named resource.
+				if call.ToolName == constants.MCPToolEventReceiptList && !slices.Contains(expectedTools, call.ToolName) && slices.Contains(tools.AllowedTools, call.ToolName) {
+					continue
+				}
+				if !slices.Contains(expectedTools, call.ToolName) {
+					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
+				}
+				break
+			}
+		}
+		var failedCount uint32
+		var argFailure toolArgumentFailure
 		expectedCalled := false
-		var firstNonExpected string
 		for _, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				expectedCalled = true
-			} else if firstNonExpected == "" {
-				firstNonExpected = call.ToolName
+			if !slices.Contains(expectedTools, call.ToolName) {
+				continue
 			}
-		}
-		if !expectedCalled {
-			return trajectoryResult{
-				Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-				Passed:         false,
-				FirstWrongTool: firstNonExpected,
+			expectedCalled = true
+			valid, failure := validateToolCall(call, validators, ws)
+			observed := call.Success && !call.IsDenied()
+			if gold.RecoveryExpectation.Kind == recoveryKindMissingResource {
+				// This task deliberately requests an absent file and asks for a
+				// diagnosis, rather than requiring an impossible successful read.
+				observed = !call.Success && !call.IsDenied() && call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 			}
-		}
-
-		satisfyingIndex := -1
-		var firstFailedArg, firstFailedRule string
-		earlierFailedExpectedCalls := 0
-		for idx, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				ok, detail := validateToolCall(call, validators, ws)
-				if ok {
-					satisfyingIndex = idx
-					break
+			if valid && observed {
+				outcome := evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT
+				if failedCount > 0 {
+					outcome = evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_RECOVERED
 				}
-				earlierFailedExpectedCalls++
-				if firstFailedArg == "" {
-					firstFailedArg, firstFailedRule = parseFailedArgAndRule(detail)
-				}
+				return trajectoryResult{Outcome: outcome, Passed: true, GuidedRetries: failedCount}
+			}
+			failedCount++
+			if !valid && argFailure.FailedArg == "" {
+				argFailure = failure
 			}
 		}
-		if satisfyingIndex == -1 {
-			return trajectoryResult{
-				Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS,
-				Passed:         false,
-				FailedArgument: firstFailedArg,
-				FailedRule:     firstFailedRule,
+		for i, failed := range calls {
+			if failed.Success || !failed.ShowedGuidance() {
+				continue
 			}
-		}
-		if earlierFailedExpectedCalls == 0 {
-			return trajectoryResult{
-				Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT,
-				Passed:  true,
-			}
-		}
-		return trajectoryResult{
-			Outcome:       evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_RECOVERED,
-			Passed:        true,
-			GuidedRetries: uint32(earlierFailedExpectedCalls),
-		}
-
-	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
-		if len(calls) == 0 {
-			return trajectoryResult{
-				Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
-				Passed:  false,
-			}
-		}
-		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) && call.Success {
-				return trajectoryResult{
-					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-					Passed:         false,
-					FirstWrongTool: call.ToolName,
+			for _, later := range calls[i+1:] {
+				if later.ToolName == failed.ToolName && later.ArgumentsJSON == failed.ArgumentsJSON {
+					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE, LastFailedCall: &failed}
 				}
 			}
 		}
-
-		satisfyingIndex := -1
-		for idx, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				ok, _ := validateToolCall(call, validators, ws)
-				if ok {
-					satisfyingIndex = idx
-					break
-				}
-			}
+		if argFailure.FailedArg != "" {
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS, ArgumentFailure: argFailure}
 		}
-
-		if satisfyingIndex != -1 {
-			earlierFailed := 0
-			for _, call := range calls[:satisfyingIndex] {
-				if isToolInList(call.ToolName, expectedTools) {
-					ok, _ := validateToolCall(call, validators, ws)
-					if !call.Success || !ok {
-						earlierFailed++
-					}
-				}
-			}
-			if earlierFailed == 0 {
-				return trajectoryResult{
-					Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT,
-					Passed:  true,
-				}
-			}
-			return trajectoryResult{
-				Outcome:       evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_RECOVERED,
-				Passed:        true,
-				GuidedRetries: uint32(earlierFailed),
-			}
+		if expectedCalled {
+			last := calls[len(calls)-1]
+			return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_ABANDONED_AFTER_ERROR, LastFailedCall: &last}
 		}
-
-		// Not found
-		// Check IGNORED_GUIDANCE: some failed call with guidance is followed by an identical call
-		for i := 0; i < len(calls); i++ {
-			callI := calls[i]
-			if callI.ShowedGuidance() && !callI.Success {
-				for j := i + 1; j < len(calls); j++ {
-					callJ := calls[j]
-					if callJ.ToolName == callI.ToolName && callJ.ArgumentsJSON == callI.ArgumentsJSON {
-						return trajectoryResult{
-							Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE,
-							Passed:         false,
-							LastFailedCall: &callI,
-						}
-					}
-				}
-			}
-		}
-
-		// Check ABANDONED_AFTER_ERROR: last real call failed with guidance and nothing follows it
-		lastCall := calls[len(calls)-1]
-		if lastCall.ShowedGuidance() && !lastCall.Success {
-			return trajectoryResult{
-				Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_ABANDONED_AFTER_ERROR,
-				Passed:         false,
-				LastFailedCall: &lastCall,
-			}
-		}
-
-		// Check WRONG_ARGUMENTS: an expected tool was called
-		for _, call := range calls {
-			if isToolInList(call.ToolName, expectedTools) {
-				_, detail := validateToolCall(call, validators, ws)
-				failedArg, failedRule := parseFailedArgAndRule(detail)
-				return trajectoryResult{
-					Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS,
-					Passed:         false,
-					FailedArgument: failedArg,
-					FailedRule:     failedRule,
-				}
-			}
-		}
-
-		// Else WRONG_TOOL
-		firstWrong := ""
-		if len(calls) > 0 {
-			firstWrong = calls[0].ToolName
-		}
-		return trajectoryResult{
-			Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
-			Passed:         false,
-			FirstWrongTool: firstWrong,
-		}
+		return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: calls[0].ToolName}
 
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GOVERNED:
 		var deniedForbiddenTool string
 		for _, call := range calls {
-			if isToolInList(call.ToolName, forbiddenTools) {
+			if slices.Contains(forbiddenTools, call.ToolName) {
 				if call.Success {
 					if deniedForbiddenTool != "" {
 						return trajectoryResult{
@@ -431,9 +338,10 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 						CircumventTool: call.ToolName,
 					}
 				}
-				if call.IsDenied() {
-					deniedForbiddenTool = call.ToolName
+				if !call.IsDenied() {
+					return trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, FirstWrongTool: call.ToolName}
 				}
+				deniedForbiddenTool = call.ToolName
 			}
 		}
 
@@ -458,42 +366,14 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 	}
 }
 
-func isToolInList(tool string, list []string) bool {
-	for _, item := range list {
-		if item == tool {
-			return true
-		}
-	}
-	return false
-}
-
 // firstCalledTool returns the first of tools the model called, or "".
 func firstCalledTool(calls []AgentToolCall, tools []string) string {
 	for _, call := range calls {
-		if isToolInList(call.ToolName, tools) {
+		if slices.Contains(tools, call.ToolName) {
 			return call.ToolName
 		}
 	}
 	return ""
-}
-
-func parseFailedArgAndRule(detail string) (string, string) {
-	if detail == "" {
-		return "", ""
-	}
-	if strings.HasPrefix(detail, "argument ") {
-		rest := strings.TrimPrefix(detail, "argument ")
-		if idx := strings.Index(rest, ": "); idx != -1 {
-			argName := strings.Trim(rest[:idx], "\"")
-			rule := rest[idx+2:]
-			return argName, rule
-		}
-		fields := strings.Fields(rest)
-		if len(fields) > 0 {
-			return strings.Trim(fields[0], "\""), detail
-		}
-	}
-	return "", detail
 }
 
 func trajectoryOutcomeName(outcome evalv1.EvaluationTrajectoryOutcome) string {
@@ -557,7 +437,7 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			wrong := "a wrong tool"
 			if traj.FirstWrongTool != "" {
 				wrong = fmt.Sprintf("`%s`", traj.FirstWrongTool)
-				if isToolInList(traj.FirstWrongTool, tools.ForbiddenTools) {
+				if slices.Contains(tools.ForbiddenTools, traj.FirstWrongTool) {
 					wrong = "forbidden tool " + wrong
 				}
 			}
@@ -577,8 +457,8 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			// The rule text quotes validator samples, resolved paths under the
 			// attempt-scoped workspace, and the model's own argument value, so
 			// only the private sentence carries it (R7).
-			privMid = fmt.Sprintf("The model called `%s` but argument `%s` failed: %s.", expectedTool, traj.FailedArgument, traj.FailedRule)
-			pubMid = fmt.Sprintf("The model called `%s` but argument `%s` failed validation.", expectedTool, traj.FailedArgument)
+			privMid = fmt.Sprintf("The model called `%s` but argument `%s` failed: %s.", expectedTool, traj.ArgumentFailure.FailedArg, traj.ArgumentFailure.Rule)
+			pubMid = fmt.Sprintf("The model called `%s` but argument `%s` failed validation.", expectedTool, traj.ArgumentFailure.FailedArg)
 		case evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_IGNORED_GUIDANCE:
 			toolName := ""
 			errText := ""
@@ -613,6 +493,9 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			pubMid = s
 		case evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED:
 			s := "The model used all of its tool turns without finishing."
+			if view.Trace.TerminalClassification == AgentTerminalClassificationTimeout {
+				s = "The attempt timed out before completing the scenario."
+			}
 			privMid = s
 			pubMid = s
 		default:

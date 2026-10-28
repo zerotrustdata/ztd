@@ -266,10 +266,10 @@ func (s *CLISessionService) ReplaceCLISession(ctx context.Context, oldSessionID,
 		return nil, fmt.Errorf("replace CLI session: %w", constants.ErrCLISessionInvalid)
 	}
 	if newSessionID == "" {
-		return nil, fmt.Errorf("replace CLI session: missing new session ID")
+		return nil, fmt.Errorf("replace CLI session: missing new session ID: %w", constants.ErrMissingRequiredField)
 	}
 	if newFields.UserID == "" || newFields.OperatorSessionID == "" {
-		return nil, fmt.Errorf("replace CLI session: missing user or operator session binding")
+		return nil, fmt.Errorf("replace CLI session: missing user or operator session binding: %w", constants.ErrMissingRequiredField)
 	}
 
 	// 1. Verify the old session exists and is still active.
@@ -434,7 +434,7 @@ func (s *CLISessionService) RefreshCLISession(ctx context.Context, cliSessionID 
 		return nil, fmt.Errorf("refresh CLI session: %w", constants.ErrCLISessionInvalid)
 	}
 	if fields.UserID == "" || fields.OperatorSessionID == "" {
-		return nil, fmt.Errorf("refresh CLI session: missing user or operator session binding")
+		return nil, fmt.Errorf("refresh CLI session: missing user or operator session binding: %w", constants.ErrMissingRequiredField)
 	}
 
 	existing, err := s.loadCLISession(ctx, cliSessionID)
@@ -579,13 +579,9 @@ func cliSessionExpired(session *models.CLISession, now time.Time) bool {
 
 // decodeCLISession deserializes a Document into a CLISession.
 func decodeCLISession(doc *models.Document) (*models.CLISession, error) {
-	dataBytes, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal document data: %w", err)
-	}
 	var session models.CLISession
-	if err := json.Unmarshal(dataBytes, &session); err != nil {
-		return nil, fmt.Errorf("unmarshal CLI session: %w", err)
+	if err := doc.DecodeData(&session); err != nil {
+		return nil, fmt.Errorf("decode CLI session: %w", err)
 	}
 	session.ID = doc.ID
 	return &session, nil

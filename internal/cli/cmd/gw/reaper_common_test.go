@@ -10,20 +10,13 @@ package gw
 import (
 	"testing"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-// withServeReExec sets the test re-exec environment variable to "serve" so the
-// test process behaves as a minimal Gateway server when re-executed. The
-// env var is restored via t.Cleanup. It also registers a cleanup that reaps
-// any remaining child process and removes stale PID files.
-// testReexecEnv selects the re-exec mode for the test-binary Gateway child. It is
-// test-only and deliberately absent from the production env registry.
-const testReexecEnv = "ZTD_TEST_REEXEC"
-
 func withServeReExec(t *testing.T, fileSvc fs.RuntimeFileService) {
 	t.Helper()
-	t.Setenv(testReexecEnv, "serve")
+	t.Setenv(string(constants.EnvVar.TestReexec), "serve")
 	t.Cleanup(func() {
 		reapRemainingChild(t, fileSvc)
 	})

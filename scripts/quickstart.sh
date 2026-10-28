@@ -72,7 +72,7 @@ ztd_quickstart_run() {
 ztd_gateway_online() {
     local status
     status="$(ztd_cli gw status 2>/dev/null)" || return 1
-    grep -Eq '^Gateway[[:space:]]+online' <<<"$status"
+    grep -Eq '^Gateway[[:space:]]+(online|running)' <<<"$status"
 }
 
 ztd_ui_title "ztd quickstart"
@@ -84,8 +84,8 @@ if [[ ! -x "$ZTD" ]]; then
         ztd_ui_fatal "Go is not installed. Run: bash scripts/$( [[ "$(uname -s)" == Darwin ]] && echo macos || echo linux )-setup.sh --build-only"
         exit 1
     fi
-    ztd_ui_info "building ./ztd (first run only)..."
-    ztd_quickstart_run "make build" make build || exit 1
+    ztd_ui_info "building ./ztd from the committed frontend embeds (first run only)..."
+    ztd_quickstart_run "make build-go" make build-go || exit 1
 fi
 ztd_ui_ok "$("$ZTD" --version 2>/dev/null | head -n 1)"
 
@@ -94,17 +94,32 @@ ztd_ui_step 2 4 "Gateway"
 if ztd_gateway_online; then
     ztd_ui_ok "already running — reusing it"
 else
-    ztd_ui_info "starting on https://localhost:8443 (doctrine posture, embedded data Operator)..."
+    ztd_ui_info "starting Gateway (doctrine posture, embedded data Operator)..."
+    if [[ "$(uname -s)" == Darwin ]]; then
+        ztd_ui_info "If this is the first start, macOS shows a Keychain dialog for \"ztd-platform\"."
+        ztd_ui_info "It wants your Mac login password, not a ztd account. Choose Always Allow. A GUI session is required."
+    fi
     if ! ztd_quickstart_run "Gateway start" ztd_cli gw start --capabilities data ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
         if grep -qiE 'keyring|keystore|secret service|ssh-agent|master key' "$LOG"; then
             echo >&2
-            ztd_ui_warn "No usable key store for the vault master key. Start an ssh-agent with a key loaded:" >&2
-            echo "      ssh-keygen -t ed25519                # skip if you already have an Ed25519 key" >&2
-            echo "      eval \"\$(ssh-agent)\" && ssh-add" >&2
-            echo "    Then rerun make quickstart." >&2
+            if [[ "$(uname -s)" == Darwin ]]; then
+                ztd_ui_warn "macOS Keychain did not release the vault master key." >&2
+                echo "    Rerun in a GUI terminal session and approve the Keychain prompt for ztd (Always Allow)." >&2
+                echo "    Then rerun make quickstart." >&2
+            else
+                ztd_ui_warn "No usable key store for the vault master key. Start an ssh-agent with a key loaded:" >&2
+                echo "      ssh-keygen -t ed25519                # skip if you already have an Ed25519 key" >&2
+                echo "      eval \"\$(ssh-agent)\" && ssh-add" >&2
+                echo "    Then rerun make quickstart." >&2
+            fi
+        elif grep -qiE 'address already in use|port unavailable' "$LOG"; then
+            echo >&2
+            ztd_ui_warn "A port the Gateway needs is in use, usually by a Gateway started from another directory." >&2
+            echo "    Stop it from its own directory with ./ztd gw stop, then rerun make quickstart." >&2
         fi
         exit 1
     fi
+    grep -E 'Waiting for access|listens on HTTP|Port [0-9]+ is held' "$LOG" 2>/dev/null | sed 's/^/  /' || true
     ztd_ui_ok "Gateway online"
 fi
 
@@ -126,9 +141,13 @@ session="$(awk '$1 == "Operator" && $2 == "session" {print $3; exit}' "$LOG")"
 ztd_ui_ok "admitted by the Gateway, executed by the Operator, signed and recorded"
 
 console="$(ztd_cli gw status 2>/dev/null | awk '$1 == "Console" {print $2}')"
+browser_hint="add a passkey, then open ${console:-https://localhost:8443/console/}"
+if [[ "$(uname -s)" == Darwin ]]; then
+    browser_hint="asks before adding the Gateway CA to your login keychain (this account, no sudo), then a passkey. Open ${console:-https://localhost:8443/console/}"
+fi
 echo -e "\n${ZTD_UI_GREEN}${ZTD_UI_BOLD}${ZTD_UI_OK} You're running ztd${ZTD_UI_RESET} ${ZTD_UI_DIM}($(ztd_ui_elapsed))${ZTD_UI_RESET}\n"
 echo -e "  ${ZTD_UI_BOLD}Watch${ZTD_UI_RESET}     ./ztd tui                ${ZTD_UI_DIM}live governance console in the terminal${ZTD_UI_RESET}"
-echo -e "  ${ZTD_UI_BOLD}Browser${ZTD_UI_RESET}   ./ztd login web          ${ZTD_UI_DIM}add a passkey, then open ${console:-https://localhost:8443/console/}${ZTD_UI_RESET}"
+echo -e "  ${ZTD_UI_BOLD}Browser${ZTD_UI_RESET}   ./ztd login web          ${ZTD_UI_DIM}${browser_hint}${ZTD_UI_RESET}"
 echo -e "  ${ZTD_UI_BOLD}Evidence${ZTD_UI_RESET}  ./ztd gw data audit list --operator-session-id ${session:-<id>}"
 echo -e "  ${ZTD_UI_BOLD}Agents${ZTD_UI_RESET}    ./ztd mcp agent run claude"
 echo -e "  ${ZTD_UI_BOLD}Stop${ZTD_UI_RESET}      make down                ${ZTD_UI_DIM}state in .ztd/ is kept${ZTD_UI_RESET}"

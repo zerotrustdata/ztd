@@ -340,6 +340,20 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 .rv.in{opacity:1;transform:none}
 .no-js .rv{opacity:1;transform:none}
 
+.proof-gap{margin-top:22px}
+.proof-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:22px;align-items:start}
+.proof-grid>*{min-width:0}
+.proof-card{background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:22px}
+.proof-card h3{margin:0 0 8px;font-size:18px}
+.proof-card p,.proof-note{color:var(--muted);font-size:15px;margin:0}
+.proof-card pre,.proof-json{margin:14px 0 0;max-height:440px;overflow:auto;background:#070a12;border:1px solid var(--line);padding:14px 16px;border-radius:4px;font-size:12px;line-height:1.55;color:#c5d4e8;white-space:pre}
+.proof-shots{display:grid;gap:14px}
+.proof-shots img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#070a12}
+.proof-fields{display:grid;gap:10px;margin-top:18px}
+.proof-fields div{display:grid;grid-template-columns:180px 1fr;gap:12px;padding:12px 14px;border:1px solid var(--line2);background:rgba(0,240,255,.03)}
+.proof-fields b{font:600 12px/1.3 var(--mono);letter-spacing:.04em;color:var(--cyan)}
+.proof-fields span{color:var(--muted);font-size:14px}
+
 /* ---------- responsive ---------- */
 @media (max-width:1080px){
   .nav ul{gap:18px}
@@ -354,14 +368,14 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   .layer p{grid-column:2}
   .layer .own{grid-column:2;text-align:left}
   .layer .lv{grid-row:span 3;align-self:start}
-  .pipe-foot,.lf,.qs,.status,.oem-box{grid-template-columns:1fr}
+  .pipe-foot,.lf,.qs,.status,.oem-box,.proof-grid{grid-template-columns:1fr}
   .tier-grid{grid-template-columns:1fr}
   .spec{grid-template-columns:repeat(2,1fr)}
   .foot{grid-template-columns:1fr 1fr}
 }
 @keyframes dashv{to{background-position:0 28px}}
 @media (max-width:860px){
-  .split,.grid3,.grid2,.rm{grid-template-columns:1fr}
+  .split,.grid3,.grid2,.rm,.proof-fields div{grid-template-columns:1fr}
   .rm > div{border-right:0;border-bottom:1px solid var(--line2)}
   .rm > div:last-child{border-bottom:0}
 }
@@ -414,8 +428,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <ul>
         <li><a href="#how">Platform</a></li>
         <li><a href="#start">Install</a></li>
-        <li class="nav-keep"><a href="#licensing">Pricing</a></li>
-        <li><a href="#sprints">Consulting</a></li>
+        <li class="nav-keep"><a href="#proofs">Proofs</a></li>
+        <li><a href="#status">Record</a></li>
         <li class="nav-keep"><a href="/releases/">Releases</a></li>
         <li class="nav-keep"><a href="/build-in-public/" title="Build in Public">Journal</a></li>
       </ul>
@@ -433,7 +447,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div>
       <div class="status-line">
-        <span class="chip"><span class="dot"></span>ztd <b>v1.4.1</b></span>
+        <span class="chip"><span class="dot"></span>ztd <b>v1.5.0</b></span>
         <span class="chip">Zero-trust execution layer</span>
         <span class="chip">Source available · BSL 1.1</span>
       </div>
@@ -447,17 +461,17 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div class="cta-row">
         <a class="btn solid" href="https://opendevops.ai">Watch it LIVE
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
-        <a class="btn ghost" href="#licensing">Buy Fleet License Pack</a>
-        <a class="btn ghost" href="#start">Evaluate Free</a>
+        <a class="btn ghost" href="#proofs">Read a real receipt</a>
+        <a class="btn ghost" href="#start">Run it locally</a>
         <a class="btn ghost" href="https://github.com/zerotrustdata/ztd" rel="noopener">Read the Source</a>
       </div>
 
       <div class="persona-jumps" aria-label="Select your track">
         <span class="lbl">// Jump to your track:</span>
-        <a href="#start">01 · Platform Engineers (Free to Evaluate)</a>
-        <a class="p-acid" href="#licensing">02 · CISOs &amp; VPs (50-Host Seat Packs)</a>
-        <a class="p-mag" href="#oem">03 · AI Vendors (OEM Embed)</a>
-        <a class="p-amber" href="#sprints">04 · Principal Architecture Sprints</a>
+        <a href="#start">01 · Install</a>
+        <a class="p-acid" href="#proofs">02 · Signed evidence</a>
+        <a class="p-mag" href="#pipeline">03 · Five layers</a>
+        <a href="https://opendevops.ai/proof-catalog" rel="noopener">04 · Public catalog</a>
       </div>
 
       <p class="say">// <b>ztd</b> is Zero Trust Data: typed intent, independent verification, governed execution, and local evidence.</p>
@@ -486,8 +500,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 
 <div class="ticker" aria-hidden="true">
   <div class="ticker-track">
-    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Fast &amp; Flexible Payments</span>
-    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Fast &amp; Flexible Payments</span>
+    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Local signed evidence</span>
+    <span><b>//</b>No direct host takeover by an LLM</span><span><b>//</b>Every action is a typed envelope</span><span><b>//</b>Policy gates before mutation</span><span><b>//</b>Signed receipts and audit trails</span><span><b>//</b>Outbound-only Operators</span><span><b>//</b>TLS 1.3 · mTLS · SPIFFE</span><span><b>//</b>Local signed evidence</span>
   </div>
 </div>
 
@@ -715,17 +729,28 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     </div>
     <div class="panel rv">
       <div class="tabs" role="tablist" aria-label="Install paths">
-        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">Linux / macOS</button>
+        <button role="tab" aria-selected="true" aria-controls="tp-mac" id="tb-mac">macOS</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-0" id="tb-0" tabindex="-1">Linux</button>
         <button role="tab" aria-selected="false" aria-controls="tp-w" id="tb-w" tabindex="-1">Windows</button>
         <button role="tab" aria-selected="false" aria-controls="tp-1" id="tb-1" tabindex="-1">From source</button>
         <button role="tab" aria-selected="false" aria-controls="tp-2" id="tb-2" tabindex="-1">Enroll</button>
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
       </div>
-      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0">
-<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
-<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh | sh
-<span class="c"># binary only: curl -fsSL https://zerotrustdata.io/ztd.sh | sh</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh | sh">Copy</button>
+      <div class="code" role="tabpanel" id="tp-mac" aria-labelledby="tb-mac">
+<pre><span class="c"># read it first. Never calls sudo. Checksum before the binary is written.</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+<span class="p">$ </span>sh /tmp/ztd-start.sh
+<span class="c"># Keychain item ztd-platform: your Mac login password, then Always Allow.</span>
+<span class="c"># Require Sigstore: ZTD_REQUIRE_SIGSTORE=1  (brew install cosign)</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh&#10;sh /tmp/ztd-start.sh">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0" hidden>
+<pre><span class="c"># read it first. Never calls sudo. Checksum before the binary is written.</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+<span class="p">$ </span>sh /tmp/ztd-start.sh
+<span class="c"># one-liner: curl -fsSL https://zerotrustdata.io/start.sh | sh</span>
+<span class="c"># no desktop keyring: eval "$(ssh-agent)" &amp;&amp; ssh-add</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh&#10;sh /tmp/ztd-start.sh">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-w" aria-labelledby="tb-w" hidden>
 <pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
@@ -736,11 +761,13 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
-<span class="p">$ </span>bash scripts/linux-setup.sh --build-only
-<span class="p">$ </span>make quickstart
-<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span>
-<span class="c"># Windows (PowerShell 7): pwsh scripts/windows-setup.ps1 --build-only</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
+<span class="c"># --build-only uses the committed frontends. Node is not required.</span>
+<span class="c"># macOS:</span>
+<span class="p">$ </span>bash scripts/macos-setup.sh --build-only
+<span class="c"># Linux: bash scripts/linux-setup.sh --build-only</span>
+<span class="c"># Windows (PowerShell 7): pwsh scripts/windows-setup.ps1 --build-only</span>
+<span class="p">$ </span>make quickstart</pre>
+        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;if [ &quot;$(uname)&quot; = &quot;Darwin&quot; ]; then bash scripts/macos-setup.sh --build-only; else bash scripts/linux-setup.sh --build-only; fi&#10;make quickstart">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-2" aria-labelledby="tb-2" hidden>
 <pre><span class="c"># sign in as the owner with a passkey, then approve workloads</span>
@@ -763,200 +790,291 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   </div>
 </section>
 
-<!-- ================= TRACK 02: FLEET LICENSING & AUDIT PACKS ================= -->
-<section id="licensing" class="stage-sec" aria-labelledby="lic-title">
+<!-- ================= PROOFS ================= -->
+<section id="proofs" class="stage-sec" aria-labelledby="proofs-title">
   <div class="wrap">
     <div class="sec-head rv">
-      <p class="eyebrow acid">08 / Pricing</p>
-      <h2 id="lic-title">Commercial Fleet Packs for <em class="acid">Production Use</em></h2>
-      <p class="lede">Your engineers are already connecting Claude Code, MCP servers, and autonomous agents to internal systems. Lock in production licensing today with fast, flexible payment on any corporate card and receive a <strong>License Certificate</strong> for Finance and your auditors within one business day. Roll out the Operators at your own pace. Every plan runs the same audited binary, so you can verify every claim before you buy.</p>
+      <p class="eyebrow acid">08 / Proofs</p>
+      <h2 id="proofs-title">A real run, <em class="acid">signed on the host</em></h2>
+      <p class="lede">Goose, with Ollama serving <code>qwen2.5:0.5b</code> on CPU, called <code>run_shell_command</code> twice through <code>ztd mcp agent run</code>. The Gateway admitted each call as a <code>GovernanceEnvelope</code>. The embedded Operator re-checked it. One call ran. One was refused before execution. Doctrine posture: L2 and L3 are recorded as not required. This is a signed evidence log. It is not proof of work, and it is not a TEE or any other hardware attestation.</p>
     </div>
-
-    <div class="tier-grid">
-      <!-- Tier 1: Single Cluster Compliance -->
-      <article class="tier-card rv">
-        <div>
-          <div class="tier-persona">// DevSecOps &amp; Lab Teams</div>
-          <h3>Compliance CLI Pack</h3>
-          <p class="tier-sub">For engineering teams taking the source-available binary to production with auditor-ready cryptographic evidence.</p>
-          <div class="price-line">
-            <span class="amt">$99</span>
-            <span class="per">/ month · per cluster</span>
-          </div>
-          <ul class="tier-list">
-            <li><span><b>Commercial production rights</b> for up to 10 enrolled Operators</span></li>
-            <li><span><b>Signed compliance report bundles:</b> JSON, OSCAL, HTML &amp; CSV evidence mapped to NIST SP 800-53 and FedRAMP 20x KSIs, verifiable offline</span></li>
-            <li><span><b>L1 Doctrine packs:</b> MITRE ATT&amp;CK detectors, gitleaks credential-egress rules &amp; OWASP CRS</span></li>
-            <li><span><b>License Certificate</b> emailed within one business day of checkout</span></li>
-          </ul>
+    <div class="proof-grid">
+      <div class="proof-card rv">
+        <h3>What the terminal showed</h3>
+        <p class="proof-note">The launcher enrolled the <code>goose</code> application, then Goose issued <code>echo</code> with args <code>ztd-smoke-ok</code> and <code>rm -rf /</code>. The allow returned exit 0. The deny came back as <code>TX_DOCTRINE_L1_FAILED</code> with a signed receipt in the tool error.</p>
+        <div class="proof-shots">
+          <img src="/proofs/agent-run.png" alt="Terminal transcript of ztd mcp agent run goose against Ollama qwen2.5:0.5b, showing the echo tool call and the L1 denial of rm -rf /.">
+          <img src="/proofs/verify.png" alt="ztd audit verify reporting Audit chain OK, and ztd report verify reporting Verification PASSED.">
         </div>
-        <div class="tier-foot">
-          <a class="btn full" href="/buy/compliance-cli-pack">Activate CLI Pack →</a>
-          <span class="micro-note">Fast &amp; flexible card payment · Cancel anytime in 1 click</span>
-        </div>
-      </article>
-
-      <!-- Tier 2: 50-Host Fleet Pack (HERO OFFER) -->
-      <article class="tier-card featured rv">
-        <span class="tier-badge">Most Popular · Fast &amp; Flexible Payments</span>
-        <div>
-          <div class="tier-persona">// Mid-Market &amp; Series A–C Security</div>
-          <h3>50-Host Fleet Pack</h3>
-          <p class="tier-sub">Lock in production licensing today and deploy across 50 hosts at your own pace.</p>
-          <div class="price-line">
-            <span class="amt">$1,499</span>
-            <span class="per">/ year · (~$2.50 / host / mo)</span>
-          </div>
-          <ul class="tier-list">
-            <li><span><b>Commercial production license</b> for up to 50 Governed Operators &amp; Gateways</span></li>
-            <li><span><b>License Certificate</b> for Finance, procurement &amp; auditors, plus signed compliance report bundles your auditors can verify offline</span></li>
-            <li><span><b>12-Month Rollout Window:</b> license now, enroll hosts over the year</span></li>
-            <li><span><b>Full L2 Quorum &amp; L3 WebAuthn Passkey</b> mutation gates</span></li>
-            <li><span><b>Direct async technical support</b> from the Principal Architect</span></li>
-          </ul>
-        </div>
-        <div class="tier-foot">
-          <a class="btn acid full" href="/buy/fleet-50">Buy 50-Host Pack ($1,499) →</a>
-          <span class="micro-note">Fast, flexible payment · Fits within most corporate card limits</span>
-        </div>
-      </article>
-
-      <!-- Tier 3: 250-Host Regulated Enterprise Pack -->
-      <article class="tier-card rv">
-        <div>
-          <div class="tier-persona">// Enterprise &amp; Air-Gapped Enclaves</div>
-          <h3>250-Host Sovereign Pack</h3>
-          <p class="tier-sub">Full-scale deployment licensing for regulated infrastructure, hybrid cloud, and disconnected / DDIL environments.</p>
-          <div class="price-line">
-            <span class="amt">$3,999</span>
-            <span class="per">/ year · 250 Operators</span>
-          </div>
-          <ul class="tier-list">
-            <li><span><b>Everything in the 50-Host Pack</b> scaled to 250 hosts and unlimited Gateways</span></li>
-            <li><span><b>Air-Gapped &amp; Offline Deployment:</b> Sigstore-signed static binaries + vendored source builds, with guided offline transfer</span></li>
-            <li><span><b>Custom L1 Doctrine Rules:</b> tailored denylists for your internal SAN/NAS, Kubernetes &amp; DB topologies</span></li>
-            <li><span><b>Async Architecture Topology Review</b> included prior to production rollout</span></li>
-          </ul>
-        </div>
-        <div class="tier-foot">
-          <a class="btn solid full" href="/buy/sovereign-250">Buy 250-Host Pack ($3,999) →</a>
-          <span class="micro-note">Stripe invoice at checkout · License Certificate within 1 business day</span>
-        </div>
-      </article>
-    </div>
-
-    <div class="async-bar rv">
-      <div><b>// Zero-Sales-Call Procurement Guarantee:</b> Built by a Principal Engineer, not a sales floor. Purchase any Fleet Pack with fast, flexible payment directly on a corporate card under our <a href="/terms/">commercial terms</a>, or email technical questions for a written response within one business day.</div>
-      <a class="btn sm ghost" href="mailto:danny@zerotrustdata.io?subject=Fleet%20Licensing%20Invoice%20Request">Request PO / Invoice via Email</a>
-    </div>
-  </div>
-</section>
-
-<!-- ================= TRACK 03: COMMERCIAL OEM EMBEDDING ================= -->
-<section id="oem" class="compact-top" aria-labelledby="oem-title">
-  <div class="wrap">
-    <div class="oem-box rv">
-      <div>
-        <p class="eyebrow mag">09 / OEM license</p>
-        <h2 id="oem-title">Embed <em class="mag">ztd</em> Inside Your Commercial Product</h2>
-        <p class="lede">Don't burn 9 months of engineering runway building SPIFFE PKI, mTLS session routing, WebAuthn passkey step-up, and hash-chained local SQLite ledgers from scratch. Exempt your product from BSL 1.1 restrictions and ship our static Go governance engine inside your SaaS, appliance, or federal deliverable.</p>
-        <ul class="tier-list oem-list">
-          <li><span><b>Full BSL 1.1 Commercial Exemption:</b> bundle <code>ztd</code> inside proprietary closed-source products and managed services</span></li>
-          <li><span><b>White-Label &amp; OEM Redistribution:</b> ship the Gateway and Operator binaries directly to your end customers</span></li>
-          <li><span><b>Protobuf Contracts &amp; Go/TypeScript Bindings:</b> wire your custom agent orchestrator directly into L1–L5 envelopes</span></li>
-        </ul>
       </div>
-      <div class="price-callout">
-        <span class="chip"><span class="dot"></span>Commercial OEM License</span>
-        <div class="big">$2,950</div>
-        <div class="per">Per Year · Unlimited Redistribution</div>
-        <a class="btn mag full" href="/buy/oem">License for OEM Embedding →</a>
-        <span class="micro-note"><a href="/terms/oem/">Read the OEM agreement</a> before checkout · Sent for signature after payment</span>
+      <div class="proof-card rv">
+        <h3>Denied call · L1 doctrine</h3>
+        <p class="proof-note"><code>status</code> is <code>EXECUTION_STATUS_FAILED</code>. <code>rejectionCode</code> is <code>GOVERNANCE_REJECTION_CODE_L1_DOCTRINE</code>. The stage evidence outcome for L1 and L4 is <code>DETERMINISTIC_STAGE_OUTCOME_FAILED</code>. Nothing was executed.</p>
+        <pre class="proof-json">{
+  &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+  &quot;deterministicStageEvidence&quot;: [
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;doctrineBundleHash&quot;: &quot;b31668e1fc93e2db2de8579c71b2feeb078b63d533600c4b76e8989e04337af4&quot;,
+      &quot;doctrineBundleVersion&quot;: &quot;ztd-l1-doctrine-v1&quot;,
+      &quot;investigationId&quot;: &quot;917d1a94-0614-408b-9a0a-d60b65a70fb5&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_L1_DOCTRINE&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6998434637&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6998301256&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_FAILED&quot;,
+      &quot;parentStageId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412:DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412:DETERMINISTIC_STAGE_KIND_L1_DOCTRINE&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;,
+      &quot;transactionId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;investigationId&quot;: &quot;917d1a94-0614-408b-9a0a-d60b65a70fb5&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6998490493&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6998089130&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_FAILED&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412:DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;,
+      &quot;transactionId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;
+    }
+  ],
+  &quot;eventType&quot;: &quot;ztd.v1.operator.mcp.call.requested&quot;,
+  &quot;executedAtUnixMs&quot;: &quot;1793214966774&quot;,
+  &quot;failureCode&quot;: &quot;RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED&quot;,
+  &quot;finalPersistenceAttestation&quot;: {
+    &quot;auditRecordId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;,
+    &quot;persistedAtUnixMs&quot;: &quot;1793214966774&quot;,
+    &quot;receiptSignatureDigest&quot;: &quot;35101f57fb3160e34182e709efc0b4e564f1d12e28ba226cf40df68a88b2ef15&quot;,
+    &quot;signature&quot;: &quot;af43c84a4d8834ff300597d0da214cbc45b2d66658f6c59a206f33e16e36699e09a044b3e66324dca1f57305ce56a5305a57c3762b47697f83f9a07c8ce59e08&quot;,
+    &quot;signerKeyId&quot;: &quot;5172ae5ebd2b6860ce1da43c3f77cc8adc378c02ff3684412c187a7b374a6f16&quot;,
+    &quot;transactionId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;
+  },
+  &quot;l2Status&quot;: &quot;L2_STATUS_NOT_REQUIRED&quot;,
+  &quot;l3Status&quot;: &quot;L3_STATUS_NOT_REQUIRED&quot;,
+  &quot;rejectionCode&quot;: &quot;GOVERNANCE_REJECTION_CODE_L1_DOCTRINE&quot;,
+  &quot;resultSummary&quot;: &quot;rejected: TX_DOCTRINE_L1_FAILED: typed payload violates Doctrine (L1Doctrine) forbidden patterns: command threat detected: destroy_rm_rf_root (category: data_destruction, MITRE: T1485), command threat detected: destroy_rm_recursive_wide_target (category: data_destruction, MITRE: T1485)&quot;,
+  &quot;signature&quot;: &quot;c1fc5f588bcf5ce81db23c1aebe0152dfd8ee98decc5faed3c74c68109814a626ce6dec57047a92ddb6a77478c7329377a4c3281c6c18e7165ddeda7b754450b&quot;,
+  &quot;signerKeyId&quot;: &quot;5172ae5ebd2b6860ce1da43c3f77cc8adc378c02ff3684412c187a7b374a6f16&quot;,
+  &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+  &quot;status&quot;: &quot;EXECUTION_STATUS_FAILED&quot;,
+  &quot;transactionHash&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;,
+  &quot;transactionId&quot;: &quot;45ee11aab730edb87b029b14e2aea8a0e4e5aace3424b71685dffda80ee0f412&quot;
+}</pre>
       </div>
     </div>
-  </div>
-</section>
-
-<!-- ================= TRACK 04: PRINCIPAL ARCHITECTURE SPRINTS ================= -->
-<section id="sprints" class="stage-sec" aria-labelledby="sprints-title">
-  <div class="wrap">
-    <div class="sec-head rv">
-      <p class="eyebrow amber">10 / Architecture sprints</p>
-      <h2 id="sprints-title">Hire the Principal Architect <em class="amber">Behind the Engine</em></h2>
-      <p class="lede"><code>ztd</code> and <code>OpenDevOps.ai</code> were built by Danny Barbour—a 30-year Principal Infrastructure, Storage &amp; SRE Architect who built Igneous SRE 0→1 through its Rubrik acquisition and IPO (NYSE: RBRK), commanded Fortune 500 storage outage bridges at Quantum, and commissioned U.S. Navy warship IT from bare steel. Skip the 6-month executive search and book a fixed-price technical sprint.</p>
+    <div class="proof-grid proof-gap">
+      <div class="proof-card rv">
+        <h3>Allowed call · completed receipt</h3>
+        <p class="proof-note"><code>resultSummary</code> is the Operator's record of <code>echo</code>: exit 0 and stdout <code>ztd-smoke-ok</code>. <code>transactionHash</code> is the canonical hash of the GovernanceEnvelope. The audit API returns this signed receipt; it does not re-export the envelope body.</p>
+        <pre class="proof-json">{
+  &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+  &quot;deterministicStageEvidence&quot;: [
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;doctrineBundleHash&quot;: &quot;b31668e1fc93e2db2de8579c71b2feeb078b63d533600c4b76e8989e04337af4&quot;,
+      &quot;doctrineBundleVersion&quot;: &quot;ztd-l1-doctrine-v1&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_L1_DOCTRINE&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6989050812&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6988791371&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_VERIFIED&quot;,
+      &quot;parentStageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L1_DOCTRINE&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_PROTOCOL_L2&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6989057371&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6989056140&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED&quot;,
+      &quot;parentStageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_PROTOCOL_L2&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_L3_NOTARY&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6989058786&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6989057726&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED&quot;,
+      &quot;parentStageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L3_NOTARY&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6989059658&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6988506297&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_VERIFIED&quot;,
+      &quot;parentStageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L5_EXECUTION&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L4_VERIFICATION&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;auditRecordId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6989789921&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6989169106&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_COMPLETED&quot;,
+      &quot;parentStageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L5_EXECUTION&quot;,
+      &quot;receiptSignatureDigest&quot;: &quot;676ee78be0297e70a7a7af2bd0ebabfaed06cd4819275d41718333bca77b96fa&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;signerKeyId&quot;: &quot;5172ae5ebd2b6860ce1da43c3f77cc8adc378c02ff3684412c187a7b374a6f16&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;commitmentHash&quot;: &quot;090c9a4d3e83928d717931d8c57a6097100a103b81380ec9b2b10d46a349de87&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6989791548&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6989169106&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_COMPLETED&quot;,
+      &quot;parentStageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L5_EXECUTION&quot;,
+      &quot;priorCommitmentHash&quot;: &quot;cf7a6798bd9a26a74988f57a36082cec2f8fcf26a41e244d488aa2734698d590&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;signerKeyId&quot;: &quot;4c8648bf2ab752af43a8452fd70423f98cbb63a12d22d63189baaf03bb1425cb&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    },
+    {
+      &quot;actingAppId&quot;: &quot;spiffe://ztd.local/app/goose&quot;,
+      &quot;actionType&quot;: &quot;MCP_CALL&quot;,
+      &quot;clockDomain&quot;: &quot;ztd-operator-process&quot;,
+      &quot;investigationId&quot;: &quot;cf22dfeb-9bd5-46e0-b4bf-002431bc4e1b&quot;,
+      &quot;kind&quot;: &quot;DETERMINISTIC_STAGE_KIND_L5_EXECUTION&quot;,
+      &quot;monotonicEndNs&quot;: &quot;6991054277&quot;,
+      &quot;monotonicStartNs&quot;: &quot;6989791700&quot;,
+      &quot;operatorId&quot;: &quot;embedded-operator&quot;,
+      &quot;operatorSessionId&quot;: &quot;0d025cc5-f003-4814-95d1-0a59fb27ceca&quot;,
+      &quot;outcome&quot;: &quot;DETERMINISTIC_STAGE_OUTCOME_COMPLETED&quot;,
+      &quot;requestorUserId&quot;: &quot;b2a9b50a-2aaa-4aac-9822-a44e39960eea&quot;,
+      &quot;stageId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc:DETERMINISTIC_STAGE_KIND_L5_EXECUTION&quot;,
+      &quot;stateRootAfter&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+      &quot;timingSource&quot;: &quot;go_monotonic&quot;,
+      &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+      &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+    }
+  ],
+  &quot;eventType&quot;: &quot;ztd.v1.operator.mcp.call.requested&quot;,
+  &quot;executedAtUnixMs&quot;: &quot;1793214966767&quot;,
+  &quot;finalPersistenceAttestation&quot;: {
+    &quot;auditRecordId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+    &quot;persistedAtUnixMs&quot;: &quot;1793214966767&quot;,
+    &quot;receiptSignatureDigest&quot;: &quot;d437d5b5245fe1539271ea53385d2cf3a4198640aa05a51a66b839276ffa5382&quot;,
+    &quot;signature&quot;: &quot;c22dd8219beab88f9feb8dc5ac44b61e9ace7ac1df87edc1b5ff23c2fcc6201c224d235b70ceeb4bc99d3e99c478e9112ee63c11df3f5e18162b3e770bb5870d&quot;,
+    &quot;signerKeyId&quot;: &quot;5172ae5ebd2b6860ce1da43c3f77cc8adc378c02ff3684412c187a7b374a6f16&quot;,
+    &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+  },
+  &quot;l2Status&quot;: &quot;L2_STATUS_NOT_REQUIRED&quot;,
+  &quot;l3Status&quot;: &quot;L3_STATUS_NOT_REQUIRED&quot;,
+  &quot;resultSummary&quot;: &quot;{\&quot;exit_code\&quot;:0,\&quot;stdout\&quot;:\&quot;ztd-smoke-ok\\n\&quot;,\&quot;stderr\&quot;:\&quot;\&quot;,\&quot;timed_out\&quot;:false,\&quot;hostname\&quot;:\&quot;localhost\&quot;}&quot;,
+  &quot;signature&quot;: &quot;7b6d5105e92d0790adf5d2ff6cac5236d4adb568559366cb22405b4f04c01a51567326d3a329e3fd6941390b581fdf5b00325de0085ca8329d83867479020501&quot;,
+  &quot;signerKeyId&quot;: &quot;5172ae5ebd2b6860ce1da43c3f77cc8adc378c02ff3684412c187a7b374a6f16&quot;,
+  &quot;stateRootAfter&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+  &quot;stateRootBefore&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+  &quot;status&quot;: &quot;EXECUTION_STATUS_COMPLETED&quot;,
+  &quot;transactionHash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+  &quot;transactionId&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;
+}</pre>
+      </div>
+      <div class="proof-card rv">
+        <h3>Commitment for the allowed call</h3>
+        <p class="proof-note">The Auditor appended this row to the local commitment ledger. <code>prior_commitment_hash</code> links it to the previous row. <code>ztd report verify</code> recomputed the chain, the hashes, and the Auditor signatures. The denied call has a signed receipt and a persistence attestation. It is not a commitment: a commitment records a transaction that was authorized to execute.</p>
+        <pre class="proof-json">{
+  &quot;seq&quot;: &quot;5&quot;,
+  &quot;committed_at_utc&quot;: &quot;2026-10-28T19:16:06Z&quot;,
+  &quot;transaction_id&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+  &quot;transaction_hash&quot;: &quot;ab33fd72b941d9d879c872d38b6f0169b936e0f5e21d5731fabf408a2b8b64fc&quot;,
+  &quot;prior_commitment_hash&quot;: &quot;cf7a6798bd9a26a74988f57a36082cec2f8fcf26a41e244d488aa2734698d590&quot;,
+  &quot;hash&quot;: &quot;090c9a4d3e83928d717931d8c57a6097100a103b81380ec9b2b10d46a349de87&quot;,
+  &quot;state_root_at_commit&quot;: &quot;19797e2f432d6b418a2dfc3035f26213670d403d9b140e22373a4bd801fda1a7&quot;,
+  &quot;action_type&quot;: &quot;MCP_CALL&quot;,
+  &quot;auditor_key_id&quot;: &quot;4c8648bf2ab752af43a8452fd70423f98cbb63a12d22d63189baaf03bb1425cb&quot;,
+  &quot;signature&quot;: &quot;72e1a4bfd29d7ee37b5dca34120ef03e5668b376851d7a8eba04e5030ebf31ceb835897ef95f430b5bdf76af3b2aeda356d0b15955fecc8c1bf5fea3ed316f09&quot;
+}</pre>
+      </div>
     </div>
-
-    <div class="tier-grid">
-      <!-- Sprint 1 -->
-      <article class="tier-card rv">
-        <div>
-          <div class="tier-persona">// 5-Day Fixed Scope</div>
-          <h3>Architecture &amp; Red-Team Diagnostic</h3>
-          <p class="tier-sub">A brutal, senior-level technical audit of your AI agent boundary, Kubernetes/cloud platform, or petabyte storage pipeline.</p>
-          <div class="price-line">
-            <span class="amt">$2,500</span>
-            <span class="per">Flat Fee · 5 Business Days</span>
-          </div>
-          <ul class="tier-list">
-            <li><span><b>Deep-dive inspection</b> of your MCP/agent tool paths, IAM/PKI boundaries, or NAS/S3 data pipelines</span></li>
-            <li><span><b>Failure-mode &amp; corruption analysis:</b> identifying silent data risks, retry storms, and privilege bypasses</span></li>
-            <li><span><b>Deliverable:</b> comprehensive written remediation architecture + recorded 30-minute video technical walkthrough</span></li>
-            <li><span><b>100% Asynchronous option:</b> zero meetings required unless you want a live Q&amp;A review</span></li>
-          </ul>
-        </div>
-        <div class="tier-foot">
-          <a class="btn amber full" href="/buy/diagnostic">Book 5-Day Diagnostic →</a>
-          <span class="micro-note">Fast, flexible payment via corporate card or invoice · Kickoff within 2 business days</span>
-        </div>
-      </article>
-
-      <!-- Sprint 2 -->
-      <article class="tier-card featured-amber rv">
-        <span class="tier-badge amber">Turnkey Implementation</span>
-        <div>
-          <div class="tier-persona">// 2-Week Forward-Deployed Sprint</div>
-          <h3>0-to-1 Governance or SRE Buildout</h3>
-          <p class="tier-sub">Drop a Principal Forward-Deployed Architect directly into your repo and cloud environment to wire and ship the solution.</p>
-          <div class="price-line">
-            <span class="amt">$7,500</span>
-            <span class="per">Flat Fee · 10 Business Days</span>
-          </div>
-          <ul class="tier-list">
-            <li><span><b>Turnkey deployment</b> of <code>ztd</code> L1–L5 governance OR autonomous SRE remediation on AWS, GCP, Kubernetes, or on-prem</span></li>
-            <li><span><b>Custom policy &amp; pipeline integration:</b> SPIFFE/mTLS, WebAuthn approvals, Terraform IaC, and Grafana SLO telemetry</span></li>
-            <li><span><b>Petabyte Storage &amp; Backup Rescue:</b> fixing bottlenecked NFS/SMB/S3 ingest or enterprise data-protection workflows</span></li>
-            <li><span><b>Full handoff package:</b> production code, runbooks, and recorded training for your internal engineers</span></li>
-          </ul>
-        </div>
-        <div class="tier-foot">
-          <a class="btn amber full" href="/buy/sprint">Reserve 2-Week Sprint →</a>
-          <span class="micro-note">Available remotely or on-site (U.S. &amp; EU work authorized)</span>
-        </div>
-      </article>
-
-      <!-- Sprint 3 -->
-      <article class="tier-card rv">
-        <div>
-          <div class="tier-persona">// Ongoing Tier-4 Escalation</div>
-          <h3>Principal Architect Retainer</h3>
-          <p class="tier-sub">On-demand access to a 30-year Principal SRE, Storage &amp; Security Architect when your team hits a wall in production.</p>
-          <div class="price-line">
-            <span class="amt">$3,500</span>
-            <span class="per">/ month · Cancel Anytime</span>
-          </div>
-          <ul class="tier-list">
-            <li><span><b>Tier-4 Escalation Backstop:</b> drop me into your hardest unsolved storage, Kubernetes, or security architecture fires</span></li>
-            <li><span><b>Async Architecture Reviews:</b> weekly PR, RFC, and design-doc teardowns before your team commits to expensive mistakes</span></li>
-            <li><span><b>0-to-1 Service &amp; Support Design:</b> building the escalation workflows, SLOs, and customer reliability model that scale to IPO</span></li>
-            <li><span><b>Includes a 50-Host <code>ztd</code> Fleet Pack</b> active for the duration of your retainer</span></li>
-          </ul>
-        </div>
-        <div class="tier-foot">
-          <a class="btn ghost full" href="/buy/retainer">Activate Monthly Retainer →</a>
-          <span class="micro-note">No long-term lock-in · Direct Slack/Email channel</span>
-        </div>
-      </article>
+    <div class="proof-fields rv">
+      <div><b>transactionHash</b><span>Canonical hash of the GovernanceEnvelope. The receipt and the commitment both bind this value. Changing the request changes the hash.</span></div>
+      <div><b>signature</b><span>Ed25519 signature over the canonical receipt fields and the stage-evidence hash. <code>signerKeyId</code> is the Actuator public key id. It is not a hardware quote.</span></div>
+      <div><b>finalPersistenceAttestation</b><span>A second signature that the receipt was written into the Operator's local events store, with the audit record id and the time it was persisted.</span></div>
+      <div><b>stateRootBefore / After</b><span>State Merkle roots around the call. The denial has no after-root: execution did not run, so the root did not move.</span></div>
+      <div><b>l2Status / l3Status</b><span>Under doctrine, consensus and human approval are not required. The receipt says <code>NOT_REQUIRED</code>. It does not claim a quorum or a passkey.</span></div>
+      <div><b>rejectionCode</b><span>On the denial, <code>GOVERNANCE_REJECTION_CODE_L1_DOCTRINE</code> names the check that refused the payload: recursive deletion of a wide target (<code>destroy_rm_rf_root</code>, MITRE T1485).</span></div>
     </div>
+    <p class="lede">The same feed, published for anyone to read: <a href="https://opendevops.ai/proof-head" rel="noopener">/proof-head</a> (latest signing header), <a href="https://opendevops.ai/proof-catalog" rel="noopener">/proof-catalog</a> (active artifacts), and <a href="https://opendevops.ai/stream" rel="noopener">/stream</a> (the live event stream). Those routes serve the public spectator's signed proof log. They are not a substitute for the Operator's local receipt.</p>
+    <p class="proof-note">ztd is source-available under the <a href="https://github.com/zerotrustdata/ztd/blob/draft/v1.5.0/LICENSE" rel="noopener">Business Source License 1.1</a>. You may copy, modify, and run it for development, evaluation, and non-production use. Production use needs a commercial license from Lateralus Labs, LLC. Each version converts to the Apache License 2.0 four years after release, and no later than 2030-08-18. The <a href="/terms/">commercial terms</a> describe that license.</p>
   </div>
 </section>
 
@@ -965,11 +1083,11 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div class="status rv">
       <div>
-        <p class="eyebrow">11 / Track record</p>
+        <p class="eyebrow">09 / Track record</p>
         <h2 id="status-title">Why serious infrastructure teams trust Lateralus Labs</h2>
         <p><code>ztd</code> wasn't built by prompt engineers guessing how production works. It was architected from the ground up in static Go by a Principal SRE and Storage Architect who has commissioned warship IT from bare steel, operated Nike's global backup infrastructure for 15 years, and scaled multi-petabyte SaaS reliability from 0-to-1 through acquisition and public IPO.</p>
         <div class="cta-row status-actions">
-          <a class="btn acid" href="#licensing">View Fleet License Packs</a>
+          <a class="btn acid" href="#proofs">Read the signed receipt</a>
           <a class="btn ghost" href="https://github.com/zerotrustdata/ztd/blob/main/docs/guides/getting_started.md" rel="noopener">Read Technical Docs</a>
         </div>
       </div>
@@ -986,10 +1104,10 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <p class="eyebrow mag centered">// end of transmission</p>
     <h2 id="final-title" class="rv"><span class="glitch" data-text="Let the model ask.">Let the model ask.</span><br><em>Let the machine decide.</em></h2>
-    <p class="rv">Clone the repo to test locally, lock in a 50-Host Fleet Pack with fast, flexible card payment, or book a fixed-price Principal Architecture Sprint. <a href="#contact">Email Danny directly.</a></p>
+    <p class="rv">Clone the repo and run a governed action on your own machine. The receipt below is from one of those runs. <a href="#contact">Email Danny directly.</a></p>
     <div class="cta-row rv">
-      <a class="btn acid" href="#licensing">Buy Fleet License Pack</a>
-      <a class="btn solid" href="#sprints">Book Architecture Sprint</a>
+      <a class="btn acid" href="#proofs">Read the signed receipt</a>
+      <a class="btn solid" href="#start">Run it locally</a>
       <a class="btn ghost" href="https://github.com/zerotrustdata/ztd" rel="noopener">github.com/zerotrustdata/ztd</a>
     </div>
   </div>
@@ -998,9 +1116,9 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 <!-- ================= CONTACT ================= -->
 <section class="contact" id="contact" aria-labelledby="contact-title">
   <div class="wrap">
-    <p class="eyebrow centered">12 / Contact</p>
+    <p class="eyebrow centered">10 / Contact</p>
     <h2 id="contact-title">No SDRs. No discovery calls. <em>Just engineering.</em></h2>
-    <p class="lede">Send a quick email with what you're building, which license pack you need, or what production fire you need fixed. You'll get a direct written response from Danny Barbour within one business day.</p>
+    <p class="lede">Send a short email with what you're building or what production fire you need fixed. You'll get a direct written response from Danny Barbour within one business day.</p>
     <div class="cta-row">
       <a class="btn solid contact-email" href="mailto:danny@zerotrustdata.io">danny@zerotrustdata.io</a>
     </div>
@@ -1019,13 +1137,12 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <p>Zero Trust Data builds ztd, a zero-trust execution layer for AI agents and the infrastructure they touch. Built by Lateralus Labs, LLC (Portland, OR).</p>
       </div>
       <div>
-        <h4>Product &amp; Licensing</h4>
+        <h4>Product</h4>
         <ul>
           <li><a href="#how">How ztd works</a></li>
           <li><a href="#pipeline">Five-layer pipeline</a></li>
-          <li><a href="#licensing">Fleet Packs</a></li>
-          <li><a href="#oem">Commercial OEM License</a></li>
-          <li><a href="#sprints">Principal Architecture Sprints</a></li>
+          <li><a href="#proofs">Signed evidence</a></li>
+          <li><a href="https://github.com/zerotrustdata/ztd/blob/draft/v1.5.0/LICENSE" rel="noopener">BSL 1.1</a></li>
           <li><a href="/terms/">Commercial terms</a></li>
         </ul>
       </div>

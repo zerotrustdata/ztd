@@ -430,6 +430,8 @@ func classifyInferenceDispatchError(err error) (int, error) {
 		{constants.ErrInferenceGenerateFailed, http.StatusBadGateway},
 		{constants.ErrInferenceModelNotFound, http.StatusBadGateway},
 		{constants.ErrInferenceProviderResponseInvalid, http.StatusBadGateway},
+		{constants.ErrInferenceProviderStreamError, http.StatusBadGateway},
+		{constants.ErrL5ActuatorRehydrate, http.StatusBadGateway},
 		{constants.ErrInferenceCanceled, http.StatusRequestTimeout},
 		{constants.ErrInferenceCallerDisconnected, http.StatusRequestTimeout},
 		{constants.ErrInferenceProgressBackpressure, http.StatusServiceUnavailable},

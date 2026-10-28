@@ -215,20 +215,3 @@ func TestZtdoService_ConcurrentStateAccess(t *testing.T) {
 		}
 	}
 }
-
-func TestZtdoService_NewInferenceBackend_RejectsABadEndpoint(t *testing.T) {
-	t.Parallel()
-	cfg := testutil.NewTestConfig(t)
-	cfg.Inference.OllamaEndpoint = "not-a-url"
-	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
-	require.NoError(t, err)
-
-	backend, err := service.newInferenceBackend()
-	require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
-	assert.Nil(t, backend)
-
-	cfg.Inference.OllamaEndpoint = "http://127.0.0.1:11434"
-	backend, err = service.newInferenceBackend()
-	require.NoError(t, err)
-	require.NotNil(t, backend)
-}

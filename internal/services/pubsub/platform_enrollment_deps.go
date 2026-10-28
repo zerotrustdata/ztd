@@ -109,12 +109,8 @@ func loadPlatformEnrollmentOrganization(ctx context.Context, deps PlatformEnroll
 	if userDoc == nil {
 		return nil, nil, constants.ErrUserNotFound
 	}
-	userData, err := json.Marshal(userDoc.Data)
-	if err != nil {
-		return nil, nil, fmt.Errorf("platform enrollment: marshal user %s: %w", userID, err)
-	}
 	var user models.User
-	if err := json.Unmarshal(userData, &user); err != nil {
+	if err := userDoc.DecodeData(&user); err != nil {
 		return nil, nil, fmt.Errorf("platform enrollment: decode user %s: %w", userID, err)
 	}
 	user.ID = userDoc.ID
@@ -128,12 +124,8 @@ func loadPlatformEnrollmentOrganization(ctx context.Context, deps PlatformEnroll
 	if organizationDoc == nil {
 		return nil, nil, constants.ErrOrganizationNotFound
 	}
-	organizationData, err := json.Marshal(organizationDoc.Data)
-	if err != nil {
-		return nil, nil, fmt.Errorf("platform enrollment: marshal organization %s: %w", user.OrganizationID, err)
-	}
 	var organization models.Organization
-	if err := json.Unmarshal(organizationData, &organization); err != nil {
+	if err := organizationDoc.DecodeData(&organization); err != nil {
 		return nil, nil, fmt.Errorf("platform enrollment: decode organization %s: %w", user.OrganizationID, err)
 	}
 	organization.ID = organizationDoc.ID
@@ -170,14 +162,8 @@ func loadPlatformEnrollmentRequest(ctx context.Context, deps PlatformEnrollmentD
 	if doc == nil {
 		return nil, nil
 	}
-	// Re-marshal the document's field map back to a JSON object so the
-	// typed model can be decoded with a single json.Unmarshal call.
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("platform enrollment: marshal doc %s: %w", requestID, err)
-	}
 	var req models.PlatformEnrollmentRequest
-	if err := json.Unmarshal(data, &req); err != nil {
+	if err := doc.DecodeData(&req); err != nil {
 		return nil, fmt.Errorf("platform enrollment: decode request %s: %w", requestID, err)
 	}
 	return &req, nil

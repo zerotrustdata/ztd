@@ -9,6 +9,7 @@ package pubsub
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,4 +69,29 @@ func TestCommandSubscriptionObserverFailureRequestsShutdown(t *testing.T) {
 	default:
 		t.Fatal("publication failure left the Operator without a subscription or shutdown request")
 	}
+}
+
+func TestCommandSubscriptionWaitsForSessionValidation(t *testing.T) {
+	f := newPubsubFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.Svc.ctx = ctx
+	f.Svc.client = &droppingClient{}
+	f.Svc.reconnectBaseDelay = time.Microsecond
+	var validationCalls atomic.Int32
+	f.Svc.beforeCommandSubscription = func(context.Context, string) error {
+		if validationCalls.Add(1) == 1 {
+			return fmt.Errorf("validation temporarily unavailable")
+		}
+		return nil
+	}
+	f.Svc.onCommandSubscription = func(_ context.Context, _ string, connected bool) error {
+		if !connected {
+			cancel()
+		}
+		return nil
+	}
+	f.Svc.listenForCommands("command-channel")
+	require.GreaterOrEqual(t, validationCalls.Load(), int32(2))
+	require.Equal(t, 1, f.Svc.client.(*droppingClient).subscribeCalls(), "no command subscription may be opened before validation succeeds")
 }

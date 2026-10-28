@@ -372,7 +372,7 @@ Examples:
 	cmd.Flags().StringVar(&quant, "quant", "Q4_K_M", "Quantization format")
 	cmd.Flags().StringVar(&digest, "digest", "", "SHA-256 model digest (derived from provider and tag when omitted)")
 	cmd.Flags().Uint32Var(&contextLimit, "context", 0, "Model context token limit")
-	cmd.Flags().StringVar(&providerClass, "provider", "ollama", "Inference provider class")
+	cmd.Flags().StringVar(&providerClass, "provider", constants.InferenceProviderOllama, "Inference provider class: ollama or llamacpp")
 	cmd.Flags().BoolVar(&catalog, flagCatalog, false, "Target the checked-in catalog instead of the registry")
 	return cmd
 }

@@ -9,6 +9,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"testing"
 
@@ -16,7 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
+
+func TestExitCode_ActionExecutionFailureHasItsOwnStatus(t *testing.T) {
+	failed := fmt.Errorf("approve: %w", fmt.Errorf("L3 approval: transaction tx-1 did not complete: %w", constants.ErrActionExecutionFailed))
+	assert.Equal(t, constants.ExitCodeActionExecutionFailed, exitCode(failed))
+	assert.Equal(t, constants.ExitCodeGeneral, exitCode(fmt.Errorf("approve: %w", constants.ErrValidationFailed)))
+}
 
 func TestExecuteWithVersionInfo_HelpFlagPrintsUsageAndExitsZero(t *testing.T) {
 	originalArgs := os.Args

@@ -58,6 +58,7 @@ func newStartableZtdoService(t *testing.T, mutate func(cfg *config.Config)) *Ztd
 	require.NoError(t, err)
 	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), fileSvc, canonicalDB, newTestPubSubClientFactory())
 	require.NoError(t, err)
+	require.NoError(t, service.SetSessionValidator(func(context.Context, string) error { return nil }))
 
 	t.Cleanup(func() {
 		// Start can fail after it has been handed the canonical database; force
@@ -154,6 +155,21 @@ func TestZtdoService_StartReportsSubscribedSessionToDeploymentObserver(t *testin
 	require.ErrorIs(t, service.SetCommandSubscriptionObserver(nil), constants.ErrServiceUnavailable)
 }
 
+func TestZtdoService_StartPeriodicallyRefreshesOperatorSession(t *testing.T) {
+	originalInterval := operatorSessionValidationInterval
+	operatorSessionValidationInterval = 10 * time.Millisecond
+	t.Cleanup(func() { operatorSessionValidationInterval = originalInterval })
+	service := newStartableZtdoService(t, nil)
+	var calls atomic.Int32
+	require.NoError(t, service.SetSessionValidator(func(context.Context, string) error {
+		calls.Add(1)
+		return nil
+	}))
+	require.NoError(t, startWithTimeout(t, service))
+	require.Eventually(t, func() bool { return calls.Load() >= 2 }, time.Second, 5*time.Millisecond,
+		"session validation must run before subscription and periodically while connected")
+}
+
 func TestZtdoService_Start_ExternalShutdownRequestCancelsServiceContext(t *testing.T) {
 	service := newStartableZtdoService(t, nil)
 	require.NoError(t, startWithTimeout(t, service))
@@ -231,7 +247,7 @@ func TestZtdoService_Start_InferenceProviderAvailabilityDoesNotGateStartup(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint := tt.endpoint(t)
 			service := newStartableZtdoService(t, func(cfg *config.Config) {
-				cfg.Inference = config.InferenceConfig{Enabled: true, OllamaEndpoint: endpoint}
+				cfg.Inference = config.InferenceConfig{Enabled: true, Provider: constants.InferenceProviderOllama, OllamaEndpoint: endpoint}
 			})
 
 			err := startWithTimeout(t, service)
@@ -258,7 +274,7 @@ func TestZtdoService_Start_InferenceDoesNotProbeProvider(t *testing.T) {
 	}))
 	defer provider.Close()
 	service := newStartableZtdoService(t, func(cfg *config.Config) {
-		cfg.Inference = config.InferenceConfig{Enabled: true, OllamaEndpoint: provider.URL}
+		cfg.Inference = config.InferenceConfig{Enabled: true, Provider: constants.InferenceProviderOllama, OllamaEndpoint: provider.URL}
 	})
 	require.NoError(t, startWithTimeout(t, service))
 	assert.True(t, service.running)
@@ -270,7 +286,7 @@ func TestZtdoService_Start_EnablesProviderBoundaryObserverAndProvenanceOperator(
 	storageRoot := testutil.TempDir(t)
 	service := newStartableZtdoService(t, func(cfg *config.Config) {
 		cfg.ProviderBoundaryObserver = config.ProviderBoundaryObserverConfig{Enabled: true, ObserverID: "observer-under-test"}
-		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test", ModelStorageRoot: storageRoot}
+		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test", ModelStorageRoot: storageRoot, ModelStorageFormat: constants.ModelStorageFormatOllama}
 	})
 
 	require.NoError(t, startWithTimeout(t, service))
@@ -281,7 +297,7 @@ func TestZtdoService_Start_EnablesProviderBoundaryObserverAndProvenanceOperator(
 
 func TestZtdoService_Start_ProvenanceOperatorRequiresModelStorageRoot(t *testing.T) {
 	service := newStartableZtdoService(t, func(cfg *config.Config) {
-		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test"}
+		cfg.ProvenanceOperator = config.ProvenanceOperatorConfig{Enabled: true, OperatorID: "provenance-under-test", ModelStorageFormat: constants.ModelStorageFormatLlamaCpp}
 	})
 
 	err := startWithTimeout(t, service)

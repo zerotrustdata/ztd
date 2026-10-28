@@ -289,6 +289,16 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 			},
 		},
 		{
+			// A llama.cpp Inference Operator lists its llama.cpp flags, not the Ollama endpoint.
+			Id: "op-gguf", OperatorType: string(constants.OperatorTypeRemote), Status: string(constants.OperatorStatusActive), CurrentHostname: "gguf-host",
+			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
+				Capabilities:              []string{string(constants.OperatorCapabilityInference), string(constants.OperatorCapabilityProvenance)},
+				InferenceLlamacppEndpoint: "http://gguf-host:8080", InferenceLlamacppModelRoot: "/srv/gguf",
+				ProvenanceOperatorModelStorageRoot: "/srv/gguf", ProvenanceOperatorModelStorageFormat: constants.ModelStorageFormatLlamaCpp,
+				LocalDir: "/srv/ztd/gguf", HttpPort: 8080,
+			},
+		},
+		{
 			// One remote Operator holding two capabilities shows both, with each capability's reported flags.
 			Id: "op-witness", OperatorType: string(constants.OperatorTypeRemote), Status: string(constants.OperatorStatusActive), CurrentHostname: "beepboop",
 			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
@@ -323,8 +333,11 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 	// The embedded Operator's own launch profile adds values the registry lacks.
 	require.Equal(t, [][]string{
 		{"inference", "--inference-ollama-endpoint", "http://192.168.1.2:11434"},
+		{"inference", "--inference-llamacpp-endpoint", "(default)"},
+		{"inference", "--inference-llamacpp-model-root", "(default)"},
 		{"inference", "--inference-keep-alive", "30m"},
 		{"provenance", "--model-storage-root", "/mnt/models"},
+		{"provenance", "--model-storage-format", "(default)"},
 		{"provenance", "--provenance-operator-id", "(default)"},
 	}, flagRowsFor(out, "embedded-operator"))
 	// A remote Operator lists only what it reported: common flags only when customised,
@@ -336,6 +349,12 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 	require.Equal(t, [][]string{
 		{"provenance", "--model-storage-root", "/srv/models"},
 	}, flagRowsFor(out, "op-prov"))
+	require.Equal(t, [][]string{
+		{"inference", "--inference-llamacpp-endpoint", "http://gguf-host:8080"},
+		{"inference", "--inference-llamacpp-model-root", "/srv/gguf"},
+		{"provenance", "--model-storage-root", "/srv/gguf"},
+		{"provenance", "--model-storage-format", "llamacpp"},
+	}, flagRowsFor(out, "op-gguf"))
 	require.Equal(t, []string{"op-witness", "remote", "active", "beepboop", "8080", "provenance,observer", `D:\models`}, tableRow(t, out, "op-witness"))
 	require.Equal(t, [][]string{
 		{"provenance", "--model-storage-root", `D:\models`},
@@ -362,6 +381,7 @@ func TestGatewayStatusLocalFlagsComeFromLaunchProfileWithoutEnrollment(t *testin
 	require.Equal(t, []string{"embedded-operator", "embedded", "running", "local", "8080", "data,provenance,observer", filepath.Join(fileSvc.Resolve(""), constants.OperatorsDirname, constants.EmbeddedOperatorDirname)}, tableRow(t, buf.String(), "embedded-operator"))
 	require.Equal(t, [][]string{
 		{"provenance", "--model-storage-root", "/mnt/d/ai/Ollama/models"},
+		{"provenance", "--model-storage-format", "(default)"},
 		{"provenance", "--provenance-operator-id", "(default)"},
 		{"observer", "--provider-boundary-observer-id", "ztd-observer"},
 	}, flagRowsFor(buf.String(), "embedded-operator"))

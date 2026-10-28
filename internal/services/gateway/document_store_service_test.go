@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/timesvc"
@@ -28,10 +29,12 @@ import (
 // for unit testing DocumentStoreService without pulling in the full CanonicalDBService.
 func newDocumentStoreTestDB(t *testing.T) *sqliteutil.DB {
 	t.Helper()
-	tmpDir := testutil.TempDir(t)
-	dbPath := filepath.Join(tmpDir, "document_store_test.db")
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+	dbPath := fileSvc.Resolve(filepath.Join(constants.DataDirname, "document_store_test.db"))
 	cfg := sqliteutil.DefaultDBConfig(dbPath)
-	db, err := sqliteutil.OpenDB(cfg, testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -472,6 +475,36 @@ func TestGetField_Success(t *testing.T) {
 		assert.InDelta(t, float64(1), *field.Float64, 0)
 	} else {
 		assert.Fail(t, "unexpected type for boolean field")
+	}
+}
+
+func TestGetField_OperatorHeartbeatOverlayUsesSQLitePaths(t *testing.T) {
+	svc := newTestDB(t).GetDocStore()
+	ctx := testutil.Context(t)
+	collection := string(constants.CollectionOperators)
+	require.NoError(t, svc.DocSet(ctx, collection, "op-field", json.RawMessage(`{"name":"stored-name","current_hostname":"stored-host","latest_heartbeat_snapshot":{"system_identity":{"hostname":"stored-host"}}}`)))
+	require.NoError(t, svc.RecordOperatorHeartbeat(ctx, "op-field", heartbeatUpdate{
+		LastHeartbeatAt:         time.Now().UTC(),
+		CurrentHostname:         "observed-host",
+		LatestHeartbeatSnapshot: json.RawMessage(`{"system_identity":{"hostname":"observed-host"},"labels":["first","second"],"a.b":"quoted-key"}`),
+	}))
+
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{"name", "stored-name"},
+		{"current_hostname", "observed-host"},
+		{"latest_heartbeat_snapshot.system_identity.hostname", "observed-host"},
+		{"latest_heartbeat_snapshot.labels[1]", "second"},
+		{`latest_heartbeat_snapshot."a.b"`, "quoted-key"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			field, err := svc.GetField(ctx, collection, "op-field", tc.path)
+			require.NoError(t, err)
+			require.NotNil(t, field.Str)
+			assert.Equal(t, tc.want, *field.Str)
+		})
 	}
 }
 

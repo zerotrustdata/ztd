@@ -53,9 +53,9 @@ func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.C
 	}
 	defer cleanup()
 
-	_, err = i.runner.Run(ctx, nil, "certutil", "-addstore", "-f", "Root", certPath)
+	out, err := i.runner.Run(ctx, nil, "certutil", "-addstore", "-f", "Root", certPath)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+		return trustCmdError(out, err)
 	}
 	return nil
 }
@@ -119,8 +119,8 @@ func (i *SystemTrustInstaller) listStaleAnchorsPlatform(ctx context.Context, cur
 // via certutil -delstore, which requires elevation.
 func (i *SystemTrustInstaller) removeStaleAnchorsPlatform(ctx context.Context, anchors []StaleAnchor) error {
 	for _, a := range anchors {
-		if _, err := i.runner.Run(ctx, nil, "certutil", "-delstore", "Root", a.Handle); err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrSystemTrustInstallFailed, err)
+		if out, err := i.runner.Run(ctx, nil, "certutil", "-delstore", "Root", a.Handle); err != nil {
+			return trustCmdError(out, err)
 		}
 	}
 	return nil

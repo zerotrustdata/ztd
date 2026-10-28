@@ -17,15 +17,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func setupTestDataController(t *testing.T) (*DataController, *TestInfrastructure) {
@@ -88,60 +85,19 @@ func TestDataControllerHandleDB(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 
-	t.Run("PUT and GET", func(t *testing.T) {
-		data := map[string]string{"name": "alice"}
-		reqPut := httptest.NewRequest(http.MethodPut, "/api/v1/data/settings/u1", bytes.NewReader(mustDocJSON(t, data)))
-		rrPut := httptest.NewRecorder()
-		dataController.handleDataDB(rrPut, reqPut)
-		assert.Equal(t, http.StatusOK, rrPut.Code)
-
-		reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/data/settings/u1", nil)
-		rrGet := httptest.NewRecorder()
-		dataController.handleDataDB(rrGet, reqGet)
-		assert.Equal(t, http.StatusOK, rrGet.Code)
-
-		type testDoc struct {
+	t.Run("GET", func(t *testing.T) {
+		require.NoError(t, infra.DocStore.DocSet(t.Context(), string(constants.CollectionSettings), "u1", mustDocJSON(t, struct {
+			Name string `json:"name"`
+		}{Name: "alice"})))
+		req := httptest.NewRequest(http.MethodGet, constants.APIPaths.DataSettings+"/u1", nil)
+		rr := httptest.NewRecorder()
+		dataController.handleDataDB(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		var doc struct {
 			Name string `json:"name"`
 		}
-		var doc testDoc
-		err := json.Unmarshal(rrGet.Body.Bytes(), &doc)
-		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &doc))
 		assert.Equal(t, "alice", doc.Name)
-	})
-
-	t.Run("PATCH", func(t *testing.T) {
-		patch := map[string]string{"role": "admin"}
-		reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/data/settings/u1", bytes.NewReader(mustDocJSON(t, patch)))
-		rrPatch := httptest.NewRecorder()
-		dataController.handleDataDB(rrPatch, reqPatch)
-		assert.Equal(t, http.StatusOK, rrPatch.Code)
-
-		reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/data/settings/u1", nil)
-		rrGet := httptest.NewRecorder()
-		dataController.handleDataDB(rrGet, reqGet)
-		assert.Equal(t, http.StatusOK, rrGet.Code)
-
-		type testDocWithRole struct {
-			Name string `json:"name"`
-			Role string `json:"role"`
-		}
-		var doc testDocWithRole
-		err := json.Unmarshal(rrGet.Body.Bytes(), &doc)
-		require.NoError(t, err)
-		assert.Equal(t, "alice", doc.Name)
-		assert.Equal(t, "admin", doc.Role)
-	})
-
-	t.Run("DELETE", func(t *testing.T) {
-		reqDel := httptest.NewRequest(http.MethodDelete, "/api/v1/data/settings/u1", nil)
-		rrDel := httptest.NewRecorder()
-		dataController.handleDataDB(rrDel, reqDel)
-		assert.Equal(t, http.StatusOK, rrDel.Code)
-
-		reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/data/settings/u1", nil)
-		rrGet := httptest.NewRecorder()
-		dataController.handleDataDB(rrGet, reqGet)
-		assert.Equal(t, http.StatusNotFound, rrGet.Code)
 	})
 
 	t.Run("Query", func(t *testing.T) {
@@ -166,53 +122,17 @@ func TestDataControllerHandleDB(t *testing.T) {
 		assert.Len(t, results, 1)
 	})
 
-	t.Run("Invalid JSON", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/data/settings/u1", strings.NewReader("{invalid-json}"))
-		rr := httptest.NewRecorder()
-		dataController.handleDataDB(rr, req)
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-		assert.JSONEq(t, `{"error":"invalid JSON body"}`, rr.Body.String())
-	})
-
-	t.Run("PATCH not found", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPatch, "/api/v1/data/settings/nonexistent", bytes.NewReader(mustDocJSON(t, map[string]string{"foo": "bar"})))
-		rr := httptest.NewRecorder()
-		dataController.handleDataDB(rr, req)
-		assert.Equal(t, http.StatusNotFound, rr.Code)
-	})
-
-	t.Run("DELETE not found", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/data/users/nonexistent", nil)
-		rr := httptest.NewRecorder()
-		dataController.handleDataDB(rr, req)
-		assert.Equal(t, http.StatusNotFound, rr.Code)
-	})
-
-	t.Run("Method Not Allowed", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/data/users/u1", nil)
-		rr := httptest.NewRecorder()
-		dataController.handleDataDB(rr, req)
-		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
-	})
-
-	t.Run("Non-bootstrap mutations redirect to governance envelope", func(t *testing.T) {
-		tests := []struct {
-			method string
-			body   []byte
-		}{
-			{method: http.MethodPut, body: mustDocJSON(t, map[string]string{"name": "alice"})},
-			{method: http.MethodPatch, body: mustDocJSON(t, map[string]string{"role": "admin"})},
-			{method: http.MethodDelete},
-		}
-
-		for _, tt := range tests {
-			req := httptest.NewRequest(tt.method, "/api/v1/data/items/i1", bytes.NewReader(tt.body))
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		t.Run(method+" rejects malformed body and missing document", func(t *testing.T) {
+			req := httptest.NewRequest(method, constants.APIPaths.DataSettings+"/nonexistent", strings.NewReader("{invalid}"))
 			rr := httptest.NewRecorder()
 			dataController.handleDataDB(rr, req)
-			assert.Equal(t, http.StatusConflict, rr.Code, "method=%s", tt.method)
-			assert.JSONEq(t, `{"error":"submit via POST /api/v1/governance/envelopes"}`, rr.Body.String())
-		}
-	})
+			assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+			doc, err := infra.DocStore.DocGet(t.Context(), string(constants.CollectionSettings), "nonexistent")
+			require.NoError(t, err)
+			assert.Nil(t, doc)
+		})
+	}
 
 	t.Run("Query validation", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/data/items/_query", strings.NewReader("{invalid}"))
@@ -446,220 +366,6 @@ func TestDataControllerHandlePubSubPublish(t *testing.T) {
 	})
 }
 
-func TestDataControllerHandleRevokeApp(t *testing.T) {
-	_, infra := setupTestDataController(t)
-	userSvc := NewUserService(infra.DocStore, testutil.NewTestLogger())
-	logger := testutil.NewTestLogger()
-	cfg := testutil.NewTestConfig(t)
-	resp := response.NewWriter(logger)
-	adminController := newAdminController(AdminControllerDeps{Cfg: cfg, Logger: logger, DocStore: infra.DocStore, SignerStore: infra.SignerStore, UserSvc: userSvc, Responder: resp})
-
-	// The first user created is the gateway admin (IsFirstUser). The second
-	// user is a non-admin regular user.
-	adminUser, err := userSvc.CreateUser(t.Context())
-	require.NoError(t, err)
-	require.NotNil(t, adminUser)
-	t.Cleanup(func() { infra.DocStore.DocDelete(context.Background(), "users", adminUser.ID) })
-
-	regularUser, err := userSvc.CreateUser(t.Context())
-	require.NoError(t, err)
-	require.NotNil(t, regularUser)
-	t.Cleanup(func() { infra.DocStore.DocDelete(context.Background(), "users", regularUser.ID) })
-
-	t.Run("reject app revocation without admin authorization", func(t *testing.T) {
-		appID := "spiffe://ztd.local/app/test-no-auth"
-
-		policy := models.AppPolicy{
-			AppID:              appID,
-			AllowedCollections: []string{"test_collection"},
-			AllowedIntents:     []string{"read"},
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-		}
-		policyBytes := mustMarshalJSON(t, policy)
-		err := infra.DocStore.DocSet(t.Context(), "app_policies", appID, policyBytes)
-		require.NoError(t, err)
-		t.Cleanup(func() { infra.DocStore.DocDelete(context.Background(), "app_policies", appID) })
-
-		reqBody := map[string]string{"app_id": appID}
-		bodyBytes := mustMarshalJSON(t, reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/apps/revoke", bytes.NewReader(bodyBytes))
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, regularUser.ID))
-
-		rr := httptest.NewRecorder()
-		adminController.handleRevokeApp(rr, req)
-
-		assert.Equal(t, http.StatusForbidden, rr.Code)
-		assert.Contains(t, rr.Body.String(), "admin-only")
-	})
-
-	t.Run("reject app revocation without user context", func(t *testing.T) {
-		appID := "spiffe://ztd.local/app/test-no-context"
-
-		policy := models.AppPolicy{
-			AppID:              appID,
-			AllowedCollections: []string{"test_collection"},
-			AllowedIntents:     []string{"read"},
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-		}
-		policyBytes := mustMarshalJSON(t, policy)
-		err := infra.DocStore.DocSet(t.Context(), "app_policies", appID, policyBytes)
-		require.NoError(t, err)
-		t.Cleanup(func() { infra.DocStore.DocDelete(context.Background(), "app_policies", appID) })
-
-		reqBody := map[string]string{"app_id": appID}
-		bodyBytes := mustMarshalJSON(t, reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/apps/revoke", bytes.NewReader(bodyBytes))
-
-		rr := httptest.NewRecorder()
-		adminController.handleRevokeApp(rr, req)
-
-		assert.Equal(t, http.StatusUnauthorized, rr.Code)
-		assert.Contains(t, rr.Body.String(), "unauthorized")
-	})
-
-	t.Run("reject app revocation with missing app_id", func(t *testing.T) {
-		reqBody := map[string]string{}
-		bodyBytes := mustMarshalJSON(t, reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/apps/revoke", bytes.NewReader(bodyBytes))
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, adminUser.ID))
-
-		rr := httptest.NewRecorder()
-		adminController.handleRevokeApp(rr, req)
-
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-		assert.Contains(t, rr.Body.String(), "app_id required")
-	})
-
-	t.Run("successfully revoke app with policy only", func(t *testing.T) {
-		appID := "spiffe://ztd.local/app/test-revoke-policy-only"
-
-		policy := models.AppPolicy{
-			AppID:              appID,
-			AllowedCollections: []string{"test_collection"},
-			AllowedIntents:     []string{"read"},
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-		}
-		policyBytes := mustMarshalJSON(t, policy)
-		err := infra.DocStore.DocSet(t.Context(), "app_policies", appID, policyBytes)
-		require.NoError(t, err)
-
-		policyDoc, err := infra.DocStore.DocGet(t.Context(), "app_policies", appID)
-		require.NoError(t, err)
-		require.NotNil(t, policyDoc)
-
-		reqBody := map[string]string{"app_id": appID}
-		bodyBytes := mustMarshalJSON(t, reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/apps/revoke", bytes.NewReader(bodyBytes))
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, adminUser.ID))
-
-		rr := httptest.NewRecorder()
-		adminController.handleRevokeApp(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-
-		policyDoc, err = infra.DocStore.DocGet(t.Context(), "app_policies", appID)
-		require.NoError(t, err)
-		assert.Nil(t, policyDoc)
-	})
-
-	t.Run("successfully revoke app with policy and signer", func(t *testing.T) {
-		appID := "spiffe://ztd.local/app/test-revoke-with-signer"
-
-		policy := models.AppPolicy{
-			AppID:              appID,
-			AllowedCollections: []string{"test_collection"},
-			AllowedIntents:     []string{"read"},
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-		}
-		policyBytes := mustMarshalJSON(t, policy)
-		err := infra.DocStore.DocSet(t.Context(), "app_policies", appID, policyBytes)
-		require.NoError(t, err)
-
-		signer := models.TrustedSigner{
-			ID:        appID,
-			PublicKey: strings.Repeat("a", 64),
-			AddedAt:   time.Now().UTC(),
-			Enabled:   true,
-		}
-		signerBytes := mustMarshalJSON(t, signer)
-		err = infra.DocStore.DocSet(t.Context(), "trusted_signers", appID, signerBytes)
-		require.NoError(t, err)
-
-		policyDoc, err := infra.DocStore.DocGet(t.Context(), "app_policies", appID)
-		require.NoError(t, err)
-		require.NotNil(t, policyDoc)
-
-		signerDoc, err := infra.DocStore.DocGet(t.Context(), "trusted_signers", appID)
-		require.NoError(t, err)
-		require.NotNil(t, signerDoc)
-
-		reqBody := map[string]string{"app_id": appID}
-		bodyBytes := mustMarshalJSON(t, reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/apps/revoke", bytes.NewReader(bodyBytes))
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, adminUser.ID))
-
-		rr := httptest.NewRecorder()
-		adminController.handleRevokeApp(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-
-		policyDoc, err = infra.DocStore.DocGet(t.Context(), "app_policies", appID)
-		require.NoError(t, err)
-		assert.Nil(t, policyDoc)
-
-		signerDoc, err = infra.DocStore.DocGet(t.Context(), "trusted_signers", appID)
-		require.NoError(t, err)
-		assert.Nil(t, signerDoc)
-	})
-
-	t.Run("successfully revoke app with SPIFFE ID containing colons", func(t *testing.T) {
-		appID := "spiffe://ztd.local/app/test-mcp-client"
-
-		policy := models.AppPolicy{
-			AppID:              appID,
-			AllowedCollections: []string{"test_collection"},
-			AllowedIntents:     []string{"read"},
-			CreatedAt:          time.Now().UTC(),
-			UpdatedAt:          time.Now().UTC(),
-		}
-		policyBytes := mustMarshalJSON(t, policy)
-		err := infra.DocStore.DocSet(t.Context(), "app_policies", appID, policyBytes)
-		require.NoError(t, err)
-
-		signer := models.TrustedSigner{
-			ID:        appID,
-			PublicKey: strings.Repeat("b", 64),
-			AddedAt:   time.Now().UTC(),
-			Enabled:   true,
-		}
-		signerBytes := mustMarshalJSON(t, signer)
-		err = infra.DocStore.DocSet(t.Context(), "trusted_signers", appID, signerBytes)
-		require.NoError(t, err)
-
-		reqBody := map[string]string{"app_id": appID}
-		bodyBytes := mustMarshalJSON(t, reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/apps/revoke", bytes.NewReader(bodyBytes))
-		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, adminUser.ID))
-
-		rr := httptest.NewRecorder()
-		adminController.handleRevokeApp(rr, req)
-
-		assert.Equal(t, http.StatusOK, rr.Code)
-
-		policyDoc, err := infra.DocStore.DocGet(t.Context(), "app_policies", appID)
-		require.NoError(t, err)
-		assert.Nil(t, policyDoc)
-
-		signerDoc, err := infra.DocStore.DocGet(t.Context(), "trusted_signers", appID)
-		require.NoError(t, err)
-		assert.Nil(t, signerDoc)
-	})
-}
-
 // TestDataController_BlobNamespaceAllowlist verifies that blob namespace
 // allowlist enforcement is working correctly.
 // This is a regression test for Finding 4: Blob store bypasses governance.
@@ -768,39 +474,17 @@ func TestDataControllerHandleDataSettings(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), "test")
 	})
 
-	t.Run("PUT - success", func(t *testing.T) {
-		settings := map[string]string{"mode": "production"}
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/data/settings", bytes.NewReader(mustDocJSON(t, settings)))
-		rr := httptest.NewRecorder()
-		dataController.handleDataSettings(rr, req)
-		assert.Equal(t, http.StatusOK, rr.Code)
-		t.Cleanup(func() { infra.DocStore.DocDelete(context.Background(), "settings", "platform_settings") })
-	})
-
-	t.Run("PATCH - success", func(t *testing.T) {
-		settings := map[string]string{"mode": "test"}
-		err := infra.DocStore.DocSet(t.Context(), "settings", "platform_settings", mustDocJSON(t, settings))
-		require.NoError(t, err)
-
-		patch := map[string]string{"mode": "production"}
-		req := httptest.NewRequest(http.MethodPatch, "/api/v1/data/settings", bytes.NewReader(mustDocJSON(t, patch)))
-		rr := httptest.NewRecorder()
-		dataController.handleDataSettings(rr, req)
-		assert.Equal(t, http.StatusOK, rr.Code)
-		t.Cleanup(func() { infra.DocStore.DocDelete(context.Background(), "settings", "platform_settings") })
-	})
-
-	t.Run("Method Not Allowed", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/data/settings", nil)
-		rr := httptest.NewRecorder()
-		dataController.handleDataSettings(rr, req)
-		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
-	})
-
-	t.Run("Invalid JSON", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/data/settings", strings.NewReader("{invalid}"))
-		rr := httptest.NewRecorder()
-		dataController.handleDataSettings(rr, req)
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-	})
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		t.Run(method+" rejected", func(t *testing.T) {
+			for _, body := range []string{`{"mode":"production"}`, "{invalid}"} {
+				req := httptest.NewRequest(method, constants.APIPaths.DataSettings, strings.NewReader(body))
+				rr := httptest.NewRecorder()
+				dataController.handleDataSettings(rr, req)
+				assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+				doc, err := infra.DocStore.DocGet(t.Context(), string(constants.CollectionSettings), string(constants.DocIDPlatformSettings))
+				require.NoError(t, err)
+				assert.Nil(t, doc, "unsupported methods must not create settings")
+			}
+		})
+	}
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
@@ -23,7 +24,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		GoldEvidenceReferences: []ScenarioGoldEvidenceReference{
 			{
 				ReferenceID:    "ref-log-port",
-				ActionType:     "MCP_CALL",
+				ActionType:     string(constants.ActionTypeMcpCall),
 				TargetResource: "history_trail",
 			},
 			{
@@ -41,10 +42,12 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 		},
 	}
 	trace := &AgentTrace{
+		Input:      &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "checkout-api timeout rate 18 percent"}}},
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2}, {Purpose: agentModelCallPurposeTribunalPrefix + "generate", LoopTurn: 2}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "event_receipt_list",
+				ToolName: constants.MCPToolEventReceiptList,
+				Success:  true,
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -55,14 +58,16 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 				ResultJSON: `{"action_type": "MCP_CALL", "target": "history_trail", "summary": "upstream health check expects port 8080"}`,
 			},
 			{
-				ToolName:      "read_file",
+				ToolName:      constants.MCPToolReadFile,
+				Success:       true,
 				ArgumentsJSON: `{"path": "app/service.conf"}`,
-				ResultJSON:    "listen_port = 8081",
+				ResultJSON:    `{"path":"app/service.conf","content":"listen_port = 8081"}`,
 			},
 		},
 	}
 
-	scores := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	scores, err := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	require.NoError(t, err)
 	require.Len(t, scores, 5)
 
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
@@ -107,7 +112,8 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName: "event_receipt_list",
+				ToolName: constants.MCPToolEventReceiptList,
+				Success:  true,
 				Retrieval: &AgentContextRetrieval{
 					Receipts: []AgentContextReceiptRef{
 						{
@@ -119,14 +125,15 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 			},
 			{
 				// Redundant read: app/service.conf was already in retrieved receipts!
-				ToolName:      "read_file",
+				ToolName:      constants.MCPToolReadFile,
 				ArgumentsJSON: `{"path": "app/service.conf"}`,
 				ResultJSON:    "listen_port = 8081",
 			},
 		},
 	}
 
-	scores := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	scores, err := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	require.NoError(t, err)
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
 	for _, s := range scores {
 		scoreMap[s.Dimension] = s
@@ -142,20 +149,22 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
 			{
-				ToolName:   "event_receipt_list",
+				ToolName:   constants.MCPToolEventReceiptList,
+				Success:    true,
 				Retrieval:  &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "rcpt-1"}}},
 				ResultJSON: `{"receipts": [{"command": "df -h"}]}`,
 			},
 			{
 				// The command line, not any one argument, was already retrieved.
-				ToolName:      "run_shell_command",
+				ToolName:      constants.MCPToolRunShellCommand,
 				ArgumentsJSON: `{"command": "df", "args": ["-h"]}`,
 			},
-			{ToolName: "run_shell_command", ArgumentsJSON: `{"command": "uptime"}`},
+			{ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command": "uptime"}`},
 		},
 	}
 
-	scores := ComputeInvestigationMetrics("test-assignment-shell", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	scores, err := ComputeInvestigationMetrics("test-assignment-shell", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	require.NoError(t, err)
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
 	for _, s := range scores {
 		scoreMap[s.Dimension] = s
@@ -183,7 +192,8 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 		ToolCalls:  []AgentToolCall{},
 	}
 
-	scores := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	scores, err := ComputeInvestigationMetrics(assignmentID, trace, gold, true, input)
+	require.NoError(t, err)
 	scoreMap := make(map[string]*evalv1.DecomposedScoreRecord)
 	for _, s := range scores {
 		scoreMap[s.Dimension] = s
@@ -194,26 +204,38 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 	assert.InDelta(t, 0.0, scoreMap[MetricEvidenceBackedConclusion].Value, 0)
 }
 
+func TestComputeInvestigationMetrics_RejectsMissingInput(t *testing.T) {
+	trace := &AgentTrace{ModelCalls: []AgentModelCall{{LoopTurn: 1}}}
+
+	scores, err := ComputeInvestigationMetrics("", trace, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Nil(t, scores)
+
+	scores, err = ComputeInvestigationMetrics("test-assignment-nil-trace", nil, ScenarioGoldCriteria{}, true, ScenarioInputFixture{})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Nil(t, scores)
+}
+
 func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
 	refs := []ScenarioGoldEvidenceReference{{
 		ReferenceID:    "ref-history-trail-query",
-		ActionType:     "MCP_CALL",
+		ActionType:     string(constants.ActionTypeMcpCall),
 		TargetResource: constants.MCPToolEventReceiptList,
 	}}
 	call := AgentToolCall{
 		ToolName:   constants.MCPToolEventReceiptList,
-		ActionType: "MCP_CALL",
+		ActionType: string(constants.ActionTypeMcpCall),
 		Success:    true,
 		Retrieval:  &AgentContextRetrieval{},
 		ResultJSON: `{"receipts": []}`,
 	}
 
 	trace := &AgentTrace{ToolCalls: []AgentToolCall{call}}
-	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}), 0)
+	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs), 0)
 
 	call.Success = false
 	trace = &AgentTrace{ToolCalls: []AgentToolCall{call}}
-	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}), 0)
+	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, refs), 0)
 }
 
 func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
@@ -221,20 +243,15 @@ func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
 		{ReferenceID: "ref-missing-script", ExpectedContent: "deploy-healthcheck: not found"},
 		{ReferenceID: "ref-exit-code", ExpectedContent: "exit_code=127"},
 	}
-	input := ScenarioInputFixture{
-		InlineContext: []ScenarioInlineContent{
-			{Content: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"},
-		},
-	}
-	trace := &AgentTrace{}
-	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs, input), 0)
+	trace := &AgentTrace{Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"}}}}
+	assert.InDelta(t, 1.0, computeRetrievalHitRate(trace, refs), 0)
 
 	// A content-only reference the input never carried is still a miss.
 	refs = append(refs, ScenarioGoldEvidenceReference{ReferenceID: "ref-unseen", ExpectedContent: "disk quota exceeded"})
-	assert.InDelta(t, 2.0/3.0, computeRetrievalHitRate(trace, refs, input), 1e-9)
+	assert.InDelta(t, 2.0/3.0, computeRetrievalHitRate(trace, refs), 1e-9)
 
 	// A reference naming a resource needs an observation even when the input
 	// quotes its content.
 	resourceRef := []ScenarioGoldEvidenceReference{{ReferenceID: "ref-log", TargetResource: "logs/deploy.log", ExpectedContent: "exit_code=127"}}
-	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, resourceRef, input), 0)
+	assert.InDelta(t, 0.0, computeRetrievalHitRate(trace, resourceRef), 0)
 }

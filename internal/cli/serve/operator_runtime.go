@@ -96,6 +96,11 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	}
 	opts.HTTPPort = httpPort
 	operatorEndpoint := config.GatewayDialHost(gatewayHost)
+	probePort := httpPort
+	if probePort == 0 {
+		probePort = constants.Ports.OperatorHttp
+	}
+	operatorEndpoint = defaultGatewayDiscovery().discoverImplicitGatewayHost(ctx, opts.Endpoint != "", operatorEndpoint, probePort, logger)
 	if opts.Endpoint != "" {
 		opts.Endpoint = operatorEndpoint
 	}
@@ -116,9 +121,11 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
 		return nil, startFailure(constants.ExitConfigError, err)
 	}
-	if err := refuseModelStoreRuntime(fileSvc.Resolve(""), opts.ProvenanceOperatorModelStorageRoot); err != nil {
-		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
-		return nil, startFailure(constants.ExitConfigError, err)
+	for _, modelRoot := range []string{opts.ProvenanceOperatorModelStorageRoot, opts.InferenceLlamaCppModelRoot} {
+		if err := refuseModelStoreRuntime(fileSvc.Resolve(""), modelRoot); err != nil {
+			logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
+			return nil, startFailure(constants.ExitConfigError, err)
+		}
 	}
 	// Own the runtime before touching its vault, database, or enrollment state.
 	// Capability sets distinguish enrollments, never concurrent owners of a root.
@@ -198,19 +205,28 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err))
 	}
 	actuatorPublicKeyHex := hex.EncodeToString(actuatorPriv.Public().(ed25519.PublicKey))
+	auditorPriv, _, err := canonicalDB.GetSecretManager().GetAuditorKey()
+	if err != nil {
+		logger.Error("Failed to read Auditor key", string(constants.ConnectionStateError), err)
+		return nil, startFailure(exitcode.FromError(err), fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err))
+	}
+	auditorPublicKeyHex := hex.EncodeToString(auditorPriv.Public().(ed25519.PublicKey))
 
 	// An owner-supplied CA is read, never persisted, and wins over the
 	// trust delivered in the bundle.
 	var explicitTrust []byte
 	if opts.TrustBundlePath != "" {
-		explicitTrust, err = os.ReadFile(opts.TrustBundlePath)
-		if err != nil || !x509.NewCertPool().AppendCertsFromPEM(explicitTrust) {
+		explicitTrust, err = readTrustBundleFromPath(ctx, fileSvc, opts.TrustBundlePath)
+		if err != nil {
+			return nil, startFailure(constants.ExitConfigError, fmt.Errorf("%w: read explicit trust bundle: %w", constants.ErrCAParseFailed, err))
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(explicitTrust) {
 			logger.Error("Invalid explicit trust bundle", "path", opts.TrustBundlePath)
 			return nil, startFailure(constants.ExitConfigError, fmt.Errorf("%w: invalid explicit trust bundle %s", constants.ErrCAParseFailed, opts.TrustBundlePath))
 		}
 	}
 
-	identity, err := enrollOperator(ctx, opts, cfg, operatorEndpoint, effectiveWorkDir, explicitTrust, actuatorPublicKeyHex, deployment, logger)
+	identity, err := enrollOperator(ctx, opts, cfg, operatorEndpoint, effectiveWorkDir, explicitTrust, actuatorPublicKeyHex, auditorPublicKeyHex, deployment, logger)
 	if err != nil {
 		logger.Error("Operator enrollment failed", string(constants.ConnectionStateError), err)
 		fmt.Fprintf(os.Stderr, "Enrollment failed: %v\n", err)
@@ -299,11 +315,25 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 	return rt, nil
 }
 
+func readTrustBundleFromPath(ctx context.Context, fileSvc fs.RuntimeFileService, path string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rel, inRuntime, err := fs.RuntimeRelativePath(fileSvc, path)
+	if err != nil {
+		return nil, err
+	}
+	if inRuntime {
+		return fileSvc.ReadFile(ctx, rel)
+	}
+	return os.ReadFile(path)
+}
+
 // enrollOperator obtains the Operator's in-memory identity over the Gateway
 // bootstrap websocket. Every start enrolls: no identity survives the process.
 // actuatorPublicKeyHex is the hex Ed25519 key of this Operator's Actuator, which
 // the Gateway binds to the Operator at enrollment.
-func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.Config, endpoint, workDir string, explicitTrust []byte, actuatorPublicKeyHex string, deployment *OperatorDeploymentRecorder, logger *slog.Logger) (*OperatorIdentity, error) {
+func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.Config, endpoint, workDir string, explicitTrust []byte, actuatorPublicKeyHex, auditorPublicKeyHex string, deployment *OperatorDeploymentRecorder, logger *slog.Logger) (*OperatorIdentity, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("resolve hostname: %w", err)
@@ -319,6 +349,7 @@ func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.
 		RuntimeConfig:      runtimeConfig,
 		FingerprintOptions: operatorFingerprintOptions(opts, workDir, auth.ResolveCurrentAccount()),
 		ActuatorPublicKey:  actuatorPublicKeyHex,
+		AuditorPublicKey:   auditorPublicKeyHex,
 		TrustBundlePEM:     explicitTrust,
 		TLSServerName:      cfg.TLSServerName,
 		Deployment:         deployment,

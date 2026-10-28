@@ -21,6 +21,12 @@ import (
 // lifecycle projections to the Gateway mirror. cfg is the command's loaded
 // config, so the Gateway client unseals the CLI identity under its master key.
 func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignPublicationCoordinator, error) {
+	return NewCampaignPublicationCoordinatorWithMirrorOrigin(cmd, fileSvc, cfg, "")
+}
+
+// NewCampaignPublicationCoordinatorWithMirrorOrigin wires the host-side publication
+// of run lifecycle projections using an explicit or auto-derived public mirror origin.
+func NewCampaignPublicationCoordinatorWithMirrorOrigin(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config, mirrorOrigin string) (*evaluation.CampaignPublicationCoordinator, error) {
 	exporter, err := gwremote.NewCampaignFeedExporter(shared.CommandContext(cmd), fileSvc, cfg)
 	if err != nil {
 		return nil, err
@@ -37,6 +43,14 @@ func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFil
 	if err != nil {
 		return nil, err
 	}
+	resolvedOrigin, err := gwremote.ResolvePublicMirrorOrigin(cfg, mirrorOrigin)
+	if err != nil {
+		return nil, err
+	}
+	probe, err := gwremote.NewHTTPCampaignMirrorProbeWithOrigin(resolvedOrigin)
+	if err != nil {
+		return nil, err
+	}
 	coordinator := evaluation.NewCampaignPublicationCoordinator(
 		evaluation.NewStore(fileSvc),
 		fileSvc,
@@ -44,6 +58,6 @@ func NewCampaignPublicationCoordinator(cmd *cobra.Command, fileSvc fs.RuntimeFil
 		exporter,
 	).WithProofPublisher(proofPublisher).
 		WithLeaseLiveness(leaseLiveness(control)).
-		WithMirrorProbe(gwremote.NewHTTPCampaignMirrorProbe(shared.CommandContext(cmd)))
+		WithMirrorProbe(probe)
 	return coordinator, nil
 }

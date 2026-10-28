@@ -93,7 +93,9 @@ scenario_build_only() {
     expect "setup exits 0" bash -c "bash scripts/linux-setup.sh --build-only -y >'$OUT/build-only.log' 2>&1"
     expect "./ztd is executable" test -x ./ztd
     expect "./ztd --version runs" ./ztd --version
-    expect "Node.js and npm installed for frontend builds" bash -c 'command -v node && command -v npm'
+    # INV-SCRIPTS-01: build-only compiles from the committed embeds, so the
+    # fresh host still has no Node.js afterwards.
+    expect "build-only left Node.js uninstalled" bash -c '! command -v node'
     expect "PATH marker written once" test "$(marker_count)" = 1
     expect_log build-only.log 'ztd is ready'
     expect_log build-only.log 'make quickstart'

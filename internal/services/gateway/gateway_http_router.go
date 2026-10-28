@@ -169,8 +169,6 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.HandleFunc(constants.APIPaths.OperatorsIntents, h.tribunalIntentController.HandleIntent)
 	mux.HandleFunc(constants.APIPaths.GovernanceSigners, h.signerController.handleGovernanceSigners)
 	mux.Handle(constants.APIPaths.GovernanceSignersByID, http.HandlerFunc(h.signerController.handleGovernanceSignerByID))
-	mux.Handle(constants.APIPaths.AdminAppPoliciesBySigner, http.HandlerFunc(h.adminController.handleAppPolicySigner))
-	mux.HandleFunc(constants.APIPaths.AdminAppsRevoke, h.adminController.handleRevokeApp)
 
 	// Rate-limited governance envelope
 	govEnvMux := http.NewServeMux()
@@ -514,13 +512,13 @@ func handleSwaggerDoc(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	w.Header().Set(constants.HeaderCacheControl, constants.HeaderValueNoCache)
 	w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
 	_, _ = w.Write(docs.SwaggerJSON)
 }
 
 func handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set(constants.HeaderContentType, constants.MediaTypeHTML)
 	_, _ = w.Write([]byte(swaggerUIHTML))
 }

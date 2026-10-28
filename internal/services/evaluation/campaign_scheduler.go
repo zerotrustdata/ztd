@@ -26,6 +26,7 @@ type HomogeneousScheduleRequest struct {
 	CampaignID      string
 	RunID           string
 	Catalog         *evalv1.EvaluationScenarioCatalog
+	ActivePosture   evalv1.EvaluationGovernancePosture
 	Variants        []*evalv1.ModelVariant
 	RepetitionCount uint32
 	QueuedAt        time.Time
@@ -70,6 +71,9 @@ func BuildHomogeneousAssignmentMatrix(req HomogeneousScheduleRequest) ([]*evalv1
 	}
 	assignments := make([]*evalv1.EvaluationAssignment, 0)
 	for _, scenario := range scenarios {
+		if !scenarioIncludedForPosture(scenario, req.ActivePosture) {
+			continue
+		}
 		roles, err := scenarioEligibleRoles(scenario)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: build homogeneous assignment matrix: %w", err)
@@ -122,16 +126,23 @@ func assignmentExecutionLess(left, right *evalv1.EvaluationAssignment, scenarioO
 		}
 		return l < r
 	}
-	if leftTarget != nil {
-		if l, r := leftTarget.GetDesignatedRole(), rightTarget.GetDesignatedRole(); l != r {
-			return l < r
-		}
+	if l, r := assignmentDesignatedRole(left), assignmentDesignatedRole(right); l != r {
+		return l < r
 	}
 	if l, r := left.GetRepetition(), right.GetRepetition(); l != r {
 		return l < r
 	}
 
 	return left.GetDeterministicIdentity() < right.GetDeterministicIdentity()
+}
+
+// assignmentDesignatedRole returns the role an assignment runs as: the model
+// role for a homogeneous target, the stack role for a heterogeneous target.
+func assignmentDesignatedRole(assignment *evalv1.EvaluationAssignment) evalv1.ModelCampaignRole {
+	if homogeneous := assignment.GetHomogeneous(); homogeneous != nil {
+		return homogeneous.GetDesignatedRole()
+	}
+	return assignment.GetHeterogeneous().GetDesignatedRole()
 }
 
 func buildHomogeneousAssignment(campaignID, runID string, scenario *evalv1.EvaluationScenarioDefinition, variant *evalv1.ModelVariant, role evalv1.ModelCampaignRole, repetition uint32, queuedAt time.Time) (*evalv1.EvaluationAssignment, error) {
@@ -196,9 +207,12 @@ func scenarioEligibleRoles(scenario *evalv1.EvaluationScenarioDefinition) ([]eva
 // CatalogModelRoleCells returns the (scenario, role) cells one model scores in
 // catalog, counting each scenario once per role it declares eligible. It reads
 // the catalog a campaign froze, so a custom or smoke suite sizes correctly.
-func CatalogModelRoleCells(catalog *evalv1.EvaluationScenarioCatalog) uint64 {
+func CatalogModelRoleCells(catalog *evalv1.EvaluationScenarioCatalog, posture evalv1.EvaluationGovernancePosture) uint64 {
 	var cells uint64
 	for _, scenario := range catalog.GetScenarios() {
+		if !scenarioIncludedForPosture(scenario, posture) {
+			continue
+		}
 		cells += uint64(len(scenario.GetEligibleRoles()))
 	}
 	return cells
@@ -206,15 +220,36 @@ func CatalogModelRoleCells(catalog *evalv1.EvaluationScenarioCatalog) uint64 {
 
 // ModelRoleMatrixSize returns the assignment count of a model-role run over
 // catalog: models × cells per model × repetitions. Zero repetitions count as one.
-func ModelRoleMatrixSize(catalog *evalv1.EvaluationScenarioCatalog, modelCount uint64, repetitions uint32) uint64 {
+func ModelRoleMatrixSize(catalog *evalv1.EvaluationScenarioCatalog, modelCount uint64, repetitions uint32, posture evalv1.EvaluationGovernancePosture) uint64 {
 	if repetitions == 0 {
 		repetitions = 1
 	}
-	return modelCount * CatalogModelRoleCells(catalog) * uint64(repetitions)
+	return modelCount * CatalogModelRoleCells(catalog, posture) * uint64(repetitions)
 }
 
 // FormationMatrixSize returns the assignment count of a system-lane run over
-// catalog: one assignment per formation per scenario.
-func FormationMatrixSize(catalog *evalv1.EvaluationScenarioCatalog, formationCount uint64) uint64 {
-	return formationCount * uint64(len(catalog.GetScenarios()))
+// catalog: formations × (scenario, eligible role) cells, the same cell rule the
+// model-role lane uses. Zero stacks size as zero.
+func FormationMatrixSize(catalog *evalv1.EvaluationScenarioCatalog, formationCount uint64, posture evalv1.EvaluationGovernancePosture) uint64 {
+	return formationCount * CatalogModelRoleCells(catalog, posture)
+}
+
+// scenarioIncludedForPosture is the single eligibility predicate used by
+// scheduling and every matrix-size calculation. Unknown postures fail closed
+// for definitions that declare L2 dependence.
+func scenarioIncludedForPosture(scenario *evalv1.EvaluationScenarioDefinition, posture evalv1.EvaluationGovernancePosture) bool {
+	return scenario != nil && !scenarioExcludedWhenL2Enforced(scenario.GetExcludeWhenL2Enforced(), posture)
+}
+
+func scenarioExcludedWhenL2Enforced(excludeWhenL2Enforced bool, posture evalv1.EvaluationGovernancePosture) bool {
+	if !excludeWhenL2Enforced {
+		return false
+	}
+	switch posture {
+	case evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY:
+		return false
+	default:
+		return true
+	}
 }

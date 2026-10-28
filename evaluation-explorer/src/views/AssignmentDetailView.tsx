@@ -176,7 +176,7 @@ function FailureDiagnosis({ assignment }: { assignment: AssignmentResult }) {
         <ul className="failure-criteria-list">
           {failingChips.map((chip) => (
             <li key={chip.criterion_id}>
-              <strong>{chip.criterion_id.replace(/-/g, ' ')}:</strong>{' '}
+              <strong>{chip.label}:</strong>{' '}
               {chip.explanation ? chip.explanation.replace(/_/g, ' ') : observationLabel(chip.status)}
               {chip.detail ? <span className="grade-detail">{chip.detail}</span> : null}
             </li>

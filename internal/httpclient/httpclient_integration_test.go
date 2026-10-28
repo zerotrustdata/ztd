@@ -20,6 +20,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // listenIPv4Only starts an httptest server bound to 127.0.0.1 only (no
@@ -142,11 +144,11 @@ func TestNewIPv4Transport_LiteralIPv4DialsDirectly(t *testing.T) {
 
 // TestIPv4DialContext_RejectsLiteralIPv6Address proves a literal IPv6
 // address (e.g. "[::1]") cannot be dialed through the IPv4 dialer — the
-// ip4 lookup fails and returns an error, never an IPv6 connection.
+// dialer returns ErrNetworkIPv4Unavailable, never an IPv6 connection.
 func TestIPv4DialContext_RejectsLiteralIPv6Address(t *testing.T) {
 	_, err := IPv4DialContext(context.Background(), "tcp", "[::1]:8443")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ipv4 dial: resolve")
+	assert.ErrorIs(t, err, constants.ErrNetworkIPv4Unavailable)
 }
 
 // TestIPv4DialContext_SplitHostPortError confirms a malformed address

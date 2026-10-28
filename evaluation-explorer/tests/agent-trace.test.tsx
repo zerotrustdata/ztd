@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { AgentTraceSection } from '../src/components/AgentTraceSection';
 import { verifyAgentTraceArtifact } from '../src/contract/agent-trace';
 import type { ProofCatalogEntry, PublicEvidenceBinding } from '../src/contract/types';
@@ -89,6 +89,32 @@ function sealedBody(schemaVersion = 'agent-trace.v4', overrides: Record<string, 
   return new TextEncoder().encode(`{"schema_version":"${schemaVersion}","evidence_digest":"${digest}",${tail}`);
 }
 
+/** A v7+ model call with its signed model identity and inference result. */
+const v7Call = () => ({
+  ...(traceTail('agent-trace.v6').model_calls as Record<string, unknown>[])[0],
+  model_variant_id: 'variant-primary', model_role: 'MODEL_ROLE_PRIMARY', served_model_tag: 'qwen3:8b', model_digest: 'a'.repeat(64),
+  inference_result: { requested_model: 'qwen3:8b', served_model_digest: 'a'.repeat(64) },
+});
+
+/** One pinned-judge verdict on a judged content criterion (agent-trace.v10). */
+function contentJudgment(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    criterion_id: 'names-root-cause',
+    provider_attempt_id: 'attempt-judge-1',
+    transaction_id: 'tx-judge-1',
+    judge_variant_id: 'variant-judge',
+    served_model_tag: 'judge:14b',
+    model_digest: 'e'.repeat(64),
+    rubric_version: 'rubric-1',
+    messages: [{ role: 'INFERENCE_MESSAGE_ROLE_USER', text: 'Does the answer name the root cause?' }],
+    met: true,
+    rationale: 'The answer names the out-of-memory condition.',
+    inference_result: { requested_model: 'judge:14b', served_model_digest: 'e'.repeat(64) },
+    receipt: receipt('tx-judge-1', 'MCP_CALL'),
+    ...overrides,
+  };
+}
+
 // The Go producer test seals the same typed trace and compares these exact bytes.
 const consensusBody = new Uint8Array(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../internal/services/evaluation/testdata/agent-trace-consensus.json')));
 
@@ -108,12 +134,6 @@ function investigationRetrievalToolCall(overrides: Record<string, unknown> = {})
 }
 
 describe('verifyAgentTraceArtifact', () => {
-  const v7Call = () => ({
-    ...(traceTail('agent-trace.v6').model_calls as Record<string, unknown>[])[0],
-    model_variant_id: 'variant-primary', model_role: 'MODEL_ROLE_PRIMARY', served_model_tag: 'qwen3:8b', model_digest: 'a'.repeat(64),
-    inference_result: { requested_model: 'qwen3:8b', served_model_digest: 'a'.repeat(64) },
-  });
-
   it('decodes v7 signed model identities and Tribunal and episode evidence', async () => {
     const body = sealedBody('agent-trace.v7', {
       investigation_id: 'investigation-1',
@@ -150,6 +170,54 @@ describe('verifyAgentTraceArtifact', () => {
     expect(inferences?.[0]?.receipt?.transaction_id).toBe('tx-vote-1');
     expect(inferences?.[0]?.observation_receipts?.[0]?.transaction_id).toBe('tx-observe');
     expect(inferences?.[1]?.failure?.error).toBe('Provider unavailable');
+  });
+
+  it('decodes separately attributed v10 harness observations and rejects them on older schemas', async () => {
+    const observation = {
+      kind: 'seed',
+      call: { ...toolCallWith({}), call_id: 'scenario-observation-1', model_call_id: '', tool_name: 'event_receipt_list', arguments_json: '{"limit":20}', result_json: '{"receipts":[]}', success: true, receipt: { ...receipt('scenario-observation-1', 'MCP_CALL'), transaction_hash: 'a'.repeat(64) }, request_envelope: { transaction_hash: 'a'.repeat(64) } },
+    };
+    const refusal = {
+      kind: 'seed',
+      call: { call_id: 'scenario-refusal-1', model_call_id: '', tool_name: 'event_receipt_list', arguments_json: '{"limit":20}', error_type: 'invalid_arguments', error: 'invalid request', success: false, is_operator_tool: true, loop_turn: 0, ingress_refusal_code: 8 },
+    };
+    const body = sealedBody('agent-trace.v10', { model_calls: [v7Call()], observations: [observation, refusal] });
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+    expect(trace.observations).toMatchObject([
+      { kind: 'seed', call: { tool_name: 'event_receipt_list', model_call_id: '', request_envelope: { transaction_hash: 'a'.repeat(64) } } },
+      { kind: 'seed', call: { ingress_refusal_code: 8, success: false } },
+    ]);
+
+    const historical = sealedBody('agent-trace.v8', { observations: [observation] });
+    await expect(verifyAgentTraceArtifact(historical, scope(historical))).rejects.toThrow(/observations/u);
+  });
+
+  it('still decodes v9 traces with harness observations', async () => {
+    const observation = {
+      kind: 'probe',
+      call: { ...toolCallWith({}), request_envelope: { transaction_hash: 'a'.repeat(64) }, receipt: { ...receipt('probe-1', 'MCP_CALL'), transaction_hash: 'a'.repeat(64) } },
+    };
+    const body = sealedBody('agent-trace.v9', { model_calls: [v7Call()], observations: [observation] });
+
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+
+    expect(trace.schema_version).toBe('agent-trace.v9');
+    expect(trace.observations).toHaveLength(1);
+    expect(trace.content_judgments).toBeUndefined();
+  });
+
+  it('rejects unknown v10 harness observation kinds', async () => {
+    const body = sealedBody('agent-trace.v10', { model_calls: [v7Call()], observations: [{ kind: 'model_call', call: toolCallWith({}) }] });
+    await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path: 'agent_trace.observations[0].kind' });
+  });
+
+  it('rejects a v10 request envelope that does not match its signed receipt hash', async () => {
+    const observation = {
+      kind: 'probe',
+      call: { ...toolCallWith({}), request_envelope: { transaction_hash: 'a'.repeat(64) } },
+    };
+    const body = sealedBody('agent-trace.v10', { model_calls: [v7Call()], observations: [observation] });
+    await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path: 'agent_trace.observations[0].call.request_envelope.transaction_hash' });
   });
 
   it.each([
@@ -212,6 +280,43 @@ describe('verifyAgentTraceArtifact', () => {
         tool_calls: [toolCallWith({ consensus_inferences: [] })],
       });
       await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toThrow(/consensus_inferences/u);
+    }
+  });
+
+  it('decodes v10 content judgments with their verdicts, identities, and receipts', async () => {
+    const body = sealedBody('agent-trace.v10', {
+      model_calls: [v7Call()],
+      content_judgments: [
+        contentJudgment(),
+        contentJudgment({ criterion_id: 'cites-log-line', met: false, rationale: 'The answer cites no log line.' }),
+      ],
+    });
+
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+
+    expect(trace.content_judgments).toMatchObject([
+      { criterion_id: 'names-root-cause', met: true, served_model_tag: 'judge:14b', receipt: { transaction_id: 'tx-judge-1' } },
+      { criterion_id: 'cites-log-line', met: false, rationale: 'The answer cites no log line.' },
+    ]);
+  });
+
+  it('rejects content judgments on v9 and older traces', async () => {
+    for (const schemaVersion of ['agent-trace.v4', 'agent-trace.v8', 'agent-trace.v9']) {
+      const body = sealedBody(schemaVersion, { content_judgments: [contentJudgment()] });
+      await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toThrow(/content_judgments/u);
+    }
+  });
+
+  it('rejects malformed v10 content judgments', async () => {
+    const cases: [string, Record<string, unknown>, string][] = [
+      ['non-boolean verdict', { met: 'yes' }, 'agent_trace.content_judgments[0].met'],
+      ['missing signed receipt', { receipt: undefined }, 'agent_trace.content_judgments[0].receipt'],
+      ['malformed judge digest', { model_digest: 'BAD' }, 'agent_trace.content_judgments[0].model_digest'],
+      ['unknown judgment field', { verdict_hint: 'met' }, 'agent_trace.content_judgments[0]'],
+    ];
+    for (const [, overrides, path] of cases) {
+      const body = sealedBody('agent-trace.v10', { model_calls: [v7Call()], content_judgments: [contentJudgment(overrides)] });
+      await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path });
     }
   });
 
@@ -374,6 +479,34 @@ describe('AgentTraceSection', () => {
     expect(screen.getByRole('link', { name: 'Download trace' })).toBeInTheDocument();
   });
 
+  it('renders v10 harness observations outside scored model turns', async () => {
+    const hash = 'a'.repeat(64);
+    const traceBody = sealedBody('agent-trace.v10', {
+      model_calls: [],
+      observations: [
+        { kind: 'seed', call: {
+          call_id: 'scenario-observation-1', model_call_id: '', tool_name: 'read_file', arguments_json: '{"path":"case-notes.json"}',
+          result_json: '{"content":"app-report"}', success: true, is_operator_tool: true, loop_turn: 0,
+          receipt: { ...receipt('scenario-observation-1', 'MCP_CALL'), transaction_hash: hash },
+          request_envelope: { transaction_hash: hash },
+        } },
+        { kind: 'seed', call: {
+          call_id: 'scenario-refusal-1', model_call_id: '', tool_name: 'run_shell_command', arguments_json: '{"command":"sudo"}',
+          error_type: 'invalid_arguments', error: 'pre-envelope denial', success: false, is_operator_tool: true, loop_turn: 0, ingress_refusal_code: 8,
+        } },
+      ],
+    });
+    evalStore.loadProofCatalog([entry(sha256(traceBody))]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(traceBody.slice())));
+    render(<AgentTraceSection id="trace" bindings={[{ ...bindings[0]!, sha256: sha256(traceBody) }]} runId="run-1" assignmentId="assignment-1" />);
+
+    expect(await screen.findByText('Harness observations (2)')).toBeInTheDocument();
+    expect(screen.getAllByText('Harness · Seed')).toHaveLength(2);
+    expect(screen.getByText('Pre-envelope refusal · code 8')).toBeInTheDocument();
+    expect(screen.getByText('Admitted request envelope')).toBeInTheDocument();
+    expect(screen.getByText('Turns (0)')).toBeInTheDocument();
+  });
+
   it('renders the verified trace: input, thinking, tool call, receipt, and download', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(body.slice()));
     vi.stubGlobal('fetch', fetchMock);
@@ -386,6 +519,32 @@ describe('AgentTraceSection', () => {
     expect(screen.getByText('cat app.log')).toBeInTheDocument();
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Download trace' })).toHaveAttribute('download', 'assignment-assignment-1.agent-trace.json');
+  });
+
+  it('renders v10 content judgments as one verdict row per criterion', async () => {
+    const judged = sealedBody('agent-trace.v10', {
+      model_calls: [v7Call()],
+      content_judgments: [
+        contentJudgment(),
+        contentJudgment({ criterion_id: 'cites-log-line', served_model_tag: 'judge:32b', met: false, rationale: 'The answer cites no log line.' }),
+      ],
+    });
+    evalStore.loadProofCatalog([entry(sha256(judged))]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(judged.slice())));
+
+    render(<AgentTraceSection id="trace" bindings={[{ ...bindings[0]!, sha256: sha256(judged) }]} runId="run-1" assignmentId="assignment-1" />);
+
+    expect(await screen.findByText('Content judgments (2)')).toBeInTheDocument();
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toHaveTextContent(/✓\s*MET/u);
+    expect(within(rows[1]!).getByText('names-root-cause')).toBeInTheDocument();
+    expect(within(rows[1]!).getByText('judge:14b')).toBeInTheDocument();
+    expect(within(rows[1]!).getByText('The answer names the out-of-memory condition.')).toBeInTheDocument();
+    expect(rows[2]).toHaveTextContent(/✕\s*NOT MET/u);
+    expect(within(rows[2]!).getByText('cites-log-line')).toBeInTheDocument();
+    expect(within(rows[2]!).getByText('judge:32b')).toBeInTheDocument();
+    expect(within(rows[2]!).getByText('The answer cites no log line.')).toBeInTheDocument();
   });
 
   it('renders the held investigation ahead of the input', async () => {

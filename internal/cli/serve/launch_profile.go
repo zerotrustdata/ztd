@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/browserorigin"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	gateway "github.com/zerotrustdata/ztd/internal/services/gateway"
 )
 
 // LaunchProfileVersion is the schema version for the persisted launch
@@ -187,6 +188,33 @@ func ValidateLaunchProfile(profile GatewayLaunchProfile) error {
 	}
 	if err := validateLaunchProfileURL(cfg.A2ADownstreamURL, false); err != nil {
 		return fmt.Errorf("%w: a2a_downstream_url: %w", constants.ErrLaunchProfileInvalid, err)
+	}
+
+	if cfg.PublicSpectatorEnabled {
+		privateAddr := cfg.PublicSpectatorPrivateAddr
+		publicAddr := cfg.PublicSpectatorPublicAddr
+		if privateAddr != "" || publicAddr != "" {
+			if privateAddr == "" {
+				privateAddr = gateway.DefaultPublicSpectatorConfig().PrivateListenAddress
+			}
+			if publicAddr == "" {
+				publicAddr = gateway.DefaultPublicSpectatorConfig().PublicListenAddress
+			}
+			if err := gateway.ValidatePublicMirrorListenAddresses(privateAddr, publicAddr, cfg.PublicSpectatorAllowContainerBind); err != nil {
+				return fmt.Errorf("%w: public spectator listen addresses: %w", constants.ErrLaunchProfileInvalid, err)
+			}
+		}
+		if cfg.EvalExplorerAddr != "" {
+			if privateAddr == "" {
+				privateAddr = gateway.DefaultPublicSpectatorConfig().PrivateListenAddress
+			}
+			if publicAddr == "" {
+				publicAddr = gateway.DefaultPublicSpectatorConfig().PublicListenAddress
+			}
+			if err := gateway.ValidatePublicExplorerListenAddress(cfg.EvalExplorerAddr, privateAddr, publicAddr, cfg.PublicSpectatorAllowContainerBind); err != nil {
+				return fmt.Errorf("%w: eval explorer listen address: %w", constants.ErrLaunchProfileInvalid, err)
+			}
+		}
 	}
 
 	return nil

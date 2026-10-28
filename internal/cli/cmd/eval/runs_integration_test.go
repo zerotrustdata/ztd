@@ -297,6 +297,7 @@ func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
 			InvestigationId: "checkout-incident",
 			DataOperatorId:  env.dataOperatorID,
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 
@@ -326,6 +327,7 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 			InvestigationId: "checkout-incident",
 			DataOperatorId:  "operator-offline",
 		},
+		Judge: testJudgeVariant(),
 	})
 	require.NoError(t, err)
 
@@ -720,6 +722,25 @@ func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
 	assert.Equal(t, loaded.GetVerifiedPopulationDigest(), latest.Metadata.PopulationDigest)
 }
 
+func TestRunsVerify_DoesNotPublishWithoutPublishFlag(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	before := len(mirrorSummaries(t))
+
+	out, err = env.run(t, "runs", "verify", runID)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "PASS")
+	assert.NotContains(t, out, "Published")
+	assert.Len(t, mirrorSummaries(t), before, "verify without --publish must not publish")
+
+	loaded, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, loaded.GetStatus())
+}
+
 func TestVerifyRun_RejectsMissingRun(t *testing.T) {
 	env := newStoreRunEnv(t)
 
@@ -879,6 +900,7 @@ func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 		CampaignID:  "eval-b",
 		Variants:    []*evalv1.ModelVariant{other},
 		Repetitions: 1,
+		Judge:       testJudgeVariant(),
 	})
 	require.NoError(t, err)
 	env.startStoredRun(t, "eval-b", "run-b-1")

@@ -97,12 +97,15 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 
 	opts := platform.OperatorStartOptions{
 		GatewayConfig: serve.GatewayConfig{
-			OperatorCapabilities:               constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver},
-			InferenceOllamaEndpoint:            "http://localhost:11434",
-			InferenceKeepAlive:                 "-1",
-			ProviderBoundaryObserverID:         "observer",
-			ProvenanceOperatorID:               "provenance",
-			ProvenanceOperatorModelStorageRoot: "/models",
+			OperatorCapabilities:                 constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver},
+			InferenceOllamaEndpoint:              "http://localhost:11434",
+			InferenceKeepAlive:                   "-1",
+			ProviderBoundaryObserverID:           "observer",
+			ProvenanceOperatorID:                 "provenance",
+			ProvenanceOperatorModelStorageRoot:   "/models",
+			InferenceLlamaCppEndpoint:            "http://localhost:8080",
+			InferenceLlamaCppModelRoot:           "/gguf",
+			ProvenanceOperatorModelStorageFormat: "llamacpp",
 
 			Posture:                           constants.Posture("doctrine"),
 			HTTPPort:                          8080,

@@ -20,16 +20,16 @@ func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededReceipts(t *tes
 
 	assert.NotContains(t, strings.ToLower(blueprint.Input.UserPrompt), "payment timeout")
 	assert.NotContains(t, strings.ToLower(blueprint.Gold.ExpectedBehavior), "payment timeout")
-	assert.Equal(t, toolSelectInvestigationScenarioVersion, blueprint.ScenarioVersion)
+	assert.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 
-	check := *blueprint.Gold.ContentCheck
+	assert.Equal(t, "history-grounding", blueprint.Gold.ContentCheck.JudgedCriteria[0].ID)
+	assert.Equal(t, 3, blueprint.Gold.ContentCheck.MaxSentences, "the rubric bounds the answer without hard-coding receipt wording")
 	for _, output := range []string{
 		"There are no recorded actions in the current investigation history.",
 		"Receipt 7f2a records the operator action that checked the service status.",
+		"The payment service timed out after 30 seconds.",
 	} {
-		passed, detail := evaluateContentCheck(output, check, ScenarioWorkspace{})
-		assert.True(t, passed, "%q: %s", output, detail)
+		result := accuracyGrade(t, blueprint, output, nil)
+		assert.False(t, gradePassed(t, result.DeterministicGrades, "scenario-content"), "without a native successful history observation, output %q cannot pass", output)
 	}
-	passed, _ := evaluateContentCheck("The payment service timed out after 30 seconds.", check, ScenarioWorkspace{})
-	assert.False(t, passed, "a fabricated diagnosis cannot satisfy the current-history report criterion")
 }

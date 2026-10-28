@@ -111,4 +111,7 @@ const (
 	MCPToolGitOps             = "git_ops"
 	MCPToolCloudMetadata      = "cloud_metadata"
 	MCPToolK8sInspect         = "k8s_inspect"
+	MCPToolProcSignalSafe     = "proc_signal_safe"
+	MCPToolOperatorDeploy     = "operator_deploy"
+	MCPToolNetHTTPProbe       = "net_http_probe"
 )

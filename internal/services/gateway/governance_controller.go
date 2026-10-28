@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
+	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -97,10 +98,10 @@ func (c *GovernanceController) verifyEnvelopeIdentityBinding(r *http.Request, en
 	}
 
 	// The requestor is the human the envelope acts for, and it must be the user
-	// the auth middleware authenticated for this request. A certificate kind that
-	// carries no user leaves the context value empty, so any non-empty requestor
-	// is refused for it.
-	authenticatedUserID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	// the auth middleware bound to this request: an app's delegated user SAN or
+	// another principal's authenticated user. Delegation grants no human session.
+	// A certificate without a user cannot claim a non-empty requestor.
+	authenticatedUserID := serviceauth.RequestorUserID(r.Context())
 	if envelope.GetRequestorUserId() != authenticatedUserID {
 		return fmt.Errorf("%w: requestor_user_id does not match the authenticated principal", constants.ErrIdentityBindingFailed)
 	}

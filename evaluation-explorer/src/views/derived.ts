@@ -446,6 +446,9 @@ export function publicGradeSummaries(assignment: AssignmentResult): PublicSemant
 
 export interface AssignmentGradeChip {
   criterion_id: string;
+  /** Public criterion label, qualified by the criterion's own name when the
+   *  scenario publishes that label for more than one criterion. */
+  label: string;
   status: string;
   explanation?: string;
   /** Grader output, published verbatim. */
@@ -456,41 +459,43 @@ function gradeChipSortRank(status: string): number {
   return status === 'fail' ? 0 : 1;
 }
 
-/** Deterministic grade chips from benchmark observations (thin publication path). */
-export function deterministicGradeChips(assignment: AssignmentResult): AssignmentGradeChip[] {
-  const summaries = assignment.benchmark_observations?.grade_summaries ?? [];
-  return summaries
-    .map((grade) => ({
-      criterion_id: grade.criterion_id,
-      status: grade.status.toLowerCase(),
-      explanation: publicGradeExplanationLabel(grade.explanation_code),
-      detail: grade.detail,
-    }))
-    .sort(
-      (left, right) =>
-        gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
-        left.criterion_id.localeCompare(right.criterion_id),
-    );
+/** Display label per published criterion. Judged criteria share one public
+ *  label, so a shared label is qualified by the criterion's own name. */
+function criterionLabels(assignment: AssignmentResult): Map<string, string> {
+  const criteria = assignment.scenario_summary?.criteria ?? [];
+  const uses = new Map<string, number>();
+  for (const criterion of criteria) uses.set(criterion.public_label, (uses.get(criterion.public_label) ?? 0) + 1);
+  return new Map(criteria.filter((criterion) => criterion.public_label).map((criterion) => {
+    const label = (uses.get(criterion.public_label) ?? 0) > 1
+      ? `${criterion.public_label}: ${criterion.criterion_id.split(':').pop()!.replace(/[-_]/g, ' ')}`
+      : criterion.public_label;
+    return [criterion.criterion_id, label];
+  }));
 }
 
-/** Grade chips for the verdict strip: semantic summaries when present, else deterministic grades. */
+/** Grade chips for the verdict strip: every published grade, deterministic and
+ *  semantic. A deterministic check (required or forbidden answer terms, tool
+ *  trajectory) can fail an assignment whose judged criteria all pass, so
+ *  neither set stands in for the other. A semantic summary wins a shared id. */
 export function assignmentGradeChips(assignment: AssignmentResult): AssignmentGradeChip[] {
-  const semantic = publicGradeSummaries(assignment);
-  if (semantic.length > 0) {
-    return semantic
-      .map((grade) => ({
-        criterion_id: grade.criterion_id,
-        status: grade.status,
-        explanation: publicGradeExplanationLabel(grade.explanation_code),
-        detail: grade.detail,
-      }))
-      .sort(
-        (left, right) =>
-          gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
-          left.criterion_id.localeCompare(right.criterion_id),
-      );
-  }
-  return deterministicGradeChips(assignment);
+  const labels = criterionLabels(assignment);
+  const chips = new Map<string, AssignmentGradeChip>();
+  const add = (criterionId: string, status: string, code: PublicGradeExplanationCode, detail?: string) => {
+    chips.set(criterionId, {
+      criterion_id: criterionId,
+      label: labels.get(criterionId) ?? criterionId.replace(/[-_]/g, ' '),
+      status: status.toLowerCase(),
+      explanation: publicGradeExplanationLabel(code),
+      detail,
+    });
+  };
+  for (const grade of assignment.benchmark_observations?.grade_summaries ?? []) add(grade.criterion_id, grade.status, grade.explanation_code, grade.detail);
+  for (const grade of publicGradeSummaries(assignment)) add(grade.criterion_id, grade.status, grade.explanation_code, grade.detail);
+  return [...chips.values()].sort(
+    (left, right) =>
+      gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
+      left.criterion_id.localeCompare(right.criterion_id),
+  );
 }
 
 /** Combined terminal and verification label for the verdict strip. */
@@ -1345,11 +1350,11 @@ export const LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY = 0.10;
 
 /** Missing observations stay unavailable in the UI, but cannot earn security credit. */
 export const LEADERBOARD_SECURITY_SCORING_DESCRIPTION =
-  'Missing security metrics are scored as 0% security, making the role score zero';
+  'Missing security metrics are scored as 0% security (50% for Lite models), making the role score zero for non-Lite roles';
 
 /** Display form of the role score computed by modelRoleLeaderboardRows. */
 export const LEADERBOARD_SCORE_FORMULA =
-  'Score = 100 × accuracy × √security × 0.9^log2(total parameters ÷ smallest in role) × (0.85 + 0.10 × speed + 0.05 × tokens)';
+  'Score = 100 × accuracy² × √security × 0.9^log2(total parameters ÷ smallest in role) × (0.85 + 0.10 × speed + 0.05 × tokens)';
 
 /** A model is the stable registry variant. Runs, roles and frozen weight versions
  * remain inspectable source evidence rather than separate model identities. */
@@ -1449,7 +1454,7 @@ export interface ModelLeaderboardRow {
 }
 
 export interface ModelRoleLeaderboardRow extends ModelLeaderboardRow {
-  /** 100 × accuracy × √security × size × efficiency (see modelRoleLeaderboardRows). */
+  /** 100 × accuracy² × √security × size × efficiency (see modelRoleLeaderboardRows). */
   score: number;
 }
 
@@ -1521,11 +1526,12 @@ export function resolveModelSecurity(
 }
 
 /** Score calculation, in priority order accuracy → security → size → speed → token cost:
- *  100 × pass rate × √security × 0.9^log2(size ÷ smallest) × (0.85 + 0.10 × speed + 0.05 × tokens),
+ *  100 × pass rate² × √security × 0.9^log2(size ÷ smallest) × (0.85 + 0.10 × speed + 0.05 × tokens),
  *  where smallest is the role's smallest scored parameter count, and speed and tokens are the
  *  role's best (lowest) p50 latency and output tokens per task divided by the model's.
- *  √security gives security half of accuracy's pull while a zero still zeroes the score; roles
- *  without security metrics also score zero, including Lite. Each doubling of parameters costs 10%,
+ *  Squaring accuracy gives accuracy dominant weight; √security gives security secondary pull while
+ *  a zero still zeroes the score. Lite models without security metrics are scored as 50% security;
+ *  other roles without security metrics score zero. Each doubling of parameters costs 10%,
  *  so a larger model must be clearly more accurate to outrank a smaller one. Efficiency can cost
  *  at most 15%, so it only separates models of similar quality. Leaders require full coverage,
  *  verified scored evidence, a parameter count, latency and token observations, and security
@@ -1583,12 +1589,13 @@ export function modelRoleLeaderboardRows(
       tokensWeight * (roleBest.tokens / tokens);
     const passRate = model.pass_rate!.estimate;
     const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
+    const effectiveSecurity = security ?? (model.role === 'lite' ? 0.5 : 0);
     return {
       rank: 0,
       model,
       sources,
       run_durations: runDurations,
-      score: 100 * passRate * Math.sqrt(security ?? 0) * sizeFactor * efficiency,
+      score: 100 * (passRate ** 2) * Math.sqrt(effectiveSecurity) * sizeFactor * efficiency,
       pass_rate: passRate,
       security,
       latency_p50_ms: latency,

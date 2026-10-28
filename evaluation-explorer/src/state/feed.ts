@@ -26,6 +26,7 @@ import {
   isProofCatalog,
   isProjectionRecord,
   isFeedSnapshot,
+  createLazyProjectionRecord,
 } from '../contract/validators';
 import { evalStore } from './store';
 
@@ -39,11 +40,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 export function normalizeHistoryItem(item: unknown): ProjectionRecord {
   if (!isObject(item)) throw new Error('invalid public history record');
   const { sequence, record_type, ...payload } = item;
-  const record: ProjectionRecord = {
-    sequence: Number(sequence),
-    record_type: record_type as ProjectionRecord['record_type'],
-    record_bytes: JSON.stringify(payload),
-  };
+  const record = createLazyProjectionRecord(
+    Number(sequence),
+    record_type as ProjectionRecord['record_type'],
+    payload,
+  );
   isProjectionRecord(record);
   return record;
 }
@@ -55,11 +56,7 @@ export function normalizeRecentProjection(item: unknown): ProjectionRecord {
   const sequence = payload.sequence;
   delete payload.sequence;
   delete payload.record_type;
-  const record: ProjectionRecord = {
-    sequence: Number(sequence),
-    record_type: 'projection',
-    record_bytes: JSON.stringify(payload),
-  };
+  const record = createLazyProjectionRecord(Number(sequence), 'projection', payload);
   isProjectionRecord(record);
   return record;
 }

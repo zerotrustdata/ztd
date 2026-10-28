@@ -35,8 +35,10 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
@@ -132,6 +134,7 @@ type GatewayService struct {
 	auditLogger            AuditLogger
 	l2ConsensusDeliberator L2ConsensusDeliberator
 	embeddedSession        EmbeddedSessionResolver
+	httpClient             *http.Client
 
 	// Circuit breaker state
 	mu               sync.RWMutex
@@ -239,6 +242,7 @@ type Dependencies struct {
 	SessionValidator       SessionValidator
 	AuditLogger            AuditLogger
 	L2ConsensusDeliberator L2ConsensusDeliberator
+	HTTPClient             *http.Client
 }
 
 func NewGatewayService(deps Dependencies) (*GatewayService, error) {
@@ -289,6 +293,14 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		subprocessDownstream = NewSubprocessDownstream(deps.DownstreamCmd, deps.DownstreamArgs, deps.Logger)
 	}
 
+	httpClient := deps.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{
+			Transport: httpclient.NewIPv4Transport(nil),
+			Timeout:   httpclient.DefaultTimeout,
+		}
+	}
+
 	g := &GatewayService{
 		logger:                 deps.Logger,
 		responder:              deps.Responder,
@@ -320,8 +332,19 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 		auditLogger:            deps.AuditLogger,
 		l2ConsensusDeliberator: deps.L2ConsensusDeliberator,
 		embeddedSession:        deps.EmbeddedSession,
+		httpClient:             httpClient,
 	}
 	return g, nil
+}
+
+func (g *GatewayService) getHTTPClient() *http.Client {
+	if g.httpClient != nil {
+		return g.httpClient
+	}
+	return &http.Client{
+		Transport: httpclient.NewIPv4Transport(nil),
+		Timeout:   httpclient.DefaultTimeout,
+	}
 }
 
 // runMaintenanceSweep performs a single maintenance sweep to audit and delete expired transactions.
@@ -522,7 +545,7 @@ func (g *GatewayService) handleA2ARequest(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate JSON-RPC 2.0
-	if req.JSONRPC != "2.0" {
+	if req.JSONRPC != constants.JSONRPCVersion {
 		g.writeDispatchError(w, req.ID, g.rpcRefusal(-32600, fmt.Errorf("a2a request: %w", constants.ErrJSONRPCVersionInvalid)))
 		return
 	}
@@ -869,7 +892,7 @@ func (g *GatewayService) ExecuteResourceRead(ctx context.Context, uri string) (s
 	if uri == "" {
 		return "", constants.ErrGatewayURIRequired
 	}
-	raw, err := g.proxyMCPMethod(ctx, "resources/read", map[string]string{"uri": uri})
+	raw, err := g.proxyMCPMethod(ctx, "resources/read", ReadResourceRequest{URI: uri})
 	if err != nil {
 		return "", err
 	}
@@ -881,7 +904,7 @@ func (g *GatewayService) ExecutePromptGet(ctx context.Context, name string) (str
 	if name == "" {
 		return "", constants.ErrGatewayNameRequired
 	}
-	raw, err := g.proxyMCPMethod(ctx, "prompts/get", map[string]string{"name": name})
+	raw, err := g.proxyMCPMethod(ctx, "prompts/get", GetPromptRequest{Name: name})
 	if err != nil {
 		return "", err
 	}
@@ -920,7 +943,7 @@ func marshalMCPCatalog(res interface{}) (string, error) {
 func mcpResultSummary(raw json.RawMessage) string {
 	summary := strings.TrimSpace(string(raw))
 	if summary == "" || summary == "null" {
-		return "completed"
+		return string(constants.ExecutionStatusCompleted)
 	}
 	if len(summary) > constants.ReceiptSummaryMaxBytes {
 		return summary[:constants.ReceiptSummaryMaxBytes]
@@ -1001,9 +1024,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 			env.OperatorSessionId = opSessionID
 		}
 	}
-	if userID, ok := ctx.Value(constants.ContextKeyUserID).(string); ok && userID != "" {
-		env.RequestorUserId = userID
-	}
+	env.RequestorUserId = serviceauth.RequestorUserID(ctx)
 
 	hash, err = govpkg.GenerateMessageID(env)
 	if err != nil {
@@ -1146,7 +1167,7 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 // suspendGovernedCall stores a call that awaits L3 approval and returns the typed
 // suspension shared by MCP tools/call and A2A a2a/call.
 func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Request, hash string, envelopeBytes []byte, targetResource string, arguments json.RawMessage) (*GovernedSuspension, error) {
-	userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	userID := serviceauth.RequestorUserID(r.Context())
 	operatorID, _ := r.Context().Value(constants.ContextKeyAppID).(string)
 	certFingerprint := extractCertFingerprint(r)
 
@@ -1548,7 +1569,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 		resultRaw = raw
 	} else {
 		mcpReq := &response.JSONRPCRequest{
-			JSONRPC: "2.0",
+			JSONRPC: constants.JSONRPCVersion,
 			Method:  "tools/call",
 			Params:  mcpParams,
 			ID:      1,
@@ -1559,8 +1580,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 			return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 		}
 
-		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Post(g.downstreamURL, "application/json", strings.NewReader(string(reqBody)))
+		resp, err := g.getHTTPClient().Post(g.downstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 		if err != nil {
 			g.recordFailure()
 			return "", fmt.Errorf("gateway: %w", constants.ErrGatewayDownstreamUnavailable)
@@ -1610,7 +1630,7 @@ func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName stri
 
 	resultSummary := summary.String()
 	if resultSummary == "" {
-		resultSummary = "completed"
+		resultSummary = string(constants.ExecutionStatusCompleted)
 	}
 
 	// Scrub downstream MCP output before it leaves this layer. There is no unscrubbed
@@ -1670,8 +1690,7 @@ func (g *GatewayService) DispatchToA2ADownstream(ctx context.Context, skillName 
 		return "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(g.a2aDownstreamURL, "application/json", strings.NewReader(string(reqBody)))
+	resp, err := g.getHTTPClient().Post(g.a2aDownstreamURL, constants.HeaderValueApplicationJSON, strings.NewReader(string(reqBody)))
 	if err != nil {
 		g.recordFailure()
 		return "", fmt.Errorf("gateway: %w", constants.ErrGatewayDownstreamUnavailable)
@@ -1713,5 +1732,5 @@ func (g *GatewayService) DispatchToA2ADownstream(ctx context.Context, skillName 
 		return a2aResp.Result, nil
 	}
 
-	return "completed", nil
+	return string(constants.ToolCallStatusCompleted), nil
 }

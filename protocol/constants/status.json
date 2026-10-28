@@ -194,6 +194,13 @@
         "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
       },
+      "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS": {
+        "_bootstrap": true,
+        "_go_const": "ActionTypePlatformEnrollmentUnbindConsensus",
+        "_mutation": true,
+        "_state_change": true,
+        "value": "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS"
+      },
       "PORT_CHECK": {
         "_go_const": "ActionTypePortCheck",
         "value": "PORT_CHECK"

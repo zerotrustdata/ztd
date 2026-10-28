@@ -113,13 +113,8 @@ func (s *dbUserStore) GetUser(ctx context.Context, userID string) (*models.User,
 		return nil, nil
 	}
 
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal doc data: %w", err)
-	}
-
 	var user models.User
-	if err := json.Unmarshal(data, &user); err != nil {
+	if err := doc.DecodeData(&user); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
 	}
 	user.ID = doc.ID
@@ -194,11 +189,7 @@ func (s *dbWebAuthnCeremonyStore) GetCeremony(ctx context.Context, userID string
 	}
 
 	var session webauthn.SessionData
-	b, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(b, &session); err != nil {
+	if err := doc.DecodeData(&session); err != nil {
 		return nil, err
 	}
 
@@ -366,13 +357,6 @@ func (h *PasskeyHandler) MaxPayloadBytes() int64 {
 	return h.maxPayload
 }
 
-// ChallengeData stores a pending challenge for registration or authentication.
-type ChallengeData struct {
-	Challenge string `json:"challenge"`
-	CreatedAt int64  `json:"created_at"`
-	Purpose   string `json:"purpose"` // "register" or "auth"
-}
-
 // GenerateRegistrationChallenge creates a registration challenge for a user.
 func (s *PasskeyService) GenerateRegistrationChallenge(ctx context.Context, userID, userName string) (*protocol.CredentialCreation, error) {
 	user, err := s.getUser(ctx, userID)
@@ -397,8 +381,8 @@ func (s *PasskeyService) GenerateRegistrationChallenge(ctx context.Context, user
 }
 
 // VerifyRegistration verifies a registration response.
-// It accepts the raw JSON of the WebAuthn response.
-func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, responseJSON []byte) (*models.PasskeyCredential, error) {
+// It accepts the flat WebAuthn attestation response.
+func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, att *models.WebAuthnAttestationResponse) (*models.PasskeyCredential, error) {
 	user, err := s.getUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -412,14 +396,13 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 		return nil, err
 	}
 
-	// The flat WebAuthnAttestationResponse JSON must be re-serialized into the
-	// nested CredentialCreationResponse format expected by go-webauthn:
-	//   {"id":"...","type":"public-key","rawId":"...","response":{"clientDataJSON":"...","attestationObject":"...","transports":[...]}}
-	var att models.WebAuthnAttestationResponse
-	if err := json.Unmarshal(responseJSON, &att); err != nil {
-		return nil, fmt.Errorf("failed to parse attestation response: %w", err)
+	if att == nil {
+		return nil, fmt.Errorf("failed to parse attestation response: %w", constants.ErrMissingRequiredField)
 	}
 
+	// The flat WebAuthnAttestationResponse must be re-serialized into the
+	// nested CredentialCreationResponse format expected by go-webauthn:
+	//   {"id":"...","type":"public-key","rawId":"...","response":{"clientDataJSON":"...","attestationObject":"...","transports":[...]}}
 	creationResponse := struct {
 		ID       string                             `json:"id"`
 		Type     string                             `json:"type"`
@@ -429,7 +412,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 		ID:       att.ID,
 		Type:     "public-key",
 		RawID:    att.RawID,
-		Response: att,
+		Response: *att,
 	}
 
 	nestedJSON, err := json.Marshal(creationResponse)
@@ -441,7 +424,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, userID string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
 	credential, err := s.webauthn.FinishRegistration(user, *session, r)
 	if err != nil {

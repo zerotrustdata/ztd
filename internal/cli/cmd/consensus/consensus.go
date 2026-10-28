@@ -59,11 +59,12 @@ func cmdWithConfig(
 
   status    Show the bound consensus, signer readiness, and posture.
   enroll    Bind an enrolled application or the Tribunal panel as the consensus (see ztd consensus enroll --help).
+  unbind    Clear the bound consensus through governance.
 
 Enroll each member with ztd auth enroll app <name> --signing-key before binding it; include every member,
 including the primary app, with --member-app.`,
 	}
-	cmd.AddCommand(statusCmd(newClient), enrollCmd(newClient))
+	cmd.AddCommand(statusCmd(newClient), enrollCmd(newClient), unbindCmd(newClient))
 	return cmd
 }
 

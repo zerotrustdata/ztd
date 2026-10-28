@@ -26,13 +26,13 @@ import (
 
 func TestTransportError_ClassifiesNetworkTimeoutAndPreservesCause(t *testing.T) {
 	cause := &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
-	err := transportError(t.Context(), "generate", cause)
+	err := transportError(t.Context(), "ollama_backend", "generate", cause)
 	require.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
 	require.ErrorIs(t, err, cause)
 	require.NotErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
 
 	deadlineErr := fmt.Errorf("provider request: %w", context.DeadlineExceeded)
-	err = transportError(t.Context(), "generate", deadlineErr)
+	err = transportError(t.Context(), "ollama_backend", "generate", deadlineErr)
 	require.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
 	assert.ErrorIs(t, err, deadlineErr)
 }

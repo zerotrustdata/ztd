@@ -27,7 +27,7 @@ func TestGatewayService_LocalEnvelopeExecutionTarget(t *testing.T) {
 		t.Run(string(action), func(t *testing.T) {
 			g := newTestGatewayService(t)
 			ctx := context.WithValue(context.Background(), constants.ContextKeyAppID, "calling-app")
-			ctx = context.WithValue(ctx, constants.ContextKeyUserID, "requesting-user")
+			ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, "requesting-user")
 			ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, "foreign-operator")
 			ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, "foreign-session")
 			eventType, err := constants.RequestEventForAction(action)

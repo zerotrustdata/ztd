@@ -52,9 +52,13 @@ const (
 // user (macOS asks before a rebuilt or upgraded ztd binary reads its Keychain
 // item). The keystore then logs KeyStoreAwaitingApprovalLog, and a background
 // gw start that finds it in the child's log keeps waiting up to
-// KeyStoreApprovalTimeout instead of failing the health check.
+// KeyStoreApprovalTimeout in addition to its normal startup budget.
 const (
 	KeyStoreApprovalNoticeDelay = 2 * time.Second
 	KeyStoreApprovalTimeout     = 5 * time.Minute
 	KeyStoreAwaitingApprovalLog = "[Keystore] Waiting for approval to read the master key from the OS key store"
 )
+
+// PublicMirrorVerificationTimeout bounds verification before public content
+// can be served. Managed starts allow this budget in addition to health polling.
+const PublicMirrorVerificationTimeout = 5 * time.Minute

@@ -260,6 +260,7 @@ definitions:
     - PLATFORM_ENROLLMENT_ISSUE
     - PLATFORM_ENROLLMENT_PERSIST_POLICY
     - PLATFORM_ENROLLMENT_REVOKE
+    - PLATFORM_ENROLLMENT_UNBIND_CONSENSUS
     - PORT_CHECK
     - PROVIDER_BOUNDARY_OBSERVATION
     - RESTORE_FILE
@@ -299,6 +300,7 @@ definitions:
     - ActionTypePlatformEnrollmentIssue
     - ActionTypePlatformEnrollmentPersistPolicy
     - ActionTypePlatformEnrollmentRevoke
+    - ActionTypePlatformEnrollmentUnbindConsensus
     - ActionTypePortCheck
     - ActionTypeProviderBoundaryObservation
     - ActionTypeRestoreFile
@@ -514,6 +516,7 @@ definitions:
     - ztd.v1.platform.enrollment.issue.requested
     - ztd.v1.platform.enrollment.persist_policy.requested
     - ztd.v1.platform.enrollment.revoke.requested
+    - ztd.v1.platform.enrollment.unbind_consensus.requested
     - ztd.v1.platform.external.service.configured
     - ztd.v1.platform.notification.sent
     - ztd.v1.platform.sse.connection.closed
@@ -743,6 +746,7 @@ definitions:
     - EventPlatformEnrollmentIssueRequested
     - EventPlatformEnrollmentPersistPolicyRequested
     - EventPlatformEnrollmentRevokeRequested
+    - EventPlatformEnrollmentUnbindConsensusRequested
     - EventPlatformExternalServiceConfigured
     - EventPlatformNotification
     - EventPlatformSseConnectionClosed
@@ -1050,6 +1054,28 @@ definitions:
         items:
           $ref: '#/definitions/models.ConsensusVoteRecord'
         type: array
+    type: object
+  models.DocFilter:
+    properties:
+      field:
+        type: string
+      op:
+        type: string
+      value:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.DocQueryRequest:
+    properties:
+      filters:
+        items:
+          $ref: '#/definitions/models.DocFilter'
+        type: array
+      limit:
+        type: integer
+      order_by:
+        type: string
     type: object
   models.DownloadArtifact:
     properties:
@@ -1642,6 +1668,27 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.OperatorL2Trust:
+    properties:
+      binding_version:
+        type: integer
+      consensus_set_id:
+        type: string
+      enabled:
+        type: boolean
+      member_key_ids:
+        items:
+          type: string
+        type: array
+      quorum:
+        type: integer
+      require_distinct:
+        type: boolean
+      signers:
+        items:
+          $ref: '#/definitions/models.OperatorSigner'
+        type: array
+    type: object
   models.OperatorSessionValidationRequest:
     properties:
       cli_session_id:
@@ -1653,12 +1700,21 @@ definitions:
     type: object
   models.OperatorSessionValidationResponse:
     properties:
+      l2_trust:
+        $ref: '#/definitions/models.OperatorL2Trust'
       operator_id:
         type: string
       user_id:
         type: string
       valid:
         type: boolean
+    type: object
+  models.OperatorSigner:
+    properties:
+      key_id:
+        type: string
+      public_key_hex:
+        type: string
     type: object
   models.OverviewCounters:
     properties:
@@ -1810,6 +1866,8 @@ definitions:
     properties:
       app:
         type: string
+      auditor_key:
+        type: string
       cli:
         type: string
       operator:
@@ -1861,6 +1919,12 @@ definitions:
       actuator_public_key:
         description: ActuatorPublicKey is the hex Ed25519 public key of this Operator's
           L5 Actuator.
+        type: string
+      auditor_key_id:
+        type: string
+      auditor_public_key:
+        description: AuditorPublicKey is the hex Ed25519 public key of this Operator's
+          Auditor.
         type: string
       capabilities:
         items:
@@ -2616,6 +2680,12 @@ definitions:
         $ref: '#/definitions/operatorv1.InferenceResult'
       receipt:
         $ref: '#/definitions/operatorv1.EventReceipt'
+      request_envelope:
+        allOf:
+        - $ref: '#/definitions/commonv1.GovernanceEnvelope'
+        description: |-
+          Original admitted intent. Its canonical hash is covered by receipt, allowing
+          offline consumers to bind the signed outcome to the exact request payload.
       result_payload:
         description: |-
           result_payload is the proto-marshaled terminal operator result for event_type
@@ -2725,6 +2795,8 @@ definitions:
     - 45
     - 46
     - 47
+    - 48
+    - 49
     format: int32
     type: integer
     x-enum-varnames:
@@ -2776,6 +2848,8 @@ definitions:
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED
   operatorv1.InferenceDispatchRequest:
     properties:
       acting_app_id:
@@ -3274,6 +3348,7 @@ definitions:
     - 23
     - 24
     - 25
+    - 26
     format: int32
     type: integer
     x-enum-varnames:
@@ -3303,6 +3378,7 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:
@@ -4519,6 +4595,74 @@ paths:
       summary: Get current web session
       tags:
       - auth
+  /api/v1/data/{collection}/_query:
+    post:
+      consumes:
+      - application/json
+      description: Requires mTLS. POST accepts read-only query parameters and never
+        creates, updates, or deletes documents.
+      parameters:
+      - description: Collection name
+        in: path
+        name: collection
+        required: true
+        type: string
+      - description: Read-only query
+        in: body
+        name: query
+        schema:
+          $ref: '#/definitions/models.DocQueryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "400":
+          description: Invalid query
+          schema:
+            type: object
+      summary: Query documents
+      tags:
+      - data
+  /api/v1/data/{collection}/{id}:
+    get:
+      description: Requires mTLS. Direct document writes return 405 for every collection
+        and identity, including platform authority collections. Application record
+        mutations require governed actions; platform authority changes use their owning
+        enrollment and management workflows.
+      parameters:
+      - description: Collection name
+        in: path
+        name: collection
+        required: true
+        type: string
+      - description: Document ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Document not found
+          schema:
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: object
+      summary: Read a document
+      tags:
+      - data
   /api/v1/data/blobs/{namespace}/{id}:
     get:
       description: Retrieves a blob from the data store
@@ -4530,6 +4674,28 @@ paths:
           schema:
             type: file
       summary: Get blob
+      tags:
+      - data
+  /api/v1/data/settings:
+    get:
+      description: Requires mTLS. This endpoint is read-only; direct settings writes
+        return 405 in every posture.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Settings not found
+          schema:
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: object
+      summary: Read platform settings
       tags:
       - data
   /api/v1/gateway/reputation/sign:
@@ -5235,8 +5401,9 @@ paths:
       consumes:
       - application/json
       description: Validates the exact active operator-session, CLI-session, and user
-        binding. The Gateway is authoritative; callers authenticate with an enrolled
-        application mTLS certificate.
+        binding, or the certificate-bound session of an outbound Operator. Successful
+        responses include the current L2 trust snapshot. Callers authenticate with
+        an enrolled mTLS certificate.
       parameters:
       - description: Operator, CLI, and user session binding
         in: body

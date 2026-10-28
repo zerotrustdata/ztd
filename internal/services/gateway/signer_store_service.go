@@ -69,14 +69,9 @@ func (s *SignerStoreService) GetTrustedSigner(ctx context.Context, keyID string)
 		return nil, nil
 	}
 
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreMarshalDocument, err)
-	}
-
 	var signer models.TrustedSigner
-	if err := json.Unmarshal(data, &signer); err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+	if err := doc.DecodeData(&signer); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 
 	if !signer.Enabled {
@@ -85,7 +80,7 @@ func (s *SignerStoreService) GetTrustedSigner(ctx context.Context, keyID string)
 
 	pubBytes, err := hex.DecodeString(signer.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrValidationFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrValidationFailed, err)
 	}
 
 	if len(pubBytes) != ed25519.PublicKeySize {
@@ -110,7 +105,7 @@ func (s *SignerStoreService) AddTrustedSigner(ctx context.Context, signer models
 
 	data, err := json.Marshal(signer)
 	if err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrDocumentStoreMarshalDocument, err)
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
 	}
 
 	return s.docSvc.DocSet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), signer.ID, data)
@@ -120,18 +115,13 @@ func (s *SignerStoreService) AddTrustedSigner(ctx context.Context, signer models
 func (s *SignerStoreService) ListTrustedSigners(ctx context.Context) ([]models.TrustedSigner, error) {
 	docs, err := s.docSvc.DocQuery(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), nil, "id", 0)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 
 	results := make([]models.TrustedSigner, 0, len(docs))
 	for _, doc := range docs {
-		data, err := json.Marshal(doc.Data)
-		if err != nil {
-			s.logger.Warn("failed to marshal signer document", "error", err)
-			continue
-		}
 		var signer models.TrustedSigner
-		if err := json.Unmarshal(data, &signer); err != nil {
+		if err := doc.DecodeData(&signer); err != nil {
 			s.logger.Warn("failed to unmarshal signer document", "error", err)
 			continue
 		}
@@ -154,7 +144,7 @@ func (s *SignerStoreService) HasTrustedSigners(ctx context.Context) (bool, error
 	}
 	docs, err := s.docSvc.DocQuery(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), filters, "", 1)
 	if err != nil {
-		return false, fmt.Errorf("%w: %v", constants.ErrDocumentStoreUnmarshalData, err)
+		return false, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalData, err)
 	}
 	return len(docs) > 0, nil
 }
@@ -172,6 +162,22 @@ func (s *SignerStoreService) ReceiptSignerKey(ctx context.Context, operatorID st
 	if receipt.GetSignerKeyId() != boundKeyID {
 		return nil, fmt.Errorf("signer store: receipt signer key: %w: signer %q, bound %q",
 			constants.ErrReceiptSignerNotBound, receipt.GetSignerKeyId(), boundKeyID)
+	}
+	return boundPub, nil
+}
+
+// GetOperatorAuditorSigner resolves an Auditor key bound to the named
+// Operator. Auditor key IDs are matched against the bound lowercase hex public
+// key; the requested key ID is never decoded into a trusted key. It is distinct
+// from receipt signer resolution, which accepts only the L5 Actuator key.
+func (s *SignerStoreService) GetOperatorAuditorSigner(ctx context.Context, operatorID, keyID string) (ed25519.PublicKey, error) {
+	boundPub, boundKeyID, err := s.boundAuditorKey(ctx, operatorID)
+	if err != nil {
+		return nil, fmt.Errorf("signer store: operator auditor signer: %w", err)
+	}
+	if keyID != boundKeyID {
+		return nil, fmt.Errorf("signer store: operator auditor signer: %w: signer %q, bound %q",
+			constants.ErrTrustedSignerKeyNotFound, keyID, boundKeyID)
 	}
 	return boundPub, nil
 }
@@ -208,4 +214,29 @@ func (s *SignerStoreService) boundActuatorKey(ctx context.Context, operatorID st
 		return nil, "", fmt.Errorf("operator %s: %w: key id does not match bound key", operatorID, constants.ErrReceiptSignerNotBound)
 	}
 	return pub, operatorDoc.GetActuatorKeyId(), nil
+}
+
+func (s *SignerStoreService) boundAuditorKey(ctx context.Context, operatorID string) (ed25519.PublicKey, string, error) {
+	doc, err := s.docSvc.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), operatorID)
+	if err != nil {
+		return nil, "", fmt.Errorf("load operator %s: %w", operatorID, err)
+	}
+	if doc == nil {
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrTrustedSignerKeyNotFound)
+	}
+	operatorDoc, err := models.OperatorDocumentFromStore(doc)
+	if err != nil {
+		return nil, "", fmt.Errorf("decode operator %s: %w", operatorID, err)
+	}
+	if operatorDoc.GetAuditorPublicKey() == "" || operatorDoc.GetAuditorKeyId() == "" {
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrTrustedSignerKeyNotFound)
+	}
+	pub, err := models.DecodeAuditorPublicKey(operatorDoc.GetAuditorPublicKey())
+	if err != nil {
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, err)
+	}
+	if hex.EncodeToString(pub) != operatorDoc.GetAuditorKeyId() {
+		return nil, "", fmt.Errorf("operator %s: %w: key id does not match bound key", operatorID, constants.ErrTrustedSignerKeyNotFound)
+	}
+	return pub, operatorDoc.GetAuditorKeyId(), nil
 }

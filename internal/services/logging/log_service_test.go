@@ -111,6 +111,12 @@ func (s *stubFileSvc) EnforceDirPermissions(ctx context.Context, relPath string,
 func (s *stubFileSvc) EnforceFilePermissions(ctx context.Context, relPath string, mode os.FileMode) error {
 	panic("unexpected")
 }
+func (s *stubFileSvc) CreateOrRestrictFile(context.Context, string, os.FileMode) error {
+	panic("unexpected")
+}
+func (s *stubFileSvc) RestrictFileIfExists(context.Context, string, os.FileMode) (bool, error) {
+	panic("unexpected")
+}
 func (s *stubFileSvc) Resolve(relPath string) string {
 	if s.resolvePath != "" {
 		return s.resolvePath

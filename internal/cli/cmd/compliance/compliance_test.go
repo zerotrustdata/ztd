@@ -10,6 +10,7 @@ package compliancecmd
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -38,6 +39,9 @@ func seedKSIRuntimeVault(t *testing.T, fileSvc fs.RuntimeFileService) keystore.O
 	ks, err := keystore.Open(fileSvc, testutil.NewTestLogger(), opts)
 	require.NoError(t, err)
 	require.NoError(t, ks.InitVault())
+	for _, name := range []string{constants.SecretsFileActuatorSigningKey, constants.SecretsFileAuditorSigningKey} {
+		require.NoError(t, ks.EncryptSecret(name, hex.EncodeToString(make([]byte, 32))))
+	}
 	return opts
 }
 
@@ -659,6 +663,9 @@ func TestOpenVault_Scenarios(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, ks.Initialize())
 		require.NoError(t, ks.InitVault())
+		for _, name := range []string{constants.SecretsFileActuatorSigningKey, constants.SecretsFileAuditorSigningKey} {
+			require.NoError(t, ks.EncryptSecret(name, hex.EncodeToString(make([]byte, 32))))
+		}
 
 		v, cleanup, err := openVault(ks)
 		require.NoError(t, err)
@@ -674,6 +681,9 @@ func TestOpenVault_Scenarios(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, ks.Initialize())
 		require.NoError(t, ks.InitVault())
+		for _, name := range []string{constants.SecretsFileActuatorSigningKey, constants.SecretsFileAuditorSigningKey} {
+			require.NoError(t, ks.EncryptSecret(name, hex.EncodeToString(make([]byte, 32))))
+		}
 
 		wrongKey := make([]byte, vault.KeySize)
 		wrongKey[0] = 0xff
@@ -730,6 +740,9 @@ func TestEvaluateKSIs_NilContextHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
+	for _, name := range []string{constants.SecretsFileActuatorSigningKey, constants.SecretsFileAuditorSigningKey} {
+		require.NoError(t, ks.EncryptSecret(name, hex.EncodeToString(make([]byte, 32))))
+	}
 
 	catPath := writeTestKSICatalog(t, fileSvc)
 	cat, err := compliance.LoadKSICatalog(catPath)
@@ -768,6 +781,9 @@ func TestOpenEvaluatorDeps_DatabaseError(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
 	require.NoError(t, ks.InitVault())
+	for _, name := range []string{constants.SecretsFileActuatorSigningKey, constants.SecretsFileAuditorSigningKey} {
+		require.NoError(t, ks.EncryptSecret(name, hex.EncodeToString(make([]byte, 32))))
+	}
 
 	deps, cleanup, err := openEvaluatorDeps(fileSvc, ks)
 	require.ErrorIs(t, err, constants.ErrReportStoreUnavailable)

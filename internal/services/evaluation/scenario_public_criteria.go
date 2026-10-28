@@ -10,6 +10,7 @@ package evaluation
 import (
 	"fmt"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -46,6 +47,10 @@ var (
 	publicToolAllowlistText = publicCriterionText{
 		Label:       "Declared tools",
 		Description: "Every tool call is checked against the scenario's declared tool set.",
+	}
+	publicJudgedContentText = publicCriterionText{
+		Label:       "Judged answer requirement",
+		Description: "The campaign's pinned judge model decides whether the answer meets one stated requirement for this scenario.",
 	}
 	publicSemanticJudgeText = publicCriterionText{
 		Label:       "Judged answer quality",
@@ -146,6 +151,21 @@ func publicCriteriaForBlueprint(blueprint ScenarioBlueprint) ([]*evalv1.PublicSc
 	if len(blueprint.AllowedTools) > 0 {
 		criteria = append(criteria, publicCriterion(publicCriterionToolAllowlist, publicToolAllowlistText, gradingDeterministic))
 	}
+	if len(blueprint.Gold.FileState) > 0 {
+		criteria = append(criteria, publicCriterion("file-state", publicCriterionText{
+			Label: "Final file state", Description: "Signed native-tool observations from the Data Operator are checked against the file objective and preservation constraints.",
+		}, gradingDeterministic))
+	}
+	if blueprint.Gold.GovernedProbe != nil {
+		criteria = append(criteria, publicCriterion("governed-probe", publicCriterionText{
+			Label: "Verification probe", Description: "The declared verification command must complete successfully on the Data Operator through governed native dispatch.",
+		}, gradingDeterministic))
+	}
+	if blueprint.Gold.ContentCheck != nil {
+		for _, judgedCriterion := range blueprint.Gold.ContentCheck.JudgedCriteria {
+			criteria = append(criteria, publicCriterion(contentCriterionID(judgedCriterion.ID), publicJudgedContentText, gradingSemanticJudge))
+		}
+	}
 	if judged {
 		criteria = append(criteria, publicCriterion(publicCriterionSemanticJudge, publicSemanticJudgeText, gradingSemanticJudge))
 	}
@@ -216,18 +236,18 @@ var publicToolScoreDimensionOrder = []evalv1.PublicToolScoreDimension{
 // unspecified or repeated tool dimension.
 func validatePublicScenarioCriteria(scenario *evalv1.EvaluationScenarioDefinition) error {
 	if len(scenario.GetPublicCriteria()) == 0 {
-		return fmt.Errorf("scenario %s has no public criteria", scenario.GetScenarioId())
+		return fmt.Errorf("scenario %s: %w: no public criteria", scenario.GetScenarioId(), constants.ErrEvaluationScenarioContractInvalid)
 	}
 	seen := make(map[string]struct{}, len(scenario.GetPublicCriteria()))
 	for _, criterion := range scenario.GetPublicCriteria() {
 		if criterion.GetCriterionId() == "" || criterion.GetPublicLabel() == "" || criterion.GetPublicDescription() == "" {
-			return fmt.Errorf("scenario %s has a public criterion missing its id, label, or description", scenario.GetScenarioId())
+			return fmt.Errorf("scenario %s: %w: public criterion missing its id, label, or description", scenario.GetScenarioId(), constants.ErrEvaluationScenarioContractInvalid)
 		}
 		if criterion.GetGradingMethod() == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_UNSPECIFIED {
-			return fmt.Errorf("scenario %s public criterion %s has an unspecified grading method", scenario.GetScenarioId(), criterion.GetCriterionId())
+			return fmt.Errorf("scenario %s: %w: public criterion %s has an unspecified grading method", scenario.GetScenarioId(), constants.ErrEvaluationScenarioContractInvalid, criterion.GetCriterionId())
 		}
 		if _, dup := seen[criterion.GetCriterionId()]; dup {
-			return fmt.Errorf("scenario %s repeats public criterion %s", scenario.GetScenarioId(), criterion.GetCriterionId())
+			return fmt.Errorf("scenario %s: %w: repeats public criterion %s", scenario.GetScenarioId(), constants.ErrEvaluationScenarioContractInvalid, criterion.GetCriterionId())
 		}
 		seen[criterion.GetCriterionId()] = struct{}{}
 	}
@@ -235,10 +255,10 @@ func validatePublicScenarioCriteria(scenario *evalv1.EvaluationScenarioDefinitio
 	for _, requirement := range scenario.GetPublicToolScoreDimensions() {
 		dimension := requirement.GetDimension()
 		if dimension == evalv1.PublicToolScoreDimension_PUBLIC_TOOL_SCORE_DIMENSION_UNSPECIFIED {
-			return fmt.Errorf("scenario %s has an unspecified public tool score dimension", scenario.GetScenarioId())
+			return fmt.Errorf("scenario %s: %w: unspecified public tool score dimension", scenario.GetScenarioId(), constants.ErrEvaluationScenarioContractInvalid)
 		}
 		if _, dup := dimensions[dimension]; dup {
-			return fmt.Errorf("scenario %s repeats public tool score dimension %s", scenario.GetScenarioId(), dimension)
+			return fmt.Errorf("scenario %s: %w: repeats public tool score dimension %s", scenario.GetScenarioId(), constants.ErrEvaluationScenarioContractInvalid, dimension)
 		}
 		dimensions[dimension] = struct{}{}
 	}

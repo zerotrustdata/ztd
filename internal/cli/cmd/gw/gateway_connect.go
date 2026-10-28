@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
@@ -28,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 )
 
 // connectDeps holds the injectable external boundaries for the gw connect
@@ -78,6 +80,7 @@ type connectDeps struct {
 // and continueFn defaults are auto-confirm/auto-continue; the interactive
 // command layer overrides them with stdin-reading implementations.
 func defaultConnectDeps() connectDeps {
+	logger, _ := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
 	return connectDeps{
 		discoveryFetcher: auth.DiscoverLiveTrustBundle,
 		verifier:         frontendverify.NewVerifier(frontendverify.VerifierDeps{}),
@@ -85,7 +88,7 @@ func defaultConnectDeps() connectDeps {
 		confirm:          func(string) bool { return true },
 		continueFn:       func(string) bool { return true },
 		now:              time.Now,
-		logger:           slog.Default(),
+		logger:           logger,
 	}
 }
 
@@ -185,7 +188,7 @@ func runGatewayConnect(
 		deps.now = time.Now
 	}
 	if deps.logger == nil {
-		deps.logger = slog.Default()
+		deps.logger, _ = logging.NewLogger(constants.LogLevelInfo, os.Stderr)
 	}
 
 	// 1. Parse and validate the frontend origin.
@@ -212,7 +215,7 @@ func runGatewayConnect(
 		return fmt.Errorf("gateway: load config: %w", err)
 	}
 
-	fileSvc, err := fileSvcFactory("", slog.Default())
+	fileSvc, err := fileSvcFactory("", deps.logger)
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 	}
@@ -309,7 +312,10 @@ func connectStoppedGateway(
 	renderConnectReview(cmd, origin, rpID, rpName, apiURL, gatewayStateStopped)
 
 	// Detect network identity and resolve cert mode.
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("gateway connect: create logger: %w", err)
+	}
 	identityResult := detectIdentity(cmd.Context(), logger, connectCfg.CertIdentityMode)
 	if identityResult.ShouldFallback {
 		cmd.Println("Warning: Failed to detect network identity, falling back to localhost-only mode")
@@ -320,7 +326,7 @@ func connectStoppedGateway(
 
 	cmd.Println("[ztd] Starting ztd Gateway service...")
 	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg, Notices: cmd.ErrOrStderr()}
-	if err := pm.StartOperator(&startOpts); err != nil {
+	if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
 	}
 	connectCfg = startOpts.GatewayConfig
@@ -363,7 +369,10 @@ func connectRestartGateway(
 	connectCfg := deriveConnectConfig(origin, rpID, rpName, profile.Config)
 
 	// Re-run network identity detection with the profile's cert mode.
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("gateway connect: create logger: %w", err)
+	}
 	identityResult := detectIdentity(cmd.Context(), logger, connectCfg.CertIdentityMode)
 	if identityResult.ShouldFallback {
 		cmd.Println("Warning: Failed to detect network identity, falling back to localhost-only mode")
@@ -379,12 +388,12 @@ func connectRestartGateway(
 
 	cmd.Println("Starting ztd Gateway with updated configuration...")
 	startOpts := platform.OperatorStartOptions{GatewayConfig: connectCfg, Notices: cmd.ErrOrStderr()}
-	if err := pm.StartOperator(&startOpts); err != nil {
+	if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 		// Rollback: attempt to restore the previously validated profile.
 		cmd.Printf("Failed to start Gateway with new configuration: %v\n", err)
 		cmd.Println("Attempting rollback to the previous configuration...")
-		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
-		if rbErr := pm.StartOperator(&rollbackOpts); rbErr != nil {
+		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
+		if rbErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rbErr != nil {
 			return fmt.Errorf("%w: start failed: %w; rollback also failed: %w", constants.ErrProcessStartFailed, err, rbErr)
 		}
 		cmd.Println("Rollback successful. The previous configuration is active.")
@@ -397,8 +406,8 @@ func connectRestartGateway(
 		if stopErr := pm.StopOperator(); stopErr != nil {
 			return fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
 		}
-		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config}
-		if rollbackErr := pm.StartOperator(&rollbackOpts); rollbackErr != nil {
+		rollbackOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
+		if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 			return fmt.Errorf("%w: persist launch profile: %w; rollback: %w", constants.ErrInternal, err, rollbackErr)
 		}
 		return fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)
@@ -449,6 +458,14 @@ func connectTrustAndVerify(
 	// 3. Stale anchor detection and removal (separate consent).
 	if len(trustState.StaleAnchors) > 0 {
 		cmd.Printf("Found %d stale ztd root CA anchor(s) from previous Gateway instances.\n", len(trustState.StaleAnchors))
+		for i, anchor := range trustState.StaleAnchors {
+			if where := anchor.Where(); where != "" {
+				cmd.Printf("  %d. %s (%s)\n", i+1, anchor.CommonName, where)
+			}
+		}
+		if platform.StaleAnchorsNeedAdmin(trustState.StaleAnchors) {
+			cmd.Println("A System keychain anchor is machine-wide. Removing it runs sudo and affects every account on this Mac. A login keychain anchor is removed for your account only.")
+		}
 		cmd.Print("Remove stale anchors? [y/N]: ")
 		if !deps.confirm("") {
 			cmd.Println("Stale anchor removal declined. Proceeding with current trust state.")
@@ -467,7 +484,12 @@ func connectTrustAndVerify(
 		cmd.Println("System trust installation skipped (--no-system-trust).")
 		renderManualTrustInstructions(cmd, apiURL, discovery.Fingerprint)
 	} else if !trustState.Trusted {
-		cmd.Print("Install the ztd root CA into the OS trust store? [y/N]: ")
+		if runtime.GOOS == "darwin" {
+			cmd.Println("This adds the CA above to your login keychain as an HTTPS trust root, for your account only. It is not trusted for code signing, and it does not use sudo. Decline and pass --no-system-trust to skip.")
+			cmd.Print("Install the ztd root CA into your login keychain? [y/N]: ")
+		} else {
+			cmd.Print("Install the ztd root CA into the OS trust store? [y/N]: ")
+		}
 		if !deps.confirm("") {
 			renderManualTrustInstructions(cmd, apiURL, discovery.Fingerprint)
 			return fmt.Errorf("%w: %w: user declined OS trust installation for origin %s", constants.ErrManualBrowserTrustRequired, constants.ErrConfirmationAborted, origin.URL)

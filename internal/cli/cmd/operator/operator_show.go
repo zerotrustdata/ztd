@@ -260,6 +260,13 @@ func printOperatorShow(cmd *cobra.Command, op *operatorv1.OperatorDocument) {
 		if op.RuntimeConfig.InferenceOllamaEndpoint != "" {
 			cmd.Printf("  Ollama endpoint:   %s\n", op.RuntimeConfig.InferenceOllamaEndpoint)
 		}
+		if op.RuntimeConfig.InferenceLlamacppEndpoint != "" {
+			cmd.Printf("  llama.cpp endpoint: %s\n", op.RuntimeConfig.InferenceLlamacppEndpoint)
+			cmd.Printf("  llama.cpp models:   %s\n", op.RuntimeConfig.InferenceLlamacppModelRoot)
+		}
+		if op.RuntimeConfig.ProvenanceOperatorModelStorageRoot != "" {
+			cmd.Printf("  Model store:       %s (%s)\n", op.RuntimeConfig.ProvenanceOperatorModelStorageRoot, op.RuntimeConfig.ProvenanceOperatorModelStorageFormat)
+		}
 	}
 
 	if view == nil {

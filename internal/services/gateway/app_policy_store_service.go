@@ -9,7 +9,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -47,13 +46,8 @@ func (s *AppPolicyStoreService) GetAppPolicy(ctx context.Context, appID string) 
 		return nil, nil
 	}
 
-	data, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAppPolicyStoreMarshalFailed, err)
-	}
-
 	var policy models.AppPolicy
-	if err := json.Unmarshal(data, &policy); err != nil {
+	if err := doc.DecodeData(&policy); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrAppPolicyStoreUnmarshalFailed, err)
 	}
 

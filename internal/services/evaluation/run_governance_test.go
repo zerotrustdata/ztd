@@ -132,39 +132,3 @@ func TestValidateRunGovernance_RejectsARunThatFrozeNoBinding(t *testing.T) {
 	require.ErrorIs(t, ValidateRunGovernance(legacy, live), constants.ErrEvaluationRunGovernanceChanged)
 	assert.Equal(t, "consensus | consensus not frozen", DescribeRunGovernance(legacy))
 }
-
-func TestValidateFormationTribunal_RequiresTheAssistantSlotToBeTheBoundVoteModel(t *testing.T) {
-	variants := []*evalv1.ModelVariant{
-		{VariantId: "v-primary", ServedModelTag: "qwen3:8b", ModelDigest: repeatHex('a')},
-		{VariantId: "v-assistant", ServedModelTag: "sam860/LFM2:700m", ModelDigest: repeatHex('d')},
-		{VariantId: "v-other", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('e')},
-	}
-	stacks := func(assistant string) *HeterogeneousStackSet {
-		return &HeterogeneousStackSet{Stacks: []*evalv1.HeterogeneousStackDefinition{{
-			StackId:       "s1",
-			PrimarySlot:   &evalv1.RoleAssignment{VariantId: "v-primary"},
-			AssistantSlot: &evalv1.RoleAssignment{VariantId: assistant},
-		}}}
-	}
-	generative := testTribunalBinding()
-	generative.VoteKind = models.ConsensusVoteKindGenerative
-	governance, err := NewRunGovernance(consensusPosture, generative)
-	require.NoError(t, err)
-
-	require.NoError(t, governance.ValidateFormationTribunal(stacks("v-assistant"), variants))
-	require.ErrorIs(t, governance.ValidateFormationTribunal(stacks("v-other"), variants), constants.ErrEvaluationTribunalNotAssistant)
-	require.ErrorIs(t, governance.ValidateFormationTribunal(stacks("v-missing"), variants), constants.ErrFormationRegistryBinding)
-
-	decision, err := NewRunGovernance(consensusPosture, testTribunalBinding())
-	require.NoError(t, err)
-	require.ErrorIs(t, decision.ValidateFormationTribunal(stacks("v-assistant"), variants), constants.ErrEvaluationTribunalNotAssistant,
-		"decision votes run on a separate provider, never on the Assistant slot")
-
-	ratify, err := NewRunGovernance(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, generative)
-	require.NoError(t, err)
-	require.NoError(t, ratify.ValidateFormationTribunal(stacks("v-other"), variants), "unenforced L2 casts no gating vote")
-
-	unbound, err := NewRunGovernance(consensusPosture, nil)
-	require.NoError(t, err)
-	require.NoError(t, unbound.ValidateFormationTribunal(stacks("v-other"), variants))
-}

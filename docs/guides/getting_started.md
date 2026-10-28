@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -33,11 +33,14 @@ Both roles run from the static `ztd` binary, selected by the `gw` or `operator` 
 
 ## Quick Start
 
-ztd runs natively on the machine as a host binary. One command takes a clean machine to a running Gateway and a first governed action. On Linux or macOS:
+ztd runs natively on the machine as a host binary. On macOS, read the installer, then run it. It never calls sudo.
 
 ```bash
-curl -fsSL https://zerotrustdata.io/start.sh | sh
+curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+sh /tmp/ztd-start.sh
 ```
+
+The same script is the Linux path. `curl -fsSL https://zerotrustdata.io/start.sh | sh` is the one-liner after you have read it.
 
 On Windows, in PowerShell:
 
@@ -45,21 +48,32 @@ On Windows, in PowerShell:
 irm https://zerotrustdata.io/start.ps1 | iex
 ```
 
-`start.sh` installs the release binary into `~/ztd` after verifying its SHA-256 checksum, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. `start.ps1` does the same with `ztd.ps1`, installing `ztd.exe` into `~\ztd`; run the follow-up commands as `.\ztd.exe`. Neither uses sudo or Administrator, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from `~/ztd`. Both read these environment variables:
+`start.sh` installs the release binary into `~/ztd` on Linux, and into `~/Library/Application Support/ztd` on macOS, after the SHA-256 checksum matches, then runs the same four steps as [`make quickstart`](#what-make-quickstart-does) from that directory. When `cosign` is on `PATH` it also verifies the Sigstore bundle for that release tag. `ZTD_REQUIRE_SIGSTORE=1` refuses a checksum-only install. `start.ps1` does the same with `ztd.ps1`, installing `ztd.exe` into `~\ztd`; run the follow-up commands as `.\ztd.exe`. Neither uses sudo or Administrator, every step reuses existing state, and it shows the remedy when a step fails. Run the follow-up commands below from the install directory. Both read these environment variables:
 
 | Variable | Effect |
 | :--- | :--- |
-| `ZTD_DIR` | Install and runtime directory (default `~/ztd`). Runtime state lives in `$ZTD_DIR/.ztd/`. In PowerShell, set variables with `$env:ZTD_DIR='...'` before the command. |
+| `ZTD_DIR` | Install and runtime directory. Default `~/Library/Application Support/ztd` on macOS and `~/ztd` on Linux. When unset, `start.sh` refuses a directory that already has files and is not an existing ztd install. Finder metadata (`.DS_Store`) does not count. Runtime state lives in `$ZTD_DIR/.ztd/`. In PowerShell, set variables with `$env:ZTD_DIR='...'` before the command. |
 | `ZTD_VERSION` | Install this `X.Y.Z` release instead of the latest. |
 | `ZTD_OVERWRITE=1` | Replace an existing `$ZTD_DIR/ztd` (upgrade). A running Gateway keeps its version until `./ztd gw restart`. |
+| `ZTD_REQUIRE_SIGSTORE=1` | Refuse the install unless `cosign` verifies the Sigstore bundle. On macOS, `brew install cosign`. |
 
 To install only the binary into the current directory, use `curl -fsSL https://zerotrustdata.io/ztd.sh | sh` (or `irm https://zerotrustdata.io/ztd.ps1 | iex` in Windows PowerShell). Binaries, checksums, Sigstore bundles, and release notes for every version are at [zerotrustdata.io/releases](https://zerotrustdata.io/releases/).
 
-To build from source instead, three commands take a clean machine to the same state:
+To build from source instead, clone the repository, run the platform setup with `--build-only`, then `make quickstart`:
+
+On macOS:
 
 ```bash
 git clone https://github.com/zerotrustdata/ztd.git && cd ztd
-bash scripts/linux-setup.sh --build-only   # macOS: bash scripts/macos-setup.sh --build-only
+bash scripts/macos-setup.sh --build-only
+make quickstart
+```
+
+On Linux:
+
+```bash
+git clone https://github.com/zerotrustdata/ztd.git && cd ztd
+bash scripts/linux-setup.sh --build-only
 make quickstart
 ```
 
@@ -75,11 +89,11 @@ Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe
 
 ### What setup does
 
-The setup script checks Git, Make, curl, Go (the version `go.mod` requires), Node.js 22.22.2+, 24.15+, or 26+, and npm, offers to install anything missing (`-y` accepts every prompt), builds `./ztd`, creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. `make build` compiles and embeds the Console and Evaluation Explorer frontends, so both setup modes need Node.js and npm. Without `--build-only` the script also installs the contributor toolchain that `make ci` needs. Rerunning setup reuses everything already installed.
+`--build-only` checks Git, Make, curl, and Go (the version `go.mod` requires), then runs `make build-go`. That compiles `./ztd` from the committed console and evaluation explorer embeds and does not install Node.js. The full setup (no `--build-only`) also checks Node.js 22.22.2+, 24.15+, or 26+, and npm, because `make build` refreshes those embeds, and it installs the contributor toolchain that `make ci` needs. Either mode offers to install anything missing (`-y` accepts every prompt), creates `.env` from `.env.example` with mode `0600` (an existing `.env` is kept), and offers to add the checkout to your PATH. Rerunning setup reuses everything already installed.
 
 ### What `make quickstart` does
 
-1. Builds `./ztd` if it is absent.
+1. Builds `./ztd` with `make build-go` if it is absent. That uses the committed frontend embeds and does not need Node.js.
 2. Starts a Gateway on `https://localhost:8443` in the default `doctrine` posture with an embedded data Operator, or reuses the Gateway that is already running.
 3. Signs the CLI in as the Gateway owner with `./ztd login` (headless, no browser), or reuses the existing CLI identity.
 4. Runs `./ztd operator run --all-active --cmd 'echo hello from ztd'`: the Gateway admits the command, the Operator re-verifies and executes it, and both record signed evidence locally.
@@ -92,11 +106,13 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 | Use the browser console | `./ztd login web`, then open `https://localhost:8443/console/` |
 | Inspect the evidence for what ran | `./ztd gw data audit list --operator-session-id <id>` |
 | Govern an AI agent | `./ztd mcp agent run claude` |
-| Stop the platform (state in `.ztd/` is kept) | `make down` (`./ztd gw stop` in `~/ztd`) |
+| Stop the platform (state in `.ztd/` is kept) | `make down` (`./ztd gw stop` from the install directory) |
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
 **Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent is needed.
+
+**macOS first run, what to expect:** (1) The first Gateway start (and the first run after upgrading or rebuilding `ztd`) shows a Keychain prompt for the `ztd-platform` item. That dialog wants your **Mac login password**, not a ztd account. The item is the vault master key and it stays in the login keychain. Choose **Always Allow**. It needs a GUI session, so run the first start from a GUI terminal rather than SSH. `start.sh` and `make quickstart` print this before the Gateway start, so the dialog is not a silent hang. (2) `./ztd login web` prints the Gateway CA fingerprint and asks before it installs that CA into your **login keychain** as an HTTPS trust root, for your account only. It is not trusted for code signing. Other accounts on the Mac are unchanged, and this step does not use sudo. macOS may show its own confirmation. The CA private key stays in the local vault. Decline the prompt, or pass `--no-system-trust`, to skip it. A CA left in the System keychain by an older install is listed on its own; removing that one uses sudo, affects every account, and runs only after you agree. If trust installation fails, the error includes the `security` command output. A failed install (a cancelled confirmation, or an SSH session with no GUI to show it) leaves no copy of the CA in the keychain, so rerunning `./ztd login web` from a GUI terminal retries it. (3) The installer clears Gatekeeper quarantine (`com.apple.quarantine`) only after the checksum matches. A binary you downloaded in a browser yourself is still quarantined until you verify it and run `xattr -d com.apple.quarantine ./ztd` (or right-click → Open).
 
 **Linux without a desktop keyring:** The Gateway seals its vault key with an ssh-agent key when no Secret Service keyring is available. On SSH sessions, servers, WSL, and containers without a Secret Service keyring, start an ssh-agent with a key loaded before running `make quickstart` or `start.sh`: `eval "$(ssh-agent)" && ssh-add`. Run `ssh-keygen -t ed25519` first if the host has no key. Run the follow-up `./ztd` commands from the same shell, because the same agent key seals the CLI identity. Without a usable agent key, ztd fails closed. See [Encryption Architecture](../architecture/encryption.md#master-key-and-keyring-providers) for the key source order.
 
@@ -199,7 +215,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
-| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and frontend development; required by `make build` to compile embedded frontends |
+| Node.js and npm | 22.22.2+, 24.15+, or 26+ | Contributor toolchain and `make build`, which refreshes the embedded frontends. `make build-go` and `--build-only` use the committed embeds and do not need Node. |
 
 ---
 
@@ -248,7 +264,7 @@ The bootstrap endpoint does not verify signatures. For production use, verify a 
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.3.0`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for the tag you are installing. The examples below use `v1.5.0`; substitute that tag everywhere, including the certificate identity. A checksum match against a file from the same host is not a signature check.
 
 Run the checksum check on Linux:
 
@@ -270,12 +286,12 @@ $actual = (Get-FileHash -Algorithm SHA256 .\ztd-windows-amd64.exe).Hash
 if ($expected -ne $actual) { throw 'checksum mismatch: do not run this binary' }
 ```
 
-Then verify the signer identity with `cosign`:
+Then verify the signer identity with `cosign`. On macOS the binary name is `ztd-darwin-arm64` or `ztd-darwin-amd64`, and the bundle name matches:
 
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.3.0' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.5.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -449,6 +465,16 @@ ztd integrates with AI agent binaries to provide governed MCP tool access.
 ./ztd mcp agent run claude
 ./ztd mcp agent run goose
 ```
+
+`ztd mcp agent run goose` launches an interactive Goose session. A one-shot task is forwarded with `-t` (or `-i` / `--recipe`); the launcher starts `goose run` for those flags because `goose session` does not accept them. Goose can use a local Ollama model, with no provider account:
+
+```bash
+./ztd mcp agent run goose -- --provider ollama --model qwen2.5:0.5b -t "Call run_shell_command: command echo, args [\"hello\"]"
+```
+
+Ollama listens on `http://127.0.0.1:11434` unless `ZTD_OLLAMA_ENDPOINT` or `--provider` says otherwise. The first launch enrolls the `goose` application. Under `doctrine` and `consensus` the signed-in owner CLI approves that enrollment in-line. Under `ratify` and `notary` the launcher prints a passkey approval URL and waits.
+
+`make test-agent-smoke` is the same path as a non-interactive check: it builds `./ztd`, pulls `qwen2.5:0.5b` (override with `ZTD_SMOKE_MODEL`), runs one allowed `echo` and one L1-denied `rm -rf /`, and checks `ztd audit verify` plus `ztd report verify`. See [Automation Scripts](../architecture/scripts.md#smoke-and-onboarding-tests).
 
 ---
 

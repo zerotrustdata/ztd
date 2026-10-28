@@ -324,7 +324,7 @@ func operatorCreateRequest(t *testing.T, deploymentID string) models.PlatformEnr
 		Hostname:          "operator.local",
 		SystemFingerprint: "host-fingerprint",
 		DeploymentID:      deploymentID,
-		Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: testActuatorPublicKeyHex},
+		Operator:          &models.PlatformOperatorCSRPayload{OperatorCSRPEM: operatorCSR, CLICSRPEM: cliCSR, ActuatorPublicKey: testActuatorPublicKeyHex, AuditorPublicKey: testAuditorPublicKeyHex, AuditorKeyID: testAuditorPublicKeyHex},
 	}
 }
 

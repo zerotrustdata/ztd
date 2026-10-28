@@ -8,12 +8,11 @@
 package sqliteutil
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // memoryDatabasePath is SQLite's private in-memory database name. It has no
@@ -30,28 +29,38 @@ var sidecarSuffixes = []string{"-wal", "-shm"}
 // as a new database, so the file never exists with wider permissions. A file
 // that already exists, and any WAL or shared-memory sidecar left by an earlier
 // process, is tightened to 0600.
-func securePrivateDatabaseFiles(path string) error {
-	if path == "" || strings.HasPrefix(path, memoryDatabasePath) {
+func securePrivateDatabaseFiles(fileSvc fs.RuntimeFileService, path string) error {
+	if isMemoryDatabasePath(path) {
 		return nil
 	}
-
-	created, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, constants.PermFilePrivate)
-	switch {
-	case err == nil:
-		if err := created.Close(); err != nil {
-			return fmt.Errorf("sqliteutil: create database file %s: %w", path, err)
-		}
-	case errors.Is(err, os.ErrExist):
-	default:
-		return fmt.Errorf("sqliteutil: create database file %s: %w", path, err)
+	if fileSvc == nil {
+		return fmt.Errorf("sqliteutil: runtime file service is required for file database %s: %w", path, constants.ErrMissingRequiredField)
 	}
 
-	for _, candidate := range append([]string{path}, sidecarPaths(path)...) {
-		if err := os.Chmod(candidate, constants.PermFilePrivate); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("sqliteutil: restrict database file %s: %w", candidate, err)
+	relPath, err := fileSvc.Rel(path)
+	if err != nil {
+		return fmt.Errorf("sqliteutil: database path is outside runtime files: %w", err)
+	}
+
+	if err := fileSvc.CreateOrRestrictFile(context.Background(), relPath, constants.PermFilePrivate); err != nil {
+		return fmt.Errorf("sqliteutil: restrict database file %s: %w", path, err)
+	}
+
+	for _, candidate := range sidecarPaths(relPath) {
+		candidatePath, err := fileSvc.Rel(fileSvc.Resolve(candidate))
+		if err != nil {
+			return fmt.Errorf("sqliteutil: database sidecar path is outside runtime files: %w", err)
+		}
+		_, err = fileSvc.RestrictFileIfExists(context.Background(), candidatePath, constants.PermFilePrivate)
+		if err != nil {
+			return fmt.Errorf("sqliteutil: restrict database sidecar %s: %w", fileSvc.Resolve(candidatePath), err)
 		}
 	}
 	return nil
+}
+
+func isMemoryDatabasePath(path string) bool {
+	return path == memoryDatabasePath
 }
 
 func sidecarPaths(path string) []string {

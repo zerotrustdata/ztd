@@ -15,6 +15,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -79,6 +80,9 @@ type OperatorBootstrapClientConfig struct {
 	// ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5
 	// Actuator. The Gateway binds it to the Operator at enrollment.
 	ActuatorPublicKey string
+	// AuditorPublicKey is the hex Ed25519 public key of this Operator's
+	// Auditor. The Gateway binds it to the Operator at enrollment.
+	AuditorPublicKey string
 	// TrustBundlePEM, when set, is the owner-supplied CA a wss:// bootstrap
 	// URL must chain to; otherwise the system roots apply.
 	TrustBundlePEM []byte
@@ -105,6 +109,9 @@ func NewOperatorBootstrapClient(cfg OperatorBootstrapClientConfig) (*OperatorBoo
 	}
 	if _, err := models.DecodeActuatorPublicKey(cfg.ActuatorPublicKey); err != nil {
 		return nil, fmt.Errorf("operator bootstrap: actuator key: %w", err)
+	}
+	if _, err := models.DecodeAuditorPublicKey(cfg.AuditorPublicKey); err != nil {
+		return nil, fmt.Errorf("operator bootstrap: auditor key: %w", err)
 	}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 	if len(cfg.TrustBundlePEM) > 0 {
@@ -198,6 +205,11 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 	if err != nil {
 		return nil, fmt.Errorf("operator enrollment: generate request token: %w", err)
 	}
+	auditorKey, err := models.DecodeAuditorPublicKey(c.cfg.AuditorPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("operator enrollment: auditor key: %w", err)
+	}
+	auditorDigest := sha256.Sum256(auditorKey)
 	return &operatorBootstrapAttempt{
 		request: models.OperatorBootstrapRequest{
 			Token: token,
@@ -212,13 +224,15 @@ func (c *OperatorBootstrapClient) newAttempt() (*operatorBootstrapAttempt, error
 					OperatorCSRPEM:    operatorCSR,
 					CLICSRPEM:         cliCSR,
 					ActuatorPublicKey: c.cfg.ActuatorPublicKey,
+					AuditorPublicKey:  c.cfg.AuditorPublicKey,
+					AuditorKeyID:      c.cfg.AuditorPublicKey,
 				},
 			},
 			RuntimeConfig: c.cfg.RuntimeConfig,
 		},
 		operatorKey:  operatorKey,
 		cliKey:       cliKey,
-		fingerprints: models.PlatformEnrollmentCSRFingerprints{Operator: operatorFP, CLI: cliFP},
+		fingerprints: models.PlatformEnrollmentCSRFingerprints{Operator: operatorFP, CLI: cliFP, AuditorKey: hex.EncodeToString(auditorDigest[:])},
 	}, nil
 }
 
@@ -302,7 +316,8 @@ func (c *OperatorBootstrapClient) observeCreated(ctx context.Context, attempt *o
 	if created == nil || created.RequestID == "" {
 		return fmt.Errorf("operator enrollment: created frame missing its request")
 	}
-	if created.Fingerprints.Operator != attempt.fingerprints.Operator || created.Fingerprints.CLI != attempt.fingerprints.CLI {
+	if created.Fingerprints.Operator != attempt.fingerprints.Operator || created.Fingerprints.CLI != attempt.fingerprints.CLI ||
+		created.Fingerprints.AuditorKey != attempt.fingerprints.AuditorKey {
 		return fmt.Errorf("operator enrollment: request %s does not carry this Operator's keys", created.RequestID)
 	}
 	if attempt.requestID == created.RequestID {
@@ -359,7 +374,7 @@ func readOperatorBootstrapFrame(conn *websocket.Conn, want models.OperatorBootst
 // proofs signs the canonical completion transcript with both private keys.
 func (a *operatorBootstrapAttempt) proofs() (*models.PlatformEnrollmentProofs, error) {
 	transcript, err := buildOperatorCompletionTranscript(a.requestID, a.request.Enrollment.TokenHash,
-		a.request.Enrollment.InstanceID, a.fingerprints.Operator, a.fingerprints.CLI)
+		a.request.Enrollment.InstanceID, a.fingerprints.Operator, a.fingerprints.CLI, a.fingerprints.AuditorKey)
 	if err != nil {
 		return nil, err
 	}
@@ -434,16 +449,20 @@ func operatorRuntimeConfig(cfg *config.Config) (json.RawMessage, error) {
 		LocalDir:     cfg.WorkDir,
 		Account:      auth.ResolveCurrentAccount(),
 
-		InferenceOllamaEndpoint:      cfg.Inference.OllamaEndpoint,
-		InferenceKeepAlive:           cfg.Inference.KeepAlive,
-		InferenceAllowHostedDecision: cfg.Inference.AllowHostedDecision,
-		InferenceDecisionModels:      cfg.Inference.DecisionModels, InferenceDecisionOnly: cfg.Inference.DecisionOnly,
-		InferenceDecisionBackend:           inferenceDecisionBackendKind(cfg),
-		ProvenanceOperatorId:               cfg.ProvenanceOperator.OperatorID,
-		ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot,
-		ProviderBoundaryObserverId:         cfg.ProviderBoundaryObserver.ObserverID,
-		Platform:                           runtime.GOOS,
-		HeartbeatIntervalMs:                uint32(cfg.HeartbeatInterval.Milliseconds()),
+		InferenceOllamaEndpoint:              cfg.Inference.OllamaEndpoint,
+		InferenceLlamacppEndpoint:            cfg.Inference.LlamaCppEndpoint,
+		InferenceLlamacppModelRoot:           cfg.Inference.LlamaCppModelRoot,
+		InferenceKeepAlive:                   cfg.Inference.KeepAlive,
+		InferenceAllowHostedDecision:         cfg.Inference.AllowHostedDecision,
+		InferenceDecisionModels:              cfg.Inference.DecisionModels,
+		InferenceDecisionOnly:                cfg.Inference.DecisionOnly,
+		InferenceDecisionBackend:             inferenceDecisionBackendKind(cfg),
+		ProvenanceOperatorId:                 cfg.ProvenanceOperator.OperatorID,
+		ProvenanceOperatorModelStorageRoot:   cfg.ProvenanceOperator.ModelStorageRoot,
+		ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat,
+		ProviderBoundaryObserverId:           cfg.ProviderBoundaryObserver.ObserverID,
+		Platform:                             runtime.GOOS,
+		HeartbeatIntervalMs:                  uint32(cfg.HeartbeatInterval.Milliseconds()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrOperatorRuntimeConfigMarshal, err)
@@ -493,8 +512,8 @@ func OperatorBootstrapURL(endpoint string, httpPort int) string {
 // buildOperatorCompletionTranscript constructs the canonical
 // PlatformEnrollmentCompletionTranscript as deterministic protobuf,
 // matching the gateway's platformEnrollmentCompletionTranscript. The
-// operator transcript includes both the operator and CLI fingerprints.
-func buildOperatorCompletionTranscript(requestID, tokenHash, instanceID, operatorFP, cliFP string) ([]byte, error) {
+// operator transcript includes the operator, CLI, and auditor-key fingerprints.
+func buildOperatorCompletionTranscript(requestID, tokenHash, instanceID, operatorFP, cliFP, auditorFP string) ([]byte, error) {
 	message := &commonv1.PlatformEnrollmentCompletionTranscript{
 		ProtocolVersion: constants.PlatformEnrollmentProtocolVersion,
 		RequestId:       requestID,
@@ -502,8 +521,9 @@ func buildOperatorCompletionTranscript(requestID, tokenHash, instanceID, operato
 		ComponentKind:   commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_OPERATOR,
 		InstanceId:      instanceID,
 		Fingerprints: &commonv1.PlatformEnrollmentFingerprints{
-			Operator: operatorFP,
-			Cli:      cliFP,
+			Operator:   operatorFP,
+			Cli:        cliFP,
+			AuditorKey: auditorFP,
 		},
 	}
 	encoded, err := (proto.MarshalOptions{Deterministic: true}).Marshal(message)
@@ -530,8 +550,9 @@ func inferenceDecisionBackendKind(cfg *config.Config) string {
 	if !cfg.Inference.Enabled {
 		return ""
 	}
+	kind := cfg.Inference.Provider + "-systemone"
 	if cfg.Inference.AllowHostedDecision {
-		return "ollama-systemone,typesafe"
+		return kind + ",typesafe"
 	}
-	return "ollama-systemone"
+	return kind
 }

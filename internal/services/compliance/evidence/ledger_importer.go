@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -160,10 +159,10 @@ func (i *LedgerImporter) buildNodes(commits []importedLedgerCommit, stateBody []
 
 func validLedgerBinding(binding LedgerImportBinding) error {
 	if _, _, commitsValid := ParseExpectedContentReference(binding.CommitsReference, constants.LedgerCommitCollectionReferencePrefix); !commitsValid {
-		return errors.New("commitments content reference is invalid")
+		return fmt.Errorf("commitments content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if _, _, stateValid := ParseExpectedContentReference(binding.StateReference, constants.LedgerStateReferencePrefix); !stateValid {
-		return errors.New("state content reference is invalid")
+		return fmt.Errorf("state content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := ValidateRelativePath(binding.CommitsPath); err != nil {
 		return fmt.Errorf("commitments path: %w", err)

@@ -3,8 +3,8 @@ doc_id: cloudflare_tunnel
 title: Cloudflare Tunnel Integration
 audience: operators, infrastructure engineers, deployment specialists
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/guides/cloudflare_tunnel.md
   - internal/cli/cmd/gw/tunnel.go
@@ -85,7 +85,7 @@ export CLOUDFLARE_API_TOKEN
 ./ztd gw tunnel route-dns --name ztd console.example.com
 ```
 
-To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600` or `0400`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. A variable already set in the shell takes precedence over the `.env` value. `--api-token` overrides the environment.
+To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600` or `0400`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. A variable already set in the shell takes precedence over the `.env` value. `--cloudflare-api-token` overrides the environment.
 
 ### 3. Start the Gateway with tunnel-aware configuration
 

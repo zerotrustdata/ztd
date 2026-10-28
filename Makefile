@@ -46,7 +46,9 @@ endif
 BIN_DIR := bin
 # Sidecar checksums must name the file by basename only, so `sha256sum -c <name>.sha256`
 # works from the directory holding the binary. $$ZTD_BINARY is expanded by the shell.
-WRITE_SHA256 = (cd "$$(dirname "$$ZTD_BINARY")" && sha256sum "$$(basename "$$ZTD_BINARY")") > "$$ZTD_BINARY.sha256"
+# sha256sum is GNU coreutils. macOS 15 has it in /sbin; earlier releases and a
+# minimal PATH only have shasum. Both print "<hex>  <name>", which -c accepts.
+WRITE_SHA256 = (cd "$$(dirname "$$ZTD_BINARY")" && { command -v sha256sum >/dev/null 2>&1 && sha256sum "$$(basename "$$ZTD_BINARY")" || shasum -a 256 "$$(basename "$$ZTD_BINARY")"; }) > "$$ZTD_BINARY.sha256"
 MAIN_PKG := ./cmd/ztd
 
 # Source provenance stamps use explicit non-Git values and an explicit source
@@ -169,9 +171,10 @@ GO_CI_TOOL_PKGS := \
 	$(PROTO_PLUGIN_PKGS) \
 	golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) \
 	github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
+GOLANGCI_LINT_PKG := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GO_DEV_TOOL_PKGS := \
 	$(GO_CI_TOOL_PKGS) \
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	$(GOLANGCI_LINT_PKG)
 
 # Recursive (=) so the lookup runs when a recipe uses it, after buf-install has
 # had the chance to put buf on PATH. $(shell) does not see the exported PATH on
@@ -193,6 +196,7 @@ help:
 		'  dev-setup                 Install everything required by make ci' \
 		'  dev-check                 Verify the local development toolchain' \
 		'  dev-tools                 Install pinned Go development tools' \
+		'  golangci-lint-install     Install only the pinned golangci-lint' \
 		'  dev-node                  Install Node dependencies for all workspaces' \
 		'' \
 		'CI' \
@@ -204,7 +208,8 @@ help:
 		'  ci-website                Run website tests and build' \
 		'' \
 		'Build and release' \
-		'  build                     Build ztd for the host platform' \
+		'  build                     Build ztd for the host platform, refreshing embedded frontends' \
+		'  build-go                  Build the host binary from the committed frontend embeds (no Node)' \
 		'  build-all                 Build ztd for every supported platform' \
 		'  build-target              Build one target (requires GOOS and GOARCH)' \
 		'  build-linux               Build every supported Linux architecture' \
@@ -252,6 +257,7 @@ help:
 		'  test-cross-enrollment     Run against a prepared cross-enrollment topology' \
 		'  test-eval-live            Tier 4 live-provider gate (LIVE_OLLAMA_ENDPOINT, LIVE_MODEL)' \
 		'  test-onboarding-smoke     Contributor setup and release smoke in a fresh checkout' \
+		'  test-agent-smoke          Local-model governed agent smoke (CPU, Ollama or llama.cpp)' \
 		'' \
 		'Quality checks' \
 		'  lint                      Run all lint and quality checks' \
@@ -395,7 +401,7 @@ website-test:
 	@cd website && npm run check
 
 .PHONY: website-bundle-check
-website-bundle-check:
+website-bundle-check: website-build
 	@echo "Validating the Cloudflare Worker bundle..."
 	@cd website && npx wrangler deploy --dry-run
 
@@ -484,6 +490,12 @@ test-onboarding-smoke:
 	@echo 'WARNING: This runs contributor setup and requires a fresh checkout without runtime state or .env.'
 	@bash scripts/ci/onboarding-smoke.sh
 
+# Local-model agent smoke. Not part of `make test`: it downloads Ollama and a
+# small model, starts a Gateway, and runs goose. CPU only.
+.PHONY: test-agent-smoke
+test-agent-smoke:
+	@bash scripts/agent-governed-smoke.sh
+
 DISTROS ?= ubuntu debian fedora arch
 SCENARIOS ?= build-only rerun quickstart
 ONBOARDING_OUT ?=
@@ -501,11 +513,13 @@ hooks-install:
 
 # Go-based tools (buf, protoc plugins, golangci-lint, govulncheck, swag).
 # Explicit `make dev-tools` refreshes every tool to the pinned versions;
-# `make ci-tools` installs the CI subset.
+# `make ci-tools` installs the CI subset; `make golangci-lint-install` installs
+# only golangci-lint (`./ztd test lint` offers it when the binary is missing or stale).
 dev-tools: TOOL_PKGS = $(GO_DEV_TOOL_PKGS)
 ci-tools: TOOL_PKGS = $(GO_CI_TOOL_PKGS)
-.PHONY: dev-tools ci-tools
-dev-tools ci-tools:
+golangci-lint-install: TOOL_PKGS = $(GOLANGCI_LINT_PKG)
+.PHONY: dev-tools ci-tools golangci-lint-install
+dev-tools ci-tools golangci-lint-install:
 	@echo "Installing Go tools into $(GO_BIN_DIR)..."
 	@for pkg in $(TOOL_PKGS); do \
 		echo "  go install $$pkg"; \
@@ -638,8 +652,17 @@ $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 console-embed: $(CONSOLE_EMBED)/index.html
 
 # Builds the host binary including embedded frontend assets (console and evaluation explorer).
+# The frontend refresh finishes before the compile: a parallel `make -j` must
+# not link ./ztd against a half-copied embed.
 .PHONY: build
 build: console-embed explorer-embed
+	@$(MAKE) build-go
+
+# Host binary only, from the console and explorer embeds already on disk.
+# Does not run Node. Source setup --build-only and `make quickstart` use this
+# so a checkout compiles ./ztd from the committed embeds without Node.js.
+.PHONY: build-go
+build-go:
 	@echo "Building ztd for the host platform..."
 	@mkdir -p $(BIN_DIR)
 	@rm -f $(BIN_DIR)/ztd-binaries.json
@@ -898,7 +921,7 @@ test-release-smoke: build
 	@./ztd test release-smoke
 
 test-operator-deploy: build
-	@bash scripts/ci/operator-deploy-lifecycle.sh --count 3
+	@bash scripts/ci/operator-deploy-lifecycle.sh --count 3 $(OPERATOR_DEPLOY_ARGS)
 
 # Explicit targets for tests against the user's local Gateway. Reset goes
 # through the existing CLI confirmation and evidence-backup flow.
@@ -1214,7 +1237,6 @@ ci-protocol: dev-check
 .PHONY: ci-website
 ci-website: dev-check
 	@$(MAKE) website-test
-	@$(MAKE) website-build
 	@$(MAKE) website-bundle-check
 	@echo "Website CI complete."
 

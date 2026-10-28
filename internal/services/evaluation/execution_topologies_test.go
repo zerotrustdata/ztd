@@ -86,6 +86,24 @@ func TestFormationValidateNamesMissingFields(t *testing.T) {
 	assert.Contains(t, err.Error(), "role lite: missing family, provider")
 }
 
+// A sovereign role may run on either local provider; neither may back a
+// delegated role, and a hosted provider class cannot claim sovereignty.
+func TestFormationValidateSovereignRequiresLocalProviderClass(t *testing.T) {
+	formation := newTestFormation("llamacpp-sovereign")
+	formation.Primary.ProviderClass = constants.InferenceProviderLlamaCpp
+	require.NoError(t, formation.Validate())
+
+	formation = newTestFormation("hosted-sovereign")
+	formation.Primary.ProviderClass = "openai"
+	require.ErrorIs(t, formation.Validate(), constants.ErrFormationInvalid)
+
+	formation = newTestFormation("llamacpp-delegated")
+	formation.Lite.Trust = FormationTrustDelegated
+	formation.Lite.ProviderClass = constants.InferenceProviderLlamaCpp
+	formation.Lite.Quantization, formation.Lite.EstimatedModelVRAMMiB = "", 0
+	require.ErrorIs(t, formation.Validate(), constants.ErrFormationInvalid)
+}
+
 func TestFormationValidateBudgetErrorBreaksDownRoles(t *testing.T) {
 	formation := newTestFormation("over-budget")
 	formation.MaxVRAMMiB = 8 * 1024

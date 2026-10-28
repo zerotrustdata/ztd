@@ -841,6 +841,135 @@
                 }
             }
         },
+        "/api/v1/data/settings": {
+            "get": {
+                "description": "Requires mTLS. This endpoint is read-only; direct settings writes return 405 in every posture.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "data"
+                ],
+                "summary": "Read platform settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "404": {
+                        "description": "Settings not found",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/data/{collection}/_query": {
+            "post": {
+                "description": "Requires mTLS. POST accepts read-only query parameters and never creates, updates, or deletes documents.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "data"
+                ],
+                "summary": "Query documents",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Collection name",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Read-only query",
+                        "name": "query",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/models.DocQueryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/data/{collection}/{id}": {
+            "get": {
+                "description": "Requires mTLS. Direct document writes return 405 for every collection and identity, including platform authority collections. Application record mutations require governed actions; platform authority changes use their owning enrollment and management workflows.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "data"
+                ],
+                "summary": "Read a document",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Collection name",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "404": {
+                        "description": "Document not found",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/gateway/reputation/sign": {
             "post": {
                 "description": "App mTLS only. Returns an HMAC signature over merkle_root || prev_root || tribunal_command_id. The signing key remains in the Gateway keystore. Signing does not validate the application's scores or satisfy governance proof requirements.",
@@ -1824,7 +1953,7 @@
         },
         "/api/v1/operators/validate": {
             "post": {
-                "description": "Validates the exact active operator-session, CLI-session, and user binding. The Gateway is authoritative; callers authenticate with an enrolled application mTLS certificate.",
+                "description": "Validates the exact active operator-session, CLI-session, and user binding, or the certificate-bound session of an outbound Operator. Successful responses include the current L2 trust snapshot. Callers authenticate with an enrolled mTLS certificate.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2925,6 +3054,7 @@
                 "PLATFORM_ENROLLMENT_ISSUE",
                 "PLATFORM_ENROLLMENT_PERSIST_POLICY",
                 "PLATFORM_ENROLLMENT_REVOKE",
+                "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS",
                 "PORT_CHECK",
                 "PROVIDER_BOUNDARY_OBSERVATION",
                 "RESTORE_FILE",
@@ -2964,6 +3094,7 @@
                 "ActionTypePlatformEnrollmentIssue",
                 "ActionTypePlatformEnrollmentPersistPolicy",
                 "ActionTypePlatformEnrollmentRevoke",
+                "ActionTypePlatformEnrollmentUnbindConsensus",
                 "ActionTypePortCheck",
                 "ActionTypeProviderBoundaryObservation",
                 "ActionTypeRestoreFile",
@@ -3182,6 +3313,7 @@
                 "ztd.v1.platform.enrollment.issue.requested",
                 "ztd.v1.platform.enrollment.persist_policy.requested",
                 "ztd.v1.platform.enrollment.revoke.requested",
+                "ztd.v1.platform.enrollment.unbind_consensus.requested",
                 "ztd.v1.platform.external.service.configured",
                 "ztd.v1.platform.notification.sent",
                 "ztd.v1.platform.sse.connection.closed",
@@ -3411,6 +3543,7 @@
                 "EventPlatformEnrollmentIssueRequested",
                 "EventPlatformEnrollmentPersistPolicyRequested",
                 "EventPlatformEnrollmentRevokeRequested",
+                "EventPlatformEnrollmentUnbindConsensusRequested",
                 "EventPlatformExternalServiceConfigured",
                 "EventPlatformNotification",
                 "EventPlatformSseConnectionClosed",
@@ -3819,6 +3952,40 @@
                     "items": {
                         "$ref": "#/definitions/models.ConsensusVoteRecord"
                     }
+                }
+            }
+        },
+        "models.DocFilter": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "op": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "models.DocQueryRequest": {
+            "type": "object",
+            "properties": {
+                "filters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DocFilter"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "order_by": {
+                    "type": "string"
                 }
             }
         },
@@ -4677,6 +4844,38 @@
                 }
             }
         },
+        "models.OperatorL2Trust": {
+            "type": "object",
+            "properties": {
+                "binding_version": {
+                    "type": "integer"
+                },
+                "consensus_set_id": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "member_key_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "quorum": {
+                    "type": "integer"
+                },
+                "require_distinct": {
+                    "type": "boolean"
+                },
+                "signers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.OperatorSigner"
+                    }
+                }
+            }
+        },
         "models.OperatorSessionValidationRequest": {
             "type": "object",
             "properties": {
@@ -4694,6 +4893,9 @@
         "models.OperatorSessionValidationResponse": {
             "type": "object",
             "properties": {
+                "l2_trust": {
+                    "$ref": "#/definitions/models.OperatorL2Trust"
+                },
                 "operator_id": {
                     "type": "string"
                 },
@@ -4702,6 +4904,17 @@
                 },
                 "valid": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.OperatorSigner": {
+            "type": "object",
+            "properties": {
+                "key_id": {
+                    "type": "string"
+                },
+                "public_key_hex": {
+                    "type": "string"
                 }
             }
         },
@@ -4930,6 +5143,9 @@
                 "app": {
                     "type": "string"
                 },
+                "auditor_key": {
+                    "type": "string"
+                },
                 "cli": {
                     "type": "string"
                 },
@@ -5005,6 +5221,13 @@
             "properties": {
                 "actuator_public_key": {
                     "description": "ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5 Actuator.",
+                    "type": "string"
+                },
+                "auditor_key_id": {
+                    "type": "string"
+                },
+                "auditor_public_key": {
+                    "description": "AuditorPublicKey is the hex Ed25519 public key of this Operator's Auditor.",
                     "type": "string"
                 },
                 "capabilities": {
@@ -6071,6 +6294,14 @@
                 "receipt": {
                     "$ref": "#/definitions/operatorv1.EventReceipt"
                 },
+                "request_envelope": {
+                    "description": "Original admitted intent. Its canonical hash is covered by receipt, allowing\noffline consumers to bind the signed outcome to the exact request payload.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/commonv1.GovernanceEnvelope"
+                        }
+                    ]
+                },
                 "result_payload": {
                     "description": "result_payload is the proto-marshaled terminal operator result for event_type\n(for example FsReadResult), the same bytes the dispatch response carries today.",
                     "type": "array",
@@ -6208,7 +6439,9 @@
                 44,
                 45,
                 46,
-                47
+                47,
+                48,
+                49
             ],
             "x-enum-varnames": [
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED",
@@ -6258,7 +6491,9 @@
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED",
-                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED"
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED"
             ]
         },
         "operatorv1.InferenceDispatchRequest": {
@@ -6912,7 +7147,8 @@
                 22,
                 23,
                 24,
-                25
+                25,
+                26
             ],
             "x-enum-varnames": [
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED",
@@ -6940,7 +7176,8 @@
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
-                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED"
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR"
             ]
         },
         "operatorv1.ReceiptPersistenceAttestation": {

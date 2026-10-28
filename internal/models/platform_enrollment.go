@@ -223,6 +223,12 @@ func (r PlatformEnrollmentCreateRequest) ValidateShape() error {
 		if r.SystemFingerprint == "" {
 			return constants.ErrPlatformEnrollmentFingerprintRequired
 		}
+		if _, err := r.Operator.ActuatorKey(); err != nil {
+			return err
+		}
+		if _, err := r.Operator.AuditorKey(); err != nil {
+			return err
+		}
 		return nil
 	}
 	if r.App == nil || r.Operator != nil || r.App.CSRPEM == "" {
@@ -270,8 +276,11 @@ type PlatformOperatorCSRPayload struct {
 	OperatorCSRPEM string `json:"operator_csr_pem"`
 	CLICSRPEM      string `json:"cli_csr_pem"`
 	// ActuatorPublicKey is the hex Ed25519 public key of this Operator's L5 Actuator.
-	ActuatorPublicKey string                         `json:"actuator_public_key"`
-	Capabilities      constants.OperatorCapabilities `json:"capabilities,omitempty"`
+	ActuatorPublicKey string `json:"actuator_public_key"`
+	// AuditorPublicKey is the hex Ed25519 public key of this Operator's Auditor.
+	AuditorPublicKey string                         `json:"auditor_public_key"`
+	AuditorKeyID     string                         `json:"auditor_key_id"`
+	Capabilities     constants.OperatorCapabilities `json:"capabilities,omitempty"`
 }
 
 // ActuatorKey decodes the presented Actuator public key. It fails with
@@ -281,16 +290,37 @@ func (p *PlatformOperatorCSRPayload) ActuatorKey() (ed25519.PublicKey, error) {
 	return DecodeActuatorPublicKey(p.ActuatorPublicKey)
 }
 
+// AuditorKey decodes the presented Auditor public key.
+func (p *PlatformOperatorCSRPayload) AuditorKey() (ed25519.PublicKey, error) {
+	pub, err := DecodeAuditorPublicKey(p.AuditorPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	if p.AuditorKeyID != hex.EncodeToString(pub) {
+		return nil, constants.ErrOperatorAuditorKeyInvalid
+	}
+	return pub, nil
+}
+
 // DecodeActuatorPublicKey decodes a hex Ed25519 Actuator public key. Anything
 // other than exactly ed25519.PublicKeySize bytes of hex is
 // constants.ErrOperatorActuatorKeyInvalid.
 func DecodeActuatorPublicKey(keyHex string) (ed25519.PublicKey, error) {
+	return decodeEd25519PublicKey(keyHex, constants.ErrOperatorActuatorKeyInvalid)
+}
+
+// DecodeAuditorPublicKey decodes a hex Ed25519 Auditor public key.
+func DecodeAuditorPublicKey(keyHex string) (ed25519.PublicKey, error) {
+	return decodeEd25519PublicKey(keyHex, constants.ErrOperatorAuditorKeyInvalid)
+}
+
+func decodeEd25519PublicKey(keyHex string, invalid error) (ed25519.PublicKey, error) {
 	pub, err := hex.DecodeString(keyHex)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrOperatorActuatorKeyInvalid, err)
+		return nil, fmt.Errorf("%w: %w", invalid, err)
 	}
 	if len(pub) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("%w: public key size %d", constants.ErrOperatorActuatorKeyInvalid, len(pub))
+		return nil, fmt.Errorf("%w: public key size %d", invalid, len(pub))
 	}
 	return ed25519.PublicKey(pub), nil
 }
@@ -300,6 +330,7 @@ type PlatformEnrollmentCSRFingerprints struct {
 	Operator   string `json:"operator,omitempty"`
 	CLI        string `json:"cli,omitempty"`
 	SigningKey string `json:"signing_key,omitempty"`
+	AuditorKey string `json:"auditor_key,omitempty"`
 }
 
 type PlatformEnrollmentCreateResponse struct {

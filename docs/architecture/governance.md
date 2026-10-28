@@ -3,8 +3,8 @@ doc_id: governance
 title: Governance Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - internal/constants/posture.go
   - internal/services/governance/
@@ -298,7 +298,7 @@ The L5 Actuator owns the execution boundary and enforces zero standing privilege
 1. **Pre-Execution Invariants**: Verifies `ExecutionHandler`, `SigningKey`, the Local-First Events Store, `AuditorSigningKey`, `AuditorKeyID`, and `CommitmentLedger`, then the envelope's event type.
 2. **Initial Receipt Logging**: Constructs and signs an initial `EventReceipt` with status `EXECUTION_STATUS_EXECUTING`, persists to local SQLite audit storage, and sets stage `DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE`.
 3. **Commitment Append**: Appends a signed `CommitmentAttestation` to the SQLite hash-chained commitment ledger in the same immediate write transaction that persists the initial receipt.
-4. **Payload Rehydration**: `rehydratePayload` resolves scrubbed tokens through the Actuator's scrubbing service before dispatch. A payload that holds a token with no scrubbing service configured fails closed, and the handler does not run.
+4. **Payload Rehydration**: `rehydratePayload` resolves scrubbed tokens through the Actuator's scrubbing service before dispatch. It decodes the payload into its action's typed message (`DecodePayloadForAction`), restores tokens in every string field and string map key (`ScrubbingService.RehydrateMessage`), and re-marshals only when a field changed, so a payload with no token dispatches byte for byte. It never replaces a token in the protobuf wire bytes, where a value of another length breaks the length-delimited field around it. A string field that holds JSON, such as `arguments_json`, is rehydrated through the JSON reader, so a restored value is re-escaped. A payload that does not decode, or that holds a token with no scrubbing service configured, fails closed with `RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`, and the handler does not run.
 5. **JIT Capability Lifecycle**:
    - Mints a single-action capability (`MintCapability`) binding transaction hash, action type, target resource, operator ID, session ID, and expiry.
    - Dispatches execution to `ExecutionHandler.ExecuteVerifiedTransaction`.

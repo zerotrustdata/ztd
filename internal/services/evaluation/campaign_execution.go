@@ -28,6 +28,10 @@ type CampaignExecutionBinding struct {
 	// variant IDs used by system-lane formation slots.
 	ModelVariants           []*evalv1.ModelVariant
 	FormationStackSetDigest string
+	// JudgeVariant is the campaign's frozen judge. Every judged criterion is
+	// scored by it under its JudgeModelRegistry, whatever the assignment's
+	// own models. Nil only for a campaign frozen before pinned judging.
+	JudgeVariant *evalv1.ModelVariant
 }
 
 func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {
@@ -51,14 +55,6 @@ type ScenarioToolExpectations struct {
 	TrajectoryPolicy evalv1.EvaluationTrajectoryPolicy
 	// TribunalCommands routes run_shell_command through Tribunal authoring.
 	TribunalCommands bool
-}
-
-// CampaignChatGradingContext carries private grading inputs for one assignment.
-type CampaignChatGradingContext struct {
-	GradingMethod    evalv1.EvaluationGradingMethod
-	ScenarioGold     ScenarioGoldCriteria
-	ScenarioTools    ScenarioToolExpectations
-	RequiredConcepts []string
 }
 
 // AssignmentExecutionRequest carries one resumable controller execution attempt.

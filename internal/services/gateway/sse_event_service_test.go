@@ -22,7 +22,7 @@ func setupSSEEventServiceTest(t *testing.T) *SSEEventService {
 
 	// Use pure in-memory SQLite for Tier 1 unit testing
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 
 	// Initialize only the SSE events table schema

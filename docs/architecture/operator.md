@@ -3,8 +3,8 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/
@@ -77,7 +77,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only Operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `event_receipt_list` and `event_receipt_get` over their own Local-First Events Store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
-| INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
+| INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST run exactly one model provider. Setting `--inference-llamacpp-endpoint` selects llama.cpp and requires `--inference-llamacpp-model-root`; an explicit `--inference-ollama-endpoint` beside it fails with `ErrInferenceProviderConflict`. Without a llama.cpp endpoint, the Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
 | INV-OP-CAP-03 | Operator capabilities MUST default to `data` when unspecified. Operators MAY be configured with any valid capability combination. Multiple Operators MAY own the `data` capability; `inference`, `provenance`, and `observer` MUST each have a single owner across the Gateway. Capability claims MUST be checked and reserved transactionally during enrollment (`RegisterOperator`) and runtime-config updates (`SetOperatorRuntimeConfig`). Offline and stopped Operators MUST retain their claims until explicitly terminated (`constants.OperatorStatusTerminated`). Conflicting claims for an in-use singleton capability MUST fail closed with `constants.ErrOperatorCapabilityInUse`. |
 | INV-OP-CAP-04 | An Operator runtime lock (`operator.lock`) MUST prevent two processes from sharing one working directory (`--working-dir`). Startup MUST fail closed with `constants.ExitConfigError` if the lock cannot be acquired. Each runtime MUST map to a unique anchor (actuator key and local root); duplicate actuator key registrations from distinct runtimes MUST be rejected with `constants.ErrOperatorActuatorKeyInUse`, identifying both conflicting Operator IDs. |
 
@@ -119,6 +119,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-OP-ACT-04 | L5 Actuator MUST finalize the receipt with status `COMPLETED` or `FAILED`, capture the local state root after execution, sign the receipt, and attach a signed `ReceiptPersistenceAttestation`. |
 | INV-OP-ACT-05 | A transaction rejected by L4 verification MUST be recorded as a signed `FAILED` rejection receipt with `failure_code` `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED` and a signed `rejection_code` naming the failed check. Verifiers MUST attribute the rejection from `rejection_code`, not `result_summary` (`INV-GOV-ACT-09`). |
 | INV-OP-ACT-06 | The outbound Operator MUST load its Actuator key and export `pki/Actuator_pub.json` at startup, fatal on failure, and MUST present its Actuator public key in the bootstrap enrollment request (`PlatformOperatorCSRPayload.actuator_public_key`). The Gateway binds that key to the Operator document at enrollment. A presented key that differs from an already-bound non-empty key MUST be refused with `ErrOperatorActuatorKeyChanged`. Rotation is re-enrollment, which mints a new `operator_id` and a new binding. Malformed keys (non-hex, not `ed25519.PublicKeySize` bytes) MUST be refused with `ErrOperatorActuatorKeyInvalid`. The enrolled key and the receipt-signing key MUST come from one store open: `StartOperator` opens the keystore and canonical database once, before enrollment, and `ZtdoService` MUST receive that database and never open its own. |
+| INV-OP-ACT-07 | The runtime MUST export its Auditor public key to `pki/Auditor_pub.json` and present its Auditor identity during enrollment. The Gateway binds the public key and matching key ID on the Operator document, separately from the Actuator identity. Local reports and KSI signature checks MUST resolve Auditor and Actuator keys from explicit trust inputs rooted in the local keystore; they MUST NOT decode an evidence key ID as its own trust anchor. A local report MUST verify receipt and final-persistence signatures plus the signed commitment-stage transaction/hash linkage. Unknown signers fail verification. Both private keys remain in the same host keystore; this detects evidence/SQLite tampering within that boundary and does not protect against host-root or keystore compromise. |
 
 ### Local-First Audit Storage (`INV-OP-STOR`)
 
@@ -168,6 +169,7 @@ Capability ownership rules enforced by the Gateway:
 - **Inference, Provenance, Observer**: Each of these singleton capabilities has at most a single owner across the Gateway at any time.
 - **Transactional Reservation**: Capability claims are validated and reserved under an immediate write transaction during enrollment (`RegisterOperator`) and runtime-config updates (`SetOperatorRuntimeConfig`). Offline and stopped Operators retain their claims until explicitly terminated (`constants.OperatorStatusTerminated`), preventing reconnections or new enrollments from usurping assigned roles. Conflicting claims are rejected with `constants.ErrOperatorCapabilityInUse`.
 - **Runtime Lock & Anchor Uniqueness**: Operator startup acquires an exclusive runtime lock (`operator.lock`) in its working directory (`--working-dir`) to prevent multiple processes from running in the same directory. Each Operator runtime must map to a single cryptographic anchor; if an enrollment presents an actuator key matching another non-terminated Operator, the Gateway rejects it with `constants.ErrOperatorActuatorKeyInUse`, identifying both conflicting Operator IDs and directing operators to use separate working directories or combine capabilities.
+- **WSL Gateway Discovery**: A Windows Operator started without `--endpoint` dials `localhost` over IPv4. When nothing answers there, it asks the default WSL distribution for its IPv4 addresses (`wsl.exe -e hostname -I`), because Windows forwards WSL `localhost` over IPv6 only. It uses the first address that accepts a connection on the Gateway HTTP port and logs the choice. An explicit `--endpoint` is never replaced. The Gateway must listen beyond loopback (`--listen-host 0.0.0.0`).
 
 ```bash
 # Data Operator (default: general command and tool execution)
@@ -177,6 +179,12 @@ Capability ownership rules enforced by the Gateway:
 ./ztd operator start --endpoint gateway.example --capabilities inference \
   --inference-ollama-endpoint http://127.0.0.1:11434 \
   --inference-keep-alive -1
+
+# Inference Operator (llama.cpp llama-server backend)
+./ztd operator start --endpoint gateway.example --capabilities inference \
+  --inference-llamacpp-endpoint http://127.0.0.1:8080 \
+  --inference-llamacpp-model-root /srv/llamacpp/models \
+  --inference-keep-alive 0
 
 # Provenance Operator (storage-side model weight attestation witness)
 ./ztd operator start --endpoint gateway.example --capabilities provenance \
@@ -194,6 +202,10 @@ Capability ownership rules enforced by the Gateway:
   --provenance-operator-id prov-witness-01
 ```
 
+An Inference Operator runs one provider. Under llama.cpp, `--inference-keep-alive` accepts `-1` or `0` only, and `ZTD_OLLAMA_ENDPOINT` is not read as the provider endpoint. Inference and governed model maintenance run on whichever provider the Operator selected.
+
+The llama.cpp backend sends the requested temperature explicitly, including zero. A frozen GGUF digest is checked before and after both generation and System One decisions; its file-hash cache compares file ID, size, modification time, and filesystem change time, and caches only settled identities. These checks describe local files under the configured model root, not the provider's in-memory weights. Router inventory must contain an explicit model array with unique IDs and recognized statuses; missing or unknown state fails with `ErrInferenceProviderResponseInvalid` rather than proving models are absent. Provider error bodies are excluded from generation failure logs because they can echo prompt material.
+
 Witness constraints:
 - Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the event-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.
@@ -201,7 +213,7 @@ Witness constraints:
 
 Inference output is capped at 16,384 tokens per call (`constants.InferenceMaxOutputTokens`). An omitted or zero `max_tokens` sends Ollama `num_predict: 16384`; smaller explicit limits pass through, and requests above the ceiling are rejected before provider execution. This output limit is independent of Ollama's `num_ctx` context window.
 
-Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration and stable provenance and provider-boundary observer pseudonyms. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
+Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persisted on `OperatorDocument.runtime_config`. Along with endpoint, storage root, platform, and heartbeat settings, this contract records the inference keep-alive duration, the llama.cpp endpoint and model root when that provider is selected, the provenance model storage format, and stable provenance and provider-boundary observer pseudonyms. `operator list` JSON, `operator show`, `gw status`, and the TUI operator details report these reported runtime settings. See the [generated Operator API reference](../../protocol/docs/reference/api/ztd/operator/v1/index.md#ztd-operator-v1-OperatorRuntimeConfig) for the canonical wire fields.
 
 ### Multi-Operator Coexistence and Composite Fingerprinting
 
@@ -217,6 +229,7 @@ The canonical `system_fingerprint` is a SHA-256 hash combining immutable host at
 
 - **Heartbeat Transmission**: Outbound Operators publish heartbeat frames every 30 seconds (configurable via `--heartbeat-interval 0-300`) to the Gateway pub/sub broker. Heartbeats are observed-tier telemetry that do not alter the Bound State Merkle root.
 - **Requested Heartbeats**: Governed heartbeat requests dispatch through the `HEARTBEAT` action handler. Heartbeat result events are telemetry and are rejected on the command dispatch path.
+- **Heartbeat Decoding**: The Gateway decodes binary heartbeat payloads first, using `protojson` for `intent_data` when payload bytes are absent. A nonempty result `operator_id` must match the envelope `operator_id`; a conflicting result is rejected before telemetry is stored.
 - **Staleness Window**: Twice the declared interval (`constants.OperatorHeartbeatStaleMultiplier`), with a floor of 60 seconds and a ceiling of 10 minutes.
 - **On-Read Derivation**: Staleness is computed dynamically during `DocGet`, `DocList`, or `DocQuery` calls via `deriveOperatorStaleness`. Silent Operators return `status: stale` without modifying persisted database rows.
 - **Recovery**: Receiving a fresh heartbeat immediately restores derived status to `active`. Heartbeats cannot revive `stopped` or `terminated` Operators.
@@ -225,8 +238,8 @@ The canonical `system_fingerprint` is a SHA-256 hash combining immutable host at
 
 Startup order in `StartOperator`:
 1. Opens the keystore and the canonical database (`ztd.db`) once, before enrollment.
-2. Reads the Actuator key from that database's secret manager and derives its hex Ed25519 public key.
-3. Enrolls, presenting the Actuator public key in the bootstrap request.
+2. Reads the Actuator and Auditor keys from that database's secret manager and derives their hex Ed25519 public keys.
+3. Enrolls, presenting both public identities in the bootstrap request.
 4. Starts `ZtdoService` with the same open database. The service never opens a second one, and `ZtdoService.Stop` closes it.
 
 `ztd operator start` executes a zero-disk credential enrollment:
@@ -237,13 +250,17 @@ Startup order in `StartOperator`:
 5. Awaits owner approval. Upon approval, the Gateway sends a `decision` frame, issues the X.509 certificates, and replies with a `bundle` frame containing certificates, SPIFFE identity, CA roots, and L2 consensus signer public keys.
 6. The Operator validates the bundle and holds certificates in memory. No private keys or certificates are written to disk.
 
+### Session Validation and L2 Trust Reconciliation
+
+Before each command-channel subscription, including every reconnect, the Operator validates its certificate-bound session over the Gateway's mTLS HTTPS endpoint. The response carries the Gateway's current consensus trust snapshot. The Operator replaces its in-memory L2 trust only when the binding version advances; out-of-order older snapshots are ignored. The Operator repeats validation every 30 seconds while connected, and stops execution if a periodic validation or trust replacement fails. This bounds stale trust after a consensus unbind or rebind to the refresh interval plus request time; the Gateway does not push trust changes to an already-connected Operator.
+
 ### In-Band Certificate Renewal over mTLS Pub/Sub
 
 Operator leaf certificates are valid for `OperatorLeafCertTTL` (default 7 days). The Gateway caps it at `constants.MaxWorkloadLeafCertTTL` (7 days): config validation (`ValidateOperatorLeafCertTTL`) fails Gateway startup with `ErrConfigLeafCertTTLInvalid` for any value that is not positive or exceeds the cap. See [auth.md](auth.md#mutual-tls-and-spiffe-identity-binding) and [network.md](network.md) (`INV-NET-PKI-03`). Two-thirds through the validity period, a scheduled timer in `OperatorCertRenewer` (`internal/cli/serve/operator_cert_renewal.go`), computed from the leaf's `NotBefore` and `NotAfter`, initiates in-band renewal:
 1. Subscribes to `renewal:<operator_id>:<operator_session_id>` over the existing mTLS WebSocket connection.
 2. Generates a new P-256 key and CSR in memory and publishes a `request` frame.
 3. The Gateway validates connection identity, verifies the active session, issues a renewed leaf certificate, and updates L2 signer trust.
-4. The Operator swaps the in-memory certificate for future handshakes without interrupting established connections or writing to disk.
+4. The Operator swaps the in-memory certificate for future handshakes without interrupting established connections or writing to disk. The renewal response's L2 trust snapshot replaces held trust at the same or a newer binding version; once trust is bound, a missing, unversioned, or older snapshot fails the renewal and leaves held trust intact.
 
 A failed attempt retries with backoff (starting at 1 second, doubling, capped at 1 minute) until it succeeds, the Gateway refuses the renewal (final for that identity), or the leaf expires. After a refusal or expiry, the Operator stops renewing and re-enrolls. The renewed leaf is signed with the Gateway's `OperatorLeafCertTTL`, so it has the same lifetime as the enrolled leaf.
 

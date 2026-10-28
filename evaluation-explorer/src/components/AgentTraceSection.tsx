@@ -12,14 +12,17 @@ import { useEffect, useState } from 'react';
 import {
   verifyAgentTraceArtifact,
   type AgentTrace,
+  type AgentTraceContentJudgment,
   type AgentTraceHeldContext,
   type AgentTraceModelCall,
+  type AgentTraceObservation,
   type AgentTraceProto,
   type AgentTraceRuntime,
   type AgentTraceToolCall,
 } from '../contract/agent-trace';
 import type { PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
+import { runnableVerifyCommand } from '../verifyCommand';
 import { useMirrorOrigin } from '../state/mirror';
 import { useProofArtifact } from '../state/proof';
 import { PanelSection } from './evidence';
@@ -100,12 +103,15 @@ function Receipt({ receipt, title = 'Signed receipt' }: { receipt: AgentTracePro
   );
 }
 
-function ToolCall({ call }: { call: AgentTraceToolCall }) {
-  const outcome = call.success ? 'Succeeded' : call.error_type ? `Failed · ${label(call.error_type)}` : 'Failed';
+function ToolCall({ call, observationKind }: { call: AgentTraceToolCall; observationKind?: string }) {
+  const outcome = call.ingress_refusal_code !== undefined
+    ? `Pre-envelope refusal · code ${call.ingress_refusal_code}`
+    : call.success ? 'Succeeded' : call.error_type ? `Failed · ${label(call.error_type)}` : 'Failed';
   return (
     <li className={`transcript-tool-call ${call.success ? 'transcript-tool-call-ok' : 'transcript-tool-call-failed'}`}>
       <div className="transcript-tool-call-header">
         <code className="transcript-tool-name">{call.tool_name}</code>
+        {observationKind ? <span className="agent-trace-chip">Harness · {label(observationKind)}</span> : null}
         <span className={`transcript-outcome ${call.success ? 'tone-ok' : 'tone-critical'}`}>
           <span aria-hidden="true">{call.success ? '✓' : '✕'}</span> {outcome}
         </span>
@@ -117,6 +123,7 @@ function ToolCall({ call }: { call: AgentTraceToolCall }) {
         <TextBlock title="Approved arguments" text={call.approved_arguments_json} copyLabel={`${call.tool_name} approved arguments`} json />
       ) : null}
       {call.command ? <TextBlock title="Resolved command" text={call.command} copyLabel={`${call.tool_name} command`} /> : null}
+      {call.request_envelope ? <TextBlock title="Admitted request envelope" text={JSON.stringify(call.request_envelope, null, 2)} copyLabel={`${call.tool_name} request envelope`} json /> : null}
       {call.result_json ? <TextBlock title="Tool result" text={call.result_json} copyLabel={`${call.tool_name} result`} json /> : null}
       {call.error ? <TextBlock title="Error" text={call.error} copyLabel={`${call.tool_name} error`} /> : null}
       {call.receipt ? <Receipt receipt={call.receipt} /> : null}
@@ -161,6 +168,50 @@ function ModelCall({ call, index, toolCalls }: { call: AgentTraceModelCall; inde
       ) : null}
       {call.receipt ? <Receipt receipt={call.receipt} title="Inference receipt" /> : null}
     </li>
+  );
+}
+
+function HarnessObservations({ observations }: { observations: AgentTraceObservation[] }) {
+  if (observations.length === 0) return null;
+  return (
+    <div className="model-response-block">
+      <div className="model-response-header"><span className="model-response-label">Harness observations ({observations.length})</span></div>
+      <p className="task-section-note">These governed calls were made by the evaluation harness. They are evidence for the scenario and are not scored model tool calls.</p>
+      <ol className="transcript-tool-calls">
+        {observations.map(({ kind, call }, index) => <ToolCall key={`${kind}-${call.call_id}-${index}`} call={call} observationKind={kind} />)}
+      </ol>
+    </div>
+  );
+}
+
+function ContentJudgments({ judgments }: { judgments: AgentTraceContentJudgment[] }) {
+  if (judgments.length === 0) return null;
+  return (
+    <div className="model-response-block">
+      <div className="model-response-header"><span className="model-response-label">Content judgments ({judgments.length})</span></div>
+      <p className="task-section-note">
+        Verdicts of the pinned judge on each judged content criterion, recorded after the run. They are not scored model turns.
+      </p>
+      <table className="agent-trace-judgments">
+        <thead>
+          <tr><th scope="col">Verdict</th><th scope="col">Criterion</th><th scope="col">Judge</th><th scope="col">Rationale</th></tr>
+        </thead>
+        <tbody>
+          {judgments.map((judgment, index) => (
+            <tr key={`${judgment.criterion_id}-${index}`}>
+              <td>
+                <span className={`transcript-outcome ${judgment.met ? 'tone-ok' : 'tone-critical'}`}>
+                  <span aria-hidden="true">{judgment.met ? '✓' : '✕'}</span> {judgment.met ? 'MET' : 'NOT MET'}
+                </span>
+              </td>
+              <td><code>{judgment.criterion_id}</code></td>
+              <td><code>{judgment.served_model_tag}</code></td>
+              <td>{judgment.rationale}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -257,6 +308,8 @@ function TraceBody({ trace }: { trace: AgentTrace }) {
         )}
       </div>
 
+      {trace.observations ? <HarnessObservations observations={trace.observations} /> : null}
+
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Turns ({trace.model_calls.length})</span></div>
         {trace.model_calls.length > 0 ? (
@@ -289,6 +342,8 @@ function TraceBody({ trace }: { trace: AgentTrace }) {
           />
         ) : null}
       </div>
+
+      {trace.content_judgments ? <ContentJudgments judgments={trace.content_judgments} /> : null}
 
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Runtimes</span></div>
@@ -349,7 +404,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
   const state = useVerifiedTrace(url, binding, runId, assignmentId);
 
   if (!binding || !artifact) return null;
-  const command = artifact.verification_command;
+  const command = runnableVerifyCommand(artifact.verification_command);
 
   return (
     <PanelSection id={id} className="assignment-agent-trace" title="Full agent trace">

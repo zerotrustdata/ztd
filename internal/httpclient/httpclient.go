@@ -35,8 +35,8 @@ const (
 // resolver returns ::1 first and the IDE's port-forward only listens on
 // IPv4 127.0.0.1. Even if an IPv6 address somehow slips through the
 // lookup, the "tcp4" network prevents the kernel from creating an IPv6
-// socket. Literal IPv6 addresses (e.g. "[::1]") fail the ip4 lookup and
-// return an error — IPv6 is excluded entirely, not merely deprioritized.
+// socket. Literal IPv6 addresses (e.g. "[::1]") fail with
+// ErrNetworkIPv4Unavailable — IPv6 is excluded entirely, not merely deprioritized.
 //
 // Use this as the DialContext of any CLI HTTP transport that dials the
 // gateway via `localhost`. The URL retains `localhost` (for TLS SAN
@@ -47,14 +47,20 @@ func IPv4DialContext(ctx context.Context, network, addr string) (net.Conn, error
 	if err != nil {
 		return nil, fmt.Errorf("ipv4 dial: split host/port %q: %w", addr, err)
 	}
+	d := &net.Dialer{Timeout: DefaultDialTimeout}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.To4() != nil {
+			return d.DialContext(ctx, "tcp4", net.JoinHostPort(ip.String(), port))
+		}
+		return nil, fmt.Errorf("ipv4 dial: literal IPv6 host %s: %w", host, constants.ErrNetworkIPv4Unavailable)
+	}
 	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
 	if err != nil {
 		return nil, fmt.Errorf("ipv4 dial: resolve %s: %w", host, err)
 	}
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("ipv4 dial: no IPv4 address for %s", host)
+		return nil, fmt.Errorf("ipv4 dial: resolve %s: %w", host, constants.ErrNetworkIPv4Unavailable)
 	}
-	d := &net.Dialer{Timeout: DefaultDialTimeout}
 	return d.DialContext(ctx, "tcp4", net.JoinHostPort(ips[0].String(), port))
 }
 
@@ -70,9 +76,18 @@ func NewIPv4Transport(tlsCfg *tls.Config) *http.Transport {
 		DialContext:         IPv4DialContext,
 		TLSHandshakeTimeout: DefaultTLSTimeout,
 		IdleConnTimeout:     DefaultIdleConnTimeout,
-		MaxIdleConns:        10,
-		MaxIdleConnsPerHost: 5,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
 	}
+}
+
+// WithTimeout returns a copy of client with a different overall request timeout.
+// Zero leaves cancellation to the request context. The transport, identity,
+// redirect policy and cookie jar are retained; the source client is not mutated.
+func WithTimeout(client *http.Client, timeout time.Duration) *http.Client {
+	configured := *client
+	configured.Timeout = timeout
+	return &configured
 }
 
 // WithoutRedirects returns a copy of client that fails every redirect with
@@ -108,9 +123,12 @@ func SPIFFEServerTLSConfig(roots *x509.CertPool, spiffeID string, refusal error)
 			if len(state.PeerCertificates) == 0 {
 				return refusal
 			}
-			intermediates := x509.NewCertPool()
-			for _, cert := range state.PeerCertificates[1:] {
-				intermediates.AddCert(cert)
+			var intermediates *x509.CertPool
+			if len(state.PeerCertificates) > 1 {
+				intermediates = x509.NewCertPool()
+				for _, cert := range state.PeerCertificates[1:] {
+					intermediates.AddCert(cert)
+				}
 			}
 			if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{
 				Roots: roots, Intermediates: intermediates,
@@ -130,6 +148,7 @@ func SPIFFEServerTLSConfig(roots *x509.CertPool, spiffeID string, refusal error)
 
 func WebSocketDialerWithTLS(tlsCfg *tls.Config) *websocket.Dialer {
 	return &websocket.Dialer{
+		NetDialContext:   IPv4DialContext,
 		TLSClientConfig:  tlsCfg,
 		HandshakeTimeout: DefaultTLSTimeout,
 	}

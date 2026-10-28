@@ -23,14 +23,16 @@ import (
 
 func TestOpenDB_NilLoggerUsesDefaultLogger(t *testing.T) {
 	t.Parallel()
-	db, err := OpenDB(DefaultDBConfig(filepath.Join(testutil.TempDir(t), "nil-logger.db")), nil)
+	fileSvc := newTestRuntimeFiles(t)
+	dbPath := fileSvc.Resolve("nil-logger.db")
+	db, err := OpenDB(fileSvc, DefaultDBConfig(dbPath), nil)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 }
 
 func TestOpenDB_EmptyPathReturnsMissingRequiredField(t *testing.T) {
 	t.Parallel()
-	_, err := OpenDB(DefaultDBConfig(""), testutil.NewTestLogger())
+	_, err := OpenDB(nil, DefaultDBConfig(""), testutil.NewTestLogger())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
@@ -44,12 +46,13 @@ func TestOpenReadOnlyDB_EmptyPathReturnsMissingRequiredField(t *testing.T) {
 
 func TestDB_Backoff_DoesNotPanic(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "test.db"))
 	cfg.RetryBaseDelayMs = 1
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -61,12 +64,13 @@ func TestDB_Backoff_DoesNotPanic(t *testing.T) {
 
 func TestDB_Backoff_HighAttempt(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "test.db"))
 	cfg.RetryBaseDelayMs = 1
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -78,11 +82,12 @@ func TestDB_Backoff_HighAttempt(t *testing.T) {
 
 func TestExecInTxWithRetry_Success(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "test.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -103,11 +108,12 @@ func TestExecInTxWithRetry_Success(t *testing.T) {
 
 func TestExecInTxWithRetry_FnErrorRollsBack(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "test.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -129,11 +135,12 @@ func TestExecInTxWithRetry_FnErrorRollsBack(t *testing.T) {
 
 func TestExecInTxWithRetry_ClosedDB(t *testing.T) {
 	t.Parallel()
-	dir := testutil.TempDir(t)
+	fileSvc := newTestRuntimeFiles(t)
+	dir := fileSvc.Resolve("")
 	logger := testutil.NewTestLogger()
 	cfg := DefaultDBConfig(filepath.Join(dir, "test.db"))
 
-	db, err := OpenDB(cfg, logger)
+	db, err := OpenDB(fileSvc, cfg, logger)
 	require.NoError(t, err)
 	db.Close()
 

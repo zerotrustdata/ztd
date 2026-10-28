@@ -9,7 +9,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -160,12 +159,8 @@ func ownerConnectedCLISessionIDs(ctx context.Context, docStore *DocumentStoreSer
 		if doc == nil {
 			continue
 		}
-		wire, err := json.Marshal(doc.ForWire())
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
-		}
 		var session models.CLISession
-		if err := json.Unmarshal(wire, &session); err != nil {
+		if err := doc.DecodeWire(&session); err != nil {
 			return nil, fmt.Errorf("%w: %w", constants.ErrDocumentStoreUnmarshalDocument, err)
 		}
 		if session.UserID != userID || !session.IsActive || (!session.ExpiresAt.IsZero() && now.After(session.ExpiresAt)) {

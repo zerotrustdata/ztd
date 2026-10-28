@@ -204,7 +204,7 @@ func verifyAssessedPersistence(ctx context.Context, trust AssessedSignerSource, 
 
 func validReceiptBinding(binding ReceiptImportBinding, prefix string) error {
 	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, prefix); !referenceValid {
-		return errors.New("content reference is invalid")
+		return fmt.Errorf("content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := ValidateRelativePath(binding.Path); err != nil {
 		return err

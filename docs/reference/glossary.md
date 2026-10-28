@@ -3,8 +3,8 @@ doc_id: glossary
 title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - protocol/
   - internal/services/
@@ -394,7 +394,7 @@ A Governed Operator started with the `provenance` capability (`OperatorCapabilit
 
 ## Receipt Failure Code
 
-A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `EventReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because a UEI placeholder could not be rehydrated (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
+A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `EventReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), a provider stream that ended with an error event instead of a done event (`RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because they could not be rehydrated: an unresolvable UEI placeholder, colliding keys, or a payload that does not decode as its action's message (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
 
 ---
 

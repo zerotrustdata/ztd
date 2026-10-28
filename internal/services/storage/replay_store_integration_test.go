@@ -10,7 +10,6 @@
 package storage
 
 import (
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +26,8 @@ import (
 func newTestReplayStore(t *testing.T) (*ReplayStore, *sqliteutil.DB) {
 	t.Helper()
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(filepath.Join(testutil.TempDir(t), constants.DbFilename)), logger)
+	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	rs, err := NewReplayStore(db, logger)

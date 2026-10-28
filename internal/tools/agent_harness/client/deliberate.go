@@ -134,6 +134,6 @@ func (c *Client) consensusAppClient(appID string) (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	appClient := &http.Client{Timeout: httpclient.DefaultTimeout, Transport: &http.Transport{TLSClientConfig: tlsCfg}}
+	appClient := &http.Client{Timeout: httpclient.DefaultTimeout, Transport: httpclient.NewIPv4Transport(tlsCfg)}
 	return httpclient.WithoutRedirects(appClient, constants.ErrConsensusEndpointInvalid), nil
 }

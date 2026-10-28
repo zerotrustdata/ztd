@@ -3,7 +3,7 @@
   "$id": "https://zerotrustdata.io/schema/event-registry-entry.json",
   "title": "ztd event registry entry",
   "type": "object",
-  "required": ["_go_const", "value", "producers", "persistence"],
+  "required": ["_go_const", "value", "transport", "producers", "persistence"],
   "properties": {
     "_go_const": {
       "type": "string",
@@ -19,7 +19,7 @@
     "transport": {
       "type": "array",
       "items": {
-        "enum": ["governed", "pubsub", "sse"]
+        "enum": ["governed", "pubsub", "sse", "local"]
       },
       "uniqueItems": true,
       "minItems": 1

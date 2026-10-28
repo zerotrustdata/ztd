@@ -97,6 +97,10 @@ func marshalPublicAssignmentRecord(record *PublicAssignmentRecord) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: marshal public assignment record: %w", err)
 	}
+	// This public wire shape intentionally flattens canonical protojson fields
+	// and the named extension struct. RawMessage keeps protojson's field values
+	// intact while the key check prevents extensions from shadowing the proto
+	// contract; a nested struct or encoding/json conversion would change it.
 	fields := make(map[string]json.RawMessage)
 	if err := json.Unmarshal(canonical, &fields); err != nil {
 		return nil, fmt.Errorf("evaluation: marshal public assignment record: %w", err)

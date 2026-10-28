@@ -1,8 +1,8 @@
 {
   "campaign_id": "eval-genesis-homogeneous",
-  "model_registry_digest": "23a32458c09d4d04c166a8e3405b035f0a20f81f68b085c00497039222d0f46f",
+  "model_registry_digest": "17aa83b6b15db4aba0e7c9572d9e86e845394150d171d5da7ea57e88380b68cb",
   "model_count": 111,
-  "homogeneous_cell_count": 4551,
+  "homogeneous_cell_count": 6216,
   "variants": [
     {
       "variantId": "impulse2000-smollm3-3b-q4-k-m",
@@ -101,10 +101,11 @@
       "variantId": "gemma3-1b",
       "providerClass": "ollama",
       "servedModelTag": "gemma3:1b",
-      "modelDigest": "8648f39daa8fbf5b18c7b4e6a8fb4990c692751d49917417b8842ca5758e7ffc",
+      "modelDigest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79",
       "modelFamily": "gemma3",
-      "parameterCount": "999890000",
-      "quantization": "Q4_K_M"
+      "parameterCount": "999885952",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768
     },
     {
       "variantId": "gemma3-270m",
@@ -128,10 +129,11 @@
       "variantId": "gemma4-12b",
       "providerClass": "ollama",
       "servedModelTag": "gemma4:12b",
-      "modelDigest": "89e70d6532d46faa1c63418a283eff7355d393909b4d16986a6820de439d3081",
+      "modelDigest": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b",
       "modelFamily": "gemma4",
-      "parameterCount": "11900000000",
-      "quantization": "Q4_K_M"
+      "parameterCount": "11907350576",
+      "quantization": "Q4_K_M",
+      "contextLimit": 262144
     },
     {
       "variantId": "gemma4-12b-it-qat",
@@ -174,10 +176,11 @@
       "variantId": "gemma4-e2b",
       "providerClass": "ollama",
       "servedModelTag": "gemma4:e2b",
-      "modelDigest": "7fbdbf8f5e45a75bb122155ed546e765b4d9c53a1285f62fd9f506baa1c5a47e",
+      "modelDigest": "2cf98652fdc60fbb161f69c1c5cd5cca671992211d1214edb11dabeb56434a0d",
       "modelFamily": "gemma4",
-      "parameterCount": "5100000000",
-      "quantization": "Q4_K_M"
+      "parameterCount": "4647450147",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072
     },
     {
       "variantId": "gemma4-e4b",
@@ -1132,19 +1135,21 @@
       "variantId": "qwen3-5-4b",
       "providerClass": "ollama",
       "servedModelTag": "qwen3.5:4b",
-      "modelDigest": "d31742299266cc8758092a5907bca52e823bb11e92db2e06ad1a0e7b46628159",
+      "modelDigest": "2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd",
       "modelFamily": "qwen35",
-      "parameterCount": "4210000000",
-      "quantization": "Q4_K_M"
+      "parameterCount": "4659865088",
+      "quantization": "Q4_K_M",
+      "contextLimit": 262144
     },
     {
       "variantId": "qwen3-5-9b",
       "providerClass": "ollama",
       "servedModelTag": "qwen3.5:9b",
-      "modelDigest": "0c8756d182362a618011b3c184b853909f9a4cac31f0eaf27700dbf1b345d5ca",
+      "modelDigest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
       "modelFamily": "qwen35",
-      "parameterCount": "8950000000",
-      "quantization": "Q4_K_M"
+      "parameterCount": "9653104368",
+      "quantization": "Q4_K_M",
+      "contextLimit": 262144
     },
     {
       "variantId": "qwen3-6-35b-a3b",
@@ -1596,7 +1601,7 @@
     },
     {
       "model": "gemma3:1b",
-      "digest": "8648f39daa8fbf5b18c7b4e6a8fb4990c692751d49917417b8842ca5758e7ffc"
+      "digest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79"
     },
     {
       "model": "gemma3:270m",
@@ -1608,7 +1613,7 @@
     },
     {
       "model": "gemma4:12b",
-      "digest": "89e70d6532d46faa1c63418a283eff7355d393909b4d16986a6820de439d3081"
+      "digest": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b"
     },
     {
       "model": "gemma4:12b-it-qat",
@@ -1616,7 +1621,7 @@
     },
     {
       "model": "gemma4:e2b",
-      "digest": "7fbdbf8f5e45a75bb122155ed546e765b4d9c53a1285f62fd9f506baa1c5a47e"
+      "digest": "2cf98652fdc60fbb161f69c1c5cd5cca671992211d1214edb11dabeb56434a0d"
     },
     {
       "model": "gemma4:e4b",
@@ -1900,11 +1905,11 @@
     },
     {
       "model": "qwen3.5:4b",
-      "digest": "d31742299266cc8758092a5907bca52e823bb11e92db2e06ad1a0e7b46628159"
+      "digest": "2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd"
     },
     {
       "model": "qwen3.5:9b",
-      "digest": "0c8756d182362a618011b3c184b853909f9a4cac31f0eaf27700dbf1b345d5ca"
+      "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7"
     },
     {
       "model": "qwen3.6:35b-a3b",

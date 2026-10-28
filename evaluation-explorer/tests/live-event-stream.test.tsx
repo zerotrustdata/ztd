@@ -42,10 +42,11 @@ describe('LiveEventStream', () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
-  it('keeps nine columns and links the task and result directly to evidence', () => {
+  it('omits the empty Tribunal column and links the task and result directly to evidence', () => {
     render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, input_tokens: { value: 350 } } })]));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
-      .toEqual(['Result', 'Task', 'Model', 'Tribunal', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
+      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
+    expect(within(rows()[0]!).getAllByRole('cell')).toHaveLength(8);
     const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
     expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
@@ -354,6 +355,41 @@ describe('LiveEventStream', () => {
     it('renders no Tribunal outside a row and none on rows without votes', () => {
       render(stream([liveEvent()]));
       expect(screen.queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
+    });
+
+    it('adds the column when votes arrive and removes it when filtering to rows without votes', async () => {
+      const user = userEvent.setup();
+      const events = [
+        started('a-1', '2026-09-17T08:00:00Z'),
+        started('a-2', '2026-09-17T08:01:00Z'),
+      ];
+      const { rerender } = render(stream(events));
+      expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
+      rerender(stream([...events, voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:00:05Z')]));
+      expect(screen.getByRole('columnheader', { name: 'Tribunal' })).toBeInTheDocument();
+      for (const row of rows()) expect(within(row).getAllByRole('cell')).toHaveLength(9);
+      expect(within(rowFor('task-a-2')).queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByText('Filters', { selector: 'summary' }));
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by assignment' }), 'a-2');
+      expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
+      expect(within(rows()[0]!).getAllByRole('cell')).toHaveLength(8);
+      await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+      expect(screen.getByRole('columnheader', { name: 'Tribunal' })).toBeInTheDocument();
+    });
+
+    it('hides the column on pages without votes', async () => {
+      const user = userEvent.setup();
+      render(stream([
+        ...Array.from({ length: 26 }, (_, index) => started(`a-${index}`, new Date(Date.UTC(2026, 8, 17, 8, index)).toISOString())),
+        voteEvent('v-axiom', 'axiom', 'approve', '2026-09-17T08:01:05Z', 'tx-1', 'a-0'),
+      ]));
+      expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Next page' }));
+      expect(screen.getByRole('columnheader', { name: 'Tribunal' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Previous page' }));
+      expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
     });
 
     it('spawns all five seats in the identified assignment row, keeping votes out of the row set', async () => {
@@ -404,6 +440,7 @@ describe('LiveEventStream', () => {
       ]));
       expect(rows()).toHaveLength(1);
       expect(screen.queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Tribunal' })).not.toBeInTheDocument();
     });
 
     it('shows only the latest round of a row', () => {

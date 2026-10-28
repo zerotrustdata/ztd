@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -1353,6 +1354,9 @@ func TestEnroll_StaleAnchors_Confirmed_RemovesAndInstalls(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		assert.Contains(t, prompt, "2 stale")
 		return true
@@ -1412,6 +1416,9 @@ func TestEnroll_StaleAnchors_None_NoPrompt(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
@@ -1466,6 +1473,9 @@ func TestEnroll_StaleAnchors_ListError_ProceedsAsBestEffort(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
@@ -1495,6 +1505,9 @@ func TestEnroll_StaleAnchors_Unsupported_SkipsDetection(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}
@@ -1528,6 +1541,35 @@ func TestInstallSystemTrust_UnsupportedPlatformWarns(t *testing.T) {
 	assert.Equal(t, 0, trust.installCalls, "InstallRoot should NOT be called when IsTrusted returns unsupported")
 	assert.True(t, recorder.contains("unsupported"), "should print unsupported warning")
 	assert.Equal(t, 1, passkey.calls, "passkey should still run")
+}
+
+// TestInstallSystemTrust_DeclinedDoesNotInstall verifies that refusing the
+// trust prompt does not call InstallRoot and does not open the passkey
+// ceremony. On macOS the prompt is the only thing standing between the
+// user and a CA written into their login keychain.
+func TestInstallSystemTrust_DeclinedDoesNotInstall(t *testing.T) {
+	t.Parallel()
+	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
+	coord.confirm = func(string) bool { return false }
+
+	artifacts := buildTestArtifacts(t, EnrollmentSourceBootstrap)
+	gw.bootstrapped = false
+	gw.bootstrapArtifacts = artifacts
+	keys.csr, keys.key = "test-csr", artifacts.CLIKey
+
+	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrConfirmationAborted)
+	require.ErrorIs(t, err, constants.ErrManualBrowserTrustRequired)
+	assert.Equal(t, 0, trust.installCalls, "InstallRoot must not run after a declined prompt")
+	assert.Equal(t, 0, passkey.calls, "passkey ceremony must not start after a declined trust prompt")
+	assert.True(t, recorder.contains("declined"))
+	assert.True(t, recorder.contains("--no-system-trust"))
+	if runtime.GOOS == "darwin" {
+		assert.True(t, recorder.contains("login keychain"))
+		assert.True(t, recorder.contains("does not use sudo"))
+		assert.False(t, recorder.contains("admin password"))
+	}
 }
 
 // TestInstallSystemTrust_InstallRootUnsupportedWarns verifies that when
@@ -1734,6 +1776,9 @@ func TestEnroll_ReusedIdentity_StaleBundle_DetectsStaleOSAnchors(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		assert.Contains(t, prompt, "1 stale")
 		return true
@@ -1836,6 +1881,9 @@ func TestEnroll_NoSystemTrust_StillRunsStaleDetection(t *testing.T) {
 
 	confirmCalled := false
 	coord.confirm = func(prompt string) bool {
+		if !strings.Contains(prompt, "stale") {
+			return true // OS trust install consent, not tracked by these stale-anchor tests
+		}
 		confirmCalled = true
 		return true
 	}

@@ -63,7 +63,7 @@ func TestNewSignerController_AllDepsProvidedNoNilFields(t *testing.T) {
 }
 
 func TestSignerControllerHandleGovernanceSigners(t *testing.T) {
-	signerController, docStore := setupTestSignerController(t)
+	signerController, _ := setupTestSignerController(t)
 
 	t.Run("GET - success", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/governance/signers", nil)
@@ -73,7 +73,7 @@ func TestSignerControllerHandleGovernanceSigners(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), `"success":true`)
 	})
 
-	t.Run("POST - success", func(t *testing.T) {
+	t.Run("POST - method not allowed", func(t *testing.T) {
 		signer := models.TrustedSigner{
 			ID:        "test-signer-1",
 			PublicKey: strings.Repeat("a", 64),
@@ -84,39 +84,7 @@ func TestSignerControllerHandleGovernanceSigners(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/governance/signers", bytes.NewReader(body))
 		rr := httptest.NewRecorder()
 		signerController.handleGovernanceSigners(rr, req)
-		assert.Equal(t, http.StatusCreated, rr.Code)
-		t.Cleanup(func() { docStore.DocDelete(context.Background(), "trusted_signers", "test-signer-1") })
-	})
-
-	t.Run("POST - missing id", func(t *testing.T) {
-		signer := models.TrustedSigner{
-			PublicKey: strings.Repeat("a", 64),
-		}
-		body := mustMarshalJSON(t, signer)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/governance/signers", bytes.NewReader(body))
-		rr := httptest.NewRecorder()
-		signerController.handleGovernanceSigners(rr, req)
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-		assert.Contains(t, rr.Body.String(), "missing required field")
-	})
-
-	t.Run("POST - missing public_key", func(t *testing.T) {
-		signer := models.TrustedSigner{
-			ID: "test-signer-2",
-		}
-		body := mustMarshalJSON(t, signer)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/governance/signers", bytes.NewReader(body))
-		rr := httptest.NewRecorder()
-		signerController.handleGovernanceSigners(rr, req)
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-		assert.Contains(t, rr.Body.String(), "missing required field")
-	})
-
-	t.Run("POST - invalid JSON", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/governance/signers", strings.NewReader("{invalid}"))
-		rr := httptest.NewRecorder()
-		signerController.handleGovernanceSigners(rr, req)
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	})
 
 	t.Run("Method Not Allowed", func(t *testing.T) {
@@ -165,28 +133,11 @@ func TestSignerControllerHandleGovernanceSignerByID(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), "test-signer-get")
 	})
 
-	t.Run("DELETE - success", func(t *testing.T) {
-		signer := models.TrustedSigner{
-			ID:        "test-signer-delete",
-			PublicKey: strings.Repeat("c", 64),
-			AddedAt:   time.Now().UTC(),
-			Enabled:   true,
-		}
-		signerBytes := mustMarshalJSON(t, signer)
-		err := docStore.DocSet(t.Context(), "trusted_signers", "test-signer-delete", signerBytes)
-		require.NoError(t, err)
-
+	t.Run("DELETE - method not allowed", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/governance/signers/test-signer-delete", nil)
 		rr := httptest.NewRecorder()
 		signerController.handleGovernanceSignerByID(rr, req)
-		assert.Equal(t, http.StatusOK, rr.Code)
-	})
-
-	t.Run("DELETE - not found", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/governance/signers/nonexistent", nil)
-		rr := httptest.NewRecorder()
-		signerController.handleGovernanceSignerByID(rr, req)
-		assert.Equal(t, http.StatusNotFound, rr.Code)
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	})
 
 	t.Run("Invalid signer id - empty", func(t *testing.T) {

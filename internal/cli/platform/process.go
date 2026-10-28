@@ -29,6 +29,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -72,7 +73,8 @@ type OperatorStartOptions struct {
 // keyStoreApprovalNotice tells the user why a background start is still
 // waiting after the child logged constants.KeyStoreAwaitingApprovalLog.
 const keyStoreApprovalNotice = "[ztd] Waiting for access to the vault master key in the OS key store.\n" +
-	"[ztd] On macOS, approve the Keychain prompt for ztd with your login password and choose Always Allow."
+	"[ztd] On macOS, the Keychain dialog for the ztd-platform item wants your Mac login password, not a ztd account. Choose Always Allow.\n" +
+	"[ztd] The dialog only appears in a GUI session. SSH cannot show it."
 
 type ProcessManager struct {
 	fileSvc fs.RuntimeFileService
@@ -137,12 +139,12 @@ func (pm *ProcessManager) checkPortAvailable(port int, name string) error {
 func (pm *ProcessManager) findAvailablePort(startPort int, name string) (int, error) {
 	pid, err := pm.readPID(constants.OperatorPIDFilename)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %v", constants.ErrPIDReadFailed, err)
+		return 0, fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
 	}
 
 	if pid != 0 && !pm.isProcessRunning(pid) {
 		if err := pm.deletePID(constants.OperatorPIDFilename); err != nil {
-			return 0, fmt.Errorf("%w: pid %d: %v", constants.ErrPathValidation, pid, err)
+			return 0, fmt.Errorf("%w: pid %d: %w", constants.ErrPathValidation, pid, err)
 		}
 	}
 
@@ -283,6 +285,12 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	if opts.InferenceOllamaEndpoint != "" {
 		args = append(args, "--inference-ollama-endpoint", opts.InferenceOllamaEndpoint)
 	}
+	if opts.InferenceLlamaCppEndpoint != "" {
+		args = append(args, "--inference-llamacpp-endpoint", opts.InferenceLlamaCppEndpoint)
+	}
+	if opts.InferenceLlamaCppModelRoot != "" {
+		args = append(args, "--inference-llamacpp-model-root", opts.InferenceLlamaCppModelRoot)
+	}
 	if opts.InferenceKeepAlive != "" {
 		args = append(args, "--inference-keep-alive", opts.InferenceKeepAlive)
 	}
@@ -294,6 +302,9 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	}
 	if opts.ProvenanceOperatorModelStorageRoot != "" {
 		args = append(args, "--model-storage-root", opts.ProvenanceOperatorModelStorageRoot)
+	}
+	if opts.ProvenanceOperatorModelStorageFormat != "" {
+		args = append(args, "--model-storage-format", opts.ProvenanceOperatorModelStorageFormat)
 	}
 	if opts.VaultDir != "" {
 		args = append(args, "--vault-dir", opts.VaultDir)
@@ -404,7 +415,10 @@ func healthResponseIsFromChild(body io.Reader, childPID int) bool {
 	return hr.PID != 0 && hr.PID == childPID
 }
 
-func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
+func (pm *ProcessManager) StartOperator(ctx context.Context, opts *OperatorStartOptions) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
+	}
 	if err := pm.CreateDirectories(); err != nil {
 		return err
 	}
@@ -519,6 +533,9 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 	cmd.Stderr = logHandle
 	setProcessGroup(cmd)
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, errors.Join(err, logHandle.Close()))
+	}
 	if err := cmd.Start(); err != nil {
 		if closeErr := logHandle.Close(); closeErr != nil {
 			return fmt.Errorf("%w: start: %w; close log: %w", constants.ErrProcessStartFailed, err, closeErr)
@@ -591,47 +608,85 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 	}
 
 	healthURL := fmt.Sprintf("http://%s:%d%s", constants.LocalhostIP, availableHTTPPort, constants.APIPaths.Health)
-	client := &http.Client{Timeout: checkInterval}
-	// A child waiting on the user to approve OS key store access keeps the
-	// start alive until KeyStoreApprovalTimeout instead of the health budget.
-	var approvalDeadline time.Time
-	for i := 0; i < maxChecks || time.Now().Before(approvalDeadline); i++ {
+	client := &http.Client{
+		Transport: httpclient.NewIPv4Transport(nil),
+		Timeout:   checkInterval,
+	}
+	budget := checkInterval * time.Duration(maxChecks)
+	if opts.PublicSpectatorEnabled && pm.maxHealthChecks <= 0 {
+		budget += constants.PublicMirrorVerificationTimeout
+	}
+	healthCtx, cancelHealth := context.WithCancelCause(ctx)
+	deadlineTimer := time.AfterFunc(budget, func() { cancelHealth(context.DeadlineExceeded) })
+	defer func() {
+		deadlineTimer.Stop()
+		cancelHealth(nil)
+	}()
+	started := time.Now()
+	approvalPending := false
+healthLoop:
+	for {
 		select {
 		case <-waitCh:
 			return failStart()
+		case <-healthCtx.Done():
+			break healthLoop
 		default:
 		}
-		resp, err := client.Get(healthURL)
+		req, err := http.NewRequestWithContext(healthCtx, http.MethodGet, healthURL, nil)
+		if err != nil {
+			cleanupErr := errors.Join(stopChild(false), pm.deletePID(constants.OperatorPIDFilename))
+			return fmt.Errorf("%w: health request: %w", constants.ErrProcessStartFailed, errors.Join(err, cleanupErr))
+		}
+		resp, err := client.Do(req)
 		if err == nil {
 			healthy := resp.StatusCode == http.StatusOK &&
 				healthResponseIsFromChild(resp.Body, cmd.Process.Pid)
 			_ = resp.Body.Close()
-			if healthy {
+			if healthy && healthCtx.Err() == nil {
 				return nil
 			}
 		}
-		if approvalDeadline.IsZero() && pm.childLogContains(logStartOffset, constants.KeyStoreAwaitingApprovalLog) {
-			approvalDeadline = time.Now().Add(constants.KeyStoreApprovalTimeout)
+		// Key store approval has its own bounded allowance, followed by
+		// the ordinary startup budget for verification and health.
+		if !approvalPending && pm.childLogContains(logStartOffset, constants.KeyStoreAwaitingApprovalLog) {
+			// Never extend a deadline that has already fired. One context
+			// owns both phases; resetting its timer keeps cancellation and
+			// cleanup independent of which phase is active.
+			if !deadlineTimer.Stop() {
+				cancelHealth(context.DeadlineExceeded)
+				break healthLoop
+			}
+			approvalPending = true
+			deadlineTimer.Reset(constants.KeyStoreApprovalTimeout + budget)
 			if opts.Notices != nil {
 				_, _ = fmt.Fprintln(opts.Notices, keyStoreApprovalNotice)
 			}
 		}
+		timer := time.NewTimer(checkInterval)
 		select {
 		case <-waitCh:
+			timer.Stop()
 			return failStart()
-		case <-time.After(checkInterval):
+		case <-healthCtx.Done():
+			timer.Stop()
+			break healthLoop
+		case <-timer.C:
 		}
 	}
 
-	reason := "gateway did not become healthy"
-	if !approvalDeadline.IsZero() {
-		reason = fmt.Sprintf("gateway did not become healthy: OS key store access was not approved within %v", constants.KeyStoreApprovalTimeout)
+	reason := fmt.Sprintf("gateway did not become healthy after %v", time.Since(started).Round(time.Millisecond))
+	if approvalPending {
+		reason += ": OS key store approval or subsequent startup did not complete"
 	}
 	cleanupErr := errors.Join(stopChild(false), pm.deletePID(constants.OperatorPIDFilename))
-	if cleanupErr != nil {
-		return fmt.Errorf("%w: %s, check %s: cleanup: %w", constants.ErrProcessStartFailed, reason, logPath, cleanupErr)
+	if diagnostic := pm.startupDiagnostic(logStartOffset); diagnostic != "" {
+		reason += ": " + diagnostic
 	}
-	return fmt.Errorf("%w: %s, check %s", constants.ErrProcessStartFailed, reason, logPath)
+	if cleanupErr != nil {
+		return fmt.Errorf("%w: %s: %w (full log: %s); cleanup: %w", constants.ErrProcessStartFailed, reason, context.Cause(healthCtx), logPath, cleanupErr)
+	}
+	return fmt.Errorf("%w: %s: %w (full log: %s)", constants.ErrProcessStartFailed, reason, context.Cause(healthCtx), logPath)
 }
 
 // spectatorListenerPort is one fixed loopback listener the Gateway child binds
@@ -706,7 +761,11 @@ func (pm *ProcessManager) startupDiagnostic(startOffset int64) string {
 		return ""
 	}
 	defer handle.Close()
-	if _, err := handle.Seek(startOffset, io.SeekStart); err != nil {
+	end, err := handle.Seek(0, io.SeekEnd)
+	if err != nil {
+		return ""
+	}
+	if _, err := handle.Seek(max(startOffset, end-maxStartupDiagnosticBytes), io.SeekStart); err != nil {
 		return ""
 	}
 	data, err := io.ReadAll(io.LimitReader(handle, maxStartupDiagnosticBytes))
@@ -733,7 +792,7 @@ func (pm *ProcessManager) childLogContains(startOffset int64, marker string) boo
 
 // diagnosticFromChildOutput prefers the last ERROR record: its message plus the
 // structured error field name the cause. Otherwise it falls back to the last
-// non-empty line, which is how plain stderr output (no logger) reports.
+// record with its progress fields, or the last plain stderr line.
 func diagnosticFromChildOutput(output string) string {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -754,7 +813,11 @@ func diagnosticFromChildOutput(output string) string {
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		if line := strings.TrimSpace(lines[i]); line != "" {
-			return line
+			start := i
+			for start > 0 && strings.HasPrefix(lines[start], "  - ") {
+				start--
+			}
+			return strings.TrimSpace(strings.Join(lines[start:i+1], "\n"))
 		}
 	}
 	return ""
@@ -777,7 +840,7 @@ func (pm *ProcessManager) StopOperator() error {
 	}
 
 	if err := pm.stopProcess(pid, "operator"); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrProcessStopFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrProcessStopFailed, err)
 	}
 
 	if err := pm.deletePID(constants.OperatorPIDFilename); err != nil {
@@ -824,7 +887,7 @@ func (pm *ProcessManager) GetLogPath() string {
 // when there was no runtime directory to archive.
 func (pm *ProcessManager) Clean() (string, error) {
 	if err := pm.StopOperator(); err != nil {
-		return "", fmt.Errorf("%w: %v", constants.ErrProcessStopFailed, err)
+		return "", fmt.Errorf("%w: %w", constants.ErrProcessStopFailed, err)
 	}
 
 	archived, err := pm.fileSvc.ArchiveRuntime(context.Background(), time.Now())
@@ -842,10 +905,10 @@ func (pm *ProcessManager) Clean() (string, error) {
 func TailLog(r io.ReadSeeker, follow bool) error {
 	// Print existing content
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("%w: seek to start: %v", constants.ErrDirectoryRead, err)
+		return fmt.Errorf("%w: seek to start: %w", constants.ErrDirectoryRead, err)
 	}
 	if _, err := io.Copy(os.Stdout, r); err != nil {
-		return fmt.Errorf("%w: print content: %v", constants.ErrDirectoryRead, err)
+		return fmt.Errorf("%w: print content: %w", constants.ErrDirectoryRead, err)
 	}
 
 	if !follow {
@@ -854,7 +917,7 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 
 	// Follow mode: seek to end and watch for new content
 	if _, err := r.Seek(0, io.SeekEnd); err != nil {
-		return fmt.Errorf("%w: seek to end: %v", constants.ErrDirectoryRead, err)
+		return fmt.Errorf("%w: seek to end: %w", constants.ErrDirectoryRead, err)
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -880,7 +943,7 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 						time.Sleep(100 * time.Millisecond)
 						continue
 					}
-					errChan <- fmt.Errorf("%w: read line: %v", constants.ErrDirectoryRead, err)
+					errChan <- fmt.Errorf("%w: read line: %w", constants.ErrDirectoryRead, err)
 					return
 				}
 				lineChan <- line

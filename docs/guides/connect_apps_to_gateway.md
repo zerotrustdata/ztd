@@ -3,8 +3,8 @@ doc_id: connect_apps_to_gateway
 title: Connect Apps to Gateway
 audience: application developers and system integrators
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/guides/connect_apps_to_gateway.md
   - internal/services/gateway/
@@ -167,7 +167,7 @@ Canonical channels include:
 
 ### 6. Document Store API
 
-CRUD operations and query support are available under `/api/v1/data/{collection}/{id}` and `/api/v1/data/{collection}/_query`. From the CLI:
+Read documents with `GET /api/v1/data/{collection}/{id}` and query them with `POST /api/v1/data/{collection}/_query`. `GET /api/v1/data/settings` reads platform settings. From the CLI:
 
 ```bash
 # List a collection, or read one document
@@ -186,7 +186,7 @@ The query endpoint is `POST /api/v1/data/{collection}/_query` over mTLS with `Co
 }
 ```
 
-Direct mutations (PUT, PATCH, DELETE) are restricted to infrastructure collections: `settings`, `users`, `operators`, `operator_sessions`, `bound_sessions`, `passkey_challenges`, `revoked_certificates`, and `trusted_signers`. Every other collection requires `GovernanceEnvelope` transactions for mutations.
+The data API is read-only. Direct document writes (`POST`, `PUT`, `PATCH`, `DELETE`) and settings writes return HTTP 405 for every collection and authenticated identity. The query endpoint's `POST` remains a read. Submit application record changes through classified governed actions; platform authority records such as users, signers, revocations, and settings use their owning enrollment and management workflows and cannot be written through the generic data API. See [Authentication Architecture](../architecture/auth.md#route-classification-inv-auth-route) for the admission invariant.
 
 ---
 
@@ -208,7 +208,7 @@ Upon approval, the certificate carrying `spiffe://ztd.local/app/etl-service` is 
 
 ### Consensus Members
 
-A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd consensus enroll app <primary-app> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The CLI trims member IDs. The Gateway rejects an empty member list, duplicate members, members without an enabled trusted signer, and a quorum below 1 or above the member count. The provider must be `application` or `tribunal`; an empty provider is rejected. The `application` provider uses this enrolled member set. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>`, which takes no application endpoint. Binding an application set is limited to the owner (the first user), and passkey approval is required under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model, `./ztd consensus enroll app --help` for application flags, and `./ztd consensus enroll tribunal --help` for Tribunal flags.
+A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd consensus enroll app <primary-app> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The CLI trims member IDs. The Gateway rejects an empty member list, duplicate members, members without an enabled trusted signer, and a quorum below 1 or above the member count. The provider must be `application` or `tribunal`; an empty provider is rejected. The `application` provider uses this enrolled member set. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>`, which takes no application endpoint. Binding an application set is limited to the owner (the first user), and passkey approval is required under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model, `./ztd consensus enroll app --help` for application flags, and `./ztd consensus enroll tribunal --help` for Tribunal flags. To clear the bound consensus, run `./ztd consensus unbind`. It is owner-only and goes through governance, and under `ratify` and `notary` it requires passkey approval like binding.
 
 ---
 

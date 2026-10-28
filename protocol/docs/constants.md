@@ -1,7 +1,7 @@
 # Protocol Constants System
 
 Last Updated: 2026-10-23
-Version: v1.4.1
+Version: v1.5.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the **Single Source of Truth (SSOT)** for the registries they cover (collections, status and action types, events, API paths, ports, channels, senders, and env vars). Some constants are hand-maintained Go with no JSON source; section 7 marks them.
 
@@ -126,7 +126,7 @@ Each entry in `events.json` adheres to a strict schema validated by `constgen`:
 ```
 
 - **`kind`**: Must be one of `request`, `outcome`, `fact`, `stream`.
-- **`transport`**: Allowed values are `governed`, `pubsub`, and `sse`. Any `governance` request must include `governed`.
+- **`transport`**: Allowed values are `governed`, `pubsub`, `sse`, and `local`. Any `governance` request must include `governed`.
 - **`producers`**: Components authorized to emit the event (`gateway`, `operator`, `cli`, `mcp`).
 - **`persistence`**: Storage target (`operator.audit_log`, `gateway.audit_log`, `gateway.sse_store`, `gateway.operator_docs`, `gateway.docstore`, `ephemeral`).
 - **`governance`**: Links request events directly to their `action_type` and Protobuf payload type.
@@ -222,9 +222,9 @@ Production Go code accesses the environment solely via typed constants defined o
 - **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`), `EnvVar.DBusSessionBusAddress` (`DBUS_SESSION_BUS_ADDRESS`), `EnvVar.Display` (`DISPLAY`), `EnvVar.WaylandDisplay` (`WAYLAND_DISPLAY`), `EnvVar.Browser` (`BROWSER`).
 - **Secrets**: `EnvVar.CloudflareAPIToken` (`CLOUDFLARE_API_TOKEN`).
 - **User Endpoints**: `EnvVar.OllamaEndpoint` (`ZTD_OLLAMA_ENDPOINT`), the environment fallback for `--inference-ollama-endpoint`. The flag wins when set; otherwise the built-in default is `http://127.0.0.1:11434`.
-- **Test Harness**: the `EnvVar.E2E*` keys (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, and the `ZTD_E2E_FLEET_*` keys), set by `ztd test scale` and read by the E2E suite under `test/e2e/`.
+- **Test Harness**: `EnvVar.TestReexec` (`ZTD_TEST_REEXEC`) selects test-binary Gateway-child behavior in process-lifecycle tests. The `EnvVar.E2E*` keys (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, and the `ZTD_E2E_FLEET_*` keys), set by `ztd test scale` and read by the E2E suite under `test/e2e/`.
 
-Raw `os.Getenv("...")` calls with hardcoded strings or locally declared string constants are prohibited, in production Go code and in the `test/` harness; `TestProductionGoEnvReads_UseRegistryKeys` enforces this. In-process `ZTD_TEST_*` re-exec markers are exempt. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from `.env` in the working directory (`constants.EnvFilename`) into the process environment. The root command runs it after its pre-run gates pass, so a refused command does not populate the environment. A variable that is already set wins.
+Raw `os.Getenv("...")` calls with hardcoded strings or locally declared string constants are prohibited, in production Go code and in the `test/` harness; `TestProductionGoEnvReads_UseRegistryKeys` enforces this. Every `ZTD_TEST_*` key must be registered and accessed through its typed key. `config.LoadEnvFile` (`internal/cli/config/env_file.go`) loads secret and user_endpoint keys from `.env` in the working directory (`constants.EnvFilename`) into the process environment. The root command runs it after its pre-run gates pass, so a refused command does not populate the environment. A variable that is already set wins.
 
 ---
 

@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,7 +23,8 @@ import (
 )
 
 func TestOpenReadOnlyOperationalEvidence_DoesNotCreateAbsentDatabase(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
+	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
+	dbPath := fileSvc.Resolve(constants.TestReadOnlyDatabaseFilename)
 	reader, err := OpenReadOnlyOperationalEvidence(dbPath, nil, testutil.NewTestLogger())
 	require.Error(t, err)
 	assert.Nil(t, reader)
@@ -33,8 +33,8 @@ func TestOpenReadOnlyOperationalEvidence_DoesNotCreateAbsentDatabase(t *testing.
 }
 
 func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBodies(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
+	dbPath := fileSvc.Resolve(constants.TestReadOnlyDatabaseFilename)
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	testVault := CreateTestVault(t, fileSvc, privKey)
@@ -45,7 +45,7 @@ func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBod
 	require.NoError(t, err)
 	attestationBody, err := encryptEventsContent(testVault, CommitmentColumnAttestationJSON, "commitment-1", `{"transactionId":"tx-1"}`)
 	require.NoError(t, err)
-	writer, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	writer, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	_, err = writer.Exec(eventsStoreSchema)
 	require.NoError(t, err)
@@ -78,8 +78,9 @@ func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBod
 }
 
 func TestReadOnlyOperationalEvidence_SnapshotFailsInsteadOfTruncatingPopulation(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
-	writer, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
+	dbPath := fileSvc.Resolve(constants.TestReadOnlyDatabaseFilename)
+	writer, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	_, err = writer.Exec(eventsStoreSchema)
 	require.NoError(t, err)
@@ -104,8 +105,9 @@ func TestReadOnlyOperationalEvidence_SnapshotFailsInsteadOfTruncatingPopulation(
 }
 
 func TestReadOnlyOperationalEvidence_LatestCommitmentAtReturnsNewestCommitTime(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), constants.TestReadOnlyDatabaseFilename)
-	writer, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
+	dbPath := fileSvc.Resolve(constants.TestReadOnlyDatabaseFilename)
+	writer, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	_, err = writer.Exec(eventsStoreSchema)
 	require.NoError(t, err)

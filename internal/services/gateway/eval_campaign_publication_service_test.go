@@ -23,7 +23,7 @@ import (
 func newEvalCampaignPublicationServiceTest(t *testing.T) *EvalCampaignPublicationService {
 	t.Helper()
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)
@@ -36,7 +36,7 @@ func newEvalCampaignPublicationServiceTest(t *testing.T) *EvalCampaignPublicatio
 
 func TestNewEvalCampaignPublicationService_RejectsMissingDependencies(t *testing.T) {
 	logger := testutil.NewTestLogger()
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), logger)
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

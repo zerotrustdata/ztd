@@ -78,6 +78,7 @@ func TestGatewayAuditAttribution(t *testing.T) {
 		// Simulate app auth
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, constants.ContextKeyAppID, appID)
+		ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, "delegated-user")
 		ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, opID)
 		ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, opSessionID)
 		req = req.WithContext(ctx)
@@ -89,6 +90,7 @@ func TestGatewayAuditAttribution(t *testing.T) {
 		require.NotNil(t, capture.lastEnvelope)
 		assert.Equal(t, string(constants.DocIDEmbeddedOperator), capture.lastEnvelope.OperatorId)
 		assert.Equal(t, appID, capture.lastEnvelope.ActingAppId)
+		assert.Equal(t, "delegated-user", capture.lastEnvelope.RequestorUserId)
 		// The app's own context session is ignored; the envelope carries the
 		// claimed embedded Operator's session, which executes it.
 		assert.Equal(t, testEmbeddedSessionID, capture.lastEnvelope.OperatorSessionId)

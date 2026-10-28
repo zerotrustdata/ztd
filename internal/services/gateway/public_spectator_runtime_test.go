@@ -31,11 +31,34 @@ func TestValidatePublicFeedSourceID_RejectsPathComponents(t *testing.T) {
 	}
 }
 
+func TestReadPublicExportConfigRejectsTrailingJSON(t *testing.T) {
+	fileSvc := newProducerFileSvc(t)
+	exportConfig := models.DefaultPublicExportConfig()
+	exportConfig.SourceID = "source-one"
+	exportConfig.SigningKeyID = "key-one"
+	exportConfig.MirrorOrigin = "https://mirror.example"
+	data, err := json.Marshal(exportConfig)
+	require.NoError(t, err)
+	data = append(data, []byte(`}`)...)
+	require.NoError(t, fileSvc.WriteFile(context.Background(), constants.PublicFeedExportConfigPath, data, constants.PermFilePrivate))
+
+	_, err = ReadPublicExportConfig(context.Background(), fileSvc)
+	require.ErrorIs(t, err, constants.ErrPublicFeedConfigRequired)
+}
+
+func TestReadPublicExportConfigPreservesMissingFileCause(t *testing.T) {
+	fileSvc := newProducerFileSvc(t)
+
+	_, err := ReadPublicExportConfig(context.Background(), fileSvc)
+	require.ErrorIs(t, err, constants.ErrPublicFeedConfigRequired)
+	require.ErrorIs(t, err, constants.ErrNotFound)
+}
+
 func TestTransitionLocalPublicFeed_ArchivesPublisherStateAndStartsFreshSource(t *testing.T) {
 	fileSvc := newProducerFileSvc(t)
 	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
 	ctx := context.Background()
-	oldConfig, err := EnsureLocalPublicFeed(ctx, fileSvc, ks, "source-old", "http://127.0.0.1:8081")
+	oldConfig, err := InitializeLocalPublicFeed(ctx, fileSvc, ks, "source-old", "http://127.0.0.1:8081")
 	require.NoError(t, err)
 	oldKey, err := fileSvc.ReadFile(ctx, constants.PublicFeedSigningKeyPath)
 	require.NoError(t, err)
@@ -88,7 +111,7 @@ func TestTransitionLocalPublicFeed_PreservesEveryImmutableGeneration(t *testing.
 	fileSvc := newProducerFileSvc(t)
 	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
 	ctx := context.Background()
-	_, err := EnsureLocalPublicFeed(ctx, fileSvc, ks, "source-one", "http://127.0.0.1:8081")
+	_, err := InitializeLocalPublicFeed(ctx, fileSvc, ks, "source-one", "http://127.0.0.1:8081")
 	require.NoError(t, err)
 
 	_, err = TransitionLocalPublicFeed(ctx, fileSvc, ks, "source-two")
@@ -112,14 +135,14 @@ func TestTransitionLocalPublicFeed_PreservesEveryImmutableGeneration(t *testing.
 	assert.ErrorIs(t, err, constants.ErrPublicFeedArchiveGenerationExists)
 }
 
-func TestEnsureLocalPublicFeed_RejectsOrphanedProofGeneration(t *testing.T) {
+func TestInitializeLocalPublicFeed_RejectsOrphanedProofGeneration(t *testing.T) {
 	fileSvc := newProducerFileSvc(t)
 	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
 	ctx := context.Background()
 	require.NoError(t, fileSvc.MkdirAll(ctx, constants.PublicProofsDirname, constants.PermDirPrivate))
 	require.NoError(t, fileSvc.WriteFile(ctx, constants.PublicProofSegmentsFilename, []byte("{}\n"), constants.PermFilePrivate))
 
-	_, err := EnsureLocalPublicFeed(ctx, fileSvc, ks, "source-one", "http://127.0.0.1:8081")
+	_, err := InitializeLocalPublicFeed(ctx, fileSvc, ks, "source-one", "http://127.0.0.1:8081")
 	require.ErrorIs(t, err, constants.ErrPublicFeedOrphanedGeneration)
 	keyExists, err := fileSvc.FileExists(ctx, constants.PublicFeedSigningKeyPath)
 	require.NoError(t, err)
@@ -133,10 +156,16 @@ func TestValidatePublicMirrorListenAddresses_RejectsDuplicate(t *testing.T) {
 }
 
 func TestValidatePublicMirrorListenAddresses_AllowsContainerBind(t *testing.T) {
+	// Private ingest is unconditionally restricted to loopback (INV-SPEC-ISO-03)
 	err := ValidatePublicMirrorListenAddresses("0.0.0.0:8081", "0.0.0.0:8082", true)
+	require.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
+
+	// Public address accepts 0.0.0.0 only when allowContainerBind is true
+	err = ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "0.0.0.0:8082", false)
+	require.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
+
+	err = ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "0.0.0.0:8082", true)
 	require.NoError(t, err)
-	err = ValidatePublicMirrorListenAddresses("0.0.0.0:8081", "0.0.0.0:8082", false)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
 }
 
 // getSpectatorBody issues one GET against a listener PublicSpectatorRuntime.Start

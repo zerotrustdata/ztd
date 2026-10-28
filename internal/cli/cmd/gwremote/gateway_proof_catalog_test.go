@@ -11,11 +11,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -98,7 +100,7 @@ func TestIsPublicFeedOutboxPublicationError(t *testing.T) {
 		{name: "outbox equivocation", err: constants.ErrPublicFeedOutboxEquivocation, want: true},
 		{name: "outbox corrupt", err: constants.ErrPublicFeedOutboxCorrupt, want: true},
 		{name: "hash chain mismatch", err: constants.ErrPublicFeedHashChainMismatch, want: true},
-		{name: "sentinel survives wrapping and HTTP body embedding", err: fmt.Errorf("status 409: {\"error\":%q}: %w", constants.ErrPublicFeedOutboxCorrupt.Error(), constants.ErrHTTPStatusError), want: true},
+		{name: "sentinel survives wrapping and HTTP body embedding", err: fmt.Errorf("gateway publication: %w", api.DecodeGatewayError(http.StatusConflict, []byte(fmt.Sprintf(`{"error":%q}`, constants.ErrPublicFeedOutboxCorrupt.Error())))), want: true},
 		{name: "outbox empty is not a publication fault", err: constants.ErrPublicFeedOutboxEmpty, want: false},
 		{name: "unrelated error", err: errors.New("connection reset"), want: false},
 	}

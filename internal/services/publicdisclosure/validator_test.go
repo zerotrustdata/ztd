@@ -109,6 +109,14 @@ func TestValidateAssignmentRecordAcceptsCurrentSchemas(t *testing.T) {
 	require.NoError(t, ValidateAssignmentRecord("1.1.0", result))
 }
 
+func TestValidateAssignmentRecordPreservesArchivedGradeFieldTypes(t *testing.T) {
+	// Archived grade records predate a single typed contract for these fields.
+	// The validator closes the field-name set but must retain their raw JSON
+	// values rather than imposing string-only types.
+	record := []byte(`{"schema_version":"1.1.0","message_type":"PublicAssignmentResultProjection","idempotency_key":"run-1:assignment-1:result","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","benchmark_observations":{"grade_summaries":[{"criterion_id":"c","status":"pass","method":{"name":"manual","revision":2},"judge_variant_id":["judge-a",3]}],"unavailable_reasons":[]}}}`)
+	require.NoError(t, ValidateAssignmentRecord("1.1.0", record))
+}
+
 func TestValidateRoleTranscriptsAcceptsApprovedArguments(t *testing.T) {
 	raw := json.RawMessage(`[{"role":"lite","tool_calls":[{"tool_name":"run_shell_command","arguments_json":"{\"command\":\"cat app/service.conf\"}","approved_arguments_json":"{\"args\":[\"app/service.conf\"],\"command\":\"cat\"}","success":true}]}]`)
 	require.NoError(t, ValidateRoleTranscripts(raw))

@@ -85,6 +85,9 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("evaluation: models pull: %w", err)
 			}
+			if err := env.requireOllamaPullEnvironment(); err != nil {
+				return fmt.Errorf("evaluation: models pull: %w", err)
+			}
 			env.Maintenance.Timeout = timeout
 			req := evaluation.RolloutIntakeStageRequest{
 				Context:            cmd.Context(),

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -51,10 +52,24 @@ func TestHeartbeatResultFromEnvelope_BinaryPayload(t *testing.T) {
 
 func TestHeartbeatResultFromEnvelope_IntentDataProtojson(t *testing.T) {
 	heartbeat := &operatorv1.HeartbeatResult{
-		OperatorId: "op-1",
-		Status:     "automatic",
+		OperatorId:        "op-1",
+		OperatorSessionId: "session-1",
+		Timestamp:         "2026-09-25T12:00:00Z",
+		Status:            "automatic",
+		EventType:         "heartbeat",
+		SystemFingerprint: "fingerprint-1",
 		SystemIdentity: &operatorv1.SystemIdentity{
-			Hostname: "protojson-host",
+			Hostname:     "protojson-host",
+			Architecture: "arm64",
+			CpuCount:     12,
+		},
+		NetworkInfo: &operatorv1.NetworkInfo{
+			PublicIp:   "192.0.2.1",
+			Interfaces: []string{"eth0", "wlan0"},
+		},
+		PerformanceMetrics: &operatorv1.PerformanceMetrics{
+			CpuPercent:   12.5,
+			MemoryUsedMb: 2048,
 		},
 	}
 	intentJSON, err := protojson.Marshal(heartbeat)
@@ -70,7 +85,7 @@ func TestHeartbeatResultFromEnvelope_IntentDataProtojson(t *testing.T) {
 
 	decoded, err := heartbeatResultFromEnvelope(env)
 	require.NoError(t, err)
-	assert.Equal(t, "protojson-host", decoded.SystemIdentity.Hostname)
+	assert.True(t, proto.Equal(heartbeat, decoded), "the JSON fallback must preserve the full typed heartbeat")
 }
 
 func TestHeartbeatResultFromEnvelope_RejectsEmptyEnvelope(t *testing.T) {
@@ -87,6 +102,70 @@ func TestHeartbeatResultFromEnvelope_RejectsEmptyBinaryPayload(t *testing.T) {
 		Payload:    []byte{0x00},
 	})
 	require.Error(t, err)
+}
+
+func TestHeartbeatResultFromEnvelope_RejectsOperatorIDMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  func(t *testing.T) *commonv1.GovernanceEnvelope
+	}{
+		{
+			name: "binary payload",
+			env: func(t *testing.T) *commonv1.GovernanceEnvelope {
+				t.Helper()
+				payload, err := proto.Marshal(&operatorv1.HeartbeatResult{OperatorId: "op-2", Status: "automatic"})
+				require.NoError(t, err)
+				return &commonv1.GovernanceEnvelope{OperatorId: "op-1", Payload: payload}
+			},
+		},
+		{
+			name: "intent_data",
+			env: func(t *testing.T) *commonv1.GovernanceEnvelope {
+				t.Helper()
+				data, err := structpb.NewStruct(map[string]any{"operator_id": "op-2", "status": "automatic"})
+				require.NoError(t, err)
+				return &commonv1.GovernanceEnvelope{OperatorId: "op-1", IntentData: data}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := heartbeatResultFromEnvelope(tc.env(t))
+			require.ErrorIs(t, err, constants.ErrHeartbeatIdentityMismatch)
+			assert.Nil(t, got)
+		})
+	}
+}
+
+func TestHeartbeatResultFromEnvelope_AllowsOmittedPayloadOperatorID(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  func(t *testing.T) *commonv1.GovernanceEnvelope
+	}{
+		{
+			name: "binary payload",
+			env: func(t *testing.T) *commonv1.GovernanceEnvelope {
+				t.Helper()
+				payload, err := proto.Marshal(&operatorv1.HeartbeatResult{Status: "automatic"})
+				require.NoError(t, err)
+				return &commonv1.GovernanceEnvelope{OperatorId: "op-1", Payload: payload}
+			},
+		},
+		{
+			name: "intent_data",
+			env: func(t *testing.T) *commonv1.GovernanceEnvelope {
+				t.Helper()
+				data, err := structpb.NewStruct(map[string]any{"status": "automatic"})
+				require.NoError(t, err)
+				return &commonv1.GovernanceEnvelope{OperatorId: "op-1", IntentData: data}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := heartbeatResultFromEnvelope(tc.env(t))
+			require.NoError(t, err)
+			assert.Equal(t, "automatic", got.GetStatus())
+		})
+	}
 }
 
 func TestMarshalHeartbeatSnapshot_UsesProtoFieldNames(t *testing.T) {

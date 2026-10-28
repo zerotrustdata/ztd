@@ -12,9 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"sync"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -93,8 +95,91 @@ func (r *CampaignMirrorReconciler) ReconcileAllVerifiedRunsFromStore(ctx context
 	return r.reconcileRuns(ctx, runIDs, runTimeout, restoreMissing, force, progress)
 }
 
+type runCheckResult struct {
+	err        error
+	absent     bool
+	ineligible bool
+	present    bool
+}
+
 func (r *CampaignMirrorReconciler) reconcileRuns(ctx context.Context, runIDs []string, runTimeout time.Duration, restoreMissing, force bool, progress CampaignMirrorReconcileProgressFunc) (*CampaignMirrorReconcileResult, error) {
 	result := &CampaignMirrorReconcileResult{FailedRuns: map[string]string{}}
+	if len(runIDs) == 0 {
+		return result, nil
+	}
+
+	checks := make([]runCheckResult, len(runIDs))
+	workerCount := 4
+	if len(runIDs) < workerCount {
+		workerCount = len(runIDs)
+	}
+	jobs := make(chan int, len(runIDs))
+	var wg sync.WaitGroup
+	checkCtx, checkCancel := context.WithCancel(ctx)
+	defer checkCancel()
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				select {
+				case <-checkCtx.Done():
+					return
+				default:
+				}
+				runID := runIDs[idx]
+				effectiveTimeout := runTimeout
+				if restoreMissing {
+					effectiveTimeout = CampaignMirrorReconcileRunTimeout(runTimeout, assignmentCountForMirrorTimeout(checkCtx, r.store, runID))
+				}
+				runCtx, cancel := context.WithTimeout(checkCtx, effectiveTimeout)
+				exists, err := r.store.RunExists(runCtx, runID)
+				if err != nil {
+					cancel()
+					checks[idx] = runCheckResult{err: err}
+					continue
+				}
+				if !exists {
+					cancel()
+					checks[idx] = runCheckResult{absent: true}
+					continue
+				}
+				eligible, err := r.completedAndVerified(runCtx, runID)
+				if err != nil {
+					cancel()
+					checks[idx] = runCheckResult{err: err}
+					continue
+				}
+				if !eligible {
+					cancel()
+					checks[idx] = runCheckResult{ineligible: true}
+					continue
+				}
+				if r.probe != nil && !force {
+					present, err := r.probe.DatasetPresent(runCtx, CampaignDatasetID(runID))
+					if err != nil {
+						cancel()
+						checks[idx] = runCheckResult{err: err}
+						continue
+					}
+					if present {
+						cancel()
+						checks[idx] = runCheckResult{present: true}
+						continue
+					}
+				}
+				cancel()
+			}
+		}()
+	}
+
+	for i := range runIDs {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
 	for index, runID := range runIDs {
 		update := func(status CampaignMirrorReconcileStatus, published int, err error) {
 			if progress != nil {
@@ -102,64 +187,40 @@ func (r *CampaignMirrorReconciler) reconcileRuns(ctx context.Context, runIDs []s
 			}
 		}
 		update(CampaignMirrorReconcileChecking, 0, nil)
-		effectiveTimeout := runTimeout
-		if restoreMissing {
-			effectiveTimeout = CampaignMirrorReconcileRunTimeout(runTimeout, assignmentCountForMirrorTimeout(ctx, r.store, runID))
-		}
-		runCtx, cancel := context.WithTimeout(ctx, effectiveTimeout)
-		exists, err := r.store.RunExists(runCtx, runID)
-		if err != nil {
-			cancel()
-			result.FailedRuns[runID] = err.Error()
-			update(CampaignMirrorReconcileFailed, 0, err)
+		check := checks[index]
+		if check.err != nil {
+			result.FailedRuns[runID] = check.err.Error()
+			update(CampaignMirrorReconcileFailed, 0, check.err)
 			continue
 		}
-		if !exists {
-			cancel()
+		if check.absent {
 			result.HostAbsentRunIDs = append(result.HostAbsentRunIDs, runID)
 			update(CampaignMirrorReconcileHostAbsent, 0, nil)
 			continue
 		}
-		eligible, err := r.completedAndVerified(runCtx, runID)
-		if err != nil {
-			cancel()
-			result.FailedRuns[runID] = err.Error()
-			update(CampaignMirrorReconcileFailed, 0, err)
-			continue
-		}
-		if !eligible {
-			cancel()
+		if check.ineligible {
 			result.IneligibleRunIDs = append(result.IneligibleRunIDs, runID)
 			update(CampaignMirrorReconcileIneligible, 0, nil)
 			continue
 		}
-		if r.probe != nil {
-			present, err := r.probe.DatasetPresent(runCtx, CampaignDatasetID(runID))
-			if err != nil {
-				cancel()
-				result.FailedRuns[runID] = err.Error()
-				update(CampaignMirrorReconcileFailed, 0, err)
-				continue
-			}
-			if present {
-				cancel()
-				result.SkippedRunIDs = append(result.SkippedRunIDs, runID)
-				update(CampaignMirrorReconcilePresent, 0, nil)
-				continue
-			}
+		if check.present {
+			result.SkippedRunIDs = append(result.SkippedRunIDs, runID)
+			update(CampaignMirrorReconcilePresent, 0, nil)
+			continue
 		}
 		if !restoreMissing {
-			cancel()
 			result.MissingRunIDs = append(result.MissingRunIDs, runID)
 			update(CampaignMirrorReconcileMissing, 0, nil)
 			continue
 		}
+		effectiveTimeout := CampaignMirrorReconcileRunTimeout(runTimeout, assignmentCountForMirrorTimeout(ctx, r.store, runID))
+		runCtx, cancel := context.WithTimeout(ctx, effectiveTimeout)
 		published, err := r.restoreRun(runCtx, runID, force)
 		cancel()
 		if err != nil {
 			result.FailedRuns[runID] = err.Error()
 			update(CampaignMirrorReconcileFailed, published, err)
-			if campaignMirrorGatewayUnreachable(err) {
+			if logging.IsTransportDown(err) {
 				for _, remainingRunID := range runIDs[index+1:] {
 					result.FailedRuns[remainingRunID] = "skipped after gateway publication failure"
 				}
@@ -230,6 +291,9 @@ func (r *CampaignMirrorReconciler) restoreRun(ctx context.Context, runID string,
 			return 0, err
 		}
 	}
+	r.publication.NoteDatasetAbsent(runID)
+	defer r.publication.NoteDatasetAbsent("")
+
 	if legacyCampaignVerificationReport(report) {
 		return r.publication.PublishRunCatchUp(ctx, runID)
 	}

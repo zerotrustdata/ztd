@@ -14,6 +14,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,13 +40,14 @@ func TestEnrollOperator_PresentsActuatorKey(t *testing.T) {
 
 	deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 	require.NoError(t, err)
-	_, err = enrollOperator(ctx, ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, actuatorKeyHex, deployment, testLogger())
+	_, err = enrollOperator(ctx, ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, actuatorKeyHex, strings.Repeat("cd", 32), deployment, testLogger())
 	require.Error(t, err)
 
 	reqs := mg.received()
 	require.Len(t, reqs, 1)
 	require.NotNil(t, reqs[0].Enrollment.Operator)
 	assert.Equal(t, actuatorKeyHex, reqs[0].Enrollment.Operator.ActuatorPublicKey)
+	assert.Equal(t, strings.Repeat("cd", 32), reqs[0].Enrollment.Operator.AuditorPublicKey)
 }
 
 // TestEnrollOperator_RefusesMissingActuatorKey proves an Operator with no valid
@@ -61,7 +63,7 @@ func TestEnrollOperator_RefusesMissingActuatorKey(t *testing.T) {
 			deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 			require.NoError(t, err)
 
-			_, err = enrollOperator(enrollContext(t), ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, keyHex, deployment, testLogger())
+			_, err = enrollOperator(enrollContext(t), ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, keyHex, strings.Repeat("cd", 32), deployment, testLogger())
 			require.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInvalid)
 			assert.Equal(t, 0, mg.dials())
 		})

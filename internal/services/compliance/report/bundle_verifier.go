@@ -1919,6 +1919,12 @@ func (r *bundledRuntimeArtifactReader) EnforceDirPermissions(context.Context, st
 func (r *bundledRuntimeArtifactReader) EnforceFilePermissions(context.Context, string, os.FileMode) error {
 	return constants.ErrReadOnlyEvidenceSource
 }
+func (r *bundledRuntimeArtifactReader) CreateOrRestrictFile(context.Context, string, os.FileMode) error {
+	return constants.ErrReadOnlyEvidenceSource
+}
+func (r *bundledRuntimeArtifactReader) RestrictFileIfExists(context.Context, string, os.FileMode) (bool, error) {
+	return false, constants.ErrReadOnlyEvidenceSource
+}
 func (r *bundledRuntimeArtifactReader) Resolve(sourcePath string) string      { return sourcePath }
 func (r *bundledRuntimeArtifactReader) Rel(sourcePath string) (string, error) { return sourcePath, nil }
 func (r *bundledRuntimeArtifactReader) RelFromAbs(sourcePath string) (string, error) {

@@ -39,7 +39,7 @@ func TestCampaignVerificationBinding_BindsExactVerifiedPopulation(t *testing.T) 
 	results := map[string]*evalv1.EvaluationAssignmentResult{"assignment-1": {AssignmentId: "assignment-1", RunId: "run-1", CampaignId: "campaign-1", ResultDigest: "result-digest"}}
 	report := &evalv1.EvaluationVerificationReport{SchemaVersion: CampaignSchemaVersion, ReportId: "run-1", RunId: "run-1", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, VerifiedAt: timestamppb.New(time.Unix(1_700_000_000, 0).UTC())}
 
-	bound, applicability, err := bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, CampaignVerificationPolicy{
+	bound, applicability, err := bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, 1, CampaignVerificationPolicy{
 		VerifierReleaseVersion: "v2.1.12",
 		ProviderObservation:    ProviderObservationPolicyStrict,
 		ModelProvenance:        ModelProvenancePolicyInterim,

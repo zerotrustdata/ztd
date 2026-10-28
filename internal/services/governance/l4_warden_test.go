@@ -157,7 +157,8 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 		constants.ActionTypePlatformEnrollmentPersistPolicy,
 		constants.ActionTypePlatformEnrollmentCreateSession,
 		constants.ActionTypePlatformEnrollmentRevoke,
-		constants.ActionTypePlatformEnrollmentBindConsensus:
+		constants.ActionTypePlatformEnrollmentBindConsensus,
+		constants.ActionTypePlatformEnrollmentUnbindConsensus:
 		msg = &commonv1.PlatformEnrollmentGovernancePayload{
 			Action:    string(actionType),
 			RequestId: "test-request",

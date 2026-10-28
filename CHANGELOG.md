@@ -11,6 +11,12 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.5.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.5.0 | 2026-10-28 | Trust and evidence integrity: ungoverned API writes removed; L2 trust refresh on connected Operators; consensus unbind; signed audit checkpoints; judge-scored evals; llama.cpp inference provider. | [v1.5.0](docs/release_notes/v1.5.x/v1.5.0.md) |
+
 ## v1.4.x
 
 | Version | Date | Description | Notes |

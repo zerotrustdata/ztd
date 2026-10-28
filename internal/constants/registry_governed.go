@@ -16,13 +16,17 @@ import (
 // this prefix rather than a ztd.v1 wire literal.
 const EventWireNamespace = "ztd.v1."
 
-func eventHasTransport(entry EventRegistryEntry, transport string) bool {
-	for _, t := range entry.Transport {
-		if t == transport {
-			return true
-		}
+// EventHasTransport reports whether event is registered and declares transport.
+func EventHasTransport(event EventType, transport string) bool {
+	entry, ok := Registry.Lookup(event)
+	if !ok {
+		return false
 	}
-	return false
+	return entry.HasTransport(transport)
+}
+
+func eventHasTransport(entry EventRegistryEntry, transport string) bool {
+	return entry.HasTransport(transport)
 }
 
 // RequestEventForAction returns a canonical governed request event for an action class.

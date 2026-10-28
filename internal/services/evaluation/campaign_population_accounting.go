@@ -54,7 +54,7 @@ func NewCampaignPopulationAccountant(now func() time.Time) *CampaignPopulationAc
 // AccountRun recomputes population coverage from canonical assignment records.
 func (a *CampaignPopulationAccountant) AccountRun(
 	ctx context.Context,
-	store *Store,
+	store CampaignStore,
 	runID string,
 	catalog *evalv1.EvaluationScenarioCatalog,
 ) (*CampaignPopulationReport, error) {
@@ -105,7 +105,7 @@ func (a *CampaignPopulationAccountant) AccountRun(
 			return nil, fmt.Errorf("evaluation: account campaign population: frozen formations: %w", err)
 		}
 		expectedMatrix, err = BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, StackSet: stackSet,
+			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, ActivePosture: run.GetActivePosture(), StackSet: stackSet,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: account campaign population: expected system matrix: %w", err)
@@ -122,6 +122,7 @@ func (a *CampaignPopulationAccountant) AccountRun(
 			CampaignID:      spec.GetCampaignId(),
 			RunID:           runID,
 			Catalog:         catalog,
+			ActivePosture:   run.GetActivePosture(),
 			Variants:        spec.GetModelRegistry(),
 			RepetitionCount: repetition,
 		})

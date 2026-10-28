@@ -40,7 +40,7 @@ func newTestSuspendedStore(t *testing.T) *storage.SuspendedTransactionService {
 	require.NoError(t, err)
 	require.NoError(t, testVault.Unlock(privKey))
 	t.Cleanup(func() { require.NoError(t, testVault.Close()) })
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), slog.Default())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), slog.Default())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	sts, err := storage.NewSuspendedTransactionService(db, testVault, slog.Default())

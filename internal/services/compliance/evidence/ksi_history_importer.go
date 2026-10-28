@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -104,7 +103,7 @@ func (i *KSIHistoryImporter) buildNodes(snapshots []importedKSIHistorySnapshot) 
 
 func validKSIHistoryBinding(binding KSIHistoryImportBinding) error {
 	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.KSIHistoryReferencePrefix); !referenceValid {
-		return errors.New("content reference is invalid")
+		return fmt.Errorf("content reference is invalid: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if err := ValidateRelativePath(binding.Path); err != nil {
 		return err
@@ -183,7 +182,7 @@ func validateKSIHistorySnapshot(resultSet compliance.KSIResultSet, class complia
 				return fmt.Errorf("%w: KSI result evidence binding is incomplete", constants.ErrEvidenceArtifactMalformed)
 			}
 			if err := resultSet.Binding.ValidateEvidence(evidence); err != nil {
-				return fmt.Errorf("%w: KSI result %s evidence binding: %v", constants.ErrEvidenceArtifactMalformed, result.ID, err)
+				return fmt.Errorf("%w: KSI result %s evidence binding: %w", constants.ErrEvidenceArtifactMalformed, result.ID, err)
 			}
 		}
 	}

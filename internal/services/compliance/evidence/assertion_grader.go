@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -477,10 +478,10 @@ func sameAssertionSubject(left, right *EvidenceNode) bool {
 		}
 	}
 	if isMetricNode(left) && isObservationNode(right) {
-		return Contains(left.References, right.ArtifactID)
+		return slices.Contains(left.References, right.ArtifactID)
 	}
 	if isObservationNode(left) && isMetricNode(right) {
-		return Contains(right.References, left.ArtifactID)
+		return slices.Contains(right.References, left.ArtifactID)
 	}
 	return true
 }

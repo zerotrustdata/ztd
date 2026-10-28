@@ -27,6 +27,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -46,6 +47,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
@@ -377,7 +379,10 @@ func Run(cfg Config) error {
 		return fmt.Errorf("chaos: count must be positive, got %d", cfg.Count)
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, err := logging.NewStdoutLogger(constants.LogLevelInfo)
+	if err != nil {
+		return fmt.Errorf("chaos: configure logger: %w", err)
+	}
 
 	// Initialize paths relative to current working directory
 	if err := paths.Init(); err != nil {
@@ -474,7 +479,7 @@ func Run(cfg Config) error {
 	// Constructed the way the Gateway constructs it: the canonical ztd.db is opened
 	// by the caller, and the store shares it. Defers run in reverse order, so the
 	// store closes before the database it writes through.
-	auditDB, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
+	auditDB, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open audit database: %w", err)
 	}
@@ -862,29 +867,34 @@ func (b *batchEventWriter) flush() {
 	}
 }
 
+// classifyRejection buckets a warden rejection for the chaos summary by
+// governance sentinel identity (INV-ERR-06). ErrTxReplayStoreMissing stays
+// REJECTED: it is a missing dependency. Hash-missing is HASH_FAIL even
+// though the shared classifier files it under a malformed envelope.
 func classifyRejection(err error) string {
 	if err == nil {
 		return "EXECUTED"
 	}
-	msg := err.Error()
-	switch {
-	case contains(msg, "TX_L1_FAILED") || contains(msg, "TX_DOCTRINE_L1_FAILED"):
+	switch governance.ClassifyGovernanceRejection(err) {
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE:
 		return "L1_BLOCKED"
-	case contains(msg, "TX_HASH_MISMATCH") || contains(msg, "TX_HASH_MISSING"):
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TRANSACTION_HASH_MISMATCH:
 		return "HASH_FAIL"
-	case contains(msg, "TX_L2"):
-		return "L2_REJECTED"
-	case contains(msg, "TX_EXPIRED"):
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED:
 		return "EXPIRED"
-	case contains(msg, "TX_REPLAY"):
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_REPLAY:
 		return "REPLAY"
-	default:
-		return "REJECTED"
+	case operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_SIGNATURE_INVALID,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_DUPLICATE_SIGNER,
+		operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN:
+		return "L2_REJECTED"
 	}
-}
-
-func contains(s, sub string) bool {
-	return strings.Contains(s, sub)
+	if errors.Is(err, constants.ErrTxTransactionHashMissing) {
+		return "HASH_FAIL"
+	}
+	return "REJECTED"
 }
 
 func categoryName(c category) string {

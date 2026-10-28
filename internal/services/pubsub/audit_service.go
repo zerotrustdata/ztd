@@ -200,7 +200,7 @@ func (as *AuditService) HandleAuditRecord(ctx context.Context, data []byte, clie
 
 func (as *AuditService) publishAuditAck(ctx context.Context, client PubSubClient, wire models.AuditRecordPublish, seq int64, hash string) error {
 	if client == nil {
-		return fmt.Errorf("audit service: pubsub client not configured")
+		return fmt.Errorf("audit service: pubsub client not configured: %w", constants.ErrPubSubConnectionError)
 	}
 	ack := models.AuditRecordAck{
 		IdempotencyKey: wire.IdempotencyKey,

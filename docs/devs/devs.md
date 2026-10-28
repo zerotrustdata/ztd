@@ -3,8 +3,8 @@ doc_id: devs
 title: Developer Guidelines
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - go.mod
   - Makefile
@@ -136,6 +136,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-ERR-05 | MUST use a centralized `constants.Err*` for a known failure mode, `fmt.Errorf` with runtime values for a dynamic error, and a one-off `fmt.Errorf` in tests only when the injected cause has no production meaning. |
 | INV-ERR-06 | MUST NOT compare rendered error strings when `errors.Is`, `errors.As`, or a typed status is available. |
 
+Gateway API clients decode failed responses with `api.DecodeGatewayError`, which returns an `api.StatusError`. Use `errors.As` to inspect its HTTP status and `errors.Is` for recognized Gateway sentinels, including publication recovery errors and authentication failures. HTTP 404 matches `constants.ErrNotFound`; text mentioning a status code does not. When adding context to a platform error and an underlying cause, wrap both with `%w` so callers can inspect either identity.
+
 ### Typed contracts (`INV-TYPE`)
 
 | ID | Rule |
@@ -146,6 +148,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TYPE-04 | An internal envelope payload MUST use protobuf binary encoding where the execution path expects it. A protobuf-owned JSON boundary MUST use `protojson`. |
 | INV-TYPE-05 | A non-protobuf HTTP surface MUST use named request and response structs. |
 | INV-TYPE-06 | Runtime Go constants live under `internal/constants/`. External registries and schemas live under `protocol/constants/`, `protocol/models/`, and `protocol/schemas/`. When a public registry has both a Go and a JSON representation, MUST update both through the established owner and run owning contract or conformance tests. |
+
+Keep JSON encoding at boundaries that consume JSON bytes. Examples include a `structpb.Struct` decoded into a typed message through `protojson`, document-store field maps supplied to a protobuf decoder or SQLite `json_extract`, and canonical artifact bodies. A validator inspecting arbitrary source fields needs a JSON tree to retain unknown fields and report source paths; an allowlist validator over archived records may use `json.RawMessage` to preserve accepted value types. Composing a protobuf JSON object with named extensions may use raw field maps to detect key collisions without replacing protobuf encoding. Document the reason at the conversion site and test the observable boundary behavior. Do not introduce JSON serialization merely to copy fields between known models.
 
 ### Runtime files (`INV-FS`)
 
@@ -236,6 +240,8 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host, which `OperatorPubSubService` builds with `mcp.NewOperatorNativeToolHandler` (`internal/services/pubsub/pubsub_commands.go`) using the Gateway's embedded Operator ID in gateway mode and the Operator's own ID otherwise. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
 | INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the event-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
+
+The network and Kubernetes tools encode their typed JSON text results through `marshalResult` in `internal/services/mcp/tool_result.go`. Encoding failures wrap `constants.ErrMCPMarshalResult` and the original JSON error with the calling tool's name.
 | INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 
 ### Contribution (`INV-CONTRIB`)

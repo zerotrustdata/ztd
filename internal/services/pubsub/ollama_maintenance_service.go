@@ -24,27 +24,31 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// OllamaMaintenanceService owns typed governed Ollama provider inventory and
-// residency queries on the Inference Operator.
+// OllamaMaintenanceService owns typed governed provider inventory, residency,
+// and release commands on the Inference Operator, served by the Operator's
+// configured provider (Ollama or a llama.cpp router).
 type OllamaMaintenanceService struct {
 	config      *config.Config
 	logger      *slog.Logger
 	client      PubSubClient
 	eventsStore *storage.LocalFirstEventsStore
 	scrubbing   *scrubbing.ScrubbingService
+	provider    inference.Provider
 }
 
-// NewOllamaMaintenanceService creates a new OllamaMaintenanceService. Every dependency is
-// required. The scrubber is the egress choke point dependency: every result envelope this
-// service publishes is scrubbed by it, so construction fails closed with
-// constants.ErrEgressScrubberUnavailable when it is nil or disabled. eventsStore records
+// NewOllamaMaintenanceService creates a new OllamaMaintenanceService. Every dependency
+// except provider is required. The scrubber is the egress choke point dependency: every
+// result envelope this service publishes is scrubbed by it, so construction fails closed
+// with constants.ErrEgressScrubberUnavailable when it is nil or disabled. eventsStore records
 // observed-state content evidence; a nil store fails with constants.ErrLocalFirstEventsStoreRequired.
+// provider is nil on an Operator without inference, where every command fails closed.
 func NewOllamaMaintenanceService(
 	cfg *config.Config,
 	logger *slog.Logger,
 	client PubSubClient,
 	scrubbingSvc *scrubbing.ScrubbingService,
 	eventsStore *storage.LocalFirstEventsStore,
+	provider inference.Provider,
 ) (*OllamaMaintenanceService, error) {
 	if cfg == nil || logger == nil || client == nil {
 		return nil, fmt.Errorf("ollama maintenance service: %w", constants.ErrMissingRequiredField)
@@ -61,6 +65,7 @@ func NewOllamaMaintenanceService(
 		client:      client,
 		eventsStore: eventsStore,
 		scrubbing:   scrubbingSvc,
+		provider:    provider,
 	}, nil
 }
 
@@ -78,7 +83,7 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 		executionID = executionIDFromMessage(msg)
 	}
 
-	backend, err := s.ollamaBackend()
+	backend, err := s.inferenceProvider()
 	if err != nil {
 		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.eventsStore, s.scrubbing))
 	}
@@ -110,7 +115,7 @@ func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, m
 		executionID = executionIDFromMessage(msg)
 	}
 
-	backend, err := s.ollamaBackend()
+	backend, err := s.inferenceProvider()
 	if err != nil {
 		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.eventsStore, s.scrubbing))
 	}
@@ -145,7 +150,7 @@ func (s *OllamaMaintenanceService) HandleReleaseRequest(ctx context.Context, msg
 		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.eventsStore, s.scrubbing))
 	}
 
-	backend, err := s.ollamaBackend()
+	backend, err := s.inferenceProvider()
 	if err != nil {
 		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.eventsStore, s.scrubbing))
 	}
@@ -175,6 +180,9 @@ func validateReleaseModelTags(modelTags []string) error {
 	return nil
 }
 
-func (s *OllamaMaintenanceService) ollamaBackend() (*inference.OllamaBackend, error) {
-	return inference.NewOllamaBackend(s.config.Inference.OllamaEndpoint, s.logger)
+func (s *OllamaMaintenanceService) inferenceProvider() (inference.Provider, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("ollama maintenance: %w: inference is not enabled on this Operator", constants.ErrInferenceBackendUnavailable)
+	}
+	return s.provider, nil
 }

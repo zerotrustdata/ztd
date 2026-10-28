@@ -136,21 +136,40 @@ func (e *StatusError) Error() string {
 
 // Is reports whether target is constants.ErrHTTPStatusError or a recognized gateway error.
 func (e *StatusError) Is(target error) bool {
+	if e == nil {
+		return false
+	}
 	if target == constants.ErrHTTPStatusError {
 		return true
 	}
-	if e == nil || e.Body == "" {
+	if target == constants.ErrNotFound && e.StatusCode == http.StatusNotFound {
+		return true
+	}
+	if e.Body == "" {
 		return false
 	}
 	var gwErr struct {
 		Error  string `json:"error"`
 		Status string `json:"status"`
 	}
-	if err := json.Unmarshal([]byte(e.Body), &gwErr); err == nil {
-		if target == constants.ErrPlatformEnrollmentRequiresBootstrap &&
-			(gwErr.Error == constants.ErrPlatformEnrollmentRequiresBootstrap.Error() || strings.Contains(gwErr.Error, "bootstrapped")) {
-			return true
-		}
+	if err := json.Unmarshal([]byte(e.Body), &gwErr); err != nil {
+		return false
+	}
+	// The HTTP contract carries the failure in the error field. Decode only
+	// recognized leading sentinels here so callers can use errors.Is without
+	// mistaking a mention in response details for the failure itself.
+	switch target {
+	case constants.ErrPlatformEnrollmentRequiresBootstrap,
+		constants.ErrOperatorBindingMismatch,
+		constants.ErrMTLSCertRevoked,
+		constants.ErrCLISessionExpired,
+		constants.ErrCLISessionInvalid,
+		constants.ErrPublicFeedSequenceOutOfOrder,
+		constants.ErrPublicFeedSnapshotNotFound,
+		constants.ErrPublicFeedOutboxEquivocation,
+		constants.ErrPublicFeedOutboxCorrupt,
+		constants.ErrPublicFeedHashChainMismatch:
+		return gwErr.Error == target.Error() || strings.HasPrefix(gwErr.Error, target.Error()+": ")
 	}
 	return false
 }
@@ -196,7 +215,7 @@ func (c *Client) DoRequestContext(ctx context.Context, method, path string, body
 	}
 
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	}
 
 	req.Header.Set(constants.HeaderOperatorSessionID, c.creds.OperatorSessionID)

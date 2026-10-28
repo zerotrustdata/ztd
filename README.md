@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.4.1-green.svg)](docs/release_notes/v1.4.x/v1.4.1.md)
+[![Version](https://img.shields.io/badge/version-v1.5.0-green.svg)](docs/release_notes/v1.5.x/v1.5.0.md)
 
 ## Verify, then execute.
 
@@ -116,45 +116,82 @@ ztd uses a **Local-First Events Architecture**:
 
 ## Quickstart
 
-ztd runs natively as a static binary on Linux, macOS, and Windows. No Docker daemon, no background hypervisor, and no sudo for the one-line install.
+ztd runs natively as a static binary on Linux, macOS, and Windows. No Docker daemon and no background hypervisor. The install never calls sudo.
 
-### 1. One-line install
+### macOS
 
-On **Linux** or **macOS**:
+Read the installer, then run it. `start.sh` installs into `~/Library/Application Support/ztd` (override with `ZTD_DIR`), checks the binary's SHA-256 against the published checksum, and never calls sudo. If `cosign` is on `PATH` it also verifies the Sigstore bundle. `ZTD_REQUIRE_SIGSTORE=1` refuses a checksum-only install (`brew install cosign`).
+
+```bash
+curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+less /tmp/ztd-start.sh
+sh /tmp/ztd-start.sh
+```
+
+The one-liner, once you have read that script:
+
 ```bash
 curl -fsSL https://zerotrustdata.io/start.sh | sh
 ```
 
-On **Windows** (PowerShell 7):
+If that directory already exists and is not a previous install, the installer stops. Point it at an empty directory with `ZTD_DIR`. A checkout at `~/ztd` is left alone.
+
+What macOS will ask you, and what it will not:
+
+1. **Keychain, first Gateway start.** A dialog for the `ztd-platform` item wants your **Mac login password**, not a ztd account. That item is the vault master key and it stays in the login keychain. Choose **Always Allow**. The dialog needs a GUI session; SSH cannot show it. A rebuilt or upgraded binary asks again, because the code signature changed. The installer prints this before the Gateway start, so the dialog is not a silent hang.
+2. **Nothing in onboarding uses sudo unless you are removing an old machine-wide CA.** `./ztd login web` prints the Gateway CA fingerprint and asks before it adds that CA to your **login keychain** as an HTTPS trust root, for your account only. It is not a code-signing root. The CA private key stays in the vault on this Mac. Decline, or pass `--no-system-trust`, if you do not want a local trust root. An older install may have left a CA in the System keychain; removing that one is a separate yes, and that yes is the sudo.
+3. **Gatekeeper.** A binary saved from a browser is quarantined. The installer clears `com.apple.quarantine` only after the checksum matches. If you placed the binary yourself, verify the checksum first, then `xattr -d com.apple.quarantine ./ztd`.
+
+Then, from the install directory, the same follow-ups as every other platform: `./ztd tui`, `./ztd login web`, `./ztd operator list`.
+
+### Linux
+
+```bash
+curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+sh /tmp/ztd-start.sh
+```
+
+Or `curl -fsSL https://zerotrustdata.io/start.sh | sh`. Same layout as macOS: checksum before the binary is written, Sigstore when `cosign` is installed, no sudo. Without a desktop keyring the Gateway seals its vault key with an ssh-agent key (`eval "$(ssh-agent)" && ssh-add`).
+
+### Windows (PowerShell 7)
+
 ```powershell
 irm https://zerotrustdata.io/start.ps1 | iex
 ```
 
-This installs the checksum-verified binary into `~/ztd`, starts a local Gateway on `https://localhost:8443`, creates a CLI identity, and runs your first governed action through an embedded Operator.
+The install puts a checksum-verified `ztd.exe` in `~\ztd`, starts a Gateway on `https://localhost:8443`, creates a CLI identity, and runs a first governed action through an embedded Operator. Run later commands as `.\ztd.exe`.
 
-### 2. Build from source
+### Build from source
 
-If you want to inspect every line before running:
+The committed console and evaluation explorer are already embedded. `--build-only` compiles `./ztd` with Go and does not install Node.js. The full setup (no `--build-only`) is the contributor toolchain and does need Node.
+
+On macOS:
 
 ```bash
 git clone https://github.com/zerotrustdata/ztd.git
 cd ztd
+bash scripts/macos-setup.sh --build-only
+make quickstart
+```
 
-# Check dependencies, generate .env, and build the binary
-bash scripts/linux-setup.sh --build-only   # macOS: bash scripts/macos-setup.sh --build-only
+On Linux:
 
-# Spin up Gateway, enroll CLI, and fire the first action
+```bash
+git clone https://github.com/zerotrustdata/ztd.git
+cd ztd
+bash scripts/linux-setup.sh --build-only
 make quickstart
 ```
 
 On Windows:
+
 ```powershell
 git clone https://github.com/zerotrustdata/ztd.git; cd ztd
 pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-*Requirements for source builds: Go 1.27.3, Git, and GNU Make. Pre-built frontends are already embedded in the repository.*
+*Source builds need Go 1.27.3, Git, and GNU Make. `make build` (not `make build-go`) rebuilds the frontends and needs Node.js 22.22.2+, 24.15+, or 26+.*
 
 ---
 

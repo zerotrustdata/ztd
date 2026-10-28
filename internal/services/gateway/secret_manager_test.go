@@ -36,10 +36,12 @@ import (
 // CanonicalDBService wiring.
 func newSecretManagerTestDB(t *testing.T) *sqliteutil.DB {
 	t.Helper()
-	tmpDir := testutil.TempDir(t)
-	dbPath := filepath.Join(tmpDir, constants.TestSecretManagerDBFilename)
+	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+	dbPath := fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.TestSecretManagerDBFilename))
 	cfg := sqliteutil.DefaultDBConfig(dbPath)
-	db, err := sqliteutil.OpenDB(cfg, testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)

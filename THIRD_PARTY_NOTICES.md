@@ -3493,7 +3493,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
    limitations under the License.
 ```
 
-### github.com/pkg/sftp v1.13.11
+### github.com/pkg/sftp v1.13.12
 
 #### LICENSE
 

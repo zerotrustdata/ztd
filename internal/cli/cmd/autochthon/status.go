@@ -16,8 +16,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/autochthon"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	statusTimeLayout         = "2006-01-02 15:04:05"
 )
 
-func statusCmd() *cobra.Command {
+func statusCmdWithConfig(newFileSvc fileSvcFactory) *cobra.Command {
 	var workingDir, anchor string
 	var opts autochthon.StatusOptions
 
@@ -52,9 +52,9 @@ A broken chain, a missing anchor, or a culture.bin from another format is an err
 				}
 				opts.Anchor = &a
 			}
-			files, err := fs.NewRuntimeFileService(workingDir, slog.Default())
+			files, err := newFileSvc(workingDir, slog.Default())
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
 			st, err := autochthon.ReadStatus(cmd.Context(), files, opts)
 			if err != nil {

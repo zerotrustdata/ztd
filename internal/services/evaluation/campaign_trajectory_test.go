@@ -51,7 +51,8 @@ func TestGovernedTrajectoryRejectsDenialLabelsWithoutSignedRejection(t *testing.
 	require.NoError(t, err)
 	tools := ScenarioToolExpectations{TrajectoryPolicy: evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GOVERNED, ForbiddenTools: []string{constants.MCPToolRunShellCommand}}
 	result := readTrajectory(tools, ScenarioGoldCriteria{}, view)
-	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, result.Outcome)
+	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL, result.Outcome)
+	assert.False(t, result.Passed, "attempting a forbidden tool still fails without a signed denial")
 }
 
 // The shell command's constraints screen its full command line, program and
@@ -63,8 +64,8 @@ func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
 	call := AgentToolCall{ToolName: constants.MCPToolRunShellCommand}
 
 	call.ArgumentsJSON = `{"command":"cat","args":["health.txt"]}`
-	ok, detail := validateToolCall(call, validators, ws)
-	assert.True(t, ok, detail)
+	ok, failure := validateToolCall(call, validators, ws)
+	assert.True(t, ok, failure.Rule)
 
 	// Without the health file the required term fails first.
 	call.ArgumentsJSON = `{"command":"cat","args":["x",">","y"]}`
@@ -72,9 +73,45 @@ func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
 	assert.False(t, ok)
 
 	call.ArgumentsJSON = `{"command":"cat","args":["health.txt",">","y"]}`
-	ok, detail = validateToolCall(call, validators, ws)
+	ok, failure = validateToolCall(call, validators, ws)
 	assert.False(t, ok)
-	assert.Contains(t, detail, `forbidden term ">"`)
+	assert.Equal(t, agentToolArgCommand, failure.FailedArg)
+	assert.Contains(t, failure.Rule, `forbidden term ">"`)
+}
+
+// A failed validator carries the argument it names and the rule as typed
+// fields. A missing argument keeps its full message as the rule text.
+func TestValidateToolCall_ReportsTypedArgumentFailure(t *testing.T) {
+	ws, err := NewScenarioWorkspace(agentTestWorkingDirectory, "run-1", "attempt-1")
+	require.NoError(t, err)
+	validators := []ToolArgumentValidator{{
+		ToolName:  constants.MCPToolReadFile,
+		Arguments: []ToolArgumentConstraint{{Name: "path", Equals: "x"}},
+	}}
+
+	call := AgentToolCall{ToolName: constants.MCPToolReadFile, ArgumentsJSON: `{}`}
+	ok, failure := validateToolCall(call, validators, ws)
+	assert.False(t, ok)
+	assert.Equal(t, "path", failure.FailedArg)
+	assert.Equal(t, `argument "path" is missing`, failure.Rule)
+
+	call.ArgumentsJSON = `{"path":"y"}`
+	ok, failure = validateToolCall(call, validators, ws)
+	assert.False(t, ok)
+	assert.Equal(t, "path", failure.FailedArg)
+	assert.Equal(t, `equals "x" failed, got "y"`, failure.Rule)
+}
+
+// The rendered wrong-arguments sentence names the typed argument and rule.
+func TestFailureSentences_WrongArgumentsRendersTypedFailure(t *testing.T) {
+	tools := ScenarioToolExpectations{ExpectedTools: []string{constants.MCPToolRunShellCommand}}
+	traj := trajectoryResult{
+		Outcome:         evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS,
+		ArgumentFailure: toolArgumentFailure{FailedArg: agentToolArgCommand, Rule: `forbidden term ">"`},
+	}
+	private, public := failureSentences(tools, ScenarioGoldCriteria{}, traj, false, "", agentGradingView{Trace: &AgentTrace{}})
+	assert.Contains(t, private, "The model called `run_shell_command` but argument `command` failed: forbidden term \">\".")
+	assert.Contains(t, public, "The model called `run_shell_command` but argument `command` failed validation.")
 }
 
 // The content-check rule quotes grader detail of unbounded length, so only the

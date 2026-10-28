@@ -70,18 +70,11 @@ page /terms/ "Commercial License and Services Terms"
 page /terms/ 'href="/terms/oem/"'
 page /terms/oem/ "ztd Commercial OEM License Agreement"
 curl -fsS "$origin/" -o "$work/home" || fail "GET / failed"
-skus=$(sed -n 's#.*href="/buy/\([a-z0-9-]*\)".*#\1#p' "$work/home" | sort -u)
-[ -n "$skus" ] || fail "homepage has no /buy/ links"
-for sku in $skus; do
-  result=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$origin/buy/$sku") || fail "GET /buy/$sku failed"
-  case "$result" in
-    "303 https://buy.stripe.com/test_"*) fail "/buy/$sku redirects to a test-mode link" ;;
-    "303 https://buy.stripe.com/"*) ;;
-    *) fail "/buy/$sku returned '$result'" ;;
-  esac
-  curl -fsS -o /dev/null "${result#303 }" || fail "Payment Link for $sku does not load"
-done
-echo "smoke: terms pages and /buy/ links ok ($(echo "$skus" | wc -l | tr -d ' ') SKUs)"
+if grep -q 'href="/buy/' "$work/home"; then
+  fail "homepage still links to /buy/"
+fi
+grep -q 'id="proofs"' "$work/home" || fail "homepage has no proofs section"
+echo "smoke: terms pages ok and homepage has no /buy/ links"
 
 eval "$(ssh-agent -s -a "$work/agent.sock")"
 ssh-keygen -q -t ed25519 -N '' -f "$work/agent_key"

@@ -137,7 +137,10 @@ func TestBuildAssignmentLifecycleProjection_HeterogeneousSetsPrimaryVariant(t *t
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING,
 		Repetition:      1,
 		Target: &evalv1.EvaluationAssignment_Heterogeneous{
-			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
+			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{
+				Stack:          stack,
+				DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
+			},
 		},
 	}
 	projection, err := BuildAssignmentLifecycleProjection(assignment, evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE, time.Time{}, CampaignRelease{})
@@ -147,6 +150,40 @@ func TestBuildAssignmentLifecycleProjection_HeterogeneousSetsPrimaryVariant(t *t
 	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, projection.GetDesignatedRole())
 }
 
+// heterogeneousProjectionAssignment is a SYSTEM-lane stack assignment with the
+// given designated role; an UNSPECIFIED role is left unset on the target.
+func heterogeneousProjectionAssignment(stack *evalv1.HeterogeneousStackDefinition, role evalv1.ModelCampaignRole) *evalv1.EvaluationAssignment {
+	return &evalv1.EvaluationAssignment{
+		AssignmentId:    "assign-heterogeneous-1",
+		RunId:           "run-heterogeneous-1",
+		ScenarioId:      "instruction-exact-format",
+		Lane:            evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING,
+		Repetition:      1,
+		Target: &evalv1.EvaluationAssignment_Heterogeneous{
+			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: role},
+		},
+	}
+}
+
+// A heterogeneous Lite assignment projects the Lite slot's variant and role.
+func TestBuildAssignmentLifecycleProjection_HeterogeneousLiteUsesLiteSlot(t *testing.T) {
+	stack := mustHeterogeneousStack(t)
+	assignment := heterogeneousProjectionAssignment(stack, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	projection, err := BuildAssignmentLifecycleProjection(assignment, evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE, time.Time{}, CampaignRelease{})
+	require.NoError(t, err)
+	assert.Equal(t, stack.GetLiteSlot().GetVariantId(), projection.GetVariantId())
+	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, projection.GetDesignatedRole())
+}
+
+func TestBuildAssignmentLifecycleProjection_HeterogeneousFailsClosedWithoutDesignatedRole(t *testing.T) {
+	stack := mustHeterogeneousStack(t)
+	assignment := heterogeneousProjectionAssignment(stack, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED)
+	projection, err := BuildAssignmentLifecycleProjection(assignment, evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE, time.Time{}, CampaignRelease{})
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Nil(t, projection)
+}
+
 func TestBuildAssignmentResultProjection_HeterogeneousSetsPrimaryVariant(t *testing.T) {
 	stack := mustHeterogeneousStack(t)
 	assignment := &evalv1.EvaluationAssignment{
@@ -154,7 +191,10 @@ func TestBuildAssignmentResultProjection_HeterogeneousSetsPrimaryVariant(t *test
 		RunId:        "run-heterogeneous-1",
 		ScenarioId:   "instruction-exact-format",
 		Target: &evalv1.EvaluationAssignment_Heterogeneous{
-			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
+			Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{
+				Stack:          stack,
+				DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
+			},
 		},
 	}
 	result := &evalv1.EvaluationAssignmentResult{
@@ -176,6 +216,42 @@ func TestBuildAssignmentResultProjection_HeterogeneousSetsPrimaryVariant(t *test
 	require.NoError(t, err)
 	assert.Equal(t, stack.GetPrimarySlot().GetVariantId(), projection.GetVariantId())
 	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, projection.GetDesignatedRole())
+}
+
+func TestBuildAssignmentResultProjection_HeterogeneousLiteUsesLiteSlot(t *testing.T) {
+	stack := mustHeterogeneousStack(t)
+	assignment := heterogeneousProjectionAssignment(stack, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	result := &evalv1.EvaluationAssignmentResult{
+		AssignmentId:    assignment.GetAssignmentId(),
+		RunId:           assignment.GetRunId(),
+		Lane:            evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+		ResultDigest:    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		CompletedAt:     timestamppb.New(time.Unix(1_700_000_100, 0).UTC()),
+	}
+	projection, err := BuildAssignmentResultProjection(
+		assignment,
+		result,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
+		evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+		"unverified",
+		CampaignRelease{},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, stack.GetLiteSlot().GetVariantId(), projection.GetVariantId())
+	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, projection.GetDesignatedRole())
+
+	missing := heterogeneousProjectionAssignment(stack, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED)
+	projection, err = BuildAssignmentResultProjection(
+		missing,
+		result,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE,
+		evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+		"unverified",
+		CampaignRelease{},
+	)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Nil(t, projection)
 }
 
 func TestBuildAssignmentResultProjection(t *testing.T) {

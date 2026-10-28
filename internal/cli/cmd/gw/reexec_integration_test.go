@@ -13,10 +13,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest/reexec"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest/reexec/serve"
 )
 
 func TestMain(m *testing.M) {
-	cmdtest.ReexecServingGatewayIfRequested()
+	serve.IfRequested()
+	reexec.IfRequested()
 	os.Exit(m.Run())
 }

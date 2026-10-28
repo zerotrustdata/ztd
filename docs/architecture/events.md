@@ -3,8 +3,8 @@ doc_id: events
 title: Event and Action Protocol
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - protocol/constants/events.json
   - internal/services/gateway/
@@ -80,7 +80,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-EVT-XPORT-01 | A request routed over the `governed` transport MUST be rejected unless its registry entry declares `governed` in the `transport` array (`constants.ValidateGovernedRequest`). The runtime does not check `pubsub` or `sse` declarations at publish time. |
+| INV-EVT-XPORT-01 | Every registered event MUST declare its transport (`governed`, `pubsub`, `sse`, or `local`). A request routed over the `governed` transport MUST be rejected unless its registry entry declares `governed` (`constants.ValidateGovernedRequest`). Pub/sub results and LFEA responses MUST be rejected unless the event declares `pubsub` transport. SSE events emitted by Gateway producers MUST be rejected unless the event declares `sse` transport (`constants.ErrEventTransportViolation`). Events persisted to SQLite audit chains and never published over `pubsub` or `sse` declare `local`. |
 | INV-EVT-XPORT-02 | The `governed` transport is restricted to request events carrying a valid `GovernanceEnvelope`. Governed requests MUST traverse the five-layer pipeline (L1–L5) before dispatch. |
 
 ### Storage and Persistence Ownership (`INV-EVT-PERS`)
@@ -95,7 +95,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-EVT-CHAIN-01 | Every event appended to the Local-First Events Store `events` table MUST be appended to a cryptographic hash chain recording: monotonic sequence number (`seq`), previous hash (`prev_hash`), keyed content digest (`content_digest`), and entry hash (`hash`). |
-| INV-EVT-CHAIN-02 | Pruning chained audit events MUST append a checkpoint fact recording `pruned_through_seq`, `pruned_through_hash`, and `pruned_count` before deleting rows, to preserve chain verifiability. The checkpoint is hash-chained; the runtime does not sign it. |
+| INV-EVT-CHAIN-02 | Pruning chained audit events MUST append a typed protobuf checkpoint fact (`AuditChainCheckpointPayload`) and record a signed `audit_chain_checkpoints` anchor row signed by the runtime's pinned auditor key using domain separation (`ztd.checkpoint.v1`). The auditor signing key lives in the same host keystore. Signing protects exported evidence and detects SQLite-only tampering; it does not protect against a live host-root/keystore compromise (INV-GEN-02). |
 
 ## Owned surfaces
 
@@ -194,7 +194,7 @@ Events appended to the `events` table of the Local-First Events Store form an ap
 
 Receipt stages append `ztd.v1.operator.receipt.recorded` facts to the chain. The current event receipt is the one of those events whose `event_receipt_status` is not null. The chain event type string stays `ztd.v1.operator.receipt.recorded`; it is an input to the chain hash.
 
-Pruning deletes chained events older than a cutoff, excluding checkpoint events. Before deletion, it appends a `ztd.v1.platform.audit.chain.checkpointed` fact recording `pruned_through_seq`, `pruned_through_hash`, and `pruned_count`, and writes a matching `audit_chain_checkpoints` anchor row. Chain verification without an explicit start sequence begins after the latest checkpoint.
+Pruning deletes chained events older than a cutoff, including superseded checkpoint events. Before deletion, it appends a `ztd.v1.platform.audit.chain.checkpointed` fact recording `pruned_through_seq`, `pruned_through_hash`, and `pruned_count` in an encrypted `AuditChainCheckpointPayload`, signs the canonical anchor using domain separation (`ztd.checkpoint.v1`) with the auditor key, and writes a matching signed `audit_chain_checkpoints` anchor row. The auditor signing key lives in the same host keystore. Signing protects exported evidence and detects SQLite-only tampering; it does not protect against a live host-root/keystore compromise (INV-GEN-02). Chain verification without an explicit start sequence begins after the latest verified checkpoint anchor.
 
 ### Wire Value Grammar and Terminal Validation
 

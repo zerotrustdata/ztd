@@ -69,8 +69,14 @@ func validatePlatformEnrollmentRequest(request models.PlatformEnrollmentCreateRe
 	if subtle.ConstantTimeCompare([]byte(operatorFingerprint), []byte(cliFingerprint)) == 1 {
 		return fingerprints, constants.ErrPlatformEnrollmentDuplicateKey
 	}
+	auditorKey, err := request.Operator.AuditorKey()
+	if err != nil {
+		return fingerprints, err
+	}
+	auditorDigest := sha256.Sum256(auditorKey)
 	fingerprints.Operator = operatorFingerprint
 	fingerprints.CLI = cliFingerprint
+	fingerprints.AuditorKey = hex.EncodeToString(auditorDigest[:])
 	return fingerprints, nil
 }
 

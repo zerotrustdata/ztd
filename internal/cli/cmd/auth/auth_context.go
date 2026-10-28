@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 
@@ -84,8 +83,8 @@ func resolveClientOperatorContext(client APIClient, context *auth.ClientAuthCont
 		// A stale local operator binding is rejected with 403 before the
 		// session record can be returned; direct the user to the refresh
 		// path that resyncs the binding.
-		if errors.Is(err, constants.ErrHTTPStatusError) && strings.Contains(err.Error(), constants.ErrOperatorBindingMismatch.Error()) {
-			return fmt.Errorf("%w: %s", constants.ErrNotAuthenticated, constants.ErrOperatorBindingMismatch.Error())
+		if errors.Is(err, constants.ErrOperatorBindingMismatch) {
+			return fmt.Errorf("%w: %w", constants.ErrNotAuthenticated, err)
 		}
 		return fmt.Errorf("auth context: resolve CLI session: %w", err)
 	}

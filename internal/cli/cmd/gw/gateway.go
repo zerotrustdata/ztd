@@ -39,6 +39,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
@@ -54,12 +55,15 @@ func getBinaryName() string {
 // It is populated by addGatewayFlags and converted to serve.GatewayConfig
 // via gatewayFlagsToServeConfig.
 type GatewayFlags struct {
-	OperatorCapabilities               constants.OperatorCapabilities
-	InferenceOllamaEndpoint            string
-	InferenceKeepAlive                 string
-	ProviderBoundaryObserverID         string
-	ProvenanceOperatorID               string
-	ProvenanceOperatorModelStorageRoot string
+	OperatorCapabilities                 constants.OperatorCapabilities
+	InferenceOllamaEndpoint              string
+	InferenceLlamaCppEndpoint            string
+	InferenceLlamaCppModelRoot           string
+	InferenceKeepAlive                   string
+	ProviderBoundaryObserverID           string
+	ProvenanceOperatorID                 string
+	ProvenanceOperatorModelStorageRoot   string
+	ProvenanceOperatorModelStorageFormat string
 
 	Posture           string
 	HTTPPort          int
@@ -99,10 +103,13 @@ type GatewayFlags struct {
 func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().Var(&f.OperatorCapabilities, "capabilities", "Comma-separated embedded Operator capabilities: data,inference,provenance,observer (repeatable; default: data)")
 	cmd.Flags().StringVar(&f.InferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Approved Ollama endpoint for embedded inference (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
-	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Ollama keep-alive duration")
+	cmd.Flags().StringVar(&f.InferenceLlamaCppEndpoint, "inference-llamacpp-endpoint", "", "Approved llama.cpp llama-server router endpoint for embedded inference; selects the llama.cpp provider instead of Ollama")
+	cmd.Flags().StringVar(&f.InferenceLlamaCppModelRoot, "inference-llamacpp-model-root", "", "llama-server --models-dir as seen by the Gateway (required with --inference-llamacpp-endpoint)")
+	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Provider keep-alive duration (llama.cpp accepts -1 or 0)")
 	cmd.Flags().StringVar(&f.ProviderBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
-	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory containing model weight blobs")
+	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory of the model weight store")
+	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageFormat, "model-storage-format", "", "Model store layout under --model-storage-root: ollama (default) or llamacpp")
 
 	cmd.Flags().StringVar(&f.Posture, "posture", string(constants.DefaultPosture), postureFlagHelp())
 	cmd.Flags().IntVar(&f.HTTPPort, "http-port", 0, "Plain HTTP port for bootstrap, PKI discovery and enrollment (default: from constants.Ports.OperatorHttp)")
@@ -129,7 +136,7 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().BoolVar(&f.PublicSpectatorEnabled, "public-spectator", true, "Start the in-process public mirror and evaluation explorer listeners")
 	cmd.Flags().StringVar(&f.PublicSpectatorPrivateAddr, "public-spectator-private-listen", "", fmt.Sprintf("Loopback address for authenticated public mirror ingest (default: 127.0.0.1:%d)", constants.PublicSpectatorPrivatePort))
 	cmd.Flags().StringVar(&f.PublicSpectatorPublicAddr, "public-spectator-public-listen", "", fmt.Sprintf("Loopback address for anonymous public mirror reads (default: 127.0.0.1:%d)", constants.PublicSpectatorPublicPort))
-	cmd.Flags().BoolVar(&f.PublicSpectatorAllowContainerBind, "public-spectator-allow-container-bind", false, "Allow the public mirror and explorer listeners to bind 0.0.0.0 so a container network can reach them (set only inside a container deployment)")
+	cmd.Flags().BoolVar(&f.PublicSpectatorAllowContainerBind, "public-spectator-allow-container-bind", false, "Allow the public mirror read and evaluation explorer listeners to bind 0.0.0.0 for container or direct cloud VM ingress (private ingest always remains loopback-only)")
 	cmd.Flags().StringVar(&f.EvalExplorerAddr, "eval-explorer-listen", "", fmt.Sprintf("Loopback address for the evaluation explorer SPA (default: 127.0.0.1:%d)", constants.EvalExplorerDefaultPort))
 	cmd.Flags().StringVar(&f.EvalExplorerRoot, "eval-explorer-root", "", "Directory containing the built evaluation explorer dist assets")
 	cmd.Flags().StringArrayVar(&f.PublicSpectatorTrustedProxyCIDRs, "public-spectator-trusted-proxy-cidr", nil, "Trusted proxy CIDR allowed to provide exactly one CF-Connecting-IP address (repeatable)")
@@ -148,9 +155,10 @@ func postureFlagHelp() string {
 
 // resolveGatewayFlags finalizes gateway flag values. Gateway configuration is
 // flag-only, except that the user_endpoint ZTD_OLLAMA_ENDPOINT supplies
-// --inference-ollama-endpoint when the flag is blank.
+// --inference-ollama-endpoint when the flag is blank and no
+// --inference-llamacpp-endpoint selects llama.cpp.
 func resolveGatewayFlags(f GatewayFlags) GatewayFlags {
-	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint)
+	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint, f.InferenceLlamaCppEndpoint)
 	return f
 }
 
@@ -172,42 +180,45 @@ func tribunalConsensusSignerFactory(workingDir string) func(context.Context, fs.
 
 func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 	return serve.GatewayConfig{
-		OperatorCapabilities:               f.OperatorCapabilities,
-		InferenceOllamaEndpoint:            f.InferenceOllamaEndpoint,
-		InferenceKeepAlive:                 f.InferenceKeepAlive,
-		ProviderBoundaryObserverID:         f.ProviderBoundaryObserverID,
-		ProvenanceOperatorID:               f.ProvenanceOperatorID,
-		ProvenanceOperatorModelStorageRoot: f.ProvenanceOperatorModelStorageRoot,
-		Posture:                            constants.Posture(f.Posture),
-		HTTPPort:                           f.HTTPPort,
-		HTTPSPort:                          f.HTTPSPort,
-		ListenHost:                         f.ListenHost,
-		DataDir:                            f.DataDir,
-		PKIDir:                             f.PKIDir,
-		SecretsDir:                         f.SecretsDir,
-		VaultDir:                           f.VaultDir,
-		PasskeyRpID:                        f.PasskeyRpID,
-		PasskeyRpName:                      f.PasskeyRpName,
-		PasskeyRpOrigins:                   f.PasskeyRpOrigins,
-		RateLimitRPS:                       f.RateLimitRPS,
-		RateLimitBurst:                     f.RateLimitBurst,
-		LogLevel:                           f.LogLevel,
-		CertIdentityMode:                   f.CertIdentityMode,
-		MCPDownstreamURL:                   f.MCPDownstreamURL,
-		MCPDownstreamCmd:                   f.MCPDownstreamCmd,
-		MCPDownstreamArgs:                  parseDownstreamArgs(f.MCPDownstreamArgs),
-		A2ADownstreamURL:                   f.A2ADownstreamURL,
-		PublicBaseURL:                      f.PublicBaseURL,
-		AllowedOrigins:                     f.AllowedOrigins,
-		DoctrineDir:                        f.DoctrineDir,
-		PublicSpectatorEnabled:             f.PublicSpectatorEnabled,
-		PublicSpectatorPrivateAddr:         f.PublicSpectatorPrivateAddr,
-		PublicSpectatorPublicAddr:          f.PublicSpectatorPublicAddr,
-		PublicSpectatorAllowContainerBind:  f.PublicSpectatorAllowContainerBind,
-		EvalExplorerAddr:                   f.EvalExplorerAddr,
-		EvalExplorerRoot:                   f.EvalExplorerRoot,
-		PublicSpectatorTrustedProxyCIDRs:   f.PublicSpectatorTrustedProxyCIDRs,
-		PprofListenAddr:                    f.PprofListenAddr,
+		OperatorCapabilities:                 f.OperatorCapabilities,
+		InferenceOllamaEndpoint:              f.InferenceOllamaEndpoint,
+		InferenceLlamaCppEndpoint:            f.InferenceLlamaCppEndpoint,
+		InferenceLlamaCppModelRoot:           f.InferenceLlamaCppModelRoot,
+		InferenceKeepAlive:                   f.InferenceKeepAlive,
+		ProviderBoundaryObserverID:           f.ProviderBoundaryObserverID,
+		ProvenanceOperatorID:                 f.ProvenanceOperatorID,
+		ProvenanceOperatorModelStorageRoot:   f.ProvenanceOperatorModelStorageRoot,
+		ProvenanceOperatorModelStorageFormat: f.ProvenanceOperatorModelStorageFormat,
+		Posture:                              constants.Posture(f.Posture),
+		HTTPPort:                             f.HTTPPort,
+		HTTPSPort:                            f.HTTPSPort,
+		ListenHost:                           f.ListenHost,
+		DataDir:                              f.DataDir,
+		PKIDir:                               f.PKIDir,
+		SecretsDir:                           f.SecretsDir,
+		VaultDir:                             f.VaultDir,
+		PasskeyRpID:                          f.PasskeyRpID,
+		PasskeyRpName:                        f.PasskeyRpName,
+		PasskeyRpOrigins:                     f.PasskeyRpOrigins,
+		RateLimitRPS:                         f.RateLimitRPS,
+		RateLimitBurst:                       f.RateLimitBurst,
+		LogLevel:                             f.LogLevel,
+		CertIdentityMode:                     f.CertIdentityMode,
+		MCPDownstreamURL:                     f.MCPDownstreamURL,
+		MCPDownstreamCmd:                     f.MCPDownstreamCmd,
+		MCPDownstreamArgs:                    parseDownstreamArgs(f.MCPDownstreamArgs),
+		A2ADownstreamURL:                     f.A2ADownstreamURL,
+		PublicBaseURL:                        f.PublicBaseURL,
+		AllowedOrigins:                       f.AllowedOrigins,
+		DoctrineDir:                          f.DoctrineDir,
+		PublicSpectatorEnabled:               f.PublicSpectatorEnabled,
+		PublicSpectatorPrivateAddr:           f.PublicSpectatorPrivateAddr,
+		PublicSpectatorPublicAddr:            f.PublicSpectatorPublicAddr,
+		PublicSpectatorAllowContainerBind:    f.PublicSpectatorAllowContainerBind,
+		EvalExplorerAddr:                     f.EvalExplorerAddr,
+		EvalExplorerRoot:                     f.EvalExplorerRoot,
+		PublicSpectatorTrustedProxyCIDRs:     f.PublicSpectatorTrustedProxyCIDRs,
+		PprofListenAddr:                      f.PprofListenAddr,
 	}
 }
 
@@ -497,7 +508,10 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				}
 			}
 
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+			if err != nil {
+				return fmt.Errorf("gateway: create logger: %w", err)
+			}
 			identityResult := detectIdentity(context.Background(), logger, resolved.CertIdentityMode)
 
 			if identityResult.ShouldFallback {
@@ -554,12 +568,20 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 
 			cmd.Println("[ztd] Starting ztd Gateway service...")
 			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
+			if resolved.InferenceLlamaCppEndpoint == "" {
+				for _, a := range platform.DetectEnvironment().OllamaAdvisories(cmd.Context(), platform.OllamaAdvisoryInput{
+					Endpoint:         resolved.InferenceOllamaEndpoint,
+					ModelStorageRoot: resolved.ProvenanceOperatorModelStorageRoot,
+				}) {
+					cmd.PrintErrf("[ztd] WSL: %s\n[ztd]      Fix: %s\n", a.Problem, a.Fix)
+				}
+			}
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
 			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
-			if err := pm.StartOperator(&startOpts); err != nil {
-				return fmt.Errorf("%w: %v", constants.ErrProcessStartFailed, err)
+			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
+				return err
 			}
 			gatewayCfg = startOpts.GatewayConfig
 
@@ -777,7 +799,10 @@ restart.`,
 			// subprocess re-detects identity in foreground; the parent
 			// detection is for display and to resolve the effective mode
 			// (which may fall back to "localhost" on detection failure).
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+			if err != nil {
+				return fmt.Errorf("gateway: create logger: %w", err)
+			}
 			identityResult := detectIdentity(context.Background(), logger, profile.Config.CertIdentityMode)
 
 			if identityResult.ShouldFallback {
@@ -791,10 +816,14 @@ restart.`,
 			profile.Config.CertIdentityMode = identityResult.CertMode
 
 			startOpts := platform.OperatorStartOptions{GatewayConfig: profile.Config, Notices: cmd.ErrOrStderr()}
-			if err := pm.StartOperator(&startOpts); err != nil {
-				if running {
-					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
-					if rollbackErr := pm.StartOperator(&rollbackOpts); rollbackErr != nil {
+			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
+				// Only identity detection changed the requested configuration.
+				// Retrying identical settings with the same executable repeats
+				// verification; it cannot restore the previously running binary.
+				if running && profile.Config.CertIdentityMode != previousConfig.CertIdentityMode && cmd.Context().Err() == nil {
+					cmd.Println("Restoring the previous certificate configuration with the current executable...")
+					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig, Notices: cmd.ErrOrStderr()}
+					if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 						return fmt.Errorf("%w: restart: %w; rollback: %w", constants.ErrProcessStartFailed, err, rollbackErr)
 					}
 				}
@@ -809,8 +838,8 @@ restart.`,
 					return fmt.Errorf("%w: persist launch profile: %w; stop untracked gateway: %w", constants.ErrInternal, err, stopErr)
 				}
 				if running {
-					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig}
-					if rollbackErr := pm.StartOperator(&rollbackOpts); rollbackErr != nil {
+					rollbackOpts := platform.OperatorStartOptions{GatewayConfig: previousConfig, Notices: cmd.ErrOrStderr()}
+					if rollbackErr := pm.StartOperator(cmd.Context(), &rollbackOpts); rollbackErr != nil {
 						return fmt.Errorf("%w: persist launch profile: %w; rollback: %w", constants.ErrInternal, err, rollbackErr)
 					}
 				}

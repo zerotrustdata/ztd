@@ -161,6 +161,59 @@ func TestL2TrustStore_ReplaceRejectsMalformedAndKeepsHeldTrust(t *testing.T) {
 	assert.Equal(t, pub, got)
 }
 
+func TestL2TrustStore_ReplaceIfNewerIgnoresOutOfOrderSnapshots(t *testing.T) {
+	t.Parallel()
+	current, _ := testL2Trust(t)
+	current.BindingVersion = 2
+	store, err := NewL2TrustStore(current)
+	require.NoError(t, err)
+
+	stale, _ := testL2Trust(t)
+	stale.BindingVersion = 1
+	updated, err := store.ReplaceIfNewer(stale)
+	require.NoError(t, err)
+	assert.False(t, updated)
+	assert.EqualValues(t, 2, store.BindingVersion())
+
+	next, _ := testL2Trust(t)
+	next.BindingVersion = 3
+	updated, err = store.ReplaceIfNewer(next)
+	require.NoError(t, err)
+	assert.True(t, updated)
+	assert.EqualValues(t, 3, store.BindingVersion())
+}
+
+func TestL2TrustStore_ReplaceRejectsMissingOrUnversionedTrustAfterBinding(t *testing.T) {
+	t.Parallel()
+	current, currentPublic := testL2Trust(t)
+	current.BindingVersion = 2
+	store, err := NewL2TrustStore(current)
+	require.NoError(t, err)
+
+	unversioned, _ := testL2Trust(t)
+	require.ErrorIs(t, store.Replace(nil), constants.ErrValidationFailed)
+	require.ErrorIs(t, store.Replace(unversioned), constants.ErrValidationFailed)
+	assert.EqualValues(t, 2, store.BindingVersion())
+	got, err := store.GetTrustedSigner(context.Background(), "m1")
+	require.NoError(t, err)
+	assert.Equal(t, currentPublic, got, "rejected stale renewal data must leave the current trust intact")
+}
+
+func TestL2TrustStore_ReplaceAllowsSameBindingVersionRenewalSnapshot(t *testing.T) {
+	t.Parallel()
+	current, _ := testL2Trust(t)
+	current.BindingVersion = 2
+	store, err := NewL2TrustStore(current)
+	require.NoError(t, err)
+
+	updated, expected := testL2Trust(t)
+	updated.BindingVersion = 2
+	require.NoError(t, store.Replace(updated))
+	actual, err := store.GetTrustedSigner(context.Background(), "m1")
+	require.NoError(t, err)
+	assert.Equal(t, expected, actual)
+}
+
 func TestL4Warden_Doctrine(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()

@@ -13,12 +13,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
+
+func TestParseFinalDiagnosisSections_UnicodeSummaryHeadings(t *testing.T) {
+	for _, dash := range []string{"-", "‑", "–", "—"} {
+		t.Run(dash, func(t *testing.T) {
+			output := "**Diagnosis**\nObserved timeouts.\n**Confidence**\nModerate.\n**Recommended action**\nInspect telemetry.\n**Customer" + dash + "safe summary**\nCustomers cannot complete checkout."
+			sections := parseFinalDiagnosisSections(output)
+			assert.Equal(t, "Customers cannot complete checkout.", sections["summary"])
+			assert.Equal(t, "Inspect telemetry.", sections["action"])
+		})
+	}
+	assert.Empty(t, parseFinalDiagnosisSections("Customer-safe summaryish: not a section")["summary"])
+}
 
 func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *testing.T) {
 	blueprint := recoveryErrorGuidedRetry()
@@ -71,12 +85,12 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 				Workspace:   AgentTraceWorkspace(workspace),
 				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-retry", ResultDigest: "digest-retry"}},
 				ToolCalls:   tc.calls,
-				FinalOutput: "logs/auth.log line 1: AUTH_FAILURE user=svc-deploy",
+				FinalOutput: "logs/auth.log line 1: AUTH_FAILURE user=svc-d…",
 			}
 			grading, err := GradeHomogeneousScenario(req, trace,
 				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 			require.NoError(t, err)
-			require.Equal(t, tc.passed, gradePassed(grading.DeterministicGrades, "required-evidence:recovery"))
+			require.Equal(t, tc.passed, gradePassed(t, grading.DeterministicGrades, "required-evidence:recovery"))
 			if tc.passed {
 				for _, grade := range grading.DeterministicGrades {
 					require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), grade.GetCriterionId())
@@ -131,9 +145,9 @@ func routerTrace(callClass evalv1.EvaluationCallClassification) *AgentTrace {
 			Role:      evalv1.AgentRole_AGENT_ROLE_ROUTER,
 			CallClass: callClass,
 			Output: &evalv1.AgentStep_Router{Router: &evalv1.RouterOutput{
-				Complexity: "simple",
-				Intent:     "action",
-				Posture:    "normal",
+				Complexity: string(constants.TriageComplexitySimple),
+				Intent:     string(constants.TriageIntentAction),
+				Posture:    string(constants.TriagePostureNormal),
 			}},
 		}},
 	}
@@ -194,7 +208,13 @@ func verifiedGradingTrace(t *testing.T, callClass evalv1.EvaluationCallClassific
 // verifiedGradingRequest is the homogeneous assignment a verifiedGradingTrace
 // was sealed for, graded against the caller's Gold.Players.
 func verifiedGradingRequest(trace *AgentTrace, players *ScenarioPlayerExpectations) AssignmentExecutionRequest {
+	candidate := &evalv1.ModelVariant{VariantId: "variant-a", ServedModelTag: trace.ServedModelTag, ModelDigest: trace.ModelDigest}
 	return AssignmentExecutionRequest{
+		Binding: CampaignExecutionBinding{
+			ModelRegistryDigest: trace.ModelRegistryDigest,
+			ModelVariants:       []*evalv1.ModelVariant{candidate},
+			ModelRegistry:       []*operatorv1.InferenceModelVariant{{Model: trace.ServedModelTag, Digest: trace.ModelDigest}},
+		},
 		Assignment: &evalv1.EvaluationAssignment{
 			AssignmentId: trace.AssignmentID,
 			RunId:        trace.RunID,
@@ -203,7 +223,7 @@ func verifiedGradingRequest(trace *AgentTrace, players *ScenarioPlayerExpectatio
 			Lane:         evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE,
 			Target: &evalv1.EvaluationAssignment_Homogeneous{Homogeneous: &evalv1.HomogeneousAssignmentTarget{
 				DesignatedRole:   evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
-				CandidateVariant: &evalv1.ModelVariant{VariantId: "variant-a", ServedModelTag: trace.ServedModelTag, ModelDigest: trace.ModelDigest},
+				CandidateVariant: candidate,
 			}},
 		},
 		ScenarioInput: ScenarioInputFixture{ScenarioID: trace.ScenarioID, UserPrompt: "Investigate and report"},
@@ -275,9 +295,10 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 		req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: triage})
 		req.ScenarioInput.ScenarioID = ""
 
-		result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil)
-		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-		require.Nil(t, result)
+		assessment := assessAgentTrace(req, trace, completed, nil)
+		require.ErrorIs(t, assessment.failed, constants.ErrMissingRequiredField)
+		require.NoError(t, assessment.invalid)
+		assert.Nil(t, assessment.grading)
 	})
 }
 

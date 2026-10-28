@@ -235,7 +235,7 @@ func TestPruneChainedEvents_RemovesOnlyExpiredEventsAndChainVerifies(t *testing.
 	}
 
 	cutoffTime := time.Now().UTC().AddDate(0, 0, -30)
-	require.NoError(t, PruneChainedEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, cutoffTime.Format(time.RFC3339Nano)))
+	require.NoError(t, PruneChainedEvents(context.Background(), ass.db, ass.logger, ass.encryptionVault, ass.checkpointSigner, cutoffTime.Format(time.RFC3339Nano)))
 
 	var expired int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(),

@@ -48,7 +48,7 @@ func newProducerControllerTestEnv(t *testing.T) *ObserveProducerController {
 	t.Helper()
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -75,7 +75,7 @@ func newProducerControllerTestEnv(t *testing.T) *ObserveProducerController {
 // the peer certificate, never from the body.
 func withAppAuthCtx(r *http.Request, _ string, userID string) *http.Request {
 	ctx := context.WithValue(r.Context(), constants.ContextKeyAppID, "app-workload")
-	ctx = context.WithValue(ctx, constants.ContextKeyUserID, userID)
+	ctx = context.WithValue(ctx, constants.ContextKeyDelegatedUserID, userID)
 	return r.WithContext(ctx)
 }
 
@@ -326,7 +326,7 @@ func TestObserveProducerController_HandleRunState_TrailingJSONRejected(t *testin
 func TestObserveProducerController_HandleAgentState_OversizedBodyRejected(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	cfg := sqliteutil.DefaultDBConfig(":memory:")
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(nil, cfg, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(gatewaySchema)

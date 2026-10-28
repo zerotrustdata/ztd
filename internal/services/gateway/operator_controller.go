@@ -31,6 +31,7 @@ type OperatorController struct {
 	reg       *RegistrationService
 	auth      *AuthService
 	dispatch  *DispatchService
+	trust     operatorL2TrustSource
 	responder *response.Writer
 }
 
@@ -41,6 +42,7 @@ type OperatorControllerDeps struct {
 	Reg       *RegistrationService
 	Auth      *AuthService
 	Dispatch  *DispatchService
+	Trust     operatorL2TrustSource
 	Responder *response.Writer
 }
 
@@ -51,6 +53,7 @@ func newOperatorController(d OperatorControllerDeps) *OperatorController {
 		reg:       d.Reg,
 		auth:      d.Auth,
 		dispatch:  d.Dispatch,
+		trust:     d.Trust,
 		responder: d.Responder,
 	}
 }
@@ -60,7 +63,7 @@ func (c *OperatorController) readBody(r *http.Request) ([]byte, error) {
 }
 
 // @Summary		Validate operator session binding
-// @Description	Validates the exact active operator-session, CLI-session, and user binding. The Gateway is authoritative; callers authenticate with an enrolled application mTLS certificate.
+// @Description	Validates the exact active operator-session, CLI-session, and user binding, or the certificate-bound session of an outbound Operator. Successful responses include the current L2 trust snapshot. Callers authenticate with an enrolled mTLS certificate.
 // @Tags			operators
 // @Accept			json
 // @Produce		json
@@ -87,7 +90,22 @@ func (c *OperatorController) handleValidateOperatorSession(w http.ResponseWriter
 		c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
 		return
 	}
-	op, err := c.auth.ValidateOperatorCLISessionBinding(r.Context(), req.OperatorSessionID, req.CLISessionID, req.UserID)
+	var op *operatorv1.OperatorDocument
+	authenticatedOperatorSessionID := ""
+	if sessionID, ok := r.Context().Value(constants.ContextKeyOperatorSessionID).(string); ok && sessionID != "" {
+		// Outbound Operators authenticate with an mTLS certificate naming this
+		// session. Use that identity instead of caller-supplied CLI/user claims.
+		if sessionID != req.OperatorSessionID {
+			c.responder.Error(w, http.StatusUnauthorized, constants.ErrGatewayOperatorSessionInvalid.Error())
+			return
+		}
+		authenticatedOperatorSessionID = sessionID
+	}
+	if authenticatedOperatorSessionID != "" {
+		op, err = c.auth.ValidateOperatorSession(r.Context(), authenticatedOperatorSessionID)
+	} else {
+		op, err = c.auth.ValidateOperatorCLISessionBinding(r.Context(), req.OperatorSessionID, req.CLISessionID, req.UserID)
+	}
 	if err != nil {
 		var authErr *AuthError
 		if errors.As(err, &authErr) {
@@ -98,7 +116,21 @@ func (c *OperatorController) handleValidateOperatorSession(w http.ResponseWriter
 		c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
 		return
 	}
-	c.responder.JSON(w, http.StatusOK, models.OperatorSessionValidationResponse{Valid: true, OperatorID: op.Id, UserID: op.UserId})
+	if c.trust == nil {
+		c.logger.Error("gateway: load operator L2 trust for session validation", string(constants.ConnectionStateError), constants.ErrServiceUnavailable)
+		c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	trust, err := c.trust.OperatorL2Trust(r.Context())
+	if err != nil {
+		c.logger.Error("gateway: load operator L2 trust for session validation", string(constants.ConnectionStateError), err)
+		c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
+		return
+	}
+	if trust == nil {
+		trust = &models.OperatorL2Trust{}
+	}
+	c.responder.JSON(w, http.StatusOK, models.OperatorSessionValidationResponse{Valid: true, OperatorID: op.Id, UserID: op.UserId, L2Trust: trust})
 }
 
 // GET /api/v1/operators

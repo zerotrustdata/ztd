@@ -83,7 +83,8 @@ func TestAgentLoop_QuorumDeniedTurnIsPolicyDenialWithoutProviderAttempt(t *testi
 		require.NotNil(t, call.Receipt)
 		assert.Same(t, receipt, call.Receipt.EventReceipt)
 
-		records, _ := modelInferenceRecordsFromAgentTrace(run.req, run.trace, run.executor.newID)
+		records, _, err := modelInferenceRecordsFromAgentTrace(run.req, run.trace, run.executor.newID)
+		require.NoError(t, err)
 		require.Len(t, records, 1)
 		assert.Empty(t, records[0].GetProviderAttemptId(), "a governance-rejected inference has no provider attempt")
 	})

@@ -75,7 +75,7 @@ func ConfirmDestructive(cmd *cobra.Command, opts DestructiveOptions) (bool, erro
 	// find the first one already consumed the whole input.
 	reader := bufio.NewReader(cmd.InOrStdin())
 
-	if !opts.AssumeYes && !askYesNo(cmd, reader, "Continue?", false) {
+	if !opts.AssumeYes && !AskYesNo(cmd, reader, "Continue?", false) {
 		cmd.Println("Aborted")
 		return false, constants.ErrConfirmationAborted
 	}
@@ -83,7 +83,7 @@ func ConfirmDestructive(cmd *cobra.Command, opts DestructiveOptions) (bool, erro
 	if opts.Backup == nil || opts.SkipBackup {
 		return true, nil
 	}
-	if !opts.AssumeYes && !askYesNo(cmd, reader, opts.Backup.Prompt, true) {
+	if !opts.AssumeYes && !AskYesNo(cmd, reader, opts.Backup.Prompt, true) {
 		cmd.Println("Skipping backup.")
 		return true, nil
 	}
@@ -100,7 +100,9 @@ func ConfirmDestructive(cmd *cobra.Command, opts DestructiveOptions) (bool, erro
 	return true, nil
 }
 
-func askYesNo(cmd *cobra.Command, reader *bufio.Reader, prompt string, defaultYes bool) bool {
+// AskYesNo prints prompt with a [y/N] or [Y/n] hint and reads one answer from
+// reader. A bare newline takes the default; end of input counts as "no".
+func AskYesNo(cmd *cobra.Command, reader *bufio.Reader, prompt string, defaultYes bool) bool {
 	hint := "[y/N]"
 	if defaultYes {
 		hint = "[Y/n]"
@@ -150,6 +152,12 @@ func EvalEvidenceBackup(
 			}
 			if report.Unchanged {
 				return fmt.Sprintf("Evaluation evidence already backed up in %s", report.SnapshotDir), nil
+			}
+			backupDir := DefaultEvalBackupDir(cfg)
+			compactReport, compactErr := evaluation.NewEvalBackup(fileSvc, time.Now).Compact(ctx, backupDir)
+			if compactErr == nil && compactReport != nil && compactReport.TotalReclaimedBytes > 0 {
+				return fmt.Sprintf("Backed up evaluation evidence (%d file(s), %d bytes) to %s (compacted %d superseded snapshot(s), reclaimed %d bytes)",
+					len(report.Files), report.TotalBytes, report.SnapshotDir, compactReport.RemovedSupersededSnapshots, compactReport.TotalReclaimedBytes), nil
 			}
 			return fmt.Sprintf("Backed up evaluation evidence (%d file(s), %d bytes) to %s", len(report.Files), report.TotalBytes, report.SnapshotDir), nil
 		},

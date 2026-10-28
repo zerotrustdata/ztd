@@ -352,7 +352,7 @@ func payloadToExecutionRequest(msg *PubSubCommandMessage) (*models.ExecutionRequ
 		return nil, fmt.Errorf("pubsub: decode command payload: %w", err)
 	}
 	if protoCmd.Command == "" {
-		return nil, fmt.Errorf("pubsub: missing command in protobuf CommandRequested")
+		return nil, fmt.Errorf("pubsub: missing command in protobuf CommandRequested: %w", constants.ErrEmptyCommand)
 	}
 
 	executionID := executionIDFromMessage(msg)

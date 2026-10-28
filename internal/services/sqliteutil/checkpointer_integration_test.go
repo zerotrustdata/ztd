@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -26,8 +25,9 @@ import (
 // TestCheckpointer_TriggerFiresAfter64Commits verifies that every 64th gated commit
 // triggers a background WAL checkpoint wake signal.
 func TestCheckpointer_TriggerFiresAfter64Commits(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), "checkpointer_commits.db")
-	db, err := OpenDB(DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	dbPath := fileSvc.Resolve("checkpointer_commits.db")
+	db, err := OpenDB(fileSvc, DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
@@ -62,8 +62,9 @@ func TestCheckpointer_TriggerFiresAfter64Commits(t *testing.T) {
 // TestCheckpointer_GracefulShutdownViaClose verifies that Close() cleanly stops
 // the background checkpointer goroutine before closing the connection pool.
 func TestCheckpointer_GracefulShutdownViaClose(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), "shutdown.db")
-	db, err := OpenDB(DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	dbPath := fileSvc.Resolve("shutdown.db")
+	db, err := OpenDB(fileSvc, DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 
 	// Check that the checkpointer is active (stopped channel is open).
@@ -91,8 +92,9 @@ func TestCheckpointer_GracefulShutdownViaClose(t *testing.T) {
 // TestCheckpointer_WALFileSizeBoundedUnderSustainedLoad verifies that WAL file size
 // remains bounded under a burst of gated writes due to regular passive checkpointing.
 func TestCheckpointer_WALFileSizeBoundedUnderSustainedLoad(t *testing.T) {
-	dbPath := filepath.Join(testutil.TempDir(t), "wal_bound.db")
-	db, err := OpenDB(DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	fileSvc := newTestRuntimeFiles(t)
+	dbPath := fileSvc.Resolve("wal_bound.db")
+	db, err := OpenDB(fileSvc, DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

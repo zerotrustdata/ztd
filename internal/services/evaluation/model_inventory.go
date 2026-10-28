@@ -26,7 +26,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-const StandardScenarioCount = 27
+const StandardScenarioCount = DefaultSuiteScenarioCount
 
 // ModelInventoryFreeze is the immutable model registry derived from
 // a complete provider inventory query and optional capability probes.
@@ -98,12 +98,12 @@ func BuildModelVariantsFromProviderInventory(ctx context.Context, entries []infe
 			return nil, fmt.Errorf("evaluation: build model variants: %w", constants.ErrMissingRequiredField)
 		}
 		if _, exists := seenTags[entry.ServedModelTag]; exists {
-			return nil, fmt.Errorf("evaluation: build model variants: duplicate served tag %q", entry.ServedModelTag)
+			return nil, fmt.Errorf("evaluation: build model variants: duplicate served tag %q: %w", entry.ServedModelTag, constants.ErrInferenceModelRegistryInvalid)
 		}
 		seenTags[entry.ServedModelTag] = struct{}{}
 		variant := modelVariantFromProviderEntry(entry)
 		if _, exists := seenIDs[variant.GetVariantId()]; exists {
-			return nil, fmt.Errorf("evaluation: build model variants: duplicate variant_id %q", variant.GetVariantId())
+			return nil, fmt.Errorf("evaluation: build model variants: duplicate variant_id %q: %w", variant.GetVariantId(), constants.ErrInferenceModelRegistryInvalid)
 		}
 		seenIDs[variant.GetVariantId()] = struct{}{}
 		if opts.RunCapabilityProbes {
@@ -124,7 +124,7 @@ func BuildModelVariantsFromProviderInventory(ctx context.Context, entries []infe
 func modelVariantFromProviderEntry(entry inference.ProviderModelInventoryEntry) *evalv1.ModelVariant {
 	providerClass := entry.ProviderClass
 	if providerClass == "" {
-		providerClass = "ollama"
+		providerClass = constants.InferenceProviderOllama
 	}
 	return &evalv1.ModelVariant{
 		VariantId:            inference.NormalizeProviderModelVariantID(entry.ServedModelTag),
@@ -185,10 +185,10 @@ func ValidateModelRegistry(freeze *ModelInventoryFreeze) error {
 			return fmt.Errorf("evaluation: validate model registry: %w", constants.ErrMissingRequiredField)
 		}
 		if _, exists := seenTags[variant.GetServedModelTag()]; exists {
-			return fmt.Errorf("evaluation: validate model registry: duplicate served tag %q", variant.GetServedModelTag())
+			return fmt.Errorf("evaluation: validate model registry: duplicate served tag %q: %w", variant.GetServedModelTag(), constants.ErrInferenceModelRegistryInvalid)
 		}
 		if _, exists := seenIDs[variant.GetVariantId()]; exists {
-			return fmt.Errorf("evaluation: validate model registry: duplicate variant_id %q", variant.GetVariantId())
+			return fmt.Errorf("evaluation: validate model registry: duplicate variant_id %q: %w", variant.GetVariantId(), constants.ErrInferenceModelRegistryInvalid)
 		}
 		seenTags[variant.GetServedModelTag()] = struct{}{}
 		seenIDs[variant.GetVariantId()] = struct{}{}
@@ -200,8 +200,18 @@ func ValidateModelRegistry(freeze *ModelInventoryFreeze) error {
 // (scenario, role) cells, counting each scenario once per role it declares
 // eligible.
 func ComputeHomogeneousMatrixSize(variantCount uint64) uint64 {
+	return ComputeHomogeneousMatrixSizeForPosture(variantCount, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
+}
+
+// ComputeHomogeneousMatrixSizeForPosture returns the built-in default suite
+// width for a governance posture. The default posture-neutral inventory width
+// remains doctrine; rollout manifests also record the L2-enforced width.
+func ComputeHomogeneousMatrixSizeForPosture(variantCount uint64, posture evalv1.EvaluationGovernancePosture) uint64 {
 	var cellsPerVariant uint64
 	for _, blueprint := range scenarioBlueprints() {
+		if scenarioExcludedWhenL2Enforced(scenarioRequiresL2(blueprint), posture) {
+			continue
+		}
 		cellsPerVariant += uint64(len(blueprint.EligibleRoles))
 	}
 	return variantCount * cellsPerVariant
@@ -225,26 +235,7 @@ func LoadModelInventoryFreezeFile(path string) (*ModelInventoryFreeze, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: load model inventory freeze file: %w", err)
 	}
-	var payload struct {
-		CampaignID          string            `json:"campaign_id"`
-		ModelRegistryDigest string            `json:"model_registry_digest"`
-		Variants            []json.RawMessage `json:"variants"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("evaluation: load model inventory freeze file: decode: %w", err)
-	}
-	if payload.ModelRegistryDigest == "" || len(payload.Variants) == 0 {
-		return nil, fmt.Errorf("evaluation: load model inventory freeze file: %w", constants.ErrMissingRequiredField)
-	}
-	variants := make([]*evalv1.ModelVariant, 0, len(payload.Variants))
-	for _, raw := range payload.Variants {
-		variant := &evalv1.ModelVariant{}
-		if err := protojson.Unmarshal(raw, variant); err != nil {
-			return nil, fmt.Errorf("evaluation: load model inventory freeze file: decode variant: %w", err)
-		}
-		variants = append(variants, variant)
-	}
-	return MaterializeModelRegistry(payload.CampaignID, variants)
+	return parseModelInventoryFreeze(data)
 }
 
 func parseModelInventoryFreeze(data []byte) (*ModelInventoryFreeze, error) {
@@ -294,7 +285,7 @@ func ParseParameterCount(raw string) (uint64, error) {
 		return 0, fmt.Errorf("evaluation: parse parameter count %q: %w", raw, err)
 	}
 	if val < 0 {
-		return 0, fmt.Errorf("evaluation: parse parameter count %q: must be non-negative", raw)
+		return 0, fmt.Errorf("evaluation: parse parameter count %q: %w", raw, constants.ErrEvaluationParameterCountNegative)
 	}
 	return uint64(math.Round(val * multiplier)), nil
 }
@@ -378,7 +369,7 @@ func AddOrUpdateModelVariant(freeze *ModelInventoryFreeze, variant *evalv1.Model
 		variant.VariantId = inference.NormalizeProviderModelVariantID(variant.GetServedModelTag())
 	}
 	if variant.GetProviderClass() == "" {
-		variant.ProviderClass = "ollama"
+		variant.ProviderClass = constants.InferenceProviderOllama
 	}
 
 	variants := make([]*evalv1.ModelVariant, 0, len(freeze.Variants)+1)
@@ -433,7 +424,7 @@ func MergeModelVariants(targetFreeze *ModelInventoryFreeze, sourceVariants []*ev
 			v.VariantId = inference.NormalizeProviderModelVariantID(v.GetServedModelTag())
 		}
 		if v.GetProviderClass() == "" {
-			v.ProviderClass = "ollama"
+			v.ProviderClass = constants.InferenceProviderOllama
 		}
 		byTag[v.GetServedModelTag()] = v
 	}

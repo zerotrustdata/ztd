@@ -261,7 +261,7 @@ func (s *PublicPublisherService) applyProofLogLocked(f *os.File, size int64) err
 		}
 		seg, err := decodeProofSegmentLine(line)
 		if err != nil {
-			return fmt.Errorf("%w: segment line at byte %d: %v", constants.ErrPublicFeedProofSegmentInvalid, s.proofIndex.offset, err)
+			return fmt.Errorf("%w: segment line at byte %d: %w", constants.ErrPublicFeedProofSegmentInvalid, s.proofIndex.offset, err)
 		}
 		if err := s.verifyProofSegmentLocked(seg); err != nil {
 			return fmt.Errorf("public-feed: proof segment %d at byte %d: %w", seg.SegmentIndex, s.proofIndex.offset, err)
@@ -279,7 +279,7 @@ func decodeProofSegmentLine(line []byte) (models.PublicProofManifestSegment, err
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return models.PublicProofManifestSegment{}, errors.New("trailing JSON")
+		return models.PublicProofManifestSegment{}, fmt.Errorf("trailing JSON: %w", constants.ErrInvalidJSONBody)
 	}
 	return seg, nil
 }
@@ -297,10 +297,17 @@ func (s *PublicPublisherService) lockProofLog(ctx context.Context) (io.Closer, e
 	return held, nil
 }
 
-// signProofSegment fills in the root, key ID, and signature of seg.
+// signProofSegment fills in the published verification text, the signing key
+// when the key ID binds it, the root, and the signature of seg.
 func (s *PublicPublisherService) signProofSegment(seg models.PublicProofManifestSegment) (models.PublicProofManifestSegment, error) {
-	privateKey, _, keyID := s.proofSigningKey()
+	privateKey, publicKey, keyID := s.proofSigningKey()
 	seg.SigningKeyID = keyID
+	seg.VerifierInstructions = models.PublicProofVerifierInstructions
+	if published, ok := models.PublicProofSigningKeyHex(publicKey, keyID); ok {
+		seg.SigningPublicKey = published
+	} else {
+		seg.SigningPublicKey = ""
+	}
 	seg.ProofRootSHA256 = models.ComputePublicProofSegmentRoot(seg)
 	root, err := hex.DecodeString(seg.ProofRootSHA256)
 	if err != nil {
@@ -394,7 +401,7 @@ func (s *PublicPublisherService) readProofLogRange(ctx context.Context, logRange
 	for _, root := range logRange.roots {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			return fmt.Errorf("%w: read indexed segment: %v", constants.ErrPublicFeedProofSegmentInvalid, err)
+			return fmt.Errorf("%w: read indexed segment: %w", constants.ErrPublicFeedProofSegmentInvalid, err)
 		}
 		seg, err := decodeProofSegmentLine(line)
 		if err != nil || seg.ProofRootSHA256 != root {

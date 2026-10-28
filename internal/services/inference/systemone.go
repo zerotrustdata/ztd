@@ -143,13 +143,13 @@ func callSystemOne(ctx context.Context, client *http.Client, endpoint, key strin
 	if err != nil {
 		return nil, fmt.Errorf("decision request: %w", err)
 	}
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	if key != "" {
-		request.Header.Set("Authorization", "Bearer "+key)
+		request.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+key)
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, transportError(ctx, "decision", err)
+		return nil, transportError(ctx, "systemone", "decision", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -169,7 +169,7 @@ func callSystemOne(ctx context.Context, client *http.Client, endpoint, key strin
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return nil, transportError(ctx, "decision", err)
+		return nil, transportError(ctx, "systemone", "decision", err)
 	}
 	if int64(len(raw)) > limit {
 		return nil, constants.ErrInferenceDecisionResponseInvalid

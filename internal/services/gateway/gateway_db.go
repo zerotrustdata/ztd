@@ -98,7 +98,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
 	cfg := sqliteutil.DefaultDBConfig(dbPath)
 
-	db, err := sqliteutil.OpenDB(cfg, logger)
+	db, err := sqliteutil.OpenDB(fileSvc, cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDatabaseLocked, err)
 	}
@@ -213,6 +213,16 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 		return nil, fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
 	}
 	actuatorPub := actuatorPriv.Public().(ed25519.PublicKey)
+
+	auditorPriv, auditorKeyID, err := svc.sm.GetAuditorKey()
+	if err != nil {
+		cancel()
+		closeAfterEventsStore()
+		return nil, fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
+	}
+	auditorPub := auditorPriv.Public().(ed25519.PublicKey)
+	eventsStore.SetCheckpointSigner(storage.NewEd25519CheckpointSigner(auditorPriv, auditorKeyID))
+	eventsStore.SetPinnedAuditorPublicKey(auditorPub)
 
 	// Initialize extracted services with the same db connection
 	s := &stores{

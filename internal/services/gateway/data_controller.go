@@ -9,7 +9,6 @@ package gateway
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -62,6 +61,14 @@ func (c *DataController) readBody(r *http.Request) ([]byte, error) {
 	return readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes)
 }
 
+// @Summary Read platform settings
+// @Description Requires mTLS. This endpoint is read-only; direct settings writes return 405 in every posture.
+// @Tags data
+// @Produce json
+// @Success 200 {object} object
+// @Failure 404 {object} object "Settings not found"
+// @Failure 405 {object} object "Method Not Allowed"
+// @Router /api/v1/data/settings [get]
 func (c *DataController) handleDataSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -75,32 +82,21 @@ func (c *DataController) handleDataSettings(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		c.responder.JSON(w, http.StatusOK, doc.ForWire())
-	case http.MethodPut, http.MethodPatch:
-		body, err := c.readBody(r)
-		if err != nil {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		if !json.Valid(body) {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		var err2 error
-		if r.Method == http.MethodPut {
-			err2 = c.docStore.DocSet(r.Context(), marshaler.CollectionName(constants.CollectionSettings), marshaler.DocumentID(constants.DocIDPlatformSettings), json.RawMessage(body))
-		} else {
-			_, err2 = c.docStore.DocUpdate(r.Context(), marshaler.CollectionName(constants.CollectionSettings), marshaler.DocumentID(constants.DocIDPlatformSettings), json.RawMessage(body))
-		}
-		if err2 != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("data_controller: handleDataSettings: %w", err2).Error())
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, models.StatusResponse{Status: constants.GatewayModeStatusOK})
 	default:
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 	}
 }
 
+// @Summary Read a document
+// @Description Requires mTLS. Direct document writes return 405 for every collection and identity, including platform authority collections. Application record mutations require governed actions; platform authority changes use their owning enrollment and management workflows.
+// @Tags data
+// @Produce json
+// @Param collection path string true "Collection name"
+// @Param id path string true "Document ID"
+// @Success 200 {object} object
+// @Failure 404 {object} object "Document not found"
+// @Failure 405 {object} object "Method Not Allowed"
+// @Router /api/v1/data/{collection}/{id} [get]
 func (c *DataController) handleDataDB(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, constants.APIPaths.DataPrefix)
 	parts := strings.SplitN(path, "/", 2)
@@ -138,80 +134,21 @@ func (c *DataController) handleDataDB(w http.ResponseWriter, r *http.Request) {
 		}
 		c.responder.JSON(w, http.StatusOK, doc.ForWire())
 
-	case http.MethodPut:
-		if !isDirectDBMutationAllowed(collection) {
-			c.responder.Error(w, http.StatusConflict, governanceEnvelopeRedirectError)
-			return
-		}
-		body, err := c.readBody(r)
-		if err != nil {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		if !json.Valid(body) {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		if err := c.docStore.DocSet(r.Context(), collection, id, json.RawMessage(body)); err != nil {
-			if errors.Is(err, constants.ErrDatabaseLocked) {
-				c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrDatabaseLocked.Error())
-			} else {
-				c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("data_controller: handleDataDB: %w", err).Error())
-			}
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, models.StatusResponse{Status: constants.GatewayModeStatusOK})
-
-	case http.MethodPatch:
-		if !isDirectDBMutationAllowed(collection) {
-			c.responder.Error(w, http.StatusConflict, governanceEnvelopeRedirectError)
-			return
-		}
-		body, err := c.readBody(r)
-		if err != nil {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		if !json.Valid(body) {
-			c.responder.Error(w, http.StatusBadRequest, constants.ErrInvalidJSONBody.Error())
-			return
-		}
-		doc, err := c.docStore.DocUpdate(r.Context(), collection, id, json.RawMessage(body))
-		if err != nil {
-			if errors.Is(err, constants.ErrNotFound) {
-				c.responder.Error(w, http.StatusNotFound, err.Error())
-			} else if errors.Is(err, constants.ErrConstraintViolation) {
-				c.responder.Error(w, http.StatusConflict, constants.ErrConstraintViolation.Error())
-			} else if errors.Is(err, constants.ErrDatabaseLocked) {
-				c.responder.Error(w, http.StatusServiceUnavailable, constants.ErrDatabaseLocked.Error())
-			} else {
-				c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("data_controller: handleDataDB: %w", err).Error())
-			}
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, doc.ForWire())
-
-	case http.MethodDelete:
-		if !isDirectDBMutationAllowed(collection) {
-			c.responder.Error(w, http.StatusConflict, governanceEnvelopeRedirectError)
-			return
-		}
-		deleted, err := c.docStore.DocDeleteWithResult(r.Context(), collection, id)
-		if err != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("data_controller: handleDataDB: %w", err).Error())
-			return
-		}
-		if !deleted {
-			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
-			return
-		}
-		c.responder.JSON(w, http.StatusOK, models.StatusResponse{Status: constants.GatewayModeStatusOK})
-
 	default:
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 	}
 }
 
+// @Summary Query documents
+// @Description Requires mTLS. POST accepts read-only query parameters and never creates, updates, or deletes documents.
+// @Tags data
+// @Accept json
+// @Produce json
+// @Param collection path string true "Collection name"
+// @Param query body models.DocQueryRequest false "Read-only query"
+// @Success 200 {array} object
+// @Failure 400 {object} object "Invalid query"
+// @Router /api/v1/data/{collection}/_query [post]
 func (c *DataController) handleDBQuery(w http.ResponseWriter, r *http.Request, collection string) {
 	body, err := c.readBody(r)
 	if err != nil {
@@ -411,7 +348,7 @@ func (c *DataController) handleBlob(w http.ResponseWriter, r *http.Request) {
 			c.responder.Error(w, http.StatusForbidden, err.Error())
 			return
 		}
-		contentType := r.Header.Get("Content-Type")
+		contentType := r.Header.Get(constants.HeaderContentType)
 		if contentType == "" {
 			c.responder.Error(w, http.StatusBadRequest, constants.ErrDBControllerContentTypeRequired.Error())
 			return
@@ -451,25 +388,25 @@ func (c *DataController) handleBlob(w http.ResponseWriter, r *http.Request) {
 			c.responder.Error(w, http.StatusNotFound, constants.ErrNotFound.Error())
 			return
 		}
-		safeContentType := "application/octet-stream"
+		safeContentType := constants.HeaderValueOctetStream
 		allowedTypes := map[string]bool{
-			"application/json":       true,
-			"application/pdf":        true,
-			"image/png":              true,
-			"image/jpeg":             true,
-			"image/gif":              true,
-			"text/plain":             true,
-			"application/x-ndjson":   true,
-			"application/x-pem-file": true,
+			constants.HeaderValueApplicationJSON:   true,
+			"application/pdf":                      true,
+			"image/png":                            true,
+			"image/jpeg":                           true,
+			"image/gif":                            true,
+			"text/plain":                           true,
+			constants.HeaderValueApplicationNDJSON: true,
+			constants.HeaderValuePEM:               true,
 		}
 		if allowedTypes[contentType] {
 			safeContentType = contentType
 		}
-		w.Header().Set("Content-Type", safeContentType)
-		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		w.Header().Set(constants.HeaderContentType, safeContentType)
+		w.Header().Set(constants.HeaderContentLength, strconv.Itoa(len(data)))
+		w.Header().Set(constants.HeaderXContentTypeOptions, constants.HeaderValueNoSniff)
+		w.Header().Set(constants.HeaderXFrameOptions, constants.HeaderValueDeny)
+		w.Header().Set(constants.HeaderContentSecurityPolicy, constants.HeaderValueCSPNone)
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(data); err != nil {
 			c.logger.Error("failed to write blob response", "error", err)
@@ -538,31 +475,6 @@ func (c *DataController) handlePubSubPublish(w http.ResponseWriter, r *http.Requ
 }
 
 var governanceEnvelopeRedirectError = fmt.Sprintf("submit via POST %s", constants.APIPaths.GovernanceEnvelopes)
-
-func isDirectDBMutationAllowed(collection string) bool {
-	switch constants.CollectionName(collection) {
-	case constants.CollectionSettings,
-		constants.CollectionUsers,
-		constants.CollectionOperators,
-		constants.CollectionOperatorSessions,
-		constants.CollectionBoundSessions,
-		constants.CollectionPasskeyChallenges,
-		constants.CollectionRevokedCertificates,
-		constants.CollectionTrustedSigners:
-		return true
-	case constants.CollectionCases,
-		constants.CollectionInvestigations,
-		constants.CollectionTasks,
-		constants.CollectionMemories,
-		constants.CollectionReputationState,
-		constants.CollectionReputationCommitments,
-		constants.CollectionAgentActivityMetadata,
-		constants.CollectionStakeResolutions:
-		return false
-	default:
-		return false
-	}
-}
 
 func isMutationPubSubChannelAllowed(channel string) bool {
 	for _, prefix := range []string{"heartbeat:", "results:", "sse:", "ws_session:", "internal:"} {

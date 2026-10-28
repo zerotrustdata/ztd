@@ -56,10 +56,9 @@ func judgeScoreFixture(t *testing.T) (*oracle.AnchorSet, oracletest.Signer, judg
 // signed receipt commits to. Each case alters one thing the score depends on.
 func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 	tests := []struct {
-		name     string
-		mutate   func(t *testing.T, s oracletest.Signer, sc *judge.Score)
-		wantErr  error
-		wantFail bool
+		name    string
+		mutate  func(t *testing.T, s oracletest.Signer, sc *judge.Score)
+		wantErr error
 	}{
 		{
 			name:   "verified scored judge",
@@ -114,7 +113,7 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 			mutate: func(_ *testing.T, _ oracletest.Signer, sc *judge.Score) {
 				sc.Receipt.Signature = ""
 			},
-			wantFail: true,
+			wantErr: constants.ErrEventReceiptSignatureInvalid,
 		},
 		{
 			name: "receipt signed by a key the anchors do not pin",
@@ -122,7 +121,7 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 				t.Helper()
 				oracletest.NewSigner(t).Resign(t, sc.Receipt)
 			},
-			wantFail: true,
+			wantErr: constants.ErrEventReceiptSignatureInvalid,
 		},
 		{
 			name: "receipt from another operator session",
@@ -143,14 +142,11 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 
 			inference := AgentTraceRuntime{OperatorID: evidenceInferenceOperatorID, SessionID: evidenceInferenceSessionID}
 			err := verifyJudgeReceipt(anchors, inference, sc)
-			switch {
-			case tc.wantErr != nil:
+			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
-			case tc.wantFail:
-				require.Error(t, err)
-			default:
-				require.NoError(t, err)
+				return
 			}
+			require.NoError(t, err)
 		})
 	}
 }

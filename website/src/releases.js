@@ -137,7 +137,7 @@ ${command(startCommand(pinned ? version : ''), 'Install, start a Gateway, and si
 ${command(windowsStartCommand(pinned ? version : ''), 'Install, start a Gateway, and sign in — Windows PowerShell')}
 ${command(installCommand(pinned ? version : ''), 'Install the binary only — Linux and macOS')}
 ${command(windowsInstallCommand(pinned ? version : ''), 'Install the binary only — Windows PowerShell')}
-<p class="install-note">The installers verify each binary against its published SHA-256 checksum before writing it and never use sudo or Administrator. <a href="${REPOSITORY_URL}/blob/main/docs/guides/getting_started.md">Getting started ↗</a></p></section>`;
+<p class="install-note">The installers match each binary to its published SHA-256 before writing it. With <code>cosign</code> on PATH they also verify the Sigstore bundle; <code>ZTD_REQUIRE_SIGSTORE=1</code> refuses a checksum-only install. They never use sudo or Administrator. On macOS, read <code>start.sh</code> before running it, and expect a Keychain prompt for <code>ztd-platform</code> (your Mac login password). <a href="${REPOSITORY_URL}/blob/main/docs/guides/getting_started.md">Getting started ↗</a></p></section>`;
 }
 
 export function renderReleasesIndex({ releases, latest, manifest }) {

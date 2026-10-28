@@ -9,6 +9,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -168,8 +169,18 @@ func ExecuteWithVersionInfo(vi serve.VersionInfo) {
 	rootCmd.SetErr(os.Stderr)
 
 	if err := executeRootCmd(rootCmd); err != nil {
-		osExit(1)
+		osExit(exitCode(err))
 	}
+}
+
+// exitCode maps a command error to the process exit status. A governed action
+// that was dispatched and then failed in execution has its own status, so a
+// caller can tell it from a command that failed before dispatch.
+func exitCode(err error) int {
+	if errors.Is(err, constants.ErrActionExecutionFailed) {
+		return constants.ExitCodeActionExecutionFailed
+	}
+	return constants.ExitCodeGeneral
 }
 
 func executeRootCmd(rootCmd *cobra.Command) error {

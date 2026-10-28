@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -45,6 +46,38 @@ func TestCampaignAssignmentVerifier_FormationRequiresTrace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus())
 	assert.Contains(t, report.GetFailureReasons(), "agent trace is required for homogeneous verification")
+}
+
+// A heterogeneous Lite assignment is verified against the Lite slot's variant and
+// the Lite trace label, never against the stack's Primary slot.
+func TestVerifyAssignmentTraceModels_HeterogeneousLiteTraceVerifies(t *testing.T) {
+	req := heterogeneousLiteRequest(t)
+	resolved, err := ResolveAssignmentModels(req)
+	require.NoError(t, err)
+	lite := resolved[evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE]
+	require.NotNil(t, lite)
+	liteRole, err := tribunal.InferenceRoleForTier(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	require.NoError(t, err)
+	trace := &AgentTrace{
+		SchemaVersion:       agentTraceSchemaVersion,
+		CampaignID:          req.Assignment.GetCampaignId(),
+		ScenarioID:          req.Assignment.GetScenarioId(),
+		DesignatedRole:      "lite",
+		ServedModelTag:      lite.GetServedModelTag(),
+		ModelDigest:         lite.GetModelDigest(),
+		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
+		ModelCalls: []AgentModelCall{{
+			Purpose:        agentModelCallPurposeTurn,
+			ModelVariantID: lite.GetVariantId(),
+			ModelRole:      liteRole.ToProto().String(),
+			ServedModelTag: lite.GetServedModelTag(),
+			ModelDigest:    lite.GetModelDigest(),
+		}},
+	}
+	require.NoError(t, verifyAssignmentTraceModels(req, trace))
+
+	trace.DesignatedRole = "primary"
+	assert.ErrorIs(t, verifyAssignmentTraceModels(req, trace), constants.ErrFormationRegistryBinding)
 }
 
 func TestCampaignAssignmentVerifier_FailsClosedOnModelRoleAssignment(t *testing.T) {
@@ -97,6 +130,7 @@ func verifyStoredHomogeneous(t *testing.T, req AssignmentExecutionRequest, trace
 		GradingMethod: req.GradingMethod,
 		AgentTrace:    trace,
 		CatalogRef:    catalog,
+		Binding:       req.Binding,
 	})
 	require.NoError(t, err)
 	return report
@@ -157,7 +191,7 @@ func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVers
 	// The v7 trace imports COMPLETED while it is the sealed version.
 	result := storedHomogeneousResult(t, req, trace)
 	completed := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
-	require.Equal(t, completed, result.GetLifecycleStatus(), "premise: the v7 trace imports COMPLETED")
+	require.Equal(t, completed, result.GetLifecycleStatus(), "premise: the v7 trace imports COMPLETED: %s", result.GetInvalidEvidenceDetail())
 
 	// Relabel the persisted trace and re-bind the stored result to its relabelled body,
 	// as a stored result is sealed against the persisted body.

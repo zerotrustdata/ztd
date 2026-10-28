@@ -35,6 +35,14 @@ const (
 	DefaultRolloutIntakePriorityRelPath   = "eval/rollout-intake-priority.json"
 	DefaultFormationCatalogOverlayRelPath = "eval/formation-catalog-overlay.json"
 	DefaultGenesisHomogeneousCampaignID   = "eval-genesis-homogeneous"
+
+	// Rollout campaign IDs. Every model's campaign is InitCampaignIDPrefix plus
+	// its variant ID, except the first model rolled out, whose campaign predates
+	// the pattern and keeps its frozen ID. That model is a scored subject here;
+	// it is unrelated to DefaultJudgeServedModelTag.
+	InitCampaignIDPrefix             = "eval-init-"
+	LegacyInitCampaignID             = "init-campaign"
+	LegacyInitCampaignServedModelTag = "gemma4:e4b"
 )
 
 // campaignInventoryPath returns the runtime-relative frozen inventory path for campaignID.
@@ -59,6 +67,7 @@ type CampaignQueueModel struct {
 type CampaignQueue struct {
 	Pattern         string               `json:"pattern"`
 	CellsPerRun     uint64               `json:"cells_per_run"`
+	CellsPerRunL2   uint64               `json:"cells_per_run_l2_enforced,omitempty"`
 	InventoryDir    string               `json:"inventory_dir"`
 	GenerateCommand string               `json:"generate_command"`
 	Models          []CampaignQueueModel `json:"models"`
@@ -164,22 +173,7 @@ func LoadFrozenVariantsFromExternalSource(path string) ([]*evalv1.ModelVariant, 
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: load frozen variants: %w", err)
 	}
-	var payload struct {
-		Variants []json.RawMessage `json:"variants"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("evaluation: load frozen variants: decode: %w", err)
-	}
-	variants := make([]*evalv1.ModelVariant, 0, len(payload.Variants))
-	for _, raw := range payload.Variants {
-		variant := &evalv1.ModelVariant{}
-		if err := protojson.Unmarshal(raw, variant); err != nil {
-			return nil, fmt.Errorf("evaluation: load frozen variants: decode variant: %w", err)
-		}
-		variants = append(variants, variant)
-	}
-	SortModelVariantsForRollout(variants)
-	return variants, nil
+	return parseFrozenVariants(data)
 }
 
 func parseFrozenVariants(data []byte) ([]*evalv1.ModelVariant, error) {
@@ -261,10 +255,10 @@ func CampaignIDForVariant(variant *evalv1.ModelVariant) string {
 	if variant == nil {
 		return ""
 	}
-	if variant.GetServedModelTag() == "gemma4:e4b" {
-		return "init-campaign"
+	if variant.GetServedModelTag() == LegacyInitCampaignServedModelTag {
+		return LegacyInitCampaignID
 	}
-	return "eval-init-" + variant.GetVariantId()
+	return InitCampaignIDPrefix + variant.GetVariantId()
 }
 
 func marshalModelInventoryFreeze(freeze *ModelInventoryFreeze) ([]byte, error) {

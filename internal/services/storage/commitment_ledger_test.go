@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -34,7 +35,7 @@ func setupTestCommitmentLedger(t *testing.T) (*CommitmentLedger, *sqliteutil.DB)
 	t.Helper()
 
 	// Use in-memory database for fast, isolated unit tests
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(nil, sqliteutil.DefaultDBConfig(":memory:"), testutil.NewTestLogger())
 	require.NoError(t, err)
 
 	// Create the commitment_ledger table
@@ -404,7 +405,7 @@ func TestCommitmentLedger_NilReceiverSafety(t *testing.T) {
 
 	// AppendCommitmentJSON
 	err := cl.AppendCommitmentJSON([]byte(`{}`), "prior", "hash")
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrLedgerRequired)
 	assert.Contains(t, err.Error(), "not initialized")
 }
 

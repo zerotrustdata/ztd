@@ -334,7 +334,7 @@ func decodeDocumentUpdateFields(data json.RawMessage) ([]documentUpdateField, er
 		return nil, fmt.Errorf("read object start: %w", err)
 	}
 	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
-		return nil, fmt.Errorf("expected JSON object")
+		return nil, fmt.Errorf("expected JSON object: %w", constants.ErrInvalidJSONBody)
 	}
 
 	var fields []documentUpdateField
@@ -345,7 +345,7 @@ func decodeDocumentUpdateFields(data json.RawMessage) ([]documentUpdateField, er
 		}
 		name, ok := nameToken.(string)
 		if !ok || name == "" {
-			return nil, fmt.Errorf("field name is not a non-empty string")
+			return nil, fmt.Errorf("field name is not a non-empty string: %w", constants.ErrInvalidJSONBody)
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
@@ -357,7 +357,7 @@ func decodeDocumentUpdateFields(data json.RawMessage) ([]documentUpdateField, er
 		return nil, fmt.Errorf("read object end: %w", err)
 	}
 	if len(fields) == 0 {
-		return nil, fmt.Errorf("update object is empty")
+		return nil, fmt.Errorf("update object is empty: %w", constants.ErrInvalidJSONBody)
 	}
 	return fields, nil
 }
@@ -524,6 +524,9 @@ func (s *DocumentStoreService) GetField(ctx context.Context, collection, id, fie
 		if doc == nil {
 			return mcp.FieldValue{}, constants.ErrNotFound
 		}
+		// SQLite needs JSON text for extraction. Encode the overlaid field map
+		// so nested paths use the same SQL semantics as other collections and
+		// include observed telemetry that is absent from the stored document.
 		data, err := json.Marshal(doc.Data)
 		if err != nil {
 			return mcp.FieldValue{}, fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)

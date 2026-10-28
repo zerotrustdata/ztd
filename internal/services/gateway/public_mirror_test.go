@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -2609,6 +2610,7 @@ func TestMirror_Bootstrap_ETagAndConditional304(t *testing.T) {
 	req2, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/bootstrap?source="+env.sourceID, nil)
 	require.NoError(t, err)
 	req2.Header.Set("If-None-Match", etag)
+	req2.Header.Set("Accept-Encoding", "gzip")
 	resp2, err := env.publicServer.Client().Do(req2)
 	require.NoError(t, err)
 	defer resp2.Body.Close()
@@ -2616,4 +2618,126 @@ func TestMirror_Bootstrap_ETagAndConditional304(t *testing.T) {
 	body, err := io.ReadAll(resp2.Body)
 	require.NoError(t, err)
 	assert.Empty(t, body)
+	assert.Empty(t, resp2.Header.Get("Content-Encoding"), "304 must be returned before a gzip writer is created")
+}
+
+func TestMirror_Bootstrap_GzipAndIdentityRepresentationsMatch(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "eval-run-1"}))}
+	_, ingestResp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+	require.True(t, ingestResp.Accepted)
+
+	get := func(acceptEncoding string) *http.Response {
+		req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/bootstrap?source="+env.sourceID, nil)
+		require.NoError(t, err)
+		if acceptEncoding != "" {
+			req.Header.Set("Accept-Encoding", acceptEncoding)
+		}
+		resp, err := env.publicServer.Client().Do(req)
+		require.NoError(t, err)
+		return resp
+	}
+
+	identity := get("identity")
+	defer identity.Body.Close()
+	identityBody, err := io.ReadAll(identity.Body)
+	require.NoError(t, err)
+	compressed := get("gzip")
+	defer compressed.Body.Close()
+	require.Equal(t, http.StatusOK, compressed.StatusCode)
+	require.Equal(t, "gzip", compressed.Header.Get("Content-Encoding"))
+	assert.Equal(t, identity.Header.Get("ETag"), compressed.Header.Get("ETag"))
+	assert.Equal(t, strconv.Itoa(len(identityBody)), identity.Header.Get("Content-Length"))
+	assert.Equal(t, strconv.FormatInt(compressed.ContentLength, 10), compressed.Header.Get("Content-Length"))
+	gz, err := gzip.NewReader(compressed.Body)
+	require.NoError(t, err)
+	uncompressedBody, err := io.ReadAll(gz)
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	assert.Equal(t, identityBody, uncompressedBody)
+}
+
+func TestMirror_Bootstrap_ETagInvalidatesFreshnessAndProofChanges(t *testing.T) {
+	t.Run("freshness transition", func(t *testing.T) {
+		env := newMirrorTestEnv(t)
+		records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "eval-run-1"}))}
+		_, ingestResp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+		require.True(t, ingestResp.Accepted)
+		first := bootstrapResponse(t, env, "")
+		firstETag := first.Header.Get("ETag")
+		first.Body.Close()
+		require.NoError(t, env.mirror.SetSourceFreshness(context.Background(), env.sourceID, models.CampaignFreshnessIntentionallyStopped))
+		second := bootstrapResponse(t, env, firstETag)
+		defer second.Body.Close()
+		require.Equal(t, http.StatusOK, second.StatusCode)
+		assert.NotEqual(t, firstETag, second.Header.Get("ETag"))
+		var body models.PublicFeedBootstrap
+		require.NoError(t, json.NewDecoder(second.Body).Decode(&body))
+		assert.Equal(t, models.CampaignFreshnessIntentionallyStopped, body.SourceFreshness)
+		assert.Equal(t, models.CampaignFreshnessIntentionallyStopped, body.Snapshot.Freshness)
+	})
+
+	t.Run("proof count and size change", func(t *testing.T) {
+		env := newMirrorTestEnv(t)
+		records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "eval-run-1"}))}
+		_, ingestResp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+		require.True(t, ingestResp.Accepted)
+		content := []byte(`{"proof":"tiny"}`)
+		require.NoError(t, env.mirror.storeProofPackage(context.Background(), env.makeProofIngestRequest("proof.json", content)))
+		first := bootstrapResponse(t, env, "")
+		firstETag := first.Header.Get("ETag")
+		first.Body.Close()
+		largerContent := []byte(`{"proof":"proof-content-with-substantially-more-bytes"}`)
+		require.NoError(t, env.mirror.storeProofPackage(context.Background(), env.makeProofIngestRequest("proof.json", largerContent)))
+		second := bootstrapResponse(t, env, firstETag)
+		defer second.Body.Close()
+		require.Equal(t, http.StatusOK, second.StatusCode)
+		assert.NotEqual(t, firstETag, second.Header.Get("ETag"))
+		var body models.PublicFeedBootstrap
+		require.NoError(t, json.NewDecoder(second.Body).Decode(&body))
+		assert.Equal(t, 1, body.ProofCatalogSummary.ArtifactCount)
+		assert.Equal(t, int64(len(largerContent)), body.ProofCatalogSummary.TotalByteSize)
+		secondETag := second.Header.Get("ETag")
+		sameSizeDifferentContent := []byte(`{"proof":"proof-content-with-substantially-more-byteX"}`)
+		require.Len(t, sameSizeDifferentContent, len(largerContent))
+		require.NoError(t, env.mirror.storeProofPackage(context.Background(), env.makeProofIngestRequest("proof.json", sameSizeDifferentContent)))
+		third := bootstrapResponse(t, env, secondETag)
+		defer third.Body.Close()
+		require.Equal(t, http.StatusOK, third.StatusCode)
+		assert.NotEqual(t, secondETag, third.Header.Get("ETag"))
+		var finalBody models.PublicFeedBootstrap
+		require.NoError(t, json.NewDecoder(third.Body).Decode(&finalBody))
+		assert.Equal(t, 1, finalBody.ProofCatalogSummary.ArtifactCount)
+		assert.Equal(t, int64(len(largerContent)), finalBody.ProofCatalogSummary.TotalByteSize)
+	})
+}
+
+func TestPublicMirror_WithGzip_SuppressesEmptyBodyStatusCodes(t *testing.T) {
+	m := &PublicMirrorServer{logger: slog.Default()}
+	for _, status := range []int{http.StatusNotModified, http.StatusNoContent} {
+		handler := m.withGzip(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+		}))
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, status, rec.Code)
+		assert.Empty(t, rec.Header().Get("Content-Encoding"), "Content-Encoding must not be set on empty-body status %d", status)
+		assert.Empty(t, rec.Body.Bytes(), "Body must be empty on empty-body status %d", status)
+	}
+}
+
+func bootstrapResponse(t *testing.T, env *mirrorTestEnv, etag string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/bootstrap?source="+env.sourceID, nil)
+	require.NoError(t, err)
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
+	resp, err := env.publicServer.Client().Do(req)
+	require.NoError(t, err)
+	return resp
 }

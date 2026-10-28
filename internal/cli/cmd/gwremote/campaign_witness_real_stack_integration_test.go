@@ -351,6 +351,7 @@ func TestCampaignWitnessCaptureRealStack_DecoupledObservationAndProvenance(t *te
 		ScenarioArtifacts: e.req.ScenarioArtifacts,
 		RepetitionCount:   e.req.RepetitionCount,
 		Platform:          e.req.Platform,
+		Judge:             e.req.Judge,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, recreated.GetCampaignDigest())
@@ -361,6 +362,7 @@ func TestCampaignWitnessCaptureRealStack_DecoupledObservationAndProvenance(t *te
 		ScenarioArtifacts: e.req.ScenarioArtifacts,
 		RepetitionCount:   e.req.RepetitionCount + 1,
 		Platform:          e.req.Platform,
+		Judge:             e.req.Judge,
 	})
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 

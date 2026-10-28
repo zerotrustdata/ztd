@@ -2,6 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import type { PublicEvidenceBinding } from '../contract/types';
+import { runnableVerifyCommand } from '../verifyCommand';
 import { useMirrorOrigin } from '../state/mirror';
 import { useProofArtifact } from '../state/proof';
 import { formatNumber } from './shared';
@@ -25,7 +26,7 @@ export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidence
   if (!sliceBinding || !sliceArtifact) return null;
 
   const dbUrl = origin ? `${origin}${sliceArtifact.immutable_url}` : undefined;
-  const verifyCommand = sliceArtifact.verification_command;
+  const verifyCommand = runnableVerifyCommand(sliceArtifact.verification_command);
 
   return (
     <section className="assignment-audit-proof" aria-label="Audit slice">

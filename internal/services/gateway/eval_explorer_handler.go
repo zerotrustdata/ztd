@@ -78,9 +78,9 @@ func setEvalExplorerSecurityHeaders(w http.ResponseWriter, name string) {
 	w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()")
 	switch {
 	case name == "index.html", name == "runtime.json":
-		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		w.Header().Set(constants.HeaderCacheControl, "public, max-age=0, must-revalidate")
 	case strings.HasPrefix(name, "assets/"):
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Header().Set(constants.HeaderCacheControl, "public, max-age=31536000, immutable")
 	}
 }
 
@@ -179,7 +179,7 @@ func writeEvalExplorerRuntime(w http.ResponseWriter, r *http.Request, configured
 		"mirror_origin":  mirrorOrigin,
 	}
 	setEvalExplorerSecurityHeaders(w, "runtime.json")
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
@@ -199,11 +199,42 @@ func resolveRequestMirrorOrigin(r *http.Request, configuredOrigin string) string
 	if configuredOrigin != "" {
 		if configuredHost := publicURLHost(configuredOrigin); configuredHost != "" {
 			if requestHost := requestHostname(r.Host); strings.EqualFold(requestHost, configuredHost) {
-				return configuredOrigin
+				cfgPort := publicURLPort(configuredOrigin)
+				reqPort := requestPort(r)
+				if cfgPort == "" || cfgPort == reqPort {
+					return configuredOrigin
+				}
 			}
 		}
 	}
 	return requestOrigin
+}
+
+func publicURLPort(origin string) string {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	_, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		return ""
+	}
+	return port
+}
+
+func requestPort(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host := strings.TrimSpace(r.Host)
+	if forwardedHost := strings.TrimSpace(r.Header.Get(constants.HeaderXForwardedHost)); forwardedHost != "" {
+		host = strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
+	}
+	_, port, err := net.SplitHostPort(host)
+	if err != nil {
+		return ""
+	}
+	return port
 }
 
 func fallbackMirrorOrigin(configuredOrigin string) string {
@@ -218,11 +249,11 @@ func requestOriginURL(r *http.Request) string {
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+	if forwarded := strings.TrimSpace(r.Header.Get(constants.HeaderXForwardedProto)); forwarded != "" {
 		scheme = strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
 	host := strings.TrimSpace(r.Host)
-	if forwardedHost := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+	if forwardedHost := strings.TrimSpace(r.Header.Get(constants.HeaderXForwardedHost)); forwardedHost != "" {
 		host = strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
 	}
 	return fmt.Sprintf("%s://%s", scheme, host)

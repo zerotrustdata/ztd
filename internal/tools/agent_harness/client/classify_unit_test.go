@@ -20,7 +20,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -221,28 +220,18 @@ func TestStateRoot_ReadsTheMerkleRoot(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
-func TestRegisterSigner_PostsTheTrustedSigner(t *testing.T) {
+func TestEnrollSignerApplication_ValidatesInput(t *testing.T) {
 	t.Parallel()
 	client, err := New(config.Config{MTLSBaseURL: "https://gateway.test"})
 	require.NoError(t, err)
-	client.http.Transport = scriptedRoundTrip(func(req *http.Request) (*http.Response, error) {
-		assert.Equal(t, http.MethodPost, req.Method)
-		assert.Equal(t, "https://gateway.test"+constants.APIPaths.GovernanceSigners, req.URL.String())
-		body, err := io.ReadAll(req.Body)
-		require.NoError(t, err)
-		var signer models.TrustedSigner
-		require.NoError(t, json.Unmarshal(body, &signer))
-		assert.Equal(t, "key-1", signer.ID)
-		assert.Equal(t, "abcd", signer.PublicKey)
-		assert.True(t, signer.Enabled)
-		return &http.Response{StatusCode: http.StatusNoContent, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
-	})
-	require.NoError(t, client.RegisterSigner(context.Background(), "key-1", "abcd"))
 
-	rejected := scriptedClient(t, http.StatusConflict, `{}`, "")
-	err = rejected.RegisterSigner(context.Background(), "key-1", "abcd")
+	// Fails on invalid app name
+	_, err = client.EnrollSignerApplication(context.Background(), "INVALID_APP_NAME", nil, nil, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "status 409")
+
+	// Fails on missing file service
+	_, err = client.EnrollSignerApplication(context.Background(), "valid-app", nil, nil, nil)
+	require.Error(t, err)
 }
 
 func canonicalProto(t *testing.T, msg proto.Message) []byte {

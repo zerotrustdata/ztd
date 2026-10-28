@@ -271,7 +271,7 @@ func (s *PlatformEnrollmentService) CreateRequest(ctx context.Context, req model
 	if err != nil {
 		// The response was not returned, so the requester still holds its token
 		// and can resubmit the same request after the failed audit.
-		_, cleanupErr := s.db.db.ExecContext(context.WithoutCancel(ctx),
+		_, cleanupErr := s.db.db.ExecWithRetry(context.WithoutCancel(ctx),
 			`DELETE FROM documents WHERE collection = ? AND id = ? AND json_extract(data, '$.state') = ? AND json_extract(data, '$.token_hash') = ?`,
 			platformEnrollmentCollectionName(), requestID, models.PlatformEnrollmentStatePending, req.TokenHash)
 		if cleanupErr != nil {
@@ -701,16 +701,74 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	if err != nil || boundDoc == nil {
 		return nil, fmt.Errorf("read bound consensus: %w", err)
 	}
-	bData, err := json.Marshal(boundDoc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal bound consensus: %w", err)
-	}
 	var policy models.ConsensusPolicy
-	if err := json.Unmarshal(bData, &policy); err != nil {
+	if err := boundDoc.DecodeData(&policy); err != nil {
 		return nil, fmt.Errorf("unmarshal bound consensus: %w", err)
 	}
 	policy.ID = boundDoc.ID
 	return &policy, nil
+}
+
+// UnbindConsensusApplication clears the bound Gateway consensus application through governance.
+func (s *PlatformEnrollmentService) UnbindConsensusApplication(ctx context.Context, actorUserID string) (*models.ConsensusPolicy, error) {
+	user, err := s.userSvc.GetByID(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: authorize consensus unbinding: %w", err)
+	}
+	if user == nil || !user.IsActive() {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+	isFirst, err := s.userSvc.IsFirstUser(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: authorize consensus unbinding: %w", err)
+	}
+	if !isFirst {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+
+	boundDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil {
+		return nil, fmt.Errorf("read bound consensus: %w", err)
+	}
+	if boundDoc == nil {
+		return nil, constants.ErrConsensusBindingNotFound
+	}
+	var existingPolicy models.ConsensusPolicy
+	if err := boundDoc.DecodeData(&existingPolicy); err != nil {
+		return nil, fmt.Errorf("unmarshal bound consensus: %w", err)
+	}
+	if !existingPolicy.Enabled {
+		return nil, constants.ErrConsensusBindingNotFound
+	}
+
+	payload := &commonv1.PlatformEnrollmentGovernancePayload{
+		Action:        string(constants.PlatformEnrollmentActionUnbindConsensus),
+		ComponentKind: commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
+		InstanceId:    existingPolicy.PrimaryAppID(),
+		ActorUserId:   actorUserID,
+	}
+	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionUnbindConsensus, payload)
+	if err != nil {
+		var l3Err *models.PlatformEnrollmentL3RequiredError
+		if errors.As(err, &l3Err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("platform enrollment: unbind consensus envelope: %w", err)
+	}
+
+	unboundDoc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	if err != nil {
+		return nil, fmt.Errorf("read unbound consensus: %w", err)
+	}
+	if unboundDoc == nil {
+		return nil, fmt.Errorf("read unbound consensus: %w", constants.ErrConsensusBindingNotFound)
+	}
+	var updated models.ConsensusPolicy
+	if err := unboundDoc.DecodeData(&updated); err != nil {
+		return nil, fmt.Errorf("unmarshal unbound consensus: %w", err)
+	}
+	updated.ID = unboundDoc.ID
+	return &updated, nil
 }
 
 // ListEnrolled returns owner-visible metadata for completed and revoked
@@ -1056,6 +1114,8 @@ func platformEnrollmentRequestEvent(action constants.PlatformEnrollmentGovernanc
 		return constants.EventPlatformEnrollmentRevokeRequested
 	case constants.PlatformEnrollmentActionBindConsensus:
 		return constants.EventPlatformEnrollmentBindConsensusRequested
+	case constants.PlatformEnrollmentActionUnbindConsensus:
+		return constants.EventPlatformEnrollmentUnbindConsensusRequested
 	default:
 		return ""
 	}
@@ -1147,7 +1207,7 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 			return env, nil
 		}
 		if errors.Is(err, governance.ErrL3ProofMissing) &&
-			(action == constants.PlatformEnrollmentActionDecide || action == constants.PlatformEnrollmentActionRevoke || action == constants.PlatformEnrollmentActionBindConsensus) &&
+			(action == constants.PlatformEnrollmentActionDecide || action == constants.PlatformEnrollmentActionRevoke || action == constants.PlatformEnrollmentActionBindConsensus || action == constants.PlatformEnrollmentActionUnbindConsensus) &&
 			s.l3Suspender != nil {
 			suspension, suspendErr := s.l3Suspender.SuspendGovernanceEnvelope(submitCtx, env)
 			if suspendErr != nil {
@@ -1275,12 +1335,8 @@ func platformEnrollmentCollectionName() string {
 // decodePlatformEnrollmentRequest deserializes a Document into a
 // PlatformEnrollmentRequest.
 func decodePlatformEnrollmentRequest(doc *models.Document) (*models.PlatformEnrollmentRequest, error) {
-	dataBytes, err := json.Marshal(doc.Data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal document data: %w", err)
-	}
 	var req models.PlatformEnrollmentRequest
-	if err := json.Unmarshal(dataBytes, &req); err != nil {
+	if err := doc.DecodeData(&req); err != nil {
 		return nil, fmt.Errorf("unmarshal platform enrollment request: %w", err)
 	}
 	req.CreatedAt = doc.CreatedAt
@@ -1366,5 +1422,6 @@ func payloadFingerprints(fp models.PlatformEnrollmentCSRFingerprints) *commonv1.
 		Operator:   fp.Operator,
 		Cli:        fp.CLI,
 		SigningKey: fp.SigningKey,
+		AuditorKey: fp.AuditorKey,
 	}
 }

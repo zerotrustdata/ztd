@@ -165,7 +165,7 @@ func (f *releasePrepareFixture) seedRuntimeDatabase(t *testing.T, receiptSigner,
 	dbPath := pathutil.ResolveDBPath(fileSvc.Resolve(constants.DataDirname), constants.DbFilename)
 	f.dbPath = dbPath
 	require.NoError(t, os.MkdirAll(filepath.Dir(dbPath), constants.PermDirStandard))
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	_, err = db.Exec(`

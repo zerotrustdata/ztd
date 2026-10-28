@@ -156,6 +156,19 @@ func TestGenerateEventsGo_UngovernedReservedEntryOmitsGovernanceAndNilsTransport
 	assert.NotContains(t, entry, "Outcomes")
 }
 
+func TestGenerateEventsGo_EmitsEventTransportRegistry(t *testing.T) {
+	reg, actionTypes := eventsFixture()
+
+	got, err := generateEventsGo(reg, map[string]string{}, actionTypes)
+
+	require.NoError(t, err)
+	assert.Contains(t, got, "var EventTransportRegistry = map[EventType][]string{")
+	assert.Contains(t, got, `EventOperatorCommandRequested: []string{"governed"},`)
+	assert.Contains(t, got, "EventOperatorCommandCompleted: nil,")
+	assert.Contains(t, got, "func (e EventRegistryEntry) HasTransport(transport string) bool {")
+	assert.Contains(t, got, "func (r EventRegistry) TransportsFor(event EventType) ([]string, bool) {")
+}
+
 func TestGenerateEventsGo_AppendsOperatorHierarchyAfterRegistry(t *testing.T) {
 	reg, actionTypes := eventsFixture()
 	hierarchy := map[string]string{"EventOperatorCommandRequested": "Command.Requested"}

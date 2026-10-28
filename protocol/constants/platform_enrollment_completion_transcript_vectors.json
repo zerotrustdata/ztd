@@ -14,7 +14,9 @@
     "nested_proto_fields": {
       "1": "string app",
       "2": "string operator",
-      "3": "string cli"
+      "3": "string cli",
+      "4": "string signing_key",
+      "5": "string auditor_key"
     },
     "component_kind_enum": {
       "dashboard": 1,
@@ -38,9 +40,10 @@
         "component_kind": 3,
         "fingerprints": {
           "operator": "parity-op-fp",
-          "cli": "parity-cli-fp"
+          "cli": "parity-cli-fp",
+          "auditor_key": "parity-auditor-fp"
         },
-        "expected_hex": "0a0131120e7061726974792d7265712d3030311a08616162626363646420032a0b7061726974792d686f7374321d120c7061726974792d6f702d66701a0d7061726974792d636c692d6670"
+        "expected_hex": "0a0131120e7061726974792d7265712d3030311a08616162626363646420032a0b7061726974792d686f73743230120c7061726974792d6f702d66701a0d7061726974792d636c692d66702a117061726974792d61756469746f722d6670"
       }
     }
   }

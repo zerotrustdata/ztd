@@ -5,6 +5,9 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { LIVE_EVENT_KINDS } from '../src/contract/types';
 import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureModelSummaries, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 
+// Keep geometry checks stable while the drawer itself supports animated transitions.
+test.use({ reducedMotion: 'reduce' });
+
 const mirrorOrigin = process.env.ZTD_PUBLIC_MIRROR_ORIGIN ?? 'http://127.0.0.1:8082';
 const datasetId = 'native-core-execution-boundary';
 const runIds = [
@@ -141,7 +144,7 @@ async function installMirror(page: Page, records: object[] = runIds.map(nativeEv
 async function expectNativeRun(page: Page, runId: string) {
   await page.goto(`/evaluations/${datasetId}/${runId}`);
   await expect(page.getByRole('heading', { name: runId })).toBeVisible();
-  await expect(page.getByText('core-execution-boundary@1.0.0', { exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByText('core-execution-boundary@1.0.0', { exact: true })).toBeVisible();
   await expect(page.getByText('10/10 required invariants passed', { exact: true })).toBeVisible();
   await expect(page.getByText('Valid (0 failures)', { exact: true })).toBeVisible();
   await expect(page.locator('.native-scenario summary').filter({ hasText: 'allowed-execution-occurs-once@1.0.0' })).toBeVisible();
@@ -169,7 +172,7 @@ test('loads native evaluations directly from the public mirror snapshot', async 
 
   await page.goto('/evaluations');
   await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
-  for (const runId of runIds) await expect(page.getByRole('link', { name: runId })).toBeVisible();
+  for (const runId of runIds) await expect(page.getByRole('main').getByRole('link', { name: runId })).toBeVisible();
   await expect.poll(() => mirrorResponses.some((url) => url.endsWith('/bootstrap'))).toBe(true);
   expect(mirrorResponses.some((url) => url.includes('/history?'))).toBe(false);
 
@@ -181,7 +184,7 @@ test('loads native evaluations directly from the public mirror snapshot', async 
   await expect(page.locator('.native-scenario li')).toHaveCount(10);
 
   await page.goto('/evaluations');
-  for (const runId of runIds) await expect(page.getByRole('link', { name: runId })).toBeVisible();
+  for (const runId of runIds) await expect(page.getByRole('main').getByRole('link', { name: runId })).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
   expect(failedRequests.filter((url) => !url.includes('/stream?'))).toEqual([]);
@@ -193,7 +196,7 @@ test('follows the evidence from a campaign through its assignment, model and tas
   const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: assignment.dataset_id, run_id: assignment.run_id, model_role_mapping: { [assignment.role]: assignment.variant_id } };
   await installMirror(page, [run, model, assignment]);
   await page.goto('/evaluations?release=all');
-  await page.getByRole('link', { name: run.run_id, exact: true }).click();
+  await page.getByRole('main').getByRole('link', { name: run.run_id, exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: run.run_id })).toBeVisible();
   await page.getByRole('navigation', { name: 'Evidence chain' }).getByRole('link', { name: /Assignments/ }).click();
   await expect.poll(() => page.locator('#run-results').evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(200);
@@ -226,7 +229,7 @@ test('Live panels fit above the footer and scroll independently through resizing
   await page.goto('/?release=all');
   const runPanel = page.getByRole('region', { name: 'Runs', exact: true });
   const livePanel = page.getByRole('region', { name: 'Live activity', exact: true });
-  const runList = runPanel.locator('.campaign-evidence-list');
+  const runList = page.locator('.nav-drawer .campaign-evidence-list');
   const eventList = page.getByRole('region', { name: 'Live activity results', exact: true });
   const footer = page.getByRole('contentinfo');
   await expect(runList.locator(':scope > li')).toHaveCount(5);
@@ -258,22 +261,22 @@ test('Live panels fit above the footer and scroll independently through resizing
     if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     expect(await eventList.evaluate((element) => element.scrollTop)).toBe(0);
     const runScroll = await runList.evaluate((element) => element.scrollTop);
+    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
     await eventList.hover();
     await page.mouse.wheel(0, 300);
     await expect.poll(() => eventList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     expect(await runList.evaluate((element) => element.scrollTop)).toBe(runScroll);
-    // Reaching the end of either list must not transfer wheel scrolling to the page.
-    for (const list of [runList, eventList]) {
-      await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-      await list.hover();
-      await page.mouse.wheel(0, 600);
-    }
+    // Reaching the end of activity must not transfer wheel scrolling to the page.
+    await eventList.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await eventList.hover();
+    await page.mouse.wheel(0, 600);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await livePanel.locator('summary').click();
     expect(await eventList.evaluate((element) => element.clientHeight)).toBeGreaterThan(0);
     await expect(livePanel.getByRole('button', { name: 'Next page' })).toBeInViewport();
     await livePanel.locator('summary').click();
 
+    if (viewport.width <= 768) await page.getByRole('button', { name: 'Open navigation drawer' }).click();
     await runList.evaluate((element) => { element.scrollTop = 0; });
     await runList.focus();
     await page.keyboard.press('PageDown');
@@ -282,6 +285,7 @@ test('Live panels fit above the footer and scroll independently through resizing
 });
 
 for (const viewport of [
+  { width: 1920, height: 1080, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'light' },
   { width: 900, height: 1000, theme: 'dark' },
@@ -319,18 +323,24 @@ for (const viewport of [
     await expect(runs.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
     const runsBox = (await runs.boundingBox())!;
     const liveBox = (await live.boundingBox())!;
-    if (viewport.width > 1000) {
+    const navBox = (await page.getByRole('navigation', { name: 'Primary navigation' }).boundingBox())!;
+    expect(runsBox.y).toBeGreaterThan(navBox.y + navBox.height);
+    if (viewport.width > 768) {
       expect(runsBox.x + runsBox.width).toBeLessThan(liveBox.x);
-      expect(Math.abs(runsBox.y - liveBox.y)).toBeLessThan(1);
     } else {
-      expect(runsBox.y + runsBox.height).toBeLessThan(liveBox.y);
+      await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
     }
     await expect(live.getByText(failureReason)).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'What am I looking at?' })).toHaveCount(0);
     await expect(live.getByRole('combobox', { name: 'Filter by category' })).not.toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
-    if (viewport.width > 700) {
+    if (liveBox.width > 700) {
+      const columnWidths = await live.locator('tbody tr').first().locator('td').evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect().width));
+      expect(columnWidths[0]).toBeLessThan(90);
+      expect(columnWidths.at(-1)).toBeLessThan(100);
+      const numericWidths = columnWidths.slice(3);
+      expect(Math.max(...numericWidths) - Math.min(...numericWidths)).toBeLessThan(1);
       const heights = await live.locator('tbody tr').evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
       expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(2);
       expect(Math.max(...heights)).toBeLessThan(80);
@@ -359,6 +369,7 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
   await campaigns.getByRole('button', { name: 'Sort by Campaign', exact: true }).click();
   await expect(campaigns.locator('tbody tr').first()).toContainText('Beta campaign');
   await expect(campaigns.getByRole('columnheader', { name: /Campaign/ })).toHaveAttribute('aria-sort', 'descending');
+  await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
 
   for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
@@ -422,6 +433,7 @@ test('evaluation detail fills the page and stacks context without pushing assign
   const hero = page.locator('.evaluation-detail .evidence-hero');
   const table = results.getByRole('table');
   await expect(table.locator('tbody tr')).toHaveCount(3);
+  await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
 
   for (const width of [1920, 1440, 900, 640, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -429,7 +441,8 @@ test('evaluation detail fills the page and stacks context without pushing assign
     const heroBox = (await hero.boundingBox())!;
     const metricsBox = (await metrics.boundingBox())!;
     const resultsBox = (await results.boundingBox())!;
-    expect(heroBox.width).toBeGreaterThanOrEqual(width - 48);
+    const mainBox = (await page.getByRole('main').boundingBox())!;
+    expect(heroBox.width).toBeGreaterThanOrEqual(mainBox.width - 48);
     expect(Math.abs(metricsBox.x - heroBox.x)).toBeLessThan(1);
     expect(Math.abs(resultsBox.width - heroBox.width)).toBeLessThan(1);
     expect(resultsBox.y - metricsBox.y - metricsBox.height).toBeCloseTo(16, 0);
@@ -486,6 +499,7 @@ test('assignment analysis offers sortable grading and performance without wide I
   const panel = page.getByRole('region', { name: 'Assignments (8)', exact: true });
   const table = panel.getByRole('table');
   await expect(table.locator('tbody tr')).toHaveCount(8);
+  await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
   await expect(table.locator('.assignment-short-id').first()).toHaveText('0abcde…');
   await expect(table.getByRole('columnheader', { name: /Scope|Criteria/ })).toHaveCount(0);
   await expect(table.locator('.grade-badge-details')).toHaveCount(0);

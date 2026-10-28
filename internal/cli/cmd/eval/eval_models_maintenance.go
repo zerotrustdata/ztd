@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type governedModelMaintenanceEnv struct {
@@ -24,6 +25,21 @@ type governedModelMaintenanceEnv struct {
 	// maintenance (freeze/pull/diff) never touches it, so callers must not
 	// force app-credential resolution unless they actually run probes.
 	ResolveProbeRunner func() (evaluation.GovernedCapabilityProbeRunner, error)
+
+	operators []*operatorv1.OperatorDocument
+}
+
+// requireOllamaPullEnvironment sets the Ollama endpoint the `ztd operator
+// model` pull and copy commands read. Inventory, residency, and release are
+// typed commands the Operator serves from its own provider and need none; only
+// pulls require the selected Inference Operator to serve Ollama.
+func (e *governedModelMaintenanceEnv) requireOllamaPullEnvironment() error {
+	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(e.operators, e.Maintenance.TargetOperatorSessionID)
+	if err != nil {
+		return err
+	}
+	e.Maintenance.Environment = modelCommandEnvironment(endpoint)
+	return nil
 }
 
 // resolveGovernedModelMaintenance targets provider maintenance at the inference
@@ -43,10 +59,6 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 		return governedModelMaintenanceEnv{}, err
 	}
 	inferenceSessionID := inference.OperatorSessionID
-	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(operators, inferenceSessionID)
-	if err != nil {
-		return governedModelMaintenanceEnv{}, err
-	}
 	modelDispatcher, err := newHarnessOllamaModelCommandDispatcher(cfg, authContext, gatewayDeps)
 	if err != nil {
 		return governedModelMaintenanceEnv{}, err
@@ -55,11 +67,11 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 	return governedModelMaintenanceEnv{
 		Maintenance: evaluation.OllamaModelMaintenanceContext{
 			TargetOperatorSessionID: inferenceSessionID,
-			Environment:             modelCommandEnvironment(endpoint),
 			CaseID:                  "eval-models-maintenance",
 			NewID:                   prefixedNewID,
 		},
 		ModelDispatcher: modelDispatcher,
+		operators:       operators,
 		ResolveProbeRunner: func() (evaluation.GovernedCapabilityProbeRunner, error) {
 			appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
 			if err != nil {

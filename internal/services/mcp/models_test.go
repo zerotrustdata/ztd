@@ -322,22 +322,6 @@ func TestFieldReadModelsJSON(t *testing.T) {
 		assert.Equal(t, req.FieldPath, decoded.FieldPath)
 		assert.Equal(t, req.OperatorSessionID, decoded.OperatorSessionID)
 	})
-
-	t.Run("FieldReadResult marshalling", func(t *testing.T) {
-		s := "test-value"
-		res := FieldReadResult{
-			Value: FieldValue{Str: &s},
-		}
-		data, err := json.Marshal(res)
-		require.NoError(t, err)
-		assert.Contains(t, string(data), `"value"`)
-
-		// Test round-trip
-		var decoded FieldReadResult
-		err = json.Unmarshal(data, &decoded)
-		require.NoError(t, err)
-		assert.Equal(t, "test-value", *decoded.Value.Str)
-	})
 }
 
 func TestDBModelsJSON(t *testing.T) {

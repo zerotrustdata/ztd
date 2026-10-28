@@ -9,6 +9,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -163,6 +164,33 @@ func (s *RegistrationService) RecordEmbeddedActuatorKey(ctx context.Context, key
 	}
 	if _, err := s.docStore.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator), updateBytes); err != nil {
 		return fmt.Errorf("record embedded actuator key: %w", err)
+	}
+	return nil
+}
+
+// RecordEmbeddedAuditorKey binds the Gateway's Auditor public key, which signs
+// embedded Operator attestations, on the embedded Operator document.
+func (s *RegistrationService) RecordEmbeddedAuditorKey(ctx context.Context, keyID string) error {
+	if keyID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	pub, err := models.DecodeAuditorPublicKey(keyID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrOperatorAuditorKeyInvalid, err)
+	}
+	if hex.EncodeToString(pub) != keyID {
+		return constants.ErrOperatorAuditorKeyInvalid
+	}
+	updateBytes, err := json.Marshal(struct {
+		AuditorPublicKey string    `json:"auditor_public_key"`
+		AuditorKeyID     string    `json:"auditor_key_id"`
+		UpdatedAt        time.Time `json:"updated_at"`
+	}{AuditorPublicKey: keyID, AuditorKeyID: keyID, UpdatedAt: time.Now().UTC()})
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrDocumentStoreMarshalDocument, err)
+	}
+	if _, err := s.docStore.DocUpdate(ctx, marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator), updateBytes); err != nil {
+		return fmt.Errorf("record embedded auditor key: %w", err)
 	}
 	return nil
 }
@@ -688,13 +716,7 @@ func (s *RegistrationService) BindOperators(ctx context.Context, req models.Bind
 			}
 		} else {
 			var bDoc models.BoundSessionsDocumentGo
-			b, err := json.Marshal(existingDoc.ForWire())
-			if err != nil {
-				failed = append(failed, opID)
-				lastErr = fmt.Errorf("%w: %w", constants.ErrRegistrationFailedToMarshalExistingDocument, err)
-				continue
-			}
-			if err := json.Unmarshal(b, &bDoc); err != nil {
+			if err := existingDoc.DecodeWire(&bDoc); err != nil {
 				failed = append(failed, opID)
 				lastErr = fmt.Errorf("%w: %w", constants.ErrRegistrationFailedToUnmarshalBoundSessions, err)
 				continue
@@ -866,12 +888,7 @@ func (s *RegistrationService) UnbindOperators(ctx context.Context, req models.Un
 		}
 		if existingDoc != nil {
 			var bDoc models.BoundSessionsDocumentGo
-			b, err := json.Marshal(existingDoc.ForWire())
-			if err != nil {
-				s.logger.Warn("[REGISTRATION] Failed to marshal existing document", "error", err)
-				continue
-			}
-			if err := json.Unmarshal(b, &bDoc); err != nil {
+			if err := existingDoc.DecodeWire(&bDoc); err != nil {
 				s.logger.Warn("[REGISTRATION] Failed to unmarshal bound sessions document", "error", err)
 				continue
 			}

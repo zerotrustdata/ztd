@@ -55,8 +55,10 @@ type ServeOperatorOptions struct {
 	Keyring keyring.Keyring
 
 	// Inference (ztdllama) settings for an Operator with the inference
-	// capability calling the configured remote Ollama provider.
+	// capability calling the configured Ollama or llama.cpp provider.
 	InferenceOllamaEndpoint      string
+	InferenceLlamaCppEndpoint    string
+	InferenceLlamaCppModelRoot   string
 	InferenceKeepAlive           string
 	InferenceAllowHostedDecision bool
 	InferenceDecisionModels      []string
@@ -64,8 +66,9 @@ type ServeOperatorOptions struct {
 
 	ProviderBoundaryObserverID string
 
-	ProvenanceOperatorID               string
-	ProvenanceOperatorModelStorageRoot string
+	ProvenanceOperatorID                 string
+	ProvenanceOperatorModelStorageRoot   string
+	ProvenanceOperatorModelStorageFormat string
 }
 
 // resolveOperatorGateway splits the --endpoint value (host or host:port,
@@ -134,14 +137,17 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		TZ:                   os.Getenv(string(constants.EnvVar.TZ)),
 
 		InferenceOllamaEndpoint:      opts.InferenceOllamaEndpoint,
+		InferenceLlamaCppEndpoint:    opts.InferenceLlamaCppEndpoint,
+		InferenceLlamaCppModelRoot:   opts.InferenceLlamaCppModelRoot,
 		InferenceKeepAlive:           opts.InferenceKeepAlive,
 		InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision,
 		InferenceDecisionModels:      opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly,
 
 		ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID,
 
-		ProvenanceOperatorID:               opts.ProvenanceOperatorID,
-		ProvenanceOperatorModelStorageRoot: opts.ProvenanceOperatorModelStorageRoot,
+		ProvenanceOperatorID:                 opts.ProvenanceOperatorID,
+		ProvenanceOperatorModelStorageRoot:   opts.ProvenanceOperatorModelStorageRoot,
+		ProvenanceOperatorModelStorageFormat: opts.ProvenanceOperatorModelStorageFormat,
 	}
 }
 

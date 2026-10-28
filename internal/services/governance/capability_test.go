@@ -118,8 +118,7 @@ func TestCapability_Verify_ActionMismatch(t *testing.T) {
 	}
 
 	err := cap.Verify(constants.ActionTypeFileEdit, "hash-1", now)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "action type mismatch")
+	require.ErrorIs(t, err, constants.ErrL5CapabilityActionMismatch)
 }
 
 func TestCapability_Verify_HashMismatch(t *testing.T) {
@@ -133,8 +132,7 @@ func TestCapability_Verify_HashMismatch(t *testing.T) {
 	}
 
 	err := cap.Verify(constants.ActionTypeExecuteBash, "wrong-hash", now)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "transaction hash mismatch")
+	require.ErrorIs(t, err, constants.ErrL5CapabilityHashMismatch)
 }
 
 func TestCapability_Verify_Dissolved(t *testing.T) {
@@ -149,8 +147,7 @@ func TestCapability_Verify_Dissolved(t *testing.T) {
 	cap.Dissolve()
 
 	err := cap.Verify(constants.ActionTypeExecuteBash, "hash-1", now)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dissolved")
+	require.ErrorIs(t, err, constants.ErrL5CapabilityDissolved)
 }
 
 func TestCapability_Verify_Expired(t *testing.T) {
@@ -164,8 +161,7 @@ func TestCapability_Verify_Expired(t *testing.T) {
 	}
 
 	err := cap.Verify(constants.ActionTypeExecuteBash, "hash-1", now)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expired")
+	require.ErrorIs(t, err, constants.ErrL5CapabilityExpired)
 }
 
 func TestCapability_VerifyRejectsNilAndInvalidContextValues(t *testing.T) {
@@ -180,18 +176,17 @@ func TestCapability_VerifyRejectsNilAndInvalidContextValues(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		cap  *Capability
-		want string
+		want error
 	}{
-		{name: "nil capability", cap: nil, want: "nil capability"},
+		{name: "nil capability", cap: nil, want: constants.ErrL5CapabilityNil},
 		{name: "dissolved capability", cap: func() *Capability {
 			valid.Dissolve()
 			return valid
-		}(), want: "dissolved"},
+		}(), want: constants.ErrL5CapabilityDissolved},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.cap.Verify(constants.ActionTypeExecuteBash, "hash-1", now)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.want)
+			require.ErrorIs(t, err, tt.want)
 		})
 	}
 

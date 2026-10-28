@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -154,6 +155,29 @@ func TestComputeAssignmentDeterministicIdentity_DistinguishesHomogeneousBindings
 	liteIdentity, err := ComputeAssignmentDeterministicIdentity(lite)
 	require.NoError(t, err)
 	assert.NotEqual(t, primary, liteIdentity)
+}
+
+func TestComputeAssignmentDeterministicIdentity_DistinguishesHeterogeneousRoles(t *testing.T) {
+	stack := &evalv1.HeterogeneousStackDefinition{StackId: "stack-alpha"}
+	base := func(role evalv1.ModelCampaignRole) *evalv1.EvaluationAssignment {
+		return &evalv1.EvaluationAssignment{
+			CampaignId: "phase1a-smoke",
+			ScenarioId: "instruction-exact-1",
+			Lane:       evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+			Repetition: 1,
+			Target: &evalv1.EvaluationAssignment_Heterogeneous{
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: role},
+			},
+		}
+	}
+	primary, err := ComputeAssignmentDeterministicIdentity(base(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY))
+	require.NoError(t, err)
+	lite, err := ComputeAssignmentDeterministicIdentity(base(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE))
+	require.NoError(t, err)
+	assert.NotEqual(t, primary, lite)
+
+	_, err = ComputeAssignmentDeterministicIdentity(base(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED))
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestComputeAssignmentResultDigest_IsStableAndValidated(t *testing.T) {

@@ -69,11 +69,13 @@ type EvalGraderReader interface {
 // All fields are required; a nil field causes the dependent methods to
 // fail-closed (return false).
 type EvaluatorDeps struct {
-	Audit       AuditEvidenceReader
-	Ledger      LedgerEvidenceReader
-	Commitments CommitmentEvidenceReader
-	History     KSIHistoryReader
-	Graders     EvalGraderReader
+	Audit         AuditEvidenceReader
+	Ledger        LedgerEvidenceReader
+	Commitments   CommitmentEvidenceReader
+	History       KSIHistoryReader
+	Graders       EvalGraderReader
+	AuditorTrust  governance.EvidenceSignerSource
+	ActuatorTrust governance.EvidenceSignerSource
 }
 
 // KSIEvaluator evaluates KSIs against live ztd state by running registered
@@ -440,20 +442,36 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 				return false, evidence, nil
 			}
 			reference := newKSIEvidenceReference(EvidenceTypeReceiptID, record.TransactionID)
+			reference.VerificationStatus = "failed"
 			evidence = append(evidence, reference)
 			receipt := record.EventReceipt
-			if receipt == nil || receipt.GetTransactionId() != record.TransactionID || receipt.GetSignerKeyId() != record.SignerKeyID || receipt.GetSignature() != record.Signature {
+			if receipt == nil || receipt.GetTransactionId() != record.TransactionID || receipt.GetTransactionHash() != record.TransactionHash || receipt.GetSignerKeyId() != record.SignerKeyID || receipt.GetSignature() != record.Signature {
 				return false, evidence, nil
 			}
-			publicKey, err := governance.SignerPublicKey(receipt.GetSignerKeyId())
+			reference.VerificationStatus = "unverified"
+			if deps.ActuatorTrust == nil {
+				return false, evidence, nil
+			}
+			publicKey, err := deps.ActuatorTrust.GetTrustedSignerPublicKey(ctx, receipt.GetSignerKeyId())
 			if err != nil {
 				//nolint:nilerr // intentional fallback: unknown signer key marks compliance check unsatisfied
 				return false, evidence, nil
 			}
-			if governance.VerifyEventReceiptSignature(receipt, publicKey) != nil || governance.VerifyReceiptPersistenceAttestation(receipt, publicKey) != nil {
+			reference.VerificationStatus = "failed"
+			if governance.VerifyEventReceipt(receipt, publicKey) != nil {
 				//nolint:nilerr // intentional fallback: signature verification failure marks check unsatisfied
 				return false, evidence, nil
 			}
+			payload, err := compliancev1.MarshalCanonical(receipt)
+			if err != nil {
+				return false, evidence, err
+			}
+			digest := sha256.Sum256(payload)
+			reference.Sha256 = hex.EncodeToString(digest[:])
+			reference.VerificationStatus = "verified"
+			reference.VerifierId = constants.KSIMethodVerifierID
+			reference.VerifierVersion = constants.KSIMethodVerifierVersion
+			reference.VerifiedAt = timestamppb.Now()
 		}
 		return true, evidence, nil
 	}
@@ -532,7 +550,7 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 	ledgerCommitsExistMethod := newKSIMethod("ledgerCommitsExist", KSIArtifactLedgerCommits, KSICollectionLedgerStore, KSIVerifierExistence, KSIPropertyPresence, ledgerCommitsExist)
 	commitmentChainExistsMethod := newKSIMethod("commitmentChainExists", KSIArtifactCommitments, KSICollectionCommitmentStore, KSIVerifierExistence, KSIPropertyPresence, commitmentChainExists)
 	commitmentChainIntactMethod := newKSIMethod("commitmentChainIntact", KSIArtifactCommitments, KSICollectionCommitmentStore, KSIVerifierStructural, KSIPropertyChainLinkage, commitmentChainIntact)
-	commitmentsCryptographicallyVerified := newCommitmentsCryptographicallyVerifiedMethod(deps.Commitments)
+	commitmentsCryptographicallyVerified := newCommitmentsCryptographicallyVerifiedMethod(deps.Commitments, deps.AuditorTrust)
 	ledgerMerkleRootMatchesHead := newLedgerMerkleRootMatchesHeadMethod(deps.Ledger)
 	independentStateObserved := newIndependentStateObservedMethod(deps.Audit)
 	deterministicGraderResultsVerified := newDeterministicGraderResultsVerifiedMethod(deps.Graders)
@@ -554,7 +572,7 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 	return methods
 }
 
-func newCommitmentsCryptographicallyVerifiedMethod(reader CommitmentEvidenceReader) KSIMethod {
+func newCommitmentsCryptographicallyVerifiedMethod(reader CommitmentEvidenceReader, trust governance.EvidenceSignerSource) KSIMethod {
 	return newKSIMethod("commitmentsCryptographicallyVerified", KSIArtifactCommitments, KSICollectionCommitmentStore, KSIVerifierCryptographic, KSIPropertySignatureValidity, func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 		if reader == nil {
 			return false, nil, nil
@@ -592,16 +610,21 @@ func newCommitmentsCryptographicallyVerifiedMethod(reader CommitmentEvidenceRead
 				return false, evidence, nil
 			}
 			digest := sha256.Sum256(canonical)
-			if !commitmentRowMatchesAttestation(row, attestation, hex.EncodeToString(digest[:])) {
+			if hex.EncodeToString(digest[:]) != row.Hash || !governance.CommitmentRowMatchesAttestation(row, attestation) {
 				return false, evidence, nil
 			}
-			publicKey, err := governance.SignerPublicKey(row.AuditorKeyID)
+			reference.VerificationStatus = "unverified"
+			if trust == nil {
+				return false, evidence, nil
+			}
+			publicKey, err := trust.GetTrustedSignerPublicKey(ctx, row.AuditorKeyID)
 			if err != nil {
 				//nolint:nilerr // intentional fallback: unknown auditor key marks check unsatisfied
 				return false, evidence, nil
 			}
+			reference.VerificationStatus = "failed"
 			signature, err := hex.DecodeString(row.Signature)
-			if err != nil || !ed25519.Verify(publicKey, canonical, signature) {
+			if err != nil || len(publicKey) != ed25519.PublicKeySize || !ed25519.Verify(publicKey, canonical, signature) {
 				//nolint:nilerr // intentional fallback: invalid signature marks check unsatisfied
 				return false, evidence, nil
 			}
@@ -610,16 +633,6 @@ func newCommitmentsCryptographicallyVerifiedMethod(reader CommitmentEvidenceRead
 		}
 		return true, evidence, nil
 	})
-}
-
-func commitmentRowMatchesAttestation(row *storage.CommitmentRow, attestation *operatorv1.CommitmentAttestation, digest string) bool {
-	return digest == row.Hash && attestation.GetHash() == row.Hash &&
-		attestation.GetTransactionId() == row.TransactionID && attestation.GetTransactionHash() == row.TransactionHash &&
-		attestation.GetPriorCommitmentHash() == row.PriorCommitmentHash && attestation.GetStateRootAtCommit() == row.StateRootAtCommit &&
-		attestation.GetL2SignatureDigest() == row.L2SignatureDigest && attestation.GetWardenIntentSignatureDigest() == row.WardenIntentSignatureDigest &&
-		attestation.GetHumanSignatureDigest() == row.HumanSignatureDigest && attestation.GetActionType() == row.ActionType &&
-		attestation.GetTargetResource() == row.TargetResource && attestation.GetCommittedAtUnixMs() == row.CommittedAt.UnixMilli() &&
-		attestation.GetAuditorKeyId() == row.AuditorKeyID && attestation.GetSignature() == row.Signature
 }
 
 func newLedgerMerkleRootMatchesHeadMethod(reader LedgerEvidenceReader) KSIMethod {

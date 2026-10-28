@@ -35,6 +35,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
 	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -149,7 +150,10 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 
 	httpClient := opt.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{}
+		httpClient = &http.Client{
+			Timeout:   httpclient.DefaultTimeout,
+			Transport: httpclient.NewIPv4Transport(nil),
+		}
 	}
 
 	return &AppPlatformEnrollmentClient{
@@ -550,7 +554,7 @@ func (c *AppPlatformEnrollmentClient) submitRequest(ctx context.Context, pending
 		if err != nil {
 			return nil, fmt.Errorf("app enrollment: create request: %w", err)
 		}
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
 
 		resp, err := c.doHTTPRequest(ctx, req)
 		if err != nil {
@@ -684,8 +688,8 @@ func (c *AppPlatformEnrollmentClient) submitCompletion(ctx context.Context, toke
 	if err != nil {
 		return nil, fmt.Errorf("app enrollment: create completion request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Cache-Control", "no-store")
+	req.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	req.Header.Set(constants.HeaderCacheControl, "no-store")
 
 	resp, err := c.doHTTPRequest(compCtx, req)
 	if err != nil {
@@ -828,7 +832,10 @@ func encodeECPrivateKeyPEM(key *ecdsa.PrivateKey) (string, error) {
 func (c *AppPlatformEnrollmentClient) doHTTPRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
 	client := c.httpClient
 	if client == nil {
-		client = &http.Client{}
+		client = &http.Client{
+			Timeout:   httpclient.DefaultTimeout,
+			Transport: httpclient.NewIPv4Transport(nil),
+		}
 	}
 	return client.Do(req.WithContext(ctx))
 }

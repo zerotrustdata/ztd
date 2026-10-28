@@ -8,9 +8,10 @@
 # ztd Windows dev setup: install the toolchain, make build, and offer to add the
 # repository root to PATH. The full contributor flow also builds
 # evaluation-explorer, installs the contributor toolchain that `make ci` needs
-# (Go dev tools, Node deps), and runs make dev-check. Both setup modes need
+# (Go dev tools, Node deps), and runs make dev-check. The full flow needs
 # Node.js and npm because make build compiles the embedded frontends.
-# Pass --build-only to stop after `make build`.
+# Pass --build-only to compile .\ztd with `make build-go` from the committed
+# frontend embeds. That mode does not install Node.js.
 # Requires PowerShell 7+ (pwsh). See docs/architecture/scripts.md.
 
 #Requires -Version 7.0
@@ -33,7 +34,7 @@ Installs the toolchain needed to build ztd and, by default, to run 'make ci'
 
 Options:
   -y, --yes       Install missing tooling without prompting
-  --build-only    Only set up what 'make build' needs; skip the contributor toolchain
+  --build-only    Compile with 'make build-go' from the committed embeds; skip Node and the contributor toolchain
   -h, --help      Show this help
 "@
 }
@@ -616,7 +617,7 @@ $goMin = Parse-GoVersion (Get-GoMinVersion)
 
 if ($Script:BuildOnly) {
     $totalSteps = 3
-    $prereqsText = "git, make, curl, go >= $($goMin.ToString()), node ($Script:NodeRequirement)"
+    $prereqsText = "git, make, curl, go >= $($goMin.ToString()) (committed frontend embeds; Node is not required)"
 } else {
     $totalSteps = 6
     $prereqsText = "git, make, curl, go >= $($goMin.ToString()), node ($Script:NodeRequirement), rg"
@@ -631,8 +632,8 @@ if (-not (Test-Make)) { $missing += "make" }
 if (-not (Test-Curl)) { $missing += "curl" }
 if (-not (Test-Go -Need $goMin)) { $missing += "go" }
 
-if (-not (Test-Node)) { $missing += "node" }
 if (-not $Script:BuildOnly) {
+    if (-not (Test-Node)) { $missing += "node" }
     if (-not (Test-Ripgrep)) { $missing += "rg" }
 
     $missingCi = @()
@@ -666,8 +667,8 @@ if ($missing.Count -gt 0) {
     if (-not (Test-Make)) { $missing += "make" }
     if (-not (Test-Curl)) { $missing += "curl" }
     if (-not (Test-Go -Need $goMin)) { $missing += "go" }
-    if (-not (Test-Node)) { $missing += "node" }
     if (-not $Script:BuildOnly) {
+        if (-not (Test-Node)) { $missing += "node" }
         if (-not (Test-Ripgrep)) { $missing += "rg" }
     }
     if ($missing.Count -gt 0) {
@@ -697,7 +698,8 @@ if (-not $Script:BuildOnly) {
 $buildStep = if ($Script:BuildOnly) { 2 } else { 3 }
 Write-Host "`n[STEP $buildStep/$totalSteps] Building ztd..." -ForegroundColor Yellow
 Set-Location $Script:RepoRoot
-Invoke-Step "make build" { make build }
+$buildTarget = if ($Script:BuildOnly) { "build-go" } else { "build" }
+Invoke-Step "make $buildTarget" { make $buildTarget }
 Write-Host "Build successful." -ForegroundColor Green
 # Every ./ztd command loads .env at startup; create it from the commented
 # template and keep an existing one.

@@ -89,10 +89,12 @@ type campaignShowJSON struct {
 	Condition         string                      `json:"condition"`
 	Suite             string                      `json:"suite"`
 	Models            []string                    `json:"models"`
+	Judge             string                      `json:"judge,omitempty"`
 	Runs              []runRow                    `json:"runs"`
 	MetricsCurve      []runMetricsCurveJSON       `json:"metrics_curve,omitempty"`
 	Archive           *evaluation.ArchiveManifest `json:"archive,omitempty"`
 	CellsPer          uint64                      `json:"cells_per_run"`
+	CellsPerL2        uint64                      `json:"cells_per_run_l2_enforced"`
 	InvestigationMode string                      `json:"investigation_mode,omitempty"`
 	InvestigationID   string                      `json:"investigation_id,omitempty"`
 	DataOperatorID    string                      `json:"data_operator_id,omitempty"`
@@ -311,9 +313,11 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				},
 				Condition:         evaluation.CampaignCondition(spec),
 				Suite:             spec.GetCatalogRef().GetId() + "@" + spec.GetCatalogRef().GetVersion(),
+				Judge:             spec.GetJudgeVariant().GetServedModelTag(),
 				Runs:              runRows,
 				MetricsCurve:      extractCampaignMetricsCurve(cmd.Context(), store, runIDs),
-				CellsPer:          campaignCells(catalog, spec, lane, stacks),
+				CellsPer:          campaignCells(catalog, spec, lane, stacks, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE),
+				CellsPerL2:        campaignCells(catalog, spec, lane, stacks, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS),
 				InvestigationMode: investigationModeLabel(spec.GetInvestigation()),
 				InvestigationID:   spec.GetInvestigation().GetInvestigationId(),
 				DataOperatorID:    spec.GetInvestigation().GetDataOperatorId(),
@@ -330,11 +334,14 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign: %s\nCondition: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
+			_, _ = fmt.Fprintf(out, "Campaign: %s\nCondition: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run (doctrine/ratify): %d\nCells per run (consensus/notary): %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
 				campaignID, payload.Condition, releaseLabel(release.Release, string(release.Basis)), lane, payload.Suite, payload.ModelCount, strings.Join(payload.Models, ", "), payload.ScenarioCount, payload.RepetitionCount,
-				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
+				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.CellsPerL2, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
 			if payload.InvestigationID != "" {
 				_, _ = fmt.Fprintf(out, "Investigation ID: %s\nData Operator ID: %s\n", payload.InvestigationID, payload.DataOperatorID)
+			}
+			if payload.Judge != "" {
+				_, _ = fmt.Fprintf(out, "Judge: %s\n", payload.Judge)
 			}
 			if stacks > 0 {
 				_, _ = fmt.Fprintf(out, "Stacks: %d\n", stacks)
@@ -427,11 +434,11 @@ func campaignRunIDs(ctx context.Context, fileSvc fs.RuntimeFileService, store *e
 
 // campaignCells is the assignment count of one run, sized from the catalog the
 // campaign froze rather than from any built-in suite.
-func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.EvaluationCampaignSpec, lane string, stacks int) uint64 {
+func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.EvaluationCampaignSpec, lane string, stacks int, posture evalv1.EvaluationGovernancePosture) uint64 {
 	if lane == campaignLaneSystem {
-		return evaluation.FormationMatrixSize(catalog, uint64(stacks))
+		return evaluation.FormationMatrixSize(catalog, uint64(stacks), posture)
 	}
-	return evaluation.ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount())
+	return evaluation.ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount(), posture)
 }
 
 // campaignCreateSpec is everything that defines one campaign.
@@ -453,6 +460,9 @@ type campaignCreateSpec struct {
 	VersionOnCatalogChange bool
 	// Platform is the build identity the campaign freezes under.
 	Platform evaluation.PlatformIdentity
+	// Judge is the registry model, resolved by evaluation.ResolveCampaignJudge,
+	// that scores the campaign's judged criteria.
+	Judge *evalv1.ModelVariant
 }
 
 type campaignCreateResult struct {
@@ -530,6 +540,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 		Investigation:     spec.Investigation,
 		FormationStackSet: stackSet,
 		FormationCatalog:  spec.FormationCatalog,
+		Judge:             spec.Judge,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
@@ -555,9 +566,11 @@ type campaignCreateJSON struct {
 	RepetitionCount     uint32 `json:"repetition_count"`
 	HoldContext         bool   `json:"hold_context"`
 	CellsPerRun         uint64 `json:"cells_per_run"`
+	CellsPerRunL2       uint64 `json:"cells_per_run_l2_enforced"`
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
 	StackCount          int    `json:"stack_count,omitempty"`
+	Judge               string `json:"judge"`
 }
 
 func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
@@ -565,6 +578,7 @@ func campaignsCreateCmd(deps nativeEvalDeps) *cobra.Command {
 	var holdContext bool
 	var condition string
 	var suite string
+	var judgeTag string
 	var investigationMode string
 	var dataOperatorID string
 	var formationIDs []string
@@ -594,8 +608,14 @@ identity whose authoritative ledger owns that investigation. The longitudinal
 condition selects a persistent investigation and therefore also requires
 --data-operator.
 
-With --reps greater than 1, repetitions run sequentially. Pass --hold-context
-to carry the previous repetition's conversation into the prompt.
+With --reps greater than 1, repetitions run sequentially and, unless a
+--condition is given, each repetition continues the previous repetition's
+conversation and workspace. Pass --hold-context=false to start every
+repetition fresh.
+
+--judge names the registry model that scores every judged criterion, whatever
+model or formation an assignment executes, so no subject grades itself. Its
+digest is frozen from the model registry into the campaign.
 
 A model-role campaign takes a model selector (positional models, --family,
 --max-params, or --all) and freezes exactly one model. A system campaign takes
@@ -607,8 +627,8 @@ Qualify several model-role candidates with ztd eval rollout, which runs one
 campaign per model.
 
 Examples:
-  ztd eval campaigns create eval-qwen qwen3:4b --reps 3
-  ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3 --hold-context
+  ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3
+  ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
   ztd eval campaigns create eval-gemma gemma4:e4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
   ztd eval campaigns create eval-system --formations ultra-efficient-speedster
@@ -659,7 +679,11 @@ Examples:
 			if len(registry) == 0 {
 				return fmt.Errorf("evaluation: campaigns create: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", constants.ErrEvaluationSelectionEmpty)
 			}
-			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation}
+			judge, err := evaluation.ResolveCampaignJudge(registry, judgeTag)
+			if err != nil {
+				return fmt.Errorf("evaluation: campaigns create: --judge: %w", err)
+			}
+			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation, Judge: judge}
 			if formationsSet {
 				create.FormationCatalog, err = newFormationCatalog(cfg.ProjectRoot).topologies()
 				if err != nil {
@@ -687,17 +711,19 @@ Examples:
 				ScenarioCount:       result.Spec.GetScenarioCount(),
 				RepetitionCount:     result.Spec.GetRepetitionCount(),
 				HoldContext:         result.Spec.GetHoldContext(),
-				CellsPerRun:         campaignCells(result.Catalog, result.Spec, lane, stackCount),
+				CellsPerRun:         campaignCells(result.Catalog, result.Spec, lane, stackCount, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE),
+				CellsPerRunL2:       campaignCells(result.Catalog, result.Spec, lane, stackCount, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS),
 				ModelRegistryDigest: result.Spec.GetModelRegistryDigest(),
 				CatalogDigest:       result.Spec.GetCatalogDigest(),
 				StackCount:          stackCount,
+				Judge:               result.Spec.GetJudgeVariant().GetServedModelTag(),
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\n",
-				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.ModelRegistryDigest, payload.CatalogDigest)
+			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run (doctrine/ratify): %d\nCells per run (consensus/notary): %d\nJudge: %s\nModel registry digest: %s\nCatalog digest: %s\n",
+				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.CellsPerRunL2, payload.Judge, payload.ModelRegistryDigest, payload.CatalogDigest)
 			if stackCount > 0 {
 				_, _ = fmt.Fprintf(out, "Formation stacks: %d\n", stackCount)
 			}
@@ -706,12 +732,13 @@ Examples:
 		},
 	}
 	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell")
-	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace (legacy behavior)")
+	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from the previous repetition's conversation and workspace (default true when --reps > 1 and no --condition is given)")
 	cmd.Flags().StringVar(&condition, "condition", "", "Operational condition: longitudinal (persistent sequential runs), control (fresh investigation control), or held-context")
 	cmd.Flags().StringVar(&suite, "suite", evaluation.DefaultSuiteID, "Suite to freeze into the campaign (see ztd eval suites list)")
 	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
 	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
 	cmd.Flags().StringSliceVar(&formationIDs, "formations", nil, "Create a system-lane campaign from catalog formation IDs (comma-separated or repeat the flag)")
+	cmd.Flags().StringVar(&judgeTag, "judge", evaluation.DefaultJudgeServedModelTag, "Registry model (served tag) that judges every assignment in the campaign")
 	selector.bindFlags(cmd)
 	return cmd
 }

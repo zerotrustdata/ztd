@@ -525,6 +525,13 @@ message EvaluationCampaignSpec {
   // Nonempty only for a system campaign. Binds the complete frozen catalog
   // formation set into campaign_digest, independently of later catalog edits.
   string formation_stack_set_digest = 15;
+  // judge_variant is the governed-registry model that scores every judged
+  // criterion of every assignment in the campaign, whatever model or
+  // formation the assignment executes, so no subject grades itself. It is
+  // frozen into campaign_digest and dispatched under its own single-entry
+  // judge registry, never as a scored model_registry entry. Absent only on
+  // campaigns frozen before pinned judging; their judged cells fail closed.
+  ModelVariant judge_variant = 16;
 }
 
 // EvaluationInvestigation declares the campaign's scored investigation scope.
@@ -597,6 +604,10 @@ message EvaluationScenarioDefinition {
   // Unset, the model calls the native tool directly. The frozen catalog digest
   // binds the choice.
   bool tribunal_commands = 17;
+  // exclude_when_l2_enforced marks scenarios whose required state-changing
+  // tool call or successful/error seed action is gated by L2. The frozen
+  // catalog digest binds this eligibility rule.
+  bool exclude_when_l2_enforced = 18;
 }
 
 // ModelVariant is one frozen provider-backed model identity in a campaign.
@@ -667,6 +678,8 @@ message HomogeneousAssignmentTarget {
 
 message HeterogeneousAssignmentTarget {
   HeterogeneousStackDefinition stack = 1;
+  // Stack role this assignment executes as.
+  ModelCampaignRole designated_role = 2;
 }
 
 // ProviderBoundaryHardwareSample is one timestamped read-only hardware

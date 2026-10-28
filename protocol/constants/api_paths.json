@@ -1,9 +1,6 @@
 {
   "a2a_call": "/api/v1/a2a/call",
   "a2a_prefix": "/api/v1/a2a/",
-  "admin_app_policies_by_signer": "/api/v1/admin/app-policies/",
-  "admin_app_policies_prefix": "/api/v1/admin/app-policies/",
-  "admin_apps_revoke": "/api/v1/admin/apps/revoke",
   "approvals": "/api/v1/approvals",
   "approvals_by_id": "/api/v1/approvals/",
   "approvals_cli_list": "/api/v1/approvals/pending",

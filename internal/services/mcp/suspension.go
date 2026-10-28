@@ -24,6 +24,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -91,7 +92,7 @@ func suspendGovernanceEnvelope(ctx context.Context, envelope *commonv1.Governanc
 	}
 	userID := strings.TrimSpace(envelope.GetRequestorUserId())
 	if userID == "" {
-		userID, _ = ctx.Value(constants.ContextKeyUserID).(string)
+		userID = serviceauth.RequestorUserID(ctx)
 	}
 	cliSessionID := strings.TrimSpace(envelope.GetCliSessionId())
 	if cliSessionID == "" {

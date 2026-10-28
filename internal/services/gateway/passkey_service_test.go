@@ -181,14 +181,14 @@ func TestPasskeyService_VerifyRegistration(t *testing.T) {
 	t.Run("Error - user not found", func(t *testing.T) {
 		svc, _ := newPasskeyServiceForTest(t)
 
-		_, err := svc.VerifyRegistration(t.Context(), "non-existent-user", []byte("{}"))
+		_, err := svc.VerifyRegistration(t.Context(), "non-existent-user", &models.WebAuthnAttestationResponse{})
 		require.Error(t, err)
 	})
 
 	t.Run("Error - session not found", func(t *testing.T) {
 		svc, user := newPasskeyServiceForTest(t)
 
-		_, err := svc.VerifyRegistration(t.Context(), user.ID, []byte("{}"))
+		_, err := svc.VerifyRegistration(t.Context(), user.ID, &models.WebAuthnAttestationResponse{})
 		require.Error(t, err)
 	})
 }
@@ -488,7 +488,7 @@ func TestPasskeyService_PurgeWebAuthnCeremonyAfterVerifyRegistration(t *testing.
 	_, err = svc.getWebAuthnCeremony(t.Context(), user.ID)
 	require.NoError(t, err)
 
-	_, err = svc.VerifyRegistration(t.Context(), user.ID, []byte(`{"id":"mock","rawId":"mock","response":{"clientDataJSON":"{}","attestationObject":""}}`))
+	_, err = svc.VerifyRegistration(t.Context(), user.ID, &models.WebAuthnAttestationResponse{ID: "mock", RawID: "mock"})
 	require.NoError(t, err)
 
 	_, err = svc.getWebAuthnCeremony(t.Context(), user.ID)

@@ -24,7 +24,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -39,7 +41,24 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+func TestReexecHealthServer_ReportsListenerFailure(t *testing.T) {
+	t.Setenv(string(constants.EnvVar.TestReexec), "serve")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	child := exec.CommandContext(testutil.Context(t), executable, "gw", "start", "--http-port", strconv.Itoa(port))
+	output, err := child.CombinedOutput()
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, 1, exitErr.ExitCode())
+	assert.Contains(t, string(output), "re-exec health server:")
+}
 
 // launchProfileWriteFailingFileSvc wraps a RuntimeFileService and fails
 // WriteFile calls that target the launch profile path. All other operations
@@ -49,6 +68,44 @@ import (
 type launchProfileWriteFailingFileSvc struct {
 	fs.RuntimeFileService
 	failErr error
+}
+
+type countingStartFileSvc struct {
+	fs.RuntimeFileService
+	starts int
+}
+
+func (w *countingStartFileSvc) WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error {
+	if relPath == filepath.Join(constants.PidDirname, constants.OperatorPIDFilename) {
+		w.starts++
+	}
+	return w.RuntimeFileService.WriteFile(ctx, relPath, data, mode)
+}
+
+func TestGatewayRestart_FailedUnchangedLaunchDoesNotRetry(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	withServeReExec(t, fileSvc)
+	startZombieReaper(t)
+	pm, err := platform.NewProcessManager(fileSvc)
+	require.NoError(t, err)
+	opts := platform.OperatorStartOptions{GatewayConfig: serve.GatewayConfig{
+		Posture: constants.PostureDoctrine, LogLevel: constants.LogLevelInfo, CertIdentityMode: "localhost",
+	}}
+	require.NoError(t, pm.StartOperator(t.Context(), &opts))
+	require.NoError(t, serve.WriteLaunchProfile(fileSvc, opts.GatewayConfig))
+	t.Setenv(string(constants.EnvVar.TestReexec), "exit")
+	counted := &countingStartFileSvc{RuntimeFileService: fileSvc}
+	cmd := gatewayRestartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(counted))
+	cmd.SetContext(t.Context())
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	err = cmd.RunE(cmd, nil)
+	require.ErrorIs(t, err, constants.ErrProcessStartFailed)
+	assert.Equal(t, 1, counted.starts, "restoring identical configuration with the same executable repeats the failed launch")
+	profile, err := serve.ReadLaunchProfile(fileSvc)
+	require.NoError(t, err)
+	assert.Equal(t, opts.GatewayConfig, profile.Config)
 }
 
 func (w *launchProfileWriteFailingFileSvc) WriteFile(ctx context.Context, relPath string, data []byte, mode os.FileMode) error {
@@ -150,7 +207,7 @@ func TestConnectRestartGateway_ProfileWriteFailureRollsBackToPreviousConfig(t *t
 		PasskeyRpName:    "ztd",
 	}
 	oldStartOpts := platform.OperatorStartOptions{GatewayConfig: oldCfg}
-	require.NoError(t, pm.StartOperator(&oldStartOpts))
+	require.NoError(t, pm.StartOperator(t.Context(), &oldStartOpts))
 
 	// Persist the old launch profile so connectRestartGateway can read it.
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, oldCfg))

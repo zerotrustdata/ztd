@@ -43,10 +43,7 @@ func TestWebSessionService_CreateWebSession(t *testing.T) {
 		require.NotNil(t, doc)
 
 		var stored models.WebSession
-		dataBytes, err := json.Marshal(doc.Data)
-		require.NoError(t, err)
-		err = json.Unmarshal(dataBytes, &stored)
-		require.NoError(t, err)
+		require.NoError(t, doc.DecodeData(&stored))
 		stored.ID = doc.ID
 		assert.Equal(t, session.ID, stored.ID)
 		assert.Equal(t, userID, stored.UserID)

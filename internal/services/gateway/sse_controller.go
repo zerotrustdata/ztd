@@ -141,11 +141,7 @@ func (c *SSEController) authorizeSSERoute(route SSERoute, r *http.Request) (stri
 			return "", &sseAuthError{status: http.StatusForbidden, message: "cli session not found"}
 		}
 		var cliSess models.CLISession
-		b, err := json.Marshal(doc.ForWire())
-		if err != nil {
-			return "", &sseAuthError{status: http.StatusInternalServerError, message: "failed to verify cli session"}
-		}
-		if err := json.Unmarshal(b, &cliSess); err != nil {
+		if err := doc.DecodeWire(&cliSess); err != nil {
 			return "", &sseAuthError{status: http.StatusInternalServerError, message: "failed to verify cli session"}
 		}
 		if cliSess.UserID != route.UserID {
@@ -281,7 +277,7 @@ func (c *SSEController) handleInternalSSEStream(w http.ResponseWriter, r *http.R
 
 	sinceIDStr := q.Get("since_id")
 	sinceIDPresent := sinceIDStr != ""
-	lastEventIDHeader := r.Header.Get("Last-Event-ID")
+	lastEventIDHeader := r.Header.Get(constants.HeaderLastEventID)
 	if lastEventIDHeader != "" {
 		sinceIDStr = lastEventIDHeader
 	}
@@ -314,9 +310,9 @@ func (c *SSEController) handleInternalSSEStream(w http.ResponseWriter, r *http.R
 	}
 
 	// Set SSE Headers
-	w.Header().Set(constants.HeaderContentType, "text/event-stream")
-	w.Header().Set(constants.HeaderCacheControl, "no-cache")
-	w.Header().Set(constants.HeaderConnection, "keep-alive")
+	w.Header().Set(constants.HeaderContentType, constants.HeaderValueTextEvent)
+	w.Header().Set(constants.HeaderCacheControl, constants.HeaderValueNoCache)
+	w.Header().Set(constants.HeaderConnection, constants.HeaderValueKeepAlive)
 	w.Header().Set(constants.HeaderXAccelBuffering, "no")
 
 	flusher, ok := w.(http.Flusher)

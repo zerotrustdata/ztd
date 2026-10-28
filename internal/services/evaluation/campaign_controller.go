@@ -38,6 +38,8 @@ type CampaignInitRequest struct {
 	Lane                       evalv1.EvaluationLane
 	FormationStackSet          *HeterogeneousStackSet
 	Governance                 RunGovernance
+	// Judge is the campaign's pinned judge; see CampaignCreateRequest.Judge.
+	Judge *evalv1.ModelVariant
 }
 
 // CampaignRunSummary reports resumable controller state for one run.
@@ -127,6 +129,9 @@ type CampaignCreateRequest struct {
 	// FormationCatalog is the catalog used to materialize and verify new stacks.
 	// Nil selects the built-in defaults; execution uses only the frozen stack set.
 	FormationCatalog *ExecutionTopologies
+	// Judge is the registry model, resolved by ResolveCampaignJudge, that
+	// scores every judged criterion of the campaign. Required.
+	Judge *evalv1.ModelVariant
 }
 
 // RunStartRequest binds one new run to an existing campaign.
@@ -157,10 +162,14 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	if req.CampaignID == "" || req.Catalog == nil || req.Inventory == nil {
 		return nil, fmt.Errorf("evaluation: create campaign: %w", constants.ErrMissingRequiredField)
 	}
+	if err := ValidateCampaignJudge(req.Judge); err != nil {
+		return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, err)
+	}
 	spec, err := MaterializeCampaignSpecWithInvestigation(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform, req.Investigation)
 	if err != nil {
 		return nil, err
 	}
+	spec.JudgeVariant = proto.Clone(req.Judge).(*evalv1.ModelVariant)
 	if req.FormationStackSet != nil {
 		if spec.GetRepetitionCount() != 1 || spec.GetHoldContext() {
 			return nil, fmt.Errorf("evaluation: formation campaigns support one repetition: %w", constants.ErrEvaluationFlagsInvalid)
@@ -197,6 +206,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 			existing.GetHoldContext() != spec.GetHoldContext() ||
 			existing.GetFormationStackSetDigest() != spec.GetFormationStackSetDigest() ||
 			!proto.Equal(existing.GetInvestigation(), spec.GetInvestigation()) ||
+			!proto.Equal(existing.GetJudgeVariant(), spec.GetJudgeVariant()) ||
 			(existing.GetPlatformRelease() != "" && existing.GetPlatformRelease() != spec.GetPlatformRelease()) {
 			return nil, fmt.Errorf("evaluation: create campaign %q: %w", req.CampaignID, constants.ErrEvaluationCampaignConflict)
 		}
@@ -346,6 +356,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		Platform:          req.Platform,
 		Investigation:     req.Investigation,
 		FormationStackSet: req.FormationStackSet,
+		Judge:             req.Judge,
 	}); err != nil {
 		return nil, err
 	}
@@ -436,12 +447,12 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 			return 0, fmt.Errorf("evaluation: schedule run %s: frozen formations: %w", runID, err)
 		}
 		assignments, err = BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, StackSet: stackSet, QueuedAt: c.now().UTC(),
+			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, ActivePosture: run.GetActivePosture(), StackSet: stackSet, QueuedAt: c.now().UTC(),
 		})
 		if err != nil {
 			return 0, err
 		}
-		if err := ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments); err != nil {
+		if err := ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments, run.GetActivePosture()); err != nil {
 			return 0, fmt.Errorf("evaluation: schedule run %s: assignment matrix: %w", runID, err)
 		}
 	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
@@ -449,6 +460,7 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 			CampaignID:      spec.GetCampaignId(),
 			RunID:           runID,
 			Catalog:         catalog,
+			ActivePosture:   run.GetActivePosture(),
 			Variants:        spec.GetModelRegistry(),
 			RepetitionCount: spec.GetRepetitionCount(),
 			QueuedAt:        c.now().UTC(),
@@ -456,7 +468,7 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 		if err != nil {
 			return 0, err
 		}
-		expected := ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount())
+		expected := ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount(), run.GetActivePosture())
 		if uint64(len(assignments)) != expected {
 			return 0, fmt.Errorf("evaluation: schedule run %s: %d model-role assignments, expected %d: %w", runID, len(assignments), expected, constants.ErrEvaluationTargetKindMismatch)
 		}
@@ -509,9 +521,9 @@ func (c *CampaignController) RunSummary(ctx context.Context, runID string) (*Cam
 		if err != nil {
 			return nil, err
 		}
-		expected = FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)))
+		expected = FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)), run.GetActivePosture())
 	default:
-		expected = ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount())
+		expected = ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount(), run.GetActivePosture())
 	}
 	summary := &CampaignRunSummary{
 		Run:                run,
@@ -726,6 +738,7 @@ func (c *CampaignController) frozenAssignmentRequest(ctx context.Context, spec *
 	req.Binding.ModelVariants = spec.GetModelRegistry()
 	req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(spec.GetModelRegistry())
 	req.Binding.FormationStackSetDigest = spec.GetFormationStackSetDigest()
+	req.Binding.JudgeVariant = spec.GetJudgeVariant()
 	return req, nil
 }
 

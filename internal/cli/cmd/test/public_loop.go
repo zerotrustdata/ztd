@@ -9,6 +9,7 @@ package testcmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -312,7 +313,7 @@ func readPublicLoopCandidate(path string) (publicLoopCandidate, error) {
 		return publicLoopCandidate{}, fmt.Errorf("read candidate identity: %w", err)
 	}
 	var candidate publicLoopCandidate
-	decoder := json.NewDecoder(bytesReader(content))
+	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&candidate); err != nil {
 		return publicLoopCandidate{}, fmt.Errorf("decode candidate identity: %w", err)
@@ -475,23 +476,6 @@ func canonicalContentHash(value any) (string, error) {
 func hashBytes(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
-}
-
-func bytesReader(content []byte) io.Reader {
-	return &byteReader{content: content}
-}
-
-type byteReader struct {
-	content []byte
-}
-
-func (r *byteReader) Read(target []byte) (int, error) {
-	if len(r.content) == 0 {
-		return 0, io.EOF
-	}
-	count := copy(target, r.content)
-	r.content = r.content[count:]
-	return count, nil
 }
 
 func rejectTrailingJSON(decoder *json.Decoder) error {

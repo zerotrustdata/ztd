@@ -19,7 +19,7 @@ const startScript = fileURLToPath(new URL('../static/start.sh', import.meta.url)
 const installScript = fileURLToPath(new URL('../static/ztd.sh', import.meta.url));
 const HOST_PATH = (process.env.PATH || '').split(delimiter);
 // Host tools start.sh, ztd.sh, and the fake ztd call. Everything else is hidden from the script PATH.
-const REAL_TOOLS = ['sh', 'awk', 'sed', 'grep', 'tail', 'head', 'tr', 'mktemp', 'install', 'rm', 'cat', 'date', 'mkdir', 'wc', 'sha256sum', 'touch'];
+const REAL_TOOLS = ['sh', 'awk', 'sed', 'grep', 'tail', 'head', 'tr', 'mktemp', 'install', 'rm', 'cat', 'date', 'mkdir', 'wc', 'sha256sum', 'shasum', 'xattr', 'touch'];
 
 function isFile(candidate) {
   try {
@@ -206,7 +206,8 @@ for (const [name, shell] of SHELLS) {
       'https://zerotrustdata.io/ztd.sh',
       'https://zerotrustdata.io/latest.json',
       'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64',
-      'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64.sha256'
+      'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64.sha256',
+      'https://zerotrustdata.io/v/2.3.2/ztd-linux-amd64.sigstore.json'
     ]);
     assert.deepEqual(ztdCalls(fixture), FRESH_CALLS);
     assert.match(result.stdout, /Installed .*\/home\/ztd\/ztd — SHA-256 verified/);
@@ -257,7 +258,8 @@ test('ZTD_VERSION pins the release that the installer downloads', (t) => {
   assert.deepEqual(curlUrls(fixture), [
     'https://zerotrustdata.io/ztd.sh',
     'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64',
-    'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64.sha256'
+    'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64.sha256',
+    'https://zerotrustdata.io/v/2.4.0-rc.1/ztd-linux-amd64.sigstore.json'
   ]);
 });
 
@@ -293,6 +295,111 @@ test('a Gateway with no usable key store explains the ssh-agent remedy and stops
   assert.match(result.stderr, /the Gateway did not start/);
   assert.deepEqual(ztdCalls(fixture), ['--version', 'gw status', 'gw start'], 'no login after a failed start');
   assertClean(fixture);
+});
+
+test('ZTD_REQUIRE_SIGSTORE=1 stops before a binary is written when cosign is absent', (t) => {
+  const fixture = setup(t);
+  const result = runPiped(fixture, { env: { ZTD_REQUIRE_SIGSTORE: '1' } });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cosign is not installed/);
+  assert.equal(existsSync(join(fixture.home, 'ztd', 'ztd')), false);
+  assert.deepEqual(ztdCalls(fixture), []);
+});
+
+test('on macOS the first Gateway start explains the Keychain dialog before it can block', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  const result = runPiped(fixture);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ztd-platform/);
+  assert.match(result.stdout, /Mac login password/);
+  assert.match(result.stdout, /Always Allow/);
+  assert.match(result.stdout, /login keychain/);
+  assert.match(result.stdout, /no sudo/);
+  assert.doesNotMatch(result.stdout, /sudo security/);
+  assert.equal(existsSync(join(fixture.home, 'ztd', 'ztd')), false);
+  assert.equal(readFileSync(join(fixture.home, 'Library', 'Application Support', 'ztd', 'ztd'), 'utf8'), FAKE_ZTD);
+  assert.match(result.stdout, /cd '/);
+});
+
+test('on macOS a checkout at ~/ztd does not receive the Gateway runtime', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  mkdirSync(join(fixture.home, 'ztd', '.git'), { recursive: true });
+  const result = runPiped(fixture);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(join(fixture.home, 'ztd', 'ztd')), false);
+  assert.equal(existsSync(join(fixture.home, 'ztd', '.ztd')), false);
+  assert.equal(readFileSync(join(fixture.home, 'Library', 'Application Support', 'ztd', 'ztd'), 'utf8'), FAKE_ZTD);
+});
+
+test('on macOS Finder metadata alone does not make the default directory look occupied', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  const dir = join(fixture.home, 'Library', 'Application Support', 'ztd');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.DS_Store'), 'finder');
+  writeFileSync(join(dir, '.localized'), '');
+  const result = runPiped(fixture);
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('on macOS an unrelated file in the default directory is refused before any download', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  const dir = join(fixture.home, 'Library', 'Application Support', 'ztd');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'README'), 'not an install\n');
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not a ztd install/);
+  assert.equal(existsSync(join(fixture.log, 'curl.log')), false);
+});
+
+test('start.sh refuses the default directory when it is already a source checkout', (t) => {
+  const fixture = setup(t);
+  const dir = join(fixture.home, 'ztd');
+  mkdirSync(join(dir, '.git'), { recursive: true });
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /source checkout/);
+  assert.equal(existsSync(join(fixture.log, 'curl.log')), false, 'refusal happens before any download');
+  assert.equal(existsSync(join(dir, 'ztd')), false);
+});
+
+test('start.sh refuses the default directory when it already has unrelated files', (t) => {
+  const fixture = setup(t);
+  const dir = join(fixture.home, 'ztd');
+  mkdirSync(dir);
+  writeFileSync(join(dir, 'README'), 'not an install\n');
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not a ztd install/);
+  assert.equal(existsSync(join(fixture.log, 'curl.log')), false, 'refusal happens before any download');
+});
+
+test('on macOS a key store failure explains the Keychain remedy, not ssh-agent', (t) => {
+  const fixture = setup(t, { os: 'Darwin', env: { ZTD_FAKE_START_ERROR: 'an OS-protected master key store is required but none is available' } });
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /macOS Keychain did not release/);
+  assert.match(result.stderr, /Always Allow/);
+  assert.doesNotMatch(result.stderr, /ssh-agent/, 'macOS users are not sent to ssh-agent');
+  assert.match(result.stderr, /the Gateway did not start/);
+});
+
+test('a Gateway port failure in ztd wording (port unavailable) gets the port hint', (t) => {
+  const fixture = setup(t, { env: { ZTD_FAKE_START_ERROR: 'process start failed: port unavailable: HTTP port: port unavailable: starting from 8080 after 100 attempts' } });
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /A port the Gateway needs is in use/);
+  assert.match(result.stderr, /\.\/ztd gw stop/);
+  assert.match(result.stderr, /lsof -nP -iTCP:8080/);
 });
 
 test('a Gateway port conflict points at the Gateway already running elsewhere', (t) => {

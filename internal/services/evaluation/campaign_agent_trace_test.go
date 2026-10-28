@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -216,7 +217,7 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 		Inference: AgentTraceRuntime{OperatorID: "inference-1", SessionID: "session-inference"},
 		Data:      AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-data"},
 		Workspace: AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/work/run-1"},
-		Input:     &AgentTraceInput{Messages: []AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Read the log."}}},
+		Input:     &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "Read the log."}}},
 		ToolCalls: []AgentToolCall{{
 			CallID: "call-1", ModelCallID: "attempt-model", ToolName: "fs_read", ArgumentsJSON: `{"path":"app.log"}`,
 			Success: true, IsOperatorTool: true, LoopTurn: 1,
@@ -235,6 +236,17 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 				},
 			}),
 		}},
+		Observations: []AgentScenarioObservation{{Kind: scenarioObservationSeed, Call: AgentToolCall{
+			CallID: "scenario-observation-1", ToolName: constants.MCPToolEventReceiptList, ArgumentsJSON: `{"limit":20}`,
+			ResultJSON: `{"receipts":[]}`, Success: true, IsOperatorTool: true, ActionType: string(constants.ActionTypeMcpCall), TransactionID: "scenario-observation-1",
+			RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: &commonv1.GovernanceEnvelope{
+				Id: "scenario-observation-1", EventType: string(constants.EventOperatorCommandRequested), ActionType: string(constants.ActionTypeMcpCall), TransactionHash: strings.Repeat("f", 64),
+			}},
+			Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{
+				TransactionId: "scenario-observation-1", TransactionHash: strings.Repeat("f", 64), ActionType: string(constants.ActionTypeMcpCall),
+				Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: `{"receipts":[]}`,
+			}},
+		}}},
 		FinalOutput: "Read complete.",
 	}
 	body, err := SealAgentTrace(trace)
@@ -242,4 +254,18 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/agent-trace-consensus.json")
 	require.NoError(t, err)
 	assert.Equal(t, string(fixture), string(body))
+}
+
+func TestAgentTrace_DecodeAgentTraceVerifiesPreimageAndRejectsTampered(t *testing.T) {
+	trace := v7EvidenceTraceWithToolCalls(t)
+	body, err := SealAgentTrace(trace)
+	require.NoError(t, err)
+
+	decoded, err := DecodeAgentTrace(body)
+	require.NoError(t, err)
+	assert.Equal(t, trace.EvidenceDigest, decoded.EvidenceDigest)
+
+	tampered := []byte(strings.Replace(string(body), trace.RunID, trace.RunID+"-tampered", 1))
+	_, err = DecodeAgentTrace(tampered)
+	assert.ErrorIs(t, err, constants.ErrChecksumMismatch)
 }
