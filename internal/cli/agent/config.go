@@ -366,11 +366,50 @@ func (i Integration) LaunchArgs(configPath, binaryPath, appName string) ([]strin
 	case LaunchGooseExtension:
 		// --no-profile starts goose with zero profile extensions; --with-extension
 		// loads ztd as the sole MCP server, since --no-profile also skips
-		// extensions defined in config.yaml.
+		// extensions defined in config.yaml. Interactive `session` is the default.
+		// RewriteGooseLaunch switches this to `run` when the caller forwards a
+		// one-shot instruction, which `session` rejects.
 		return []string{"session", "--no-profile", "--with-extension", binaryPath + " " + strings.Join(StdioServerArgs(appName), " ")}, nil
 	case LaunchConfigOnly:
 		return []string{}, nil
 	default:
 		return nil, fmt.Errorf("%w: agent %q has unknown launch strategy %q", constants.ErrAgentNotSupported, i.ID, i.LaunchStrategy)
 	}
+}
+
+// gooseOneShotFlags are goose run flags that goose session does not accept.
+// A forwarded one-shot must launch `goose run` or the process exits before
+// the model sees the task.
+var gooseOneShotFlags = map[string]struct{}{
+	"-t":             {},
+	"--text":         {},
+	"-i":             {},
+	"--instructions": {},
+	"--recipe":       {},
+}
+
+// RewriteGooseLaunch returns launchArgs unchanged, or a copy whose leading
+// `session` is `run`, when extraArgs carry a one-shot goose flag. Other
+// agents and an interactive goose session are left alone.
+func RewriteGooseLaunch(launchArgs, extraArgs []string) []string {
+	if len(launchArgs) == 0 || launchArgs[0] != "session" || !gooseOneShot(extraArgs) {
+		return launchArgs
+	}
+	rewritten := make([]string, len(launchArgs))
+	copy(rewritten, launchArgs)
+	rewritten[0] = "run"
+	return rewritten
+}
+
+func gooseOneShot(extraArgs []string) bool {
+	for _, arg := range extraArgs {
+		name := arg
+		if eq := strings.IndexByte(arg, '='); eq > 0 {
+			name = arg[:eq]
+		}
+		if _, ok := gooseOneShotFlags[name]; ok {
+			return true
+		}
+	}
+	return false
 }

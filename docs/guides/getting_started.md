@@ -466,6 +466,16 @@ ztd integrates with AI agent binaries to provide governed MCP tool access.
 ./ztd mcp agent run goose
 ```
 
+`ztd mcp agent run goose` launches an interactive Goose session. A one-shot task is forwarded with `-t` (or `-i` / `--recipe`); the launcher starts `goose run` for those flags because `goose session` does not accept them. Goose can use a local Ollama model, with no provider account:
+
+```bash
+./ztd mcp agent run goose -- --provider ollama --model qwen2.5:0.5b -t "Call run_shell_command: command echo, args [\"hello\"]"
+```
+
+Ollama listens on `http://127.0.0.1:11434` unless `ZTD_OLLAMA_ENDPOINT` or `--provider` says otherwise. The first launch enrolls the `goose` application. Under `doctrine` and `consensus` the signed-in owner CLI approves that enrollment in-line. Under `ratify` and `notary` the launcher prints a passkey approval URL and waits.
+
+`make test-agent-smoke` is the same path as a non-interactive check: it builds `./ztd`, pulls `qwen2.5:0.5b` (override with `ZTD_SMOKE_MODEL`), runs one allowed `echo` and one L1-denied `rm -rf /`, and checks `ztd audit verify` plus `ztd report verify`. See [Automation Scripts](../architecture/scripts.md#smoke-and-onboarding-tests).
+
 ---
 
 ## Post-Bootstrap Actions
