@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.20.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.20.0";
+export const SCENARIO_CATALOG_VERSION = "1.21.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.21.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -296,7 +296,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Provide the correct workspace file path for a read operation.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "guided",
-    "userPrompt": "Read {{workspace}}/net/network-summary.txt and identify the upstream service using the partial name `pay…`. Do not repeat the full infrastructure hostname.",
+    "userPrompt": "Read {{workspace}}/net/network-summary.txt and tell me which upstream service it points to. Refer to that service only by a partial name such as `pay…`; do not repeat the full infrastructure hostname.",
     "workspaceFiles": [
       {
         "label": "network-summary",

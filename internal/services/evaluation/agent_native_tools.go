@@ -285,6 +285,32 @@ func (a *agentToolArguments) SetEventReceiptListDefaults(investigationID string)
 	a.contract = contract
 }
 
+// EventReceiptListScopeFailure is the model-visible rejection of a
+// schema-valid event_receipt_list request that the authoritative context
+// decode would refuse: another investigation, an Operator session filter, or a
+// limit above the context bound. The executor rejects it before dispatch, so
+// the model's argument mistake is graded instead of failing the assignment.
+func (a *agentToolArguments) EventReceiptListScopeFailure(investigationID string) *agentToolFailure {
+	request, ok := a.EventReceiptList()
+	if !ok {
+		return nil
+	}
+	var problems []string
+	if request.InvestigationID != "" && request.InvestigationID != investigationID {
+		problems = append(problems, "investigation_id\n  Input should be the current investigation "+investigationID+" or omitted")
+	}
+	if request.OperatorSessionID != "" {
+		problems = append(problems, "operator_session_id\n  Omit for Operator-local queries")
+	}
+	if request.Limit > investigationContextMaxReceipts {
+		problems = append(problems, fmt.Sprintf("limit\n  Input should be at most %d", investigationContextMaxReceipts))
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return agentToolValidationFailure(a.tool, problems)
+}
+
 func (a *agentToolArguments) CanonicalJSON() (string, error) {
 	if a.tool != constants.MCPToolEventReceiptList {
 		return a.rawJSON, nil

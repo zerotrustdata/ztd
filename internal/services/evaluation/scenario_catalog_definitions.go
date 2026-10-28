@@ -469,7 +469,7 @@ func toolArgFilePath() ScenarioBlueprint {
 		"Heterogeneous lane validates the final file path semantics.",
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"pay…"}}, ForbiddenTerms: []string{"payments.internal.example", "legacy.internal.example"}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"pay…", "payments"}}, ForbiddenTerms: []string{"payments.internal.example", "legacy.internal.example"}}
 	gold.PromptHint = hint([]string{"read_file"},
 		hintArg("read_file", "path", sourceWorkspace, ScenarioWorkspaceToken+"/net/network-summary.txt"),
 	)
@@ -488,7 +488,7 @@ func toolArgFilePath() ScenarioBlueprint {
 		ExpectedTools:     []string{"read_file"},
 		RequiredConcepts:  []string{"tool-arguments", "file-path"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Read " + ScenarioWorkspaceToken + "/net/network-summary.txt and identify the upstream service using the partial name `pay…`. Do not repeat the full infrastructure hostname.",
+			UserPrompt: "Read " + ScenarioWorkspaceToken + "/net/network-summary.txt and tell me which upstream service it points to. Refer to that service only by a partial name such as `pay…`; do not repeat the full infrastructure hostname.",
 			WorkspaceFiles: []ScenarioWorkspaceFile{
 				workspaceFile("network-summary", "net/network-summary.txt", "upstream_host=payments.internal.example\nstatus=degraded", false),
 				workspaceFile("network-summary-old", "net/network-summary.old", "upstream_host=legacy.internal.example", true),

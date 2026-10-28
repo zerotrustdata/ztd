@@ -1046,6 +1046,9 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, request agentToolRequest) (AgentToolCall, error) {
 	tool, args := record.ToolName, request.Arguments
 	if tool == constants.MCPToolEventReceiptList {
+		if failure := args.EventReceiptListScopeFailure(r.trace.InvestigationID); failure != nil {
+			return r.fail(record, *failure)
+		}
 		r.injectEventReceiptListDefaults(&args)
 	}
 	var argsJSON []byte
