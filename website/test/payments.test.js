@@ -19,8 +19,8 @@ test('paymentLink resolves only live-mode Stripe Payment Links', () => {
   assert.equal(paymentLink('toString', LINKS), null);
 });
 
-test('validatePaymentLinks fails when a homepage SKU has no live link', () => {
-  assert.doesNotThrow(() => validatePaymentLinks('<a href="/buy/fleet-50">', LINKS));
-  assert.throws(() => validatePaymentLinks('<a href="/buy/fleet-50"><a href="/buy/sandbox">', LINKS), /sandbox/);
-  assert.throws(() => validatePaymentLinks('<a href="mailto:x">', LINKS), /no \/buy\//);
+test('validatePaymentLinks rejects homepage purchase links', () => {
+  assert.doesNotThrow(() => validatePaymentLinks('<a href="mailto:x">', LINKS));
+  assert.throws(() => validatePaymentLinks('<a href="/buy/fleet-50">', LINKS), /must not link to \/buy\//);
+  assert.throws(() => validatePaymentLinks('<a href="/buy/fleet-50"><a href="/buy/sandbox">', LINKS), /fleet-50, sandbox/);
 });

@@ -51,7 +51,7 @@ ${article ? `<meta name="author" content="${escape(article.author)}"><meta prope
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header"><div class="shell header-inner">
 <a class="brand" href="/" aria-label="Zero Trust Data home"><img src="/logo.png" width="74" height="32" alt=""><span>ZERO TRUST DATA</span></a>
-<nav aria-label="Primary"><a href="/#how">Platform</a><a href="/#licensing">Pricing</a>${nav}<a class="github-link" href="${REPOSITORY_URL}">GitHub <span aria-hidden="true">↗</span></a></nav>
+<nav aria-label="Primary"><a href="/#how">Platform</a><a href="/#proofs">Proofs</a>${nav}<a class="github-link" href="${REPOSITORY_URL}">GitHub <span aria-hidden="true">↗</span></a></nav>
 </div></header>
 ${article ? '<progress class="reading-progress" max="100" value="0" aria-label="Reading progress" hidden></progress>' : ''}
 <main id="main" class="shell">${content}</main>
