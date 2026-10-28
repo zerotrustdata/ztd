@@ -1353,14 +1353,4 @@ release:
 # downloaded artifact set. make release requires a successful rehearsal of HEAD.
 .PHONY: release-rehearse
 release-rehearse:
-	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ] || [ -n "$$(git status --porcelain)" ]; then \
-		echo "Error: make release-rehearse runs on a clean main checkout."; exit 1; \
-	fi; \
-	git fetch -q origin main || exit 1; \
-	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
-		echo "Error: HEAD is not origin/main. Push or pull, then retry."; exit 1; \
-	fi; \
-	URL=$$(gh workflow run release-binary.yml --ref main -f publish=false 2>&1 | grep -o 'https://[^ ]*/actions/runs/[0-9]*') \
-		|| { echo "Error: could not dispatch release-binary.yml"; exit 1; }; \
-	echo "Rehearsal: $$URL"; \
-	gh run watch "$${URL##*/}" --exit-status
+	@bash scripts/release-rehearse.sh
