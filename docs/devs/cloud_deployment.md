@@ -3,7 +3,7 @@ doc_id: cloud_deployment
 title: Cloud VM Deployment Guide
 audience: maintainers and coding agents
 status: current
-version: v1.4.2
+version: v1.5.0
 last_updated: 2026-10-27
 owners:
   - deploy/cloud_gateway/

@@ -3,7 +3,7 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.3.0
+version: v1.5.0
 last_updated: 2026-10-28
 owners:
   - docs/guides/build_gateway.md

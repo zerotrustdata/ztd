@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.4.1
-last_updated: 2026-10-26
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go

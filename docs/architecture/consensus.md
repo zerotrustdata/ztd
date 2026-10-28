@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - internal/services/governance/l2_consensus.go
   - internal/services/governance/l4_warden.go

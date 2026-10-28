@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.4.1
-last_updated: 2026-10-26
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/
   - protocol/docs/
@@ -317,8 +317,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Compliance Evidence](../release_notes/v1.4.x/v1.4.0-compliance-evidence.md): Generated compliance evidence projection for v1.4.0.
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 - [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
-- [v1.4.2 Release Notes](../release_notes/v1.4.x/v1.4.2.md): llama.cpp inference provider, llama.cpp GGUF model provenance, and provider-aware evaluation model maintenance.
-- [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Draft trust and evidence integrity readiness, starting with removal of ungoverned data API writes.
+- [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Trust and evidence integrity, removal of ungoverned data API writes, signed audit checkpoints, judge-scored evals, and the llama.cpp inference provider.
 
 ## Procedures
 

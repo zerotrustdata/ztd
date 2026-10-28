@@ -3,8 +3,8 @@ doc_id: connect_apps_to_gateway
 title: Connect Apps to Gateway
 audience: application developers and system integrators
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - docs/guides/connect_apps_to_gateway.md
   - internal/services/gateway/

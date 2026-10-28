@@ -3,8 +3,8 @@ doc_id: model-provenance
 title: Model Provenance Architecture
 audience: engineering, campaign operators, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-28
 owners:
   - internal/services/inference/model_provenance/
   - protocol/proto/ztd/eval/v1/eval.proto

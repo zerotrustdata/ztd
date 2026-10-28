@@ -3,7 +3,7 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.4.1
+version: v1.5.0
 last_updated: 2026-10-28
 owners:
   - internal/cli/cmd/

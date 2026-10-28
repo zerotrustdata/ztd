@@ -3,7 +3,7 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.4.1
+version: v1.5.0
 last_updated: 2026-10-28
 owners:
   - docs/guides/getting_started.md
@@ -264,7 +264,7 @@ The bootstrap endpoint does not verify signatures. For production use, verify a 
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for the tag you are installing. The examples below use `v1.4.1`; substitute that tag everywhere, including the certificate identity. A checksum match against a file from the same host is not a signature check.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for the tag you are installing. The examples below use `v1.5.0`; substitute that tag everywhere, including the certificate identity. A checksum match against a file from the same host is not a signature check.
 
 Run the checksum check on Linux:
 
@@ -291,7 +291,7 @@ Then verify the signer identity with `cosign`. On macOS the binary name is `ztd-
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.4.1' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.5.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
