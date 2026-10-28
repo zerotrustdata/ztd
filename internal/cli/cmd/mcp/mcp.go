@@ -858,6 +858,11 @@ LAUNCH AN AGENT (one command does everything):
 
   Extra args are forwarded to the agent:
     ztd mcp agent run claude -- -p "fix the failing tests"
+    ztd mcp agent run goose -- --provider ollama --model <tag> -t "run echo, then a denied command"
+
+  Goose starts an interactive session unless the forwarded args are a one-shot
+  (-t/--text, -i/--instructions, or --recipe). Those start goose run, which
+  accepts them. goose session does not.
 
 EXTERNAL MCP SERVERS:
   To govern external third-party MCP servers (stdio subprocess or HTTP), attach
@@ -879,11 +884,11 @@ AUDIT TRAIL:
 
 APPLICATION ENROLLMENT MODEL:
   Each agent is an application enrolled through the owner-approved platform
-  enrollment protocol. The first launch submits an
-  enrollment request and waits; approve it in the Console or with
-ztd auth enroll approve <request-id> --yes
-The launcher never approves its own
-  request. The approved mTLS certificate (7-day validity, revocable by request ID)
+  enrollment protocol. The first launch submits the enrollment. Under doctrine
+  and consensus the authenticated owner CLI approves that enrollment in-line,
+  with no passkey and no second command. Under ratify and notary the decision
+  suspends for a passkey approval at the URL the launcher prints. The approved
+  mTLS certificate (7-day validity, revocable by request ID)
   carries both identities:
   - App SPIFFE ID: spiffe://ztd.local/app/<agent-name> (the agent's policy identity)
   - Approving User ID: spiffe://ztd.local/user/<id> (the human who approved the agent)
@@ -1199,6 +1204,7 @@ func launchAgentProcess(integration agent.Integration, extraArgs, launchArgs []s
 	if integration.ToolLockdown == agent.LockdownPartial {
 		fmt.Fprintf(os.Stderr, "[ztd] WARNING: %s cannot disable its native tools; actions it takes without MCP bypass ztd governance\n", integration.ID)
 	}
+	launchArgs = agent.RewriteGooseLaunch(launchArgs, extraArgs)
 	fmt.Fprintf(os.Stderr, "[ztd] Launching %s with L1-L5 governance via gateway\n", integration.ID)
 
 	agentCmd := exec.Command(agentBin, append(launchArgs, extraArgs...)...) //nolint:gosec

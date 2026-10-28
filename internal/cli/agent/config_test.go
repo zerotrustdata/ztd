@@ -166,6 +166,35 @@ func TestLaunchArgs(t *testing.T) {
 	}
 }
 
+func TestRewriteGooseLaunch_OneShotUsesRun(t *testing.T) {
+	base := []string{"session", "--no-profile", "--with-extension", "/fake/ztd mcp stdio --app goose"}
+	cases := []struct {
+		name  string
+		extra []string
+		want  string
+	}{
+		{name: "interactive", extra: []string{"--provider", "ollama"}, want: "session"},
+		{name: "short text", extra: []string{"-t", "echo"}, want: "run"},
+		{name: "long text equals", extra: []string{"--text=echo"}, want: "run"},
+		{name: "instructions", extra: []string{"-i", "task.md"}, want: "run"},
+		{name: "recipe", extra: []string{"--recipe", "demo"}, want: "run"},
+		{name: "provider and model only", extra: []string{"--provider", "ollama", "--model", "qwen2.5:0.5b"}, want: "session"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RewriteGooseLaunch(base, tt.extra)
+			assert.Equal(t, tt.want, got[0])
+			assert.Equal(t, base[1:], got[1:])
+			if tt.want == "session" {
+				assert.Equal(t, base, got)
+			} else {
+				assert.Equal(t, "session", base[0], "the default launch args stay interactive")
+			}
+		})
+	}
+	assert.Equal(t, []string{"--mcp-config"}, RewriteGooseLaunch([]string{"--mcp-config"}, []string{"-t", "x"}))
+}
+
 func TestNativeToolsToDisable_CoversEveryExecutionAndEgressTool(t *testing.T) {
 	required := []string{
 		"Bash", "PowerShell", "Monitor",
