@@ -158,10 +158,7 @@ env)
 	;;
 install)
 	built_with=1.26.9
-<<<<<<< HEAD
-=======
 	# The installer pins an exact toolchain (go1.27.3), not go1.27.3+auto.
->>>>>>> 5739d4f6e399ae95a2f7d90e7bc51d92e8456b9e
 	[ "$GOTOOLCHAIN" = "go${STUB_GO_MIN}" ] && built_with="$STUB_GO_MIN"
 	printf '#!/bin/sh\n# built-with %s\n' "$built_with" >"$STUB_GOBIN/fakebuf"
 	chmod 755 "$STUB_GOBIN/fakebuf"
@@ -469,6 +466,10 @@ test_chromium_detection() {
 			ztd_have() { [[ "$1" == "$browser" ]]; }
 			ztd_check_chromium >/dev/null || fail "browser detection missed $browser"
 		done
+		if [[ "$(uname -s)" == Darwin && -x "/Applications/Safari.app/Contents/MacOS/Safari" ]]; then
+			ztd_have() { return 1; }
+			ztd_check_chromium >/dev/null || fail "Safari should count, so setup does not offer another browser"
+		fi
 	)
 }
 
@@ -544,6 +545,12 @@ test_quickstart_end_to_end_is_idempotent() {
 	if [[ "$(uname -s)" == Darwin ]]; then
 		grep -qF 'ztd-platform' "$out" || { cat "$out" >&2; fail "quickstart first run: no Keychain preflight"; }
 		grep -qF 'Mac login password' "$out" || { cat "$out" >&2; fail "quickstart first run: preflight does not say whose password"; }
+		grep -qF 'login keychain' "$out" || { cat "$out" >&2; fail "quickstart first run: success path does not name the login keychain"; }
+		grep -qF 'no sudo' "$out" || { cat "$out" >&2; fail "quickstart first run: success path does not say trust install skips sudo"; }
+		if grep -qF 'sudo security' "$out"; then
+			cat "$out" >&2
+			fail "quickstart first run: still tells the user to sudo"
+		fi
 	fi
 	grep -qF "You're running ztd" "$out" || fail "quickstart first run: no success banner"
 	grep -qxF 'gw start --capabilities data' "$state/calls.log" ||

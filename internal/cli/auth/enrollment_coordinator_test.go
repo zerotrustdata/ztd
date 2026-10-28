@@ -1534,7 +1534,7 @@ func TestInstallSystemTrust_UnsupportedPlatformWarns(t *testing.T) {
 // TestInstallSystemTrust_DeclinedDoesNotInstall verifies that refusing the
 // trust prompt does not call InstallRoot and does not open the passkey
 // ceremony. On macOS the prompt is the only thing standing between the
-// user and a sudo that adds a local CA to the System keychain.
+// user and a CA written into their login keychain.
 func TestInstallSystemTrust_DeclinedDoesNotInstall(t *testing.T) {
 	t.Parallel()
 	coord, gw, keys, trust, _, passkey, recorder, _, _ := setupCoordinatorTest(t)
@@ -1554,8 +1554,9 @@ func TestInstallSystemTrust_DeclinedDoesNotInstall(t *testing.T) {
 	assert.True(t, recorder.contains("declined"))
 	assert.True(t, recorder.contains("--no-system-trust"))
 	if runtime.GOOS == "darwin" {
-		assert.True(t, recorder.contains("System keychain"))
-		assert.True(t, recorder.contains("admin password"))
+		assert.True(t, recorder.contains("login keychain"))
+		assert.True(t, recorder.contains("does not use sudo"))
+		assert.False(t, recorder.contains("admin password"))
 	}
 }
 

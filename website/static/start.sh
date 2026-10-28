@@ -19,9 +19,9 @@
 # state lives in $ZTD_DIR/.ztd/. Never requires root and never invokes sudo.
 #
 # Environment:
-#   ZTD_DIR              Install and runtime directory (default: ~/ztd). The default is refused when that
-#                        directory already has files and is not an existing ztd install (a clone named ~/ztd,
-#                        for example). On macOS, "$HOME/Library/Application Support/ztd" is a safe choice.
+#   ZTD_DIR              Install and runtime directory. Default: ~/Library/Application Support/ztd on macOS,
+#                        ~/ztd on Linux. The default is refused when that directory already has files and is
+#                        not an existing ztd install. Finder metadata (.DS_Store) does not count.
 #   ZTD_VERSION          Install this X.Y.Z release instead of the latest.
 #   ZTD_OVERWRITE=1      Replace an existing $ZTD_DIR/ztd binary (upgrade). A running Gateway keeps its version
 #                        until it is restarted (./ztd gw restart).
@@ -70,7 +70,7 @@ fail() {
 dir_occupied() {
   for entry in .* *; do
     case "$entry" in
-      .|..|'*'|'.*') continue ;;
+      .|..|'*'|'.*'|.DS_Store|.localized) continue ;;
     esac
     [ -e "$entry" ] || continue
     return 0
@@ -148,7 +148,13 @@ main() {
     dir=$ZTD_DIR
   else
     [ -n "${HOME:-}" ] || fail "HOME is not set; set ZTD_DIR to choose an install directory"
-    dir="$HOME/ztd"
+    # macOS keeps the runtime out of ~/ztd, which is where a checkout often lives.
+    # Application Support is per-user and does not need sudo to create.
+    if [ "$(uname -s)" = Darwin ]; then
+      dir="$HOME/Library/Application Support/ztd"
+    else
+      dir="$HOME/ztd"
+    fi
   fi
   mkdir -p "$dir" || fail "could not create $dir"
   cd "$dir" || fail "could not enter $dir"
@@ -158,14 +164,14 @@ main() {
     "${HOME:-/nonexistent}"/*) display_dir="~${dir#"$HOME"}" ;;
   esac
 
-  # Dropping a Gateway into a clone named ~/ztd is how a Mac checkout gets a
-  # runtime tree beside the source. An explicit ZTD_DIR is the user's choice.
+  # An explicit ZTD_DIR is the user's choice. The default is refused when it
+  # is already a checkout or any other non-install directory.
   if [ -z "${ZTD_DIR:-}" ] && [ ! -e ./ztd ]; then
     if [ -d .git ] || [ -f go.mod ]; then
-      fail "$display_dir is a source checkout. Refusing to put a Gateway runtime in it. Set ZTD_DIR to an empty directory. On macOS: ZTD_DIR=\"\$HOME/Library/Application Support/ztd\""
+      fail "$display_dir is a source checkout. Refusing to put a Gateway runtime in it. Set ZTD_DIR to an empty directory."
     fi
     if dir_occupied; then
-      fail "$display_dir already has files and is not a ztd install. Set ZTD_DIR to an empty directory. On macOS: ZTD_DIR=\"\$HOME/Library/Application Support/ztd\""
+      fail "$display_dir already has files and is not a ztd install. Set ZTD_DIR to an empty directory."
     fi
   fi
 
@@ -251,7 +257,7 @@ main() {
   printf '  %scd %s%s\n' "$bold" "$cd_target" "$reset"
   next_step "./ztd tui" "live governance console in the terminal"
   if [ "$(uname -s)" = Darwin ]; then
-    next_step "./ztd login web" "asks before sudo adds the Gateway CA to the System keychain, then a passkey. Open ${console:-https://localhost:8443/console/}"
+    next_step "./ztd login web" "asks before adding the Gateway CA to your login keychain (this account, no sudo), then a passkey. Open ${console:-https://localhost:8443/console/}"
   else
     next_step "./ztd login web" "add a passkey, then open ${console:-https://localhost:8443/console/}"
   fi

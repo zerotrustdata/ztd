@@ -458,6 +458,14 @@ func connectTrustAndVerify(
 	// 3. Stale anchor detection and removal (separate consent).
 	if len(trustState.StaleAnchors) > 0 {
 		cmd.Printf("Found %d stale ztd root CA anchor(s) from previous Gateway instances.\n", len(trustState.StaleAnchors))
+		for i, anchor := range trustState.StaleAnchors {
+			if where := anchor.Where(); where != "" {
+				cmd.Printf("  %d. %s (%s)\n", i+1, anchor.CommonName, where)
+			}
+		}
+		if platform.StaleAnchorsNeedAdmin(trustState.StaleAnchors) {
+			cmd.Println("A System keychain anchor is machine-wide. Removing it runs sudo and affects every account on this Mac. A login keychain anchor is removed for your account only.")
+		}
 		cmd.Print("Remove stale anchors? [y/N]: ")
 		if !deps.confirm("") {
 			cmd.Println("Stale anchor removal declined. Proceeding with current trust state.")
@@ -477,9 +485,11 @@ func connectTrustAndVerify(
 		renderManualTrustInstructions(cmd, apiURL, discovery.Fingerprint)
 	} else if !trustState.Trusted {
 		if runtime.GOOS == "darwin" {
-			cmd.Println("macOS will ask for your admin password. This adds the CA above to the System keychain as a trust root. The private key stays in the local vault. Decline and pass --no-system-trust to skip.")
+			cmd.Println("This adds the CA above to your login keychain as an HTTPS trust root, for your account only. It is not trusted for code signing, and it does not use sudo. Decline and pass --no-system-trust to skip.")
+			cmd.Print("Install the ztd root CA into your login keychain? [y/N]: ")
+		} else {
+			cmd.Print("Install the ztd root CA into the OS trust store? [y/N]: ")
 		}
-		cmd.Print("Install the ztd root CA into the OS trust store? [y/N]: ")
 		if !deps.confirm("") {
 			renderManualTrustInstructions(cmd, apiURL, discovery.Fingerprint)
 			return fmt.Errorf("%w: %w: user declined OS trust installation for origin %s", constants.ErrManualBrowserTrustRequired, constants.ErrConfirmationAborted, origin.URL)
