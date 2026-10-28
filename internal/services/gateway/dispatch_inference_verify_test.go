@@ -361,6 +361,8 @@ func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 		{name: "generate failed", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED, want: constants.ErrInferenceGenerateFailed},
 		{name: "model not found", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND, want: constants.ErrInferenceModelNotFound},
 		{name: "provider response invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID, want: constants.ErrInferenceProviderResponseInvalid},
+		{name: "provider stream error", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR, want: constants.ErrInferenceProviderStreamError},
+		{name: "rehydration failed", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, want: constants.ErrL5ActuatorRehydrate},
 		{name: "generation options invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID, want: constants.ErrInferenceGenerationOptionsInvalid},
 		{name: "capability unsupported", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED, want: constants.ErrInferenceCapabilityUnsupported},
 		{name: "tools unsupported", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED, want: constants.ErrInferenceToolsUnsupported},

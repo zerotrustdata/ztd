@@ -277,7 +277,12 @@ make gw MODEL_STORAGE_ROOT=~/.ollama/models
 ./ztd eval runs trace "$RUN_ID" --scenario "$SCENARIO_ID"
 ./ztd eval runs verify "$RUN_ID" --require-observation --require-provenance
 ./ztd eval runs export "$RUN_ID"
+
+# 6. Publish the validated run to the public mirror:
+./ztd eval runs publish "$RUN_ID"
 ```
+
+`runs verify` publishes nothing unless `--publish` is set, so a run started with `--publish=false` stays unpublished until its results are reviewed and `runs publish` (or `runs verify --publish`) sends its completion and verification projections.
 
 ### Governance Conformance Suite
 

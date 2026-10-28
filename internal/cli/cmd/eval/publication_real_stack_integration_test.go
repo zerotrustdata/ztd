@@ -169,12 +169,12 @@ func executeCampaign(t *testing.T, env *runEnv, campaignID string) string {
 	return out
 }
 
-// verifyCLI runs runs verify and fails on any publication warning: verify
-// reports a failed mirror publication as a warning and still succeeds, so a
-// silent publication failure would otherwise look like a pass.
+// verifyCLI runs runs verify --publish and fails on any publication warning:
+// verify reports a failed mirror publication as a warning and still succeeds,
+// so a silent publication failure would otherwise look like a pass.
 func verifyCLI(t *testing.T, env *runEnv, runID string) (string, error) {
 	t.Helper()
-	out, err := env.run(t, "runs", "verify", runID)
+	out, err := env.run(t, "runs", "verify", runID, "--publish")
 	if err == nil {
 		require.NotContains(t, out, "warning:", "verify published without warnings")
 	}

@@ -3537,6 +3537,8 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID | 45 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED | 46 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED | 47 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR | 48 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED | 49 |  |
 
 
 
@@ -3748,6 +3750,7 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID | 23 |  |
 | RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED | 24 |  |
 | RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
+| RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR | 26 | The provider accepted the request, then ended its response stream with an error event instead of a done event, such as when its own tool-call parser rejected the model&#39;s output. The provider&#39;s message is never signed. |
 
 
  

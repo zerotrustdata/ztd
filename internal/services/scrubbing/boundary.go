@@ -118,14 +118,44 @@ func DefaultConfig() *Config {
 const valueGroupName = "value"
 
 // RegexScrubber replaces every sensitive value its pattern matches with the
-// value's reversible UEI token.
+// value's reversible UEI token. With a validator, a match the validator rejects
+// is left in place.
 type RegexScrubber struct {
 	name    string
 	pattern *regexp.Regexp
+	valid   func(value string) bool
 }
 
 func newRegexScrubber(name string, pattern *regexp.Regexp) *RegexScrubber {
 	return &RegexScrubber{name: name, pattern: pattern}
+}
+
+// newValidatedRegexScrubber tokenizes only the matches valid accepts, for a
+// pattern whose shape alone also matches ordinary identifiers.
+func newValidatedRegexScrubber(name string, pattern *regexp.Regexp, valid func(value string) bool) *RegexScrubber {
+	return &RegexScrubber{name: name, pattern: pattern, valid: valid}
+}
+
+// luhnValid reports whether the digits of value pass the Luhn checksum that
+// every payment card number carries. Separators are ignored.
+func luhnValid(value string) bool {
+	sum, digits := 0, 0
+	for i := len(value) - 1; i >= 0; i-- {
+		c := value[i]
+		if c < '0' || c > '9' {
+			continue
+		}
+		d := int(c - '0')
+		if digits%2 == 1 {
+			d *= 2
+			if d > 9 {
+				d -= 9
+			}
+		}
+		sum += d
+		digits++
+	}
+	return digits > 0 && sum%10 == 0
 }
 
 func (r *RegexScrubber) Name() string { return r.name }
@@ -137,7 +167,7 @@ func (r *RegexScrubber) Scrub(input string, tokenize func(string) string) string
 	last := 0
 	for _, m := range r.pattern.FindAllStringSubmatchIndex(input, -1) {
 		start, end := m[2*group], m[2*group+1]
-		if start < 0 {
+		if start < 0 || (r.valid != nil && !r.valid(input[start:end])) {
 			continue
 		}
 		out.WriteString(input[last:start])
@@ -308,8 +338,9 @@ func (s *ScrubbingService) initializeScrubbers(ctx context.Context) {
 		// already-tokenized URL credential stays visible
 		newRegexScrubber("email", regexp.MustCompile(`[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)),
 
-		// Credit card numbers
-		newRegexScrubber("credit_card", regexp.MustCompile(`\b(?:\d{4}[- ]?){3}\d{4}\b`)),
+		// Credit card numbers. Only Luhn-valid numbers: the 16-digit shape alone
+		// also matches random identifiers, such as an all-digit hex ID.
+		newValidatedRegexScrubber("credit_card", regexp.MustCompile(`\b(?:\d{4}[- ]?){3}\d{4}\b`), luhnValid),
 		// SSN
 		newRegexScrubber("ssn", regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)),
 		// Phone numbers

@@ -129,6 +129,7 @@ func TestClassifyAttemptFailure_NeverCarriesErrorText(t *testing.T) {
 		fmt.Errorf("x: %w: model %q", constants.ErrInferenceModelNotFound, "secret-model"): AttemptFailureModelNotFound,
 		fmt.Errorf("x: %w", constants.ErrInferenceBackendTimeout):                          AttemptFailureBackendTimeout,
 		fmt.Errorf("x: %w", constants.ErrInferenceProviderResponseInvalid):                 AttemptFailureResponseInvalid,
+		fmt.Errorf("x: %w", constants.ErrInferenceProviderStreamError):                     AttemptFailureStreamError,
 		context.Canceled: AttemptFailureCanceled,
 		errors.New("provider echoed: SECRET-PROMPT-MATERIAL"): AttemptFailureInternal,
 	}

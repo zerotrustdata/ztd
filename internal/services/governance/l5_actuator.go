@@ -514,6 +514,10 @@ func SignatureDigest(signatures []string) string {
 // opaque in an INFERENCE prompt, where the model reads the token and never its
 // value; in any other action it fails the payload, since the handler would act
 // on the token text instead of the value it stands for.
+//
+// The payload is the action's protobuf message. Tokens are restored in the
+// decoded message, which is re-marshaled only when a field changed; replacing
+// a token in the wire bytes would corrupt the length-delimited field around it.
 func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) error {
 	if cmdMsg == nil {
 		return nil
@@ -522,8 +526,13 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 	if len(p) == 0 {
 		return nil
 	}
+	msg, err := DecodePayloadForAction(vt.ActionType, p)
+	if err != nil {
+		w.Logger.Error("Fail-closed: Failed to decode payload for rehydration", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
+		return fmt.Errorf("%w: decode payload: %w", constants.ErrL5ActuatorRehydrate, err)
+	}
 	if w.Scrubbing == nil {
-		if scrubbing.ContainsToken(p) {
+		if scrubbing.MessageContainsToken(msg) {
 			w.Logger.Error("Fail-closed: payload holds a UEI token and no scrubbing service is configured", string(constants.ConnectionStateError), constants.ErrScrubbingTokenUnresolved, "message_id", vt.Envelope.Id)
 			return fmt.Errorf("%w: no scrubbing service: %w", constants.ErrL5ActuatorRehydrate, constants.ErrScrubbingTokenUnresolved)
 		}
@@ -533,10 +542,18 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 	if vt.ActionType == constants.ActionTypeInference {
 		foreign = scrubbing.ForeignTokenOpaque
 	}
-	rehydrated, err := w.Scrubbing.RehydratePayload(ctx, p, foreign)
+	changed, err := w.Scrubbing.RehydrateMessage(ctx, msg, foreign)
 	if err != nil {
 		w.Logger.Error("Fail-closed: Failed to rehydrate payload", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, err)
+	}
+	if !changed {
+		return nil
+	}
+	rehydrated, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
+	if err != nil {
+		w.Logger.Error("Fail-closed: Failed to marshal rehydrated payload", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
+		return fmt.Errorf("%w: marshal payload: %w", constants.ErrL5ActuatorRehydrate, err)
 	}
 	cmdMsg.SetPayload(rehydrated)
 	return nil
@@ -711,6 +728,8 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND
 	case errors.Is(execErr, constants.ErrInferenceProviderResponseInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID
+	case errors.Is(execErr, constants.ErrInferenceProviderStreamError):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR
 	case errors.Is(execErr, constants.ErrInferenceGenerationOptionsInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID
 	case errors.Is(execErr, constants.ErrInferenceCapabilityUnsupported):
@@ -731,7 +750,8 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
 	case errors.Is(execErr, constants.ErrInferenceCampaignBindingInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
-	case errors.Is(execErr, constants.ErrScrubbingTokenUnresolved),
+	case errors.Is(execErr, constants.ErrL5ActuatorRehydrate),
+		errors.Is(execErr, constants.ErrScrubbingTokenUnresolved),
 		errors.Is(execErr, constants.ErrScrubbingKeyCollision):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
 	default:

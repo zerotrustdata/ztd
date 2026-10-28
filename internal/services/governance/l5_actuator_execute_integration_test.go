@@ -445,7 +445,7 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	actuator, eventsStore := newCommitmentTestActuator(t)
 	publicKey := actuator.SigningKey.Public().(ed25519.PublicKey)
 
-	original := []byte(`{"command":"login --password {{UEI_999999}}"}`)
+	original := mustMarshalPayload(t, &operatorv1.CommandRequested{Command: "login --password {{UEI_999999}}"})
 	msg := &rehydrationCommandMessage{payload: original}
 	vt := newFailureTestVT(t, "test-hash-rehydrate-fail")
 

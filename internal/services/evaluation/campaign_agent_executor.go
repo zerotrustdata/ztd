@@ -1303,10 +1303,15 @@ func utf8RuneStart(b byte) bool {
 
 // agentTraceLifecycle is the single lifecycle rule for an agent trace, shared
 // by import and verification. A provider failure before any agent turn
-// answered is PROVIDER_FAILED; a completed trace under a semantic-judge
-// catalog is GRADER_FAILED because this executor records no judge evidence.
+// answered is PROVIDER_FAILED; a turn the inference runtime withheld because
+// its payload could not be rehydrated never reached the provider and is
+// FAILED; a completed trace under a semantic-judge catalog is GRADER_FAILED
+// because this executor records no judge evidence.
 func agentTraceLifecycle(req AssignmentExecutionRequest, trace *AgentTrace) evalv1.EvaluationAssignmentLifecycleStatus {
 	if trace.ProviderFailure != "" && trace.FinalOutput == "" && !trace.ToolTurnLimitReached {
+		if trace.ProviderFailure == string(ExecutionFailureRehydration) {
+			return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
+		}
 		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
 	}
 	if trace.TerminalClassification == AgentTerminalClassificationTimeout {

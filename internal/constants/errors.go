@@ -1401,6 +1401,7 @@ var (
 	ErrInferenceEndpointInvalid           = errors.New("inference: provider endpoint invalid")
 	ErrInferenceProviderOllamaRequired    = errors.New("inference: Ollama model pull requires an Inference Operator serving Ollama")
 	ErrInferenceProviderResponseInvalid   = errors.New("inference: provider response invalid")
+	ErrInferenceProviderStreamError       = errors.New("inference: provider ended the response stream with an error")
 	ErrInferenceGenerationOptionsInvalid  = errors.New("inference: generation options invalid")
 	ErrInferenceCapabilityUnsupported     = errors.New("inference: requested capability unsupported")
 	ErrInferenceToolsUnsupported          = errors.New("inference: tools unsupported")

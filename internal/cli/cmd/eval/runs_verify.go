@@ -56,7 +56,7 @@ type runCoverageJSON struct {
 }
 
 func runsVerifyCmd(deps nativeEvalDeps) *cobra.Command {
-	var coverage, requireProvenance, requireObservation bool
+	var coverage, requireProvenance, requireObservation, publish bool
 	cmd := &cobra.Command{
 		Use:   "verify <run>",
 		Short: "Independently verify a run's persisted assignment results",
@@ -64,12 +64,16 @@ func runsVerifyCmd(deps nativeEvalDeps) *cobra.Command {
 works on archived runs too.
 
 With --coverage, check only that the run's assignment matrix is fully populated
-and accounted for, without full verification.`,
+and accounted for, without full verification.
+
+Verification publishes nothing unless --publish is set. With --publish, the
+run's completion and passing verification projections are published to the
+public mirror; archived runs are never published.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
-			if coverage && (requireProvenance || requireObservation) {
-				return fmt.Errorf("evaluation: runs verify: --coverage cannot be combined with --require-provenance or --require-observation: %w", constants.ErrEvaluationFlagsInvalid)
+			if coverage && (requireProvenance || requireObservation || publish) {
+				return fmt.Errorf("evaluation: runs verify: --coverage cannot be combined with --require-provenance, --require-observation or --publish: %w", constants.ErrEvaluationFlagsInvalid)
 			}
 			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
@@ -82,7 +86,7 @@ and accounted for, without full verification.`,
 			if coverage {
 				return verifyRunCoverage(cmd, deps, store, runID)
 			}
-			report, err := verifyRun(cmd, deps, store, runID, requireObservation, requireProvenance, !archived, output.JSONEnabled(cmd))
+			report, err := verifyRun(cmd, deps, store, runID, requireObservation, requireProvenance, publish && !archived, output.JSONEnabled(cmd))
 			if err != nil {
 				return err
 			}
@@ -107,6 +111,7 @@ and accounted for, without full verification.`,
 	cmd.Flags().BoolVar(&coverage, "coverage", false, "Verify only that the assignment matrix is fully populated")
 	cmd.Flags().BoolVar(&requireProvenance, "require-provenance", false, "Fail when model provenance attestation windows are missing or digest_match is false")
 	cmd.Flags().BoolVar(&requireObservation, "require-observation", false, "Fail when provider-boundary observation windows are missing or incomplete")
+	cmd.Flags().BoolVar(&publish, "publish", false, "Publish the run's completion and passing verification projections to the public mirror")
 	return cmd
 }
 

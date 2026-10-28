@@ -397,6 +397,30 @@ func TestOllamaBackend_GenerateRejectsStreamWithoutOneTerminalEvent(t *testing.T
 	}
 }
 
+// Ollama ends the stream with an error event when its own tool-call parser
+// rejects the model's output. The model's raw output never arrives, so this is
+// a provider stream error, not an invalid response and not the model's answer.
+// The provider's message never leaves the backend log.
+func TestOllamaBackend_GenerateStreamErrorEventReturnsProviderStreamError(t *testing.T) {
+	const providerMessage = "XML syntax error on line 5: element <function> closed by </parameter>"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":"","thinking":"call the tool"},"done":false}`+"\n"+
+			`{"error":"`+providerMessage+`"}`+"\n")
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+
+	response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model"})
+
+	require.ErrorIs(t, err, constants.ErrInferenceProviderStreamError)
+	assert.NotErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+	assert.NotContains(t, err.Error(), "XML syntax error")
+	assert.Nil(t, response)
+	assert.Equal(t, AttemptFailureStreamError, ClassifyAttemptFailure(err))
+}
+
 // An empty completion is the served model's answer, not a provider fault: it
 // returns an empty result so the evaluation grades it as a model failure.
 func TestOllamaBackend_GenerateEmptyCompletionReturnsEmptyResult(t *testing.T) {

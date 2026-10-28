@@ -343,8 +343,15 @@ func (m *rehydrationCommandMessage) GetPayload() []byte          { return m.payl
 func (m *rehydrationCommandMessage) SetPayload(p []byte)         { m.payload = p }
 func (*rehydrationCommandMessage) InferenceResultDigest() string { return "" }
 
-func rehydrationTestVT() *VerifiedTransaction {
-	return &VerifiedTransaction{Envelope: &govtypes.GovernanceEnvelope{Id: "test-rehydrate-message"}}
+func rehydrationTestVT(actionType constants.ActionType) *VerifiedTransaction {
+	return &VerifiedTransaction{Envelope: &govtypes.GovernanceEnvelope{Id: "test-rehydrate-message"}, ActionType: actionType}
+}
+
+func mustMarshalPayload(t *testing.T, msg proto.Message) []byte {
+	t.Helper()
+	payload, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	return payload
 }
 
 func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
@@ -353,9 +360,109 @@ func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
 	token, err := actuator.Scrubbing.GetTokenForValue(context.Background(), "s3cret-value")
 	require.NoError(t, err)
 
-	msg := &rehydrationCommandMessage{payload: []byte(`{"command":"login --password ` + token + `"}`)}
-	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg))
-	assert.JSONEq(t, `{"command":"login --password s3cret-value"}`, string(msg.GetPayload()))
+	msg := &rehydrationCommandMessage{payload: mustMarshalPayload(t, &operatorv1.CommandRequested{Command: "login --password " + token, ExecutionId: "exec-1"})}
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(constants.ActionTypeExecuteBash), msg))
+	var got operatorv1.CommandRequested
+	require.NoError(t, proto.Unmarshal(msg.GetPayload(), &got))
+	assert.Equal(t, "login --password s3cret-value", got.GetCommand())
+	assert.Equal(t, "exec-1", got.GetExecutionId())
+}
+
+// A restored value rarely has its token's length. Rehydrating the protobuf wire bytes as text
+// corrupted the length-delimited field around the token, and the MCP handler then failed with
+// "proto: cannot parse invalid wire-format data". The typed message must decode with the value
+// restored, and a value with JSON metacharacters must leave arguments_json valid JSON.
+func TestL5RehydratePayloadMcpCallKeepsWireFormatAndJSON(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	actuator, _ := newTestActuator(t)
+	path := "/srv/workspaces/ws-6669417971959088/case-notes.json"
+	pathToken, err := actuator.Scrubbing.GetTokenForValue(ctx, "6669417971959088")
+	require.NoError(t, err)
+	quoted := `pa"ss\word`
+	quotedToken, err := actuator.Scrubbing.GetTokenForValue(ctx, quoted)
+	require.NoError(t, err)
+	arguments := `{"path":"/srv/workspaces/ws-` + pathToken + `/case-notes.json","note":"` + quotedToken + `"}`
+
+	msg := &rehydrationCommandMessage{payload: mustMarshalPayload(t, &operatorv1.McpCallRequested{ToolName: "read_file", ArgumentsJson: arguments, ExecutionId: "exec-2"})}
+	require.NoError(t, actuator.rehydratePayload(ctx, rehydrationTestVT(constants.ActionTypeMcpCall), msg))
+
+	var got operatorv1.McpCallRequested
+	require.NoError(t, proto.Unmarshal(msg.GetPayload(), &got), "the rehydrated payload must stay valid protobuf")
+	assert.Equal(t, "read_file", got.GetToolName())
+	assert.Equal(t, "exec-2", got.GetExecutionId())
+	var args map[string]string
+	require.NoError(t, json.Unmarshal([]byte(got.GetArgumentsJson()), &args), "the rehydrated arguments must stay valid JSON")
+	assert.Equal(t, map[string]string{"path": path, "note": quoted}, args)
+}
+
+// An INFERENCE history carries the model's earlier tool call, whose arguments left the runtime
+// tokenized. This runtime's token restores inside the nested tool call; a foreign token stays
+// opaque in the prompt text.
+func TestL5RehydratePayloadInferenceHistoryToolCall(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	actuator, _ := newTestActuator(t)
+	own, err := actuator.Scrubbing.GetTokenForValue(ctx, "6669417971959088")
+	require.NoError(t, err)
+	other, err := scrubbing.NewScrubbingService(ctx, nil, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
+	require.NoError(t, err)
+	foreign, err := other.GetTokenForValue(ctx, "other-runtime-secret")
+	require.NoError(t, err)
+
+	request := &operatorv1.InferenceRequested{
+		Model: "test-model",
+		Messages: []*operatorv1.InferenceMessage{
+			{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, Parts: []*operatorv1.InferenceMessagePart{
+				{Part: &operatorv1.InferenceMessagePart_Text{Text: "compare " + foreign}},
+			}},
+			{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT, Parts: []*operatorv1.InferenceMessagePart{
+				{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "call-1", Name: "read_file", ArgumentsJson: `{"path":"/srv/ws-` + own + `/case-notes.json"}`}}},
+			}},
+		},
+	}
+	msg := &rehydrationCommandMessage{payload: mustMarshalPayload(t, request)}
+	require.NoError(t, actuator.rehydratePayload(ctx, rehydrationTestVT(constants.ActionTypeInference), msg))
+
+	var got operatorv1.InferenceRequested
+	require.NoError(t, proto.Unmarshal(msg.GetPayload(), &got))
+	assert.Equal(t, "compare "+foreign, got.GetMessages()[0].GetParts()[0].GetText())
+	assert.JSONEq(t, `{"path":"/srv/ws-6669417971959088/case-notes.json"}`, got.GetMessages()[1].GetParts()[0].GetToolCall().GetArgumentsJson())
+}
+
+// Tokens in a map's keys and values restore; two keys that restore to the same key would
+// silently drop one entry, so the payload is withheld.
+func TestL5RehydratePayloadMapKeysAndValues(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	actuator, _ := newTestActuator(t)
+	keyToken, err := actuator.Scrubbing.GetTokenForValue(ctx, "API_SECRET_NAME")
+	require.NoError(t, err)
+	valueToken, err := actuator.Scrubbing.GetTokenForValue(ctx, "s3cret-value")
+	require.NoError(t, err)
+
+	msg := &rehydrationCommandMessage{payload: mustMarshalPayload(t, &operatorv1.CommandRequested{Command: "env", Environment: map[string]string{keyToken: valueToken, "PLAIN": "1"}})}
+	require.NoError(t, actuator.rehydratePayload(ctx, rehydrationTestVT(constants.ActionTypeExecuteBash), msg))
+	var got operatorv1.CommandRequested
+	require.NoError(t, proto.Unmarshal(msg.GetPayload(), &got))
+	assert.Equal(t, map[string]string{"API_SECRET_NAME": "s3cret-value", "PLAIN": "1"}, got.GetEnvironment())
+
+	original := mustMarshalPayload(t, &operatorv1.CommandRequested{Command: "env", Environment: map[string]string{keyToken: "a", "API_SECRET_NAME": "b"}})
+	msg = &rehydrationCommandMessage{payload: original}
+	err = actuator.rehydratePayload(ctx, rehydrationTestVT(constants.ActionTypeExecuteBash), msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	require.ErrorIs(t, err, constants.ErrScrubbingKeyCollision)
+	assert.Equal(t, original, msg.GetPayload())
+}
+
+// A payload with no token is dispatched byte for byte as verified.
+func TestL5RehydratePayloadWithoutTokensKeepsBytes(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	original := mustMarshalPayload(t, &operatorv1.McpCallRequested{ToolName: "read_file", ArgumentsJson: `{"path":"/srv/a.txt",  "limit": 10}`})
+	msg := &rehydrationCommandMessage{payload: original}
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(constants.ActionTypeMcpCall), msg))
+	assert.Equal(t, original, msg.GetPayload())
 }
 
 // A payload with a placeholder that cannot be resolved fails rehydration and is left untouched,
@@ -363,13 +470,26 @@ func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
 func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
 	t.Parallel()
 	actuator, _ := newTestActuator(t)
-	original := []byte(`{"command":"login --password {{UEI_999999}}"}`)
+	original := mustMarshalPayload(t, &operatorv1.CommandRequested{Command: "login --password {{UEI_999999}}"})
 
 	msg := &rehydrationCommandMessage{payload: original}
-	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg)
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(constants.ActionTypeExecuteBash), msg)
 	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
 	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 	assert.Equal(t, original, msg.GetPayload(), "an unrehydrated payload is never handed back as dispatchable")
+}
+
+// A payload that does not decode as its action's message is never dispatched.
+func TestL5RehydratePayloadFailsClosedOnUndecodablePayload(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	original := []byte{0x0a, 0x10, 'x'}
+
+	msg := &rehydrationCommandMessage{payload: original}
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(constants.ActionTypeMcpCall), msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	assert.Equal(t, original, msg.GetPayload())
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(err))
 }
 
 // A token another runtime minted never rehydrates to a local value. An INFERENCE prompt carries
@@ -385,23 +505,25 @@ func TestL5RehydratePayloadForeignTokenByActionType(t *testing.T) {
 	require.NoError(t, err)
 	own, err := actuator.Scrubbing.GetTokenForValue(ctx, "local-secret")
 	require.NoError(t, err)
-	payload := []byte(`{"prompt":"compare ` + foreign + ` with ` + own + `"}`)
+	text := "compare " + foreign + " with " + own
 
 	t.Run("inference keeps the foreign token opaque", func(t *testing.T) {
 		t.Parallel()
-		vt := rehydrationTestVT()
-		vt.ActionType = constants.ActionTypeInference
-		msg := &rehydrationCommandMessage{payload: payload}
-		require.NoError(t, actuator.rehydratePayload(ctx, vt, msg))
-		assert.JSONEq(t, `{"prompt":"compare `+foreign+` with local-secret"}`, string(msg.GetPayload()))
+		msg := &rehydrationCommandMessage{payload: mustMarshalPayload(t, &operatorv1.InferenceRequested{Messages: []*operatorv1.InferenceMessage{{
+			Role:  operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
+			Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: text}}},
+		}}})}
+		require.NoError(t, actuator.rehydratePayload(ctx, rehydrationTestVT(constants.ActionTypeInference), msg))
+		var got operatorv1.InferenceRequested
+		require.NoError(t, proto.Unmarshal(msg.GetPayload(), &got))
+		assert.Equal(t, "compare "+foreign+" with local-secret", got.GetMessages()[0].GetParts()[0].GetText())
 	})
 
 	t.Run("shell command fails closed", func(t *testing.T) {
 		t.Parallel()
-		vt := rehydrationTestVT()
-		vt.ActionType = constants.ActionTypeExecuteBash
+		payload := mustMarshalPayload(t, &operatorv1.CommandRequested{Command: text})
 		msg := &rehydrationCommandMessage{payload: payload}
-		err := actuator.rehydratePayload(ctx, vt, msg)
+		err := actuator.rehydratePayload(ctx, rehydrationTestVT(constants.ActionTypeExecuteBash), msg)
 		require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
 		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 		assert.Equal(t, payload, msg.GetPayload())
@@ -416,16 +538,16 @@ func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
 	actuator, _ := newTestActuator(t)
 	actuator.Scrubbing = nil
 
-	tokenized := []byte(`{"command":"login --password {{UEI_1}}"}`)
+	tokenized := mustMarshalPayload(t, &operatorv1.McpCallRequested{ToolName: "read_file", ArgumentsJson: `{"path":"{{UEI_1}}"}`})
 	msg := &rehydrationCommandMessage{payload: tokenized}
-	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg)
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(constants.ActionTypeMcpCall), msg)
 	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
 	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 	assert.Equal(t, tokenized, msg.GetPayload())
 
-	plain := []byte(`{"command":"uptime"}`)
+	plain := mustMarshalPayload(t, &operatorv1.CommandRequested{Command: "uptime"})
 	msg = &rehydrationCommandMessage{payload: plain}
-	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg))
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(constants.ActionTypeExecuteBash), msg))
 	assert.Equal(t, plain, msg.GetPayload())
 }
 
@@ -437,6 +559,13 @@ func TestClassifyReceiptFailureRehydration(t *testing.T) {
 		wrapped := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, sentinel)
 		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(wrapped), sentinel.Error())
 	}
+}
+
+// Ollama's mid-stream error event is signed as its own code, not as an invalid response.
+func TestClassifyReceiptFailureProviderStreamError(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf("inference handler: ollama_backend: generate: %w", constants.ErrInferenceProviderStreamError)
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR, classifyReceiptFailure(err))
 }
 
 func TestCanonicalizeEventReceipt(t *testing.T) {

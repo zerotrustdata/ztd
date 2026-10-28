@@ -150,6 +150,10 @@ type ollamaChatOptions struct {
 
 // ollamaChatResponse is one response event from Ollama's /api/chat endpoint.
 type ollamaChatResponse struct {
+	// Error is set on a stream event Ollama sends instead of a done event when
+	// generation fails after the request was accepted, such as when its
+	// tool-call parser rejects the model's output.
+	Error                 string            `json:"error"`
 	Model                 string            `json:"model"`
 	Message               ollamaChatMessage `json:"message"`
 	Done                  bool              `json:"done"`
@@ -665,6 +669,16 @@ func (b *OllamaBackend) decodeChatStream(
 		}
 		if err != nil {
 			return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: %w: %w", constants.ErrInferenceProviderResponseInvalid, err)
+		}
+		if event.Error != "" {
+			// The provider's message stays in this log. It can echo model output,
+			// so it is never signed or returned.
+			b.logger.Warn("Ollama ended the response stream with an error",
+				"provider_attempt_id", providerAttemptID,
+				"model", servedModel,
+				"error", event.Error,
+			)
+			return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: %w", constants.ErrInferenceProviderStreamError)
 		}
 		if terminal != nil {
 			return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: terminal event: %w", constants.ErrInferenceProviderResponseInvalid)

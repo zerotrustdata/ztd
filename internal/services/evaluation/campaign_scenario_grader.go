@@ -281,6 +281,8 @@ func providerFailureReason(class inference.AttemptFailureClass) string {
 		reason = "Provider could not find the requested model (model_not_found)"
 	case inference.AttemptFailureResponseInvalid:
 		reason = "Provider returned an invalid response (provider_response_invalid)"
+	case inference.AttemptFailureStreamError:
+		reason = "Provider ended the response with an error (provider_stream_error)"
 	case inference.AttemptFailureGenerateFailed:
 		reason = "Provider generation failed (generation_failed)"
 	case inference.AttemptFailureCanceled:

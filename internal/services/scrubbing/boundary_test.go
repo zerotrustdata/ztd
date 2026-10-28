@@ -844,3 +844,33 @@ func TestScrubbedMarkerPattern(t *testing.T) {
 	assert.False(t, scrubbedMarkerPattern.MatchString("{{UEI_3F9A0C12BE47_1}}"))
 	assert.False(t, regexp.MustCompile(`^`+scrubbedMarkerPattern.String()+`$`).MatchString("{{UEI_3f9a0c12be47_1}}x"))
 }
+
+// The 16-digit card shape also matches random identifiers. Workspace ID ws-6669417971959088 is
+// an all-digit hex ID that fails the Luhn checksum; tokenizing it rewrote a model's tool-call
+// path. Only a Luhn-valid number is a card number.
+func TestScrubbingService_ScrubText_CreditCardRequiresLuhn(t *testing.T) {
+	t.Parallel()
+	service := newTestService(t, lenientConfig())
+	ctx := context.Background()
+
+	for _, kept := range []string{
+		"/srv/workspaces/ws-6669417971959088/case-notes.json",
+		"order 4111111111111112 shipped",
+	} {
+		assert.Equal(t, kept, service.ScrubText(ctx, kept), "a Luhn-invalid number is not a card number")
+	}
+	for _, card := range []string{"4111 1111 1111 1111", "4111-1111-1111-1111", "5500005555555559"} {
+		scrubbed := service.ScrubText(ctx, "card "+card+" on file")
+		assert.NotContains(t, scrubbed, card, "a Luhn-valid card number is tokenized")
+		assert.True(t, ContainsToken([]byte(scrubbed)), scrubbed)
+	}
+}
+
+func TestLuhnValid(t *testing.T) {
+	t.Parallel()
+	assert.True(t, luhnValid("4111 1111 1111 1111"))
+	assert.True(t, luhnValid("5500-0055-5555-5559"))
+	assert.False(t, luhnValid("6669417971959088"))
+	assert.False(t, luhnValid("4111111111111112"))
+	assert.False(t, luhnValid(""))
+}

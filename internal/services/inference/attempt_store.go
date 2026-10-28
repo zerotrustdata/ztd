@@ -52,6 +52,7 @@ const (
 	AttemptFailureCapabilityRejected AttemptFailureClass = "capability_unsupported"
 	AttemptFailureContextOverflow    AttemptFailureClass = "context_overflow"
 	AttemptFailureResponseInvalid    AttemptFailureClass = "provider_response_invalid"
+	AttemptFailureStreamError        AttemptFailureClass = "provider_stream_error"
 	AttemptFailureGenerateFailed     AttemptFailureClass = "generation_failed"
 	AttemptFailureCanceled           AttemptFailureClass = "canceled"
 	AttemptFailureInternal           AttemptFailureClass = "internal_error"
@@ -73,6 +74,8 @@ func ClassifyAttemptFailure(err error) AttemptFailureClass {
 		return AttemptFailureContextOverflow
 	case errors.Is(err, constants.ErrInferenceProviderResponseInvalid), errors.Is(err, constants.ErrInferenceDecisionResponseInvalid):
 		return AttemptFailureResponseInvalid
+	case errors.Is(err, constants.ErrInferenceProviderStreamError):
+		return AttemptFailureStreamError
 	case errors.Is(err, constants.ErrInferenceGenerateFailed):
 		return AttemptFailureGenerateFailed
 	case errors.Is(err, constants.ErrInferenceCanceled), errors.Is(err, constants.ErrInferenceCallerDisconnected), errors.Is(err, context.Canceled):
@@ -86,7 +89,7 @@ func (c AttemptFailureClass) valid() bool {
 	switch c {
 	case AttemptFailureBackendUnavailable, AttemptFailureBackendTimeout, AttemptFailureModelNotFound,
 		AttemptFailureCapabilityRejected, AttemptFailureContextOverflow, AttemptFailureResponseInvalid,
-		AttemptFailureGenerateFailed, AttemptFailureCanceled, AttemptFailureInternal:
+		AttemptFailureStreamError, AttemptFailureGenerateFailed, AttemptFailureCanceled, AttemptFailureInternal:
 		return true
 	default:
 		return false

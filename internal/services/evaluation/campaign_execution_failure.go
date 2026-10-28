@@ -43,9 +43,13 @@ const (
 	// this harness rejects, such as a tool the agent catalog no longer has. The
 	// executor rejects it before its first governed action.
 	ExecutionFailureScenarioContract ExecutionFailureClass = "scenario_contract_invalid"
-	ExecutionFailureCanceled         ExecutionFailureClass = "canceled"
-	ExecutionFailureTimeout          ExecutionFailureClass = "timeout"
-	ExecutionFailureInternal         ExecutionFailureClass = "internal_error"
+	// ExecutionFailureRehydration is an inference turn the inference runtime
+	// withheld because its payload could not be rehydrated. The provider was
+	// never called, so it is not a provider failure.
+	ExecutionFailureRehydration ExecutionFailureClass = "rehydration_failed"
+	ExecutionFailureCanceled    ExecutionFailureClass = "canceled"
+	ExecutionFailureTimeout     ExecutionFailureClass = "timeout"
+	ExecutionFailureInternal    ExecutionFailureClass = "internal_error"
 )
 
 // ClassifyExecutionFailure maps an executor error to its fixed failure
@@ -73,6 +77,8 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureHeldContext
 	case errors.Is(err, constants.ErrEvaluationScenarioContractInvalid):
 		return ExecutionFailureScenarioContract
+	case errors.Is(err, constants.ErrL5ActuatorRehydrate):
+		return ExecutionFailureRehydration
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
@@ -156,8 +162,8 @@ const (
 // executionFailureClasses is every class ClassifyExecutionFailure can return.
 var executionFailureClasses = []ExecutionFailureClass{
 	ExecutionFailureProvider, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
-	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureCanceled, ExecutionFailureTimeout,
-	ExecutionFailureInternal,
+	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureCanceled,
+	ExecutionFailureTimeout, ExecutionFailureInternal,
 }
 
 // verifyExecutorFailureResult structurally verifies a result the executor

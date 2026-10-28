@@ -54,6 +54,35 @@ func TestGradeHomogeneousScenario_ProviderFailureLeadsWithAttemptClass(t *testin
 	assert.Empty(t, grading.DecomposedScores, "provider failure must not produce decomposed scores lacking task_score")
 }
 
+// Ollama's tool-call parser rejected the model's output and ended the stream:
+// no model output was recorded, so it is a provider failure with its own class.
+func TestGradeHomogeneousScenario_ProviderStreamErrorNamesItsClass(t *testing.T) {
+	req := providerFailureGradeRequest()
+	err := fmt.Errorf("turn 1: %w", constants.ErrInferenceProviderStreamError)
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
+		ProviderFailure: string(ClassifyExecutionFailure(err)), ProviderFailureClass: string(ProviderFailureClass(err)),
+	}
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, agentTraceLifecycle(req, trace))
+	grading, err := GradeHomogeneousScenario(req, trace, agentTraceLifecycle(req, trace))
+	require.NoError(t, err)
+	assert.Equal(t, "Provider ended the response with an error (provider_stream_error); no final response was produced.", grading.Trajectory.PublicFailureReason)
+}
+
+// A turn the inference runtime withheld because its payload could not be
+// rehydrated never reached the provider: it is an execution failure.
+func TestAgentTraceLifecycle_RehydrationFailureIsNotProviderFailure(t *testing.T) {
+	req := providerFailureGradeRequest()
+	err := fmt.Errorf("turn 2: %w", constants.ErrL5ActuatorRehydrate)
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
+		ProviderFailure: string(ClassifyExecutionFailure(err)), ProviderFailureClass: string(ProviderFailureClass(err)),
+	}
+	assert.Equal(t, string(ExecutionFailureRehydration), trace.ProviderFailure)
+	assert.Empty(t, trace.ProviderFailureClass, "the provider never classified a failure it never saw")
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, agentTraceLifecycle(req, trace))
+}
+
 func TestGradeHomogeneousScenario_ContextFailureIsNotReportedAsModelBehavior(t *testing.T) {
 	req := providerFailureGradeRequest()
 	trace := &AgentTrace{

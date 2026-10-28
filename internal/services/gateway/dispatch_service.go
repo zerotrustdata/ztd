@@ -1064,6 +1064,10 @@ func inferenceReceiptFailureError(receipt *operatorv1.EventReceipt) error {
 		return constants.ErrInferenceModelNotFound
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID:
 		return constants.ErrInferenceProviderResponseInvalid
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR:
+		return constants.ErrInferenceProviderStreamError
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED:
+		return constants.ErrL5ActuatorRehydrate
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID:
 		return constants.ErrInferenceGenerationOptionsInvalid
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED:
