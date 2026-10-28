@@ -75,7 +75,7 @@ func ConfirmDestructive(cmd *cobra.Command, opts DestructiveOptions) (bool, erro
 	// find the first one already consumed the whole input.
 	reader := bufio.NewReader(cmd.InOrStdin())
 
-	if !opts.AssumeYes && !askYesNo(cmd, reader, "Continue?", false) {
+	if !opts.AssumeYes && !AskYesNo(cmd, reader, "Continue?", false) {
 		cmd.Println("Aborted")
 		return false, constants.ErrConfirmationAborted
 	}
@@ -83,7 +83,7 @@ func ConfirmDestructive(cmd *cobra.Command, opts DestructiveOptions) (bool, erro
 	if opts.Backup == nil || opts.SkipBackup {
 		return true, nil
 	}
-	if !opts.AssumeYes && !askYesNo(cmd, reader, opts.Backup.Prompt, true) {
+	if !opts.AssumeYes && !AskYesNo(cmd, reader, opts.Backup.Prompt, true) {
 		cmd.Println("Skipping backup.")
 		return true, nil
 	}
@@ -100,7 +100,9 @@ func ConfirmDestructive(cmd *cobra.Command, opts DestructiveOptions) (bool, erro
 	return true, nil
 }
 
-func askYesNo(cmd *cobra.Command, reader *bufio.Reader, prompt string, defaultYes bool) bool {
+// AskYesNo prints prompt with a [y/N] or [Y/n] hint and reads one answer from
+// reader. A bare newline takes the default; end of input counts as "no".
+func AskYesNo(cmd *cobra.Command, reader *bufio.Reader, prompt string, defaultYes bool) bool {
 	hint := "[y/N]"
 	if defaultYes {
 		hint = "[Y/n]"

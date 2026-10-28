@@ -8,8 +8,11 @@
 package testcmd
 
 import (
+	"bufio"
 	"context"
+	"debug/buildinfo"
 	"fmt"
+	"go/version"
 	"io"
 	"log/slog"
 	"os"
@@ -339,24 +342,50 @@ func testCoverageCmdWithRunner(runner coverageCommandRunner) *cobra.Command {
 }
 
 func testLintCmd() *cobra.Command {
+	return testLintCmdWithDeps(realE2ERunner(os.Stdout, os.Stderr), locateGolangciLint)
+}
+
+// golangciLint is the golangci-lint binary the lint command would run.
+type golangciLint struct {
+	path string
+	// problem says why the binary cannot lint this module; empty when it can.
+	problem string
+	// shadowed is an earlier PATH entry that path was chosen over.
+	shadowed string
+}
+
+type golangciLintLocator func(ctx context.Context) golangciLint
+
+func testLintCmdWithDeps(runner e2eCommandRunner, locate golangciLintLocator) *cobra.Command {
+	var assumeYes bool
+
 	cmd := &cobra.Command{
 		Use:   "lint",
 		Short: "Run linting and quality checks",
-		Long:  `Run golangci-lint with the repository configuration. This includes staticcheck, govet, and additional linters for bug prevention, security, and code quality. Install the pinned golangci-lint with make dev-tools.`,
+		Long:  `Run golangci-lint with the repository configuration. This includes staticcheck, govet, and additional linters for bug prevention, security, and code quality. The golangci-lint in the Go bin directory is preferred over PATH, as in the Makefile. When it is missing or was built with a Go older than go.mod targets, the command offers to install the pinned version with make golangci-lint-install; --yes installs without asking.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Running linting and quality checks...")
 
-			// The Makefile owns the golangci-lint pin; install it with make dev-tools.
-			if _, err := exec.LookPath("golangci-lint"); err != nil {
-				return fmt.Errorf("%w: golangci-lint not on PATH (run make dev-tools): %w", constants.ErrLintingFailed, err)
+			lint := locate(cmd.Context())
+			if lint.shadowed != "" {
+				cmd.Printf("Using %s instead of %s, which is earlier on PATH.\n", lint.path, lint.shadowed)
+			}
+			if lint.problem != "" {
+				cmd.Printf("%s %s.\n", lintDisplayName(lint), lint.problem)
+				prompt := "Install the pinned golangci-lint now (make golangci-lint-install)?"
+				if !assumeYes && !shared.AskYesNo(cmd, bufio.NewReader(cmd.InOrStdin()), prompt, true) {
+					return fmt.Errorf("%w: golangci-lint %s (run make golangci-lint-install)", constants.ErrLintingFailed, lint.problem)
+				}
+				if _, err := runner(cmd.Context(), "make", "golangci-lint-install"); err != nil {
+					return fmt.Errorf("%w: install golangci-lint: %w", constants.ErrLintingFailed, err)
+				}
+				// Re-resolve: the install lands in the Go bin dir, which locate prefers.
+				if lint = locate(cmd.Context()); lint.problem != "" {
+					return fmt.Errorf("%w: %s still %s after make golangci-lint-install", constants.ErrLintingFailed, lintDisplayName(lint), lint.problem)
+				}
 			}
 
-			// Run golangci-lint
-			lintCmd := exec.Command("golangci-lint", "run")
-			lintCmd.Stdout = os.Stdout
-			lintCmd.Stderr = os.Stderr
-
-			if err := lintCmd.Run(); err != nil {
+			if _, err := runner(cmd.Context(), lint.path, "run"); err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrLintingFailed, err)
 			}
 
@@ -365,7 +394,99 @@ func testLintCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().BoolVar(&assumeYes, shared.FlagYes, false, "Install the pinned golangci-lint without asking when it is missing or stale")
+
 	return cmd
+}
+
+func lintDisplayName(lint golangciLint) string {
+	if lint.path == "" {
+		return "golangci-lint"
+	}
+	return lint.path
+}
+
+// locateGolangciLint resolves golangci-lint the way the Makefile does: the Go
+// bin dir, where make golangci-lint-install puts the pinned build, ahead of PATH.
+func locateGolangciLint(ctx context.Context) golangciLint {
+	onPath, _ := exec.LookPath("golangci-lint")
+	lint := golangciLint{path: onPath}
+
+	if dir := goBinDir(ctx); dir != "" {
+		name := "golangci-lint"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil {
+			if onPath != "" {
+				if pathInfo, err := os.Stat(onPath); err == nil && !os.SameFile(info, pathInfo) {
+					lint.shadowed = onPath
+				}
+			}
+			lint.path = candidate
+		}
+	}
+
+	if lint.path == "" {
+		lint.problem = "is not installed"
+		return lint
+	}
+	built, err := buildinfo.ReadFile(lint.path)
+	if err != nil {
+		lint.problem = "has no readable Go build info"
+		return lint
+	}
+	goMod, err := os.ReadFile("go.mod")
+	if err != nil {
+		// Outside the module root; golangci-lint reports its own errors.
+		return lint
+	}
+	lint.problem = lintGoVersionProblem(built.GoVersion, goModGoVersion(goMod))
+	return lint
+}
+
+// goBinDir is where go install writes: GOBIN, else the first GOPATH entry's bin.
+func goBinDir(ctx context.Context) string {
+	out, err := exec.CommandContext(ctx, "go", "env", "GOBIN", "GOPATH").Output()
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(out), "\n")
+	if len(lines) < 2 {
+		return ""
+	}
+	if gobin := strings.TrimSpace(lines[0]); gobin != "" {
+		return gobin
+	}
+	if gopath := filepath.SplitList(strings.TrimSpace(lines[1])); len(gopath) > 0 && gopath[0] != "" {
+		return filepath.Join(gopath[0], "bin")
+	}
+	return ""
+}
+
+// goModGoVersion returns the go directive of a go.mod file, or "" if it has none.
+func goModGoVersion(goMod []byte) string {
+	for _, line := range strings.Split(string(goMod), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "go "); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// lintGoVersionProblem reports why a golangci-lint built with builtWith (for
+// example "go1.26.2") cannot load a module whose go directive is target, or ""
+// when it can. golangci-lint refuses to run in that case.
+func lintGoVersionProblem(builtWith, target string) string {
+	if target == "" {
+		return ""
+	}
+	built, _, _ := strings.Cut(builtWith, " ")
+	if version.Compare(built, "go"+target) < 0 {
+		return fmt.Sprintf("was built with %s, older than go%s in go.mod", built, target)
+	}
+	return ""
 }
 
 func testSummaryCmd() *cobra.Command {

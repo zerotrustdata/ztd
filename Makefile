@@ -171,9 +171,10 @@ GO_CI_TOOL_PKGS := \
 	$(PROTO_PLUGIN_PKGS) \
 	golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) \
 	github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
+GOLANGCI_LINT_PKG := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GO_DEV_TOOL_PKGS := \
 	$(GO_CI_TOOL_PKGS) \
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	$(GOLANGCI_LINT_PKG)
 
 # Recursive (=) so the lookup runs when a recipe uses it, after buf-install has
 # had the chance to put buf on PATH. $(shell) does not see the exported PATH on
@@ -195,6 +196,7 @@ help:
 		'  dev-setup                 Install everything required by make ci' \
 		'  dev-check                 Verify the local development toolchain' \
 		'  dev-tools                 Install pinned Go development tools' \
+		'  golangci-lint-install     Install only the pinned golangci-lint' \
 		'  dev-node                  Install Node dependencies for all workspaces' \
 		'' \
 		'CI' \
@@ -504,11 +506,13 @@ hooks-install:
 
 # Go-based tools (buf, protoc plugins, golangci-lint, govulncheck, swag).
 # Explicit `make dev-tools` refreshes every tool to the pinned versions;
-# `make ci-tools` installs the CI subset.
+# `make ci-tools` installs the CI subset; `make golangci-lint-install` installs
+# only golangci-lint (`./ztd test lint` offers it when the binary is missing or stale).
 dev-tools: TOOL_PKGS = $(GO_DEV_TOOL_PKGS)
 ci-tools: TOOL_PKGS = $(GO_CI_TOOL_PKGS)
-.PHONY: dev-tools ci-tools
-dev-tools ci-tools:
+golangci-lint-install: TOOL_PKGS = $(GOLANGCI_LINT_PKG)
+.PHONY: dev-tools ci-tools golangci-lint-install
+dev-tools ci-tools golangci-lint-install:
 	@echo "Installing Go tools into $(GO_BIN_DIR)..."
 	@for pkg in $(TOOL_PKGS); do \
 		echo "  go install $$pkg"; \

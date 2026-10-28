@@ -7,6 +7,8 @@
 
 package constants
 
+import "time"
+
 // System paths (Unix) for critical system directories and files.
 const (
 	PathEtc                                                   = "/etc"
@@ -539,6 +541,11 @@ const (
 	FsGrepMaxMatches            = 500
 	FsGrepScannerInitialBufSize = 64 * 1024
 	FsGrepScannerMaxBufSize     = 1024 * 1024
+	// FsGrepMaxWalkEntries and FsGrepMaxWalkDuration bound one grep walk; a
+	// search rooted at a large tree such as / stops there with a truncated
+	// result instead of running until the caller's deadline.
+	FsGrepMaxWalkEntries  = 50000
+	FsGrepMaxWalkDuration = 15 * time.Second
 
 	ExecutionMaxStreamSize = 10 * 1024 * 1024 // 10MB per stream
 	ExecutionMaxLines      = 50               // Max lines for terminal output preview

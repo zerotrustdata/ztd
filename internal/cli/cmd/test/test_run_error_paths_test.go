@@ -14,8 +14,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
@@ -482,4 +484,128 @@ func TestTestIntegrationCmd_NonzeroExitWrapsIntegrationError(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
 	assert.Contains(t, err.Error(), "exit code 2")
+}
+
+// fakeLintLocator returns each result in turn, repeating the last one.
+func fakeLintLocator(results ...golangciLint) golangciLintLocator {
+	return func(context.Context) golangciLint {
+		next := results[0]
+		if len(results) > 1 {
+			results = results[1:]
+		}
+		return next
+	}
+}
+
+func recordingLintRunner(calls *[][]string) e2eCommandRunner {
+	return func(_ context.Context, name string, args ...string) (int, error) {
+		*calls = append(*calls, append([]string{name}, args...))
+		return 0, nil
+	}
+}
+
+func runLintCmd(t *testing.T, cmd *cobra.Command, stdin string, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetIn(strings.NewReader(stdin))
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	require.NoError(t, cmd.ParseFlags(args))
+	err := cmd.RunE(cmd, nil)
+	return out.String(), err
+}
+
+const staleLintProblem = "was built with go1.26.2, older than go1.27.3 in go.mod"
+
+func TestTestLintCmd_CurrentBinaryRunsWithoutPrompt(t *testing.T) {
+	var calls [][]string
+	cmd := testLintCmdWithDeps(recordingLintRunner(&calls), fakeLintLocator(golangciLint{
+		path:     "/gobin/golangci-lint",
+		shadowed: "/usr/local/bin/golangci-lint",
+	}))
+
+	out, err := runLintCmd(t, cmd, "")
+
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{{"/gobin/golangci-lint", "run"}}, calls)
+	assert.Contains(t, out, "Using /gobin/golangci-lint instead of /usr/local/bin/golangci-lint")
+	assert.NotContains(t, out, "[Y/n]")
+}
+
+func TestTestLintCmd_StaleBinaryInstallsOnConfirm(t *testing.T) {
+	var calls [][]string
+	cmd := testLintCmdWithDeps(recordingLintRunner(&calls), fakeLintLocator(
+		golangciLint{path: "/usr/local/bin/golangci-lint", problem: staleLintProblem},
+		golangciLint{path: "/gobin/golangci-lint"},
+	))
+
+	out, err := runLintCmd(t, cmd, "\n")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "/usr/local/bin/golangci-lint "+staleLintProblem)
+	assert.Contains(t, out, "[Y/n]")
+	assert.Equal(t, [][]string{
+		{"make", "golangci-lint-install"},
+		{"/gobin/golangci-lint", "run"},
+	}, calls)
+}
+
+func TestTestLintCmd_YesFlagInstallsWithoutPrompt(t *testing.T) {
+	var calls [][]string
+	cmd := testLintCmdWithDeps(recordingLintRunner(&calls), fakeLintLocator(
+		golangciLint{problem: "is not installed"},
+		golangciLint{path: "/gobin/golangci-lint"},
+	))
+
+	out, err := runLintCmd(t, cmd, "", "--yes")
+
+	require.NoError(t, err)
+	assert.NotContains(t, out, "[Y/n]")
+	assert.Equal(t, [][]string{
+		{"make", "golangci-lint-install"},
+		{"/gobin/golangci-lint", "run"},
+	}, calls)
+}
+
+func TestTestLintCmd_DeclinedOrNoInputDoesNotInstall(t *testing.T) {
+	for name, stdin := range map[string]string{"declined": "n\n", "no input": ""} {
+		t.Run(name, func(t *testing.T) {
+			var calls [][]string
+			cmd := testLintCmdWithDeps(recordingLintRunner(&calls), fakeLintLocator(
+				golangciLint{path: "/usr/local/bin/golangci-lint", problem: staleLintProblem},
+			))
+
+			_, err := runLintCmd(t, cmd, stdin)
+
+			require.ErrorIs(t, err, constants.ErrLintingFailed)
+			assert.Contains(t, err.Error(), "make golangci-lint-install")
+			assert.Empty(t, calls)
+		})
+	}
+}
+
+func TestTestLintCmd_StillStaleAfterInstallFails(t *testing.T) {
+	var calls [][]string
+	cmd := testLintCmdWithDeps(recordingLintRunner(&calls), fakeLintLocator(
+		golangciLint{path: "/gobin/golangci-lint", problem: staleLintProblem},
+	))
+
+	_, err := runLintCmd(t, cmd, "y\n")
+
+	require.ErrorIs(t, err, constants.ErrLintingFailed)
+	assert.Contains(t, err.Error(), "still "+staleLintProblem)
+	assert.Equal(t, [][]string{{"make", "golangci-lint-install"}}, calls)
+}
+
+func TestLintGoVersionProblem(t *testing.T) {
+	assert.Equal(t, staleLintProblem, lintGoVersionProblem("go1.26.2", "1.27.3"))
+	assert.Equal(t, "was built with go1.27.2, older than go1.27.3 in go.mod", lintGoVersionProblem("go1.27.2", "1.27.3"))
+	assert.Empty(t, lintGoVersionProblem("go1.27.3", "1.27.3"))
+	assert.Empty(t, lintGoVersionProblem("go1.28.0 X:nocoverageredesign", "1.27.3"))
+	assert.Empty(t, lintGoVersionProblem("go1.26.2", ""))
+}
+
+func TestGoModGoVersion(t *testing.T) {
+	assert.Equal(t, "1.27.3", goModGoVersion([]byte("module example.com/m\n\ngo 1.27.3\n\ntoolchain go1.27.4\n")))
+	assert.Empty(t, goModGoVersion([]byte("module example.com/m\n")))
 }

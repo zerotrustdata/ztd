@@ -432,7 +432,7 @@ In-depth test rules reside in [Testing Guide](tests.md).
 | `./ztd test integration` | 2 | `integration` build tag. Cross-package suites in `test/`. Reusable setup in `test/fixtures/`. |
 | `./ztd test e2e` | 3 | `e2e` build tag. Tests in `test/e2e/`. Expects an already running platform. |
 | `./ztd test coverage` | | Coverage entry in `internal/cli/cmd/test/test.go`. Report layout: [Testing Guide](tests.md). |
-| `./ztd test lint` | | CLI lint entry. Repository lint target is `make lint`. |
+| `./ztd test lint` | | CLI lint entry. Prefers the Go bin dir golangci-lint and offers `make golangci-lint-install` when it is missing or stale. Repository lint target is `make lint`. |
 | `./ztd test chaos` | | Chaos command in `internal/cli/cmd/test/chaos.go`. Engine: `internal/tools/chaos/`. |
 | `./ztd test summary` | | Reads chaos summary from test vault. |
 | `./ztd test public-loop` | | Provider-free public-feed qualification. Stays in `testcmd` (`INV-PKG-02`). |
