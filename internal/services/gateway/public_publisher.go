@@ -1622,7 +1622,6 @@ func (s *PublicPublisherService) appendPublicationLocked(ctx context.Context, ca
 		VerifiedIndexGenerationHash: verifiedIndexGenHash,
 		VerificationOK:              true,
 		Entries:                     segmentEntries,
-		VerifierInstructions:        "Run ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key <trusted-ed25519-key-hex>. Verify every signed link from the zero root, apply withdrawals, then hash active artifacts by their content-addressed IDs.",
 		GeneratedAt:                 time.Now().UTC(),
 	})
 	if err != nil {
@@ -1652,6 +1651,7 @@ func publicProofManifestProjection(segment models.PublicProofManifestSegment, en
 		VerifierInstructions:        segment.VerifierInstructions,
 		GeneratedAt:                 segment.GeneratedAt,
 		SigningKeyID:                segment.SigningKeyID,
+		SigningPublicKey:            segment.SigningPublicKey,
 		Signature:                   segment.Signature,
 	}
 }
@@ -1713,7 +1713,7 @@ func (s *PublicPublisherService) planAssignmentAuditProof(ctx context.Context, r
 			Content:             database,
 			CampaignID:          request.CampaignID,
 			SourceRunID:         request.RunID,
-			VerificationCommand: fmt.Sprintf("ztd public verify-assignment --db %s --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>", dbFilename),
+			VerificationCommand: models.PublicAssignmentAuditVerificationCommand(dbFilename),
 		})
 		plan.response.DatabaseSHA256 = hashBytes(database)
 	}
@@ -1945,7 +1945,6 @@ func (s *PublicPublisherService) PruneProofCatalogForRun(ctx context.Context, ru
 		VerifiedIndexGenerationHash: index.head.VerifiedIndexGenerationHash,
 		VerificationOK:              true,
 		WithdrawnArtifactIDs:        removedIDs,
-		VerifierInstructions:        index.head.VerifierInstructions,
 		GeneratedAt:                 time.Now().UTC(),
 	})
 	if err != nil {

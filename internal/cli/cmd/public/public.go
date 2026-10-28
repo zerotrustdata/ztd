@@ -201,9 +201,10 @@ func Cmd() *cobra.Command {
 	return cmd
 }
 
-// publicProofKeyRegistry maps a signing key ID to its pinned Ed25519 public key.
+// publicProofKeyRegistry maps a signing key ID to a pinned Ed25519 public key.
 // The entry under "*", set by --public-key, verifies a segment whose key ID is
-// not otherwise registered.
+// not otherwise registered. An empty registry means each segment is verified
+// under the key published in the log.
 type publicProofKeyRegistry map[string]ed25519.PublicKey
 
 // publicProofChain is a verified proof segment log and the artifacts it leaves
@@ -218,13 +219,13 @@ type publicProofChain struct {
 	ActiveIDs []string
 }
 
-// loadPublicProofKeyRegistry pins the trusted signing keys named by --public-key
-// and --key-registry. At least one of the two must be set.
+// loadPublicProofKeyRegistry loads the optional pins named by --public-key and
+// --key-registry. Both may be empty; verification then uses signing_public_key.
 func loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath string) (publicProofKeyRegistry, error) {
-	if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
-		return nil, constants.ErrMissingRequiredField
-	}
 	keyRegistry := make(publicProofKeyRegistry)
+	if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
+		return keyRegistry, nil
+	}
 	if strings.TrimSpace(publicKeyHex) != "" {
 		pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(publicKeyHex))
 		if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
@@ -281,14 +282,68 @@ func readPublicProofSegments(segmentsPath string) ([]models.PublicProofManifestS
 	return segments, nil
 }
 
+// publishedProofKeys collects signing_public_key values by signing key ID.
+// A key must hash to that segment's signing_key_id. One key ID has one key.
+func publishedProofKeys(segments []models.PublicProofManifestSegment) (map[string]ed25519.PublicKey, error) {
+	published := make(map[string]ed25519.PublicKey)
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.SigningPublicKey) == "" {
+			continue
+		}
+		key, err := models.DecodePublicProofSigningKey(seg.SigningPublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: %w", seg.SegmentIndex, err)
+		}
+		if models.PublicProofSigningKeyID(key) != seg.SigningKeyID {
+			return nil, fmt.Errorf("%w: segment %d signing_public_key does not match signing_key_id", constants.ErrPublicFeedProofSegmentInvalid, seg.SegmentIndex)
+		}
+		if existing, ok := published[seg.SigningKeyID]; ok && !bytes.Equal(existing, key) {
+			return nil, fmt.Errorf("%w: segment %d signing_public_key conflicts with an earlier segment", constants.ErrPublicFeedProofSegmentInvalid, seg.SegmentIndex)
+		}
+		published[seg.SigningKeyID] = key
+	}
+	return published, nil
+}
+
+// selectSegmentVerificationKey chooses the Ed25519 key for one segment. A pin
+// overrides the published key and must equal it when the log publishes one.
+// Without a pin, a key published on any segment with the same signing_key_id
+// verifies this segment.
+func selectSegmentVerificationKey(seg models.PublicProofManifestSegment, pinned publicProofKeyRegistry, published map[string]ed25519.PublicKey) (ed25519.PublicKey, error) {
+	var pinnedKey ed25519.PublicKey
+	hasPin := false
+	if key, ok := pinned[seg.SigningKeyID]; ok {
+		pinnedKey, hasPin = key, true
+	} else if key, ok := pinned[seg.SourceID+":"+seg.SigningKeyID]; ok {
+		pinnedKey, hasPin = key, true
+	} else if key, ok := pinned["*"]; ok {
+		pinnedKey, hasPin = key, true
+	}
+	publishedKey, hasPublished := published[seg.SigningKeyID]
+	if hasPin {
+		if hasPublished && !bytes.Equal(pinnedKey, publishedKey) {
+			return nil, fmt.Errorf("%w: segment %d pinned key does not match signing_public_key", constants.ErrPublicFeedSignatureInvalid, seg.SegmentIndex)
+		}
+		return pinnedKey, nil
+	}
+	if hasPublished {
+		return publishedKey, nil
+	}
+	return nil, fmt.Errorf("%w: segment %d has no signing_public_key for %s; pass --public-key or --key-registry to pin one", constants.ErrPublicFeedProofSegmentInvalid, seg.SegmentIndex, seg.SigningKeyID)
+}
+
 // verifyPublicProofChain checks a proof segment log from its zero root: indexes
 // and previous roots link consecutively, each root and signature verifies under
-// its registered key, withdrawals name only artifacts already listed and not yet
-// withdrawn, and no artifact is listed twice. It returns the artifacts still
-// active at the head.
+// its published or pinned key, withdrawals name only artifacts already listed
+// and not yet withdrawn, and no artifact is listed twice. It returns the
+// artifacts still active at the head.
 func verifyPublicProofChain(segments []models.PublicProofManifestSegment, keyRegistry publicProofKeyRegistry) (publicProofChain, error) {
 	if len(segments) == 0 {
 		return publicProofChain{}, fmt.Errorf("%w: segments log is empty", constants.ErrPublicFeedProofSegmentInvalid)
+	}
+	published, err := publishedProofKeys(segments)
+	if err != nil {
+		return publicProofChain{}, err
 	}
 	withdrawn := make(map[string]bool)
 	type orderedEntry struct {
@@ -311,17 +366,10 @@ func verifyPublicProofChain(segments []models.PublicProofManifestSegment, keyReg
 			return publicProofChain{}, fmt.Errorf("%w: segment %d previous root %s != expected %s", constants.ErrPublicFeedProofSegmentLinkMismatch, seg.SegmentIndex, seg.PreviousRoot, expectedPrevRoot)
 		}
 
-		var segKey ed25519.PublicKey
-		if k, ok := keyRegistry[seg.SigningKeyID]; ok {
-			segKey = k
-		} else if k, ok := keyRegistry[seg.SourceID+":"+seg.SigningKeyID]; ok {
-			segKey = k
-		} else if k, ok := keyRegistry["*"]; ok {
-			segKey = k
-		} else {
-			return publicProofChain{}, fmt.Errorf("%w: unknown signing key %s for segment %d", constants.ErrPublicFeedProofSegmentInvalid, seg.SigningKeyID, seg.SegmentIndex)
+		segKey, err := selectSegmentVerificationKey(seg, keyRegistry, published)
+		if err != nil {
+			return publicProofChain{}, err
 		}
-
 		if err := models.VerifyPublicProofSegment(segments[0].SourceID, seg, segKey); err != nil {
 			return publicProofChain{}, fmt.Errorf("public-feed: verify segment %d: %w", seg.SegmentIndex, err)
 		}
@@ -368,6 +416,11 @@ func publicVerifyProofCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify-proof",
 		Short: "Verify a published proof package offline",
+		Long: `Recomputes the segment hash chain from the zero root, checks each Ed25519
+signature under that segment's signing_public_key, and hashes active artifacts.
+--public-key and --key-registry are optional pins. The default command checks
+the published signatures and hash chain. It does not establish an out-of-band
+publisher identity.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(segmentsPath) == "" || strings.TrimSpace(artifactsPath) == "" {
 				return constants.ErrMissingRequiredField
@@ -419,8 +472,8 @@ func publicVerifyProofCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
 	cmd.Flags().StringVar(&artifactsPath, "artifacts", "", "Path to directory containing proof artifact files")
-	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Hex-encoded Ed25519 public key")
-	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Path to JSON file containing pinned key registry {key_id: public_key_hex}")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
 	_ = cmd.MarkFlagRequired("segments")
 	_ = cmd.MarkFlagRequired("artifacts")
 	return cmd
@@ -473,6 +526,9 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify-assignment",
 		Short: "Verify an assignment audit database against its signed proof segments",
+		Long: `Verifies the segment log, requires the database SHA-256 to be an active
+artifact of that log, then checks the database's live events. The segment log
+supplies signing_public_key unless --public-key or --key-registry is set.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(segmentsPath) == "" {
 				return constants.ErrMissingRequiredField
@@ -507,8 +563,8 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dbPath, "db", "", "Path to the assignment audit SQLite file")
 	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
-	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Hex-encoded Ed25519 public key")
-	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Path to JSON file containing pinned key registry {key_id: public_key_hex}")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
 	_ = cmd.MarkFlagRequired("db")
 	_ = cmd.MarkFlagRequired("segments")
 	return cmd

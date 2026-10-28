@@ -17,6 +17,7 @@ import {
 } from '../contract/scenario-fixture';
 import type { ProofCatalogEntry, PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
+import { runnableVerifyCommand } from '../verifyCommand';
 import { useMirrorOrigin } from '../state/mirror';
 import { useProofArtifact } from '../state/proof';
 import { TextBlock } from './AgentTraceSection';
@@ -65,7 +66,7 @@ function ArtifactProof({ binding, artifact, url, noun }: {
     <div className="agent-trace-proof">
       <code>sha256 {binding.sha256}</code>
       {url ? <a href={url} download={artifact.filename}>Download {noun}</a> : <span>Download {noun}</span>}
-      <CopyButton text={artifact.verification_command} label={`${noun} verify command`} />
+      <CopyButton text={runnableVerifyCommand(artifact.verification_command)} label={`${noun} verify command`} />
     </div>
   );
 }

@@ -146,8 +146,13 @@
         "type": "string"
       },
       "signing_key_id": {
-        "description": "Identifier of the signing key used to sign the proof root",
+        "description": "SHA-256 hex of the Ed25519 public key in signing_public_key",
         "required": true,
+        "type": "string"
+      },
+      "signing_public_key": {
+        "description": "Ed25519 public key, hex-encoded. SHA-256 of the key bytes equals signing_key_id. The mirror fills this from its registered key when the stored head omits it.",
+        "required": false,
         "type": "string"
       },
       "source_id": {
@@ -221,8 +226,13 @@
         "type": "string"
       },
       "signing_key_id": {
-        "description": "Identifier of the signing key used to sign the proof root",
+        "description": "SHA-256 hex of the Ed25519 public key in signing_public_key",
         "required": true,
+        "type": "string"
+      },
+      "signing_public_key": {
+        "description": "Ed25519 public key, hex-encoded. SHA-256 of the key bytes equals signing_key_id. Excluded from the legacy manifest root.",
+        "required": false,
         "type": "string"
       },
       "verification_ok": {
@@ -242,7 +252,7 @@
       }
     },
     "public_proof_manifest_segment": {
-      "_description": "One source-signed append-only proof log link. The root binds every field except root and signature using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot.",
+      "_description": "One source-signed append-only proof log link. The root binds every field except root, signature, and signing_public_key using the domain-separated length-prefixed encoding defined by models.ComputePublicProofSegmentRoot. signing_public_key is bound because signing_key_id is the SHA-256 of that key and is inside the root. Excluding the key keeps segments signed before the field existed valid.",
       "campaign_id": {
         "required": false,
         "type": "string"
@@ -286,7 +296,13 @@
         "type": "string"
       },
       "signing_key_id": {
+        "description": "SHA-256 hex of the Ed25519 public key in signing_public_key",
         "required": true,
+        "type": "string"
+      },
+      "signing_public_key": {
+        "description": "Ed25519 public key, hex-encoded. SHA-256 of the key bytes equals signing_key_id. Excluded from the segment root so segments signed before the field existed stay valid. Verification rejects a key that does not hash to signing_key_id.",
+        "required": false,
         "type": "string"
       },
       "source_id": {

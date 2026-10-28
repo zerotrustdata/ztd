@@ -760,6 +760,7 @@ func (s *PublicMirrorStore) ProofHead(ctx context.Context, sourceID string) (mod
 		VerifierInstructions:        header.VerifierInstructions,
 		GeneratedAt:                 header.GeneratedAt,
 		SigningKeyID:                header.SigningKeyID,
+		SigningPublicKey:            header.SigningPublicKey,
 		Signature:                   header.Signature,
 	}, true, nil
 }
