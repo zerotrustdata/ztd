@@ -257,6 +257,7 @@ help:
 		'  test-cross-enrollment     Run against a prepared cross-enrollment topology' \
 		'  test-eval-live            Tier 4 live-provider gate (LIVE_OLLAMA_ENDPOINT, LIVE_MODEL)' \
 		'  test-onboarding-smoke     Contributor setup and release smoke in a fresh checkout' \
+		'  test-agent-smoke          Local-model governed agent smoke (CPU, Ollama or llama.cpp)' \
 		'' \
 		'Quality checks' \
 		'  lint                      Run all lint and quality checks' \
@@ -488,6 +489,12 @@ test-onboarding:
 test-onboarding-smoke:
 	@echo 'WARNING: This runs contributor setup and requires a fresh checkout without runtime state or .env.'
 	@bash scripts/ci/onboarding-smoke.sh
+
+# Local-model agent smoke. Not part of `make test`: it downloads Ollama and a
+# small model, starts a Gateway, and runs goose. CPU only.
+.PHONY: test-agent-smoke
+test-agent-smoke:
+	@bash scripts/agent-governed-smoke.sh
 
 DISTROS ?= ubuntu debian fedora arch
 SCENARIOS ?= build-only rerun quickstart
