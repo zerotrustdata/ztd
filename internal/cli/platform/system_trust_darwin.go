@@ -12,7 +12,9 @@ package platform
 
 import (
 	"context"
+	"crypto/sha1" //nolint:gosec // SHA-1 is the keychain item handle security(1) deletes by, not a security decision.
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -82,11 +84,7 @@ func darwinScopeLabel(scope string) string {
 // already-trusted root does not prompt.
 func (i *SystemTrustInstaller) isTrustedPlatform(ctx context.Context, root *x509.Certificate, fingerprint string) (bool, error) {
 	for _, kc := range darwinTrustKeychains() {
-		out, err := i.runner.Run(ctx, nil, "security", "find-certificate", "-a", "-p", kc.path)
-		if err != nil {
-			continue
-		}
-		found, err := bundleContainsFingerprint(out, fingerprint)
+		found, err := i.keychainHolds(ctx, kc.path, fingerprint)
 		if err != nil {
 			return false, err
 		}
@@ -94,6 +92,17 @@ func (i *SystemTrustInstaller) isTrustedPlatform(ctx context.Context, root *x509
 			return true, nil
 		}
 	}
+	return false, nil
+}
+
+// keychainHolds reports whether keychain contains a certificate with the
+// given SHA-256 fingerprint. An unreadable or empty keychain holds nothing.
+func (i *SystemTrustInstaller) keychainHolds(ctx context.Context, keychain, fingerprint string) (bool, error) {
+	out, err := i.runner.Run(ctx, nil, "security", "find-certificate", "-a", "-p", keychain)
+	if err == nil {
+		return bundleContainsFingerprint(out, fingerprint)
+	}
+	// find-certificate exits non-zero for an empty or unreadable keychain.
 	return false, nil
 }
 
@@ -112,37 +121,56 @@ func (i *SystemTrustInstaller) installPlatform(ctx context.Context, root *x509.C
 	}
 	defer cleanup()
 
+	held, err := i.keychainHolds(ctx, login, fingerprint)
+	if err != nil {
+		return err
+	}
 	// -p ssl limits the anchor to TLS. It is not a code-signing or package-signing root.
 	out, err := i.runner.Run(ctx, nil, "security", "add-trusted-cert", "-r", "trustRoot", "-p", "ssl", "-k", login, certPath)
 	if err != nil {
+		if !held {
+			i.removeUntrustedImport(ctx, root, login)
+		}
 		return trustCmdError(out, err)
 	}
 	return nil
+}
+
+// removeUntrustedImport deletes the copy add-trusted-cert imported before its
+// trust write failed (a cancelled macOS dialog, or no GUI session to show it).
+// isTrustedPlatform reads presence in the keychain, so an untrusted leftover
+// would report the root as trusted and block every retry. The caller only
+// calls this when the keychain did not hold the root beforehand, so it never
+// removes an existing anchor. Deletion is best effort: when nothing was
+// imported there is nothing to delete, and the install error is what matters.
+func (i *SystemTrustInstaller) removeUntrustedImport(ctx context.Context, root *x509.Certificate, keychain string) {
+	thumbprint := sha1.Sum(root.Raw) //nolint:gosec // keychain item handle, see import
+	_, _ = i.runner.Run(ctx, nil, "security", "delete-certificate", "-Z", hex.EncodeToString(thumbprint[:]), keychain)
 }
 
 // listStaleAnchorsPlatform pairs each SHA-1 from `security -Z` with the PEM
 // that follows it. One hash must not be reused for every certificate in the
 // keychain: delete-certificate would then remove the wrong anchor.
 func (i *SystemTrustInstaller) listStaleAnchorsPlatform(ctx context.Context, currentFingerprint string) ([]StaleAnchor, error) {
-	var stale []StaleAnchor
+	stale := []StaleAnchor{}
 	for _, kc := range darwinTrustKeychains() {
-		found, err := i.listKeychainAnchors(ctx, kc, currentFingerprint)
-		if err != nil {
-			return nil, err
-		}
-		stale = append(stale, found...)
-	}
-	if stale == nil {
-		return []StaleAnchor{}, nil
+		stale = append(stale, i.listKeychainAnchors(ctx, kc, currentFingerprint)...)
 	}
 	return stale, nil
 }
 
-func (i *SystemTrustInstaller) listKeychainAnchors(ctx context.Context, kc darwinKeychain, currentFingerprint string) ([]StaleAnchor, error) {
+// listKeychainAnchors returns the stale anchors in one keychain.
+// find-certificate exits non-zero when nothing matches or the keychain is
+// unreadable; both mean that keychain holds no stale anchor.
+func (i *SystemTrustInstaller) listKeychainAnchors(ctx context.Context, kc darwinKeychain, currentFingerprint string) []StaleAnchor {
 	out, err := i.runner.Run(ctx, nil, "security", "find-certificate", "-c", constants.RootCACommonName, "-a", "-p", "-Z", kc.path)
-	if err != nil {
-		return nil, nil
+	if err == nil {
+		return staleAnchorsIn(out, kc, currentFingerprint)
 	}
+	return nil
+}
+
+func staleAnchorsIn(out []byte, kc darwinKeychain, currentFingerprint string) []StaleAnchor {
 	var stale []StaleAnchor
 	for _, item := range parseSecurityHashPEM(out) {
 		if !validSHA1(item.sha1) {
@@ -168,7 +196,7 @@ func (i *SystemTrustInstaller) listKeychainAnchors(ctx context.Context, kc darwi
 			Elevated:    kc.scope == darwinScopeSystem,
 		})
 	}
-	return stale, nil
+	return stale
 }
 
 type securityHashPEM struct {

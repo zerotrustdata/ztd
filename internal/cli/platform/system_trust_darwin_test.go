@@ -15,8 +15,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha1" //nolint:gosec // keychain item handle, as in system_trust_darwin.go
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"math/big"
@@ -88,13 +90,13 @@ func (r *darwinRunner) snapshot() []darwinCall {
 	return append([]darwinCall(nil), r.calls...)
 }
 
-func mustRootPEM(t *testing.T, cn string) (string, string) {
+func mustRootPEM(t *testing.T) (string, string) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	tpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: cn},
+		Subject:               pkix.Name{CommonName: constants.RootCACommonName},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,
@@ -116,7 +118,7 @@ func TestDarwin_InstallRoot_UserKeychainWithoutSudo(t *testing.T) {
 	t.Parallel()
 	login, err := userLoginKeychain()
 	require.NoError(t, err)
-	certPEM, fp := mustRootPEM(t, constants.RootCACommonName)
+	certPEM, fp := mustRootPEM(t)
 	block, _ := pem.Decode([]byte(certPEM))
 	require.NotNil(t, block)
 	cert, err := x509.ParseCertificate(block.Bytes)
@@ -133,12 +135,15 @@ func TestDarwin_InstallRoot_UserKeychainWithoutSudo(t *testing.T) {
 
 	err = installer.InstallRoot(context.Background(), cert, fp)
 	require.NoError(t, err)
-	calls := r.snapshot()
+	calls := securityCalls(r.snapshot(), "add-trusted-cert")
 	require.Len(t, calls, 1)
 	assert.Equal(t, "security", calls[0].name)
 	assert.Equal(t, []string{"add-trusted-cert", "-r", "trustRoot", "-p", "ssl", "-k", login, calls[0].args[len(calls[0].args)-1]}, calls[0].args)
 	assert.NotContains(t, calls[0].args, "-d")
 	assert.NotContains(t, calls[0].args, darwinSystemKeychain)
+	for _, call := range r.snapshot() {
+		assert.NotEqual(t, "sudo", call.name)
+	}
 }
 
 // darwinAcceptRunner records the call and succeeds for add-trusted-cert.
@@ -156,11 +161,81 @@ func (d darwinAcceptRunner) Run(ctx context.Context, env map[string]string, name
 	return nil, nil
 }
 
+// darwinTrustDeniedRunner fails add-trusted-cert the way a cancelled or
+// unshowable trust dialog does, and answers find-certificate with heldPEM.
+type darwinTrustDeniedRunner struct {
+	inner   *darwinRunner
+	heldPEM string
+}
+
+func (d darwinTrustDeniedRunner) Run(ctx context.Context, env map[string]string, name string, args ...string) ([]byte, error) {
+	d.inner.mu.Lock()
+	d.inner.calls = append(d.inner.calls, darwinCall{name: name, args: append([]string(nil), args...)})
+	d.inner.mu.Unlock()
+	switch {
+	case name == "security" && args[0] == "find-certificate" && d.heldPEM != "":
+		return []byte(d.heldPEM), nil
+	case name == "security" && args[0] == "add-trusted-cert":
+		return []byte("SecTrustSettingsSetTrustSettings: The authorization was denied since no user interaction was possible."), errors.New("exit status 1")
+	case name == "security" && args[0] == "delete-certificate":
+		return nil, nil
+	default:
+		return nil, errors.New("unexpected command")
+	}
+}
+
+func securityCalls(calls []darwinCall, subcommand string) []darwinCall {
+	var out []darwinCall
+	for _, call := range calls {
+		if call.name == "security" && len(call.args) > 0 && call.args[0] == subcommand {
+			out = append(out, call)
+		}
+	}
+	return out
+}
+
+func TestDarwin_InstallRoot_TrustDeniedRemovesTheImportedCopy(t *testing.T) {
+	t.Parallel()
+	login, err := userLoginKeychain()
+	require.NoError(t, err)
+	certPEM, fp := mustRootPEM(t)
+	block, _ := pem.Decode([]byte(certPEM))
+	require.NotNil(t, block)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	r := newDarwinRunner()
+	installer := newDarwinTrustInstaller(t, darwinTrustDeniedRunner{inner: r})
+
+	err = installer.InstallRoot(context.Background(), cert, fp)
+	require.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
+	deletes := securityCalls(r.snapshot(), "delete-certificate")
+	require.Len(t, deletes, 1, "an untrusted copy left in the login keychain would read as trusted and block every retry")
+	thumbprint := sha1.Sum(cert.Raw)
+	assert.Equal(t, []string{"delete-certificate", "-Z", hex.EncodeToString(thumbprint[:]), login}, deletes[0].args)
+}
+
+func TestDarwin_InstallRoot_TrustDeniedKeepsAnAnchorThatWasAlreadyThere(t *testing.T) {
+	t.Parallel()
+	certPEM, fp := mustRootPEM(t)
+	block, _ := pem.Decode([]byte(certPEM))
+	require.NotNil(t, block)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	r := newDarwinRunner()
+	installer := newDarwinTrustInstaller(t, darwinTrustDeniedRunner{inner: r, heldPEM: certPEM})
+
+	err = installer.InstallRoot(context.Background(), cert, fp)
+	require.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
+	assert.Empty(t, securityCalls(r.snapshot(), "delete-certificate"))
+}
+
 func TestDarwin_IsTrusted_LoginKeychainThenSystem(t *testing.T) {
 	t.Parallel()
 	login, err := userLoginKeychain()
 	require.NoError(t, err)
-	pemText, fp := mustRootPEM(t, constants.RootCACommonName)
+	pemText, fp := mustRootPEM(t)
 
 	r := newDarwinRunner()
 	r.set("security find-certificate -a -p "+login, []byte(pemText), nil)
@@ -183,9 +258,9 @@ func TestDarwin_ListStaleAnchors_PairsEachHashWithItsCert(t *testing.T) {
 	t.Parallel()
 	login, err := userLoginKeychain()
 	require.NoError(t, err)
-	firstPEM, firstFP := mustRootPEM(t, constants.RootCACommonName)
-	secondPEM, secondFP := mustRootPEM(t, constants.RootCACommonName)
-	currentPEM, currentFP := mustRootPEM(t, constants.RootCACommonName)
+	firstPEM, firstFP := mustRootPEM(t)
+	secondPEM, secondFP := mustRootPEM(t)
+	currentPEM, currentFP := mustRootPEM(t)
 	hash1 := strings.Repeat("ab", 20)
 	hashCurrent := strings.Repeat("ef", 20)
 
