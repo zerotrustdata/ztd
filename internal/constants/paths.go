@@ -547,6 +547,13 @@ const (
 	FsGrepMaxWalkEntries  = 50000
 	FsGrepMaxWalkDuration = 15 * time.Second
 
+	// FsDiskProfileMaxEntries bounds the entries one disk profile lists, and
+	// FsDiskProfileMaxWalkEntries and FsDiskProfileMaxWalkDuration bound its
+	// walk. A profile that reaches a bound returns a truncated result.
+	FsDiskProfileMaxEntries      = 500
+	FsDiskProfileMaxWalkEntries  = 50000
+	FsDiskProfileMaxWalkDuration = 15 * time.Second
+
 	ExecutionMaxStreamSize = 10 * 1024 * 1024 // 10MB per stream
 	ExecutionMaxLines      = 50               // Max lines for terminal output preview
 	FileEditMaxSize        = 50 * 1024 * 1024 // 50MB max file size for operations

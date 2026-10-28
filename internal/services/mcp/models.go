@@ -370,6 +370,9 @@ type FSDiskProfileRequest struct {
 type FSDiskProfileResult struct {
 	Entries []DirEntry `json:"entries"`
 	TotalMB int64      `json:"total_mb"`
+	// Truncated reports that a listing or walk bound was reached: Entries is
+	// incomplete and TotalMB covers only the walked part of the tree.
+	Truncated bool `json:"truncated"`
 }
 
 // DirEntry represents a directory entry for disk profiling.

@@ -8,18 +8,25 @@
 package mcp
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// FSDiskProfileTool recursively calculates directory sizes.
-type FSDiskProfileTool struct{}
+// FSDiskProfileTool recursively calculates directory sizes. Zero bounds use
+// the FsDiskProfile* defaults in constants.
+type FSDiskProfileTool struct {
+	maxEntries      int
+	maxWalkEntries  int
+	maxWalkDuration time.Duration
+}
 
 // Name returns the tool identifier.
 func (t *FSDiskProfileTool) Name() string {
@@ -65,9 +72,17 @@ func (t *FSDiskProfileTool) Execute(ctx context.Context, args json.RawMessage) (
 		maxDepth = constants.DefaultDiskProfileDepth
 	}
 
+	maxEntries := cmp.Or(t.maxEntries, constants.FsDiskProfileMaxEntries)
+	maxWalkEntries := cmp.Or(t.maxWalkEntries, constants.FsDiskProfileMaxWalkEntries)
+	walkDeadline := time.Now().Add(cmp.Or(t.maxWalkDuration, constants.FsDiskProfileMaxWalkDuration))
+
 	var entries []DirEntry
 	var totalSize int64
+	walkEntries := 0
+	truncated := false
 
+	// Either walk bound ends the profile with a truncated result, not a
+	// failure; past the listing bound the walk only adds to the total.
 	err := filepath.Walk(req.Path, func(path string, info os.FileInfo, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -75,6 +90,12 @@ func (t *FSDiskProfileTool) Execute(ctx context.Context, args json.RawMessage) (
 
 		if err != nil {
 			return fmt.Errorf("fs_disk_profile: error accessing path %s: %w", path, err)
+		}
+
+		walkEntries++
+		if walkEntries > maxWalkEntries || time.Now().After(walkDeadline) {
+			truncated = true
+			return filepath.SkipAll
 		}
 
 		relPath, err := filepath.Rel(req.Path, path)
@@ -93,6 +114,10 @@ func (t *FSDiskProfileTool) Execute(ctx context.Context, args json.RawMessage) (
 		size := info.Size()
 		totalSize += size
 
+		if len(entries) == maxEntries {
+			truncated = true
+			return nil
+		}
 		entries = append(entries, DirEntry{
 			Path:     relPath,
 			SizeMB:   size / (1024 * 1024),
@@ -108,8 +133,9 @@ func (t *FSDiskProfileTool) Execute(ctx context.Context, args json.RawMessage) (
 	}
 
 	result := FSDiskProfileResult{
-		Entries: entries,
-		TotalMB: totalSize / (1024 * 1024),
+		Entries:   entries,
+		TotalMB:   totalSize / (1024 * 1024),
+		Truncated: truncated,
 	}
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
