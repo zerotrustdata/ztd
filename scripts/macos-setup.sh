@@ -71,5 +71,21 @@ ztd_macos_install_missing() {
     fi
 }
 
+# Called only after the shared optional-tool prompt has been accepted.
+ztd_macos_install_optional() {
+    if ! ztd_have brew; then
+        ztd_ui_info "Homebrew is unavailable; install $1 manually."
+        return 1
+    fi
+    local cask="$1"
+    if [[ "$1" == docker ]]; then
+        cask="docker-desktop"
+    fi
+    brew install --cask "$cask" || return 1
+    if [[ "$1" == docker ]]; then
+        ztd_ui_info "Open Docker from Applications to finish setup when needed."
+    fi
+}
+
 ztd_setup_init "$@"
-ztd_setup_main macOS ztd_macos_install_missing scripts/macos-setup.sh
+ztd_setup_main macOS ztd_macos_install_missing scripts/macos-setup.sh "" ztd_macos_install_optional

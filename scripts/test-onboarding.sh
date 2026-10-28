@@ -431,6 +431,47 @@ EOF
 	done
 }
 
+test_optional_tools_setup() {
+	(
+		ztd_ui_init
+		ZTD_BUILD_ONLY=false AUTO_YES=true
+		ztd_have() { return 1; }
+		ztd_check_chromium() { return 1; }
+		ztd_setup_confirm() { echo "$1" >>"$SCRATCH/optional-prompts"; return 0; }
+		install_optional() { echo "$1" >>"$SCRATCH/optional-installs"; return 1; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		[[ "$(cat "$SCRATCH/optional-installs")" == $'docker\nchromium' ]] || fail "optional install failures must allow both offers and continue"
+		[[ "$(wc -l <"$SCRATCH/optional-prompts" | tr -d ' ')" == 2 ]] || fail "missing optional tools must prompt separately"
+		rm "$SCRATCH/optional-installs" "$SCRATCH/optional-prompts"
+		ztd_setup_confirm() { return 1; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		[[ ! -f "$SCRATCH/optional-installs" ]] || fail "declined optional tools must not install"
+		AUTO_YES=false
+		ztd_setup_confirm() { fail "noninteractive optional setup must skip prompts"; }
+		ztd_setup_optional_tools install_optional </dev/null >/dev/null
+		AUTO_YES=true
+		ZTD_BUILD_ONLY=true
+		ztd_have() { fail "build-only must skip optional tools"; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		ZTD_BUILD_ONLY=false
+		ztd_have() { return 0; }
+		ztd_check_chromium() { return 0; }
+		ztd_setup_optional_tools install_optional >/dev/null
+		[[ ! -f "$SCRATCH/optional-installs" ]] || fail "installed optional tools must be reused"
+	)
+}
+
+test_chromium_detection() {
+	(
+		ztd_ui_init
+		local browser
+		for browser in chromium chromium-browser google-chrome google-chrome-stable; do
+			ztd_have() { [[ "$1" == "$browser" ]]; }
+			ztd_check_chromium >/dev/null || fail "browser detection missed $browser"
+		done
+	)
+}
+
 test_quickstart_help_and_unknown_option() {
 	local out="$SCRATCH/qs-help.out" rc=0
 	HOME="$SCRATCH/home-qs-help" bash "$SCRIPT_DIR/quickstart.sh" --help >"$out" 2>&1 || rc=$?
@@ -555,6 +596,8 @@ run_test() {
 }
 
 main() {
+	run_test test_optional_tools_setup
+	run_test test_chromium_detection
 	run_test test_version_ge
 	run_test test_extract_version
 	run_test test_build_only_requires_frontend_toolchain

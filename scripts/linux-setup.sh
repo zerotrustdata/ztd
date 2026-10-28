@@ -50,6 +50,7 @@ ztd_linux_init_sudo() {
 # Maps a logical prerequisite name to the package that provides it.
 ztd_linux_pkg_name() {
     case "$ZTD_PKG:$1" in
+        apt:docker) echo "docker.io" ;;
         apt:cc) echo "build-essential" ;;
         dnf:cc|zypper:cc) echo "gcc" ;;
         pacman:cc) echo "base-devel" ;;
@@ -214,6 +215,20 @@ ztd_linux_install_missing() {
     done
 }
 
+# Called only after the shared optional-tool prompt has been accepted.
+ztd_linux_install_optional() {
+    local package
+    if ! ztd_linux_detect_pkg_manager || ! ztd_linux_init_sudo; then
+        ztd_ui_info "Install $1 manually using your distribution's package manager."
+        return 1
+    fi
+    package="$(ztd_linux_pkg_name "$1")"
+    ztd_linux_pkg_install "$package" || return 1
+    if [[ "$1" == docker ]]; then
+        ztd_ui_info "Docker installed; configure and start the daemon when needed."
+    fi
+}
+
 # Marker for the profile block that keeps an ssh-agent key loaded.
 ZTD_SSH_AGENT_MARKER="# ztd: ssh-agent key for the master key store"
 
@@ -353,4 +368,4 @@ ztd_linux_configure_keystore() {
 
 
 ztd_setup_init "$@"
-ztd_setup_main Linux ztd_linux_install_missing scripts/linux-setup.sh ztd_linux_configure_keystore
+ztd_setup_main Linux ztd_linux_install_missing scripts/linux-setup.sh ztd_linux_configure_keystore ztd_linux_install_optional

@@ -217,6 +217,38 @@ func TestRealStackContentJudgments_SecurityDenyDeleteGoodParaphrasedAndBad(t *te
 			report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
 			require.NoError(t, err)
 			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+
+			// A forged rationale must invalidate a persisted completed run even when
+			// the attacker updates the receipt-bound semantic grade detail and trace
+			// digest consistently. Without the signed-result comparison in
+			// verifyContentJudgment, VerifyRun would accept this modified trace.
+			trace = executorLoadTrace(t, env, result)
+			judgment := &trace.ContentJudgments[0]
+			judgment.Rationale += " (forged after signing)"
+			for _, grade := range result.GetSemanticGrades() {
+				if grade.GetCriterionId() == "content:"+judgment.CriterionID {
+					grade.Detail = judgment.Rationale
+				}
+			}
+			forgedBody, err := evaluation.SealAgentTrace(trace)
+			require.NoError(t, err)
+			traceRef, err := evaluation.BuildAssignmentAgentTraceEvidenceReference(env.req.RunID, trace.EvaluationAttemptID, forgedBody, env.clock())
+			require.NoError(t, err)
+			updatedRef := false
+			for _, ref := range result.GetEvidenceRefs() {
+				if ref.GetArtifactType() == traceRef.GetArtifactType() {
+					ref.Sha256 = traceRef.GetSha256()
+					updatedRef = true
+				}
+			}
+			require.True(t, updatedRef, "completed result must carry its assignment trace reference")
+			result.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(result)
+			require.NoError(t, err)
+			require.NoError(t, env.store.SaveAssignmentAgentTrace(t.Context(), env.req.RunID, result.GetAssignmentId(), forgedBody))
+			require.NoError(t, env.store.SaveAssignmentResult(t.Context(), result))
+			report, err = evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+			require.NoError(t, err)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus(), report.GetFailureReasons())
 		})
 	}
 }

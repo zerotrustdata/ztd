@@ -68,7 +68,8 @@ ztd_usage() {
 Usage: bash scripts/$(basename "$0") [options]
 
 Installs the toolchain needed to build ztd and, by default, to run 'make ci'
-(Go dev tools and Node dependencies).
+(Go dev tools and Node dependencies). Docker and Chromium are optional;
+contributor setup offers to install them when missing.
 
 Options:
   -y, --yes       Install missing tooling without prompting
@@ -324,6 +325,58 @@ ztd_collect_missing() {
         ztd_check_bc || MISSING+=("bc")
         ztd_check_cc || MISSING+=("cc")
     fi
+}
+
+# Docker and a Chromium browser support container and browser workflows. They
+# are optional: never add them to MISSING or require a running Docker daemon.
+ztd_check_chromium() {
+    local browser
+    for browser in chromium chromium-browser google-chrome google-chrome-stable; do
+        if ztd_have "$browser"; then
+            return 0
+        fi
+    done
+    if [[ "$(uname -s)" == Darwin ]]; then
+        for browser in "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+            "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium" \
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+            "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; do
+            [[ ! -x "$browser" ]] || return 0
+        done
+    fi
+    return 1
+}
+
+# The platform callback installs one accepted tool without another prompt.
+# Optional installs are skipped when stdin cannot accept a response, unless
+# --yes was supplied, and failures do not stop the required setup steps.
+ztd_setup_optional_tools() {
+    [[ "$ZTD_BUILD_ONLY" != true ]] || return 0
+    local install_fn="$1" tool label present
+    ztd_ui_title "Optional tools (Docker, Chromium)"
+    for tool in docker chromium; do
+        present=false
+        case "$tool" in
+            docker) label="Docker"; if ztd_have docker; then present=true; fi ;;
+            chromium) label="Chromium (or Google Chrome)"; if ztd_check_chromium; then present=true; fi ;;
+        esac
+        if [[ "$present" == true ]]; then
+            ztd_ui_ok "$label: installed"
+            continue
+        fi
+        ztd_ui_warn "$label: missing (optional)"
+        if [[ "$AUTO_YES" != true && ! -t 0 ]]; then
+            ztd_ui_info "skipped $label; rerun setup interactively or with --yes to install"
+            continue
+        fi
+        if ztd_setup_confirm "Install $label now? [y/N] "; then
+            if ! "$install_fn" "$tool"; then
+                ztd_ui_warn "$label installation failed; continuing without this optional tool"
+            fi
+        else
+            ztd_ui_info "skipped $label"
+        fi
+    done
 }
 
 # --- contributor-toolchain checks (used by dev-check.sh and dev-tools-if-needed) -
@@ -799,9 +852,9 @@ ztd_print_next_steps_unix() {
 # --build-only is three steps (prerequisites, build, PATH); the full contributor
 # flow adds the explorer build, `make dev-setup`, and `make dev-check`.
 # An optional <post-fn> runs after the PATH step as part of it (platform extras).
-# usage: ztd_setup_main <platform-label> <install-fn> <script-path> [<post-fn>]
+# usage: ztd_setup_main <platform-label> <install-fn> <script-path> [<post-fn>] [<optional-install-fn>]
 ztd_setup_main() {
-    local platform="$1" install_fn="$2" script="$3" post_fn="${4:-}" total step=0 prereqs
+    local platform="$1" install_fn="$2" script="$3" post_fn="${4:-}" optional_install_fn="${5:-}" total step=0 prereqs
     if [[ "$ZTD_BUILD_ONLY" == true ]]; then
         total=3
         prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT})"
@@ -854,6 +907,10 @@ ztd_setup_main() {
     if [[ "$ZTD_BUILD_ONLY" != true && "$ZTD_DEV_TOOLCHAIN" == true ]]; then
         step=$((step + 1)); ztd_ui_step "$step" "$total" "Verifying the toolchain (make dev-check)"
         make dev-check
+    fi
+
+    if [[ -n "$optional_install_fn" ]]; then
+        ztd_setup_optional_tools "$optional_install_fn"
     fi
 
     ztd_print_next_steps_unix
