@@ -1460,7 +1460,6 @@ var (
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationRunGovernanceChanged      = errors.New("evaluation: Gateway posture or consensus binding differs from what the run froze at start; start a new run")
-	ErrEvaluationTribunalNotLite           = errors.New("evaluation: enforced Tribunal L2 must vote on every formation's Lite slot model")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")
 	ErrEvaluationTargetAmbiguous           = errors.New("evaluation: target operator selection is ambiguous")

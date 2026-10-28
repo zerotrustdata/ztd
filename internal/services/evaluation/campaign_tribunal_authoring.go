@@ -39,7 +39,7 @@ const modelCallGovernanceRejected = "governance_rejected"
 // formationTribunalRole is the stack slot every Tribunal call of a system-lane
 // assignment runs on, whatever the assignment's designated role
 // (INV-EVAL-CAMP-02). Authoring, the trace evidence check, and the assignment
-// verifier bind to it; ValidateFormationTribunal checks the same Lite slot.
+// verifier bind to it.
 const formationTribunalRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
 
 // runTribunal routes one run_shell_command proposal through Tribunal authoring

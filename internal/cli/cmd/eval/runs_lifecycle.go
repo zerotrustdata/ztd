@@ -173,11 +173,6 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
-		if stackSet != nil {
-			if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
-				return nil, fmt.Errorf("evaluation: runs start: %w", err)
-			}
-		}
 		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
