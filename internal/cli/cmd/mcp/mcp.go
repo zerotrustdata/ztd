@@ -1022,6 +1022,12 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 			return "", err
 		}
 		fmt.Fprintf(os.Stderr, "[ztd] Gateway already running (PID %d, posture: %s)\n", pid, posture)
+		// The root command recorded these ports before this command ran. Record
+		// them again so a profile written by an earlier start in this process
+		// is what enrollment dials.
+		if profile, perr := serve.ReadLaunchProfile(fileSvc); perr == nil {
+			config.SetLocalGatewayPorts(profile.Config.HTTPPort, profile.Config.HTTPSPort)
+		}
 	} else {
 		gatewayCfg, err := resolveGatewayLaunchConfig(fileSvc, requestedPosture)
 		if err != nil {
@@ -1039,6 +1045,12 @@ func startGatewayIfNeeded(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeF
 			}
 			return "", fmt.Errorf("%w: persist launch profile: %w", constants.ErrInternal, err)
 		}
+		// gw start may move both listeners when the requested HTTP port is busy.
+		// The root command already chose ports from the profile that existed at
+		// process start, which did not include this Gateway. Enrollment has to
+		// dial the listeners just bound, not the protocol defaults (which may
+		// be a different Gateway).
+		config.SetLocalGatewayPorts(startOpts.HTTPPort, startOpts.HTTPSPort)
 
 		// Poll plain HTTP health until the gateway is ready.
 		// mTLS certs do not exist yet at this stage, so HTTP is the only
