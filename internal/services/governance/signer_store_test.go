@@ -161,6 +161,28 @@ func TestL2TrustStore_ReplaceRejectsMalformedAndKeepsHeldTrust(t *testing.T) {
 	assert.Equal(t, pub, got)
 }
 
+func TestL2TrustStore_ReplaceIfNewerIgnoresOutOfOrderSnapshots(t *testing.T) {
+	t.Parallel()
+	current, _ := testL2Trust(t)
+	current.BindingVersion = 2
+	store, err := NewL2TrustStore(current)
+	require.NoError(t, err)
+
+	stale, _ := testL2Trust(t)
+	stale.BindingVersion = 1
+	updated, err := store.ReplaceIfNewer(stale)
+	require.NoError(t, err)
+	assert.False(t, updated)
+	assert.EqualValues(t, 2, store.BindingVersion())
+
+	next, _ := testL2Trust(t)
+	next.BindingVersion = 3
+	updated, err = store.ReplaceIfNewer(next)
+	require.NoError(t, err)
+	assert.True(t, updated)
+	assert.EqualValues(t, 3, store.BindingVersion())
+}
+
 func TestL4Warden_Doctrine(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()

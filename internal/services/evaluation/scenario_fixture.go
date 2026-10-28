@@ -27,8 +27,10 @@ const (
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
-	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.21.0"
+	DefaultSuiteID             = "default-suite"
+	DefaultSuiteVersion        = "1.22.0"
+	SmokeSuiteVersion          = "1.21.0"
+	InvestigationsSuiteVersion = "1.21.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on

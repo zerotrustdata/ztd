@@ -447,12 +447,12 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 			return 0, fmt.Errorf("evaluation: schedule run %s: frozen formations: %w", runID, err)
 		}
 		assignments, err = BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, StackSet: stackSet, QueuedAt: c.now().UTC(),
+			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, ActivePosture: run.GetActivePosture(), StackSet: stackSet, QueuedAt: c.now().UTC(),
 		})
 		if err != nil {
 			return 0, err
 		}
-		if err := ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments); err != nil {
+		if err := ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments, run.GetActivePosture()); err != nil {
 			return 0, fmt.Errorf("evaluation: schedule run %s: assignment matrix: %w", runID, err)
 		}
 	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
@@ -460,6 +460,7 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 			CampaignID:      spec.GetCampaignId(),
 			RunID:           runID,
 			Catalog:         catalog,
+			ActivePosture:   run.GetActivePosture(),
 			Variants:        spec.GetModelRegistry(),
 			RepetitionCount: spec.GetRepetitionCount(),
 			QueuedAt:        c.now().UTC(),
@@ -467,7 +468,7 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 		if err != nil {
 			return 0, err
 		}
-		expected := ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount())
+		expected := ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount(), run.GetActivePosture())
 		if uint64(len(assignments)) != expected {
 			return 0, fmt.Errorf("evaluation: schedule run %s: %d model-role assignments, expected %d: %w", runID, len(assignments), expected, constants.ErrEvaluationTargetKindMismatch)
 		}
@@ -520,9 +521,9 @@ func (c *CampaignController) RunSummary(ctx context.Context, runID string) (*Cam
 		if err != nil {
 			return nil, err
 		}
-		expected = FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)))
+		expected = FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)), run.GetActivePosture())
 	default:
-		expected = ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount())
+		expected = ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount(), run.GetActivePosture())
 	}
 	summary := &CampaignRunSummary{
 		Run:                run,

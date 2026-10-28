@@ -70,7 +70,7 @@ func TestCampaignController_ScheduleRun_SystemLaneUsesFrozenCatalogFormations(t 
 
 	count, err := controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
-	assert.Equal(t, int(FormationMatrixSize(req.Catalog, uint64(len(stackSet.Stacks)))), count)
+	assert.Equal(t, int(FormationMatrixSize(req.Catalog, uint64(len(stackSet.Stacks)), testGovernance.Posture)), count)
 
 	assignments, err := store.ListAssignments(context.Background(), req.RunID)
 	require.NoError(t, err)

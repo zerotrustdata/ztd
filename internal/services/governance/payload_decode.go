@@ -115,9 +115,6 @@ func DecodePayloadForAction(actionType constants.ActionType, payload []byte) (pr
 		// placed in the audited envelope payload.
 		msg = &commonv1.PlatformEnrollmentGovernancePayload{}
 
-	case constants.ActionTypeOperatorL2TrustRefresh:
-		msg = &operatorv1.OperatorL2TrustRefreshRequested{}
-
 	default:
 		return nil, fmt.Errorf("%w: %q", constants.ErrTxPayloadDecoderMissing, actionType)
 	}

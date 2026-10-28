@@ -38,19 +38,36 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	require.NoError(t, err)
 	small := truncatedCatalog(t, catalog, 3)
 
-	assert.Equal(t, ComputeHomogeneousMatrixSize(1), ModelRoleMatrixSize(catalog, 1, 1), "the default suite sizes as it always did")
+	assert.Equal(t, ComputeHomogeneousMatrixSize(1), ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), "the default suite sizes as it always did")
 	assert.Equal(t, uint64(35), uint64(StandardScenarioCount))
 
 	var wantCells uint64
 	for _, scenario := range small.GetScenarios() {
 		wantCells += uint64(len(scenario.GetEligibleRoles()))
 	}
-	assert.Equal(t, wantCells, CatalogModelRoleCells(small))
-	assert.Equal(t, wantCells*2*4, ModelRoleMatrixSize(small, 2, 4))
-	assert.Equal(t, wantCells, ModelRoleMatrixSize(small, 1, 0), "zero repetitions count as one")
-	assert.Equal(t, uint64(5)*wantCells, FormationMatrixSize(small, 5), "a formation runs each scenario once per eligible role")
-	assert.Equal(t, uint64(5)*wantFullCells(catalog), FormationMatrixSize(catalog, 5))
-	assert.Equal(t, FormationMatrixSize(catalog, 5), uint64(5)*CatalogModelRoleCells(catalog))
+	assert.Equal(t, wantCells, CatalogModelRoleCells(small, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
+	assert.Equal(t, wantCells*2*4, ModelRoleMatrixSize(small, 2, 4, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
+	assert.Equal(t, wantCells, ModelRoleMatrixSize(small, 1, 0, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), "zero repetitions count as one")
+	assert.Equal(t, uint64(5)*wantCells, FormationMatrixSize(small, 5, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), "a formation runs each scenario once per eligible role")
+	assert.Equal(t, uint64(5)*wantFullCells(catalog), FormationMatrixSize(catalog, 5, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
+	assert.Equal(t, FormationMatrixSize(catalog, 5, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), uint64(5)*CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
+}
+
+func TestDefaultSuiteConsensusMatrixExcludesLiveCommandErrorScenario(t *testing.T) {
+	catalog, _, err := LoadScenarioCatalog()
+	require.NoError(t, err)
+
+	var consensusCells uint64
+	for _, scenario := range catalog.GetScenarios() {
+		switch scenario.GetScenarioId() {
+		case "recovery-live-command-error", "tool-arg-shell-command":
+			continue // required shell-command execution is governed by L2
+		}
+		consensusCells += uint64(len(scenario.GetEligibleRoles()))
+	}
+
+	assert.Equal(t, uint64(52), consensusCells)
+	assert.Equal(t, consensusCells, CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), "the consensus matrix must exclude the posture-dependent seed scenario")
 }
 
 // wantFullCells counts eligible (scenario, role) cells straight from the catalog.

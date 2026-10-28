@@ -570,7 +570,7 @@ func TestOperatorController_HandleValidateOperatorSession(t *testing.T) {
 
 	infra := setupTestInfrastructure(t, false)
 	controller := newOperatorController(OperatorControllerDeps{
-		Cfg: infra.Cfg, Logger: infra.Logger, Reg: infra.Reg, Auth: infra.Auth, Responder: infra.Responder,
+		Cfg: infra.Cfg, Logger: infra.Logger, Reg: infra.Reg, Auth: infra.Auth, Trust: infra.ConsensusStore, Responder: infra.Responder,
 	})
 
 	// Seed an active user, operator, and CLI session so the happy path can

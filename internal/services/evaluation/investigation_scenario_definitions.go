@@ -260,7 +260,7 @@ func LoadInvestigationsScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map
 	if err != nil {
 		return nil, nil, err
 	}
-	catalog, artifacts, err := buildSuiteCatalog(&compliancev1.VersionedReference{Id: InvestigationsSuiteID, Version: DefaultSuiteVersion}, blueprints)
+	catalog, artifacts, err := buildSuiteCatalog(&compliancev1.VersionedReference{Id: InvestigationsSuiteID, Version: InvestigationsSuiteVersion}, blueprints)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -276,7 +276,7 @@ func InvestigationsScenarioSuite() (ScenarioSuite, error) {
 	if err != nil {
 		return ScenarioSuite{}, err
 	}
-	return suiteDefinitionFromBlueprints(InvestigationsSuiteID, DefaultSuiteVersion,
+	return suiteDefinitionFromBlueprints(InvestigationsSuiteID, InvestigationsSuiteVersion,
 		"The planted-fault investigation scenarios: seeded cases with real planted faults for longitudinal context learning evaluation.",
 		blueprints), nil
 }

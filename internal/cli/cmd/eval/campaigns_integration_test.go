@@ -189,7 +189,8 @@ func TestCampaignsCreate_JSONReportsFrozenSpec(t *testing.T) {
 	assert.Equal(t, 1, payload.ModelCount)
 	catalog, _, err := evaluation.LoadScenarioCatalog()
 	require.NoError(t, err)
-	assert.Equal(t, evaluation.ModelRoleMatrixSize(catalog, 1, 1), payload.CellsPerRun)
+	assert.Equal(t, evaluation.ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), payload.CellsPerRun)
+	assert.Equal(t, evaluation.ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), payload.CellsPerRunL2)
 	assert.Equal(t, evaluation.DefaultJudgeServedModelTag, payload.Judge, "the default judge is frozen without a --judge flag")
 	assert.NotEmpty(t, payload.ModelRegistryDigest)
 	assert.NotEmpty(t, payload.CatalogDigest)
@@ -271,7 +272,8 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	assert.Equal(t, 1, payload.StackCount)
 	catalog, _, err := evaluation.LoadScenarioCatalog()
 	require.NoError(t, err)
-	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1), payload.CellsPerRun)
+	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), payload.CellsPerRun)
+	assert.Equal(t, evaluation.FormationMatrixSize(catalog, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), payload.CellsPerRunL2)
 	assert.Greater(t, payload.ModelCount, 1)
 
 	spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
@@ -288,6 +290,7 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	assert.Equal(t, campaignLaneSystem, show.Lane)
 	assert.Equal(t, 1, show.StackCount)
 	assert.Equal(t, payload.CellsPerRun, show.CellsPer)
+	assert.Equal(t, payload.CellsPerRunL2, show.CellsPerL2)
 }
 
 func TestCampaignsCreate_UsesProjectFormationOverlay(t *testing.T) {
@@ -534,5 +537,5 @@ func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 			scheduled = len(assignments)
 		}
 	}
-	assert.Equal(t, int(evaluation.FormationMatrixSize(catalog, 1)), scheduled)
+	assert.Equal(t, int(evaluation.FormationMatrixSize(catalog, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)), scheduled)
 }

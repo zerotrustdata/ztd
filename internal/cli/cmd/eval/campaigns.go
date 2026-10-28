@@ -94,6 +94,7 @@ type campaignShowJSON struct {
 	MetricsCurve      []runMetricsCurveJSON       `json:"metrics_curve,omitempty"`
 	Archive           *evaluation.ArchiveManifest `json:"archive,omitempty"`
 	CellsPer          uint64                      `json:"cells_per_run"`
+	CellsPerL2        uint64                      `json:"cells_per_run_l2_enforced"`
 	InvestigationMode string                      `json:"investigation_mode,omitempty"`
 	InvestigationID   string                      `json:"investigation_id,omitempty"`
 	DataOperatorID    string                      `json:"data_operator_id,omitempty"`
@@ -315,7 +316,8 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				Judge:             spec.GetJudgeVariant().GetServedModelTag(),
 				Runs:              runRows,
 				MetricsCurve:      extractCampaignMetricsCurve(cmd.Context(), store, runIDs),
-				CellsPer:          campaignCells(catalog, spec, lane, stacks),
+				CellsPer:          campaignCells(catalog, spec, lane, stacks, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE),
+				CellsPerL2:        campaignCells(catalog, spec, lane, stacks, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS),
 				InvestigationMode: investigationModeLabel(spec.GetInvestigation()),
 				InvestigationID:   spec.GetInvestigation().GetInvestigationId(),
 				DataOperatorID:    spec.GetInvestigation().GetDataOperatorId(),
@@ -332,9 +334,9 @@ func campaignsShowCmd(deps nativeEvalDeps) *cobra.Command {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign: %s\nCondition: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run: %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
+			_, _ = fmt.Fprintf(out, "Campaign: %s\nCondition: %s\nRelease: %s\nLane: %s\nSuite: %s\nModels: %d (%s)\nScenarios: %d\nRepetitions: %d\nHold context: %t\nInvestigation: %s\nCells per run (doctrine/ratify): %d\nCells per run (consensus/notary): %d\nModel registry digest: %s\nCatalog digest: %s\nStatus: %s\nArchived: %t\n",
 				campaignID, payload.Condition, releaseLabel(release.Release, string(release.Basis)), lane, payload.Suite, payload.ModelCount, strings.Join(payload.Models, ", "), payload.ScenarioCount, payload.RepetitionCount,
-				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
+				payload.HoldContext, investigationLabel(payload), payload.CellsPer, payload.CellsPerL2, payload.ModelRegistryDigest, payload.CatalogDigest, payload.Status, archived)
 			if payload.InvestigationID != "" {
 				_, _ = fmt.Fprintf(out, "Investigation ID: %s\nData Operator ID: %s\n", payload.InvestigationID, payload.DataOperatorID)
 			}
@@ -432,11 +434,11 @@ func campaignRunIDs(ctx context.Context, fileSvc fs.RuntimeFileService, store *e
 
 // campaignCells is the assignment count of one run, sized from the catalog the
 // campaign froze rather than from any built-in suite.
-func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.EvaluationCampaignSpec, lane string, stacks int) uint64 {
+func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.EvaluationCampaignSpec, lane string, stacks int, posture evalv1.EvaluationGovernancePosture) uint64 {
 	if lane == campaignLaneSystem {
-		return evaluation.FormationMatrixSize(catalog, uint64(stacks))
+		return evaluation.FormationMatrixSize(catalog, uint64(stacks), posture)
 	}
-	return evaluation.ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount())
+	return evaluation.ModelRoleMatrixSize(catalog, uint64(len(spec.GetModelRegistry())), spec.GetRepetitionCount(), posture)
 }
 
 // campaignCreateSpec is everything that defines one campaign.
@@ -564,6 +566,7 @@ type campaignCreateJSON struct {
 	RepetitionCount     uint32 `json:"repetition_count"`
 	HoldContext         bool   `json:"hold_context"`
 	CellsPerRun         uint64 `json:"cells_per_run"`
+	CellsPerRunL2       uint64 `json:"cells_per_run_l2_enforced"`
 	ModelRegistryDigest string `json:"model_registry_digest"`
 	CatalogDigest       string `json:"catalog_digest"`
 	StackCount          int    `json:"stack_count,omitempty"`
@@ -708,7 +711,8 @@ Examples:
 				ScenarioCount:       result.Spec.GetScenarioCount(),
 				RepetitionCount:     result.Spec.GetRepetitionCount(),
 				HoldContext:         result.Spec.GetHoldContext(),
-				CellsPerRun:         campaignCells(result.Catalog, result.Spec, lane, stackCount),
+				CellsPerRun:         campaignCells(result.Catalog, result.Spec, lane, stackCount, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE),
+				CellsPerRunL2:       campaignCells(result.Catalog, result.Spec, lane, stackCount, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS),
 				ModelRegistryDigest: result.Spec.GetModelRegistryDigest(),
 				CatalogDigest:       result.Spec.GetCatalogDigest(),
 				StackCount:          stackCount,
@@ -718,8 +722,8 @@ Examples:
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run: %d\nJudge: %s\nModel registry digest: %s\nCatalog digest: %s\n",
-				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.Judge, payload.ModelRegistryDigest, payload.CatalogDigest)
+			_, _ = fmt.Fprintf(out, "Campaign created\nCampaign: %s\nCondition: %s\nLane: %s\nSuite: %s\nModels: %d\nScenarios: %d\nRepetitions: %d\nHold context: %t\nCells per run (doctrine/ratify): %d\nCells per run (consensus/notary): %d\nJudge: %s\nModel registry digest: %s\nCatalog digest: %s\n",
+				payload.CampaignID, payload.Condition, payload.Lane, payload.Suite, payload.ModelCount, payload.ScenarioCount, payload.RepetitionCount, payload.HoldContext, payload.CellsPerRun, payload.CellsPerRunL2, payload.Judge, payload.ModelRegistryDigest, payload.CatalogDigest)
 			if stackCount > 0 {
 				_, _ = fmt.Fprintf(out, "Formation stacks: %d\n", stackCount)
 			}

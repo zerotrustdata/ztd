@@ -106,8 +106,9 @@ type OperatorPubSubService struct {
 	gatewayMode bool
 	mu          sync.RWMutex
 
-	reconnectBaseDelay    time.Duration
-	onCommandSubscription func(context.Context, string, bool) error
+	reconnectBaseDelay        time.Duration
+	onCommandSubscription     func(context.Context, string, bool) error
+	beforeCommandSubscription func(context.Context, string) error
 
 	// governance services
 	actuator *governance.L5Actuator
@@ -140,16 +141,20 @@ type OperatorPubSubService struct {
 type CommandServiceConfig struct {
 	// OnCommandSubscription observes outbound transport readiness; it grants no authority.
 	OnCommandSubscription func(context.Context, string, bool) error
-	Config                *config.Config
-	Logger                *slog.Logger
-	Execution             *execution.ExecutionService
-	FileEdit              *execution.FileEditService
-	PubSubClient          PubSubClient
-	ResultsService        ResultsPublisher
-	EventsStore           *storage.LocalFirstEventsStore
-	Ledger                *storage.GitLedgerService
-	HistoryHandler        *storage.HistoryHandler
-	Scrubbing             *scrubbing.ScrubbingService
+	// BeforeCommandSubscription refreshes Gateway-authoritative Operator state
+	// before each command-channel dial, so reconnect never resumes execution
+	// with a stale trust snapshot.
+	BeforeCommandSubscription func(context.Context, string) error
+	Config                    *config.Config
+	Logger                    *slog.Logger
+	Execution                 *execution.ExecutionService
+	FileEdit                  *execution.FileEditService
+	PubSubClient              PubSubClient
+	ResultsService            ResultsPublisher
+	EventsStore               *storage.LocalFirstEventsStore
+	Ledger                    *storage.GitLedgerService
+	HistoryHandler            *storage.HistoryHandler
+	Scrubbing                 *scrubbing.ScrubbingService
 	// RuntimeVault is this runtime's encryption vault. The L4 Warden refuses dispatch
 	// while it is locked, because the execution record cannot be written without it.
 	RuntimeVault governance.RuntimeVault
@@ -201,16 +206,17 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	serviceCtx, cancel := context.WithCancel(context.Background())
 
 	rs := &OperatorPubSubService{
-		client:                client,
-		config:                c.Config,
-		logger:                c.Logger,
-		results:               c.ResultsService,
-		ctx:                   serviceCtx,
-		cancel:                cancel,
-		ShutdownChan:          make(chan string, 1),
-		reconnectBaseDelay:    1 * time.Second,
-		gatewayMode:           gatewayMode,
-		onCommandSubscription: c.OnCommandSubscription,
+		client:                    client,
+		config:                    c.Config,
+		logger:                    c.Logger,
+		results:                   c.ResultsService,
+		ctx:                       serviceCtx,
+		cancel:                    cancel,
+		ShutdownChan:              make(chan string, 1),
+		reconnectBaseDelay:        1 * time.Second,
+		gatewayMode:               gatewayMode,
+		onCommandSubscription:     c.OnCommandSubscription,
+		beforeCommandSubscription: c.BeforeCommandSubscription,
 	}
 
 	rs.heartbeat = NewHeartbeatService(c.Config, c.Logger, &rs.wg)
@@ -609,6 +615,20 @@ func (rs *OperatorPubSubService) listenForCommands(channelName string) {
 		rs.logger.Info("Subscribing to Operator command channel",
 			"operator_session_id", rs.config.OperatorSessionId,
 			"channel_name", channelName)
+
+		if rs.beforeCommandSubscription != nil {
+			if err := rs.beforeCommandSubscription(rs.ctx, rs.config.OperatorSessionId); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(rs.ctx.Err(), context.Canceled) {
+					return
+				}
+				rs.logger.Warn("Operator session validation failed before command subscription; retrying", string(constants.ConnectionStateError), err)
+				if !waitForReconnect(rs.ctx, reconnectDelay) {
+					return
+				}
+				reconnectDelay = nextReconnectDelay(reconnectDelay, maxReconnectDelay)
+				continue
+			}
+		}
 
 		msgCh, err := rs.client.Subscribe(rs.ctx, channelName)
 		if err != nil {

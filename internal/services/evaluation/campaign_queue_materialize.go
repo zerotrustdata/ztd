@@ -66,6 +66,7 @@ func BuildInitCampaignQueue(inventoryRelDir string, entries []CampaignQueueModel
 	return &CampaignQueue{
 		Pattern:         InitCampaignIDPrefix + "<variant_id> (legacy " + LegacyInitCampaignID + " for " + LegacyInitCampaignServedModelTag + ")",
 		CellsPerRun:     ComputeHomogeneousMatrixSize(1),
+		CellsPerRunL2:   ComputeHomogeneousMatrixSizeForPosture(1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS),
 		InventoryDir:    filepath.ToSlash(inventoryRelDir),
 		GenerateCommand: rolloutQueueGenerateCommand,
 		Models:          append([]CampaignQueueModel(nil), entries...),

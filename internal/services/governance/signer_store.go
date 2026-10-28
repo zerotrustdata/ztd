@@ -86,6 +86,27 @@ func (s *L2TrustStore) Replace(trust *models.OperatorL2Trust) error {
 	return nil
 }
 
+// ReplaceIfNewer atomically swaps a newer Gateway trust snapshot into the
+// store. An out-of-order response is ignored, which lets concurrent validation
+// and certificate-renewal replies race without rolling trust back or turning a
+// benign stale reply into an Operator shutdown.
+func (s *L2TrustStore) ReplaceIfNewer(trust *models.OperatorL2Trust) (bool, error) {
+	decoded, err := decodeL2Trust(trust)
+	if err != nil {
+		return false, err
+	}
+	if trust == nil {
+		return false, fmt.Errorf("l2 trust: missing versioned snapshot: %w", constants.ErrValidationFailed)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if decoded.bindingVersion <= s.trust.bindingVersion {
+		return false, nil
+	}
+	s.trust = decoded
+	return true, nil
+}
+
 // BindingVersion returns the version of the currently loaded L2 trust.
 func (s *L2TrustStore) BindingVersion() int64 {
 	s.mu.RLock()

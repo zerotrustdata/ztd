@@ -126,7 +126,6 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 		ActionTypePlatformEnrollmentRevoke,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentUnbindConsensus,
-		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePortCheck,
 		ActionTypeOllamaModelInventory,
 		ActionTypeOllamaModelResidency,
@@ -159,7 +158,6 @@ func TestActionTypeIsMutation_EveryActionTypeClassified(t *testing.T) {
 		ActionTypeInference,
 		ActionTypeMcpCall,
 		ActionTypeOllamaModelRelease,
-		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
@@ -206,7 +204,6 @@ func TestActionTypeIsBootstrapAction_PlatformEnrollmentReturnsTrue(t *testing.T)
 	t.Parallel()
 
 	bootstrapActions := []ActionType{
-		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreate,
 		ActionTypePlatformEnrollmentDecide,
@@ -247,7 +244,6 @@ func TestActionTypeAuthorizedByDecision(t *testing.T) {
 	// Issuance and its follow-on writes carry out a committed owner decision.
 	// The decision and revocation are owner acts and are not exempt.
 	authorized := map[ActionType]bool{
-		ActionTypeOperatorL2TrustRefresh:          true,
 		ActionTypePlatformEnrollmentIssue:         true,
 		ActionTypePlatformEnrollmentPersistPolicy: true,
 		ActionTypePlatformEnrollmentCreateSession: true,

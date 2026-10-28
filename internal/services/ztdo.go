@@ -8,10 +8,14 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -19,6 +23,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
@@ -60,11 +66,13 @@ type ZtdoService struct {
 	tokenStore     storage.TokenStore
 	gatewayDB      *gateway.CanonicalDBService
 
-	pubSubClientFactory   PubSubClientFactory
-	pubSubClient          pubsub.PubSubClient
-	onCommandSubscription func(context.Context, string, bool) error
-	tlsConfig             *certs.TLSConfig
-	l2Trust               *governance.L2TrustStore
+	pubSubClientFactory         PubSubClientFactory
+	pubSubClient                pubsub.PubSubClient
+	onCommandSubscription       func(context.Context, string, bool) error
+	tlsConfig                   *certs.TLSConfig
+	sessionValidationHTTPClient *http.Client
+	l2Trust                     *governance.L2TrustStore
+	sessionValidator            func(context.Context, string) error
 
 	evidence *storage.LocalExecutionEvidence
 
@@ -113,6 +121,7 @@ func NewZtdoService(cfg *config.Config, logger *slog.Logger, tlsConfig *certs.TL
 		startTime:           time.Now().UTC(),
 		tlsConfig:           tlsConfig,
 		l2Trust:             l2Trust,
+		sessionValidator:    nil,
 		fileSvc:             fileSvc,
 		gatewayDB:           gatewayDB,
 		pubSubClientFactory: pubSubClientFactory,
@@ -120,6 +129,19 @@ func NewZtdoService(cfg *config.Config, logger *slog.Logger, tlsConfig *certs.TL
 	}
 
 	return service, nil
+}
+
+// SetSessionValidator overrides the Gateway session validator before Start.
+// It is intended for controlled in-process test runtimes; production callers
+// use the validator bound to the enrolled TLS identity by default.
+func (vs *ZtdoService) SetSessionValidator(validator func(context.Context, string) error) error {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	if vs.ctx != nil || validator == nil {
+		return fmt.Errorf("operator session validator: %w", constants.ErrServiceUnavailable)
+	}
+	vs.sessionValidator = validator
+	return nil
 }
 
 // SetCommandSubscriptionObserver installs a startup dependency before Start.
@@ -137,6 +159,59 @@ func (vs *ZtdoService) SetCommandSubscriptionObserver(observer func(context.Cont
 // so a governed shutdown request can stop the process after service cleanup.
 func (vs *ZtdoService) Done() <-chan struct{} {
 	return vs.done
+}
+
+var operatorSessionValidationInterval = 30 * time.Second
+
+// validateOperatorSession fetches the Gateway's authoritative session and L2
+// trust snapshot over this Operator's enrolled mTLS identity. It runs before
+// every command subscription and periodically while connected.
+func (vs *ZtdoService) validateOperatorSession(ctx context.Context, sessionID string) error {
+	if sessionID == "" || sessionID != vs.config.OperatorSessionId {
+		return fmt.Errorf("operator session validation: session mismatch: %w", constants.ErrValidationFailed)
+	}
+	endpoint, err := url.Parse(vs.config.PubSubURL)
+	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "wss" && endpoint.Scheme != "https") {
+		return fmt.Errorf("operator session validation: invalid Gateway endpoint %q: %w", vs.config.PubSubURL, constants.ErrValidationFailed)
+	}
+	endpoint.Scheme = "https"
+	endpoint.Path = constants.APIPaths.OperatorsValidate
+	endpoint.RawQuery = ""
+	endpoint.Fragment = ""
+	body, err := json.Marshal(models.OperatorSessionValidationRequest{OperatorSessionID: sessionID})
+	if err != nil {
+		return fmt.Errorf("operator session validation: encode request: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("operator session validation: create request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if vs.sessionValidationHTTPClient == nil {
+		return fmt.Errorf("operator session validation: HTTP client unavailable: %w", constants.ErrServiceUnavailable)
+	}
+	response, err := vs.sessionValidationHTTPClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("operator session validation: Gateway request: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("operator session validation: Gateway returned HTTP %d: %w", response.StatusCode, constants.ErrValidationFailed)
+	}
+	var validated models.OperatorSessionValidationResponse
+	if err := json.NewDecoder(response.Body).Decode(&validated); err != nil {
+		return fmt.Errorf("operator session validation: decode response: %w", err)
+	}
+	if !validated.Valid || validated.OperatorID != vs.config.OperatorID {
+		return fmt.Errorf("operator session validation: Gateway identity or trust mismatch: %w", constants.ErrValidationFailed)
+	}
+	if validated.L2Trust == nil {
+		return fmt.Errorf("operator session validation: Gateway omitted L2 trust snapshot: %w", constants.ErrValidationFailed)
+	}
+	if _, err := vs.l2Trust.ReplaceIfNewer(validated.L2Trust); err != nil {
+		return fmt.Errorf("operator session validation: replace L2 trust: %w", err)
+	}
+	return nil
 }
 
 func (vs *ZtdoService) Start(ctx context.Context) error {
@@ -167,6 +242,15 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	}
 
 	vs.logger.Info("Establishing ztd connectivity...")
+	if vs.sessionValidator == nil {
+		tlsCfg, err := vs.tlsConfig.GetTLSConfig()
+		if err != nil {
+			return fmt.Errorf("ztdo: session validation TLS config: %w", err)
+		}
+		client := &http.Client{Transport: httpclient.NewIPv4Transport(tlsCfg), Timeout: httpclient.DefaultTimeout}
+		vs.sessionValidationHTTPClient = httpclient.WithoutRedirects(client, constants.ErrValidationFailed)
+		vs.sessionValidator = vs.validateOperatorSession
+	}
 	var err error
 	vs.pubSubClient, err = vs.pubSubClientFactory(vs.config.PubSubURL, vs.config.TLSServerName, vs.logger, vs.tlsConfig)
 	if err != nil {
@@ -294,27 +378,28 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 
 	// OperatorPubSubService Construction
 	psConfig := pubsub.CommandServiceConfig{
-		Config:                   vs.config,
-		OnCommandSubscription:    vs.onCommandSubscription,
-		Logger:                   vs.logger,
-		Execution:                vs.execution,
-		FileEdit:                 vs.fileEdit,
-		PubSubClient:             vs.pubSubClient,
-		ResultsService:           vs.pubSubResults,
-		EventsStore:              eventsStore,
-		RuntimeVault:             encryptionVault,
-		Ledger:                   vs.evidence.Ledger,
-		HistoryHandler:           vs.evidence.HistoryHandler,
-		Scrubbing:                scrubbingService,
-		Inference:                handlers.Inference,
-		InferenceAttemptStore:    handlers.InferenceAttemptStore,
-		InferenceProvider:        handlers.InferenceProvider,
-		ProviderBoundaryObserver: handlers.ProviderBoundaryObserver,
-		ModelProvenanceOperator:  handlers.ModelProvenanceOperator,
-		ActuatorSigningKey:       actuatorPriv,
-		ActuatorKeyID:            actuatorKeyID,
-		AuditorSigningKey:        auditorPriv,
-		AuditorKeyID:             auditorKeyID,
+		Config:                    vs.config,
+		OnCommandSubscription:     vs.onCommandSubscription,
+		BeforeCommandSubscription: vs.sessionValidator,
+		Logger:                    vs.logger,
+		Execution:                 vs.execution,
+		FileEdit:                  vs.fileEdit,
+		PubSubClient:              vs.pubSubClient,
+		ResultsService:            vs.pubSubResults,
+		EventsStore:               eventsStore,
+		RuntimeVault:              encryptionVault,
+		Ledger:                    vs.evidence.Ledger,
+		HistoryHandler:            vs.evidence.HistoryHandler,
+		Scrubbing:                 scrubbingService,
+		Inference:                 handlers.Inference,
+		InferenceAttemptStore:     handlers.InferenceAttemptStore,
+		InferenceProvider:         handlers.InferenceProvider,
+		ProviderBoundaryObserver:  handlers.ProviderBoundaryObserver,
+		ModelProvenanceOperator:   handlers.ModelProvenanceOperator,
+		ActuatorSigningKey:        actuatorPriv,
+		ActuatorKeyID:             actuatorKeyID,
+		AuditorSigningKey:         auditorPriv,
+		AuditorKeyID:              auditorKeyID,
 	}
 
 	outboundDeps, err := pubsub.NewOutboundModeDeps(pubsub.OutboundModeDeps{
@@ -362,6 +447,24 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 			return
 		}
 	}()
+	vs.wg.Add(1)
+	go func() {
+		defer vs.wg.Done()
+		ticker := time.NewTicker(operatorSessionValidationInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-vs.ctx.Done():
+				return
+			case <-ticker.C:
+				if err := vs.sessionValidator(vs.ctx, vs.config.OperatorSessionId); err != nil {
+					vs.logger.Error("Operator session trust refresh failed; stopping execution", string(constants.ConnectionStateError), err)
+					vs.cancel()
+					return
+				}
+			}
+		}
+	}()
 
 	vs.logger.Info("ztd Operator started successfully!",
 		"max_concurrent_tasks", vs.config.MaxConcurrentTasks,
@@ -398,6 +501,10 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 		if err := vs.pubSubCommands.Stop(); err != nil {
 			vs.logger.Error("ztdo: failed to stop pubsub command service", "error", err)
 		}
+	}
+	if vs.sessionValidationHTTPClient != nil {
+		vs.sessionValidationHTTPClient.CloseIdleConnections()
+		vs.sessionValidationHTTPClient = nil
 	}
 
 	// Stop execution service to kill any active tasks

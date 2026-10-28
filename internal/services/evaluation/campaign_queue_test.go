@@ -165,12 +165,11 @@ func TestSaveAndLoadInitCampaignQueueRoundTrip(t *testing.T) {
 }
 
 // TestBaseInitCampaignQueueCellCountsMatchSuite guards the checked-in rollout
-// template: every cell count must equal the (scenario, role) cells one model
-// scores under the built-in default suite.
+// template: its doctrine and L2-enforced cell counts match the built-in suite.
 func TestBaseInitCampaignQueueCellCountsMatchSuite(t *testing.T) {
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
-	perModelCells := CatalogModelRoleCells(catalog)
+	perModelCells := CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	require.Equal(t, ComputeHomogeneousMatrixSize(1), perModelCells)
 
 	body, err := os.ReadFile(filepath.Join(constants.TestPathRepoRootFromCompliancePackage, DefaultBaseInitCampaignQueueRelPath))
@@ -179,6 +178,7 @@ func TestBaseInitCampaignQueueCellCountsMatchSuite(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &queue))
 	require.NotEmpty(t, queue.Models)
 	assert.Equal(t, perModelCells, queue.CellsPerRun)
+	assert.Equal(t, ComputeHomogeneousMatrixSizeForPosture(1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), queue.CellsPerRunL2)
 	for _, entry := range queue.Models {
 		assert.Equal(t, perModelCells, entry.HomogeneousCellCount, "queue entry %s", entry.VariantID)
 	}

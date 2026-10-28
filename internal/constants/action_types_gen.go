@@ -39,7 +39,6 @@ const (
 	ActionTypeOllamaModelInventory              ActionType = "OLLAMA_MODEL_INVENTORY"
 	ActionTypeOllamaModelRelease                ActionType = "OLLAMA_MODEL_RELEASE"
 	ActionTypeOllamaModelResidency              ActionType = "OLLAMA_MODEL_RESIDENCY"
-	ActionTypeOperatorL2TrustRefresh            ActionType = "OPERATOR_L2_TRUST_REFRESH"
 	ActionTypePlatformEnrollmentBindConsensus   ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
 	ActionTypePlatformEnrollmentCreate          ActionType = "PLATFORM_ENROLLMENT_CREATE"
 	ActionTypePlatformEnrollmentCreateSession   ActionType = "PLATFORM_ENROLLMENT_CREATE_SESSION"
@@ -82,7 +81,6 @@ var AllActionTypes = []ActionType{
 	ActionTypeOllamaModelInventory,
 	ActionTypeOllamaModelRelease,
 	ActionTypeOllamaModelResidency,
-	ActionTypeOperatorL2TrustRefresh,
 	ActionTypePlatformEnrollmentBindConsensus,
 	ActionTypePlatformEnrollmentCreate,
 	ActionTypePlatformEnrollmentCreateSession,
@@ -110,7 +108,6 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeInference,
 		ActionTypeMcpCall,
 		ActionTypeOllamaModelRelease,
-		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
@@ -129,8 +126,7 @@ func (a ActionType) IsMutation() bool {
 // IsBootstrapAction returns true for platform enrollment bootstrap actions.
 func (a ActionType) IsBootstrapAction() bool {
 	switch a {
-	case ActionTypeOperatorL2TrustRefresh,
-		ActionTypePlatformEnrollmentBindConsensus,
+	case ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreate,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
@@ -149,8 +145,7 @@ func (a ActionType) IsBootstrapAction() bool {
 // L3 proof of their own; their handler requires the committed decision.
 func (a ActionType) AuthorizedByDecision() bool {
 	switch a {
-	case ActionTypeOperatorL2TrustRefresh,
-		ActionTypePlatformEnrollmentCreateSession,
+	case ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentIssue,
 		ActionTypePlatformEnrollmentPersistPolicy:
 		return true
@@ -170,7 +165,6 @@ func (a ActionType) IsStateChange() bool {
 		ActionTypeExecuteBash,
 		ActionTypeFileEdit,
 		ActionTypeMcpCall,
-		ActionTypeOperatorL2TrustRefresh,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,

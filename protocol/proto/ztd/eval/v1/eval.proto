@@ -604,6 +604,10 @@ message EvaluationScenarioDefinition {
   // Unset, the model calls the native tool directly. The frozen catalog digest
   // binds the choice.
   bool tribunal_commands = 17;
+  // exclude_when_l2_enforced marks scenarios whose required state-changing
+  // tool call or successful/error seed action is gated by L2. The frozen
+  // catalog digest binds this eligibility rule.
+  bool exclude_when_l2_enforced = 18;
 }
 
 // ModelVariant is one frozen provider-backed model identity in a campaign.

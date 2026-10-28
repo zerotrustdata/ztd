@@ -250,6 +250,10 @@ Startup order in `StartOperator`:
 5. Awaits owner approval. Upon approval, the Gateway sends a `decision` frame, issues the X.509 certificates, and replies with a `bundle` frame containing certificates, SPIFFE identity, CA roots, and L2 consensus signer public keys.
 6. The Operator validates the bundle and holds certificates in memory. No private keys or certificates are written to disk.
 
+### Session Validation and L2 Trust Reconciliation
+
+Before each command-channel subscription, including every reconnect, the Operator validates its certificate-bound session over the Gateway's mTLS HTTPS endpoint. The response carries the Gateway's current consensus trust snapshot. The Operator replaces its in-memory L2 trust only when the binding version advances; out-of-order older snapshots are ignored. The Operator repeats validation every 30 seconds while connected, and stops execution if a periodic validation or trust replacement fails. This bounds stale trust after a consensus unbind or rebind to the refresh interval plus request time; the Gateway does not push trust changes to an already-connected Operator.
+
 ### In-Band Certificate Renewal over mTLS Pub/Sub
 
 Operator leaf certificates are valid for `OperatorLeafCertTTL` (default 7 days). The Gateway caps it at `constants.MaxWorkloadLeafCertTTL` (7 days): config validation (`ValidateOperatorLeafCertTTL`) fails Gateway startup with `ErrConfigLeafCertTTLInvalid` for any value that is not positive or exceeds the cap. See [auth.md](auth.md#mutual-tls-and-spiffe-identity-binding) and [network.md](network.md) (`INV-NET-PKI-03`). Two-thirds through the validity period, a scheduled timer in `OperatorCertRenewer` (`internal/cli/serve/operator_cert_renewal.go`), computed from the leaf's `NotBefore` and `NotAfter`, initiates in-band renewal:

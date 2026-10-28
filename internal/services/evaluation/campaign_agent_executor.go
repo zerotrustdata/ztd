@@ -1102,14 +1102,9 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: message})
 	}
 	if tool == constants.MCPToolEventReceiptList {
-		queryArgs, ok := args.EventReceiptList()
+		query, ok := args.EventReceiptList()
 		if !ok {
 			return AgentToolCall{}, fmt.Errorf("evaluation: decode %s typed arguments: %w", tool, constants.ErrEvaluationDispatchFailed)
-		}
-		query := mcp.EventReceiptListRequest{
-			InvestigationID:          queryArgs.InvestigationID,
-			Limit:                    queryArgs.Limit,
-			ExcludeEventReceiptReads: queryArgs.ExcludeEventReceiptReads,
 		}
 		result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
 		if err != nil {

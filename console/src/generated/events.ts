@@ -134,7 +134,6 @@ export const EventType = Object.freeze({
     OPERATOR_INTENT_REQUESTED: 'ztd.v1.operator.intent.requested',
     OPERATOR_INTENT_REVOKE_REQUESTED: 'ztd.v1.operator.intent.revoke.requested',
     OPERATOR_INTENT_REVOKED: 'ztd.v1.operator.intent.revoked',
-    OPERATOR_L2_TRUST_REFRESH_REQUESTED: 'ztd.v1.operator.l2_trust_refresh.requested',
     OPERATOR_LOGS_FETCH_COMPLETED: 'ztd.v1.operator.logs.fetch.completed',
     OPERATOR_LOGS_FETCH_FAILED: 'ztd.v1.operator.logs.fetch.failed',
     OPERATOR_LOGS_FETCH_RECEIVED: 'ztd.v1.operator.logs.fetch.received',
@@ -1084,14 +1083,6 @@ export const EventRegistry = Object.freeze({
         transport: ['pubsub'],
         producers: ['operator'],
         persistence: 'ephemeral',
-    }),
-    OPERATOR_L2_TRUST_REFRESH_REQUESTED: Object.freeze({
-        kind: 'request',
-        transport: ['governed'],
-        producers: ['gateway'],
-        persistence: 'ephemeral',
-        actionType: 'OPERATOR_L2_TRUST_REFRESH',
-        payload: 'ztd.operator.v1.OperatorL2TrustRefreshRequested',
     }),
     OPERATOR_LOGS_FETCH_COMPLETED: Object.freeze({
         kind: 'outcome',

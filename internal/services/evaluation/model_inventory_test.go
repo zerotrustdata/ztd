@@ -23,6 +23,8 @@ func TestComputeHomogeneousMatrixSize(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, uint64(56), ComputeHomogeneousMatrixSize(1))
 	assert.Equal(t, uint64(224), ComputeHomogeneousMatrixSize(4))
+	assert.Equal(t, uint64(52), ComputeHomogeneousMatrixSizeForPosture(1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS))
+	assert.Equal(t, uint64(208), ComputeHomogeneousMatrixSizeForPosture(4, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY))
 }
 
 func TestBuildModelVariantsFromProviderInventory_SortsAndDedupes(t *testing.T) {

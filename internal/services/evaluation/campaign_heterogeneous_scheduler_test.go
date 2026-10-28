@@ -26,15 +26,16 @@ func TestBuildHeterogeneousAssignmentMatrix_MaterializesStacksByScenarios(t *tes
 	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, testFormationCatalogVariants())
 	require.NoError(t, err)
 	assignments, err := BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-		CampaignID: "heterogeneous-campaign",
-		RunID:      "run-heterogeneous-1",
-		Catalog:    catalog,
-		StackSet:   stackSet,
-		QueuedAt:   time.Unix(1_700_000_000, 0).UTC(),
+		CampaignID:    "heterogeneous-campaign",
+		RunID:         "run-heterogeneous-1",
+		Catalog:       catalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		StackSet:      stackSet,
+		QueuedAt:      time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, int(FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)))))
-	require.NoError(t, ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments))
+	assert.Len(t, assignments, int(FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)), evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)))
+	require.NoError(t, ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 	for _, assignment := range assignments {
 		assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, assignment.GetLane())
 	}
@@ -47,10 +48,11 @@ func TestBuildHeterogeneousAssignmentMatrix_PreservesCatalogOrderAfterReload(t *
 	require.NoError(t, err)
 	assignments, err := BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
 		CampaignID: "workflow-campaign", RunID: "workflow-run", Catalog: catalog, StackSet: stackSet,
-		QueuedAt: time.Unix(1_700_000_000, 0).UTC(),
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		QueuedAt:      time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	cellsPerStack := int(CatalogModelRoleCells(catalog))
+	cellsPerStack := int(CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 	require.Len(t, assignments, cellsPerStack*len(stackSet.Stacks))
 	wantCells := expectedHeterogeneousCells(catalog)
 	for offset := 0; offset < len(assignments); offset += cellsPerStack {
@@ -110,15 +112,16 @@ func TestBuildHeterogeneousAssignmentMatrix_LiteOnlyScenarioYieldsOnlyLiteCells(
 	require.NoError(t, err)
 
 	assignments, err := BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-		CampaignID: "heterogeneous-lite-campaign",
-		RunID:      "run-heterogeneous-lite",
-		Catalog:    liteCatalog,
-		StackSet:   stackSet,
-		QueuedAt:   time.Unix(1_700_000_000, 0).UTC(),
+		CampaignID:    "heterogeneous-lite-campaign",
+		RunID:         "run-heterogeneous-lite",
+		Catalog:       liteCatalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		StackSet:      stackSet,
+		QueuedAt:      time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	require.Len(t, assignments, int(FormationMatrixSize(liteCatalog, uint64(len(stackSet.Stacks)))))
-	require.NoError(t, ValidateHeterogeneousAssignmentMatrix(liteCatalog, stackSet, assignments))
+	require.Len(t, assignments, int(FormationMatrixSize(liteCatalog, uint64(len(stackSet.Stacks)), evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)))
+	require.NoError(t, ValidateHeterogeneousAssignmentMatrix(liteCatalog, stackSet, assignments, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 
 	liteCells := 0
 	for _, assignment := range assignments {
@@ -139,11 +142,12 @@ func TestValidateHeterogeneousAssignmentMatrix_RejectsIneligibleDesignatedRole(t
 	stackSet, err := testFormationStackSet("heterogeneous-ineligible-campaign", 11, testFormationCatalogVariants())
 	require.NoError(t, err)
 	assignments, err := BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-		CampaignID: "heterogeneous-ineligible-campaign",
-		RunID:      "run-heterogeneous-ineligible",
-		Catalog:    liteCatalog,
-		StackSet:   stackSet,
-		QueuedAt:   time.Unix(1_700_000_000, 0).UTC(),
+		CampaignID:    "heterogeneous-ineligible-campaign",
+		RunID:         "run-heterogeneous-ineligible",
+		Catalog:       liteCatalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		StackSet:      stackSet,
+		QueuedAt:      time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
 
@@ -158,7 +162,7 @@ func TestValidateHeterogeneousAssignmentMatrix_RejectsIneligibleDesignatedRole(t
 		assignment.AssignmentId = identity
 		break
 	}
-	err = ValidateHeterogeneousAssignmentMatrix(liteCatalog, stackSet, assignments)
+	err = ValidateHeterogeneousAssignmentMatrix(liteCatalog, stackSet, assignments, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	require.ErrorIs(t, err, constants.ErrEvaluationScenarioRolesUnassigned)
 }
 
@@ -168,18 +172,19 @@ func TestValidateHeterogeneousAssignmentMatrix_RejectsDuplicateStackScenarioRole
 	stackSet, err := testFormationStackSet("heterogeneous-duplicate-campaign", 11, testFormationCatalogVariants())
 	require.NoError(t, err)
 	assignments, err := BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
-		CampaignID: "heterogeneous-duplicate-campaign",
-		RunID:      "run-heterogeneous-duplicate",
-		Catalog:    catalog,
-		StackSet:   stackSet,
-		QueuedAt:   time.Unix(1_700_000_000, 0).UTC(),
+		CampaignID:    "heterogeneous-duplicate-campaign",
+		RunID:         "run-heterogeneous-duplicate",
+		Catalog:       catalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		StackSet:      stackSet,
+		QueuedAt:      time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	require.NoError(t, ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments))
+	require.NoError(t, ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 
 	// Replace one cell with a copy of its neighbour: same stack, scenario, and
 	// role, so the matrix is the right size but repeats a (stack, scenario, role).
 	assignments[1] = assignments[0]
-	err = ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments)
+	err = ValidateHeterogeneousAssignmentMatrix(catalog, stackSet, assignments, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
 	require.Error(t, err)
 }

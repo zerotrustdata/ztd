@@ -249,7 +249,7 @@ func testModelRoleCells(t *testing.T) int {
 	t.Helper()
 	catalog, _, err := evaluation.LoadScenarioCatalog()
 	require.NoError(t, err)
-	return int(evaluation.CatalogModelRoleCells(catalog))
+	return int(evaluation.CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 }
 
 // prepareRun creates a campaign and starts a prepared-only run of it: the run

@@ -178,6 +178,12 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
 	}
+	cellPosture := governance.Posture
+	if cellPosture == evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
+		// Dry runs do not query live Gateway governance; retain the legacy
+		// posture-neutral (doctrine-sized) planning count.
+		cellPosture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
+	}
 	runID := opts.RunID
 	if runID == "" {
 		runID = fmt.Sprintf("%s-%d", opts.CampaignID, deps.now().UTC().Unix())
@@ -186,7 +192,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		CampaignID: opts.CampaignID,
 		RunID:      runID,
 		Lane:       laneName,
-		Cells:      campaignCells(catalog, spec, laneName, stacks),
+		Cells:      campaignCells(catalog, spec, laneName, stacks, cellPosture),
 		Topology:   topology,
 
 		SessionsResolved: !opts.DryRun,

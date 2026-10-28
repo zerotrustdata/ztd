@@ -1016,6 +1016,7 @@ EvaluationScenarioDefinition describes one frozen typed scenario.
 | trajectory_policy | [EvaluationTrajectoryPolicy](#ztd-eval-v1-EvaluationTrajectoryPolicy) |  |  |
 | prompt_hint | [PromptHint](#ztd-eval-v1-PromptHint) |  |  |
 | tribunal_commands | [bool](#bool) |  | tribunal_commands routes run_shell_command through Tribunal authoring. Unset, the model calls the native tool directly. The frozen catalog digest binds the choice. |
+| exclude_when_l2_enforced | [bool](#bool) |  | exclude_when_l2_enforced marks scenarios whose required state-changing tool call or successful/error seed action is gated by L2. The frozen catalog digest binds this eligibility rule. |
 
 
 

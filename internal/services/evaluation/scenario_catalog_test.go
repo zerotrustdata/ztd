@@ -75,7 +75,7 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
-	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
+	assert.Equal(t, SmokeSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
@@ -704,11 +704,12 @@ func TestHomogeneousAssignmentMatrix_FiltersBySmokeGateScenarioIDs(t *testing.T)
 	}
 
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
-		CampaignID:  "smoke-test-campaign",
-		RunID:       "smoke-test-run",
-		Catalog:     catalog,
-		Variants:    []*evalv1.ModelVariant{variant},
-		ScenarioIDs: SmokeGateScenarioIDs(),
+		CampaignID:    "smoke-test-campaign",
+		RunID:         "smoke-test-run",
+		Catalog:       catalog,
+		ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+		Variants:      []*evalv1.ModelVariant{variant},
+		ScenarioIDs:   SmokeGateScenarioIDs(),
 	})
 	require.NoError(t, err)
 	// Three Lite-only scenarios, one Primary-only, and six Primary and Assistant.

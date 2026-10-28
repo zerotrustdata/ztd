@@ -200,8 +200,18 @@ func ValidateModelRegistry(freeze *ModelInventoryFreeze) error {
 // (scenario, role) cells, counting each scenario once per role it declares
 // eligible.
 func ComputeHomogeneousMatrixSize(variantCount uint64) uint64 {
+	return ComputeHomogeneousMatrixSizeForPosture(variantCount, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
+}
+
+// ComputeHomogeneousMatrixSizeForPosture returns the built-in default suite
+// width for a governance posture. The default posture-neutral inventory width
+// remains doctrine; rollout manifests also record the L2-enforced width.
+func ComputeHomogeneousMatrixSizeForPosture(variantCount uint64, posture evalv1.EvaluationGovernancePosture) uint64 {
 	var cellsPerVariant uint64
 	for _, blueprint := range scenarioBlueprints() {
+		if scenarioExcludedWhenL2Enforced(scenarioRequiresL2(blueprint), posture) {
+			continue
+		}
 		cellsPerVariant += uint64(len(blueprint.EligibleRoles))
 	}
 	return variantCount * cellsPerVariant

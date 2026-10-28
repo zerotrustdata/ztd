@@ -122,9 +122,6 @@
     - [OllamaModelResidencyRequested](#ztd-operator-v1-OllamaModelResidencyRequested)
     - [OllamaModelResidencyResult](#ztd-operator-v1-OllamaModelResidencyResult)
     - [OperatorDocument](#ztd-operator-v1-OperatorDocument)
-    - [OperatorL2Signer](#ztd-operator-v1-OperatorL2Signer)
-    - [OperatorL2TrustRefreshRequested](#ztd-operator-v1-OperatorL2TrustRefreshRequested)
-    - [OperatorL2TrustRefreshResult](#ztd-operator-v1-OperatorL2TrustRefreshResult)
     - [OperatorRuntimeConfig](#ztd-operator-v1-OperatorRuntimeConfig)
     - [PasskeyAuthChallengeRequested](#ztd-operator-v1-PasskeyAuthChallengeRequested)
     - [PasskeyAuthChallengeResult](#ztd-operator-v1-PasskeyAuthChallengeResult)
@@ -2590,60 +2587,6 @@ persists it; every other component reads it through this contract.
 | actuator_key_id | [string](#string) |  | actuator_key_id equals actuator_public_key (key_id == hex(pub)). |
 | auditor_public_key | [string](#string) |  | auditor_public_key is the hex Ed25519 public key of this Operator&#39;s Auditor, bound once at enrollment. Auditor attestations verify only against this key. |
 | auditor_key_id | [string](#string) |  | auditor_key_id equals auditor_public_key (key_id == hex(pub)). |
-
-
-
-
-
-
-<a name="ztd-operator-v1-OperatorL2Signer"></a>
-
-### OperatorL2Signer
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key_id | [string](#string) |  |  |
-| public_key_hex | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="ztd-operator-v1-OperatorL2TrustRefreshRequested"></a>
-
-### OperatorL2TrustRefreshRequested
-Payload for ztd.v1.operator.l2_trust_refresh.requested
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| binding_version | [int64](#int64) |  |  |
-| consensus_set_id | [string](#string) |  |  |
-| member_key_ids | [string](#string) | repeated |  |
-| quorum | [int32](#int32) |  |  |
-| require_distinct | [bool](#bool) |  |  |
-| enabled | [bool](#bool) |  |  |
-| signers | [OperatorL2Signer](#ztd-operator-v1-OperatorL2Signer) | repeated |  |
-
-
-
-
-
-
-<a name="ztd-operator-v1-OperatorL2TrustRefreshResult"></a>
-
-### OperatorL2TrustRefreshResult
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| success | [bool](#bool) |  |  |
-| binding_version | [int64](#int64) |  |  |
-| error_message | [string](#string) |  |  |
 
 
 

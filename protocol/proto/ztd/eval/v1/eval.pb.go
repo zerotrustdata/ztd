@@ -5049,8 +5049,12 @@ type EvaluationScenarioDefinition struct {
 	// Unset, the model calls the native tool directly. The frozen catalog digest
 	// binds the choice.
 	TribunalCommands bool `protobuf:"varint,17,opt,name=tribunal_commands,json=tribunalCommands,proto3" json:"tribunal_commands,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// exclude_when_l2_enforced marks scenarios whose required state-changing
+	// tool call or successful/error seed action is gated by L2. The frozen
+	// catalog digest binds this eligibility rule.
+	ExcludeWhenL2Enforced bool `protobuf:"varint,18,opt,name=exclude_when_l2_enforced,json=excludeWhenL2Enforced,proto3" json:"exclude_when_l2_enforced,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *EvaluationScenarioDefinition) Reset() {
@@ -5198,6 +5202,13 @@ func (x *EvaluationScenarioDefinition) GetPromptHint() *PromptHint {
 func (x *EvaluationScenarioDefinition) GetTribunalCommands() bool {
 	if x != nil {
 		return x.TribunalCommands
+	}
+	return false
+}
+
+func (x *EvaluationScenarioDefinition) GetExcludeWhenL2Enforced() bool {
+	if x != nil {
+		return x.ExcludeWhenL2Enforced
 	}
 	return false
 }
@@ -13125,7 +13136,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\n" +
 	"PromptHint\x12!\n" +
 	"\fhinted_tools\x18\x01 \x03(\tR\vhintedTools\x12=\n" +
-	"\targuments\x18\x02 \x03(\v2\x1f.ztd.eval.v1.PromptHintArgumentR\targuments\"\xcb\b\n" +
+	"\targuments\x18\x02 \x03(\v2\x1f.ztd.eval.v1.PromptHintArgumentR\targuments\"\x84\t\n" +
 	"\x1cEvaluationScenarioDefinition\x12\x1f\n" +
 	"\vscenario_id\x18\x01 \x01(\tR\n" +
 	"scenarioId\x12)\n" +
@@ -13146,7 +13157,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x11trajectory_policy\x18\x0f \x01(\x0e2'.ztd.eval.v1.EvaluationTrajectoryPolicyR\x10trajectoryPolicy\x128\n" +
 	"\vprompt_hint\x18\x10 \x01(\v2\x17.ztd.eval.v1.PromptHintR\n" +
 	"promptHint\x12+\n" +
-	"\x11tribunal_commands\x18\x11 \x01(\bR\x10tribunalCommands\"\xc8\x04\n" +
+	"\x11tribunal_commands\x18\x11 \x01(\bR\x10tribunalCommands\x127\n" +
+	"\x18exclude_when_l2_enforced\x18\x12 \x01(\bR\x15excludeWhenL2Enforced\"\xc8\x04\n" +
 	"\fModelVariant\x12\x1d\n" +
 	"\n" +
 	"variant_id\x18\x01 \x01(\tR\tvariantId\x12%\n" +

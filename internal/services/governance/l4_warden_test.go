@@ -163,12 +163,6 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 			Action:    string(actionType),
 			RequestId: "test-request",
 		}
-	case constants.ActionTypeOperatorL2TrustRefresh:
-		msg = &operatorv1.OperatorL2TrustRefreshRequested{
-			BindingVersion: 1,
-			ConsensusSetId: "test-set",
-			Quorum:         1,
-		}
 	default:
 		t.Fatalf("unsupported action type: %v", actionType)
 	}

@@ -22,11 +22,12 @@ import (
 // HeterogeneousScheduleRequest carries frozen inputs for one deterministic
 // heterogeneous system-lane assignment matrix.
 type HeterogeneousScheduleRequest struct {
-	CampaignID string
-	RunID      string
-	Catalog    *evalv1.EvaluationScenarioCatalog
-	StackSet   *HeterogeneousStackSet
-	QueuedAt   time.Time
+	CampaignID    string
+	RunID         string
+	Catalog       *evalv1.EvaluationScenarioCatalog
+	ActivePosture evalv1.EvaluationGovernancePosture
+	StackSet      *HeterogeneousStackSet
+	QueuedAt      time.Time
 }
 
 // BuildHeterogeneousAssignmentMatrix materializes stacks × (scenario, eligible
@@ -51,6 +52,9 @@ func BuildHeterogeneousAssignmentMatrix(req HeterogeneousScheduleRequest) ([]*ev
 	assignments := make([]*evalv1.EvaluationAssignment, 0)
 	for _, stack := range stacks {
 		for _, scenario := range scenarios {
+			if !scenarioIncludedForPosture(scenario, req.ActivePosture) {
+				continue
+			}
 			roles, err := scenarioEligibleRoles(scenario)
 			if err != nil {
 				return nil, fmt.Errorf("evaluation: build heterogeneous assignment matrix: %w", err)
@@ -102,16 +106,19 @@ func buildHeterogeneousAssignment(campaignID, runID string, scenario *evalv1.Eva
 }
 
 // ValidateHeterogeneousAssignmentMatrix verifies the heterogeneous scheduler gate.
-func ValidateHeterogeneousAssignmentMatrix(catalog *evalv1.EvaluationScenarioCatalog, stackSet *HeterogeneousStackSet, assignments []*evalv1.EvaluationAssignment) error {
+func ValidateHeterogeneousAssignmentMatrix(catalog *evalv1.EvaluationScenarioCatalog, stackSet *HeterogeneousStackSet, assignments []*evalv1.EvaluationAssignment, posture evalv1.EvaluationGovernancePosture) error {
 	if catalog == nil || stackSet == nil {
 		return fmt.Errorf("evaluation: validate heterogeneous assignment matrix: %w", constants.ErrMissingRequiredField)
 	}
-	expected := FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)))
+	expected := FormationMatrixSize(catalog, uint64(len(stackSet.Stacks)), posture)
 	if uint64(len(assignments)) != expected {
 		return fmt.Errorf("evaluation: validate heterogeneous assignment matrix: expected %d assignments, got %d", expected, len(assignments))
 	}
 	eligible := make(map[string]map[evalv1.ModelCampaignRole]struct{}, len(catalog.GetScenarios()))
 	for _, scenario := range catalog.GetScenarios() {
+		if !scenarioIncludedForPosture(scenario, posture) {
+			continue
+		}
 		roles, err := scenarioEligibleRoles(scenario)
 		if err != nil {
 			return fmt.Errorf("evaluation: validate heterogeneous assignment matrix: %w", err)

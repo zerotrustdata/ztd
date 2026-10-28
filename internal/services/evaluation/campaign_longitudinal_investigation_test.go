@@ -22,6 +22,7 @@ func TestInvestigationCatalog_LoadsAndValidatesAllPlantedFaultScenarios(t *testi
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
 	require.Equal(t, InvestigationsSuiteID, catalog.GetCatalogRef().GetId())
+	require.Equal(t, InvestigationsSuiteVersion, catalog.GetCatalogRef().GetVersion())
 	require.Len(t, catalog.GetScenarios(), 3)
 
 	expectedIDs := []string{"cron-disk-fill", "wrong-path-check-script", "wrong-port-config"}

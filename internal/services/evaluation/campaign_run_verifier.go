@@ -220,7 +220,7 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 	return finalizeCampaignVerificationReport(report, failures), nil
 }
 
-func bindCampaignVerificationReport(report *evalv1.EvaluationVerificationReport, run *evalv1.EvaluationRun, spec *evalv1.EvaluationCampaignSpec, catalog *evalv1.EvaluationScenarioCatalog, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, policy CampaignVerificationPolicy) (*evalv1.EvaluationVerificationReport, *RunVerificationApplicability, error) {
+func bindCampaignVerificationReport(report *evalv1.EvaluationVerificationReport, run *evalv1.EvaluationRun, spec *evalv1.EvaluationCampaignSpec, catalog *evalv1.EvaluationScenarioCatalog, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, expectedAssignmentCount uint32, policy CampaignVerificationPolicy) (*evalv1.EvaluationVerificationReport, *RunVerificationApplicability, error) {
 	if report == nil || run == nil || spec == nil || catalog == nil || policy.VerifierReleaseVersion == "" || report.GetRunId() != run.GetRunId() {
 		return nil, nil, fmt.Errorf("evaluation: bind campaign verification report: %w", constants.ErrMissingRequiredField)
 	}
@@ -229,6 +229,9 @@ func bindCampaignVerificationReport(report *evalv1.EvaluationVerificationReport,
 		return nil, nil, fmt.Errorf("evaluation: bind campaign verification report: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	bound := proto.Clone(report).(*evalv1.EvaluationVerificationReport)
+	if expectedAssignmentCount > 0 {
+		bound.ExpectedAssignmentCount = expectedAssignmentCount
+	}
 	population, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, bound)
 	if err != nil {
 		return nil, nil, err
@@ -270,9 +273,6 @@ func bindCampaignVerificationReport(report *evalv1.EvaluationVerificationReport,
 	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, bound)
 	if err != nil {
 		return nil, nil, err
-	}
-	if !applicability.Applicable {
-		return nil, nil, fmt.Errorf("evaluation: bind campaign verification report: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	return bound, applicability, nil
 }
@@ -318,7 +318,7 @@ func BindStoredCampaignVerificationReport(ctx context.Context, store *Store, rep
 	if err != nil {
 		return nil, nil, err
 	}
-	return bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, policy)
+	return bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, report.GetExpectedAssignmentCount(), policy)
 }
 
 func providerObservationPolicyProto(policy ProviderObservationPolicy) evalv1.EvaluationWitnessPolicy {
@@ -396,7 +396,7 @@ func verifyCampaignRunReadOnly(ctx context.Context, store *Store, runID string, 
 	if err != nil {
 		return nil, err
 	}
-	bound, applicability, err := bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, policy)
+	bound, applicability, err := bindCampaignVerificationReport(report, run, spec, catalog, assignments, results, uint32(population.ExpectedCells), policy)
 	if err != nil {
 		return nil, err
 	}

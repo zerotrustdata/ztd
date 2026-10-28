@@ -201,14 +201,6 @@
         "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_UNBIND_CONSENSUS"
       },
-      "OPERATOR_L2_TRUST_REFRESH": {
-        "_authorized_by_decision": true,
-        "_bootstrap": true,
-        "_go_const": "ActionTypeOperatorL2TrustRefresh",
-        "_mutation": true,
-        "_state_change": true,
-        "value": "OPERATOR_L2_TRUST_REFRESH"
-      },
       "PORT_CHECK": {
         "_go_const": "ActionTypePortCheck",
         "value": "PORT_CHECK"

@@ -146,7 +146,7 @@ func smokeSuiteBlueprints() []ScenarioBlueprint {
 // BuildSmokeGateScenarioCatalog materializes the screening catalog
 // and its content-addressed fixture artifacts.
 func BuildSmokeGateScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]ScenarioArtifacts, error) {
-	return buildSuiteCatalog(&compliancev1.VersionedReference{Id: SmokeSuiteID, Version: DefaultSuiteVersion}, smokeSuiteBlueprints())
+	return buildSuiteCatalog(&compliancev1.VersionedReference{Id: SmokeSuiteID, Version: SmokeSuiteVersion}, smokeSuiteBlueprints())
 }
 
 // LoadSmokeGateScenarioCatalog returns the validated built-in smoke suite catalog.
@@ -166,7 +166,7 @@ func ValidateSmokeGateScenarioCatalog(catalog *evalv1.EvaluationScenarioCatalog,
 	if catalog == nil || catalog.GetCatalogRef() == nil {
 		return fmt.Errorf("evaluation: validate smoke scenario catalog: %w", constants.ErrMissingRequiredField)
 	}
-	if catalog.GetCatalogRef().GetId() != SmokeSuiteID || catalog.GetCatalogRef().GetVersion() != DefaultSuiteVersion {
+	if catalog.GetCatalogRef().GetId() != SmokeSuiteID || catalog.GetCatalogRef().GetVersion() != SmokeSuiteVersion {
 		return fmt.Errorf("evaluation: validate smoke scenario catalog: catalog identity: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	if len(catalog.GetScenarios()) != SmokeGateScenarioCount {
@@ -291,10 +291,30 @@ func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, c
 		GoldCriteriaRef:           goldArtifact.Reference,
 		TrajectoryPolicy:          blueprint.TrajectoryPolicy,
 		TribunalCommands:          blueprint.TribunalCommands,
+		ExcludeWhenL2Enforced:     scenarioRequiresL2(blueprint),
 		PromptHint:                publicPromptHint(blueprint.Gold.PromptHint),
 		PublicCriteria:            publicCriteria,
 		PublicToolScoreDimensions: publicToolScoreDimensionsForBlueprint(blueprint),
 	}, ScenarioArtifacts{Input: inputArtifact, Gold: goldArtifact}, nil
+}
+
+// scenarioRequiresL2 derives frozen posture eligibility from the action
+// classification used by governance.L2Enforced. Required state-changing tools
+// and expected successful/error seed actions are excluded under L2-enforcing
+// postures. Expected denials and refusals remain scoreable.
+func scenarioRequiresL2(blueprint ScenarioBlueprint) bool {
+	for _, tool := range blueprint.ExpectedTools {
+		if constants.ActionTypeMcpCall.ChangesState(tool) {
+			return true
+		}
+	}
+	for _, call := range blueprint.Input.Seed.ToolCalls {
+		if call.Outcome != scenarioSeedDeny && call.Outcome != scenarioSeedRefusal &&
+			constants.ActionTypeMcpCall.ChangesState(call.ToolName) {
+			return true
+		}
+	}
+	return false
 }
 
 // publicPromptHint projects the private hint to its public form. Values are

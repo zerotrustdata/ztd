@@ -94,6 +94,115 @@ func TestCampaignPopulationAccountant_CompleteRunPasses(t *testing.T) {
 	assert.Equal(t, report.TerminalCount, uint32(report.ExpectedCells))
 }
 
+func TestCampaignPopulationAccountant_UsesFrozenPostureForMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		posture          evalv1.EvaluationGovernancePosture
+		scheduledPosture evalv1.EvaluationGovernancePosture
+		wantExpected     uint64
+		wantComplete     bool
+		wantExtra        int
+	}{
+		{
+			name:             "consensus reduced matrix is complete",
+			posture:          evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
+			scheduledPosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
+			wantExpected:     52, wantComplete: true,
+		},
+		{
+			name:             "consensus with gated scenarios is extra population",
+			posture:          evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
+			scheduledPosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+			wantExpected:     52, wantExtra: 4,
+		},
+		{
+			name:             "doctrine reduced matrix is incomplete",
+			posture:          evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+			scheduledPosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
+			wantExpected:     56,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := NewStore(newCampaignMemoryFileService())
+			controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+			req := testCampaignInitRequest(t)
+			req.Governance = RunGovernance{Posture: tc.posture, Consensus: &evalv1.EvaluationConsensusIdentity{}}
+			run, err := controller.InitializeCampaign(ctx, req)
+			require.NoError(t, err)
+
+			scenarios := []string(nil)
+			if tc.name == "consensus with gated scenarios is extra population" {
+				scenarios = []string{"recovery-live-command-error", "tool-arg-shell-command"}
+			}
+			assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+				CampaignID: req.CampaignID, RunID: run.GetRunId(), Catalog: req.Catalog,
+				ActivePosture: tc.scheduledPosture, Variants: req.Inventory.Variants,
+				RepetitionCount: req.RepetitionCount,
+			})
+			require.NoError(t, err)
+			if len(scenarios) > 0 {
+				gated, gatedErr := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+					CampaignID: req.CampaignID, RunID: run.GetRunId(), Catalog: req.Catalog,
+					ActivePosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+					Variants:      req.Inventory.Variants, RepetitionCount: req.RepetitionCount, ScenarioIDs: scenarios,
+				})
+				require.NoError(t, gatedErr)
+				assignments = append(assignments, gated...)
+			}
+			results := make(map[string]*evalv1.EvaluationAssignmentResult, len(assignments))
+			for _, assignment := range assignments {
+				assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+				require.NoError(t, store.SaveAssignment(ctx, assignment))
+				result := &evalv1.EvaluationAssignmentResult{
+					SchemaVersion: CampaignSchemaVersion, CampaignId: req.CampaignID, RunId: run.GetRunId(),
+					AssignmentId:    assignment.GetAssignmentId(),
+					LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+					Lane:            evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE,
+				}
+				result.ResultDigest, err = ComputeAssignmentResultDigest(result)
+				require.NoError(t, err)
+				require.NoError(t, store.SaveAssignmentResult(ctx, result))
+				results[assignment.GetAssignmentId()] = result
+			}
+
+			report, err := NewCampaignPopulationAccountant(nil).AccountRun(ctx, store, run.GetRunId(), req.Catalog)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantExpected, report.ExpectedCells)
+			assert.Equal(t, tc.wantComplete, report.Complete)
+			assert.Len(t, report.ExtraAssignments, tc.wantExtra)
+			if tc.posture == evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE && !tc.wantComplete {
+				assert.NotEmpty(t, report.MissingCells)
+			}
+
+			verified, err := verifyCampaignRunReadOnly(ctx, store, run.GetRunId(), CampaignVerificationPolicy{
+				VerifierReleaseVersion: "v2.1.12",
+				ProviderObservation:    ProviderObservationPolicyInterim,
+				ModelProvenance:        ModelProvenancePolicyInterim,
+				AssessmentTime:         func() time.Time { return time.Unix(1_700_000_100, 0).UTC() },
+			})
+			require.NoError(t, err)
+			assert.Equal(t, uint32(tc.wantExpected), verified.Report.GetExpectedAssignmentCount())
+
+			spec, err := store.LoadCampaignSpec(ctx, req.CampaignID)
+			require.NoError(t, err)
+			projectorReport := &evalv1.EvaluationVerificationReport{
+				RunId: run.GetRunId(), Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+				ExpectedAssignmentCount: uint32(tc.wantExpected), VerifiedAssignmentCount: uint32(len(assignments)),
+				CampaignDigest: spec.GetCampaignDigest(), CatalogDigest: spec.GetCatalogDigest(), ModelRegistryDigest: spec.GetModelRegistryDigest(),
+			}
+			applicability, err := BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, projectorReport)
+			require.NoError(t, err)
+			projectorReport.VerifiedPopulationDigest, err = ComputeVerifiedPopulationDigest(applicability.Population)
+			require.NoError(t, err)
+			applicability, err = BuildRunVerificationApplicability(run, spec, req.Catalog, assignments, results, projectorReport)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantComplete, applicability.Applicable)
+			assert.Equal(t, uint32(tc.wantExpected), verified.Report.GetExpectedAssignmentCount())
+		})
+	}
+}
+
 func TestCampaignPopulationAccountant_CompleteSystemRunPasses(t *testing.T) {
 	ctx := context.Background()
 	files := newCampaignMemoryFileService()

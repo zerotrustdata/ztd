@@ -58,6 +58,7 @@ func newStartableZtdoService(t *testing.T, mutate func(cfg *config.Config)) *Ztd
 	require.NoError(t, err)
 	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), fileSvc, canonicalDB, newTestPubSubClientFactory())
 	require.NoError(t, err)
+	require.NoError(t, service.SetSessionValidator(func(context.Context, string) error { return nil }))
 
 	t.Cleanup(func() {
 		// Start can fail after it has been handed the canonical database; force
@@ -152,6 +153,21 @@ func TestZtdoService_StartReportsSubscribedSessionToDeploymentObserver(t *testin
 		t.Fatal("deployment observer did not receive the subscribed session")
 	}
 	require.ErrorIs(t, service.SetCommandSubscriptionObserver(nil), constants.ErrServiceUnavailable)
+}
+
+func TestZtdoService_StartPeriodicallyRefreshesOperatorSession(t *testing.T) {
+	originalInterval := operatorSessionValidationInterval
+	operatorSessionValidationInterval = 10 * time.Millisecond
+	t.Cleanup(func() { operatorSessionValidationInterval = originalInterval })
+	service := newStartableZtdoService(t, nil)
+	var calls atomic.Int32
+	require.NoError(t, service.SetSessionValidator(func(context.Context, string) error {
+		calls.Add(1)
+		return nil
+	}))
+	require.NoError(t, startWithTimeout(t, service))
+	require.Eventually(t, func() bool { return calls.Load() >= 2 }, time.Second, 5*time.Millisecond,
+		"session validation must run before subscription and periodically while connected")
 }
 
 func TestZtdoService_Start_ExternalShutdownRequestCancelsServiceContext(t *testing.T) {

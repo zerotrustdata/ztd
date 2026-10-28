@@ -1067,8 +1067,12 @@ func BuildRunVerificationApplicability(run *evalv1.EvaluationRun, spec *evalv1.E
 	if run == nil || spec == nil || catalog == nil || report == nil || report.GetRunId() != run.GetRunId() {
 		return nil, fmt.Errorf("evaluation: build run verification applicability: %w", constants.ErrMissingRequiredField)
 	}
-	applicability := &RunVerificationApplicability{RunID: run.GetRunId(), CampaignID: spec.GetCampaignId(), ExpectedAssignmentCount: uint32(len(assignments))}
-	population := &evalv1.EvaluationVerifiedPopulation{SchemaVersion: "1.0.0", RunId: run.GetRunId(), CampaignId: spec.GetCampaignId(), CampaignDigest: spec.GetCampaignDigest(), CatalogRef: spec.GetCatalogRef(), CatalogDigest: spec.GetCatalogDigest(), ModelRegistryDigest: spec.GetModelRegistryDigest(), Lane: run.GetLane(), ExpectedAssignmentCount: uint32(len(assignments))}
+	expectedAssignmentCount := uint32(len(assignments))
+	if report.GetExpectedAssignmentCount() > 0 {
+		expectedAssignmentCount = report.GetExpectedAssignmentCount()
+	}
+	applicability := &RunVerificationApplicability{RunID: run.GetRunId(), CampaignID: spec.GetCampaignId(), ExpectedAssignmentCount: expectedAssignmentCount}
+	population := &evalv1.EvaluationVerifiedPopulation{SchemaVersion: "1.0.0", RunId: run.GetRunId(), CampaignId: spec.GetCampaignId(), CampaignDigest: spec.GetCampaignDigest(), CatalogRef: spec.GetCatalogRef(), CatalogDigest: spec.GetCatalogDigest(), ModelRegistryDigest: spec.GetModelRegistryDigest(), Lane: run.GetLane(), ExpectedAssignmentCount: expectedAssignmentCount}
 	buckets := make(map[string]*VerifiedModelSummaryBucket)
 	for _, assignment := range assignments {
 		if assignment == nil || !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
@@ -1138,7 +1142,7 @@ func BuildRunVerificationApplicability(run *evalv1.EvaluationRun, spec *evalv1.E
 		right := applicability.EligibleModelBuckets[j]
 		return left.VariantID+left.Role.String() < right.VariantID+right.Role.String()
 	})
-	applicability.Applicable = report.GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED && report.GetVerifiedPopulationDigest() == populationDigest && report.GetExpectedAssignmentCount() == applicability.ExpectedAssignmentCount && report.GetVerifiedAssignmentCount() == applicability.VerifiedAssignmentCount && report.GetCampaignDigest() == population.GetCampaignDigest() && report.GetCatalogDigest() == population.GetCatalogDigest() && report.GetModelRegistryDigest() == population.GetModelRegistryDigest()
+	applicability.Applicable = report.GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED && applicability.ExpectedAssignmentCount == uint32(len(assignments)) && report.GetVerifiedPopulationDigest() == populationDigest && report.GetExpectedAssignmentCount() == applicability.ExpectedAssignmentCount && report.GetVerifiedAssignmentCount() == applicability.VerifiedAssignmentCount && report.GetCampaignDigest() == population.GetCampaignDigest() && report.GetCatalogDigest() == population.GetCatalogDigest() && report.GetModelRegistryDigest() == population.GetModelRegistryDigest()
 	if !applicability.Applicable {
 		applicability.UnavailableReason = evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE
 	}

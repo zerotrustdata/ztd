@@ -592,28 +592,6 @@ message McpPromptGetRequested {
   string execution_id = 2;
 }
 
-// Payload for ztd.v1.operator.l2_trust_refresh.requested
-message OperatorL2TrustRefreshRequested {
-  int64 binding_version = 1;
-  string consensus_set_id = 2;
-  repeated string member_key_ids = 3;
-  int32 quorum = 4;
-  bool require_distinct = 5;
-  bool enabled = 6;
-  repeated OperatorL2Signer signers = 7;
-}
-
-message OperatorL2Signer {
-  string key_id = 1;
-  string public_key_hex = 2;
-}
-
-message OperatorL2TrustRefreshResult {
-  bool success = 1;
-  int64 binding_version = 2;
-  string error_message = 3;
-}
-
 enum DeterministicStageKind {
   DETERMINISTIC_STAGE_KIND_UNSPECIFIED = 0;
   DETERMINISTIC_STAGE_KIND_L1_DOCTRINE = 1;

@@ -1953,7 +1953,7 @@
         },
         "/api/v1/operators/validate": {
             "post": {
-                "description": "Validates the exact active operator-session, CLI-session, and user binding. The Gateway is authoritative; callers authenticate with an enrolled application mTLS certificate.",
+                "description": "Validates the exact active operator-session, CLI-session, and user binding, or the certificate-bound session of an outbound Operator. Successful responses include the current L2 trust snapshot. Callers authenticate with an enrolled mTLS certificate.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3047,7 +3047,6 @@
                 "OLLAMA_MODEL_INVENTORY",
                 "OLLAMA_MODEL_RELEASE",
                 "OLLAMA_MODEL_RESIDENCY",
-                "OPERATOR_L2_TRUST_REFRESH",
                 "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
                 "PLATFORM_ENROLLMENT_CREATE",
                 "PLATFORM_ENROLLMENT_CREATE_SESSION",
@@ -3088,7 +3087,6 @@
                 "ActionTypeOllamaModelInventory",
                 "ActionTypeOllamaModelRelease",
                 "ActionTypeOllamaModelResidency",
-                "ActionTypeOperatorL2TrustRefresh",
                 "ActionTypePlatformEnrollmentBindConsensus",
                 "ActionTypePlatformEnrollmentCreate",
                 "ActionTypePlatformEnrollmentCreateSession",
@@ -3236,7 +3234,6 @@
                 "ztd.v1.operator.intent.requested",
                 "ztd.v1.operator.intent.revoke.requested",
                 "ztd.v1.operator.intent.revoked",
-                "ztd.v1.operator.l2_trust_refresh.requested",
                 "ztd.v1.operator.logs.fetch.completed",
                 "ztd.v1.operator.logs.fetch.failed",
                 "ztd.v1.operator.logs.fetch.received",
@@ -3467,7 +3464,6 @@
                 "EventOperatorIntentRequested",
                 "EventOperatorIntentRevokeRequested",
                 "EventOperatorIntentRevoked",
-                "EventOperatorL2TrustRefreshRequested",
                 "EventOperatorLogsFetchCompleted",
                 "EventOperatorLogsFetchFailed",
                 "EventOperatorLogsFetchReceived",

@@ -67,6 +67,7 @@ type CampaignQueueModel struct {
 type CampaignQueue struct {
 	Pattern         string               `json:"pattern"`
 	CellsPerRun     uint64               `json:"cells_per_run"`
+	CellsPerRunL2   uint64               `json:"cells_per_run_l2_enforced,omitempty"`
 	InventoryDir    string               `json:"inventory_dir"`
 	GenerateCommand string               `json:"generate_command"`
 	Models          []CampaignQueueModel `json:"models"`

@@ -253,7 +253,6 @@ definitions:
     - OLLAMA_MODEL_INVENTORY
     - OLLAMA_MODEL_RELEASE
     - OLLAMA_MODEL_RESIDENCY
-    - OPERATOR_L2_TRUST_REFRESH
     - PLATFORM_ENROLLMENT_BIND_CONSENSUS
     - PLATFORM_ENROLLMENT_CREATE
     - PLATFORM_ENROLLMENT_CREATE_SESSION
@@ -294,7 +293,6 @@ definitions:
     - ActionTypeOllamaModelInventory
     - ActionTypeOllamaModelRelease
     - ActionTypeOllamaModelResidency
-    - ActionTypeOperatorL2TrustRefresh
     - ActionTypePlatformEnrollmentBindConsensus
     - ActionTypePlatformEnrollmentCreate
     - ActionTypePlatformEnrollmentCreateSession
@@ -439,7 +437,6 @@ definitions:
     - ztd.v1.operator.intent.requested
     - ztd.v1.operator.intent.revoke.requested
     - ztd.v1.operator.intent.revoked
-    - ztd.v1.operator.l2_trust_refresh.requested
     - ztd.v1.operator.logs.fetch.completed
     - ztd.v1.operator.logs.fetch.failed
     - ztd.v1.operator.logs.fetch.received
@@ -670,7 +667,6 @@ definitions:
     - EventOperatorIntentRequested
     - EventOperatorIntentRevokeRequested
     - EventOperatorIntentRevoked
-    - EventOperatorL2TrustRefreshRequested
     - EventOperatorLogsFetchCompleted
     - EventOperatorLogsFetchFailed
     - EventOperatorLogsFetchReceived
@@ -5405,8 +5401,9 @@ paths:
       consumes:
       - application/json
       description: Validates the exact active operator-session, CLI-session, and user
-        binding. The Gateway is authoritative; callers authenticate with an enrolled
-        application mTLS certificate.
+        binding, or the certificate-bound session of an outbound Operator. Successful
+        responses include the current L2 trust snapshot. Callers authenticate with
+        an enrolled mTLS certificate.
       parameters:
       - description: Operator, CLI, and user session binding
         in: body
