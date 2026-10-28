@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
@@ -475,6 +476,9 @@ func connectTrustAndVerify(
 		cmd.Println("System trust installation skipped (--no-system-trust).")
 		renderManualTrustInstructions(cmd, apiURL, discovery.Fingerprint)
 	} else if !trustState.Trusted {
+		if runtime.GOOS == "darwin" {
+			cmd.Println("macOS will ask for your admin password. This adds the CA above to the System keychain as a trust root. The private key stays in the local vault. Decline and pass --no-system-trust to skip.")
+		}
 		cmd.Print("Install the ztd root CA into the OS trust store? [y/N]: ")
 		if !deps.confirm("") {
 			renderManualTrustInstructions(cmd, apiURL, discovery.Fingerprint)

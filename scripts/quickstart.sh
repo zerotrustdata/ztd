@@ -84,8 +84,8 @@ if [[ ! -x "$ZTD" ]]; then
         ztd_ui_fatal "Go is not installed. Run: bash scripts/$( [[ "$(uname -s)" == Darwin ]] && echo macos || echo linux )-setup.sh --build-only"
         exit 1
     fi
-    ztd_ui_info "building ./ztd (first run only)..."
-    ztd_quickstart_run "make build" make build || exit 1
+    ztd_ui_info "building ./ztd from the committed frontend embeds (first run only)..."
+    ztd_quickstart_run "make build-go" make build-go || exit 1
 fi
 ztd_ui_ok "$("$ZTD" --version 2>/dev/null | head -n 1)"
 
@@ -95,6 +95,10 @@ if ztd_gateway_online; then
     ztd_ui_ok "already running — reusing it"
 else
     ztd_ui_info "starting Gateway (doctrine posture, embedded data Operator)..."
+    if [[ "$(uname -s)" == Darwin ]]; then
+        ztd_ui_info "If this is the first start, macOS shows a Keychain dialog for \"ztd-platform\"."
+        ztd_ui_info "It wants your Mac login password, not a ztd account. Choose Always Allow. A GUI session is required."
+    fi
     if ! ztd_quickstart_run "Gateway start" ztd_cli gw start --capabilities data ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
         if grep -qiE 'keyring|keystore|secret service|ssh-agent|master key' "$LOG"; then
             echo >&2

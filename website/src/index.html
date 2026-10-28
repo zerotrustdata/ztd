@@ -715,17 +715,28 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     </div>
     <div class="panel rv">
       <div class="tabs" role="tablist" aria-label="Install paths">
-        <button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">Linux / macOS</button>
+        <button role="tab" aria-selected="true" aria-controls="tp-mac" id="tb-mac">macOS</button>
+        <button role="tab" aria-selected="false" aria-controls="tp-0" id="tb-0" tabindex="-1">Linux</button>
         <button role="tab" aria-selected="false" aria-controls="tp-w" id="tb-w" tabindex="-1">Windows</button>
         <button role="tab" aria-selected="false" aria-controls="tp-1" id="tb-1" tabindex="-1">From source</button>
         <button role="tab" aria-selected="false" aria-controls="tp-2" id="tb-2" tabindex="-1">Enroll</button>
         <button role="tab" aria-selected="false" aria-controls="tp-3" id="tb-3" tabindex="-1">Full platform</button>
       </div>
-      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0">
-<pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
-<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh | sh
-<span class="c"># binary only: curl -fsSL https://zerotrustdata.io/ztd.sh | sh</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh | sh">Copy</button>
+      <div class="code" role="tabpanel" id="tp-mac" aria-labelledby="tb-mac">
+<pre><span class="c"># read it first. Never calls sudo. Checksum before the binary is written.</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+<span class="p">$ </span>sh /tmp/ztd-start.sh
+<span class="c"># Keychain item ztd-platform: your Mac login password, then Always Allow.</span>
+<span class="c"># Require Sigstore: ZTD_REQUIRE_SIGSTORE=1  (brew install cosign)</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh&#10;sh /tmp/ztd-start.sh">Copy</button>
+      </div>
+      <div class="code" role="tabpanel" id="tp-0" aria-labelledby="tb-0" hidden>
+<pre><span class="c"># read it first. Never calls sudo. Checksum before the binary is written.</span>
+<span class="p">$ </span>curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
+<span class="p">$ </span>sh /tmp/ztd-start.sh
+<span class="c"># one-liner: curl -fsSL https://zerotrustdata.io/start.sh | sh</span>
+<span class="c"># no desktop keyring: eval "$(ssh-agent)" &amp;&amp; ssh-add</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh&#10;sh /tmp/ztd-start.sh">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-w" aria-labelledby="tb-w" hidden>
 <pre><span class="c"># install, start a Gateway, sign in, run a first governed action</span>
@@ -736,6 +747,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
 <pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
+<span class="c"># --build-only uses the committed frontends. Node is not required.</span>
 <span class="c"># macOS:</span>
 <span class="p">$ </span>bash scripts/macos-setup.sh --build-only
 <span class="c"># Linux: bash scripts/linux-setup.sh --build-only</span>

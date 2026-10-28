@@ -310,16 +310,17 @@ ztd_check_cc() {
 }
 
 # Fills MISSING with the logical names of absent prerequisites. --build-only
-# checks what `make build` needs, including Node.js and npm to build the
-# embedded Console and Evaluation Explorer assets.
+# checks what `make build-go` needs. That target compiles ./ztd from the
+# committed console and explorer embeds and does not run Node. The full
+# contributor setup still requires Node.js and npm for `make build`.
 ztd_collect_missing() {
     MISSING=()
     ztd_check_git || MISSING+=("git")
     ztd_check_make || MISSING+=("make")
     ztd_check_curl || MISSING+=("curl")
     ztd_check_go || MISSING+=("go")
-    ztd_check_node || MISSING+=("node")
     if [[ "$ZTD_BUILD_ONLY" != true ]]; then
+        ztd_check_node || MISSING+=("node")
         ztd_check_ripgrep || MISSING+=("rg")
         ztd_check_bc || MISSING+=("bc")
         ztd_check_cc || MISSING+=("cc")
@@ -567,7 +568,11 @@ ztd_build_evaluation_explorer() {
 }
 
 ztd_run_make_build() {
-    make build
+    if [[ "$ZTD_BUILD_ONLY" == true ]]; then
+        make build-go
+    else
+        make build
+    fi
 }
 
 # Creates the owner-only .env that every ./ztd command loads, from the
@@ -714,7 +719,7 @@ ztd_configure_path_unix() {
     if ztd_have go && [[ "$(command -v go)" != /usr/local/go/bin/go ]]; then
         local sys_go managed
         sys_go="$(ztd_extract_version "$(cd "${TMPDIR:-/tmp}" && GOTOOLCHAIN=local go version 2>/dev/null)")"
-        if [[ -n "$sys_go" ]] && ! ztd_version_ge "$sys_go" "$ZTD_GO_MIN"; then
+        if [[ -n "$sys_go" && -n "${ZTD_GO_MIN:-}" ]] && ! ztd_version_ge "$sys_go" "$ZTD_GO_MIN"; then
             managed="$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go${ZTD_GO_MIN}.$(go env GOOS)-$(go env GOARCH)/bin"
             if [[ -x "$managed/go" ]]; then
                 ztd_plan_path_entry "$managed" "# ztd: managed Go ${ZTD_GO_MIN} toolchain (system go is ${sys_go})" prepend
@@ -804,7 +809,7 @@ ztd_setup_main() {
     local platform="$1" install_fn="$2" script="$3" post_fn="${4:-}" total step=0 prereqs
     if [[ "$ZTD_BUILD_ONLY" == true ]]; then
         total=3
-        prereqs="git, make, curl, go >= ${ZTD_GO_MIN}, node (${ZTD_NODE_REQUIREMENT})"
+        prereqs="git, make, curl, go >= ${ZTD_GO_MIN} (committed frontend embeds; Node is not required)"
         ztd_ui_title "ztd ${platform} setup ${ZTD_UI_DIM}(build only)${ZTD_UI_RESET}"
     else
         total=6

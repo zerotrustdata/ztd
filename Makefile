@@ -46,7 +46,9 @@ endif
 BIN_DIR := bin
 # Sidecar checksums must name the file by basename only, so `sha256sum -c <name>.sha256`
 # works from the directory holding the binary. $$ZTD_BINARY is expanded by the shell.
-WRITE_SHA256 = (cd "$$(dirname "$$ZTD_BINARY")" && sha256sum "$$(basename "$$ZTD_BINARY")") > "$$ZTD_BINARY.sha256"
+# sha256sum is GNU coreutils. macOS 15 has it in /sbin; earlier releases and a
+# minimal PATH only have shasum. Both print "<hex>  <name>", which -c accepts.
+WRITE_SHA256 = (cd "$$(dirname "$$ZTD_BINARY")" && { command -v sha256sum >/dev/null 2>&1 && sha256sum "$$(basename "$$ZTD_BINARY")" || shasum -a 256 "$$(basename "$$ZTD_BINARY")"; }) > "$$ZTD_BINARY.sha256"
 MAIN_PKG := ./cmd/ztd
 
 # Source provenance stamps use explicit non-Git values and an explicit source
@@ -204,7 +206,8 @@ help:
 		'  ci-website                Run website tests and build' \
 		'' \
 		'Build and release' \
-		'  build                     Build ztd for the host platform' \
+		'  build                     Build ztd for the host platform, refreshing embedded frontends' \
+		'  build-go                  Build the host binary from the committed frontend embeds (no Node)' \
 		'  build-all                 Build ztd for every supported platform' \
 		'  build-target              Build one target (requires GOOS and GOARCH)' \
 		'  build-linux               Build every supported Linux architecture' \
@@ -638,8 +641,17 @@ $(CONSOLE_EMBED)/index.html: $(CONSOLE_DIST)/index.html
 console-embed: $(CONSOLE_EMBED)/index.html
 
 # Builds the host binary including embedded frontend assets (console and evaluation explorer).
+# The frontend refresh finishes before the compile: a parallel `make -j` must
+# not link ./ztd against a half-copied embed.
 .PHONY: build
 build: console-embed explorer-embed
+	@$(MAKE) build-go
+
+# Host binary only, from the console and explorer embeds already on disk.
+# Does not run Node. Source setup --build-only and `make quickstart` use this
+# so a checkout compiles ./ztd from the committed embeds without Node.js.
+.PHONY: build-go
+build-go:
 	@echo "Building ztd for the host platform..."
 	@mkdir -p $(BIN_DIR)
 	@rm -f $(BIN_DIR)/ztd-binaries.json

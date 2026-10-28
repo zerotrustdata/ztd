@@ -3,8 +3,8 @@ doc_id: scripts
 title: Automation Scripts
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.4.1
+last_updated: 2026-10-28
 owners:
   - scripts/
   - internal/services/gateway/scripts/
@@ -51,7 +51,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SCRIPTS-01 | Setup scripts MUST check for `git`, `make`, `curl`, `go`, `node`, and `npm` (Node.js 22.22.2+, 24.15+, or 26+) before building in both modes. `make build` compiles and embeds the Console and Evaluation Explorer frontends. Unless `--build-only` is passed, Unix setup scripts also MUST check `rg` (ripgrep), `bc`, and a C compiler. The Go version MUST be read from `go.mod` and compared including the patch component. Every tool pin for the contributor toolchain (`BUF_VERSION`, `PROTOC_GEN_GO_VERSION`, `GOLANGCI_LINT_VERSION`, etc.) MUST be read from the root `Makefile` as its single source of truth. |
+| INV-SCRIPTS-01 | The full setup MUST check for `git`, `make`, `curl`, `go`, `node`, and `npm` (Node.js 22.22.2+, 24.15+, or 26+) before `make build`, which refreshes the Console and Evaluation Explorer embeds. `--build-only` MUST check `git`, `make`, `curl`, and `go`, then run `make build-go`, which compiles `./ztd` from the committed embeds and MUST NOT require Node.js. Unless `--build-only` is passed, Unix setup scripts also MUST check `rg` (ripgrep), `bc`, and a C compiler. The Go version MUST be read from `go.mod` and compared including the patch component. Every tool pin for the contributor toolchain (`BUF_VERSION`, `PROTOC_GEN_GO_VERSION`, `GOLANGCI_LINT_VERSION`, etc.) MUST be read from the root `Makefile` as its single source of truth. |
 | INV-SCRIPTS-02 | Setup scripts on Linux and macOS MUST update shell profiles (`~/.zshrc`, `~/.bashrc`, or `~/.profile`) for persistent PATH modification, and MUST do so only after confirmation or with `--yes`; a non-interactive run without `--yes` leaves the profile unchanged. Windows scripts MUST update the user-level `Path` through the registry under the same confirmation rule (`--yes` or an interactive confirmation). Invoking users MUST open a new shell or source the profile before `ztd` is available in other terminals. |
 | INV-SCRIPTS-04 | Gateway-served deploy scripts (`ztd-deploy.sh`, `ztd-deploy.ps1`) are bootstrap conveniences for trusted networks only. They fetch artifacts over plain HTTP, lack TLS protection, and delete `~/.ztd/pki` before startup. Users MUST fetch and inspect the rendered script before execution. |
 | INV-SCRIPTS-06 | Unless `--build-only` is passed, the Linux, macOS, and Windows setup scripts MUST leave a machine that passes `make dev-check`. |
@@ -101,7 +101,7 @@ bash scripts/macos-setup.sh
 pwsh scripts/windows-setup.ps1
 ```
 
-- **Options**: `-y` / `--yes` (unattended installation), `--build-only` (build the binary and embedded frontends; skip contributor tools), `-h` (help).
+- **Options**: `-y` / `--yes` (unattended installation), `--build-only` (compile `./ztd` with `make build-go` from the committed embeds; skip Node and contributor tools), `-h` (help).
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
 - **Linux Packages**: Detects the package manager before translating prerequisite names. The C compiler prerequisite installs `build-essential` on apt, `gcc` on dnf/zypper, or `base-devel` on pacman.
 - **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or `~/.profile` (Linux and macOS) or the user-level `Path` in the registry (Windows). Profiles are only appended to, never rewritten.

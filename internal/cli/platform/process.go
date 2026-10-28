@@ -73,7 +73,8 @@ type OperatorStartOptions struct {
 // keyStoreApprovalNotice tells the user why a background start is still
 // waiting after the child logged constants.KeyStoreAwaitingApprovalLog.
 const keyStoreApprovalNotice = "[ztd] Waiting for access to the vault master key in the OS key store.\n" +
-	"[ztd] On macOS, approve the Keychain prompt for ztd with your login password and choose Always Allow."
+	"[ztd] On macOS, the Keychain dialog for the ztd-platform item wants your Mac login password, not a ztd account. Choose Always Allow.\n" +
+	"[ztd] The dialog only appears in a GUI session. SSH cannot show it."
 
 type ProcessManager struct {
 	fileSvc fs.RuntimeFileService

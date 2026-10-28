@@ -60,9 +60,11 @@ test('validateHomepage rejects legacy branding in any generated asset', () => {
 
 test('homepage quick start leads with the signed installers and links the Releases pages', async () => {
   const { html } = await sourceHomepage();
-  assert.match(html, /<button role="tab" aria-selected="true" aria-controls="tp-0" id="tb-0">Linux \/ macOS<\/button>/);
+  assert.match(html, /<button role="tab" aria-selected="true" aria-controls="tp-mac" id="tb-mac">macOS<\/button>/);
+  assert.match(html, /id="tb-0"[^>]*>Linux<\/button>/);
   assert.match(html, /id="tb-w"[^>]*>Windows<\/button>/);
-  assert.match(html, /data-copy="curl -fsSL https:\/\/zerotrustdata\.io\/start\.sh \| sh"/);
+  assert.match(html, /data-copy="curl -fsSL https:\/\/zerotrustdata\.io\/start\.sh -o \/tmp\/ztd-start\.sh&#10;sh \/tmp\/ztd-start\.sh"/);
+  assert.match(html, /Mac login password/);
   assert.match(html, /data-copy="irm https:\/\/zerotrustdata\.io\/start\.ps1 \| iex"/);
   assert.match(html, /<li class="nav-keep"><a href="\/releases\/">Releases<\/a><\/li>/);
   assert.match(html, /<a href="\/releases\/latest\/">Release notes<\/a>/);

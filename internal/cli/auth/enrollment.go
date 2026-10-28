@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"runtime"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
@@ -933,9 +934,26 @@ func (c *EnrollmentCoordinator) installSystemTrust(ctx context.Context, artifact
 		return false, nil
 	}
 
-	// Step 5: InstallRoot. If ErrSystemTrustUnsupported, warn and return.
-	// On success print "installed". On any other error return wrapped
-	// ErrSystemTrustInstallFailed.
+	// Step 5: Consent, then InstallRoot. login web reaches sudo here with
+	// no earlier prompt. Say what the password is for before asking.
+	// If ErrSystemTrustUnsupported, warn and return. On success print
+	// "installed". On any other error return wrapped ErrSystemTrustInstallFailed.
+	c.out("Gateway root CA fingerprint (SHA-256): %s", keepFingerprint)
+	var trustPrompt string
+	if runtime.GOOS == "darwin" {
+		c.out("macOS will prompt for your admin password. sudo security add-trusted-cert adds this CA to the System keychain as a trust root, so browsers on this Mac accept the Gateway's HTTPS certificate.")
+		c.out("The CA private key stays in the local vault on this Mac. This is the only onboarding step that uses sudo.")
+		c.out("To skip it, rerun with: ./ztd login web --no-system-trust")
+		trustPrompt = "Install the Gateway root CA into the System keychain? [y/N]: "
+	} else {
+		c.out("This adds the Gateway CA to the OS trust store so browsers accept its HTTPS certificate. The CA private key stays on this host.")
+		c.out("To skip it, rerun with --no-system-trust.")
+		trustPrompt = "Install the Gateway root CA into the OS trust store? [y/N]: "
+	}
+	if !c.confirm(trustPrompt) {
+		c.out("OS trust installation declined. Rerun with --no-system-trust to continue without it.")
+		return false, fmt.Errorf("%w: %w", constants.ErrManualBrowserTrustRequired, constants.ErrConfirmationAborted)
+	}
 	if err := c.trust.InstallRoot(ctx, primary, keepFingerprint); err != nil {
 		if errors.Is(err, constants.ErrSystemTrustUnsupported) {
 			c.out("Warning: OS trust store installation is unsupported on this platform (%v). Skipping system trust installation.", err)

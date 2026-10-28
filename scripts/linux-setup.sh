@@ -9,7 +9,8 @@
 # ztd Linux dev setup: install the toolchain, build evaluation-explorer, make
 # build, install the contributor toolchain that `make ci` needs (Go dev tools,
 # Node deps), and offer to add the repository root to PATH.
-# Pass --build-only to stop after `make build`.
+# Pass --build-only to compile ./ztd with `make build-go` from the committed
+# frontend embeds. That mode does not install Node.js.
 # See docs/architecture/scripts.md and docs/guides/getting_started.md
 
 set -euo pipefail
