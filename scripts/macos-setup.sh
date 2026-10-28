@@ -22,7 +22,9 @@ source "${SCRIPT_DIR}/lib/dev-setup-common.sh"
 ztd_macos_brew_install() {
     local packages=("$@")
     if ! command -v brew >/dev/null 2>&1; then
-        echo "FATAL: Homebrew is required on macOS. Install it from https://brew.sh"
+        echo "FATAL: Homebrew is not installed. ztd will not download or run the Homebrew installer."
+        echo "Install it yourself from https://brew.sh, then rerun: bash scripts/macos-setup.sh"
+        echo "Or install these yourself and rerun: ${packages[*]}"
         exit 1
     fi
     brew install "${packages[@]}"
@@ -65,7 +67,13 @@ ztd_macos_install_missing() {
     done
 
     if [[ ${#brew_packages[@]} -gt 0 ]]; then
-        echo "They can be installed via: brew install ${brew_packages[*]}"
+        echo "  Homebrew would install: ${brew_packages[*]}"
+        echo "  That writes only under the Homebrew prefix. Your shell profile, Keychain, and trust settings are separate steps, and each asks first."
+        if ! command -v brew >/dev/null 2>&1; then
+            echo "  Homebrew is not installed. ztd will not download or run its installer."
+            echo "  Install Homebrew yourself from https://brew.sh, or install ${brew_packages[*]} another way, then rerun."
+            return 0
+        fi
         if ztd_setup_confirm "Install with Homebrew now? [y/N] "; then
             ztd_macos_brew_install "${brew_packages[@]}"
         fi
@@ -81,6 +89,10 @@ ztd_macos_install_optional() {
     local cask="$1"
     if [[ "$1" == docker ]]; then
         cask="docker-desktop"
+        ztd_ui_info "Docker Desktop installs into /Applications and adds a privileged helper. Decline anything in its own installer you do not want."
+    elif [[ "$1" == chromium ]]; then
+        ztd_ui_info "This is the Chromium cask in /Applications. Playwright's browser is separate and stays in your user cache:"
+        ztd_ui_info "  (cd evaluation-explorer && npx playwright install chromium)"
     fi
     brew install --cask "$cask" || return 1
     if [[ "$1" == docker ]]; then

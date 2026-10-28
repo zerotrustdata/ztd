@@ -19,7 +19,7 @@ const startScript = fileURLToPath(new URL('../static/start.sh', import.meta.url)
 const installScript = fileURLToPath(new URL('../static/ztd.sh', import.meta.url));
 const HOST_PATH = (process.env.PATH || '').split(delimiter);
 // Host tools start.sh, ztd.sh, and the fake ztd call. Everything else is hidden from the script PATH.
-const REAL_TOOLS = ['sh', 'awk', 'sed', 'grep', 'tail', 'head', 'tr', 'mktemp', 'install', 'rm', 'cat', 'date', 'mkdir', 'wc', 'sha256sum', 'touch'];
+const REAL_TOOLS = ['sh', 'awk', 'sed', 'grep', 'tail', 'head', 'tr', 'mktemp', 'install', 'rm', 'cat', 'date', 'mkdir', 'wc', 'sha256sum', 'shasum', 'xattr', 'touch'];
 
 function isFile(candidate) {
   try {
@@ -315,7 +315,46 @@ test('on macOS the first Gateway start explains the Keychain dialog before it ca
   assert.match(result.stdout, /ztd-platform/);
   assert.match(result.stdout, /Mac login password/);
   assert.match(result.stdout, /Always Allow/);
-  assert.match(result.stdout, /System keychain/);
+  assert.match(result.stdout, /login keychain/);
+  assert.match(result.stdout, /no sudo/);
+  assert.doesNotMatch(result.stdout, /sudo security/);
+  assert.equal(existsSync(join(fixture.home, 'ztd', 'ztd')), false);
+  assert.equal(readFileSync(join(fixture.home, 'Library', 'Application Support', 'ztd', 'ztd'), 'utf8'), FAKE_ZTD);
+  assert.match(result.stdout, /cd '/);
+});
+
+test('on macOS a checkout at ~/ztd does not receive the Gateway runtime', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  mkdirSync(join(fixture.home, 'ztd', '.git'), { recursive: true });
+  const result = runPiped(fixture);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(join(fixture.home, 'ztd', 'ztd')), false);
+  assert.equal(existsSync(join(fixture.home, 'ztd', '.ztd')), false);
+  assert.equal(readFileSync(join(fixture.home, 'Library', 'Application Support', 'ztd', 'ztd'), 'utf8'), FAKE_ZTD);
+});
+
+test('on macOS Finder metadata alone does not make the default directory look occupied', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  const dir = join(fixture.home, 'Library', 'Application Support', 'ztd');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.DS_Store'), 'finder');
+  writeFileSync(join(dir, '.localized'), '');
+  const result = runPiped(fixture);
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('on macOS an unrelated file in the default directory is refused before any download', (t) => {
+  const fixture = setup(t, { os: 'Darwin' });
+  const dir = join(fixture.home, 'Library', 'Application Support', 'ztd');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'README'), 'not an install\n');
+  const result = runPiped(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not a ztd install/);
+  assert.equal(existsSync(join(fixture.log, 'curl.log')), false);
 });
 
 test('start.sh refuses the default directory when it is already a source checkout', (t) => {

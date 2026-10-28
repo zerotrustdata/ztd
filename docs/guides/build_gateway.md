@@ -4,7 +4,7 @@ title: Build Gateway
 audience: developers and operators
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-28
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -115,7 +115,7 @@ On first start, the Gateway creates the `.ztd/` runtime tree and PKI hierarchy. 
 ./ztd login web
 ```
 
-`./ztd login web` enrolls a CLI session, installs the Gateway root CA into the OS trust store (skip with `--no-system-trust`), registers or confirms a passkey, and produces an identity that can use both the CLI and the Console. Use `./ztd login` (the same as `./ztd login cli`) for a headless host: it skips the passkey and OS trust steps and creates an mTLS-only CLI identity that cannot sign in to the Console.
+`./ztd login web` enrolls a CLI session, installs the Gateway root CA into the OS trust store (on macOS, your login keychain as an HTTPS trust root for this account, with no sudo; skip with `--no-system-trust`), registers or confirms a passkey, and produces an identity that can use both the CLI and the Console. Use `./ztd login` (the same as `./ztd login cli`) for a headless host: it skips the passkey and OS trust steps and creates an mTLS-only CLI identity that cannot sign in to the Console.
 
 Choose a stricter posture only after configuring required proofs. `consensus` enforces L1 and L2, `ratify` enforces L1 and L3, and `notary` enforces L1, L2, and L3; `doctrine` audits L2 and L3:
 

@@ -120,7 +120,7 @@ ztd runs natively as a static binary on Linux, macOS, and Windows. No Docker dae
 
 ### macOS
 
-Read the installer, then run it. `start.sh` installs into `~/ztd` (override with `ZTD_DIR`), checks the binary's SHA-256 against the published checksum, and never calls sudo. If `cosign` is on `PATH` it also verifies the Sigstore bundle. `ZTD_REQUIRE_SIGSTORE=1` refuses a checksum-only install (`brew install cosign`).
+Read the installer, then run it. `start.sh` installs into `~/Library/Application Support/ztd` (override with `ZTD_DIR`), checks the binary's SHA-256 against the published checksum, and never calls sudo. If `cosign` is on `PATH` it also verifies the Sigstore bundle. `ZTD_REQUIRE_SIGSTORE=1` refuses a checksum-only install (`brew install cosign`).
 
 ```bash
 curl -fsSL https://zerotrustdata.io/start.sh -o /tmp/ztd-start.sh
@@ -134,16 +134,12 @@ The one-liner, once you have read that script:
 curl -fsSL https://zerotrustdata.io/start.sh | sh
 ```
 
-If `~/ztd` already exists and is not a previous install (a git checkout, a clone, anything else), the installer stops. Point it at an empty directory:
-
-```bash
-ZTD_DIR="$HOME/Library/Application Support/ztd" sh /tmp/ztd-start.sh
-```
+If that directory already exists and is not a previous install, the installer stops. Point it at an empty directory with `ZTD_DIR`. A checkout at `~/ztd` is left alone.
 
 What macOS will ask you, and what it will not:
 
 1. **Keychain, first Gateway start.** A dialog for the `ztd-platform` item wants your **Mac login password**, not a ztd account. That item is the vault master key and it stays in the login keychain. Choose **Always Allow**. The dialog needs a GUI session; SSH cannot show it. A rebuilt or upgraded binary asks again, because the code signature changed. The installer prints this before the Gateway start, so the dialog is not a silent hang.
-2. **Nothing else uses sudo during install.** `./ztd login web` is the later step that can. It prints the Gateway CA fingerprint and asks before `sudo security add-trusted-cert` adds that local CA to the **System** keychain. The CA private key stays in the vault on this Mac. Decline, or pass `--no-system-trust`, if you do not want a local trust root.
+2. **Nothing in onboarding uses sudo unless you are removing an old machine-wide CA.** `./ztd login web` prints the Gateway CA fingerprint and asks before it adds that CA to your **login keychain** as an HTTPS trust root, for your account only. It is not a code-signing root. The CA private key stays in the vault on this Mac. Decline, or pass `--no-system-trust`, if you do not want a local trust root. An older install may have left a CA in the System keychain; removing that one is a separate yes, and that yes is the sudo.
 3. **Gatekeeper.** A binary saved from a browser is quarantined. The installer clears `com.apple.quarantine` only after the checksum matches. If you placed the binary yourself, verify the checksum first, then `xattr -d com.apple.quarantine ./ztd`.
 
 Then, from the install directory, the same follow-ups as every other platform: `./ztd tui`, `./ztd login web`, `./ztd operator list`.

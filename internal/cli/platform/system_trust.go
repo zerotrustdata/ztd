@@ -40,8 +40,40 @@ type StaleAnchor struct {
 	// Handle is the platform-specific identifier used for removal:
 	//   - Linux (Debian/RHEL): the managed file path
 	//   - Windows: the SHA-1 thumbprint (certutil -delstore)
-	//   - Darwin: the SHA-1 hash (security delete-certificate -Z)
+	//   - Darwin: "user:<sha1>" for the login keychain, or "system:<sha1>"
+	//     for the System keychain. The two stores are never mixed.
 	Handle string
+
+	// Scope is a short location name for display ("login keychain",
+	// "System keychain"). Empty when the platform has a single trust store.
+	Scope string
+
+	// Elevated is true when removal needs administrator rights. On macOS
+	// that is only a System keychain anchor left by an older install.
+	Elevated bool
+}
+
+// Where describes where a stale anchor lives, for a consent prompt.
+// It is empty when Scope is empty.
+func (a StaleAnchor) Where() string {
+	if a.Scope == "" {
+		return ""
+	}
+	if a.Elevated {
+		return a.Scope + " (administrator, every account)"
+	}
+	return a.Scope + " (this account)"
+}
+
+// StaleAnchorsNeedAdmin reports whether removing any anchor needs
+// administrator rights.
+func StaleAnchorsNeedAdmin(anchors []StaleAnchor) bool {
+	for _, a := range anchors {
+		if a.Elevated {
+			return true
+		}
+	}
+	return false
 }
 
 // commandRunner executes an external command with context, returning combined
@@ -122,7 +154,8 @@ func (i *SystemTrustInstaller) IsTrusted(ctx context.Context, fingerprint string
 
 // InstallRoot writes the root anchor into the OS trust store. It writes only —
 // it does not check whether the anchor is already trusted (the caller decides
-// via IsTrusted first). Requires elevation on all platforms.
+// via IsTrusted first). Linux and Windows require elevation. macOS writes the
+// user login keychain and does not call sudo.
 func (i *SystemTrustInstaller) InstallRoot(ctx context.Context, root *x509.Certificate, fingerprint string) error {
 	return i.installPlatform(ctx, root, fingerprint)
 }

@@ -338,11 +338,21 @@ ztd_check_chromium() {
         fi
     done
     if [[ "$(uname -s)" == Darwin ]]; then
-        for browser in "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+        # A browser already on this Mac is enough. Do not offer a second one
+        # through a Homebrew cask. Playwright still downloads its own Chromium.
+        local app
+        for app in \
+            "/Applications/Chromium.app/Contents/MacOS/Chromium" \
             "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium" \
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-            "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; do
-            [[ ! -x "$browser" ]] || return 0
+            "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+            "/Applications/Safari.app/Contents/MacOS/Safari" \
+            "/Applications/Firefox.app/Contents/MacOS/firefox" \
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+            "/Applications/Arc.app/Contents/MacOS/Arc" \
+            "/Applications/Orion.app/Contents/MacOS/Orion"; do
+            [[ ! -x "$app" ]] || return 0
         done
     fi
     return 1
@@ -358,7 +368,13 @@ ztd_setup_optional_tools() {
     for tool in docker chromium; do
         present=false
         case "$tool" in
-            docker) label="Docker"; if ztd_have docker; then present=true; fi ;;
+            docker)
+                label="Docker"
+                if [[ "$(uname -s)" == Darwin ]]; then
+                    label="Docker Desktop into /Applications (its installer adds a privileged helper)"
+                fi
+                if ztd_have docker; then present=true; fi
+                ;;
             chromium) label="Chromium (or Google Chrome)"; if ztd_check_chromium; then present=true; fi ;;
         esac
         if [[ "$present" == true ]]; then

@@ -141,9 +141,13 @@ session="$(awk '$1 == "Operator" && $2 == "session" {print $3; exit}' "$LOG")"
 ztd_ui_ok "admitted by the Gateway, executed by the Operator, signed and recorded"
 
 console="$(ztd_cli gw status 2>/dev/null | awk '$1 == "Console" {print $2}')"
+browser_hint="add a passkey, then open ${console:-https://localhost:8443/console/}"
+if [[ "$(uname -s)" == Darwin ]]; then
+    browser_hint="asks before adding the Gateway CA to your login keychain (this account, no sudo), then a passkey. Open ${console:-https://localhost:8443/console/}"
+fi
 echo -e "\n${ZTD_UI_GREEN}${ZTD_UI_BOLD}${ZTD_UI_OK} You're running ztd${ZTD_UI_RESET} ${ZTD_UI_DIM}($(ztd_ui_elapsed))${ZTD_UI_RESET}\n"
 echo -e "  ${ZTD_UI_BOLD}Watch${ZTD_UI_RESET}     ./ztd tui                ${ZTD_UI_DIM}live governance console in the terminal${ZTD_UI_RESET}"
-echo -e "  ${ZTD_UI_BOLD}Browser${ZTD_UI_RESET}   ./ztd login web          ${ZTD_UI_DIM}add a passkey, then open ${console:-https://localhost:8443/console/}${ZTD_UI_RESET}"
+echo -e "  ${ZTD_UI_BOLD}Browser${ZTD_UI_RESET}   ./ztd login web          ${ZTD_UI_DIM}${browser_hint}${ZTD_UI_RESET}"
 echo -e "  ${ZTD_UI_BOLD}Evidence${ZTD_UI_RESET}  ./ztd gw data audit list --operator-session-id ${session:-<id>}"
 echo -e "  ${ZTD_UI_BOLD}Agents${ZTD_UI_RESET}    ./ztd mcp agent run claude"
 echo -e "  ${ZTD_UI_BOLD}Stop${ZTD_UI_RESET}      make down                ${ZTD_UI_DIM}state in .ztd/ is kept${ZTD_UI_RESET}"
