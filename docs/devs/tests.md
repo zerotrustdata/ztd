@@ -155,7 +155,7 @@ The fleet smoke defaults to 100 Operators. `SCALE_COUNT` overrides that cohort f
 
 `make test-eval-live` requires `LIVE_OLLAMA_ENDPOINT` and `LIVE_MODEL` and runs the Tier 4 provider qualification under ratify and notary. The existing eval-loop, conformance-loop, release-smoke, and scale runners own isolated Gateways, so their posture changes and cleanup stay within their own runtimes and remain in `make test`.
 
-`make test-onboarding-smoke` names the CI-only fresh-checkout contributor setup and release smoke. It refuses an existing runtime or `.env`; the Docker onboarding matrix covers the contributor and release-smoke scenarios in the full suite.
+`make test-onboarding-smoke` names the fresh-checkout contributor setup and release smoke, intended for a disposable host. It refuses an existing runtime or `.env`; the Docker onboarding matrix covers the contributor and release-smoke scenarios in the full suite.
 
 ### Run Test Tiers
 
@@ -281,7 +281,7 @@ make ci
 
 `make ci` refreshes generated artifacts as it runs. GitHub Actions separately checks generated-file freshness. The local gate includes Linux standard and FIPS binary checks, Windows cross-compilation, the standard unit and integration suites with coverage, enrollment bursts, FIPS unit and integration reruns on Linux, downstream Go imports, and the frontend, protocol, website, and script checks.
 
-`ci-onboarding`, included in `make ci`, requires a running Docker daemon. It runs the same `test-onboarding-docker` target used by Actions across Ubuntu, Debian, Fedora, and Arch for build-only setup, a fresh-terminal rerun, and quickstart. A separate Ubuntu container runs build-only setup followed by contributor setup, notice and env-file checks, governed release smoke, and the real three-Operator deployment lifecycle used by Actions. This gives setup and process tests disposable hosts without changing the contributor's toolchain or occupying their Gateway ports. Missing Docker fails the gate. Logs and evidence remain under `.local.dev/onboarding/`.
+`ci-onboarding`, included in `make ci`, requires a running Docker daemon. It runs `test-onboarding-docker` across Ubuntu, Debian, Fedora, and Arch for build-only setup, a fresh-terminal rerun, and quickstart. A separate Ubuntu container runs build-only setup followed by contributor setup, notice and env-file checks, governed release smoke, and the real three-Operator deployment lifecycle. GitHub Actions does not run the fresh-host onboarding jobs; they run locally only. This gives setup and process tests disposable hosts without changing the contributor's toolchain or occupying their Gateway ports. Missing Docker fails the gate. Logs and evidence remain under `.local.dev/onboarding/`.
 
 Native macOS Keychain and Windows DPAPI/process behavior still require those hosts. The main workflow runs full unit and integration suites on Linux and macOS; Windows runs the full unit suite and selected integration packages. Live-provider E2E and fleet scale qualification remain explicit targets.
 

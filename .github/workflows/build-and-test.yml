@@ -26,54 +26,6 @@ jobs:
       - name: Test Python and SQLite business services
         run: make demos-test
 
-  onboarding:
-    name: Linux fresh-host onboarding
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Run contributor setup and governed onboarding smoke
-        run: bash scripts/ci/onboarding-smoke.sh
-
-      - name: Preserve governed onboarding evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: linux-onboarding-evidence
-          path: |
-            ${{ runner.temp }}/ztd-onboarding-smoke-${{ github.run_id }}-${{ github.run_attempt }}/evidence/
-            ${{ runner.temp }}/ztd-onboarding-smoke-${{ github.run_id }}-${{ github.run_attempt }}/reports/
-            ${{ runner.temp }}/ztd-onboarding-smoke-${{ github.run_id }}-${{ github.run_attempt }}/logs/
-          if-no-files-found: ignore
-
-  onboarding-distros:
-    name: Fresh-host onboarding (${{ matrix.distro }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [ubuntu, debian, fedora, arch]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Hermetic onboarding script tests
-        run: make test-onboarding
-
-      - name: Replay setup and quickstart on a fresh container host
-        run: make test-onboarding-docker DISTROS=${{ matrix.distro }} ONBOARDING_OUT="${{ runner.temp }}/onboarding"
-
-      - name: Preserve onboarding logs
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: onboarding-${{ matrix.distro }}
-          path: ${{ runner.temp }}/onboarding/
-          if-no-files-found: ignore
-
   onboarding-macos:
     name: macOS native setup, build, and platform tests
     runs-on: macos-latest
