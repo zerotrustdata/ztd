@@ -51,6 +51,38 @@ type sshAgentSeal struct {
 // sshAgentDialer opens an agent connection for one keyring operation.
 type sshAgentDialer func() (agent.ExtendedAgent, func() error, error)
 
+// SSHAgentUnlockError identifies the original sealing key without exposing
+// private material. Callers can offer recovery without parsing error text.
+type SSHAgentUnlockError struct {
+	Fingerprint string
+	Err         error
+}
+
+func (e *SSHAgentUnlockError) Error() string {
+	return fmt.Sprintf("%s (required SSH key: %s)", e.Err, e.Fingerprint)
+}
+
+func (e *SSHAgentUnlockError) Unwrap() error { return e.Err }
+
+// CheckSSHAgentMasterKey verifies an existing Linux agent seal before a CLI
+// detaches from its terminal. A fresh runtime needs no check. This never creates
+// or replaces a master key, switches providers, or retains the unsealed key.
+func CheckSSHAgentMasterKey(ctx context.Context, fileSvc fs.RuntimeFileService) error {
+	return checkSSHAgentMasterKey(ctx, fileSvc, dialSSHAgent)
+}
+
+func checkSSHAgentMasterKey(ctx context.Context, fileSvc fs.RuntimeFileService, dial sshAgentDialer) error {
+	if fileSvc == nil {
+		return fmt.Errorf("check ssh-agent master key: %w: runtime file service", constants.ErrMissingRequiredField)
+	}
+	key, err := newSSHAgentKeyring(fileSvc, dial).retrieveMasterKey(ctx)
+	vault.SecureZero(key)
+	if errors.Is(err, constants.ErrKeyStoreKeyNotFound) {
+		return nil
+	}
+	return err
+}
+
 // sshAgentKeyring seals the master key under a key-encryption key derived from
 // an ssh-agent signature over a random salt. Ed25519 and RSA (rsa-sha2-512)
 // signatures are deterministic, so only the holder of that SSH private key can
@@ -159,7 +191,11 @@ func (s *sshAgentKeyring) usable() error {
 }
 
 func (s *sshAgentKeyring) RetrieveMasterKey() ([]byte, error) {
-	data, err := s.fileSvc.ReadFile(context.Background(), s.path)
+	return s.retrieveMasterKey(context.Background())
+}
+
+func (s *sshAgentKeyring) retrieveMasterKey(ctx context.Context) ([]byte, error) {
+	data, err := s.fileSvc.ReadFile(ctx, s.path)
 	if err != nil {
 		if errors.Is(err, constants.ErrNotFound) {
 			return nil, constants.ErrKeyStoreKeyNotFound
@@ -180,11 +216,17 @@ func (s *sshAgentKeyring) RetrieveMasterKey() ([]byte, error) {
 
 	ag, closeAgent, err := s.dial()
 	if err != nil {
+		if errors.Is(err, constants.ErrKeyStoreSSHAgentUnavailable) {
+			return nil, &SSHAgentUnlockError{Fingerprint: ssh.FingerprintSHA256(pub), Err: err}
+		}
 		return nil, err
 	}
 	defer func() { _ = closeAgent() }()
 	kek, err := deriveSSHAgentKEK(ag, pub, seal.Salt)
 	if err != nil {
+		if errors.Is(err, constants.ErrKeyStoreSSHAgentKeyMissing) || errors.Is(err, constants.ErrKeyStoreSSHAgentUnavailable) {
+			return nil, &SSHAgentUnlockError{Fingerprint: ssh.FingerprintSHA256(pub), Err: err}
+		}
 		return nil, err
 	}
 	defer vault.SecureZero(kek)

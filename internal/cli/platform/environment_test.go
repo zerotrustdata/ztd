@@ -44,3 +44,17 @@ func TestWSLOllamaAdvisories(t *testing.T) {
 func TestOllamaAdvisoriesNoopOutsideWSL(t *testing.T) {
 	assert.Nil(t, Environment{}.OllamaAdvisories(context.Background(), OllamaAdvisoryInput{}))
 }
+
+func TestWSLOllamaAdvisories_RemoteEndpointHasExplicitInstructions(t *testing.T) {
+	for _, reachable := range []bool{true, false} {
+		advisories := wslOllamaAdvisories(context.Background(), OllamaAdvisoryInput{
+			Endpoint: "http://192.168.1.2:11434",
+		}, func(context.Context, string) bool { return reachable }, "")
+		var messages string
+		for _, advisory := range advisories {
+			messages += advisory.Problem + "\n" + advisory.Fix + "\n"
+		}
+		assert.Contains(t, messages, "--inference-ollama-endpoint http://127.0.0.1:11434")
+		assert.NotContains(t, messages, "changes on every WSL restart", "a configured LAN host need not be the WSL NAT host")
+	}
+}

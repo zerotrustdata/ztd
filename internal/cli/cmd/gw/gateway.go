@@ -437,6 +437,11 @@ it to a temporary JSON file in the runtime directory, and passes that file to
 the Gateway subprocess. --cert-mode localhost continues to use loopback-only
 identities, including IPv6 localhost when available.
 
+On Linux, an existing ssh-agent-sealed vault is checked before startup. If its
+key is missing, the CLI prints copy-and-paste recovery commands. In a terminal,
+it can ask to load the matching local key into the current agent for 8 hours;
+OpenSSH handles the SSH key passphrase. Recovery never replaces the vault key.
+
 Posture Persistence: The complete launch configuration is persisted in
 .ztd/pids/operator-launch-profile.json on every successful background start. When
 using 'gateway restart', the full configuration (CORS, passkey, ports, posture,
@@ -490,15 +495,15 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			// A running Gateway is checked before identity detection so a
 			// rerun reports reuse or a configuration conflict without first
 			// printing the startup network inventory.
+			fileSvc, err := fileSvcFactory("", slog.Default())
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+			}
+			pm, err := platform.NewProcessManager(fileSvc)
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
+			}
 			if !follow {
-				fileSvc, err := fileSvcFactory("", slog.Default())
-				if err != nil {
-					return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-				}
-				pm, err := platform.NewProcessManager(fileSvc)
-				if err != nil {
-					return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-				}
 				running, pid, err := pm.OperatorStatus()
 				if err != nil {
 					return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
@@ -506,6 +511,9 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				if running {
 					return reuseRunningGateway(cmd, fileSvc, gatewayFlagsToServeConfig(resolved), pid)
 				}
+			}
+			if err := prepareGatewayKeystore(cmd, fileSvc); err != nil {
+				return err
 			}
 
 			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
@@ -529,14 +537,6 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				// Write network identity to file if needed
 				var networkIdentityFile string
 				if len(identityResult.IdentityData) > 0 {
-					fileSvc, err := fileSvcFactory("", slog.Default())
-					if err != nil {
-						return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-					}
-					pm, err := platform.NewProcessManager(fileSvc)
-					if err != nil {
-						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-					}
 					if err := pm.CreateDirectories(); err != nil {
 						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
 					}
@@ -557,15 +557,6 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			}
 
 			// Background mode: start gateway as a background process
-			fileSvc, err := fileSvcFactory("", slog.Default())
-			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-			}
-			pm, err := platform.NewProcessManager(fileSvc)
-			if err != nil {
-				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-			}
-
 			cmd.Println("[ztd] Starting ztd Gateway service...")
 			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
 			if resolved.InferenceLlamaCppEndpoint == "" {
@@ -778,6 +769,9 @@ restart.`,
 				return fmt.Errorf("gateway: read launch profile: %w", err)
 			}
 			previousConfig := profile.Config
+			if err := prepareGatewayKeystore(cmd, fileSvc); err != nil {
+				return err
+			}
 
 			running, _, err := pm.OperatorStatus()
 			if err != nil {

@@ -110,7 +110,7 @@ var (
 	ErrKeyStoreNoDefaultCollection = errors.New("secret service has no default keyring: create a persistent one (Seahorse > Passwords and Keys > New Password Keyring > Set as default)")
 	ErrKeyStoreDPAPIFailed         = errors.New("dpapi: protect or unprotect master key failed")
 	ErrKeyStoreSSHAgentUnavailable = errors.New("ssh-agent unavailable: start one and add an Ed25519 or RSA key (eval \"$(ssh-agent)\" && ssh-add), or forward yours with ssh -A")
-	ErrKeyStoreSSHAgentKeyMissing  = errors.New("ssh-agent does not hold the key that sealed the master key: ssh-add it")
+	ErrKeyStoreSSHAgentKeyMissing  = errors.New("ssh-agent does not hold the key that sealed the master key")
 
 	ErrKeyStoreInvalidSecretName = errors.New("secret name must be a single non-hidden path component")
 	ErrKeyStoreOrphanedSecrets   = errors.New("secrets are sealed under a master key the selected key store does not hold")

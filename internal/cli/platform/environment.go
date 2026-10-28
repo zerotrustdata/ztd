@@ -20,10 +20,24 @@ import (
 )
 
 const (
-	wslOSReleasePath = "/proc/sys/kernel/osrelease"
-	mountInfoPath    = "/proc/self/mountinfo"
-	ollamaProbePath  = "/api/version"
-	ollamaProbeWait  = 2 * time.Second
+	wslOSReleasePath  = "/proc/sys/kernel/osrelease"
+	mountInfoPath     = "/proc/self/mountinfo"
+	ollamaProbePath   = "/api/version"
+	ollamaProbeWait   = 2 * time.Second
+	wslOllamaLocalFix = "If the configured endpoint is intentionally remote, keep it and restrict access to that API. " +
+		"For Ollama on this Windows host, quit Ollama from the tray, then run in PowerShell:\n" +
+		"  [Environment]::SetEnvironmentVariable('OLLAMA_HOST', '127.0.0.1:11434', 'User')\n" +
+		"Start Ollama again from the Windows Start menu. " +
+		"WSL2 NAT cannot reach Windows loopback directly. On Windows 11 22H2 or newer, open PowerShell and run:\n" +
+		"  notepad \"$env:USERPROFILE\\.wslconfig\"\n" +
+		"Merge these settings into that file (preserve other settings):\n" +
+		"  [wsl2]\n  networkingMode=mirrored\n" +
+		"Save, then run in PowerShell (stops all WSL sessions):\n" +
+		"  wsl --shutdown\n" +
+		"Reopen WSL and check:\n" +
+		"  curl --fail --show-error http://127.0.0.1:11434/api/version\n" +
+		"Then rerun your Gateway command with --inference-ollama-endpoint http://127.0.0.1:11434. " +
+		"For Ollama inside WSL, start it there bound to loopback."
 )
 
 // Environment describes the host the CLI is running on in the terms that
@@ -79,12 +93,12 @@ func wslOllamaAdvisories(ctx context.Context, in OllamaAdvisoryInput, reachable 
 	if !reachable(ctx, endpoint) {
 		out = append(out, Advisory{
 			Problem: fmt.Sprintf("Ollama is not reachable at %s from WSL.", endpoint),
-			Fix:     "Start Ollama on Windows and keep OLLAMA_HOST at its default (127.0.0.1); WSL reaches it through localhost forwarding. Do not set OLLAMA_HOST=0.0.0.0, which exposes the unauthenticated Ollama API to your network.",
+			Fix:     wslOllamaLocalFix,
 		})
 	} else if hostIsNonLoopback(endpoint) {
 		out = append(out, Advisory{
-			Problem: fmt.Sprintf("Ollama endpoint %s is not loopback; the Windows host address changes on every WSL restart and implies Ollama listens beyond localhost.", endpoint),
-			Fix:     "Use http://127.0.0.1:11434 (or set networkingMode=mirrored in .wslconfig) and bind Windows Ollama to 127.0.0.1 only.",
+			Problem: fmt.Sprintf("Ollama endpoint %s is not loopback. Confirm that remote API access is intentional; the endpoint alone does not identify the Windows host or its bind settings.", endpoint),
+			Fix:     wslOllamaLocalFix,
 		})
 	}
 

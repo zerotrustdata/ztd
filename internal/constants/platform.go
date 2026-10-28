@@ -57,6 +57,8 @@ const (
 	KeyStoreApprovalNoticeDelay = 2 * time.Second
 	KeyStoreApprovalTimeout     = 5 * time.Minute
 	KeyStoreAwaitingApprovalLog = "[Keystore] Waiting for approval to read the master key from the OS key store"
+	// KeyStoreSSHAgentKeyLifetime bounds keys loaded by the attended startup recovery.
+	KeyStoreSSHAgentKeyLifetime = "8h"
 )
 
 // PublicMirrorVerificationTimeout bounds verification before public content
