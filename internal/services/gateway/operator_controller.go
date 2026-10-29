@@ -236,9 +236,16 @@ func (c *OperatorController) handleStopOperator(w http.ResponseWriter, r *http.R
 }
 
 // POST /api/v1/operators/{id}
-func (c *OperatorController) handleTerminateOperator(w http.ResponseWriter, r *http.Request) {
+// The authenticated caller is the owner; a body user_id is only cross-checked
+// against it, so one owner cannot terminate another owner's Operator.
+func (c *OperatorController) handleTerminateOperator(w http.ResponseWriter, r *http.Request, operatorID string) {
 	if r.Method != http.MethodPost {
 		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, _ := r.Context().Value(constants.ContextKeyUserID).(string)
+	if userID == "" {
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrNotAuthenticated.Error())
 		return
 	}
 	body, err := c.readBody(r)
@@ -251,16 +258,27 @@ func (c *OperatorController) handleTerminateOperator(w http.ResponseWriter, r *h
 		c.responder.Error(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if req.OperatorID == "" {
+	if operatorID == "" {
 		c.responder.Error(w, http.StatusBadRequest, "operator_id required")
 		return
 	}
-	if req.UserID == "" {
-		c.responder.Error(w, http.StatusBadRequest, "user_id required")
+	if req.OperatorID != "" && req.OperatorID != operatorID {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrOperatorTerminateIDMismatch.Error())
 		return
 	}
-	if err := c.reg.TerminateOperator(r.Context(), req.OperatorID, req.UserID, req.Reason); err != nil {
-		c.responder.Error(w, http.StatusBadRequest, err.Error())
+	if req.UserID != "" && req.UserID != userID {
+		c.responder.Error(w, http.StatusForbidden, constants.ErrRegistrationOperatorNotBelongToUser.Error())
+		return
+	}
+	if err := c.reg.TerminateOperator(r.Context(), operatorID, userID, req.Reason); err != nil {
+		status := http.StatusBadRequest
+		switch {
+		case errors.Is(err, constants.ErrRegistrationOperatorNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, constants.ErrRegistrationOperatorNotBelongToUser):
+			status = http.StatusForbidden
+		}
+		c.responder.Error(w, status, err.Error())
 		return
 	}
 	c.responder.JSON(w, http.StatusOK, models.TerminateOperatorResponse{Success: true, Message: "Operator terminated"})

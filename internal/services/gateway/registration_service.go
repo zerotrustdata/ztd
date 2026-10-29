@@ -254,6 +254,9 @@ func (s *RegistrationService) TerminateOperator(ctx context.Context, operatorID,
 	if op.UserId != userID {
 		return constants.ErrRegistrationOperatorNotBelongToUser
 	}
+	if constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded {
+		return constants.ErrOperatorTerminateEmbedded
+	}
 
 	if constants.OperatorStatus(op.Status) == constants.OperatorStatusTerminated {
 		return nil // Already terminated

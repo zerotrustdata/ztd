@@ -280,64 +280,39 @@ func TestOperatorController_HandleTerminateOperator(t *testing.T) {
 
 	infra := setupTestInfrastructure(t, false)
 	controller := newOperatorController(OperatorControllerDeps{Cfg: infra.Cfg, Logger: infra.Logger, Reg: infra.Reg, Auth: infra.Auth, Responder: infra.Responder})
+	terminate := func(method, userID, operatorID, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/v1/operators/"+operatorID, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if userID != "" {
+			req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, userID))
+		}
+		w := httptest.NewRecorder()
+		controller.handleTerminateOperator(w, req, operatorID)
+		return w
+	}
 
 	t.Run("Wrong method returns 405", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/operators/terminate", nil)
-		w := httptest.NewRecorder()
+		assert.Equal(t, http.StatusMethodNotAllowed, terminate(http.MethodGet, "user-123", "op-123", "").Code)
+	})
 
-		controller.handleTerminateOperator(w, req)
-
-		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+	t.Run("Unauthenticated caller returns 401", func(t *testing.T) {
+		assert.Equal(t, http.StatusUnauthorized, terminate(http.MethodPost, "", "op-123", `{}`).Code)
 	})
 
 	t.Run("Invalid body returns 400", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/operators/terminate", strings.NewReader("{invalid"))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		controller.handleTerminateOperator(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Equal(t, http.StatusBadRequest, terminate(http.MethodPost, "user-123", "op-123", "{invalid").Code)
 	})
 
-	t.Run("Missing operator_id returns 400", func(t *testing.T) {
-		reqBody := map[string]string{"user_id": "user-123"}
-		body, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/operators/terminate", strings.NewReader(string(body)))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		controller.handleTerminateOperator(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+	t.Run("Body operator_id must match the path", func(t *testing.T) {
+		assert.Equal(t, http.StatusBadRequest, terminate(http.MethodPost, "user-123", "op-123", `{"operator_id":"op-other"}`).Code)
 	})
 
-	t.Run("Missing user_id returns 400", func(t *testing.T) {
-		reqBody := map[string]string{"operator_id": "op-123"}
-		body, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/operators/terminate", strings.NewReader(string(body)))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		controller.handleTerminateOperator(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+	t.Run("Body user_id cannot name another owner", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, terminate(http.MethodPost, "user-123", "op-123", `{"user_id":"user-other"}`).Code)
 	})
 
-	t.Run("Valid request with non-existent operator returns 400", func(t *testing.T) {
-		reqBody := models.TerminateOperatorRequest{
-			OperatorID: "op-nonexistent",
-			UserID:     "user-123",
-			Reason:     "test",
-		}
-		body, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/operators/terminate", strings.NewReader(string(body)))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		controller.handleTerminateOperator(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+	t.Run("Non-existent operator returns 404", func(t *testing.T) {
+		assert.Equal(t, http.StatusNotFound, terminate(http.MethodPost, "user-123", "op-nonexistent", `{"reason":"test"}`).Code)
 	})
 }
 

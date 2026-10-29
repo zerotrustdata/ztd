@@ -964,6 +964,8 @@ var (
 	ErrRegistrationOperatorNoActiveSession        = errors.New("operator has no active session")
 	ErrOperatorStopEmbedded                       = errors.New("embedded operator cannot be stopped remotely")
 	ErrOperatorStopNotRemote                      = errors.New("only remote operators can be stopped")
+	ErrOperatorTerminateEmbedded                  = errors.New("embedded operator cannot be terminated")
+	ErrOperatorTerminateIDMismatch                = errors.New("operator_id does not match the request path")
 	ErrRegistrationFailedToMarshalSessionIDs      = errors.New("failed to marshal session IDs")
 	ErrRegistrationFailedToSetKVBinding           = errors.New("failed to set KV binding")
 	ErrRegistrationFailedToGetBoundSessions       = errors.New("failed to get bound sessions document")
