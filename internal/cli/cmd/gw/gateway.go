@@ -520,7 +520,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			if err != nil {
 				return fmt.Errorf("gateway: create logger: %w", err)
 			}
-			identityResult := detectIdentity(context.Background(), logger, resolved.CertIdentityMode)
+			identityResult := detectIdentity(cmd.Context(), logger, resolved.CertIdentityMode)
 
 			if identityResult.ShouldFallback {
 				cmd.Printf("Warning: Failed to detect network identity\n")
@@ -529,27 +529,23 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				printNetworkIdentity(cmd, resolved.ListenHost, identityResult.Identity)
 			}
 
+			gatewayCfg := gatewayFlagsToServeConfig(resolved)
+			gatewayCfg.CertIdentityMode = identityResult.CertMode
+
 			// Foreground mode: run gateway directly in the current process
 			if follow {
 				cmd.Println("[ztd] Starting ztd Gateway in foreground...")
 				cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
 
-				// Write network identity to file if needed
-				var networkIdentityFile string
 				if len(identityResult.IdentityData) > 0 {
 					if err := pm.CreateDirectories(); err != nil {
 						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
 					}
-					networkIdentityFile, err = pm.WriteNetworkIdentityFile(identityResult.IdentityData)
+					gatewayCfg.NetworkIdentityFile, err = pm.WriteNetworkIdentityFile(identityResult.IdentityData)
 					if err != nil {
 						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
 					}
 				}
-
-				// Build gateway config for foreground execution
-				gatewayCfg := gatewayFlagsToServeConfig(resolved)
-				gatewayCfg.CertIdentityMode = identityResult.CertMode
-				gatewayCfg.NetworkIdentityFile = networkIdentityFile
 				gatewayCfg.ConsensusMemberSignerFactory = tribunalConsensusSignerFactory(gatewayCfg.WorkingDir)
 
 				// Run gateway (this blocks until shutdown)
@@ -559,17 +555,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			// Background mode: start gateway as a background process
 			cmd.Println("[ztd] Starting ztd Gateway service...")
 			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
-			if resolved.InferenceLlamaCppEndpoint == "" {
-				for _, a := range platform.DetectEnvironment().OllamaAdvisories(cmd.Context(), platform.OllamaAdvisoryInput{
-					Endpoint:         resolved.InferenceOllamaEndpoint,
-					ModelStorageRoot: resolved.ProvenanceOperatorModelStorageRoot,
-				}) {
-					cmd.PrintErrf("[ztd] WSL: %s\n[ztd]      Fix: %s\n", a.Problem, a.Fix)
-				}
-			}
 
-			gatewayCfg := gatewayFlagsToServeConfig(resolved)
-			gatewayCfg.CertIdentityMode = identityResult.CertMode
 			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 				return err
@@ -797,7 +783,7 @@ restart.`,
 			if err != nil {
 				return fmt.Errorf("gateway: create logger: %w", err)
 			}
-			identityResult := detectIdentity(context.Background(), logger, profile.Config.CertIdentityMode)
+			identityResult := detectIdentity(cmd.Context(), logger, profile.Config.CertIdentityMode)
 
 			if identityResult.ShouldFallback {
 				cmd.Printf("Warning: Failed to detect network identity, falling back to localhost-only mode\n")

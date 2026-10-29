@@ -201,7 +201,7 @@ Restore the original key pair or reconnect with agent forwarding from the machin
 
 ### WSL Ollama Reachability
 
-The WSL advisory is separate from vault unlock. A nonloopback endpoint can be an intentionally remote provider; its address does not establish that it is the Windows host, that its address changes on restart, or how the provider binds its listener. Keep an intentional remote endpoint and restrict API access.
+The Gateway does not probe Ollama at startup. When an inference call from WSL fails with `inference: backend unavailable` (`constants.ErrInferenceBackendUnavailable`), check the configured Ollama endpoint. A nonloopback endpoint can be an intentionally remote provider; its address does not establish that it is the Windows host, that its address changes on restart, or how the provider binds its listener. Keep an intentional remote endpoint and restrict API access.
 
 For Ollama on the same Windows host, Windows 11 22H2 or newer supports WSL mirrored networking so WSL can reach Windows loopback. Quit Ollama from the Windows tray. In PowerShell, set its user environment and open the WSL configuration:
 
