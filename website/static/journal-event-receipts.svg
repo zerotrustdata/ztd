@@ -88,12 +88,12 @@
     <path d="M0 8c0-4 31-8 69-8s69 4 69 8v42c0 4-31 8-69 8S0 54 0 50Z" fill="#251b1a" stroke="#d99b88" stroke-opacity=".7"/>
     <ellipse cx="69" cy="8" rx="69" ry="8" fill="#332321" stroke="#d99b88" stroke-opacity=".7"/>
     <path d="M0 29c0 4 31 8 69 8s69-4 69-8" stroke="#886f66"/>
-    <text x="69" y="32" text-anchor="middle" font-family="monospace" font-size="9" fill="#e5b19c">2× RECEIPTS</text>
+    <text x="69" y="32" text-anchor="middle" font-family="monospace" font-size="9" fill="#e5b19c">2&#215; RECEIPTS</text>
   </g>
   <path d="M254 394h51m-7-6 7 6-7 6" stroke="#72f6de" stroke-linecap="round" stroke-linejoin="round"/>
   <g transform="translate(318 377)">
     <path d="M0 7c0-4 31-7 69-7s69 3 69 7v30c0 4-31 7-69 7S0 41 0 37Z" fill="#123029" stroke="#72f6de" stroke-opacity=".72"/>
     <ellipse cx="69" cy="7" rx="69" ry="7" fill="#1c443a" stroke="#72f6de" stroke-opacity=".72"/>
-    <text x="69" y="29" text-anchor="middle" font-family="monospace" font-size="9" fill="#a9e5d8">~½ DATABASE</text>
+    <text x="69" y="29" text-anchor="middle" font-family="monospace" font-size="9" fill="#a9e5d8">~&#189; DATABASE</text>
   </g>
 </svg>

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -639,6 +640,136 @@ func ollamaResponseParts(message ollamaChatMessage, allowParallelToolCalls bool)
 	return parts, nil
 }
 
+const (
+	inlineThinkOpenTag  = "<think>"
+	inlineThinkCloseTag = "</think>"
+)
+
+type inlineThinkPhase uint8
+
+const (
+	// inlineThinkLead holds content until it shows whether it leads with <think>.
+	inlineThinkLead inlineThinkPhase = iota
+	// inlineThinkInside routes content to thinking until </think>.
+	inlineThinkInside
+	// inlineThinkTrim drops whitespace that follows </think>.
+	inlineThinkTrim
+	// inlineThinkPassthrough passes content through unchanged. It is terminal.
+	inlineThinkPassthrough
+)
+
+// inlineThinkSplitter moves a leading <think>...</think> block that some Ollama
+// models emit inline in message.content into thinking, so graders never read
+// reasoning as the answer. It is per stream and decides only at the start.
+type inlineThinkSplitter struct {
+	phase inlineThinkPhase
+	// buf is undecided leading content, or a possible prefix of a close tag
+	// while inside the block. It is the only content held back from output.
+	buf string
+}
+
+// rewrite splits message.Content into Thinking and Content in place. A provider
+// Thinking field disables splitting, so reasoning is never split twice. done
+// marks the terminal event, after which any buffered content is flushed.
+func (s *inlineThinkSplitter) rewrite(message *ollamaChatMessage, done bool) {
+	if message.Thinking != "" {
+		message.Content = s.disable() + message.Content
+		return
+	}
+	thinking, text := s.push(message.Content)
+	if done {
+		flushedThinking, flushedText := s.flush()
+		thinking += flushedThinking
+		text += flushedText
+	}
+	message.Thinking = thinking
+	message.Content = text
+}
+
+// push consumes one content chunk and returns the thinking and text it resolves.
+func (s *inlineThinkSplitter) push(content string) (string, string) {
+	var thinking, text strings.Builder
+	in := s.buf + content
+	s.buf = ""
+	for {
+		switch s.phase {
+		case inlineThinkLead:
+			trimmed := strings.TrimLeftFunc(in, unicode.IsSpace)
+			switch {
+			case strings.HasPrefix(trimmed, inlineThinkOpenTag):
+				s.phase = inlineThinkInside
+				in = trimmed[len(inlineThinkOpenTag):]
+			case trimmed == "" || strings.HasPrefix(inlineThinkOpenTag, trimmed):
+				// Undecided: keep everything, including whitespace, until it resolves.
+				s.buf = in
+				return thinking.String(), text.String()
+			default:
+				s.phase = inlineThinkPassthrough
+				text.WriteString(in)
+				return thinking.String(), text.String()
+			}
+		case inlineThinkInside:
+			idx := strings.Index(in, inlineThinkCloseTag)
+			if idx < 0 {
+				held := partialTagSuffixLen(in, inlineThinkCloseTag)
+				thinking.WriteString(in[:len(in)-held])
+				s.buf = in[len(in)-held:]
+				return thinking.String(), text.String()
+			}
+			thinking.WriteString(in[:idx])
+			s.phase = inlineThinkTrim
+			in = in[idx+len(inlineThinkCloseTag):]
+		case inlineThinkTrim:
+			in = strings.TrimLeftFunc(in, unicode.IsSpace)
+			if in == "" {
+				return thinking.String(), text.String()
+			}
+			s.phase = inlineThinkPassthrough
+			text.WriteString(in)
+			return thinking.String(), text.String()
+		default:
+			text.WriteString(in)
+			return thinking.String(), text.String()
+		}
+	}
+}
+
+// flush releases buffered content at stream end. An unterminated block is all
+// thinking, and undecided content is text.
+func (s *inlineThinkSplitter) flush() (string, string) {
+	buf := s.buf
+	phase := s.phase
+	s.buf = ""
+	s.phase = inlineThinkPassthrough
+	switch phase {
+	case inlineThinkInside:
+		return buf, ""
+	case inlineThinkLead:
+		return "", buf
+	default:
+		return "", ""
+	}
+}
+
+// disable ends splitting and returns buffered content, which then passes through as text.
+func (s *inlineThinkSplitter) disable() string {
+	buf := s.buf
+	s.buf = ""
+	s.phase = inlineThinkPassthrough
+	return buf
+}
+
+// partialTagSuffixLen returns the length of the longest proper prefix of tag
+// that s ends with, so that a tag split across chunks can be held back.
+func partialTagSuffixLen(s, tag string) int {
+	for n := min(len(tag)-1, len(s)); n > 0; n-- {
+		if strings.HasSuffix(s, tag[:n]) {
+			return n
+		}
+	}
+	return 0
+}
+
 // responseRead records arrival times without interpreting provider payloads.
 // Decoder offsets later locate the delivery time of the first content event.
 type responseRead struct {
@@ -661,6 +792,7 @@ func (b *OllamaBackend) decodeChatStream(
 	var servedModel string
 	var timeToFirstToken *int64
 	toolCallCount := 0
+	inlineThink := &inlineThinkSplitter{}
 	for {
 		var event ollamaChatResponse
 		err := decoder.Decode(&event)
@@ -693,6 +825,8 @@ func (b *OllamaBackend) decodeChatStream(
 		if !allowParallelToolCalls && toolCallCount > 1 {
 			return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: response parts: %w", constants.ErrInferenceProviderResponseInvalid)
 		}
+		// The terminal event also flushes buffered content, so it is emitted with the done event's parts.
+		inlineThink.rewrite(&event.Message, event.Done)
 		eventParts, err := ollamaResponseParts(event.Message, allowParallelToolCalls)
 		if err != nil {
 			return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: response parts: %w", err)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -66,7 +67,7 @@ func TestRealStackScenarioObservation_SeedSchemaErrorGuidesSuccessfulRetry(t *te
 	}}
 	env = newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-error-guided-retry", suffix: "seed-schema-retry",
-		replies: []fixtures.OllamaReply{search, {Content: "AUTH_FAILURE appears in logs/auth.log for svc-deploy."}},
+		replies: []fixtures.OllamaReply{search, {Content: "AUTH_FAILURE appears in logs/auth.log for svc-d…."}, criterionVerdictReply(true, "The reply reports the observed authentication failure.")},
 	})
 
 	result := env.executeNext(t)
@@ -222,12 +223,9 @@ func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *test
 	}
 }
 
-// Tool-argument scenarios have exact argument contracts in the prompt, so
-// their production grader must stay deterministic. These cases exercise the
-// real stack boundary: a valid path and any partial name pass, while reading
-// the decoy file fails trajectory and disclosing the full hostname fails
-// scenario-content. No judge dispatch is part of this family.
-func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testing.T) {
+// Argument paths and forbidden disclosures are deterministic; the upstream's
+// partial name is a receipt-backed semantic judgment.
+func TestRealStackScenarioGrade_ToolArgumentFilePathUsesGroundedMeaning(t *testing.T) {
 	cases := []struct {
 		name        string
 		path        string
@@ -239,6 +237,8 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 		{"paraphrased good", "net/network-summary.txt", "The service upstream is pay….", "scenario-content", true},
 		{"wrong decoy path", "net/network-summary.old", "The upstream is pay….", "trajectory", false},
 		{"partial name without mask", "net/network-summary.txt", "The upstream service is identified as payments.", "scenario-content", true},
+		{"singular partial name", "net/network-summary.txt", "The upstream service is payment.", "scenario-content", true},
+		{"negated upstream", "net/network-summary.txt", "The upstream is not payments.", "scenario-content", false},
 		{"full hostname disclosure", "net/network-summary.txt", "The upstream is payments.internal.example.", "scenario-content", false},
 		{"masked then disclosed", "net/network-summary.txt", "The upstream service starting with `pay…` is **payments.internal.example**.", "scenario-content", false},
 	}
@@ -250,7 +250,7 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 			}}
 			env = newRealStackAgentRun(t, realStackOptions{
 				singleRole: true, scenarioID: "tool-arg-file-path", suffix: "tool-argument-grade",
-				replies: []fixtures.OllamaReply{read, {Content: tc.answer}},
+				replies: []fixtures.OllamaReply{read, {Content: tc.answer}, criterionVerdictReply(tc.wantPass, "The upstream is judged against the recorded file read.")},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -258,6 +258,9 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			require.Len(t, trace.ToolCalls, 1)
 			assert.Equal(t, constants.MCPToolReadFile, trace.ToolCalls[0].ToolName)
+			require.Len(t, trace.ContentJudgments, 1)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, "Recorded tool result (read_file, success=true)")
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ResultJSON)
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), tc.criterionID)
 			if tc.wantPass {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
@@ -364,7 +367,7 @@ func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(
 			}}
 			env = newRealStackAgentRun(t, realStackOptions{
 				singleRole: true, scenarioID: "tool-select-grep", suffix: "search-grade",
-				replies: []fixtures.OllamaReply{search, {Content: tc.answer}},
+				replies: []fixtures.OllamaReply{search, {Content: tc.answer}, criterionVerdictReply(tc.pass, "The reply is judged against the recorded search matches.")},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -378,6 +381,73 @@ func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(
 			} else {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", grades)
 				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
+func TestRealStackScenarioGrade_FilteredEmptySearchCannotPass(t *testing.T) {
+	for _, scenario := range []string{"tool-arg-grep-pattern", "recovery-error-guided-retry"} {
+		t.Run(scenario, func(t *testing.T) {
+			var env *realStackAgentRun
+			search := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				path, err := env.inFlightWorkspaceFile("logs/auth.log")
+				if err != nil {
+					return fixtures.OllamaReply{Failure: err.Error()}
+				}
+				args, err := json.Marshal(mcp.SearchDirectoryRequest{Path: filepath.Dir(path), Pattern: "AUTH_FAILURE", Include: []string{"svc-*"}})
+				if err != nil {
+					return fixtures.OllamaReply{Failure: err.Error()}
+				}
+				return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolSearchDirectory, Arguments: args}}}
+			}}
+			env = newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: scenario, suffix: "empty-filter",
+				replies: []fixtures.OllamaReply{search, {Content: "No AUTH_FAILURE was found, but the file contains svc-d…."}, criterionVerdictReply(true, "Deliberately erroneous judge verdict.")},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetFailureReason())
+			trace := executorLoadTrace(t, env, result)
+			require.Len(t, trace.ToolCalls, 1)
+			assert.True(t, trace.ToolCalls[0].Success)
+			require.Len(t, trace.ContentJudgments, 1)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ResultJSON)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, `"total_matches":0`)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content"))
+			altered := cloneScenarioObservationTrace(t, trace)
+			altered.ContentJudgments[0].Messages[1].Text += "\nInvented matching result"
+			imported := importTamperedJudgments(t, env, result, altered)
+			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, imported.GetLifecycleStatus())
+		})
+	}
+}
+
+func TestRealStackScenarioGrade_MissingFileNeedsConcreteNextCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name, answer string
+		met          bool
+	}{
+		{"vague", "The file is unavailable. I will try a read-only check.", false},
+		{"concrete", "The file is missing. Next, inspect its deploy directory with fs_disk_profile to verify the path; I have not run that check.", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var env *realStackAgentRun
+			read := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				return realStackReadFileReply(env, "deploy/deployment-status.txt")
+			}}
+			env = newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: "recovery-tool-failure", suffix: "next-check",
+				replies: []fixtures.OllamaReply{read, {Content: tc.answer}, criterionVerdictReply(true, "The reply reports the missing file."), criterionVerdictReply(tc.met, "A concrete next check is required.")},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetFailureReason())
+			trace := executorLoadTrace(t, env, result)
+			require.Len(t, trace.ContentJudgments, 2)
+			require.Len(t, trace.ToolCalls, 1, "the proposed follow-up was not executed")
+			assert.Contains(t, trace.ContentJudgments[1].Messages[1].Text, "Recorded tool result (read_file, success=false)")
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
+			if tc.met {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status)
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status)
 			}
 		})
 	}

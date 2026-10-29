@@ -27,6 +27,13 @@ func (c AgentToolCall) IsDenied() bool {
 	return c.Receipt != nil && governance.IsGovernanceRejectionReceipt(c.Receipt.EventReceipt)
 }
 
+// IsExecutedFailure reports a call that reached execution and failed, as its
+// signed receipt records. Argument-validation and dispatch rejections carry no
+// receipt, so they never count as an executed failure.
+func (c AgentToolCall) IsExecutedFailure() bool {
+	return !c.Success && !c.IsDenied() && c.Receipt != nil && c.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+}
+
 // agentGradingView is the typed trace content deterministic grading reads:
 // only the tool calls the model executed, never fixture-supplied history.
 type agentGradingView struct {
@@ -278,7 +285,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			if gold.RecoveryExpectation.Kind == recoveryKindMissingResource {
 				// This task deliberately requests an absent file and asks for a
 				// diagnosis, rather than requiring an impossible successful read.
-				observed = !call.Success && !call.IsDenied() && call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+				observed = call.IsExecutedFailure()
 			}
 			if valid && observed {
 				outcome := evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT

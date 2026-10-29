@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -44,7 +45,11 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 		Pattern string `json:"pattern"`
 	}{Path: workspace.Root, Pattern: "AUTH_FAILURE"})
 	require.NoError(t, err)
-	corrected := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: string(arguments), Success: true}
+	resultBody, err := json.Marshal(mcp.SearchDirectoryResult{Matches: []mcp.SearchMatch{
+		{Path: workspace.Render(ScenarioWorkspaceToken + "/logs/auth.log"), LineNumber: 1, Content: "2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy"},
+	}, TotalMatches: 1})
+	require.NoError(t, err)
+	corrected := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: string(arguments), ResultJSON: string(resultBody), Success: true}
 	failed := corrected
 	failed.Success = false
 	failed.Error = "search failed"
@@ -82,10 +87,11 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 			}
 			trace := &AgentTrace{
 				RunID: "run-retry", AssignmentID: "assign-retry", DesignatedRole: "primary",
-				Workspace:   AgentTraceWorkspace(workspace),
-				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-retry", ResultDigest: "digest-retry"}},
-				ToolCalls:   tc.calls,
-				FinalOutput: "logs/auth.log line 1: AUTH_FAILURE user=svc-d…",
+				Workspace:        AgentTraceWorkspace(workspace),
+				ModelCalls:       []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-retry", ResultDigest: "digest-retry"}},
+				ToolCalls:        tc.calls,
+				FinalOutput:      "logs/auth.log line 1: AUTH_FAILURE user=svc-d…",
+				ContentJudgments: []AgentContentJudgment{{CriterionID: "search-grounding", Met: true}},
 			}
 			grading, err := GradeHomogeneousScenario(req, trace,
 				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
@@ -99,6 +105,78 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 			if len(tc.calls) == 1 && tc.passed {
 				require.Zero(t, grading.Trajectory.GuidedRetryCount, "seeded history must not count as an executed failure")
 			}
+		})
+	}
+}
+
+// A missing-resource recovery passes only when the model's expected call was
+// executed and failed. An argument-validation rejection never reaches the
+// operator, so it carries no receipt and does not show the model the file was
+// missing.
+func TestGradeHomogeneousScenario_MissingResourceRecoveryRequiresExecutedFailure(t *testing.T) {
+	blueprint := recoveryToolFailure()
+	blueprint.Input.ScenarioID = blueprint.ScenarioID
+	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, "run-missing", "attempt-missing")
+	require.NoError(t, err)
+	missingPath := workspace.Render(ScenarioWorkspaceToken + "/deploy/deployment-status.txt")
+	validArguments, err := json.Marshal(map[string]string{"path": missingPath})
+	require.NoError(t, err)
+	malformedArguments, err := json.Marshal(map[string]string{"path": missingPath, "limit": "1000"})
+	require.NoError(t, err)
+
+	// Argument validation rejects the call before dispatch: no receipt, and the
+	// error text carries the ZTD-1607 validation code.
+	validationRejected := AgentToolCall{
+		ToolName:      constants.MCPToolReadFile,
+		ArgumentsJSON: string(malformedArguments),
+		Success:       false,
+		ErrorType:     agentToolErrorExecution,
+		Error:         "ZTD-1607: Tool execution failed for read_file: 1 validation error\nlimit: expected integer",
+	}
+	executedNotFound := AgentToolCall{
+		ToolName:      constants.MCPToolReadFile,
+		ArgumentsJSON: string(validArguments),
+		Success:       false,
+		ErrorType:     agentToolErrorExecution,
+		Error:         "no such file or directory",
+		Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{
+			Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		}},
+	}
+
+	cases := []struct {
+		name   string
+		calls  []AgentToolCall
+		passed bool
+	}{
+		{name: "argument validation rejection of expected tool", calls: []AgentToolCall{validationRejected}},
+		{name: "executed not-found failure of expected tool", calls: []AgentToolCall{executedNotFound}, passed: true},
+		{name: "validation rejection followed by executed not-found failure", calls: []AgentToolCall{validationRejected, executedNotFound}, passed: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := AssignmentExecutionRequest{
+				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: "assign-missing", RunId: "run-missing"},
+				ScenarioInput: blueprint.Input,
+				ScenarioGold:  blueprint.Gold,
+				ScenarioTools: ScenarioToolExpectations{
+					TrajectoryPolicy: blueprint.TrajectoryPolicy,
+					AllowedTools:     blueprint.AllowedTools,
+					ExpectedTools:    blueprint.ExpectedTools,
+				},
+			}
+			trace := &AgentTrace{
+				RunID: "run-missing", AssignmentID: "assign-missing", DesignatedRole: "primary",
+				Workspace:        AgentTraceWorkspace(workspace),
+				ModelCalls:       []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-missing", ResultDigest: "digest-missing"}},
+				ToolCalls:        tc.calls,
+				FinalOutput:      "The status file is missing; propose checking the deploy directory.",
+				ContentJudgments: []AgentContentJudgment{{CriterionID: "reports-file-unavailable", Met: true}},
+			}
+			grading, err := GradeHomogeneousScenario(req, trace,
+				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+			require.NoError(t, err)
+			require.Equal(t, tc.passed, gradePassed(t, grading.DeterministicGrades, "required-evidence:recovery"))
 		})
 	}
 }

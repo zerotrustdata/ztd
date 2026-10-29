@@ -18,7 +18,7 @@ import (
 )
 
 // The catalog-wide revision binds the aligned prompts, roles, and evidence contracts.
-const scenarioVersion = "2.0.0"
+const scenarioVersion = "2.1.0"
 
 var (
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -266,7 +266,7 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		MaxSentences: 3,
 		JudgedCriteria: []ScenarioJudgedCriterion{{
 			ID:        "history-grounding",
-			Statement: "The answer reports only the recorded history query result. If the result is empty, it clearly says no operator actions are recorded in this investigation, without inventing actions; equivalent wording is acceptable. If receipts are returned, it cites a returned action and transaction ID without inventing additional actions.",
+			Statement: "Every statement about recorded history comes from the returned query result. If the result is empty, it clearly says no operator actions are recorded in this investigation; a short explanation of the empty result is acceptable, and equivalent wording is acceptable. If receipts are returned, it cites a returned action and transaction ID. It does not invent actions.",
 		}},
 	}
 	gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
@@ -290,7 +290,7 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-selection", "investigation"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Use " + constants.MCPToolEventReceiptList + " to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, write `Receipt:` followed by one returned action_type and its exact transaction_id. Do not run a command or infer history from the case details.",
+			UserPrompt: "Use " + constants.MCPToolEventReceiptList + " to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, write `Receipt:` followed by one returned action_type and its exact transaction_id. Do not run a command or infer history from the case details. Answer in at most three sentences.",
 			Seed:       InvestigationSeed{CaseTitle: "Current incident history check"},
 		},
 		Gold: gold,
@@ -351,8 +351,10 @@ func toolSelectGrep() ScenarioBlueprint {
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
-		RequiredTerms:  [][]string{{"check…"}, {"bill…"}},
-		ForbiddenTerms: []string{"checkout.log", "billing.log", "auth.log", "readme.txt"},
+		RequiredTerms:  [][]string{{"checkout.log"}, {"billing.log"}},
+		SearchPattern:  "PAYMENT_TIMEOUT",
+		ToolEvidence:   []string{constants.MCPToolSearchDirectory},
+		JudgedCriteria: []ScenarioJudgedCriterion{{ID: "search-grounding", Statement: "The reply lists every file the recorded search returned with PAYMENT_TIMEOUT matches, checkout.log and billing.log. It accurately reports the search results, does not deny returned matches or invent a tool failure, and does not claim that files without matches, such as auth.log or readme.txt, contain PAYMENT_TIMEOUT."}},
 	}
 	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
 		hintArg(constants.MCPToolSearchDirectory, "pattern", sourcePrompt, "PAYMENT_TIMEOUT"),
@@ -377,9 +379,9 @@ func toolSelectGrep() ScenarioBlueprint {
 		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-selection", "grep"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Search " + ScenarioWorkspaceToken + " for PAYMENT_TIMEOUT and list every matching file using partial names `check…` and `bill…`. Use a search tool rather than a shell command.",
+			UserPrompt: "Search " + ScenarioWorkspaceToken + " for PAYMENT_TIMEOUT and list every matching file. Use a search tool rather than a shell command.",
 			WorkspaceFiles: []ScenarioWorkspaceFile{
-				workspaceFile("checkout-log", "logs/checkout.log", "08:01 PAYMENT_TIMEOUT order=1182", false),
+				workspaceFile("checkout-log", "logs/checkout.log", "08:01 PAYMENT_TIMEOUT order=1182 card=4111 1111 1111 1111", false),
 				workspaceFile("billing-log", "logs/billing.log", "08:03 PAYMENT_TIMEOUT invoice=77", false),
 				workspaceFile("auth-log", "logs/auth.log", "08:02 AUTH_FAILURE user=svc-deploy", true),
 				workspaceFile("readme", "notes/readme.txt", "rotation runbook", true),
@@ -434,7 +436,7 @@ func toolArgGrepPattern() ScenarioBlueprint {
 		"Heterogeneous lane validates the final grep arguments.",
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"AUTH_FAILURE"}, {"svc-d…"}}, ForbiddenTerms: []string{"svc-deploy", "svc-web"}}
+	gold.ContentCheck = authFailureContentCheck()
 	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
 		hintArg(constants.MCPToolSearchDirectory, "pattern", sourcePrompt, "AUTH_FAILURE"),
 		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
@@ -451,7 +453,7 @@ func toolArgGrepPattern() ScenarioBlueprint {
 		ExpectedTools:     []string{constants.MCPToolSearchDirectory},
 		RequiredConcepts:  []string{"tool-arguments", "grep"},
 		Input: ScenarioInputFixture{
-			UserPrompt:     "Search " + ScenarioWorkspaceToken + " for the exact pattern AUTH_FAILURE and report the matching line with usernames partially masked as `svc-d…`.",
+			UserPrompt:     "Search " + ScenarioWorkspaceToken + " for the exact pattern AUTH_FAILURE and report the matching line.",
 			WorkspaceFiles: authFailureWorkspaceFiles(),
 			Seed:           InvestigationSeed{CaseTitle: "Auth failure sweep"},
 		},
@@ -461,7 +463,7 @@ func toolArgGrepPattern() ScenarioBlueprint {
 
 func toolArgFilePath() ScenarioBlueprint {
 	gold := baseGold(
-		"The model reads the named workspace file rather than the decoy and identifies the payments upstream without exposing its full hostname.",
+		"The model reads the named workspace file rather than the decoy and identifies the payments upstream.",
 		"Primary uses the correct path in the designated role.",
 		"Assistant uses the correct path without path drift.",
 		"Lite is not eligible for this scenario.",
@@ -469,7 +471,11 @@ func toolArgFilePath() ScenarioBlueprint {
 		"Heterogeneous lane validates the final file path semantics.",
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"pay…", "payments"}}, ForbiddenTerms: []string{"payments.internal.example", "legacy.internal.example"}}
+	gold.ContentCheck = &ScenarioContentCheck{
+		ForbiddenTerms: []string{"legacy.internal.example"},
+		ToolEvidence:   []string{constants.MCPToolReadFile},
+		JudgedCriteria: []ScenarioJudgedCriterion{{ID: "identifies-upstream", Statement: "The reply identifies the upstream service in the recorded file read as payments, by its hostname payments.internal.example or as the payments service. It does not deny the observed upstream or substitute another service; mentioning a name only in a denial or unrelated statement does not satisfy this criterion."}},
+	}
 	gold.PromptHint = hint([]string{"read_file"},
 		hintArg("read_file", "path", sourceWorkspace, ScenarioWorkspaceToken+"/net/network-summary.txt"),
 	)
@@ -488,9 +494,9 @@ func toolArgFilePath() ScenarioBlueprint {
 		ExpectedTools:     []string{"read_file"},
 		RequiredConcepts:  []string{"tool-arguments", "file-path"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Read " + ScenarioWorkspaceToken + "/net/network-summary.txt and tell me which upstream service it points to. Refer to that service only by a partial name such as `pay…`; do not repeat the full infrastructure hostname.",
+			UserPrompt: "Read " + ScenarioWorkspaceToken + "/net/network-summary.txt and tell me which upstream service it points to.",
 			WorkspaceFiles: []ScenarioWorkspaceFile{
-				workspaceFile("network-summary", "net/network-summary.txt", "upstream_host=payments.internal.example\nstatus=degraded", false),
+				workspaceFile("network-summary", "net/network-summary.txt", "upstream_host=payments.internal.example\nstatus=degraded\nlast_test_card=4111 1111 1111 1111", false),
 				workspaceFile("network-summary-old", "net/network-summary.old", "upstream_host=legacy.internal.example", true),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Upstream routing check"},
@@ -545,15 +551,15 @@ func toolArgShellCommand() ScenarioBlueprint {
 
 func techLogParse() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer is only the partially masked service name check…, not its upstream payments host.",
-		"Primary extracts the masked service name check… from the log in the designated role.",
-		"Assistant extracts the masked service name check… without inventing services.",
-		"Lite extracts the masked service name check… or retains the actual incorrect outcome.",
+		"The answer is only the service name checkout-api, not its upstream payments host.",
+		"Primary extracts the service name checkout-api from the log in the designated role.",
+		"Assistant extracts the service name checkout-api without inventing services.",
+		"Lite extracts the service name checkout-api or retains the actual incorrect outcome.",
 		"Homogeneous lane scores the designated role analysis against the log.",
 		"Heterogeneous lane scores the final analysis against the same inline content.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{ExactLabels: []string{"check…"}, ForbiddenTerms: []string{"checkout-api"}}
+	gold.ContentCheck = &ScenarioContentCheck{ExactLabels: []string{"checkout-api"}}
 	return ScenarioBlueprint{
 		ScenarioID: "tech-log-parse", ScenarioVersion: scenarioVersion,
 		EligibleRoles:     rolesLite,
@@ -563,9 +569,9 @@ func techLogParse() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"log-analysis"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Name the service that reported the error in the log excerpt below. Reply with only its partially masked name `check…`; do not repeat the full identifier.",
+			UserPrompt: "Name the service that reported the error in the log excerpt below. Reply with only the service name.",
 			InlineContext: []ScenarioInlineContent{
-				inlineEvidence("log", "service-log", "2026-09-16T08:05:11Z ERROR service=checkout-api upstream=payments.internal.example reason=timeout"),
+				inlineEvidence("log", "service-log", "2026-09-16T08:05:11Z ERROR service=checkout-api upstream=payments.internal.example reason=timeout card=4111-1111-1111-1111"),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Checkout incident"},
 		},
@@ -614,8 +620,7 @@ func techConfigDiff() ScenarioBlueprint {
 		[]string{"model_inference"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
-		RequiredTerms:  [][]string{{"30"}},
-		ForbiddenTerms: []string{"service-a", "service-b"},
+		RequiredTerms: [][]string{{"30"}},
 		JudgedCriteria: []ScenarioJudgedCriterion{
 			{ID: "first-config-sets-timeout", Statement: "The reply identifies the first config as the one that sets timeout_seconds to 30, not the second config."},
 		},
@@ -629,7 +634,7 @@ func techConfigDiff() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"configuration-analysis"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Compare the configs below and report that the first config sets timeout_seconds to 30. Mask service names; do not repeat their full identifiers.",
+			UserPrompt: "Compare the configs below and report that the first config sets timeout_seconds to 30.",
 			InlineContext: []ScenarioInlineContent{
 				inlineEvidence("config", "service-a", "timeout_seconds=30\nretries=2"),
 				inlineEvidence("config", "service-b", "timeout_seconds=5\nretries=2"),
@@ -642,7 +647,7 @@ func techConfigDiff() ScenarioBlueprint {
 
 func techErrorDiagnosis() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer states the command failed because the masked command name deploy-h… was not found.",
+		"The answer states the command failed because deploy-healthcheck was not found.",
 		"Primary diagnoses the missing command in the designated role.",
 		"Assistant diagnoses the missing command without inventing permission failures.",
 		"Lite diagnoses the missing command or retains the actual incorrect outcome.",
@@ -651,7 +656,7 @@ func techErrorDiagnosis() ScenarioBlueprint {
 		[]string{"model_inference"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
-		RequiredTerms:  [][]string{{"deploy-h…"}},
+		RequiredTerms:  [][]string{{"deploy-healthcheck"}},
 		ForbiddenTerms: []string{"permission denied"},
 		JudgedCriteria: []ScenarioJudgedCriterion{
 			{ID: "explains-command-not-found", Statement: "The reply explains that the exit code 127 means the command could not be found because it is missing or not installed on the path."},
@@ -678,7 +683,7 @@ func techErrorDiagnosis() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"error-diagnosis"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Explain why the command output below exited with code 127. Partially mask the command name as `deploy-h…`; do not repeat the full name.",
+			UserPrompt: "Explain why the command output below exited with code 127.",
 			InlineContext: []ScenarioInlineContent{
 				inlineEvidence("log", "command-output", "sh: deploy-healthcheck: not found\nexit_code=127"),
 			},
@@ -710,8 +715,8 @@ func routePrimaryOwnership() ScenarioBlueprint {
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
 		MaxSentences:   1,
-		RequiredTerms:  [][]string{{"check…"}, {"18"}},
-		ForbiddenTerms: []string{"checkout-api", "delegate", "hand off", "handoff", "hand this", "escalate to"},
+		RequiredTerms:  [][]string{{"checkout"}, {"18"}},
+		ForbiddenTerms: []string{"delegate", "hand off", "handoff", "hand this", "escalate to"},
 	}
 	return ScenarioBlueprint{
 		ScenarioID: "route-primary-ownership", ScenarioVersion: scenarioVersion,
@@ -722,7 +727,7 @@ func routePrimaryOwnership() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"primary-ownership", "handoff"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Summarize the incident below in one sentence for the on-call primary owner. Partially mask the service name as `check…`.",
+			UserPrompt: "Summarize the incident below in one sentence for the on-call primary owner.",
 			InlineContext: []ScenarioInlineContent{
 				inlineEvidence("log", "incident", "checkout-api timeout rate elevated to 18 percent during deploy"),
 			},
@@ -999,8 +1004,9 @@ func recoveryToolFailure() ScenarioBlueprint {
 		"Heterogeneous lane verifies recovery handling in the system pipeline.",
 		[]string{"model_inference", "tool_call", "recovery"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{JudgedCriteria: []ScenarioJudgedCriterion{
+	gold.ContentCheck = &ScenarioContentCheck{ToolEvidence: []string{constants.MCPToolReadFile}, JudgedCriteria: []ScenarioJudgedCriterion{
 		{ID: "reports-file-unavailable", Statement: "The reply reports that the requested status file is missing or could not be read."},
+		{ID: "suggests-readonly-check", Statement: "The reply suggests one concrete, safe read-only next check relevant to the missing status file, such as checking the supplied path or inspecting its parent directory or deployment history. A vague promise to try a read-only check is insufficient. It must not invent a file location, contents, or an established cause of the failure, and must describe the follow-up as proposed rather than already executed."},
 	}}
 	gold.PromptHint = hint([]string{constants.MCPToolReadFile},
 		hintArg(constants.MCPToolReadFile, "path", sourceWorkspace, ScenarioWorkspaceToken+"/deploy/deployment-status.txt"),
@@ -1067,7 +1073,7 @@ func recoveryMalformedResource() ScenarioBlueprint {
 
 func finalResponseDiagnosis() ScenarioBlueprint {
 	gold := baseGold(
-		"The final response states an evidence-backed diagnosis, confidence, recommended action, and customer-safe summary. High confidence in the observed check… timeout signal and confirmed customer impact is justified; the configured pay… upstream is not a proven root cause.",
+		"The final response states an evidence-backed diagnosis, confidence, recommended action, and customer-safe summary. High confidence in the observed checkout-api timeout signal and confirmed customer impact is justified; the configured payments upstream is not a proven root cause.",
 		"Primary produces the evidence-backed final response in the designated role.",
 		"Assistant is not eligible for this scenario.",
 		"Lite is not eligible for this scenario.",
@@ -1079,9 +1085,8 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 	// inline evidence. Keep a catalog constraint so the scenario cannot freeze
 	// as an ungradable empty contract.
 	gold.ContentCheck = &ScenarioContentCheck{
-		RequiredTerms:   [][]string{{"check…"}, {"pay…"}},
-		ForbiddenTerms:  []string{"checkout-api", "checkout API", "payments.internal.example", "payments service", "payment service", "upstream payments"},
-		DiagnosisRubric: ScenarioDiagnosisRubricCheckoutTimeoutV4,
+		RequiredTerms:   [][]string{{"checkout"}, {"payments"}},
+		DiagnosisRubric: ScenarioDiagnosisRubricCheckoutTimeoutV5,
 	}
 	gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
 		{
@@ -1104,9 +1109,9 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"final-response", "diagnosis", "customer-communication"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Using the investigation records below, provide four labelled sections: diagnosis, confidence, recommended action, and customer-safe summary. Distinguish observed symptoms from an unproven cause. Mask the service identifier as `check…` and the upstream identifier as `pay…`; do not repeat either full name.",
+			UserPrompt: "Using the investigation records below, provide four labelled sections: diagnosis, confidence, recommended action, and customer-safe summary. Distinguish observed symptoms from an unproven cause.",
 			InlineContext: []ScenarioInlineContent{
-				inlineEvidence("log", "customer-impact", "checkout-api timeout rate 18 percent; upstream_host=payments.internal.example; customer checkout failures confirmed"),
+				inlineEvidence("log", "customer-impact", "checkout-api timeout rate 18 percent; upstream_host=payments.internal.example; customer checkout failures confirmed; sample affected customer ssn=123-45-6789"),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Checkout customer impact"},
 			FollowUps: []ScenarioScriptedFollowUp{
@@ -1134,7 +1139,7 @@ func recoveryErrorGuidedRetry() ScenarioBlueprint {
 		"Heterogeneous lane verifies the guided retry in the system pipeline.",
 		[]string{"model_inference", "tool_call", "recovery"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"AUTH_FAILURE"}, {"svc-d…"}}, ForbiddenTerms: []string{"svc-deploy", "svc-web"}}
+	gold.ContentCheck = authFailureContentCheck()
 	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
 		hintArg(constants.MCPToolSearchDirectory, "pattern", sourceSeed, "AUTH_FAILURE"),
 		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
@@ -1152,7 +1157,7 @@ func recoveryErrorGuidedRetry() ScenarioBlueprint {
 		ExpectedTools:     []string{constants.MCPToolSearchDirectory},
 		RequiredConcepts:  []string{"recovery", "error-guidance"},
 		Input: ScenarioInputFixture{
-			UserPrompt:     "That search failed. Retry it against " + ScenarioWorkspaceToken + " and tell me which lines match. Partially mask usernames as `svc-d…`.",
+			UserPrompt:     "That search failed. Retry it against " + ScenarioWorkspaceToken + " and tell me which lines match.",
 			WorkspaceFiles: authFailureWorkspaceFiles(),
 			Seed: InvestigationSeed{
 				CaseTitle: "Auth failure sweep (retry)",
@@ -1171,6 +1176,15 @@ func authFailureWorkspaceFiles() []ScenarioWorkspaceFile {
 	return []ScenarioWorkspaceFile{
 		workspaceFile("auth-log", "logs/auth.log", "2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy\n2026-09-16T08:00:05Z AUTH_SUCCESS user=svc-web", false),
 		workspaceFile("app-log", "logs/app.log", "08:00 request ok", true),
+	}
+}
+
+func authFailureContentCheck() *ScenarioContentCheck {
+	return &ScenarioContentCheck{
+		RequiredTerms:  [][]string{{"svc-deploy"}},
+		SearchPattern:  "AUTH_FAILURE",
+		ToolEvidence:   []string{constants.MCPToolSearchDirectory},
+		JudgedCriteria: []ScenarioJudgedCriterion{{ID: "search-grounding", Statement: "The reply reports the AUTH_FAILURE matching line from the recorded search results and identifies its user, svc-deploy. It must affirm the observed authentication failure, rather than merely mention AUTH_FAILURE or the user in a denial, a suggested query, or an unrelated statement. It must not attribute the failure to svc-web, whose line records a successful authentication. It must not claim no matches or a tool failure when the recorded search succeeded with matches, invent additional observations, or misidentify an authentication failure as a deployment failure."}},
 	}
 }
 

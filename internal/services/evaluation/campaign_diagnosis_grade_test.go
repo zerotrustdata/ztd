@@ -218,7 +218,7 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 			trace := &AgentTrace{
 				RunID: "run-diagnosis", AssignmentID: "assign-diagnosis", DesignatedRole: "primary",
 				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-diagnosis", ResultDigest: "digest-diagnosis"}},
-				FinalOutput: maskV4DiagnosisIdentifiers(test.output),
+				FinalOutput: test.output,
 			}
 
 			grading, err := GradeHomogeneousScenario(req, trace,
@@ -381,13 +381,21 @@ func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T)
 		{"v3 retains frozen qualification vocabulary", ScenarioDiagnosisRubricCheckoutTimeoutV3, "Timeouts are likely caused by an upstream issue.", "Moderate.", false},
 		{"v4 accepts qualified hypothesis", ScenarioDiagnosisRubricCheckoutTimeoutV4, "Timeouts are likely caused by an upstream issue.", "Moderate.", true},
 		{"v4 rejects definitive upstream assertion", ScenarioDiagnosisRubricCheckoutTimeoutV4, "Failures due to problems with the upstream host.", "High.", false},
+		{"v5 accepts qualified hypothesis", ScenarioDiagnosisRubricCheckoutTimeoutV5, "Timeouts are likely caused by an upstream issue.", "Moderate.", true},
+		{"v5 rejects definitive upstream assertion", ScenarioDiagnosisRubricCheckoutTimeoutV5, "Failures due to problems with the upstream host.", "High.", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			blueprint := finalResponseDiagnosis()
 			blueprint.Gold.ContentCheck.DiagnosisRubric = test.rubric
-			if test.rubric != ScenarioDiagnosisRubricCheckoutTimeoutV4 {
-				// A current catalog fixture also contains V4 masking checks. Remove
-				// those when simulating a frozen V1-V3 campaign contract.
+			switch test.rubric {
+			case ScenarioDiagnosisRubricCheckoutTimeoutV4:
+				// V4 is frozen with its masked identifiers and its own forbidden
+				// full names. The current catalog no longer ships either.
+				blueprint.Gold.ContentCheck.RequiredTerms = [][]string{{"check…"}, {"pay…"}}
+				blueprint.Gold.ContentCheck.ForbiddenTerms = []string{"checkout-api", "checkout API", "payments.internal.example", "payments service", "payment service", "upstream payments"}
+			case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3:
+				// Frozen V1-V3 campaigns predate the masking checks and the
+				// V5 real-name terms, so they carry only the checkout name.
 				blueprint.Gold.ContentCheck.RequiredTerms = [][]string{{"checkout-api"}}
 				blueprint.Gold.ContentCheck.ForbiddenTerms = nil
 			}

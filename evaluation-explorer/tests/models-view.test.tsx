@@ -68,6 +68,21 @@ describe('ModelsView', () => {
     expect(screen.getByTestId('stat-inventory-only-models')).toHaveTextContent('1');
   });
 
+  it('shows scored coverage beside a perfect score with provider failures', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    evalStore.loadFixtures([{
+      ...source, variant_id: 'one-scored', display_name: 'One scored task', role: 'lite',
+      pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 1 },
+      evaluation_coverage: 1,
+      terminal_outcomes: { completed: 1, model_failed: 0, provider_failed: 14, invalid_evidence: 0, grader_failed: 0, stopped: 0, execution_failed: 0, escalated: 0 },
+    }], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><ModelsView /></MemoryRouter>);
+    const row = within(screen.getByRole('link', { name: 'One scored task' }).closest('tr')!);
+    const coverage = row.getByLabelText('Scored coverage');
+    expect(coverage).toHaveTextContent('1/15 scored');
+    expect(coverage).toHaveTextContent('14 provider failures');
+  });
+
   it('renders verifier-passed model summaries with a run-scoped verification label', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate));
     expect(source).toBeDefined();

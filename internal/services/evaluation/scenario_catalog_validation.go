@@ -164,7 +164,7 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Command != nil && players.Command.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
-	if players.Command != nil && (len(players.Command.JudgedCriteria) > 0 || players.Command.RefusalCriterion != "") {
+	if players.Command != nil && (len(players.Command.JudgedCriteria) > 0 || players.Command.RefusalCriterion != "" || len(players.Command.ToolEvidence) > 0 || players.Command.SearchPattern != "") {
 		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
 	}
 	if marshal := players.Marshal; marshal != nil {
@@ -183,7 +183,7 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Codex != nil && players.Codex.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
-	if players.Codex != nil && (len(players.Codex.JudgedCriteria) > 0 || players.Codex.RefusalCriterion != "") {
+	if players.Codex != nil && (len(players.Codex.JudgedCriteria) > 0 || players.Codex.RefusalCriterion != "" || len(players.Codex.ToolEvidence) > 0 || players.Codex.SearchPattern != "") {
 		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
 	}
 	return nil
@@ -309,7 +309,7 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 	return check.ExactToken != "" || len(check.ExactLabels) > 0 || check.LeadingLabel != "" || check.WordCount > 0 ||
 		check.MaxSentences > 0 || len(check.RequiredTerms) > 0 || len(check.ForbiddenTerms) > 0 ||
 		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != "" ||
-		len(check.JudgedCriteria) > 0
+		len(check.JudgedCriteria) > 0 || check.SearchPattern != ""
 }
 
 // validateJudgedCriteria fails closed on a judged criterion the judge could not
@@ -324,6 +324,23 @@ func validateJudgedCriteria(blueprint ScenarioBlueprint, check *ScenarioContentC
 			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "scenario has no content check")
 		}
 		return nil
+	}
+	seenTools := make(map[string]struct{}, len(check.ToolEvidence))
+	for _, tool := range check.ToolEvidence {
+		if _, duplicate := seenTools[tool]; duplicate || !slices.Contains(blueprint.AllowedTools, tool) || len(check.JudgedCriteria) == 0 {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "tool evidence %q must be unique, allowed, and used by judged criteria", tool)
+		}
+		seenTools[tool] = struct{}{}
+	}
+	if check.SearchPattern != "" {
+		matches, err := fixtureSearchMatches(blueprint.Input, ScenarioWorkspace{}, check.SearchPattern)
+		if err != nil {
+			return scenarioContractErrorWithCause(blueprint, err, "invalid search evidence contract")
+		}
+		if len(matches) == 0 || !slices.Contains(blueprint.ExpectedTools, constants.MCPToolSearchDirectory) ||
+			len(check.JudgedCriteria) == 0 || !slices.Contains(check.ToolEvidence, constants.MCPToolSearchDirectory) {
+			return scenarioContractError(blueprint, "search evidence requires a directory search, matching fixture lines, and tool-grounded judged criteria")
+		}
 	}
 	seen := make(map[string]struct{}, len(check.JudgedCriteria))
 	for _, criterion := range check.JudgedCriteria {
@@ -353,7 +370,7 @@ func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContent
 		return nil
 	}
 	switch check.DiagnosisRubric {
-	case "", ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4:
+	case "", ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4, ScenarioDiagnosisRubricCheckoutTimeoutV5:
 		return nil
 	}
 	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)

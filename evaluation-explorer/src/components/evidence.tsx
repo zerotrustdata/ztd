@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import type { CSSProperties, ReactNode } from 'react';
-import type { ConfidenceInterval, TerminalStatus } from '../contract/types';
+import type { ConfidenceInterval, ModelSummary, TerminalStatus } from '../contract/types';
 import { terminalOutcomeBreakdown, type EvidenceTone } from '../views/derived';
 import { scrollToAnchorOnClick } from '../utils/scroll';
 import { formatNumber, formatPercent } from '../utils/format';
@@ -90,6 +90,24 @@ export function PassRateBar({ interval }: { interval: ConfidenceInterval | undef
   return <div className="pass-rate-bar">
     <span>{formatPercent(interval.estimate)} · n={formatNumber(interval.denominator)}</span>
     <meter min={0} max={1} value={interval.estimate} aria-label={`Pass rate, ${interval.denominator} eligible observations`} />
+  </div>;
+}
+
+/** Scoring coverage is distinct from execution coverage: a completed run can
+ * contain provider failures and only one assignment with a model verdict. */
+export function ModelScoreCoverage({ models }: { models: ModelSummary[] }) {
+  const breakdowns = models.map((model) => terminalOutcomeBreakdown(model.terminal_outcomes));
+  if (breakdowns.some((value) => value === undefined)) {
+    return <div className="model-identity-sub" aria-label="Scored coverage">Scored coverage unavailable</div>;
+  }
+  const total = breakdowns.reduce((sum, value) => sum + value!.total, 0);
+  const scored = models.reduce((sum, model) => sum + (model.pass_rate?.denominator ?? 0), 0);
+  const providerFailures = models.reduce((sum, model) => sum + (model.terminal_outcomes?.provider_failed ?? 0), 0);
+  if (total === 0) return null;
+  return <div className="model-identity-sub" aria-label="Scored coverage"
+    title="Scored assignments / recorded terminal assignments. Provider failures include unsupported capabilities; they are excluded from model pass rates.">
+    {formatNumber(scored)}/{formatNumber(total)} scored
+    {providerFailures > 0 ? <> · {formatNumber(providerFailures)} provider failures</> : null}
   </div>;
 }
 

@@ -26,6 +26,7 @@ import {
   type ModelRoleLeaderboardRow,
 } from '../views/derived';
 import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
+import { ModelScoreCoverage } from './evidence';
 
 export type LeaderboardSortField =
   | 'rank'
@@ -428,7 +429,7 @@ export function RoleLeadersPanel({
                         <td className="role-leader-score" title={scoreTitle}>
                           {formatNumber(row.score, 1)}
                         </td>
-                        <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}</td>
+                        <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}<ModelScoreCoverage models={row.sources} /></td>
                         <td>
                           {row.security !== undefined ? (
                             formatPercent(row.security, 0)

@@ -47,6 +47,7 @@ import {
 } from './derived';
 import {
   DetailLayout,
+  ModelScoreCoverage,
   NON_VERDICT_NOTE,
   OutcomeBreakdown,
   PageHero,
@@ -190,6 +191,7 @@ export function ModelDetailView() {
         }
       >
         <div className="quality-banner">
+          <ModelScoreCoverage models={[model]} />
           <QualityBadge state={model.quality_state} />
           {roleVariantsInDataset.length > 1 ? (
             <div className="role-switcher-pills" role="group" aria-label="Switch model role">

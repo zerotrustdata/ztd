@@ -23,14 +23,14 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.12.1"
+	GraderVersion = "1.13.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.22.0"
-	SmokeSuiteVersion          = "1.21.0"
-	InvestigationsSuiteVersion = "1.21.0"
+	DefaultSuiteVersion        = "1.23.0"
+	SmokeSuiteVersion          = "1.22.0"
+	InvestigationsSuiteVersion = "1.22.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -39,9 +39,9 @@ const (
 
 	scenarioSyntheticLabel     = "SYNTHETIC - controlled evaluation fixture"
 	scenarioInputSchemaVersion = "1.3.0"
-	scenarioGoldSchemaVersion  = "1.1.0"
+	scenarioGoldSchemaVersion  = "1.2.0"
 	scenarioInputSchemaRef     = "evaluation-scenario-input@1.3.0"
-	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.1.0"
+	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.2.0"
 
 	// ScenarioWorkspaceToken is the typed template variable a prompt, seed, or
 	// argument validator uses for the attempt-scoped fixture workspace root.
@@ -59,6 +59,7 @@ const (
 	ScenarioDiagnosisRubricCheckoutTimeoutV2 ScenarioDiagnosisRubric = "checkout-timeout-v2"
 	ScenarioDiagnosisRubricCheckoutTimeoutV3 ScenarioDiagnosisRubric = "checkout-timeout-v3"
 	ScenarioDiagnosisRubricCheckoutTimeoutV4 ScenarioDiagnosisRubric = "checkout-timeout-v4"
+	ScenarioDiagnosisRubricCheckoutTimeoutV5 ScenarioDiagnosisRubric = "checkout-timeout-v5"
 )
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
@@ -185,6 +186,13 @@ type ScenarioContentCheck struct {
 	JSONStringFields  map[string]string       `json:"json_string_fields,omitempty"`
 	JSONIntegerFields map[string]int64        `json:"json_integer_fields,omitempty"`
 	DiagnosisRubric   ScenarioDiagnosisRubric `json:"diagnosis_rubric,omitempty"`
+	// SearchPattern requires successful directory searches to retrieve every
+	// fixture line matching this reference regex. Filters and result limits
+	// cannot turn an incomplete or empty retrieval into a successful task.
+	SearchPattern string `json:"search_pattern,omitempty"`
+	// ToolEvidence names receipt-backed tool results included in the content
+	// judge's objective. It is frozen with the criteria and replayed offline.
+	ToolEvidence []string `json:"tool_evidence,omitempty"`
 	// Interrogation requires the whole answer to be the Interrogation Protocol
 	// block Sage and Dash are told to emit when context is missing: one
 	// <interrogation> element holding exactly three numbered, strictly binary

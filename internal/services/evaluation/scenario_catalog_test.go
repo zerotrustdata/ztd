@@ -143,20 +143,20 @@ func TestScenarioGoldRequiresStandardizedMaskedIdentifiers(t *testing.T) {
 	assert.Contains(t, diagnosis.Gold.ContentCheck.ForbiddenTerms, "payments.internal.example")
 }
 
-// tool-arg-file-path tests the read path, not one mask spelling, and stays
-// deterministic like the rest of its family: any partial name passes, a full
-// hostname fails and is reported as the leak, and a decoy-only answer fails.
+// tool-arg-file-path judges the identity's meaning while retaining a
+// deterministic ban on disclosure of the full hostname.
 // The outputs are real smoke-cohort replies from 2026-10-28.
 func TestToolArgFilePathContentIsFairToPartialNames(t *testing.T) {
 	bp := toolArgFilePath()
 	check := bp.Gold.ContentCheck
 	require.NotNil(t, check)
-	assert.Empty(t, check.JudgedCriteria, "tool-argument scenarios dispatch no judge")
-	assert.Contains(t, check.RequiredTerms, []string{"pay…", "payments"})
+	assertJudgedContentCriteria(t, *check, []string{"identifies-masked-upstream"})
+	assert.Empty(t, check.RequiredTerms, "partial identity is semantic, not a substring requirement")
 	assert.NotContains(t, bp.Input.UserPrompt, "using the partial name", "the prompt must not read as a required spelling")
 
 	partial := []string{
 		"payments",
+		"The upstream service is payment.",
 		"The upstream service is identified as payments.",
 		"The upstream is pay….",
 		"The upstream service is `pay...`.",
@@ -179,8 +179,8 @@ func TestToolArgFilePathContentIsFairToPartialNames(t *testing.T) {
 	}
 
 	for _, output := range []string{"The upstream is legacy.internal.example.", "The upstream is legacy."} {
-		passed, _ := evaluateContentCheck(output, *check, ScenarioWorkspace{})
-		assert.False(t, passed, "decoy-only answer %q must fail", output)
+		result := accuracyGrade(t, bp, output, nil, AgentContentJudgment{CriterionID: "identifies-masked-upstream", Met: false})
+		assert.False(t, gradePassed(t, result.DeterministicGrades, "scenario-content"), "decoy-only answer %q must fail", output)
 	}
 }
 

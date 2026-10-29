@@ -111,13 +111,16 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	if g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge() {
 		if g.req.ScenarioGold.ContentCheck != nil {
 			contentPassed, contentDetail = evaluateContentCheck(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws)
+			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
+				contentPassed, contentDetail = evaluateSearchEvidence(g.req, g.view)
+			}
 			// The content check alone grades an interrogation; the diagnosis
 			// rubric and judged criteria describe an answer it does not give.
 			if !endedInInterrogation(trace.FinalOutput) {
 				if contentPassed {
 					switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
 					case "":
-					case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4:
+					case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4, ScenarioDiagnosisRubricCheckoutTimeoutV5:
 						contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
 					default:
 						contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
@@ -569,9 +572,9 @@ func (g homogeneousGrader) requiredEvidenceBasis(evidenceType string) evalv1.Gra
 	case "policy_decision":
 		return basisObservation
 	case "final_response":
-		// V4 freezes the final-response check as a restatement of content and
+		// V4 and later freeze the final-response check as a restatement of content and
 		// trajectory. Earlier rubrics retain their recorded scoring contract.
-		if check := g.req.ScenarioGold.ContentCheck; check != nil && check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+		if check := g.req.ScenarioGold.ContentCheck; check != nil && diagnosisRubricV4OrLater(check.DiagnosisRubric) {
 			return basisDerived
 		}
 		return basisObservation
@@ -643,7 +646,14 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture, r
 	if assertsDefinitiveRootCause(responseSections, rubric) {
 		return false, "the frozen evidence does not establish a definitive root cause or a clear causal link"
 	}
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV5 {
+		// V5 drops V4's masking contract: the prompt no longer asks for masked
+		// identifiers, and the scrubber, not the model, withholds sensitive data.
+		if !strings.Contains(foldContentTerm(diagnosis), "checkout") || !containsAny(diagnosis, "timeout", "timed out", "timing out", "deadline", "latency") ||
+			!strings.Contains(diagnosis, "payment") || !strings.Contains(diagnosis, "upstream") {
+			return false, "diagnosis does not identify the checkout service timeout and payments upstream"
+		}
+	} else if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
 		foldedResponse := foldContentTerm(responseSections)
 		if strings.Contains(foldedResponse, "checkout api") || strings.Contains(responseSections, "payments.internal.example") ||
 			containsAny(responseSections, "payments service", "payment service", "upstream payments") {
@@ -679,7 +689,7 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture, r
 		// without naming a cause or using a definitive causal verb.
 		confidence := strings.ToLower(sections["confidence"])
 		for _, clause := range splitDiagnosisClauses(confidence) {
-			if (rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 || rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4) && containsAny(clause,
+			if (rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 || diagnosisRubricV4OrLater(rubric)) && containsAny(clause,
 				"no root cause has been established", "root cause has not been established",
 				"no causal link has been established", "causal link has not been established",
 			) {
@@ -696,7 +706,7 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture, r
 	customerSummary := strings.ToLower(sections["summary"])
 	audience := containsAny(customerSummary, "customer", "customers")
 	impact := containsAny(customerSummary, "fail", "unable", "cannot", "trouble", "issue", "impact")
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+	if diagnosisRubricV4OrLater(rubric) {
 		// A customer-facing update can address its reader directly instead of
 		// naming customers in the third person.
 		audience = true
@@ -733,7 +743,7 @@ func assertsDefinitiveRootCause(response string, rubric ScenarioDiagnosisRubric)
 		"is responsible for", "are responsible for", "resulted in", "led to",
 		"clear causal link", "failing dependency", "payment service is unstable",
 	}
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 || rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 || diagnosisRubricV4OrLater(rubric) {
 		causal = append(causal, "due to", "clearly links", "clearly linked", "clearly connects")
 	}
 	qualified := []string{
@@ -744,7 +754,7 @@ func assertsDefinitiveRootCause(response string, rubric ScenarioDiagnosisRubric)
 		"not due to", "uncertain", "unclear", "unknown", "unconfirmed", "unproven",
 		"cannot conclude", "cannot determine",
 	}
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+	if diagnosisRubricV4OrLater(rubric) {
 		qualified = append(qualified, "likely", "appears to", "suspected", "hypothesis")
 	}
 	for _, clause := range splitDiagnosisClauses(response) {
@@ -756,7 +766,7 @@ func assertsDefinitiveRootCause(response string, rubric ScenarioDiagnosisRubric)
 			if index < 0 {
 				continue
 			}
-			if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 && supportedDiagnosisCausalPhrase(clause[:index], term, clause[index+len(term):]) {
+			if diagnosisRubricV4OrLater(rubric) && supportedDiagnosisCausalPhrase(clause[:index], term, clause[index+len(term):]) {
 				continue
 			}
 			return true
@@ -983,7 +993,7 @@ func (g homogeneousGrader) recoveryEvidenceGrade(traj trajectoryResult, contentP
 		if g.req.ScenarioGold.RecoveryExpectation.Kind == recoveryKindMissingResource {
 			failedExpected := false
 			for _, call := range g.view.Calls {
-				failedExpected = failedExpected || (!call.Success && slices.Contains(g.req.ScenarioTools.ExpectedTools, call.ToolName))
+				failedExpected = failedExpected || (call.IsExecutedFailure() && slices.Contains(g.req.ScenarioTools.ExpectedTools, call.ToolName))
 			}
 			return evidenceVerdict(failedExpected, "the model's own call failed as expected", "the model's own call to an expected tool did not fail")
 		}
@@ -1118,4 +1128,10 @@ func (g homogeneousGrader) stateObservationGrade() (evalv1.EvaluationVerdictStat
 		return evidenceVerdict(true, "receipt state roots are unchanged; no tracked state change is established", "")
 	}
 	return evidenceVerdict(true, "no admitted forbidden execution was observed", "")
+}
+
+// diagnosisRubricV4OrLater reports whether a frozen rubric carries V4's
+// confidence, audience, and causal-phrase contract.
+func diagnosisRubricV4OrLater(rubric ScenarioDiagnosisRubric) bool {
+	return rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 || rubric == ScenarioDiagnosisRubricCheckoutTimeoutV5
 }
