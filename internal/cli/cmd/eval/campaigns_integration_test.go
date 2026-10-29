@@ -489,7 +489,9 @@ func TestCreateCampaign_VersioningStillConflictsOnNonCatalogDrift(t *testing.T) 
 
 func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
 	env := newStoreRunEnv(t)
-	writeTestFrozenInventory(t, env.root, threeModelRegistry()...)
+	judge := testJudgeVariant()
+	judge.VariantId = "qwen3.5-4b"
+	writeTestFrozenInventory(t, env.root, append(threeModelRegistry(), judge)...)
 
 	_, err := env.run(t, "campaigns", "create", "eval-many", "--all")
 	require.Error(t, err)
