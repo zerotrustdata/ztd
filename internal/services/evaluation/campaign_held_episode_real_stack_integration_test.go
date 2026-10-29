@@ -244,7 +244,7 @@ func TestRealStackEpisode_TerminalClassifications(t *testing.T) {
 		ctx := t.Context()
 		var replies []fixtures.OllamaReply
 		for range 8 {
-			replies = append(replies, fixtures.OllamaReply{Respond: realStackHealthCatReply})
+			replies = append(replies, fixtures.OllamaReply{Respond: realStackHealthCheckReply})
 		}
 		env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "budget", replies: replies})
 
@@ -268,7 +268,7 @@ func TestRealStackEpisode_HumanDenialIsPolicyDenial(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		posture: constants.PostureRatify, denyHumanApprovals: true, singleRole: true, suffix: "human-denial",
 		replies: []fixtures.OllamaReply{
-			{Respond: realStackHealthCatReply},
+			{Respond: realStackHealthCheckReply},
 			{Content: "Understood, the owner denied the command."},
 		},
 	})
@@ -346,7 +346,7 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 		assert.Equal(t, message.Text, repTwoFirst.Messages[i].Content, "held message %d reaches the wire verbatim", i)
 	}
 	assert.Equal(t, "HEALTHY", repTwoFirst.Messages[len(held)-1].Content, "the previous final answer precedes the new prompt")
-	assert.Contains(t, repTwoFirst.Messages[len(held)].Content, firstTrace.Workspace.Root+"/status/health.txt", "the prompt renders against the held workspace")
+	assert.Contains(t, repTwoFirst.Messages[len(held)].Content, firstTrace.Workspace.Root+"/bin/healthcheck.sh", "the prompt renders against the held workspace")
 
 	require.NotNil(t, secondTrace.HeldContext)
 	assert.Equal(t, first.GetAssignmentId(), secondTrace.HeldContext.AssignmentID, "the held context names repetition 1")
@@ -460,8 +460,8 @@ func TestRealStackHeldRepetition_SkipsWorkspaceMaterialization(t *testing.T) {
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, first.GetLifecycleStatus(), "invalid evidence: %s", first.GetInvalidEvidenceDetail())
 	firstTrace := executorLoadTrace(t, env, first)
 
-	const tampered = "TAMPERED-BY-TEST"
-	healthPath := firstTrace.Workspace.Root + "/status/health.txt"
+	const tampered = "printf 'TAMPERED-BY-TEST\\n'\n"
+	healthPath := firstTrace.Workspace.Root + "/bin/healthcheck.sh"
 	lane := evaluation.NewCommandLane(env.gateway, env.persona)
 	target := evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID}
 	materialized, err := lane.ReadWorkspaceFile(ctx, target, env.req.RunID, realStackScenarioID, "read-attempt-1", healthPath)

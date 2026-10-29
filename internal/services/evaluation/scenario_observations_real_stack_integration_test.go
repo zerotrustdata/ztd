@@ -270,7 +270,8 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathUsesGroundedMeaning(t *testi
 			require.Len(t, trace.ToolCalls, 1)
 			assert.Equal(t, constants.MCPToolReadFile, trace.ToolCalls[0].ToolName)
 			require.Len(t, trace.ContentJudgments, 1)
-			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, "Recorded tool result (read_file, success=true)")
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, "Record 1 (tool call made by the agent): read_file, outcome success")
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ArgumentsJSON)
 			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ResultJSON)
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), tc.criterionID)
 			if tc.wantPass {
@@ -284,31 +285,33 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathUsesGroundedMeaning(t *testi
 	}
 }
 
-// The first-service-config answer is graded through the production content check
-// on the real stack. The deterministic terms require the value 30 and no full
-// service identifier; the judged criterion requires the first config to be the
-// one that sets it. A paraphrase that the judge accepts passes, and a missing
-// value fails on both the term check and the verdict.
-func TestRealStackScenarioGrade_FirstServiceConfigAnswerIsGradedOnItsContent(t *testing.T) {
+// Config comparison requires both the old-to-new values and the effect on
+// requests. Each criterion has its own governed judge reply; omitting either
+// requirement fails, including when the other criterion passes.
+func TestRealStackScenarioGrade_ConfigDiffRequiresComparisonAndEffect(t *testing.T) {
 	cases := []struct {
-		name   string
-		answer string
-		met    bool
-		pass   bool
+		name, answer             string
+		comparisonMet, effectMet bool
+		pass                     bool
 	}{
-		{"first service config wording", "The first service config sets timeout_seconds to 30; the second sets 5.", true, true},
-		{"first service configuration wording", "The first service configuration sets timeout_seconds to 30.", true, true},
-		{"paraphrased timeout wording", "Config one has a 30-second timeout_seconds; config two uses 5.", true, true},
-		{"missing timeout value", "The first service config sets timeout_seconds; the second sets 5.", false, false},
+		{"old and new values", "timeout_seconds changed from 30 to 5, so requests time out sooner.", true, true, true},
+		{"paraphrased comparison", "The old timeout was 30 seconds and the new one is 5, allowing less time for a response.", true, true, true},
+		{"missing timeout value", "The timeout decreased, so requests time out sooner.", false, true, false},
+		{"missing timeout effect", "timeout_seconds changed from 30 in the old config to 5 in the new config.", true, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newRealStackAgentRun(t, realStackOptions{
 				singleRole: true, scenarioID: "tech-config-diff", suffix: "config-grade",
-				replies: agentThenVerdicts(tc.answer, criterionVerdictReply(tc.met, "scripted verdict")),
+				replies: agentThenVerdicts(tc.answer,
+					criterionVerdictReply(tc.comparisonMet, "scripted comparison verdict"),
+					criterionVerdictReply(tc.effectMet, "scripted timeout-effect verdict")),
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, result)
+			require.Len(t, trace.ContentJudgments, 2)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
 			if tc.pass {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
@@ -430,28 +433,41 @@ func TestRealStackScenarioGrade_FilteredEmptySearchCannotPass(t *testing.T) {
 	}
 }
 
-func TestRealStackScenarioGrade_MissingFileNeedsConcreteNextCheck(t *testing.T) {
+func TestRealStackScenarioGrade_MissingFileNeedsGroundedHistory(t *testing.T) {
 	for _, tc := range []struct {
 		name, answer string
 		met          bool
 	}{
 		{"vague", "The file is unavailable. I will try a read-only check.", false},
-		{"concrete", "The file is missing. Next, inspect its deploy directory with fs_disk_profile to verify the path; I have not run that check.", true},
+		{"proposed check without an answer", "The file is missing. Next, inspect its deploy directory to verify the path; I have not run that check.", false},
+		{"grounded history", "The status file is missing. deployment-history.log records that the v2.2.6 rollout was paused at 08:04 UTC.", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var env *realStackAgentRun
 			read := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
 				return realStackReadFileReply(env, "deploy/deployment-status.txt")
 			}}
+			history := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				return realStackReadFileReply(env, "deploy/deployment-history.log")
+			}}
 			env = newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: "recovery-tool-failure", suffix: "next-check",
-				replies: []fixtures.OllamaReply{read, {Content: tc.answer}, criterionVerdictReply(true, "The reply reports the missing file."), criterionVerdictReply(tc.met, "A concrete next check is required.")},
+				replies: []fixtures.OllamaReply{read, history, {Content: tc.answer}, criterionVerdictReply(true, "The reply reports the missing file."), criterionVerdictReply(tc.met, "The reply must report the rollout pause from deployment history.")},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetFailureReason())
 			trace := executorLoadTrace(t, env, result)
 			require.Len(t, trace.ContentJudgments, 2)
-			require.Len(t, trace.ToolCalls, 1, "the proposed follow-up was not executed")
-			assert.Contains(t, trace.ContentJudgments[1].Messages[1].Text, "Recorded tool result (read_file, success=false)")
+			require.Len(t, trace.ToolCalls, 2)
+			assert.False(t, trace.ToolCalls[0].Success, "the requested status file is absent")
+			assert.True(t, trace.ToolCalls[1].Success, "recovery retrieves the actual deployment history")
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			objective := trace.ContentJudgments[1].Messages[1].Text
+			assert.Contains(t, objective, "Record 1 (tool call made by the agent): read_file, outcome error")
+			assert.Contains(t, objective, "Record 2 (tool call made by the agent): read_file, outcome success")
+			for _, call := range trace.ToolCalls {
+				assert.Contains(t, objective, call.ArgumentsJSON)
+				assert.Contains(t, objective, call.ResultJSON)
+			}
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
 			if tc.met {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status)
