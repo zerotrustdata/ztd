@@ -34,9 +34,12 @@ const (
 	// scripted upstream-payments-telemetry follow-up.
 	realStackFollowUpScenarioID = "final-response-diagnosis"
 	realStackFollowUpID         = "upstream-payments-telemetry"
-	realStackInterrogation      = "<interrogation>\n1. Is payments upstream unreachable?\n2. Are other services affected?\n3. Did the timeouts begin after the last deploy?\n</interrogation>"
-	realStackDiagnosis          = "Diagnosis: payments service connection timeout. Confidence: high. Recommended action: failover. Summary: payments delayed."
-	realStackDestructiveArgs    = `{"command":"rm","args":["-rf","/"]}`
+	// realStackSignal is the reasoner's clarification signal; the Interrogator
+	// persona's reply follows it on the wire.
+	realStackSignal          = "<clarification_needed>whether the payments upstream is reachable</clarification_needed>"
+	realStackInterrogation   = "<interrogation>\n1. Is payments upstream unreachable?\n2. Are other services affected?\n3. Did the timeouts begin after the last deploy?\n</interrogation>"
+	realStackDiagnosis       = "Diagnosis: payments service connection timeout. Confidence: high. Recommended action: failover. Summary: payments delayed."
+	realStackDestructiveArgs = `{"command":"rm","args":["-rf","/"]}`
 )
 
 // realStackScenarioFollowUp returns the follow-up the built-in scenario declares
@@ -61,9 +64,11 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "clarify",
 		replies: []fixtures.OllamaReply{
-			// The interrogation hand-off drops this pending call, so the call names
+			// The clarification hand-off drops this pending call, so the call names
 			// no fixture: its prompt renders no workspace path.
-			{Content: realStackInterrogation, ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("echo", "pending")}}},
+			{Content: realStackSignal, ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("echo", "pending")}}},
+			// The Interrogator persona asks the questions.
+			{Content: realStackInterrogation},
 			{Content: realStackDiagnosis},
 			// The scenario's diagnosis rubric has the judge score the final reply.
 			{Content: judgeScoreFour},
@@ -81,6 +86,14 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	require.NotEmpty(t, trace.ModelCalls)
 	assert.Equal(t, 1, trace.ModelCalls[0].ToolCallCount, "preserve the signed provider output even when the hand-off drops pending tools")
 	assert.Empty(t, trace.ToolCalls, "interrogation hand-off must drop pending tool calls")
+	require.Len(t, trace.ModelCalls, 3, "turn, Interrogator, turn")
+	asked := trace.ModelCalls[1]
+	assert.Equal(t, "interrogation", asked.Purpose)
+	assert.Equal(t, "interrogator", asked.Persona)
+	assert.Equal(t, realStackInterrogation, asked.Text)
+	require.NotEmpty(t, asked.Input)
+	assert.Contains(t, asked.Input[0].Text, "You are the Interrogator for ztd.")
+	assert.Contains(t, asked.Input[len(asked.Input)-1].Text, "whether the payments upstream is reachable")
 
 	require.Len(t, trace.Clarifications, 1)
 	assert.Equal(t, 1, trace.Clarifications[0].LoopTurn)
@@ -110,11 +123,12 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 	assert.True(t, foundFollowUp, "conversation must record the scripted user response")
 	assert.True(t, foundDiagnosis, "conversation must record final diagnosis")
 
-	// The second provider turn carries the scripted answer on the wire; the
-	// third is the judge's.
+	// The Interrogator asks second; the reasoner's second turn carries the
+	// scripted answer on the wire; the fourth request is the judge's.
 	chat := env.stack.Provider.ChatRequests()
-	require.Len(t, chat, 3)
-	assert.Contains(t, string(chat[1]), followUp.ResponseText, "the follow-up answer reaches the model on the second turn")
+	require.Len(t, chat, 4)
+	assert.NotContains(t, string(chat[1]), "You are Sage", "the Interrogator never sees the reasoner's persona")
+	assert.Contains(t, string(chat[2]), followUp.ResponseText, "the follow-up answer reaches the model on the second turn")
 }
 
 func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
@@ -122,7 +136,7 @@ func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	unmatched := "<interrogation>\n1. Is it raining outside?\n2. Is it cold outside?\n3. Is it windy outside?\n</interrogation>"
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "unmatched",
-		replies: []fixtures.OllamaReply{{Content: unmatched}},
+		replies: []fixtures.OllamaReply{{Content: realStackSignal}, {Content: unmatched}},
 	})
 
 	res := env.executeNext(t)
@@ -136,7 +150,7 @@ func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	assert.Len(t, trace.Clarifications[0].Questions, 3)
 	assert.Empty(t, trace.Clarifications[0].SelectedBranch)
 	assert.Empty(t, trace.Clarifications[0].UserResponse)
-	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode without a second agent turn, and the diagnosis judge does not score an interrogation")
+	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode after the Interrogator, without a second agent turn, and the diagnosis judge does not score an interrogation")
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackGradeStatus(t, res, "scenario-content"), "a valid interrogation is graded on the protocol")
 	assert.Empty(t, res.GetSemanticGrades(), "an interrogation carries no diagnosis-quality judgment")
 }
@@ -168,7 +182,7 @@ func TestRealStackEpisode_MalformedInterrogationEndsTheEpisode(t *testing.T) {
 	malformed := "<interrogation>\n1. Is payments upstream unreachable?\n</interrogation>"
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "malformed",
-		replies: []fixtures.OllamaReply{{Content: malformed}},
+		replies: []fixtures.OllamaReply{{Content: realStackSignal}, {Content: malformed}},
 	})
 
 	res := env.executeNext(t)
@@ -180,7 +194,7 @@ func TestRealStackEpisode_MalformedInterrogationEndsTheEpisode(t *testing.T) {
 	require.Len(t, trace.Clarifications, 1)
 	assert.Empty(t, trace.Clarifications[0].Questions, "a malformed interrogation records no questions")
 	assert.Empty(t, trace.Clarifications[0].SelectedBranch, "a malformed interrogation never earns the scripted follow-up its terms would match")
-	assert.Equal(t, 1, env.stack.Provider.ChatCount())
+	assert.Equal(t, 2, env.stack.Provider.ChatCount())
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackGradeStatus(t, res, "scenario-content"))
 	assert.Contains(t, realStackGradeDetail(t, res, "scenario-content"), constants.ErrEvaluationInterrogationCount.Error())
 }

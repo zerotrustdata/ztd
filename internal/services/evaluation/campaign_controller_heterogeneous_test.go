@@ -28,6 +28,7 @@ func TestCampaignController_GenerateFormationStackSet_PersistsStacks(t *testing.
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:3],
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)

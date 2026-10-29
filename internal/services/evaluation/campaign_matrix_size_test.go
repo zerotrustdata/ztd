@@ -25,6 +25,7 @@ func truncatedCatalog(t *testing.T, catalog *evalv1.EvaluationScenarioCatalog, s
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:scenarios],
 	}
 	digest, err := ComputeScenarioCatalogDigest(truncated)

@@ -257,6 +257,7 @@ func TestPublishedCatalogCarriesTheObservedEnvironmentOnlyOnceTheRunIsComplete(t
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: req.Catalog.GetSchemaVersion(),
 		CatalogRef:    req.Catalog.GetCatalogRef(),
+		Personas:      req.Catalog.GetPersonas(),
 		Scenarios:     req.Catalog.GetScenarios()[:3],
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)

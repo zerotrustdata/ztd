@@ -141,6 +141,7 @@ func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:3],
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
@@ -186,6 +187,7 @@ func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract
 	catalog := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: req.Catalog.GetSchemaVersion(),
 		CatalogRef:    req.Catalog.GetCatalogRef(),
+		Personas:      req.Catalog.GetPersonas(),
 		Scenarios:     scenarios,
 	}
 	digest, err := ComputeScenarioCatalogDigest(catalog)

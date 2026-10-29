@@ -58,6 +58,11 @@ const (
 // one is a scored step of the tool loop.
 const agentModelCallPurposeTurn = "agent_turn"
 
+// agentModelCallPurposeInterrogation is the Interrogator call a reasoner's
+// clarification signal dispatches. It is not a turn; its questions stand in
+// the conversation for the signalling turn.
+const agentModelCallPurposeInterrogation = "interrogation"
+
 // agentModelCallPurposeTribunalPrefix prefixes the purpose of every governed
 // inference a Tribunal deliberation dispatches inside one intent-only
 // Tribunal-authored run_shell_command call: tribunal_generate, tribunal_marshal, or
@@ -109,19 +114,21 @@ type AgentModelCall struct {
 	// signed receipt. Earlier trace versions did not retain it.
 	InferenceResult *AgentTraceInferenceResult `json:"inference_result,omitempty"`
 	// ToolCallID and Persona are set on a Tribunal call: the tool call whose
-	// deliberation dispatched it and the persona that answered.
-	ToolCallID              string   `json:"tool_call_id,omitempty"`
-	Persona                 string   `json:"persona,omitempty"`
-	ToolsDeclared           []string `json:"tools_declared"`
-	ResultDigest            string   `json:"result_digest"`
-	UsageReported           bool     `json:"usage_reported"`
-	PromptTokens            uint32   `json:"prompt_tokens"`
-	CompletionTokens        uint32   `json:"completion_tokens"`
-	TTFTNanos               uint64   `json:"ttft_nanos,omitempty"`
-	GenerationDurationNanos uint64   `json:"generation_duration_nanos,omitempty"`
-	FinishReason            string   `json:"finish_reason,omitempty"`
-	LoadState               string   `json:"load_state,omitempty"`
-	RetryCount              uint32   `json:"retry_count"`
+	// deliberation dispatched it and the persona that answered. An
+	// Interrogator call carries Persona and its exact Input (v11).
+	ToolCallID              string              `json:"tool_call_id,omitempty"`
+	Persona                 string              `json:"persona,omitempty"`
+	Input                   []AgentTraceMessage `json:"input,omitempty"`
+	ToolsDeclared           []string            `json:"tools_declared"`
+	ResultDigest            string              `json:"result_digest"`
+	UsageReported           bool                `json:"usage_reported"`
+	PromptTokens            uint32              `json:"prompt_tokens"`
+	CompletionTokens        uint32              `json:"completion_tokens"`
+	TTFTNanos               uint64              `json:"ttft_nanos,omitempty"`
+	GenerationDurationNanos uint64              `json:"generation_duration_nanos,omitempty"`
+	FinishReason            string              `json:"finish_reason,omitempty"`
+	LoadState               string              `json:"load_state,omitempty"`
+	RetryCount              uint32              `json:"retry_count"`
 	// Thinking is the reasoning text the provider returned as thinking parts,
 	// in order. It is never sent back to the model.
 	Thinking      string `json:"thinking,omitempty"`
@@ -395,8 +402,13 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 		}
 		clarification, interrogated := t.clarificationAt(call.LoopTurn)
 		if call.ToolCallCount == 0 || interrogated {
-			if call.Text != "" {
-				messages = append(messages, AgentTraceContextMessage{Role: assistantRole, Text: call.Text})
+			// The Interrogator's questions stand in for a signalling turn.
+			text := call.Text
+			if asked, ok := t.interrogationAt(call.LoopTurn); ok {
+				text = asked.Text
+			}
+			if text != "" {
+				messages = append(messages, AgentTraceContextMessage{Role: assistantRole, Text: text})
 			}
 			if clarification.UserResponse != "" {
 				messages = append(messages, AgentTraceContextMessage{Role: userRole, Text: clarification.UserResponse})
@@ -502,6 +514,28 @@ func agentTraceRuntime(runtime CampaignOperatorRuntime) AgentTraceRuntime {
 		traced.Anchor = &AgentTraceAnchor{ConformanceAnchor: runtime.Anchor}
 	}
 	return traced
+}
+
+// interrogatorAsked reports whether text is a completed Interrogator call's
+// answer, rather than a reasoner's own words.
+func (t *AgentTrace) interrogatorAsked(text string) bool {
+	for _, call := range t.ModelCalls {
+		if call.Purpose == agentModelCallPurposeInterrogation && call.Completed() && call.Text == text {
+			return true
+		}
+	}
+	return false
+}
+
+// interrogationAt returns the completed Interrogator call a turn's
+// clarification signal dispatched.
+func (t *AgentTrace) interrogationAt(loopTurn int) (AgentModelCall, bool) {
+	for _, call := range t.ModelCalls {
+		if call.Purpose == agentModelCallPurposeInterrogation && call.LoopTurn == loopTurn && call.Completed() {
+			return call, true
+		}
+	}
+	return AgentModelCall{}, false
 }
 
 // CarriesModelIdentity reports whether the trace's schema seals each model
@@ -822,6 +856,11 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	// A v11 trace without a persona is rejected as evidence by verifyTracePersona.
 	if trace.SchemaVersion != agentTraceSchemaVersion && trace.Persona != nil {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries a persona: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	for _, call := range trace.ModelCalls {
+		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) || (trace.SchemaVersion != agentTraceSchemaVersion && len(call.Input) > 0) {
+			return fmt.Errorf("evaluation: validate agent trace: model call %q input: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
+		}
 	}
 	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)

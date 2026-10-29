@@ -36,6 +36,20 @@ var binaryOpeners = []string{
 	"will", "would", "should", "shall", "may", "might", "must",
 }
 
+// clarificationSignal is a reasoner's whole response asking the Interrogator
+// to clarify; its body names the missing context.
+var clarificationSignal = regexp.MustCompile(`(?s)^<clarification_needed>\s*(.*?)\s*</clarification_needed>$`)
+
+// ParseClarificationSignal reports whether a reasoner's response is exactly a
+// clarification signal, and the missing context it names.
+func ParseClarificationSignal(text string) (missing string, signalled bool) {
+	match := clarificationSignal.FindStringSubmatch(strings.TrimSpace(text))
+	if match == nil {
+		return "", false
+	}
+	return match[1], true
+}
+
 // AgentInterrogation is one response under the Interrogation Protocol
 // (the agentpersona interrogation protocol I1-I4): exactly three numbered, strictly yes/no
 // questions that are the model's entire response.

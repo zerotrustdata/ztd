@@ -67,6 +67,12 @@ func frozenRolePersona(bindings []*evalv1.AgentPersonaBinding, role evalv1.Model
 	if err != nil {
 		return agentpersona.Persona{}, err
 	}
+	return frozenPersona(bindings, id)
+}
+
+// frozenPersona returns persona id when the registry still matches the
+// campaign's frozen binding for it.
+func frozenPersona(bindings []*evalv1.AgentPersonaBinding, id string) (agentpersona.Persona, error) {
 	frozen := personaBinding(bindings, id)
 	if frozen == nil {
 		return agentpersona.Persona{}, fmt.Errorf("evaluation: campaign froze no %s persona: %w", id, constants.ErrPersonaDigestMismatch)
@@ -124,12 +130,27 @@ func verifyTracePersona(trace *AgentTrace, bindings []*evalv1.AgentPersonaBindin
 	return nil
 }
 
-// tracePersonaError applies verifyTracePersona to a trace sealed with personas.
+// tracePersonaError applies verifyTracePersona to a trace sealed with
+// personas, and binds every Interrogator call's recorded system prompt to the
+// frozen Interrogator persona.
 func tracePersonaError(req AssignmentExecutionRequest, trace *AgentTrace) error {
 	if trace == nil || trace.SchemaVersion != agentTraceSchemaVersion {
 		return nil
 	}
-	return verifyTracePersona(trace, req.Binding.Personas)
+	if err := verifyTracePersona(trace, req.Binding.Personas); err != nil {
+		return err
+	}
+	frozen := personaBinding(req.Binding.Personas, agentpersona.IDInterrogator)
+	for _, call := range trace.ModelCalls {
+		if call.Purpose != agentModelCallPurposeInterrogation {
+			continue
+		}
+		system := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String()
+		if frozen == nil || call.Persona != agentpersona.IDInterrogator || len(call.Input) == 0 || call.Input[0].Role != system || models.SHA256Hex([]byte(call.Input[0].Text)) != frozen.GetDigest() {
+			return fmt.Errorf("evaluation: interrogation call %q does not carry the frozen Interrogator persona: %w", call.ProviderAttemptID, constants.ErrPersonaDigestMismatch)
+		}
+	}
+	return nil
 }
 
 // traceSystemPrompt is the system message the conversation opened with: the

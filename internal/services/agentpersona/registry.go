@@ -13,20 +13,22 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// Persona IDs. Tiers (owner direction): Lite runs Triage and the Tribunal
-// members, Assistant runs Dash and Marshal, Primary runs Sage and the Auditor.
-// Interrogation belongs to Triage, Sage, and Dash.
+// Persona IDs. Tiers (owner direction): Lite runs Triage, the Interrogator,
+// and the Tribunal members; Assistant runs Dash and Marshal; Primary runs Sage
+// and the Auditor. Triage runs once at initial ingest; the Interrogator asks
+// clarifying questions inside the agent loop.
 const (
-	IDSage     = "sage"
-	IDDash     = "dash"
-	IDTriage   = "triage"
-	IDAxiom    = "axiom"
-	IDConcord  = "concord"
-	IDVariance = "variance"
-	IDPragma   = "pragma"
-	IDNemesis  = "nemesis"
-	IDMarshal  = "marshal"
-	IDAuditor  = "auditor"
+	IDSage         = "sage"
+	IDDash         = "dash"
+	IDTriage       = "triage"
+	IDInterrogator = "interrogator"
+	IDAxiom        = "axiom"
+	IDConcord      = "concord"
+	IDVariance     = "variance"
+	IDPragma       = "pragma"
+	IDNemesis      = "nemesis"
+	IDMarshal      = "marshal"
+	IDAuditor      = "auditor"
 )
 
 // Registry holds every persona by ID in registration order.
@@ -39,7 +41,7 @@ type Registry struct {
 // duplicate ID or a persona missing a required section.
 func NewRegistry() (*Registry, error) {
 	r := &Registry{byID: make(map[string]Persona)}
-	for _, p := range []Persona{sage(), dash(), triage(), axiom(), concord(), variance(), pragma(), nemesis(), marshal(), auditor()} {
+	for _, p := range []Persona{sage(), dash(), triage(), interrogator(), axiom(), concord(), variance(), pragma(), nemesis(), marshal(), auditor()} {
 		if err := p.validate(); err != nil {
 			return nil, err
 		}

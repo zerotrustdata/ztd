@@ -133,9 +133,9 @@ func TestMaterializeSuite_RejectsStaleOrMissingPersonas(t *testing.T) {
 // was released with. A persona edit fails this test until every built-in suite
 // is bumped and its new version is pinned here; never re-pin an old version.
 var builtinSuitePersonaPins = map[string]string{
-	DefaultSuiteID + "@" + DefaultSuiteVersion:               "354b3c14aada601d506ec7842509b9d443f338b9900e019d3c792b44a8d3f235",
-	SmokeSuiteID + "@" + SmokeSuiteVersion:                   "354b3c14aada601d506ec7842509b9d443f338b9900e019d3c792b44a8d3f235",
-	InvestigationsSuiteID + "@" + InvestigationsSuiteVersion: "354b3c14aada601d506ec7842509b9d443f338b9900e019d3c792b44a8d3f235",
+	DefaultSuiteID + "@" + DefaultSuiteVersion:               "6c844f7eb9c7eae9a2b05a2ba7f1a9caa745b229b73b499b49cf5a811495f028",
+	SmokeSuiteID + "@" + SmokeSuiteVersion:                   "6c844f7eb9c7eae9a2b05a2ba7f1a9caa745b229b73b499b49cf5a811495f028",
+	InvestigationsSuiteID + "@" + InvestigationsSuiteVersion: "6c844f7eb9c7eae9a2b05a2ba7f1a9caa745b229b73b499b49cf5a811495f028",
 }
 
 func TestBuiltinSuites_PersonaChangeRequiresSuiteVersionBump(t *testing.T) {
@@ -150,4 +150,63 @@ func TestBuiltinSuites_PersonaChangeRequiresSuiteVersionBump(t *testing.T) {
 		ref := def.ID + "@" + def.Version
 		assert.Equal(t, builtinSuitePersonaPins[ref], digest, "%s: personas changed; bump the suite version and pin the new version", ref)
 	}
+}
+
+func TestParseClarificationSignal_WholeResponseOnly(t *testing.T) {
+	missing, ok := ParseClarificationSignal(" <clarification_needed> the target host </clarification_needed>\n")
+	assert.True(t, ok)
+	assert.Equal(t, "the target host", missing)
+	for _, text := range []string{
+		"I need more detail. <clarification_needed>the host</clarification_needed>",
+		"<interrogation>\n1. Is it up?\n2. Is it down?\n3. Is it slow?\n</interrogation>",
+		"",
+	} {
+		_, ok := ParseClarificationSignal(text)
+		assert.False(t, ok, "%q is not a clarification signal: the reasoner never asks the questions itself", text)
+	}
+}
+
+func TestTracePersonaError_BindsInterrogatorCallToFrozenPersona(t *testing.T) {
+	bindings := testCatalogPersonas(t)
+	interrogator, err := frozenPersona(bindings, agentpersona.IDInterrogator)
+	require.NoError(t, err)
+	system := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String()
+	trace := personaTrace(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, "primary")
+	trace.ModelCalls = []AgentModelCall{{ProviderAttemptID: "ask-1", Purpose: agentModelCallPurposeInterrogation, Persona: agentpersona.IDInterrogator, Input: []AgentTraceMessage{{Role: system, Text: interrogator.SystemPrompt()}}}}
+	req := AssignmentExecutionRequest{Binding: CampaignExecutionBinding{Personas: bindings}}
+	require.NoError(t, tracePersonaError(req, trace))
+
+	trace.ModelCalls[0].Input[0].Text += "Ask four questions."
+	assert.ErrorIs(t, tracePersonaError(req, trace), constants.ErrPersonaDigestMismatch)
+}
+
+// TestGradeHomogeneousScenario_ReasonerMustSignalRatherThanAsk fails a v11
+// reasoner that writes the interrogation itself and passes the same block
+// when the Interrogator asked it.
+func TestGradeHomogeneousScenario_ReasonerMustSignalRatherThanAsk(t *testing.T) {
+	block := "<interrogation>\n1. Is the host reachable?\n2. Is the service running?\n3. Did it fail after the deploy?\n</interrogation>"
+	grade := func(trace *AgentTrace) *evalv1.DeterministicGrade {
+		req := verifiedGradingRequest(trace, nil)
+		req.ScenarioGold.ContentCheck = &ScenarioContentCheck{Interrogation: true}
+		result, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+		require.NoError(t, err)
+		for _, g := range result.DeterministicGrades {
+			if g.GetCriterionId() == publicCriterionScenarioContent {
+				return g
+			}
+		}
+		t.Fatal("no scenario-content grade")
+		return nil
+	}
+
+	reasonerAsked := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
+	reasonerAsked.FinalOutput = block
+	got := grade(reasonerAsked)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, got.GetStatus())
+	assert.Contains(t, got.GetDetail(), constants.ErrEvaluationInterrogationNotSignalled.Error())
+
+	interrogatorAsked := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
+	interrogatorAsked.FinalOutput = block
+	interrogatorAsked.ModelCalls = append(interrogatorAsked.ModelCalls, AgentModelCall{ProviderAttemptID: "ask-1", TransactionID: "tx-ask-1", Purpose: agentModelCallPurposeInterrogation, Text: block})
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade(interrogatorAsked).GetStatus())
 }

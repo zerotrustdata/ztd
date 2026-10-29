@@ -60,6 +60,7 @@ func TestCampaignPopulationAccountant_CompleteRunPasses(t *testing.T) {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: req.Catalog.GetSchemaVersion(),
 		CatalogRef:    req.Catalog.GetCatalogRef(),
+		Personas:      req.Catalog.GetPersonas(),
 		Scenarios:     req.Catalog.GetScenarios()[:1],
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)

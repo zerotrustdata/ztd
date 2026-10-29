@@ -1499,6 +1499,7 @@ var (
 	ErrEvaluationInterrogationCount        = errors.New("evaluation: interrogation block does not hold exactly three questions")
 	ErrEvaluationInterrogationNotNumbered  = errors.New("evaluation: interrogation line is not a numbered question")
 	ErrEvaluationInterrogationNotBinary    = errors.New("evaluation: interrogation question is not strictly yes/no")
+	ErrEvaluationInterrogationNotSignalled = errors.New("evaluation: the reasoner wrote the interrogation instead of signalling the Interrogator")
 	ErrEvaluationSuiteInvalid              = errors.New("evaluation: suite definition is invalid")
 	ErrEvaluationSuiteBuiltin              = errors.New("evaluation: built-in suites are read-only")
 	ErrEvaluationSuiteExists               = errors.New("evaluation: suite already exists")

@@ -707,7 +707,7 @@ func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOut
 func executorSecretHealthCatalog(secret string) func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error) {
 	return func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error) {
 		def := evaluation.DefaultScenarioSuite()
-		suite := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: "suite-secret-health", Version: "1.0.0", Description: "secret health fixture"}
+		suite := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: "suite-secret-health", Version: "1.0.0", Description: "secret health fixture", Personas: def.Personas}
 		for _, scenario := range def.Scenarios {
 			if scenario.ScenarioID != realStackScenarioID {
 				continue

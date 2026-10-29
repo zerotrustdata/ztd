@@ -45,8 +45,12 @@ const (
 	agentMaxMessages = 224
 	// agentToolResultMaxBytes caps model-visible tool output so one large file
 	// or command output cannot exceed the per-message text bound.
-	agentToolResultMaxBytes = 64 * 1024
-	agentCallSiteTurn       = "agent:turn"
+	agentToolResultMaxBytes    = 64 * 1024
+	agentCallSiteTurn          = "agent:turn"
+	agentCallSiteInterrogation = "agent:interrogation"
+	// interrogationMissingPrefix introduces the missing context a reasoner's
+	// clarification signal named, as the Interrogator's last user message.
+	interrogationMissingPrefix = "Missing context named by the reasoning agent: "
 	// agentCallSiteTribunalPrefix prefixes a Tribunal inference's call site:
 	// tribunal:generate, tribunal:marshal, or tribunal:audit.
 	agentCallSiteTribunalPrefix = "tribunal:"
@@ -512,18 +516,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 		}
 		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
-				r.trace.TerminalClassification = AgentTerminalClassificationTimeout
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				return context.DeadlineExceeded
-			}
-			// A turn infer already classified (a signed L2 denial) keeps it.
-			if r.trace.TerminalClassification == "" {
-				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
-			}
-			return nil
+			return r.endAfterFailedInference(ctx)
 		}
 		text, thinking, toolCalls := agentResponseParts(result)
 		call.Text = text
@@ -534,7 +527,27 @@ func (r *agentRun) loop(ctx context.Context) error {
 			return err
 		}
 
-		interrogation, interrogated, interrogationErr := ParseInterrogation(text)
+		// Only the Interrogator asks: a reasoner's clarification signal
+		// dispatches it, and its questions stand in for the signalling turn.
+		var (
+			interrogation    AgentInterrogation
+			interrogated     bool
+			interrogationErr error
+		)
+		if missing, signalled := ParseClarificationSignal(text); signalled {
+			asked, ok, err := r.interrogate(ctx, turn, messages, missing)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return r.endAfterFailedInference(ctx)
+			}
+			text = asked
+			interrogation, interrogated, interrogationErr = ParseInterrogation(text)
+			if !interrogated {
+				interrogated, interrogationErr = true, constants.ErrEvaluationInterrogationNotWhole
+			}
+		}
 		if interrogated {
 			// Interrogation hand-off drops pending execution, while the trace
 			// preserves the tool-call count covered by the signed result. Only a
@@ -819,6 +832,69 @@ func agentTextMessage(role operatorv1.InferenceMessageRole, text string) *operat
 	return &operatorv1.InferenceMessage{Role: role, Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: text}}}}
 }
 
+// endAfterFailedInference ends the loop after infer recorded a failed call:
+// a deadline is a timeout, a classification infer already made (a signed L2
+// denial) stands, and anything else is a harness failure.
+func (r *agentRun) endAfterFailedInference(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
+		r.trace.TerminalClassification = AgentTerminalClassificationTimeout
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return context.DeadlineExceeded
+	}
+	if r.trace.TerminalClassification == "" {
+		r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+	}
+	return nil
+}
+
+// interrogationContext is the text of the conversation's user and assistant
+// messages, in order. The Interrogator sees what was asked and answered, never
+// the reasoner's system prompt, tool calls, or tool results.
+func interrogationContext(conversation []*operatorv1.InferenceMessage) []*operatorv1.InferenceMessage {
+	var out []*operatorv1.InferenceMessage
+	for _, message := range conversation {
+		role := message.GetRole()
+		if role != operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER && role != operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT {
+			continue
+		}
+		var text strings.Builder
+		for _, part := range message.GetParts() {
+			text.WriteString(part.GetText())
+		}
+		if text.Len() > 0 {
+			out = append(out, agentTextMessage(role, text.String()))
+		}
+	}
+	return out
+}
+
+// interrogate dispatches the frozen Interrogator persona for a reasoner's
+// clarification signal: its system prompt, the conversation's text messages so
+// far, and the missing context the reasoner named. ok is false when the call
+// failed and infer already recorded the failure on the trace.
+func (r *agentRun) interrogate(ctx context.Context, turn int, conversation []*operatorv1.InferenceMessage, missing string) (string, bool, error) {
+	persona, err := frozenPersona(r.req.Binding.Personas, agentpersona.IDInterrogator)
+	if err != nil {
+		return "", false, assignmentExecutionError("evaluation: interrogate: persona", err)
+	}
+	messages := []*operatorv1.InferenceMessage{agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, persona.SystemPrompt())}
+	messages = append(messages, interrogationContext(conversation)...)
+	messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, interrogationMissingPrefix+missing))
+	input, err := agentTraceMessages(messages)
+	if err != nil {
+		return "", false, err
+	}
+	result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeInterrogation, LoopTurn: turn, Persona: persona.ID, Input: input}, messages, nil)
+	if call == nil {
+		return "", false, nil
+	}
+	text, thinking, toolCalls := agentResponseParts(result)
+	call.Text, call.Thinking, call.ToolCallCount = text, thinking, len(toolCalls)
+	return text, true, nil
+}
+
 // agentResponseParts splits one response into the answer text sent back to
 // the model, the provider's thinking text, and the tool calls.
 func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*operatorv1.InferenceToolCall) {
@@ -879,6 +955,9 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	purpose, turn := call.Purpose, call.LoopTurn
 	modelRole := r.designated
+	if purpose == agentModelCallPurposeInterrogation && IsHeterogeneousAssignment(r.req.Assignment) {
+		modelRole = formationInterrogatorRole
+	}
 	probe, err := r.bindInference(&call, modelRole, r.executor.newID("agent-inference"), messages, tools)
 	if err != nil {
 		return nil, call, err
@@ -1622,7 +1701,10 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 		}
 		retryCount := call.RetryCount
 		persona, callSite := trace.DesignatedRole, agentCallSiteTurn
-		if !call.IsTurn() {
+		switch {
+		case call.Purpose == agentModelCallPurposeInterrogation:
+			persona, callSite = call.Persona, agentCallSiteInterrogation
+		case !call.IsTurn():
 			persona = call.Persona
 			callSite = agentCallSiteTribunalPrefix + strings.TrimPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix)
 		}

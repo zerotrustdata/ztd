@@ -42,6 +42,10 @@ const modelCallGovernanceRejected = "governance_rejected"
 // verifier bind to it.
 const formationTribunalRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
 
+// formationInterrogatorRole is the stack slot the Interrogator persona runs on
+// in a formation assignment; a homogeneous assignment's candidate runs it.
+const formationInterrogatorRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+
 // runTribunal routes one run_shell_command proposal through Tribunal authoring
 // on the Gateway (POST /api/v1/operators/intents). The Gateway
 // deliberates over governed member inferences and dispatches only an approved

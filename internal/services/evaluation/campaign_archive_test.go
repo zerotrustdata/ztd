@@ -47,6 +47,7 @@ func newArchiveFixture(t *testing.T) *archiveFixture {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:3],
 	}
 	digest, err := ComputeScenarioCatalogDigest(truncated)

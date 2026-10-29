@@ -262,7 +262,12 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 	}
 	for _, call := range trace.ModelCalls {
 		role := designated
-		if !call.IsTurn() {
+		switch {
+		case call.Purpose == agentModelCallPurposeInterrogation:
+			if system {
+				role = formationInterrogatorRole
+			}
+		case !call.IsTurn():
 			if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) {
 				return fmt.Errorf("unknown model call purpose %q: %w", call.Purpose, constants.ErrEvaluationEvidenceTraceMismatch)
 			}

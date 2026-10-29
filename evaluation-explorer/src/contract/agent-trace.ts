@@ -66,6 +66,8 @@ export interface AgentTraceModelCall {
   loop_turn: number;
   tool_call_id?: string;
   persona?: string;
+  /** The exact input of an Interrogator call (agent-trace.v11). */
+  input?: AgentTraceMessage[];
   model_variant_id?: string;
   model_role?: string;
   served_model_tag?: string;
@@ -357,7 +359,7 @@ const MODEL_CALL_FIELDS = [
 function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion): AgentTraceModelCall {
   assertObject(value, path);
   const identity = ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest', 'inference_result'];
-  rejectUnknown(value, isV7OrLater(schemaVersion) ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
+  rejectUnknown(value, [...MODEL_CALL_FIELDS, ...(isV7OrLater(schemaVersion) ? identity : []), ...(isV11(schemaVersion) ? ['input'] : [])], path);
   requiredStrings(value, ['provider_attempt_id', 'transaction_id', 'purpose', 'result_digest'], path);
   for (const key of ['loop_turn', 'prompt_tokens', 'completion_tokens', 'retry_count', 'tool_call_count']) {
     assertInteger(value[key], `${path}.${key}`);
@@ -374,6 +376,11 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
   }
   optionalString(value, 'tool_call_id', path);
   optionalString(value, 'persona', path);
+  let input: AgentTraceMessage[] | undefined;
+  if (isV11(schemaVersion)) {
+    assert((value.purpose === 'interrogation') === (value.input !== undefined), `${path}.input`, 'only an interrogation call records its input');
+    if (value.input !== undefined) input = list(value.input, `${path}.input`).map((message, index) => parseMessage(message, `${path}.input[${index}]`));
+  }
   if (isV7OrLater(schemaVersion)) {
     requiredStrings(value, identity.filter((key) => key !== 'inference_result'), path);
     for (const key of ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest']) {
@@ -383,7 +390,7 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
     optionalProto(value, 'inference_result', path);
     if (!value.error) proto(value.inference_result, `${path}.inference_result`);
   }
-  return { ...value, tools_declared: declared } as unknown as AgentTraceModelCall;
+  return { ...value, tools_declared: declared, input } as unknown as AgentTraceModelCall;
 }
 
 const TOOL_CALL_FIELDS = [

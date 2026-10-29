@@ -111,6 +111,11 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	if g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge() {
 		if g.req.ScenarioGold.ContentCheck != nil {
 			contentPassed, contentDetail = evaluateContentCheck(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws)
+			// Only the Interrogator asks: a v11 reasoner that writes the block
+			// itself did not signal for clarification.
+			if contentPassed && trace.SchemaVersion == agentTraceSchemaVersion && endedInInterrogation(trace.FinalOutput) && !trace.interrogatorAsked(trace.FinalOutput) {
+				contentPassed, contentDetail = false, constants.ErrEvaluationInterrogationNotSignalled.Error()
+			}
 			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
 				contentPassed, contentDetail = evaluateSearchEvidence(g.req, g.view)
 			}

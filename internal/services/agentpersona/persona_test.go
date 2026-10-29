@@ -32,7 +32,7 @@ func TestRegistry_TiersFollowOwnerDirection(t *testing.T) {
 	want := map[string]models.InferenceModelRole{
 		IDSage: models.InferenceModelRolePrimary, IDAuditor: models.InferenceModelRolePrimary,
 		IDDash: models.InferenceModelRoleAssistant, IDMarshal: models.InferenceModelRoleAssistant,
-		IDTriage: models.InferenceModelRoleLite, IDAxiom: models.InferenceModelRoleLite, IDConcord: models.InferenceModelRoleLite,
+		IDTriage: models.InferenceModelRoleLite, IDInterrogator: models.InferenceModelRoleLite, IDAxiom: models.InferenceModelRoleLite, IDConcord: models.InferenceModelRoleLite,
 		IDVariance: models.InferenceModelRoleLite, IDPragma: models.InferenceModelRoleLite, IDNemesis: models.InferenceModelRoleLite,
 	}
 	all := mustRegistry(t).All()
@@ -79,13 +79,34 @@ func TestPersona_SystemPromptRendersEverySectionAfterSecurityPrefix(t *testing.T
 	}
 }
 
-func TestPersona_InterrogationBelongsToTriageSageAndDash(t *testing.T) {
+// TestPersona_TriageNeverInterrogates keeps Triage a classifier: it runs once
+// at ingest, and the Interrogator owns the I1-I4 questions in the loop.
+func TestPersona_TriageNeverInterrogates(t *testing.T) {
 	r := mustRegistry(t)
-	for _, p := range r.All() {
-		has := strings.Contains(p.SystemPrompt(), interrogationProtocol)
-		want := p.ID == IDTriage || p.ID == IDSage || p.ID == IDDash
-		if has != want {
-			t.Errorf("%s: interrogation protocol present = %v, want %v", p.ID, has, want)
+	triagePersona, err := r.Get(IDTriage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(triagePersona.SystemPrompt(), "<interrogation>") {
+		t.Error("triage must not carry the interrogation protocol")
+	}
+	for _, id := range []string{IDSage, IDDash} {
+		reasoner, err := r.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(reasoner.SystemPrompt(), "<interrogation>") || !strings.Contains(reasoner.SystemPrompt(), clarificationSignal) {
+			t.Errorf("%s must signal for clarification, never ask the I1-I4 questions itself", id)
+		}
+	}
+	interrogatorPersona, err := r.Get(IDInterrogator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := interrogatorPersona.SystemPrompt()
+	for _, rule := range []string{"I1 |", "I2 |", "I3 |", "I4 |", "<interrogation>\n1. Question one?"} {
+		if !strings.Contains(prompt, rule) {
+			t.Errorf("interrogator is missing %q", rule)
 		}
 	}
 }

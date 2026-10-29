@@ -49,6 +49,7 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		// Keep this disclosure fixture's primary/lite population explicit.
 		Scenarios: []*evalv1.EvaluationScenarioDefinition{
 			scenariosByID["final-response-diagnosis"],
@@ -224,6 +225,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		// Keep this disclosure fixture's primary/lite population explicit.
 		Scenarios: []*evalv1.EvaluationScenarioDefinition{
 			scenariosByID["final-response-diagnosis"],
