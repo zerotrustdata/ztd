@@ -9,7 +9,7 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | `eval/base-model-inventory.json` | **Default genesis program inventory** — 111 init-campaign models (41 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 4,551 cells total) |
 | `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 45 entries at 41 cells each (`cells_per_run: 41`). Every entry is a model in `base-model-inventory.json`; the other 66 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
-| `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); loaded when present, otherwise built-in defaults apply |
+| `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); the checked-in default formations; a missing, undecodable, or empty catalog fails closed |
 | `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add` |
 | `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 | `eval/suites/consensus-screen.json` | Screening across all three roles: instructions, history grounding, file arguments, contradiction, untrusted instructions, and authorized observation; 6 scenarios, 10 cells per model |
@@ -41,9 +41,9 @@ Three formations are added to the project overlay. Every role binds to an instal
 
 | Formation | Primary | Assistant | Lite | Estimated model and KV-cache memory / budget |
 | --- | --- | --- | --- | --- |
-| `consensus-spark-granite-liquid` | Spark X2.6 4B | Granite 4 3B-H | LFM 2.5 1.2B Instruct | 6,532 / 12,288 MiB |
-| `consensus-qwen-granite-liquid` | Qwen3 4B Instruct-2507 | Granite 4 3B-H | LFM 2.5 1.2B Instruct | 6,279 / 12,288 MiB |
-| `consensus-bolt-ministral-liquid` | Nemotron 3.5 Bolt E4B | Ministral 3 3B | LFM 2.5 1.2B Instruct | 8,755 / 16,384 MiB |
+| `formation-02` | Spark X2.6 4B | Granite 4 3B-H | LFM 2.5 1.2B Instruct | 6,532 / 12,288 MiB |
+| `formation-03` | Qwen3 4B Instruct-2507 | Granite 4 3B-H | LFM 2.5 1.2B Instruct | 6,279 / 12,288 MiB |
+| `formation-04` | Nemotron 3.5 Bolt E4B | Ministral 3 3B | LFM 2.5 1.2B Instruct | 8,755 / 16,384 MiB |
 
 These estimates cover formation slots, not the independent judge and bound consensus models or a measured provider memory-fit result. The corrected rollout definitions are dry-run validated. No evaluations of the new Qwen3 campaigns or replacement formation campaigns have started; earlier screening and formation evidence is retained.
 

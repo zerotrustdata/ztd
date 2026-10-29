@@ -9,6 +9,7 @@ package public
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,11 +63,16 @@ func runVerifyAgentTrace(t *testing.T, body []byte) (string, error) {
 
 func TestPublicVerifyAgentTraceCmd_VerifiesPublishedTrace(t *testing.T) {
 	body := sealedBracketOnlyTrace(t)
+	var sealed struct {
+		SchemaVersion string `json:"schema_version"`
+	}
+	require.NoError(t, json.Unmarshal(body, &sealed))
+	require.NotEmpty(t, sealed.SchemaVersion)
 
 	out, err := runVerifyAgentTrace(t, body)
 
 	require.NoError(t, err)
-	assert.Contains(t, out, "Agent trace verified (agent-trace.v10, sha256 "+models.SHA256Hex(body)+")")
+	assert.Contains(t, out, "Agent trace verified ("+sealed.SchemaVersion+", sha256 "+models.SHA256Hex(body)+")")
 }
 
 func TestPublicVerifyAgentTraceCmd_RejectsEditedTrace(t *testing.T) {

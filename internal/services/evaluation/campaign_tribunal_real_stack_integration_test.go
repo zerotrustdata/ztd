@@ -666,7 +666,7 @@ func tribunalVariantByID(t *testing.T, variants []*evalv1.ModelVariant, id strin
 func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRoles(t *testing.T) {
 	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
-		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
+		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	require.Len(t, set.Stacks, 1)
@@ -718,7 +718,7 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 
 func TestCampaignTribunalIntegration_SystemLaneRoutesEachStageToItsFrozenRole(t *testing.T) {
 	variants := tribunalFormationVariants(t)
-	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"}})
+	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"heterogeneous-0000"}})
 	require.NoError(t, err)
 	require.Len(t, set.Stacks, 1)
 	stack := set.Stacks[0]

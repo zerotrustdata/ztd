@@ -249,8 +249,8 @@ func TestCampaignsCreate_RejectsConflictingModes(t *testing.T) {
 		{name: "the removed lane flag", args: []string{"campaigns", "create", "eval-f", "--all", "--lane", "system"}, want: "unknown flag: --lane"},
 		{name: "the removed seed flag", args: []string{"campaigns", "create", "eval-f", "--all", "--seed", "17"}, want: "unknown flag: --seed"},
 		{name: "positional models with a filter", args: []string{"campaigns", "create", "eval-f", "qwen3:4b", "--family", "qwen"}, want: "cannot be combined"},
-		{name: "formation and model selectors are exclusive", args: []string{"campaigns", "create", "eval-f", "--formations", "qwen-powerhouse", "--all"}, want: "--formations cannot be combined"},
-		{name: "formation repetitions are currently unsupported", args: []string{"campaigns", "create", "eval-f", "--formations", "qwen-powerhouse", "--reps", "2"}, want: "formation campaigns currently require one repetition"},
+		{name: "formation and model selectors are exclusive", args: []string{"campaigns", "create", "eval-f", "--formations", "heterogeneous-0001", "--all"}, want: "--formations cannot be combined"},
+		{name: "formation repetitions are currently unsupported", args: []string{"campaigns", "create", "eval-f", "--formations", "heterogeneous-0001", "--reps", "2"}, want: "formation campaigns currently require one repetition"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -267,7 +267,7 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	writeTestFrozenInventory(t, env.root, variants...)
 
 	var payload campaignCreateJSON
-	require.NoError(t, env.runJSON(t, &payload, "campaigns", "create", "eval-system", "--formations", "ultra-efficient-speedster"))
+	require.NoError(t, env.runJSON(t, &payload, "campaigns", "create", "eval-system", "--formations", "heterogeneous-0000"))
 	assert.Equal(t, campaignLaneSystem, payload.Lane)
 	assert.Equal(t, 1, payload.StackCount)
 	catalog, _, err := evaluation.LoadScenarioCatalog()
@@ -282,7 +282,7 @@ func TestCampaignsCreate_FromCatalogFormations(t *testing.T) {
 	stackSet, err := env.store(t).LoadHeterogeneousStackSet(context.Background(), "eval-system")
 	require.NoError(t, err)
 	assert.Equal(t, spec.GetFormationStackSetDigest(), stackSet.SetDigest)
-	assert.Equal(t, []string{"ultra-efficient-speedster"}, []string{stackSet.Stacks[0].GetStackId()})
+	assert.Equal(t, []string{"heterogeneous-0000"}, []string{stackSet.Stacks[0].GetStackId()})
 	assert.NoError(t, evaluation.ValidateCampaignSpecDigest(spec))
 
 	var show campaignShowJSON
@@ -301,9 +301,9 @@ func TestCampaignsCreate_UsesProjectFormationOverlay(t *testing.T) {
 			writeTestFrozenInventory(t, env.root, variants...)
 			defaults, err := evaluation.NewExecutionTopologies()
 			require.NoError(t, err)
-			formation, err := defaults.Formation("gemma-cascade")
+			formation, err := defaults.Formation("heterogeneous-0001")
 			require.NoError(t, err)
-			formation.ID = "ultra-efficient-speedster"
+			formation.ID = "heterogeneous-0000"
 			overlay := &evaluation.FormationCatalogOverlay{}
 			switch change {
 			case "add":
@@ -349,17 +349,17 @@ func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t
 	t.Run("same formation set is idempotent and a different set conflicts", func(t *testing.T) {
 		env := newStoreRunEnv(t)
 		writeTestFrozenInventory(t, env.root, variants...)
-		args := []string{"campaigns", "create", "eval-system", "--formations", "ultra-efficient-speedster,qwen-powerhouse"}
+		args := []string{"campaigns", "create", "eval-system", "--formations", "heterogeneous-0000,heterogeneous-0001"}
 		_, err := env.run(t, args...)
 		require.NoError(t, err)
 		first, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
 		require.NoError(t, err)
-		_, err = env.run(t, "campaigns", "create", "eval-system", "--formations", "qwen-powerhouse,ultra-efficient-speedster")
+		_, err = env.run(t, "campaigns", "create", "eval-system", "--formations", "heterogeneous-0001,heterogeneous-0000")
 		require.NoError(t, err)
 		same, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-system")
 		require.NoError(t, err)
 		assert.Equal(t, first.GetCampaignDigest(), same.GetCampaignDigest())
-		_, err = env.run(t, "campaigns", "create", "eval-system", "--formations", "qwen-powerhouse")
+		_, err = env.run(t, "campaigns", "create", "eval-system", "--formations", "heterogeneous-0001")
 		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 	})
 
@@ -368,14 +368,14 @@ func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t
 		_, err := env.run(t, "campaigns", "create", "eval-collision", "qwen3:4b")
 		require.NoError(t, err)
 		writeTestFrozenInventory(t, env.root, variants...)
-		_, err = env.run(t, "campaigns", "create", "eval-collision", "--formations", "ultra-efficient-speedster")
+		_, err = env.run(t, "campaigns", "create", "eval-collision", "--formations", "heterogeneous-0000")
 		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
 	})
 
 	t.Run("system campaign cannot become model-role lane", func(t *testing.T) {
 		env := newStoreRunEnv(t)
 		writeTestFrozenInventory(t, env.root, variants...)
-		_, err := env.run(t, "campaigns", "create", "eval-collision", "--formations", "ultra-efficient-speedster")
+		_, err := env.run(t, "campaigns", "create", "eval-collision", "--formations", "heterogeneous-0000")
 		require.NoError(t, err)
 		_, err = env.run(t, "campaigns", "create", "eval-collision", variants[0].GetServedModelTag())
 		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict)
@@ -512,7 +512,7 @@ func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 	stackSet, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
 		CampaignID:   "eval-system",
 		Variants:     inventory.Variants,
-		FormationIDs: []string{"ultra-efficient-speedster"},
+		FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	controller := evaluation.NewCampaignController(env.store(t), nil, env.deps.now, adaptNewID(env.deps.newID))

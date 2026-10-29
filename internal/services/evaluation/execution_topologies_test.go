@@ -8,19 +8,23 @@
 package evaluation
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestNewExecutionTopologies_ReturnsFiveValidTargetFormations(t *testing.T) {
+func TestNewExecutionTopologies_ReturnsValidCatalogFormations(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	formations := topologies.Formations()
-	require.Len(t, formations, 5)
+	require.NotEmpty(t, formations)
 	for _, formation := range formations {
 		require.NoError(t, formation.Validate())
 		assert.Less(t, formation.EstimatedVRAMMiB(), formation.MaxVRAMMiB)
@@ -31,7 +35,7 @@ func TestNewExecutionTopologies_ReturnsFiveValidTargetFormations(t *testing.T) {
 func TestFormationValidateRejectsProviderAndFamilyOverlap(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
-	formation, err := topologies.Formation("deepseek-reasoning-tower")
+	formation, err := topologies.Formation("heterogeneous-0000")
 	require.NoError(t, err)
 
 	providerOverlap := formation
@@ -112,12 +116,21 @@ func TestFormationValidateBudgetErrorBreaksDownRoles(t *testing.T) {
 	assert.Contains(t, err.Error(), "primary test-primary:9b 6144")
 }
 
+func testFormationModel(variantID, displayName, provider, family, tag string, parameters, modelVRAMMiB, cacheMiB uint64) FormationModel {
+	return FormationModel{
+		VariantID: variantID, DisplayName: displayName, Provider: provider, Family: family,
+		ProviderClass: constants.InferenceProviderOllama, ServedModelTag: tag, Trust: FormationTrustSovereign,
+		Quantization: "Q4_K_M", ParameterCount: parameters, EstimatedModelVRAMMiB: modelVRAMMiB,
+		EstimatedKVCacheMiB: cacheMiB,
+	}
+}
+
 func newTestFormation(id string) Formation {
 	return Formation{
 		ID: id, DisplayName: "Test Formation", Description: "A formation used for CRUD tests.", MaxVRAMMiB: FormationMaxVRAMMiB,
-		Primary:   formationModel("test-primary-9b", "Test Primary 9B", "TestProvider", "Test Family Primary", "test-primary:9b", 9_000_000_000, "Q4_K_M", 5632, 512),
-		Assistant: formationModel("test-assistant-3b", "Test Assistant 3B", "OtherProvider", "Test Family Assistant", "test-assistant:3b", 3_800_000_000, "Q4_K_M", 2560, 512),
-		Lite:      formationModel("test-lite-1b", "Test Lite 1B", "ThirdProvider", "Test Family Lite", "test-lite:1b", 999_890_000, "Q4_K_M", 768, 256),
+		Primary:   testFormationModel("test-primary-9b", "Test Primary 9B", "TestProvider", "Test Family Primary", "test-primary:9b", 9_000_000_000, 5632, 512),
+		Assistant: testFormationModel("test-assistant-3b", "Test Assistant 3B", "OtherProvider", "Test Family Assistant", "test-assistant:3b", 3_800_000_000, 2560, 512),
+		Lite:      testFormationModel("test-lite-1b", "Test Lite 1B", "ThirdProvider", "Test Family Lite", "test-lite:1b", 999_890_000, 768, 256),
 	}
 }
 
@@ -125,27 +138,28 @@ func TestAddOrUpdateFormationAddsNewEntry(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
+	originalCount := len(topologies.Formations())
 	updated, err := AddOrUpdateFormation(topologies, newTestFormation("test-new-formation"))
 	require.NoError(t, err)
-	require.Len(t, updated.Formations(), 6)
+	require.Len(t, updated.Formations(), len(topologies.Formations())+1)
 
 	formation, err := updated.Formation("test-new-formation")
 	require.NoError(t, err)
 	assert.Equal(t, "Test Formation", formation.DisplayName)
 
-	require.Len(t, topologies.Formations(), 5, "original catalog must be unmodified")
+	require.Len(t, topologies.Formations(), originalCount, "original catalog must be unmodified")
 }
 
 func TestAddOrUpdateFormationReplacesExistingEntry(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
-	replacement := newTestFormation("qwen-powerhouse")
+	replacement := newTestFormation("heterogeneous-0000")
 	updated, err := AddOrUpdateFormation(topologies, replacement)
 	require.NoError(t, err)
-	require.Len(t, updated.Formations(), 5)
+	require.Len(t, updated.Formations(), len(topologies.Formations()))
 
-	formation, err := updated.Formation("qwen-powerhouse")
+	formation, err := updated.Formation("heterogeneous-0000")
 	require.NoError(t, err)
 	assert.Equal(t, "Test Formation", formation.DisplayName)
 }
@@ -170,16 +184,17 @@ func TestRemoveFormationRemovesEntry(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
-	updated, removed, err := RemoveFormation(topologies, "gemma-cascade")
+	originalCount := len(topologies.Formations())
+	updated, removed, err := RemoveFormation(topologies, "heterogeneous-0001")
 	require.NoError(t, err)
 	require.NotNil(t, removed)
-	assert.Equal(t, "gemma-cascade", removed.ID)
-	require.Len(t, updated.Formations(), 4)
+	assert.Equal(t, "heterogeneous-0001", removed.ID)
+	require.Len(t, updated.Formations(), originalCount-1)
 
-	_, err = updated.Formation("gemma-cascade")
+	_, err = updated.Formation("heterogeneous-0001")
 	require.ErrorIs(t, err, constants.ErrFormationInvalid)
 
-	require.Len(t, topologies.Formations(), 5, "original catalog must be unmodified")
+	require.Len(t, topologies.Formations(), originalCount, "original catalog must be unmodified")
 }
 
 func TestRemoveFormationRejectsUnknownID(t *testing.T) {
@@ -197,10 +212,10 @@ func TestRemoveFormationRejectsRemovingLastEntry(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrEvaluationLastEntryRemoval)
 }
 
-func TestUltraEfficientSpeedsterMeetsFrozenInventoryRequirements(t *testing.T) {
+func TestCatalogFormationMeetsFrozenInventoryRequirements(t *testing.T) {
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
-	formation, err := topologies.Formation("ultra-efficient-speedster")
+	formation, err := topologies.Formation("heterogeneous-0000")
 	require.NoError(t, err)
 	require.NoError(t, formation.Validate())
 
@@ -224,6 +239,27 @@ func TestUltraEfficientSpeedsterMeetsFrozenInventoryRequirements(t *testing.T) {
 	}
 	assert.Len(t, providers, 3)
 	assert.Len(t, families, 3)
-	assert.Equal(t, uint64(7552), formation.EstimatedVRAMMiB())
+	assert.Equal(t, uint64(6794), formation.EstimatedVRAMMiB())
 	assert.Less(t, formation.EstimatedVRAMMiB(), formation.MaxVRAMMiB)
+}
+
+func TestNewExecutionTopologiesFailsClosedWithoutCatalog(t *testing.T) {
+	t.Chdir(testutil.TempDir(t))
+
+	_, err := NewExecutionTopologies()
+
+	require.ErrorIs(t, err, constants.ErrFormationCatalogUnavailable)
+	assert.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+func TestNewExecutionTopologiesRejectsEmptyCatalog(t *testing.T) {
+	root := testutil.TempDir(t)
+	catalogPath := filepath.Join(root, constants.EvaluationFormationCatalogPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(catalogPath), 0o755))
+	require.NoError(t, os.WriteFile(catalogPath, []byte(`{"schema_version":"execution-topologies.v1","formations":[]}`), 0o644))
+	t.Chdir(root)
+
+	_, err := NewExecutionTopologies()
+
+	assert.ErrorIs(t, err, constants.ErrFormationCatalogUnavailable)
 }

@@ -1415,6 +1415,7 @@ var (
 
 	// Execution topology formation errors.
 	ErrFormationInvalid                    = errors.New("formation: configuration is invalid")
+	ErrFormationCatalogUnavailable         = errors.New("formation: checked-in catalog is missing, undecodable, or empty")
 	ErrFormationProviderOverlap            = errors.New("formation: provider overlap is not permitted")
 	ErrFormationFamilyOverlap              = errors.New("formation: model-family overlap is not permitted")
 	ErrFormationVRAMBudgetExceeded         = errors.New("formation: estimated VRAM exceeds budget")

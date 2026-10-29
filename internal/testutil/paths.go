@@ -128,3 +128,17 @@ func runtimeTestDir(tb testing.TB, subdir, prefix string) string {
 	})
 	return dir
 }
+
+// ChdirModuleRoot changes the process working directory to the module root.
+// Package TestMain functions call it for packages whose production code reads
+// project-root-relative checked-in files such as eval/formation-catalog.json,
+// because go test starts every test binary in its package directory.
+func ChdirModuleRoot() error {
+	if runtimeRootErr != nil {
+		return runtimeRootErr
+	}
+	if err := os.Chdir(filepath.Dir(runtimeRoot)); err != nil {
+		return fmt.Errorf("testutil: chdir module root: %w", err)
+	}
+	return nil
+}

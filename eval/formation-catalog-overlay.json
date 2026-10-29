@@ -2,9 +2,9 @@
   "schema_version": "formation-catalog-overlay.v1",
   "formations": [
     {
-      "id": "validation-stack",
-      "display_name": "Validation Stack",
-      "description": "qwen3.5:4b primary, gemma4:e2b assistant, llama3.2:1b lite",
+      "id": "formation-01",
+      "display_name": "formation-01",
+      "description": "qwen3.5:4b primary, gemma4:e2b assistant, lfm2.5-thinking:1.2b lite",
       "max_vram_mib": 12288,
       "primary": {
         "variant_id": "qwen3-5-4b",
@@ -35,23 +35,23 @@
         "model_digest": "7fbdbf8f5e45a75bb122155ed546e765b4d9c53a1285f62fd9f506baa1c5a47e"
       },
       "lite": {
-        "variant_id": "llama3-2-1b",
-        "display_name": "llama3.2:1b",
-        "provider": "llama",
-        "family": "llama",
+        "variant_id": "lfm2-5-thinking-1-2b",
+        "display_name": "lfm2.5-thinking:1.2b",
+        "provider": "lfm2",
+        "family": "lfm2",
         "provider_class": "ollama",
-        "served_model_tag": "llama3.2:1b",
+        "served_model_tag": "lfm2.5-thinking:1.2b",
         "trust": "sovereign",
-        "quantization": "Q8_0",
+        "quantization": "Q4_K_M",
         "parameter_count": 1200000000,
-        "estimated_model_vram_mib": 1216,
+        "estimated_model_vram_mib": 1024,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878"
+        "model_digest": "95bd9d45385f33bfe96d8b3651c8569e152f21f5bdb7c19894ffde650e9cf140"
       }
     },
     {
-      "id": "consensus-spark-granite-liquid",
-      "display_name": "Consensus Spark / Granite / Liquid",
+      "id": "formation-02",
+      "display_name": "formation-02",
       "description": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M primary, granite4:3b-h assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
       "max_vram_mib": 12288,
       "primary": {
@@ -98,8 +98,8 @@
       }
     },
     {
-      "id": "consensus-qwen-granite-liquid",
-      "display_name": "Consensus Qwen3 Instruct / Granite / Liquid",
+      "id": "formation-03",
+      "display_name": "formation-03",
       "description": "qwen3:4b-instruct-2507-q4_K_M primary, granite4:3b-h assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
       "max_vram_mib": 12288,
       "primary": {
@@ -146,8 +146,8 @@
       }
     },
     {
-      "id": "consensus-bolt-ministral-liquid",
-      "display_name": "Consensus Bolt / Ministral / Liquid",
+      "id": "formation-04",
+      "display_name": "formation-04",
       "description": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M primary, ministral-3:3b assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
       "max_vram_mib": 16384,
       "primary": {
@@ -195,8 +195,6 @@
     }
   ],
   "removed_formation_ids": [
-    "deepseek-reasoning-tower",
-    "gemma-cascade",
     "heterogeneous-0000",
     "heterogeneous-0001",
     "heterogeneous-0002",
@@ -1196,9 +1194,6 @@
     "heterogeneous-0996",
     "heterogeneous-0997",
     "heterogeneous-0998",
-    "heterogeneous-0999",
-    "llama-meta-stack",
-    "qwen-powerhouse",
-    "ultra-efficient-speedster"
+    "heterogeneous-0999"
   ]
 }

@@ -32,7 +32,7 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	ctx := t.Context()
 	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
-		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
+		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	require.Len(t, set.Stacks, 1)
