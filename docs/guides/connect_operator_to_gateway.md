@@ -3,8 +3,8 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-29
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -247,7 +247,7 @@ To stop all local Operators running under the current user (Linux, macOS, and Wi
 
 This discovers `ztd operator start` processes owned by the current user and targets only those Operators; it does not stop the Gateway or unrelated `ztd` commands. It first requests governed shutdown where an active Gateway connection is available, then waits for exit and escalates to the platform process termination mechanism if needed. On Windows, both escalation signals terminate the process because Windows has no catchable `TERM` signal. Processes owned by another user, or that cannot be inspected due to permissions or bitness, are skipped. Local stop does not revoke enrollment; because Operator credentials are memory-only, the next start performs enrollment again and needs owner approval.
 
-Enrolling again with the same system fingerprint supersedes the prior lease. The fingerprint covers the OS, architecture, CPU count, machine ID, hostname, working directory, account, port, and capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
+Enrolling again with the same system fingerprint or Actuator key supersedes the prior lease. The fingerprint covers the OS, architecture, CPU count, machine ID, hostname, working directory, account, and port. Capabilities are not part of it, so restarting an Operator with a capability added (for example `--capabilities inference,provenance,observer`) replaces its prior lease and takes over that lease's capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
 
 ---
 

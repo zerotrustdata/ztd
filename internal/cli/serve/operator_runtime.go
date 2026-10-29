@@ -347,7 +347,7 @@ func enrollOperator(ctx context.Context, opts ServeOperatorOptions, cfg *config.
 		InstanceID:         operatorInstanceID(hostname, operatorCapabilities(opts), workDir),
 		Hostname:           hostname,
 		RuntimeConfig:      runtimeConfig,
-		FingerprintOptions: operatorFingerprintOptions(opts, workDir, auth.ResolveCurrentAccount()),
+		FingerprintOptions: operatorFingerprintOptions(workDir, auth.ResolveCurrentAccount()),
 		ActuatorPublicKey:  actuatorPublicKeyHex,
 		AuditorPublicKey:   auditorPublicKeyHex,
 		TrustBundlePEM:     explicitTrust,

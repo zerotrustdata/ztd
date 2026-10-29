@@ -85,8 +85,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, the platform-default Operator HTTP port, and canonical `operator_capabilities`. |
-| INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` matches an existing non-terminated Operator under the same owner MUST supersede that document: the replacement is persisted first, then each prior non-terminated document for the owner and fingerprint is terminated and its session deactivated (`supersedeOperatorLeases` in `internal/services/pubsub/platform_enrollment_handlers.go`). A successful issuance leaves the replacement as the only non-terminated lease for that owner and fingerprint. The persist-first order never leaves zero leases; a failure between the steps MAY leave a redundant lease, the issuance returns an error without credentials, and a retried issuance (which mints a new `operator_id`) supersedes it. The guarantee covers sequential issuance: the handler takes no lock across its persist and terminate steps. |
+| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, and the platform-default Operator HTTP port. Capabilities MUST NOT contribute to the fingerprint: they are owner-approved attributes of one runtime, and changing them re-enrolls the same Operator. |
+| INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` or Actuator key matches an existing non-terminated remote Operator under the same owner MUST supersede that document: the replacement is persisted first, then each prior non-terminated document for the owner and fingerprint or Actuator key is terminated and its session deactivated (`supersedeOperatorLeases` in `internal/services/pubsub/platform_enrollment_handlers.go`). A successful issuance leaves the replacement as the only non-terminated lease for that owner and identity. The same match exempts the prior lease from singleton capability and Actuator key claims, so a re-enrollment that adds or drops a capability takes over its prior claims. The persist-first order never leaves zero leases; a failure between the steps MAY leave a redundant lease, the issuance returns an error without credentials, and a retried issuance (which mints a new `operator_id`) supersedes it. The guarantee covers sequential issuance: the handler takes no lock across its persist and terminate steps. |
 
 ### Readiness (`INV-OP-READY`)
 
@@ -217,13 +217,14 @@ Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persiste
 
 ### Multi-Operator Coexistence and Composite Fingerprinting
 
-Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by four factors:
+Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by three factors:
 1. `local_dir`: The runtime working directory containing sovereign `.ztd/` state.
 2. `account`: The operating system user running the process.
 3. `port`: The platform-default Operator HTTP port included in the fingerprint.
-4. `operator_capabilities`: The canonical set of enabled capabilities.
 
-The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, the platform-default Operator HTTP port, and `capabilities`. Re-enrolling an existing fingerprint persists the replacement Operator document first, then terminates each prior non-terminated document for that fingerprint and deactivates its session. A failure between those steps leaves a redundant lease, and a retried enrollment supersedes it.
+Capabilities are not part of this identity. One working directory holds one Operator runtime (runtime lock and Actuator key), so restarting it with `--capabilities` added or removed re-enrolls the same Operator rather than creating a second one.
+
+The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, and the platform-default Operator HTTP port. Re-enrolling an existing fingerprint or Actuator key persists the replacement Operator document first, then terminates each prior non-terminated document for that identity and deactivates its session. A failure between those steps leaves a redundant lease, and a retried enrollment supersedes it.
 
 ### Liveness, Heartbeats, and Staleness Derivation
 

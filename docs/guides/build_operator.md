@@ -4,7 +4,7 @@ title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - docs/guides/
   - cmd/ztd
@@ -140,7 +140,7 @@ Run `./ztd operator start --help` for the complete flag set. The options below g
    - Provenance Operator: `--capabilities provenance --model-storage-root <path>`
    - Observer Operator: `--capabilities observer --provider-boundary-observer-id <id>`
    - Data Operator: `--capabilities data`
-4. **Composite Fingerprint**: The Operator automatically computes a SHA-256 composite `system_fingerprint` incorporating system properties, local directory, user account, port, and capabilities to avoid collisions on the Gateway.
+4. **Composite Fingerprint**: The Operator automatically computes a SHA-256 composite `system_fingerprint` incorporating system properties, local directory, user account, and port to avoid collisions on the Gateway. Capabilities are not part of the fingerprint, so changing them re-enrolls the same Operator.
 
 ### Operate Remote Operators from the CLI
 

@@ -3,8 +3,8 @@ doc_id: overview
 title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-29
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -91,7 +91,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-ARCH-NODE-01 | The Gateway (PDP) and Operator (PEP) MUST be instantiated from the single static `ztd` Go binary (`ztd gw start` and `ztd operator start`). The Gateway coordinates ingress, PKI, and L1–L3 deliberation; the Operator maintains sovereign execution and local audit evidence. |
 | INV-ARCH-NODE-02 | Outbound Operators MUST establish outbound-only mTLS connections to the Gateway and subscribe to exact session-specific command channels (`cmd:<operator_id>:<operator_session_id>`). The Gateway MUST NOT expose or require inbound management listeners into remote Operator environments. |
-| INV-ARCH-NODE-03 | Multiple Operator instances running on the same host MUST be disambiguated by a composite SHA-256 system fingerprint combining host properties with `local_dir`, `account`, `port`, and `operator_capabilities` (`data`, `inference`, `provenance`, `observer`). Witness-only operators (`provenance`, `observer`) MUST reject arbitrary command execution; adding `data` or `inference` enables generic command execution in the same process. |
+| INV-ARCH-NODE-03 | Multiple Operator instances running on the same host MUST be disambiguated by a composite SHA-256 system fingerprint combining host properties with `local_dir`, `account`, and `port`. Capabilities (`data`, `inference`, `provenance`, `observer`) are not identity; one Operator MAY combine any of them. Witness-only operators (`provenance`, `observer`) MUST reject arbitrary command execution; adding `data` or `inference` enables generic command execution in the same process. |
 | INV-ARCH-NODE-04 | Every read of an Operator document MUST move an active remote Operator without a heartbeat for longer than `constants.OperatorStaleAfter` (twice its declared heartbeat interval, floor 60 seconds, ceiling 10 minutes) to `stale` on read. The embedded Operator is exempt. Heartbeats restore `stale` to `active`; heartbeats MUST NOT revive `stopped` or `terminated` Operators. |
 | INV-ARCH-NODE-05 | Enrolling an Operator whose `system_fingerprint` matches an existing non-terminated remote Operator held by the same owner MUST terminate the earlier Operator document and deactivate its session in the same governed issuance step. One Operator identity MUST NOT hold multiple active leases. |
 
@@ -223,7 +223,7 @@ The reference binary includes a native tool registry, populated by `RegisterNati
 
 ### Operator Capability Model and Coexistence
 
-A single host can run multiple Operator processes concurrently. Each Operator is disambiguated by its `system_fingerprint`: a SHA-256 composite hash over host hardware properties combined with `local_dir`, `account`, `port`, and `operator_capabilities`.
+A single host can run multiple Operator processes concurrently. Each Operator is disambiguated by its `system_fingerprint`: a SHA-256 composite hash over host hardware properties combined with `local_dir`, `account`, and `port`. Capabilities are attributes of that identity, not part of it.
 
 | Capability | Startup Flag | Core Responsibility | Boundary Constraints |
 | :--- | :--- | :--- | :--- |
