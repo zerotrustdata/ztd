@@ -68,15 +68,14 @@ describe('EvaluationsView', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Formations/ }));
     const formationsPanel = within(screen.getByRole('region', { name: 'Formations' }));
-    expect(formationsPanel.getByText('Qwen Powerhouse')).toBeInTheDocument();
-    expect(formationsPanel.getByText('DeepSeek Reasoning Tower')).toBeInTheDocument();
-    expect(formationsPanel.getByText('Gemma Cascade')).toBeInTheDocument();
-    expect(formationsPanel.getByText('Llama Meta Stack')).toBeInTheDocument();
-    expect(formationsPanel.getByText('Ultra-Efficient Speedster')).toBeInTheDocument();
+    expect(formationsPanel.getByText('formation-01')).toBeInTheDocument();
+    expect(formationsPanel.getByText('formation-02')).toBeInTheDocument();
+    expect(formationsPanel.getByText('formation-03')).toBeInTheDocument();
+    expect(formationsPanel.getByText('formation-04')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Filter by status' })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter formations by kind' }), { target: { value: 'curated' } });
-    expect(formationsPanel.getByTestId('formation-qwen-powerhouse')).toBeInTheDocument();
+    expect(formationsPanel.getByTestId('formation-formation-01')).toBeInTheDocument();
     expect(formationsPanel.queryByTestId('formation-heterogeneous-0000')).not.toBeInTheDocument();
   });
 
@@ -152,10 +151,10 @@ describe('EvaluationsView', () => {
     const expected = [...FORMATION_CATALOG].sort((a, b) => direction === 'ascending' ? a.total_vram_mib - b.total_vram_mib : b.total_vram_mib - a.total_vram_mib);
     const ids = within(table).getAllByTestId(/^formation-/).map((cell) => cell.dataset.testid);
     expect(ids).toEqual(expected.map((formation) => `formation-${formation.id}`));
-    const qwen = within(table).getByTestId('formation-qwen-powerhouse').closest('tr')!;
+    const qwen = within(table).getByTestId('formation-formation-01').closest('tr')!;
     expect(within(qwen).getAllByRole('link')).toHaveLength(3);
     expect(qwen).toHaveTextContent('MiB');
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'Qwen Powerhouse' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'formation-01' } });
     expect(within(table).getAllByRole('row')).toHaveLength(2);
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'no-such-formation' } });
     expect(screen.getByText('No formations match these filters.')).toBeInTheDocument();

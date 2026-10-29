@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	operatorcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/operator"
-	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // TestMain serves the embedded model client. Real-stack Operators run in this
@@ -31,10 +30,6 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 		os.Exit(0)
-	}
-	if err := testutil.ChdirModuleRoot(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
 	}
 	os.Exit(m.Run())
 }

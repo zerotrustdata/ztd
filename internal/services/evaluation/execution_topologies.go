@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -306,8 +308,41 @@ type ExecutionTopologies struct {
 // from the checked-in eval/formation-catalog.json. It fails closed with
 // ErrFormationCatalogUnavailable when the catalog is missing, undecodable, or
 // empty: no formation or model is ever synthesized in its place.
+func resolveCatalogPath() string {
+	catalogPath := constants.EvaluationFormationCatalogPath
+	if _, err := os.Stat(catalogPath); err == nil {
+		return catalogPath
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return catalogPath
+	}
+	// If the current working directory is inside a protected runtime path (such as
+	// an isolated test sandbox under .ztd/tmp), do not escape upward to the parent repository.
+	if security.IsProtectedRuntimePath(dir) {
+		return catalogPath
+	}
+	for {
+		candidate := filepath.Join(dir, constants.EvaluationFormationCatalogPath)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return catalogPath
+}
+
+// NewExecutionTopologies returns the preregistered sovereign benchmark formations
+// from the checked-in eval/formation-catalog.json. It fails closed with
+// ErrFormationCatalogUnavailable when the catalog is missing, undecodable, or
+// empty: no formation or model is ever synthesized in its place.
 func NewExecutionTopologies() (*ExecutionTopologies, error) {
-	data, err := os.ReadFile(constants.EvaluationFormationCatalogPath)
+	catalogPath := resolveCatalogPath()
+	data, err := os.ReadFile(catalogPath)
 	if err != nil {
 		return nil, fmt.Errorf("formation: read catalog %s: %w: %w", constants.EvaluationFormationCatalogPath, constants.ErrFormationCatalogUnavailable, err)
 	}
