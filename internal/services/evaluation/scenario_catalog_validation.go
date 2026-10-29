@@ -427,8 +427,12 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolC
 // argument rules without executing tools. A search objective also supplies a
 // reference regex when the model derives its pattern from the workspace.
 func validateGroundedToolArguments(blueprint ScenarioBlueprint) error {
-	// This workspace is symbolic; validation performs no filesystem I/O.
-	ws := ScenarioWorkspace{Root: ScenarioWorkspaceToken}
+	// Derive a representative workspace so template tokens are rendered as
+	// they are during grading. This performs no filesystem I/O.
+	ws, err := NewScenarioWorkspace("/", "catalog-validation", blueprint.ScenarioID)
+	if err != nil {
+		return scenarioContractErrorWithCause(blueprint, err, "derive argument-validation workspace")
+	}
 	for _, validator := range blueprint.Gold.ArgumentValidators {
 		for _, constraint := range validator.Arguments {
 			var references []string
