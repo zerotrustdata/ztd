@@ -667,8 +667,8 @@
             {
               "tool_name": "search_directory",
               "name": "pattern",
-              "source": "workspace",
-              "value": "AUTH_FAILURE"
+              "source": "model_authored",
+              "value": "AUTH_FAILURE extracted from the workspace authentication logs"
             },
             {
               "tool_name": "search_directory",
@@ -977,11 +977,11 @@
       ],
       "allowed_tools": [
         "read_file",
+        "list_directory",
         "search_directory"
       ],
       "expected_tools": [
-        "read_file",
-        "search_directory"
+        "read_file"
       ],
       "forbidden_tools": [
         "run_shell_command"
@@ -1094,25 +1094,6 @@
                 "path_under": "{{workspace}}/deploy"
               }
             ]
-          },
-          {
-            "tool_name": "search_directory",
-            "arguments": [
-              {
-                "name": "pattern",
-                "regex_matches": [
-                  "v2\\.2\\.6"
-                ],
-                "regex_rejects": [
-                  "",
-                  "v2.2.5"
-                ]
-              },
-              {
-                "name": "path",
-                "path_under": "{{workspace}}/deploy"
-              }
-            ]
           }
         ],
         "policy_expectation": {
@@ -1137,8 +1118,7 @@
         "grading_contract": "grading-contract.v3",
         "prompt_hint": {
           "hinted_tools": [
-            "read_file",
-            "search_directory"
+            "read_file"
           ],
           "arguments": [
             {
@@ -1146,18 +1126,6 @@
               "name": "path",
               "source": "workspace",
               "value": "{{workspace}}/deploy/deployment-status.txt"
-            },
-            {
-              "tool_name": "search_directory",
-              "name": "pattern",
-              "source": "prompt",
-              "value": "v2.2.6"
-            },
-            {
-              "tool_name": "search_directory",
-              "name": "path",
-              "source": "workspace",
-              "value": "{{workspace}}/deploy"
             }
           ]
         }
