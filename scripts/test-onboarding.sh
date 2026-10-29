@@ -428,6 +428,76 @@ EOF
 	done
 }
 
+# Homebrew stopped shipping Intel bottles. Node and Go on x86_64 must come from
+# the official tarballs; Apple Silicon still uses brew. Other formulas stay on brew.
+test_macos_setup_routes_node_and_go_by_arch() {
+	local repo="$SCRATCH/repo-macos-arch" log out
+	mkdir -p "$repo/scripts/lib" "$repo/bin"
+	cp "$SCRIPT_DIR/macos-setup.sh" "$repo/scripts/"
+	cat >"$repo/scripts/lib/dev-setup-common.sh" <<'EOF'
+ztd_setup_init() { :; }
+ztd_setup_confirm() { return 0; }
+ztd_have() { return 0; }
+ztd_usr_local_needs_sudo() { return 1; }
+ZTD_NODE_REQUIREMENT="22.22.2+, 24.15+, or 26+"
+ZTD_NODE_LTS_MAJOR=22
+ZTD_GO_MIN="1.27.3"
+ZTD_GO_STALE="1.24.2"
+ztd_install_official_node() { printf 'node %s\n' "$1" >>"$ONBOARDING_TEST_LOG"; }
+ztd_install_official_go() { printf 'go %s\n' "$1" >>"$ONBOARDING_TEST_LOG"; }
+ztd_setup_main() {
+	# shellcheck disable=SC2086
+	"$2" $ONBOARDING_TEST_MISSING
+}
+EOF
+	cat >"$repo/bin/uname" <<'EOF'
+#!/bin/sh
+case "$1" in
+-m) printf '%s\n' "$ONBOARDING_TEST_ARCH" ;;
+*) printf 'Darwin\n' ;;
+esac
+EOF
+	cat >"$repo/bin/brew" <<'EOF'
+#!/bin/sh
+printf 'brew %s\n' "$*" >>"$ONBOARDING_TEST_LOG"
+EOF
+	chmod 755 "$repo/bin/uname" "$repo/bin/brew"
+
+	run_arch() {
+		local arch="$1" missing="$2"
+		log="$repo/${arch}.log"
+		out="$repo/${arch}.out"
+		: >"$log"
+		ONBOARDING_TEST_ARCH="$arch" ONBOARDING_TEST_LOG="$log" ONBOARDING_TEST_MISSING="$missing" \
+			PATH="$repo/bin:$PATH" bash "$repo/scripts/macos-setup.sh" >"$out" 2>&1 || {
+			cat "$out" >&2
+			fail "macos-setup ($arch: $missing) failed"
+		}
+	}
+
+	run_arch x86_64 "go go-stale node"
+	log="$repo/x86_64.log"
+	[[ "$(grep -cxF 'node darwin' "$log" || true)" == 1 ]] || fail "intel: want one official node install, got: $(cat "$log")"
+	[[ "$(grep -cxF 'go darwin' "$log" || true)" == 2 ]] || fail "intel: want official go for missing and stale, got: $(cat "$log")"
+	if grep -q '^brew ' "$log"; then
+		fail "intel: node and go must not go through Homebrew, got: $(cat "$log")"
+	fi
+
+	run_arch arm64 "go go-stale node"
+	log="$repo/arm64.log"
+	grep -qxF 'brew upgrade go' "$log" || fail "arm64: want brew upgrade go, got: $(cat "$log")"
+	grep -qxF 'brew install go node' "$log" || fail "arm64: want brew install go node, got: $(cat "$log")"
+	if grep -qE '^(node|go) ' "$log"; then
+		fail "arm64: node and go must stay on Homebrew, got: $(cat "$log")"
+	fi
+
+	run_arch x86_64 "rg"
+	log="$repo/x86_64.log"
+	out="$repo/x86_64.out"
+	grep -qxF 'brew install ripgrep' "$log" || fail "intel ripgrep: want brew install ripgrep, got: $(cat "$log")"
+	grep -qF 'no longer ships bottles' "$out" || fail "intel ripgrep: missing the bottle warning"
+}
+
 test_optional_tools_setup() {
 	(
 		ztd_ui_init
@@ -628,6 +698,7 @@ main() {
 	run_test test_confirm_noninteractive_exits_2
 	run_test test_linux_setup_rejects_unknown_option
 	run_test test_linux_setup_maps_packages_after_detecting_manager
+	run_test test_macos_setup_routes_node_and_go_by_arch
 	run_test test_quickstart_help_and_unknown_option
 	run_test test_quickstart_end_to_end_is_idempotent
 	run_test test_quickstart_surfaces_key_store_remedy
