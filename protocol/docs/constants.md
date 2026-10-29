@@ -1,7 +1,7 @@
 # Protocol Constants System
 
 Last Updated: 2026-10-23
-Version: v1.5.0
+Version: v1.6.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the **Single Source of Truth (SSOT)** for the registries they cover (collections, status and action types, events, API paths, ports, channels, senders, and env vars). Some constants are hand-maintained Go with no JSON source; section 7 marks them.
 
