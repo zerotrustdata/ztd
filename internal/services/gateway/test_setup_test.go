@@ -23,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/gateway/embedded"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
-	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -83,10 +82,10 @@ func newTestOperatorSessionService(t *testing.T, docStore *DocumentStoreService,
 	return svc
 }
 
-// newTestScrubber builds an enabled egress scrubber with the default configuration.
-func newTestScrubber(t *testing.T) *scrubbing.ScrubbingService {
+// newTestScrubber uses the runtime's real encrypted token persistence.
+func newTestScrubber(t *testing.T, db *CanonicalDBService) *scrubbing.ScrubbingService {
 	t.Helper()
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), storagetest.NewTestTokenStore())
+	scrubber, err := scrubbing.NewScrubbingService(t.Context(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), NewEncryptedKVAdapter(db.GetKVStore(), db.GetVault()))
 	require.NoError(t, err)
 	return scrubber
 }
@@ -137,7 +136,7 @@ func setupTestInfrastructure(t *testing.T, _ bool) *TestInfrastructure {
 	userSvc := NewUserService(docStore, logger)
 	personaSvc := NewPersonaService(docStore, logger)
 	resp := response.NewWriter(logger)
-	scrubber := newTestScrubber(t)
+	scrubber := newTestScrubber(t, db)
 	auth := NewAuthService(docStore, pki, logger, userSvc, personaSvc, resp, nil, "", "", "")
 	// Wire up auth service to user service for cache invalidation
 	userSvc.SetAuthService(auth)
@@ -146,7 +145,8 @@ func setupTestInfrastructure(t *testing.T, _ bool) *TestInfrastructure {
 	embeddedOperator := embedded.New(docStore, operatorSessionSvc)
 	webSessionSvc := NewWebSessionService(docStore, logger)
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
-	passkey, _ := NewPasskeyService(docStore, logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+	passkey, err := NewPasskeyService(docStore, logger, &PasskeyConfig{RpID: "localhost", RpName: "ztd"})
+	require.NoError(t, err)
 
 	// The suspended transaction store is owned by the canonical DB.
 	suspendedTxService := db.GetSuspendedStore()

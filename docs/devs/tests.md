@@ -97,6 +97,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TEST-FIX-01 | `NewGatewayFixture` registers its own teardown via `t.Cleanup`. Callers MUST NOT close databases, stop the Gateway, or close downstream servers a second time. |
 | INV-TEST-FIX-02 | Temporary credentials and fixture resources MUST register cleanup with `t.Cleanup`. Setup helpers MUST NOT use helper-local `defer` statements that run before test bodies. |
 | INV-TEST-FIX-03 | Tests MUST provide explicit cancellation contexts and join background goroutines before test completion. |
+| INV-TEST-FIX-04 | Fixtures MUST construct only the dependencies and population needed to verify the test's boundary. Store-only tests MUST use real local stores without constructing unrelated Gateway, PKI, or transport services. Shared fixtures MUST NOT expand automatically to an entire production catalog; full-catalog and scale behavior MUST have dedicated tests. |
 
 ## Owned surfaces
 

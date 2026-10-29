@@ -20,11 +20,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestWebSessionService_CreateWebSession(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
-	svc := infra.WebSessionSvc
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	svc := NewWebSessionService(db.GetDocStore(), logger)
 
 	t.Run("Success", func(t *testing.T) {
 		userID := "user-123"
@@ -38,7 +40,7 @@ func TestWebSessionService_CreateWebSession(t *testing.T) {
 		assert.Greater(t, session.ExpiresAtUnixMs, session.CreatedAtUnixMs)
 
 		// Verify it's actually in the DB
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), session.ID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), session.ID)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 
@@ -58,8 +60,9 @@ func TestWebSessionService_CreateWebSession(t *testing.T) {
 }
 
 func TestWebSessionService_ValidateWebSession(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
-	svc := infra.WebSessionSvc
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	svc := NewWebSessionService(db.GetDocStore(), logger)
 
 	t.Run("Success", func(t *testing.T) {
 		userID := "user-456"
@@ -92,7 +95,7 @@ func TestWebSessionService_ValidateWebSession(t *testing.T) {
 
 		data, err := json.Marshal(expiredSession)
 		require.NoError(t, err)
-		err = infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), sessionID, data)
+		err = db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), sessionID, data)
 		require.NoError(t, err)
 
 		validated, err := svc.ValidateWebSession(t.Context(), sessionID)
@@ -103,7 +106,7 @@ func TestWebSessionService_ValidateWebSession(t *testing.T) {
 	t.Run("Malformed Data in DB", func(t *testing.T) {
 		sessionID := "malformed-session"
 		// Set some invalid data that cannot be unmarshaled into models.WebSession
-		err := infra.DocStore.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), sessionID, []byte(`{"expires_at_unix_ms": "invalid-type"}`))
+		err := db.GetDocStore().DocSet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), sessionID, []byte(`{"expires_at_unix_ms": "invalid-type"}`))
 		require.NoError(t, err)
 
 		validated, err := svc.ValidateWebSession(t.Context(), sessionID)
