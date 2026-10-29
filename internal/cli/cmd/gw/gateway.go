@@ -649,6 +649,11 @@ managed process. If the gateway is not running, this command is a no-op.`,
 			if err := pm.StopOperator(); err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrProcessStopFailed, err)
 			}
+			if running, pid, err := pm.OperatorStatus(); err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
+			} else if running {
+				return fmt.Errorf("%w: Gateway still running (PID: %d)", constants.ErrProcessStopFailed, pid)
+			}
 
 			cmd.Println("ztd Gateway stopped successfully")
 			return nil
