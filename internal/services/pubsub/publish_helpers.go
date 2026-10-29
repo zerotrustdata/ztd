@@ -8,6 +8,7 @@
 package pubsub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -85,6 +86,22 @@ func requireEventsStore(service string, eventsStore *storage.LocalFirstEventsSto
 		return fmt.Errorf("%s: %w", service, constants.ErrLocalFirstEventsStoreRequired)
 	}
 	return nil
+}
+
+// typedResultSummary encodes a handler's typed result as the summary the
+// Actuator scrubs and signs into the receipt. A caller that sees only the
+// receipt, such as an MCP tools/call or an evaluation agent, then reads the
+// same result the results channel publishes.
+func typedResultSummary(result proto.Message) (string, error) {
+	encoded, err := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(result)
+	if err != nil {
+		return "", fmt.Errorf("encode typed result summary: %w", err)
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, encoded); err != nil {
+		return "", fmt.Errorf("compact typed result summary: %w", err)
+	}
+	return compact.String(), nil
 }
 
 // publishLFEATypedResponseTo builds a GovernanceEnvelope from a typed payload and publishes it to the

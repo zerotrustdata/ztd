@@ -2298,3 +2298,42 @@ func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {
 		require.Empty(t, recorder.events)
 	})
 }
+
+// A tools/call naming a governed action tool is that tool's own typed action:
+// a model's file edit reaches the Operator as FILE_EDIT, never as an MCP_CALL
+// that would skip the FILE_EDIT checks. A ledger tool is bound to the session
+// the envelope targets.
+func TestCallToolRoutesGovernedActionToolsToTheirTypedAction(t *testing.T) {
+	receipt := &operatorv1.EventReceipt{TransactionId: "tx-edit", TransactionHash: "hash-edit", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: "{}"}
+	ctx := context.WithValue(context.Background(), constants.ContextKeyOperatorSessionID, "session-verified")
+	call := func(t *testing.T, params string) *commonv1.GovernanceEnvelope {
+		t.Helper()
+		proc := &fakeEnvelopeProcessor{receipt: receipt}
+		g := newTestGatewayService(t, withEnvProc(proc))
+		_, err := g.callTool(ctx, httptest.NewRequest(http.MethodPost, "/mcp", nil), json.RawMessage(params))
+		require.NoError(t, err)
+		envelope := &commonv1.GovernanceEnvelope{}
+		require.NoError(t, protojson.Unmarshal(proc.gotPayload, envelope))
+		return envelope
+	}
+
+	envelope := call(t, `{"name":"file_edit","arguments":{"file_path":"/srv/app/config.yaml","operation":"write","content":"tls_verify: true\n","justification":"restore TLS verification"},"execution_id":"exec-edit","investigation_id":"inv-1"}`)
+	assert.Equal(t, string(constants.ActionTypeFileEdit), envelope.GetActionType())
+	assert.Equal(t, "/srv/app/config.yaml", envelope.GetTargetResource())
+	edit := &operatorv1.FileEditRequested{}
+	require.NoError(t, proto.Unmarshal(envelope.GetPayload(), edit))
+	assert.Equal(t, "write", edit.GetOperation())
+	assert.Equal(t, "exec-edit", edit.GetExecutionId())
+
+	envelope = call(t, `{"name":"restore_file","arguments":{"file_path":"/srv/app/config.yaml","commit_hash":"abc123"},"execution_id":"exec-restore","investigation_id":"inv-1"}`)
+	assert.Equal(t, string(constants.ActionTypeRestoreFile), envelope.GetActionType())
+	restore := &operatorv1.RestoreFileRequested{}
+	require.NoError(t, proto.Unmarshal(envelope.GetPayload(), restore))
+	assert.Equal(t, envelope.GetOperatorSessionId(), restore.GetOperatorSessionId())
+	assert.Equal(t, "session-verified", restore.GetOperatorSessionId())
+
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
+	_, err := g.callTool(ctx, httptest.NewRequest(http.MethodPost, "/mcp", nil),
+		json.RawMessage(`{"name":"restore_file","arguments":{"file_path":"/srv/app/config.yaml","commit_hash":"abc123","operator_session_id":"session-other"},"execution_id":"exec-x","investigation_id":"inv-1"}`))
+	require.ErrorIs(t, err, constants.ErrGatewayInvalidToolArguments, "a model never names the session whose ledger is restored")
+}

@@ -287,6 +287,19 @@ var (
 	// (/proc, systemctl, kernel log) does not exist on this host.
 	ErrMCPToolUnsupportedPlatform = errors.New("tool is unsupported on this platform")
 
+	// ErrMCPToolGovernedAction marks a governed action tool reached as an
+	// MCP_CALL. It runs only as its own typed action, so an MCP_CALL naming it
+	// can never skip that action's checks.
+	ErrMCPToolGovernedAction = errors.New("tool runs only as its own governed action")
+
+	// ErrMCPToolSessionRequired marks a governed action tool built without the
+	// verified Operator session that scopes its ledger.
+	ErrMCPToolSessionRequired = errors.New("governed action tool requires the verified operator session")
+
+	// ErrFileDiffOutsideSession marks a FETCH_FILE_DIFF diff_id whose file
+	// mutation belongs to a different operator session than the request.
+	ErrFileDiffOutsideSession = errors.New("file diff belongs to another operator session")
+
 	// MCP OOM detection errors
 	ErrMCPGetWorkingDirectory = errors.New("get working directory")
 	ErrMCPOpenLogFile         = errors.New("open log file")

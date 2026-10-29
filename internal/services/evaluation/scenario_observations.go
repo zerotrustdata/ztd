@@ -19,6 +19,7 @@ import (
 	govhash "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -330,7 +331,11 @@ func verifyNativeToolCallResult(trace *AgentTrace, call AgentToolCall) error {
 	fail := func() error {
 		return fmt.Errorf("native tool result: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if call.Receipt == nil || call.ActionType != string(constants.ActionTypeMcpCall) || call.Receipt.GetActionType() != string(constants.ActionTypeMcpCall) {
+	action, _, err := agentToolActionType(call.ToolName)
+	if err != nil {
+		return err
+	}
+	if call.Receipt == nil || call.ActionType != string(action) || call.Receipt.GetActionType() != string(action) {
 		return fail()
 	}
 	if call.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && call.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
@@ -362,8 +367,17 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 	hash, err := govhash.GenerateMessageID(envelope)
 	if err != nil || hash != envelope.GetTransactionHash() || hash != call.Receipt.GetTransactionHash() || envelope.GetId() != call.TransactionID ||
 		envelope.GetOperatorId() != trace.Data.OperatorID || envelope.GetOperatorSessionId() != trace.Data.SessionID ||
-		envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID ||
-		envelope.GetActionType() != string(constants.ActionTypeMcpCall) || envelope.GetTargetResource() != call.ToolName {
+		envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID {
+		return fail()
+	}
+	_, governed, err := agentToolActionType(call.ToolName)
+	if err != nil {
+		return err
+	}
+	if governed != nil {
+		return verifyGovernedToolCallRequest(trace, call, governed, envelope)
+	}
+	if envelope.GetActionType() != string(constants.ActionTypeMcpCall) || envelope.GetTargetResource() != call.ToolName {
 		return fail()
 	}
 	var payload operatorv1.McpCallRequested
@@ -408,6 +422,40 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 		return fail()
 	}
 	return nil
+}
+
+// verifyGovernedToolCallRequest rebuilds a governed action tool call's typed
+// action from its recorded arguments and the trace's Operator session, and
+// requires the signed envelope to carry exactly that action.
+func verifyGovernedToolCallRequest(trace *AgentTrace, call AgentToolCall, tool mcp.GovernedActionTool, envelope *commonv1.GovernanceEnvelope) error {
+	fail := func() error {
+		return fmt.Errorf("governed tool request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	if call.ApprovedArgumentsJSON != "" {
+		return fail()
+	}
+	request, _, err := governedToolAction(tool, call.ArgumentsJSON, trace.Data.SessionID, call.CallID)
+	if err != nil || envelope.GetActionType() != string(request.ActionType) || envelope.GetTargetResource() != request.TargetResource {
+		return fail()
+	}
+	actual := request.Payload.ProtoReflect().New().Interface()
+	if err := proto.Unmarshal(envelope.GetPayload(), actual); err != nil || !proto.Equal(actual, request.Payload) {
+		return fail()
+	}
+	return nil
+}
+
+// agentToolActionType is the governed action one native tool call dispatches:
+// a governed action tool's own typed action, MCP_CALL for every other tool.
+func agentToolActionType(tool string) (constants.ActionType, mcp.GovernedActionTool, error) {
+	governed, ok, err := mcp.LookupGovernedActionTool(tool)
+	if err != nil {
+		return "", nil, fmt.Errorf("evaluation: look up %s: %w", tool, err)
+	}
+	if ok {
+		return governed.ActionType(), governed, nil
+	}
+	return constants.ActionTypeMcpCall, nil, nil
 }
 
 // observationFor returns a final check by its actual native request, never a

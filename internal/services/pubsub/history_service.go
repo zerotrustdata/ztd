@@ -134,7 +134,10 @@ func (hs *HistoryService) HandleFetchFileHistoryRequest(ctx context.Context, msg
 			fmt.Sprintf("failed to fetch file history: %v", err), hs.eventsStore, hs.scrubbing))
 	}
 
-	return "", publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileHistory.Completed, payload, hs.eventsStore, hs.scrubbing)
+	if err := publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileHistory.Completed, payload, hs.eventsStore, hs.scrubbing); err != nil {
+		return "", err
+	}
+	return typedResultSummary(payload)
 }
 
 // HandleRestoreFileRequest processes a file restore request. The restore is mirrored through the
@@ -177,7 +180,10 @@ func (hs *HistoryService) HandleRestoreFileRequest(ctx context.Context, msg *Pub
 		result.Error = err.Error()
 	}
 	publishErr := publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, eventType, result, hs.eventsStore, hs.scrubbing)
-	return "", errors.Join(restoreErr, publishErr)
+	if err := errors.Join(restoreErr, publishErr); err != nil {
+		return "", err
+	}
+	return typedResultSummary(result)
 }
 
 // recordRestore writes the restore's execution event and, for a completed restore, its file
@@ -229,16 +235,24 @@ func (hs *HistoryService) HandleFetchFileDiffRequest(ctx context.Context, msg *P
 				fmt.Sprintf("invalid diff_id: %s", diffID), hs.eventsStore, hs.scrubbing))
 		}
 		entry, err := hs.historyHandler.FetchFileDiff(mutationID)
+		// A request scoped to a session reads only that session's mutations.
+		if err == nil && operatorSessionID != "" && entry.GetOperatorSessionId() != operatorSessionID {
+			err = fmt.Errorf("diff_id %s: %w", diffID, constants.ErrFileDiffOutsideSession)
+		}
 		if err != nil {
 			hs.logger.Error("Failed to fetch file diff", "diff_id", diffID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 			return "", errors.Join(err, publishLFEAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Failed,
 				fmt.Sprintf("failed to fetch file diff: %v", err), hs.eventsStore, hs.scrubbing))
 		}
-		return "", publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Completed,
-			&operatorv1.FetchFileDiffResult{
-				Success: true,
-				Diff:    entry,
-			}, hs.eventsStore, hs.scrubbing)
+		result := &operatorv1.FetchFileDiffResult{
+			Success: true,
+			Diff:    entry,
+		}
+		if err := publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Completed,
+			result, hs.eventsStore, hs.scrubbing); err != nil {
+			return "", err
+		}
+		return typedResultSummary(result)
 	}
 
 	if operatorSessionID != "" {
@@ -249,14 +263,17 @@ func (hs *HistoryService) HandleFetchFileDiffRequest(ctx context.Context, msg *P
 				fmt.Sprintf("failed to fetch file diffs: %v", err), hs.eventsStore, hs.scrubbing))
 		}
 
-		total := int32(len(diffs)) //nolint:gosec // bounded by query limits
-		return "", publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Completed,
-			&operatorv1.FetchFileDiffResult{
-				Success:           true,
-				Diffs:             diffs,
-				Total:             total,
-				OperatorSessionId: operatorSessionID,
-			}, hs.eventsStore, hs.scrubbing)
+		result := &operatorv1.FetchFileDiffResult{
+			Success:           true,
+			Diffs:             diffs,
+			Total:             int32(len(diffs)), //nolint:gosec // bounded by query limits
+			OperatorSessionId: operatorSessionID,
+		}
+		if err := publishLFEATypedResponseTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Completed,
+			result, hs.eventsStore, hs.scrubbing); err != nil {
+			return "", err
+		}
+		return typedResultSummary(result)
 	}
 
 	return "", errors.Join(constants.ErrMissingRequiredField, publishLFEAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Failed,

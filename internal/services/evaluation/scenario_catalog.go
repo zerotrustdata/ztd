@@ -310,17 +310,32 @@ func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, c
 // postures. Expected denials and refusals remain scoreable.
 func scenarioRequiresL2(blueprint ScenarioBlueprint) bool {
 	for _, tool := range blueprint.ExpectedTools {
-		if constants.ActionTypeMcpCall.ChangesState(tool) {
+		if agentToolChangesState(tool) {
 			return true
 		}
 	}
 	for _, call := range blueprint.Input.Seed.ToolCalls {
 		if call.Outcome != scenarioSeedDeny && call.Outcome != scenarioSeedRefusal &&
-			constants.ActionTypeMcpCall.ChangesState(call.ToolName) {
+			agentToolChangesState(call.ToolName) {
 			return true
 		}
 	}
 	return false
+}
+
+// agentToolChangesState reports whether a call of tool changes state: a
+// governed action tool by its own action (FILE_EDIT and RESTORE_FILE change
+// state for every target), any other native tool as an MCP_CALL target. An
+// unknown classification fails closed as a state change.
+func agentToolChangesState(tool string) bool {
+	action, governed, err := agentToolActionType(tool)
+	if err != nil {
+		return true
+	}
+	if governed != nil {
+		return action.IsStateChange()
+	}
+	return action.ChangesState(tool)
 }
 
 // publicPromptHint projects the private hint to its public form. Values are

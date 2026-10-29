@@ -444,6 +444,60 @@ func (g *GatewayService) isNativeTool(name string) bool {
 	return ok
 }
 
+// governedActionTool returns the native tool name when its call is its own
+// typed governed action rather than an MCP_CALL.
+func (g *GatewayService) governedActionTool(name string) (GovernedActionTool, bool) {
+	if g.nativeToolHandler == nil {
+		return nil, false
+	}
+	tool, ok := g.nativeToolHandler.registry.Get(name)
+	if !ok {
+		return nil, false
+	}
+	governed, ok := tool.(GovernedActionTool)
+	return governed, ok
+}
+
+// governedActionOptions builds the typed governed action of one governed
+// action tool call. The platform binds the Operator session the envelope
+// will target; the model never names one.
+func (g *GatewayService) governedActionOptions(ctx context.Context, tool GovernedActionTool, arguments json.RawMessage, executionID, investigationID string) (processGatewayOptions, error) {
+	_, sessionID, err := g.envelopeOperatorSession(ctx)
+	if err != nil {
+		return processGatewayOptions{}, err
+	}
+	request, err := tool.GovernedAction(arguments, GovernedActionBinding{OperatorSessionID: sessionID, ExecutionID: executionID})
+	if err != nil {
+		return processGatewayOptions{}, fmt.Errorf("gateway: %w: %w", constants.ErrGatewayInvalidToolArguments, err)
+	}
+	payloadBytes, err := request.MarshalPayload()
+	if err != nil {
+		return processGatewayOptions{}, fmt.Errorf("gateway: %w", constants.ErrInternal)
+	}
+	return processGatewayOptions{
+		eventType:       request.EventType,
+		targetResource:  request.TargetResource,
+		payloadBytes:    payloadBytes,
+		investigationID: investigationID,
+	}, nil
+}
+
+// envelopeOperatorSession returns the acting app and the Operator session an
+// envelope built for ctx targets. An app identity has no Operator session of
+// its own, so its envelope targets the embedded Operator that executes it; an
+// unclaimed embedded Operator has no session and the call fails closed.
+func (g *GatewayService) envelopeOperatorSession(ctx context.Context) (appID, sessionID string, err error) {
+	if appID, ok := ctx.Value(constants.ContextKeyAppID).(string); ok && appID != "" {
+		embeddedSessionID, err := g.embeddedSession.OperatorSessionID(ctx)
+		if err != nil {
+			return "", "", fmt.Errorf("gateway: resolve embedded operator session for app %s: %w", appID, err)
+		}
+		return appID, embeddedSessionID, nil
+	}
+	sessionID, _ = ctx.Value(constants.ContextKeyOperatorSessionID).(string)
+	return "", sessionID, nil
+}
+
 func (g *GatewayService) isCircuitOpen() bool {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -598,22 +652,30 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 	if err != nil {
 		return nil, err
 	}
-	mcpPayload := &operatorv1.McpCallRequested{
-		ToolName:      callParams.Name,
-		ArgumentsJson: argumentsJSON,
-		ExecutionId:   executionID,
-	}
-	payloadBytes, err := proto.Marshal(mcpPayload)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
+	var opts processGatewayOptions
+	if governed, ok := g.governedActionTool(callParams.Name); ok {
+		opts, err = g.governedActionOptions(ctx, governed, json.RawMessage(argumentsJSON), executionID, investigationID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		payloadBytes, err := proto.Marshal(&operatorv1.McpCallRequested{
+			ToolName:      callParams.Name,
+			ArgumentsJson: argumentsJSON,
+			ExecutionId:   executionID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
+		}
+		opts = processGatewayOptions{
+			eventType:       constants.Event.Operator.Mcp.CallRequested,
+			targetResource:  callParams.Name,
+			payloadBytes:    payloadBytes,
+			investigationID: investigationID,
+		}
 	}
 
-	hash, envelopeBytes, stateRoot, inferences, err := g.processGatewayTransaction(ctx, processGatewayOptions{
-		eventType:       constants.Event.Operator.Mcp.CallRequested,
-		targetResource:  callParams.Name,
-		payloadBytes:    payloadBytes,
-		investigationID: investigationID,
-	})
+	hash, envelopeBytes, stateRoot, inferences, err := g.processGatewayTransaction(ctx, opts)
 	if err != nil {
 		return nil, governance.WithConsensusInferences(inferences, err)
 	}
@@ -1006,24 +1068,15 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 	}
 	// Bind both the app identity and the human requestor to the envelope.
 	// For delegated credentials the auth middleware extracts both SANs from the cert
-	// and places them in context — no trusted headers.
-	if appID, ok := ctx.Value(constants.ContextKeyAppID).(string); ok && appID != "" {
-		// App identity stays in acting_app_id. The app has no Operator session of
-		// its own; the envelope targets the embedded Operator that executes it, so
-		// its approval, expiry, and execution evidence is recorded on that
-		// Operator's session chain. An unclaimed embedded Operator has no session
-		// and the call fails closed.
-		embeddedSessionID, err := g.embeddedSession.OperatorSessionID(ctx)
-		if err != nil {
-			return "", nil, "", nil, fmt.Errorf("gateway: resolve embedded operator session for app %s: %w", appID, err)
-		}
-		env.ActingAppId = appID
-		env.OperatorSessionId = embeddedSessionID
-	} else {
-		if opSessionID, ok := ctx.Value(constants.ContextKeyOperatorSessionID).(string); ok && opSessionID != "" {
-			env.OperatorSessionId = opSessionID
-		}
+	// and places them in context — no trusted headers. App identity stays in
+	// acting_app_id, and its approval, expiry, and execution evidence is
+	// recorded on the embedded Operator's session chain.
+	appID, sessionID, err := g.envelopeOperatorSession(ctx)
+	if err != nil {
+		return "", nil, "", nil, err
 	}
+	env.ActingAppId = appID
+	env.OperatorSessionId = sessionID
 	env.RequestorUserId = serviceauth.RequestorUserID(ctx)
 
 	hash, err = govpkg.GenerateMessageID(env)

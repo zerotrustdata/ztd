@@ -57,6 +57,11 @@ func TestRegisterNativeTools_Success(t *testing.T) {
 		"read_file",
 		"event_receipt_list",
 		"event_receipt_get",
+		constants.MCPToolListDirectory,
+		constants.MCPToolFileEdit,
+		constants.MCPToolFileHistory,
+		constants.MCPToolFileDiff,
+		constants.MCPToolRestoreFile,
 	}
 
 	count := registry.Count()

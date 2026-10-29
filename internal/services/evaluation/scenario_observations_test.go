@@ -17,6 +17,7 @@ import (
 	govhash "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -151,4 +152,56 @@ func TestAgentRunCaseMemoryPath_IsInsideSeededWorkspace(t *testing.T) {
 	got, err := run.caseMemoryPath()
 	require.NoError(t, err)
 	require.Equal(t, "/work/ws/"+scenarioCaseMemoryFile, got)
+}
+
+// A model's file edit is verified as the typed FILE_EDIT the executor built
+// from its recorded arguments and the trace's own Operator session. A payload
+// bound to another session, a changed edit, or an MCP_CALL wrapper naming the
+// tool are all evidence mismatches.
+func TestGovernedToolRequestBindsTypedActionAndSession(t *testing.T) {
+	trace := &AgentTrace{InvestigationID: "case-1", EvaluationAttemptID: "attempt-1",
+		Data: AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-1"}}
+	arguments := `{"content":"tls_verify: true\n","file_path":"/work/case/config.yaml","justification":"restore TLS verification","operation":"write"}`
+	tool, ok, err := mcp.LookupGovernedActionTool(constants.MCPToolFileEdit)
+	require.NoError(t, err)
+	require.True(t, ok)
+	signed := func(t *testing.T, action constants.ActionType, target string, payload []byte) AgentToolCall {
+		t.Helper()
+		envelope := &commonv1.GovernanceEnvelope{ActionType: string(action), TargetResource: target, Payload: payload,
+			OperatorId: "data-1", OperatorSessionId: "session-1", InvestigationId: "case-1", TaskId: "attempt-1"}
+		hash, err := govhash.GenerateMessageID(envelope)
+		require.NoError(t, err)
+		envelope.TransactionHash, envelope.Id = hash, hash
+		return AgentToolCall{CallID: "edit-1", ToolName: constants.MCPToolFileEdit, ArgumentsJSON: arguments, TransactionID: hash,
+			RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: envelope}, Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{TransactionHash: hash}}}
+	}
+
+	request, payload, err := governedToolAction(tool, arguments, "session-1", "edit-1")
+	require.NoError(t, err)
+	require.NoError(t, verifyNativeToolCallRequest(trace, signed(t, request.ActionType, request.TargetResource, payload)))
+
+	restore, ok, err := mcp.LookupGovernedActionTool(constants.MCPToolRestoreFile)
+	require.NoError(t, err)
+	require.True(t, ok)
+	restoreArgs := `{"commit_hash":"abc123","file_path":"/work/case/config.yaml"}`
+	restoreRequest, ownLedger, err := governedToolAction(restore, restoreArgs, "session-1", "edit-1")
+	require.NoError(t, err)
+	restoreCall := signed(t, restoreRequest.ActionType, restoreRequest.TargetResource, ownLedger)
+	restoreCall.ToolName, restoreCall.ArgumentsJSON = constants.MCPToolRestoreFile, restoreArgs
+	require.NoError(t, verifyNativeToolCallRequest(trace, restoreCall))
+	_, otherLedger, err := governedToolAction(restore, restoreArgs, "session-2", "edit-1")
+	require.NoError(t, err)
+	restoreCall = signed(t, restoreRequest.ActionType, restoreRequest.TargetResource, otherLedger)
+	restoreCall.ToolName, restoreCall.ArgumentsJSON = constants.MCPToolRestoreFile, restoreArgs
+	require.ErrorIs(t, verifyNativeToolCallRequest(trace, restoreCall), constants.ErrEvaluationEvidenceTraceMismatch,
+		"a restore from another session's ledger is not this attempt's restore")
+
+	changed := signed(t, request.ActionType, request.TargetResource, payload)
+	changed.ArgumentsJSON = `{"content":"tls_verify: false\n","file_path":"/work/case/config.yaml","justification":"restore TLS verification","operation":"write"}`
+	require.ErrorIs(t, verifyNativeToolCallRequest(trace, changed), constants.ErrEvaluationEvidenceTraceMismatch, "the signed edit must be the recorded edit")
+
+	wrapped, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolFileEdit, ArgumentsJson: arguments, ExecutionId: "edit-1"})
+	require.NoError(t, err)
+	require.ErrorIs(t, verifyNativeToolCallRequest(trace, signed(t, constants.ActionTypeMcpCall, constants.MCPToolFileEdit, wrapped)), constants.ErrEvaluationEvidenceTraceMismatch,
+		"an MCP_CALL wrapper skips the FILE_EDIT checks and is never a model's edit")
 }

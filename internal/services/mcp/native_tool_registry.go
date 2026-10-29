@@ -54,6 +54,11 @@ func RegisterNativeTools(registry *ToolRegistry) error {
 		&SearchDirectoryTool{},
 		&EventReceiptListTool{},
 		&EventReceiptGetTool{},
+		&ListDirectoryTool{},
+		&FileEditTool{},
+		&FileHistoryTool{},
+		&FileDiffTool{},
+		&RestoreFileTool{},
 	}
 
 	for _, tool := range tools {

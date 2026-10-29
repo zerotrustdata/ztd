@@ -52,6 +52,18 @@ func workspacePathCases(root string) []struct {
 		{"relative path resolves against the operator directory", constants.MCPToolReadFile, `{"path":"logs/app.log"}`, false},
 		{"traversal out of the workspace", constants.MCPToolSearchFile, `{"path":"` + root + `/../ws-0000000000000000/a.log","pattern":"x"}`, false},
 		{"sibling with the workspace as a name prefix", constants.MCPToolReadFile, `{"path":"` + root + `-other/a.log"}`, false},
+		{"list the workspace", constants.MCPToolListDirectory, `{"path":"` + root + `"}`, true},
+		{"list the operator root", constants.MCPToolListDirectory, `{"path":"` + workspacePathTestOperatorDir + `"}`, false},
+		{"edit a workspace file", constants.MCPToolFileEdit, `{"file_path":"` + root + `/app/config.yaml","operation":"write","content":"x","justification":"fix"}`, true},
+		{"edit a host file", constants.MCPToolFileEdit, `{"file_path":"/etc/hosts","operation":"write","content":"x","justification":"fix"}`, false},
+		{"edit through traversal", constants.MCPToolFileEdit, `{"file_path":"` + root + `/../ws-0000000000000000/a","operation":"write","content":"x","justification":"fix"}`, false},
+		{"history of a workspace file", constants.MCPToolFileHistory, `{"file_path":"` + root + `/app/config.yaml"}`, true},
+		{"history of a host file", constants.MCPToolFileHistory, `{"file_path":"/etc/shadow"}`, false},
+		{"changes of a workspace file", constants.MCPToolFileDiff, `{"file_path":"` + root + `/app/config.yaml"}`, true},
+		{"changes of a host file", constants.MCPToolFileDiff, `{"file_path":"/etc/hosts"}`, false},
+		{"one diff by id", constants.MCPToolFileDiff, `{"diff_id":"7"}`, true},
+		{"restore a workspace file", constants.MCPToolRestoreFile, `{"file_path":"` + root + `/app/config.yaml","commit_hash":"abc"}`, true},
+		{"restore a host file", constants.MCPToolRestoreFile, `{"file_path":"/etc/hosts","commit_hash":"abc"}`, false},
 	}
 }
 

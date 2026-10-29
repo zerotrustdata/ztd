@@ -1161,6 +1161,13 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 	if failure := args.WorkspacePathFailure(r.workspace); failure != nil {
 		return r.fail(record, *failure)
 	}
+	governed, isGoverned, err := mcp.LookupGovernedActionTool(tool)
+	if err != nil {
+		return AgentToolCall{}, fmt.Errorf("evaluation: look up %s: %w", tool, err)
+	}
+	if isGoverned {
+		return r.runGovernedActionTool(ctx, record, governed, args)
+	}
 	var argsJSON []byte
 	if request.Shell != nil {
 		shellReq := *request.Shell
@@ -1224,6 +1231,47 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		return r.succeed(record, result)
 	}
 	return r.completeNativeToolCall(record)
+}
+
+// runGovernedActionTool maps one governed action tool onto its own typed
+// action, bound to the attempt's verified Operator session, so a model's edit
+// or restore is the same ledgered FILE_EDIT or RESTORE_FILE as any other.
+func (r *agentRun) runGovernedActionTool(ctx context.Context, record AgentToolCall, tool mcp.GovernedActionTool, args agentToolArguments) (AgentToolCall, error) {
+	argsJSON, err := args.CanonicalJSON()
+	if err != nil {
+		return AgentToolCall{}, err
+	}
+	request, payload, err := governedToolAction(tool, argsJSON, r.target.SessionID, record.CallID)
+	if err != nil {
+		if errors.Is(err, constants.ErrMCPToolSessionRequired) {
+			return AgentToolCall{}, err
+		}
+		return r.fail(record, *agentToolValidationFailure(record.ToolName, []string{err.Error()}))
+	}
+	record.ActionType = string(request.ActionType)
+	dispatched, denied, err := r.dispatch(ctx, &record, request.ActionType, request.TargetResource, payload)
+	if err != nil || denied {
+		return record, err
+	}
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(record.ToolName, dispatched)})
+	}
+	return r.completeNativeToolCall(record)
+}
+
+// governedToolAction builds the typed action of one governed action tool call
+// bound to the attempt's Operator session. The executor dispatches it and the
+// verifier rebuilds it from the recorded arguments.
+func governedToolAction(tool mcp.GovernedActionTool, argumentsJSON, sessionID, callID string) (mcp.GovernedActionRequest, []byte, error) {
+	request, err := tool.GovernedAction(json.RawMessage(argumentsJSON), mcp.GovernedActionBinding{OperatorSessionID: sessionID, ExecutionID: callID})
+	if err != nil {
+		return mcp.GovernedActionRequest{}, nil, err
+	}
+	payload, err := request.MarshalPayload()
+	if err != nil {
+		return mcp.GovernedActionRequest{}, nil, fmt.Errorf("evaluation: encode %s action: %w", tool.Name(), err)
+	}
+	return request, payload, nil
 }
 
 // completeNativeToolCall derives the model-visible answer from the signed
