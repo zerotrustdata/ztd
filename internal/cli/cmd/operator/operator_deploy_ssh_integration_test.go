@@ -316,7 +316,7 @@ func TestDeploySSH_ExecuteDeploySSHUploadsThroughFactory(t *testing.T) {
 
 	deployed, failed, cleanup, err := executeDeploySSH(
 		ctx, cmd, []string{"deploy-test-host"}, 0, "",
-		remoteDir, src, nil, operatorDeployOptions{}, 1, factory,
+		remoteDir, src, nil, operatorDeployOptions{}, 1, factory, nil,
 	)
 	t.Cleanup(cleanup)
 	require.NoError(t, err)

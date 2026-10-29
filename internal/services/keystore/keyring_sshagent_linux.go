@@ -170,6 +170,11 @@ func (s *sshAgentKeyring) Name() string {
 	return "ssh-agent"
 }
 
+// MasterKeyPresent reports the seal file only. It does not unseal the key.
+func (s *sshAgentKeyring) MasterKeyPresent() (bool, error) {
+	return s.sealed()
+}
+
 // sealed reports whether a sealed master key exists.
 func (s *sshAgentKeyring) sealed() (bool, error) {
 	exists, err := s.fileSvc.FileExists(context.Background(), s.path)

@@ -403,7 +403,7 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 			"--cert-mode", certMode,
 			"--posture", "doctrine",
 			"--http-port", httpPort, "--https-port", httpsPort,
-			"--public-spectator=false", "--rate-limit-rps", "0", "--log", "info"); err != nil {
+			"--public-spectator=false", "--rate-limit-rps", "0", "--log", "info", "--accept-unrecoverable"); err != nil {
 			return fmt.Errorf("gw start: %w", err)
 		}
 		if deps.verifyGateway != nil {
@@ -448,6 +448,7 @@ func runScale(ctx context.Context, cfg scaleConfig, deps scaleDeps) (err error) 
 				"--trust-bundle", filepath.Join(layout.Run, constants.RuntimeDirname, constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle),
 				"--parallel", strconv.Itoa(cfg.Parallel),
 				"--log", "info",
+				"--accept-unrecoverable",
 			}
 			if cfg.OperatorEndpoint != "" {
 				deployArgs = append(deployArgs, "--operator-endpoint", cfg.OperatorEndpoint)

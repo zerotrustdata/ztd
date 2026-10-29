@@ -40,6 +40,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	sshpkg "github.com/zerotrustdata/ztd/internal/pkg/ssh"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 )
@@ -383,14 +384,18 @@ func (c *sshRemoteDeployClient) ExecuteAgent(ctx context.Context, req models.Dep
 
 // deploySSH runs commands on, and copies files to, one local or remote host.
 type deploySSH struct {
-	host         string
-	port         int
-	identityFile string
-	stderr       io.Writer
-	local        bool
-	binaryDir    string
-	launchID     string
-	remoteClient remoteDeployClient
+	host                string
+	port                int
+	identityFile        string
+	stderr              io.Writer
+	local               bool
+	binaryDir           string
+	recoveryIn          io.Reader
+	recoveryOut         io.Writer
+	acceptUnrecoverable bool
+	launchID            string
+	remoteClient        remoteDeployClient
+	keyring             keystore.Keyring
 }
 
 // deployTarget is the lifecycle surface shared by process and SSH
@@ -615,7 +620,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each Ope
 				}
 			}()
 
-			deployed, failed, cleanup, err = executeDeploySSH(ctx, cmd, hostList, port, identityFile, remoteDir, sourceBinary, dirs, opts, parallel, rFactory)
+			deployed, failed, cleanup, err = executeDeploySSH(ctx, cmd, hostList, port, identityFile, remoteDir, sourceBinary, dirs, opts, parallel, rFactory, cfg.Keyring)
 			if err != nil {
 				return err
 			}
@@ -908,6 +913,15 @@ func (s deploySSH) preflightGateway(ctx context.Context, args []string) error {
 func (s deploySSH) startOperator(ctx context.Context, dir, endpoint string, startArgs ...string) error {
 	args := append([]string{"--endpoint", endpoint}, startArgs...)
 	if s.local {
+		if s.recoveryOut != nil {
+			fileSvc, err := fs.NewRuntimeFileService(dir, slog.Default())
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+			}
+			if err := shared.EnsureRecoveryKey(s.recoveryIn, s.recoveryOut, fileSvc, s.keyring, keystore.RecoveryRoleOperator, s.acceptUnrecoverable); err != nil {
+				return err
+			}
+		}
 		_, err := ExecuteDeployHostStart(ctx, dir, s.binaryName(), args)
 		return err
 	}
@@ -955,6 +969,7 @@ var operatorDeployForwardFlags = []string{
 	"provider-boundary-observer-id", "provenance-operator-id", "model-storage-root", "model-storage-format",
 	"gateway-http-port", "gateway-https-port",
 	"heartbeat-interval", "log", "trust-bundle",
+	shared.FlagAcceptUnrecoverable,
 }
 
 // operatorDeployPreflightArgs returns the gateway-preflight arguments that probe
@@ -1204,6 +1219,7 @@ func executeDeploySSH(
 	opts operatorDeployOptions,
 	parallel int,
 	clientFactory remoteDeployClientFactory,
+	kr keystore.Keyring,
 ) ([]deployedOperator, []string, func(), error) {
 	var deployed []deployedOperator
 	var failed []string
@@ -1223,7 +1239,12 @@ func executeDeploySSH(
 	for _, host := range hostList {
 		host = strings.TrimSpace(host)
 		isLocal := isLocalTarget(host)
-		s := deploySSH{host: host, port: port, identityFile: identityFile, stderr: cmd.ErrOrStderr(), local: isLocal}
+		acceptUnrecoverable, _ := cmd.Flags().GetBool(shared.FlagAcceptUnrecoverable)
+		s := deploySSH{
+			host: host, port: port, identityFile: identityFile, stderr: cmd.ErrOrStderr(), local: isLocal,
+			recoveryIn: cmd.InOrStdin(), recoveryOut: cmd.ErrOrStderr(), acceptUnrecoverable: acceptUnrecoverable,
+			keyring: kr,
+		}
 
 		if isLocal {
 			cache, prepErr := s.prepareDir(ctx, strings.TrimSuffix(remoteDir, "/")+"/.deploy-bin")

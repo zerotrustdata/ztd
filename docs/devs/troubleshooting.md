@@ -4,7 +4,7 @@ title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -78,6 +78,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` MUST be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and allows five minutes for approval in addition to its startup budget. The dialog wants the Mac login password, not a ztd account. Approve it and choose **Always Allow**. The dialog needs a GUI session. If approval or subsequent startup does not complete within that allowance, the start fails and includes the latest child diagnostic. |
 | INV-TROUBLE-GW-06 | `gw start --pprof-listen` accepts only `localhost` or a loopback IP (`ErrProfilingListenAddress`); profiles expose command lines, heap contents, and goroutine stacks. Profiling is off when the flag is unset, and it is a startup flag covered by `INV-TROUBLE-GW-04`. |
 | INV-TROUBLE-GW-07 | The public spectator mirror verifies `.ztd/public-mirror/mirror.db` and its proof files on every open; a tampered or truncated store fails startup with `ErrPublicFeedMirrorStoreCorrupt` and MUST NOT be hand-edited back into shape. Restore `.ztd/public-mirror/` from backup. |
+| INV-TROUBLE-GW-08 | The first `gw start` or `operator start` that creates a master key prints a recovery key once and stores it only after the operator retypes it. A start with no terminal fails with `ErrKeyStoreRecoveryRequired` unless `--accept-unrecoverable` is set. Losing the recovery key and the OS key store makes that runtime unrecoverable. `gw recover` and `operator recover` install a saved key and refuse to replace a different one. `gw clean` and `gw reset` MUST NOT be used to repair a lost master key. |
 
 Managed startup failures include the latest bounded child diagnostic from the current attempt and the full log location. Verification progress records preserve their stage, counts, and elapsed time in timeout diagnostics. See [Durable Mirror Store](../architecture/public_spectator.md#durable-mirror-store) for verification budgets and readiness behavior.
 
@@ -198,6 +199,17 @@ done
 ```
 
 Restore the original key pair or reconnect with agent forwarding from the machine holding that key. A newly generated SSH key cannot open an existing vault. Do not delete the seal or run `gw clean` or `gw reset` to repair retained data. The recovery flow and key lifetime are described in [Master Key and Keyring Providers](../architecture/encryption.md#master-key-and-keyring-providers).
+
+If the OS key store itself is gone and you saved the recovery key printed at first start, install it from a terminal. The key is not echoed into the log:
+
+```bash
+./ztd gw recover
+./ztd operator recover
+```
+
+Pass `--working-dir` when the operator runtime is not the current directory.
+
+A key that does not open the sealed secrets is rejected and nothing is stored. A key store that already holds a different master key is left as it is. See [Recovery key](../architecture/encryption.md#recovery-key).
 
 ### WSL Ollama Reachability
 

@@ -183,7 +183,7 @@ func (r *releaseSmokeRun) deployEvalInference(ctx context.Context, root, endpoin
 		return "", "", err
 	}
 	trust := cfg.ResolvedTrustBundlePath()
-	out, err := r.ztd(ctx, "deploy-inference", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", root, "--background", "--approve", "--capabilities", "inference,observer", "--inference-ollama-endpoint", endpoint, "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
+	out, err := r.ztd(ctx, "deploy-inference", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", root, "--background", "--approve", "--capabilities", "inference,observer", "--inference-ollama-endpoint", endpoint, "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https), "--accept-unrecoverable")
 	if err != nil {
 		return "", "", err
 	}

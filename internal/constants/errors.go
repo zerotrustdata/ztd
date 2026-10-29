@@ -114,6 +114,10 @@ var (
 
 	ErrKeyStoreInvalidSecretName = errors.New("secret name must be a single non-hidden path component")
 	ErrKeyStoreOrphanedSecrets   = errors.New("secrets are sealed under a master key the selected key store does not hold")
+	ErrKeyStoreRecoveryRequired  = errors.New("refusing to create a master key until its recovery key is saved from a terminal, or --accept-unrecoverable is set")
+	ErrKeyStoreRecoveryDeclined  = errors.New("recovery key was not confirmed; nothing was stored")
+	ErrKeyStoreRecoveryMismatch  = errors.New("recovery key does not match; nothing was stored")
+	ErrKeyStoreRecoveryConflict  = errors.New("OS key store already holds a different master key; refusing to replace it")
 	ErrKeyStoreSSHAgentUntrusted = errors.New("ssh-agent socket is served by another user")
 	ErrKeyStoreKeychainFailed    = errors.New("macOS Keychain call failed")
 
