@@ -113,11 +113,19 @@ func TestOperatorFingerprintOptions_ProvenanceIncludesRuntimePort(t *testing.T) 
 	got := operatorFingerprintOptions(opts, "/var/lib/ollama/models", "operator-user")
 
 	assert.Equal(t, auth.FingerprintOptions{
-		LocalDir:     "/var/lib/ollama/models",
-		Account:      "operator-user",
-		Port:         constants.Ports.OperatorHttp,
-		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance},
+		LocalDir: "/var/lib/ollama/models",
+		Account:  "operator-user",
+		Port:     constants.Ports.OperatorHttp,
 	}, got)
+}
+
+// Adding a capability re-enrolls the same Operator identity, so the Gateway
+// supersedes its prior lease instead of seeing a second Operator.
+func TestOperatorFingerprintOptions_IgnoreCapabilities(t *testing.T) {
+	provenance := ServeOperatorOptions{OperatorCapabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}}
+	blended := ServeOperatorOptions{OperatorCapabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}}
+
+	assert.Equal(t, operatorFingerprintOptions(provenance, "/srv/ztd", "operator-user"), operatorFingerprintOptions(blended, "/srv/ztd", "operator-user"))
 }
 
 func TestServeOperatorOptions_ZeroValue(t *testing.T) {

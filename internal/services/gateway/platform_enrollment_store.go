@@ -32,23 +32,48 @@ const operatorLeaseIdentityQuery = `SELECT id, data, created_at, updated_at FROM
  AND json_extract(data, '$.system_fingerprint') = ?
  AND json_extract(data, '$.operator_type') = ? AND json_extract(data, '$.status') != ?`
 
+const operatorLeaseActuatorKeyQuery = `SELECT id, data, created_at, updated_at FROM documents
+ WHERE collection = ? AND json_extract(data, '$.actuator_key_id') = ?
+ AND json_extract(data, '$.user_id') = ?
+ AND json_extract(data, '$.operator_type') = ? AND json_extract(data, '$.status') != ?`
+
 // FindOperatorLeases reads the non-terminated remote identities that enrollment
-// must replace. Both active and silent leases are replaced, so this lookup needs
-// no staleness derivation. Literal JSON paths use the identity index and only
+// must replace: the owner's leases with the same system fingerprint or the same
+// Actuator key. Both active and silent leases are replaced, so this lookup needs
+// no staleness derivation. Literal JSON paths use the identity indexes and only
 // matching rows are decoded. Liveness reads keep their existing owner.
-func (s *DocumentStoreService) FindOperatorLeases(ctx context.Context, ownerID, systemFingerprint string) ([]*models.Document, error) {
+func (s *DocumentStoreService) FindOperatorLeases(ctx context.Context, ownerID, systemFingerprint, actuatorKeyID string) ([]*models.Document, error) {
 	collection := marshaler.CollectionName(constants.CollectionOperators)
-	docs, err := sqliteutil.MaterializeRows(ctx, s.db, operatorLeaseIdentityQuery,
-		[]interface{}{collection, ownerID, systemFingerprint, constants.OperatorTypeRemote, constants.OperatorStatusTerminated},
-		func(row *sql.Rows) (*models.Document, error) {
-			var id, data, createdAt, updatedAt string
-			if err := row.Scan(&id, &data, &createdAt, &updatedAt); err != nil {
-				return nil, fmt.Errorf("scan operator lease: %w", err)
+	scan := func(row *sql.Rows) (*models.Document, error) {
+		var id, data, createdAt, updatedAt string
+		if err := row.Scan(&id, &data, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan operator lease: %w", err)
+		}
+		return scanDocument(collection, id, data, createdAt, updatedAt)
+	}
+	var docs []*models.Document
+	seen := map[string]bool{}
+	for _, lookup := range []struct {
+		identity string
+		query    string
+		args     []interface{}
+	}{
+		{systemFingerprint, operatorLeaseIdentityQuery, []interface{}{collection, ownerID, systemFingerprint, constants.OperatorTypeRemote, constants.OperatorStatusTerminated}},
+		{actuatorKeyID, operatorLeaseActuatorKeyQuery, []interface{}{collection, actuatorKeyID, ownerID, constants.OperatorTypeRemote, constants.OperatorStatusTerminated}},
+	} {
+		if lookup.identity == "" {
+			continue
+		}
+		matched, err := sqliteutil.MaterializeRows(ctx, s.db, lookup.query, lookup.args, scan)
+		if err != nil {
+			return nil, fmt.Errorf("find operator leases: %w", err)
+		}
+		for _, doc := range matched {
+			if !seen[doc.ID] {
+				seen[doc.ID] = true
+				docs = append(docs, doc)
 			}
-			return scanDocument(collection, id, data, createdAt, updatedAt)
-		})
-	if err != nil {
-		return nil, fmt.Errorf("find operator leases: %w", err)
+		}
 	}
 	return docs, nil
 }

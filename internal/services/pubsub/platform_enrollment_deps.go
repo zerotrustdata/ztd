@@ -30,7 +30,7 @@ type PlatformEnrollmentDocStore interface {
 	DocCreate(ctx context.Context, collection, id string, data json.RawMessage) error
 	DocSet(ctx context.Context, collection, id string, data json.RawMessage) error
 	DocGet(ctx context.Context, collection, id string) (*models.Document, error)
-	FindOperatorLeases(ctx context.Context, ownerID, systemFingerprint string) ([]*models.Document, error)
+	FindOperatorLeases(ctx context.Context, ownerID, systemFingerprint, actuatorKeyID string) ([]*models.Document, error)
 	// TransitionPlatformEnrollment is the single lifecycle writer: it applies
 	// only lifecycle edges, only from the stored state, and out of issuing
 	// only for the holder the stored lease names.

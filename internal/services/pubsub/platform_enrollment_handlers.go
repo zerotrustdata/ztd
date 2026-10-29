@@ -419,7 +419,7 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 	if err := h.deps.DocStore.RegisterOperator(ctx, operatorDoc); err != nil {
 		return nil, "", "", "", "", "", fmt.Errorf("register operator: %w", err)
 	}
-	if err := h.supersedeOperatorLeases(ctx, user.ID, req.SystemFingerprint, operatorID); err != nil {
+	if err := h.supersedeOperatorLeases(ctx, user.ID, req.SystemFingerprint, actuatorKeyHex, operatorID); err != nil {
 		return nil, "", "", "", "", "", fmt.Errorf("supersede prior operator leases: %w", err)
 	}
 	// Announce the enrollment so an already-connected browser session sees
@@ -447,12 +447,15 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 }
 
 // supersedeOperatorLeases terminates every other non-terminated remote Operator
-// document the owner holds for the same system fingerprint and deactivates its
-// Operator session. The fingerprint folds in host, directory, account, port, and
-// role, so a matching fingerprint is the same Operator identity enrolling again,
-// not a second Operator. Without this, each re-enrollment left the previous
-// lease active beside the new one and a role that must resolve to exactly one
-// Operator (provider-boundary observer, provenance, inference) became ambiguous.
+// document the owner holds for the same system fingerprint or the same Actuator
+// key and deactivates its Operator session. The fingerprint folds in host,
+// directory, account, and port, and the Actuator key lives in the Operator's
+// working directory, so either match is the same Operator identity enrolling
+// again, not a second Operator. Capabilities are not identity: a re-enrollment
+// that adds or drops a capability replaces its prior lease. Without this, each
+// re-enrollment left the previous lease active beside the new one and a role
+// that must resolve to exactly one Operator (provider-boundary observer,
+// provenance, inference) became ambiguous.
 // The new document is persisted first so a failure here leaves a redundant
 // lease, never zero; a retried issuance supersedes whatever it left behind.
 // refuseActuatorKeyChange refuses to rebind a stored Operator document to a
@@ -477,13 +480,13 @@ func (h *PlatformEnrollmentHandler) refuseActuatorKeyChange(ctx context.Context,
 	return nil
 }
 
-func (h *PlatformEnrollmentHandler) supersedeOperatorLeases(ctx context.Context, ownerID, systemFingerprint, replacementID string) error {
-	if systemFingerprint == "" {
+func (h *PlatformEnrollmentHandler) supersedeOperatorLeases(ctx context.Context, ownerID, systemFingerprint, actuatorKeyID, replacementID string) error {
+	if systemFingerprint == "" && actuatorKeyID == "" {
 		return nil
 	}
-	docs, err := h.deps.DocStore.FindOperatorLeases(ctx, ownerID, systemFingerprint)
+	docs, err := h.deps.DocStore.FindOperatorLeases(ctx, ownerID, systemFingerprint, actuatorKeyID)
 	if err != nil {
-		return fmt.Errorf("query operators for fingerprint: %w", err)
+		return fmt.Errorf("query operators for identity: %w", err)
 	}
 	reason := fmt.Sprintf("superseded by re-enrollment as operator %s", replacementID)
 	for _, doc := range docs {

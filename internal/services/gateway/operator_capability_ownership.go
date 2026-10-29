@@ -25,7 +25,7 @@ import (
 // RegisterOperator reserves singleton capabilities and the actuator identity in
 // the same transaction that persists an enrolled Operator. Offline and stopped
 // leases retain their claims until termination; a reconnect cannot steal one.
-// A replacement for the same owner's fingerprint may reuse its prior claims;
+// A replacement for the same owner's fingerprint or Actuator key may reuse its prior claims;
 // the issuance handler deactivates those superseded leases before delivery.
 func (s *DocumentStoreService) RegisterOperator(ctx context.Context, op *operatorv1.OperatorDocument) error {
 	if op == nil || op.GetId() == "" {
@@ -126,11 +126,22 @@ func isOperatorExempt(candidate, other *operatorv1.OperatorDocument) bool {
 	if other.GetOperatorType() != string(constants.OperatorTypeEmbedded) && other.GetOperatorSessionId() == "" {
 		return true
 	}
-	if candidate.GetOperatorType() == string(constants.OperatorTypeRemote) && other.GetOperatorType() == string(constants.OperatorTypeRemote) &&
-		candidate.GetSystemFingerprint() != "" && candidate.GetSystemFingerprint() == other.GetSystemFingerprint() && candidate.GetUserId() == other.GetUserId() {
+	return isSameRemoteOperator(candidate, other)
+}
+
+// isSameRemoteOperator reports whether candidate re-enrolls other's runtime: the
+// same owner's remote Operator presenting the same system fingerprint or the
+// same Actuator key. Capabilities are not identity, so a re-enrollment that adds
+// or drops a capability replaces its prior lease instead of competing with it.
+func isSameRemoteOperator(candidate, other *operatorv1.OperatorDocument) bool {
+	if candidate.GetOperatorType() != string(constants.OperatorTypeRemote) || other.GetOperatorType() != string(constants.OperatorTypeRemote) ||
+		candidate.GetUserId() != other.GetUserId() {
+		return false
+	}
+	if candidate.GetSystemFingerprint() != "" && candidate.GetSystemFingerprint() == other.GetSystemFingerprint() {
 		return true
 	}
-	return false
+	return candidate.GetActuatorKeyId() != "" && candidate.GetActuatorKeyId() == other.GetActuatorKeyId()
 }
 
 func checkActuatorKeyClaim(ctx context.Context, conn *sql.Conn, collection string, candidate *operatorv1.OperatorDocument) error {

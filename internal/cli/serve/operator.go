@@ -203,10 +203,9 @@ func operatorCapabilities(opts ServeOperatorOptions) constants.OperatorCapabilit
 
 func operatorFingerprintOptions(opts ServeOperatorOptions, localDir, account string) auth.FingerprintOptions {
 	return auth.FingerprintOptions{
-		LocalDir:     localDir,
-		Account:      account,
-		Port:         constants.Ports.OperatorHttp,
-		Capabilities: operatorCapabilities(opts),
+		LocalDir: localDir,
+		Account:  account,
+		Port:     constants.Ports.OperatorHttp,
 	}
 }
 

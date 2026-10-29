@@ -291,26 +291,15 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 	baseFp, err := GenerateSystemFingerprint(logger)
 	require.NoError(t, err)
 
-	t.Run("differentiates by capabilities", func(t *testing.T) {
-		fpInference, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference}})
+	t.Run("capabilities are not identity", func(t *testing.T) {
+		fpDir, err := GenerateOperatorFingerprint(logger, FingerprintOptions{LocalDir: "/var/run/op1"})
 		require.NoError(t, err)
 
-		fpData, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}})
+		fpDirAgain, err := GenerateOperatorFingerprint(logger, FingerprintOptions{LocalDir: "/var/run/op1"})
 		require.NoError(t, err)
 
-		fpProvenance, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}})
-		require.NoError(t, err)
-
-		fpObserver, err := GenerateOperatorFingerprint(logger, FingerprintOptions{Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}})
-		require.NoError(t, err)
-
-		assert.NotEqual(t, baseFp.Fingerprint, fpInference.Fingerprint)
-		assert.NotEqual(t, fpInference.Fingerprint, fpData.Fingerprint)
-		assert.NotEqual(t, fpInference.Fingerprint, fpProvenance.Fingerprint)
-		assert.NotEqual(t, fpInference.Fingerprint, fpObserver.Fingerprint)
-		assert.NotEqual(t, fpData.Fingerprint, fpProvenance.Fingerprint)
-		assert.NotEqual(t, fpData.Fingerprint, fpObserver.Fingerprint)
-		assert.NotEqual(t, fpProvenance.Fingerprint, fpObserver.Fingerprint)
+		assert.NotEqual(t, baseFp.Fingerprint, fpDir.Fingerprint)
+		assert.Equal(t, fpDir.Fingerprint, fpDirAgain.Fingerprint)
 	})
 
 	t.Run("differentiates by local dir", func(t *testing.T) {
@@ -343,19 +332,17 @@ func TestGenerateOperatorFingerprint_DifferentiationOnSameSystem(t *testing.T) {
 		assert.NotEqual(t, fpPort1.Fingerprint, fpPort2.Fingerprint)
 	})
 
-	t.Run("combines system info with local dir, account, port, and capabilities", func(t *testing.T) {
+	t.Run("combines system info with local dir, account, and port", func(t *testing.T) {
 		fpFull, err := GenerateOperatorFingerprint(logger, FingerprintOptions{
-			LocalDir:     "/data/ztd/operators/inference",
-			Account:      "service-inference",
-			Port:         9090,
-			Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference},
+			LocalDir: "/data/ztd/operators/inference",
+			Account:  "service-inference",
+			Port:     9090,
 		})
 		require.NoError(t, err)
 
 		assert.Equal(t, filepath.Clean("/data/ztd/operators/inference"), fpFull.LocalDir)
 		assert.Equal(t, "service-inference", fpFull.Account)
 		assert.Equal(t, 9090, fpFull.Port)
-		assert.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityInference}, fpFull.Capabilities)
 		assert.Len(t, fpFull.Fingerprint, 64)
 	})
 }
