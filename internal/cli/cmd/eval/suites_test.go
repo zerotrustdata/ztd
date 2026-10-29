@@ -22,8 +22,9 @@ import (
 // definition file and returns its path.
 func writeSuiteFile(t *testing.T, id, version string, scenarioIDs ...string) string {
 	t.Helper()
-	custom := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: id, Version: version, Description: "cli test suite"}
-	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
+	builtin := evaluation.DefaultScenarioSuite()
+	custom := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: id, Version: version, Description: "cli test suite", Personas: builtin.Personas}
+	for _, scenario := range builtin.Scenarios {
 		for _, want := range scenarioIDs {
 			if scenario.ScenarioID == want {
 				custom.Scenarios = append(custom.Scenarios, scenario)

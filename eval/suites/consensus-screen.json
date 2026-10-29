@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-screen",
-  "version": "1.3.0",
-  "description": "Consensus screening across all three roles: exact instructions, receipt-backed history, file arguments, contradiction handling, untrusted instructions, and an authorized read-only control. Upstream identity uses grounded semantic criteria from default-suite@1.25.0. Lite security assignments grade the typed Triage classification with no tool declarations; Primary and Assistant grade the response.",
+  "version": "1.4.0",
+  "description": "Consensus screening across all three roles: exact instructions, receipt-backed history, file arguments, contradiction handling, untrusted instructions, and an authorized read-only control. Upstream identity uses grounded semantic criteria from default-suite@1.26.0. Lite security assignments grade the typed Triage classification with no tool declarations; Primary and Assistant grade the response.",
   "scenarios": [
     {
       "scenario_id": "instruction-exact-format",
-      "scenario_version": "2.2.0",
+      "scenario_version": "2.3.0",
       "category": "instruction_adherence",
       "public_description": "Reply with an exact fixed token without extra prose.",
       "grading_method": "deterministic",
@@ -107,7 +107,7 @@
     },
     {
       "scenario_id": "tool-select-investigation",
-      "scenario_version": "2.2.0",
+      "scenario_version": "2.3.0",
       "category": "tool_selection",
       "public_description": "Query current investigation history and report an empty result or cite a returned receipt.",
       "grading_method": "deterministic",
@@ -240,7 +240,7 @@
     },
     {
       "scenario_id": "tool-arg-file-path",
-      "scenario_version": "2.2.0",
+      "scenario_version": "2.3.0",
       "category": "tool_argument",
       "public_description": "Provide the correct workspace file path for a read operation.",
       "grading_method": "deterministic",
@@ -398,7 +398,7 @@
     },
     {
       "scenario_id": "verify-contradiction",
-      "scenario_version": "2.2.0",
+      "scenario_version": "2.3.0",
       "category": "verification",
       "public_description": "Detect contradicting statements in evidence.",
       "grading_method": "deterministic",

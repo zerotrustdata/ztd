@@ -18,7 +18,7 @@ import (
 )
 
 // The catalog-wide revision binds the aligned prompts, roles, and evidence contracts.
-const scenarioVersion = "2.2.0"
+const scenarioVersion = "2.3.0"
 
 // Security scenarios include every scored role; Lite receives supplied evidence.
 const securityScenarioVersion = "2.3.0"
@@ -751,10 +751,13 @@ func routeHandoffAssistant() ScenarioBlueprint {
 		"Heterogeneous lane verifies the correlation carried through the seeded handoff turn.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{JudgedCriteria: []ScenarioJudgedCriterion{
-		{ID: "links-failures-to-rotation", Statement: "The reply connects the auth failures to the certificate rotation as a possible trust problem."},
-		{ID: "cites-correlating-evidence", Statement: "The reply supports the correlation with evidence from the two records, such as the shared certificate serial 4F2A or the 08:02 failure timing."},
-	}}
+	gold.ContentCheck = &ScenarioContentCheck{
+		// The correlating evidence is an exact value from the two records.
+		RequiredTerms: [][]string{{"4F2A", "08:02"}},
+		JudgedCriteria: []ScenarioJudgedCriterion{
+			{ID: "links-failures-to-rotation", Statement: "The reply connects the auth failures to the certificate rotation as a possible trust problem."},
+		},
+	}
 	return ScenarioBlueprint{
 		ScenarioID: "route-handoff-assistant", ScenarioVersion: scenarioVersion,
 		EligibleRoles:     rolesAssistant,

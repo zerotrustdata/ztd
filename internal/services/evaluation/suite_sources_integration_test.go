@@ -24,6 +24,7 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 	for _, scenario := range DefaultScenarioSuite().Scenarios {
 		current[scenario.ScenarioID] = scenario
 	}
+	versions := map[string]string{"consensus-screen": "1.4.0", "consensus-evidence": "1.4.0", "consensus-safety": "1.3.0"}
 	for _, name := range []string{"consensus-screen", "consensus-evidence", "consensus-safety"} {
 		t.Run(name, func(t *testing.T) {
 			// These are checked-in authoring sources, not runtime state.
@@ -31,7 +32,7 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 			require.NoError(t, err)
 			suite, err := DecodeScenarioSuite(body)
 			require.NoError(t, err)
-			require.Equal(t, "1.3.0", suite.Version)
+			require.Equal(t, versions[name], suite.Version)
 			catalog, _, err := MaterializeSuite(suite)
 			require.NoError(t, err)
 			require.NotEmpty(t, catalog.GetCatalogDigest())

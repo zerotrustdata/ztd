@@ -629,7 +629,7 @@ campaign per model.
 Examples:
   ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3
   ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
-  ztd eval campaigns create eval-gemma gemma4:e4b
+  ztd eval campaigns create eval-qwen35 qwen3.5:4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
   ztd eval campaigns create eval-system --formations ultra-efficient-speedster
   ztd eval campaigns create eval-system-pair --formations qwen-powerhouse,ultra-efficient-speedster

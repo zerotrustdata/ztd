@@ -745,7 +745,7 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesEachStageToItsFrozenRole(t 
 	assert.Equal(t, []string{primary.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), assistant.GetServedModelTag(), primary.GetServedModelTag(), primary.GetServedModelTag()}, tribunalWireModels(t, env))
 	bodies := executorChatBodies(t, env)
 	require.Len(t, bodies, 9)
-	assert.Contains(t, bodies[1].Messages[0].Content, "You are Axiom,")
+	assert.Contains(t, bodies[1].Messages[0].Content, "You are Axiom of the ztd Tribunal.")
 	assert.Contains(t, bodies[6].Messages[0].Content, "You are Marshal,")
 	assert.Contains(t, bodies[7].Messages[0].Content, "You are the Auditor,")
 	trace := executorLoadTrace(t, env, res)

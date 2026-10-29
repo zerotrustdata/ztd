@@ -227,7 +227,9 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 	for _, member := range calls {
 		callTier := tier
 		if IsHeterogeneousAssignment(r.req.Assignment) {
-			callTier = formationTribunalRoleForTrace(r.trace, agentModelCallPurposeTribunalPrefix+string(tribunal.StageFromProto(member.GetStage())))
+			// The live trace is unsealed (no schema version yet) and will seal
+			// as the current version, so it takes the per-stage slot.
+			callTier = formationTribunalRoleForPurpose(agentModelCallPurposeTribunalPrefix + string(tribunal.StageFromProto(member.GetStage())))
 		}
 		call := AgentModelCall{
 			Purpose:    agentModelCallPurposeTribunalPrefix + string(tribunal.StageFromProto(member.GetStage())),

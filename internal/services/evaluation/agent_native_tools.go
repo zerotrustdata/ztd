@@ -317,6 +317,29 @@ func (a *agentToolArguments) EventReceiptListScopeFailure(investigationID string
 	return agentToolValidationFailure(a.tool, problems)
 }
 
+// WorkspacePathFailure is the model-visible rejection of a read_file,
+// search_file or search_directory path that resolves outside the attempt
+// workspace. A scored cell reads only its own fixtures, so the call fails
+// before dispatch and binds no governed action. Real Operators keep host-wide
+// reads; this confinement belongs to the evaluation harness only.
+func (a *agentToolArguments) WorkspacePathFailure(workspace ScenarioWorkspace) *agentToolFailure {
+	var value string
+	switch contract := a.contract.(type) {
+	case typedAgentToolContract[mcp.FileReadRequest]:
+		value = contract.value.Path
+	case typedAgentToolContract[mcp.SearchFileRequest]:
+		value = contract.value.Path
+	case typedAgentToolContract[mcp.SearchDirectoryRequest]:
+		value = contract.value.Path
+	default:
+		return nil
+	}
+	if workspace.Root != "" && pathWithin(workspace.Resolve(value), workspace.Root) {
+		return nil
+	}
+	return agentToolValidationFailure(a.tool, []string{"path\n  Input should be inside the investigation workspace " + workspace.Root})
+}
+
 func (a *agentToolArguments) CanonicalJSON() (string, error) {
 	if a.tool != constants.MCPToolEventReceiptList {
 		return a.rawJSON, nil

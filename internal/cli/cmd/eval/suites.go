@@ -261,15 +261,16 @@ func writeSuite(cmd *cobra.Command, deps nativeEvalDeps, source string, apply fu
 	if err != nil {
 		return err
 	}
-	catalog, _, err := evaluation.MaterializeSuite(def)
-	if err != nil {
-		return err
-	}
 	_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 	if err != nil {
 		return err
 	}
+	// The store rejects built-in IDs before validating content.
 	if err := apply(evaluation.NewStore(fileSvc), def); err != nil {
+		return err
+	}
+	catalog, _, err := evaluation.MaterializeSuite(def)
+	if err != nil {
 		return err
 	}
 	payload := suiteChangeJSON{ID: def.ID, Version: def.Version, ScenarioCount: len(def.Scenarios), CatalogDigest: catalog.GetCatalogDigest()}

@@ -144,7 +144,7 @@ func TestRealStackScenarioGrade_HomogeneousLiteNeverDispatchesToolsOrInterrogato
 			trace := executorLoadTrace(t, env, result)
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			require.Len(t, trace.ModelCalls, 1, "Triage runs once and never dispatches Interrogator")
-			assert.Equal(t, "turn", trace.ModelCalls[0].Purpose)
+			assert.True(t, trace.ModelCalls[0].IsTurn(), "purpose=%s", trace.ModelCalls[0].Purpose)
 			assert.Equal(t, 1, trace.ModelCalls[0].LoopTurn)
 			assert.Equal(t, tc.toolCount, trace.ModelCalls[0].ToolCallCount)
 			assert.Empty(t, trace.ToolCalls, "Triage never dispatches model tool calls")

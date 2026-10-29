@@ -11,6 +11,12 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.6.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.6.0 | 2026-10-29 | Agent personas and evaluation integrity: typed frozen personas; Tribunal stage tiers and Lite L2 votes; Lite Triage and Interrogator; evidence-backed tool-calling probe; no-masking evaluation prompts; Linux keystore recovery. | [v1.6.0](docs/release_notes/v1.6.x/v1.6.0.md) |
+
 ## v1.5.x
 
 | Version | Date | Description | Notes |

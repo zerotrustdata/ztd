@@ -108,11 +108,11 @@ func (s *Store) CreateSuite(ctx context.Context, def ScenarioSuite) error {
 	if err := s.requireSuiteStore(); err != nil {
 		return err
 	}
-	if _, _, err := MaterializeSuite(def); err != nil {
-		return err
-	}
 	if reservedSuiteID(def.ID) {
 		return fmt.Errorf("evaluation: create suite %q: %w", def.ID, constants.ErrEvaluationSuiteBuiltin)
+	}
+	if _, _, err := MaterializeSuite(def); err != nil {
+		return err
 	}
 	exists, err := s.files.FileExists(ctx, suitePath(def.ID))
 	if err != nil {

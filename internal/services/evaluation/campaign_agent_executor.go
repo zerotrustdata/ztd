@@ -1144,6 +1144,9 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		}
 		r.injectEventReceiptListDefaults(&args)
 	}
+	if failure := args.WorkspacePathFailure(r.workspace); failure != nil {
+		return r.fail(record, *failure)
+	}
 	var argsJSON []byte
 	if request.Shell != nil {
 		shellReq := *request.Shell

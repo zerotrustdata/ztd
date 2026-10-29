@@ -95,3 +95,24 @@ func TestEvaluateContentCheck_MaskedEllipsesDoNotInflateSentenceCount(t *testing
 	require.False(t, ok)
 	require.Contains(t, detail, "sentence count 2 exceeds maximum 1")
 }
+
+// The handoff correlation must cite an exact value from the two records: the
+// certificate serial or the failure time. Only the trust-problem link is
+// judged.
+func TestRouteHandoffAssistant_CorrelatingEvidenceIsDeterministic(t *testing.T) {
+	check := *routeHandoffAssistant().Gold.ContentCheck
+	require.Len(t, check.JudgedCriteria, 1)
+	require.Equal(t, "links-failures-to-rotation", check.JudgedCriteria[0].ID)
+
+	for _, answer := range []string{
+		"Both records name serial 4F2A, so the failures are consistent with the rotation; this is not proven.",
+		"The handshake failures start at 08:02, two minutes after the rotation; the cause is not proven.",
+	} {
+		ok, detail := evaluateContentCheck(answer, check, ScenarioWorkspace{})
+		require.True(t, ok, "%s: %s", answer, detail)
+	}
+
+	ok, detail := evaluateContentCheck("The failures look related to the certificate rotation, though the cause is not proven.", check, ScenarioWorkspace{})
+	require.False(t, ok)
+	require.Contains(t, detail, "missing required term")
+}

@@ -342,7 +342,7 @@ func TestRealStackScenarioGrade_CommandNameAnswerIsGradedOnItsContent(t *testing
 				scenarioID: "tech-error-diagnosis", suffix: "deploy-grade",
 				replies: agentThenVerdicts(tc.answer, criterionVerdictReply(tc.met, "scripted verdict")),
 			})
-			require.Equal(t, 1, env.scheduledCount, "the Lite-only scenario schedules one assignment")
+			require.Equal(t, 2, env.scheduledCount, "Sage and Dash each run the command-name scenario")
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
