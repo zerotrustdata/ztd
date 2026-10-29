@@ -70,8 +70,8 @@ jobs:
           trap 'make down || true; ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
           ssh-keygen -q -t ed25519 -N '' -f "$scratch/agent_key"
           ssh-add -q "$scratch/agent_key"
-          make quickstart
-          make quickstart
+          make quickstart QUICKSTART_ARGS='-- --accept-unrecoverable'
+          make quickstart QUICKSTART_ARGS='-- --accept-unrecoverable'
           make status
           make down
           trap - EXIT
