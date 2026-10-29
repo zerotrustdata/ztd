@@ -234,6 +234,9 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 }
 
 func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequest) bool {
+	if liteTriageCell(req) {
+		return false
+	}
 	if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
 		return true
 	}
@@ -525,6 +528,14 @@ func (r *agentRun) loop(ctx context.Context) error {
 		modelCallID := call.ProviderAttemptID
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if r.persona.ID == agentpersona.IDTriage {
+			// Triage runs once at initial ingest. Its signed first result is the
+			// complete classifier output; it never asks the Interrogator, invokes
+			// tools, or re-enters the model loop.
+			r.trace.FinalOutput = text
+			r.trace.TerminalClassification = classifyTerminalState(r.trace)
+			return nil
 		}
 
 		// Only the Interrogator asks: a reasoner's clarification signal

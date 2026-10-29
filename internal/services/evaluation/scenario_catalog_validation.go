@@ -99,14 +99,18 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	if blueprint.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE || slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "semantic_grade") {
 		return scenarioContractError(blueprint, "scenario requires a semantic judge, which no executor provides")
 	}
-	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) {
+	triageOnly := len(blueprint.EligibleRoles) == 1 && blueprint.EligibleRoles[0] == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE &&
+		blueprint.Gold.Players != nil && blueprint.Gold.Players.Triage != nil
+	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
-	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
-		return err
-	}
-	if err := validateJudgedCriteria(blueprint, blueprint.Gold.ContentCheck); err != nil {
-		return err
+	if blueprint.Gold.ContentCheck != nil {
+		if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
+			return err
+		}
+		if err := validateJudgedCriteria(blueprint, blueprint.Gold.ContentCheck); err != nil {
+			return err
+		}
 	}
 	if err := validateArgumentValidators(blueprint, catalog); err != nil {
 		return err

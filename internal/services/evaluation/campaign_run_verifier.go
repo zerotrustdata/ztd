@@ -106,12 +106,13 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 	}
 	var formationSet *HeterogeneousStackSet
 	executionBinding := CampaignExecutionBinding{
-		ModelRegistryDigest:     spec.GetModelRegistryDigest(),
-		ModelRegistry:           InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
-		ModelVariants:           spec.GetModelRegistry(),
-		FormationStackSetDigest: spec.GetFormationStackSetDigest(),
-		JudgeVariant:            spec.GetJudgeVariant(),
-		Personas:                catalog.GetPersonas(),
+		ModelRegistryDigest:      spec.GetModelRegistryDigest(),
+		ModelRegistry:            InferenceVariantsFromEvalRegistry(spec.GetModelRegistry()),
+		ModelVariants:            spec.GetModelRegistry(),
+		FormationStackSetDigest:  spec.GetFormationStackSetDigest(),
+		JudgeVariant:             spec.GetJudgeVariant(),
+		Personas:                 catalog.GetPersonas(),
+		ToolCallingProbeRequired: catalog.GetToolCallingProbeRequired(),
 	}
 	switch run.GetLane() {
 	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:
@@ -141,6 +142,8 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 		failures = append(failures, population.FailureReasons...)
 	}
 	verifiedCount := 0
+	probes, probeFailures := verifiedRunToolCallingProbes(ctx, store, run, spec)
+	failures = append(failures, probeFailures...)
 	for _, assignment := range assignments {
 		if assignment == nil {
 			continue
@@ -195,6 +198,31 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 		scenarioTools, err := scenarioToolsForAssignment(catalog, assignment)
 		if err != nil {
 			failures = append(failures, err.Error())
+			continue
+		}
+		probeReq := AssignmentExecutionRequest{Assignment: assignment, ScenarioTools: scenarioTools, Binding: executionBinding}
+		var probe *evalv1.ModelToolCallingProbe
+		if catalog.GetToolCallingProbeRequired() && assignmentDeclaresTools(probeReq) {
+			variant, variantErr := assignmentToolCallingVariant(probeReq)
+			if variantErr != nil {
+				failures = append(failures, variantErr.Error())
+				continue
+			}
+			probe = probes[variant.GetVariantId()]
+			if probe == nil {
+				failures = append(failures, fmt.Sprintf("assignment %s is missing a verified run tool-calling probe", assignment.GetAssignmentId()))
+				continue
+			}
+		}
+		if probe.GetObservation().GetOutcome() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL {
+			expected, err := toolCallingExclusionResult(assignment, probe.GetEvidenceRef(), result.GetCompletedAt())
+			if err != nil {
+				return nil, err
+			}
+			if agentTrace != nil || !proto.Equal(expected, result) || assignment.GetLifecycleStatus() != expected.GetLifecycleStatus() {
+				failures = append(failures, fmt.Sprintf("assignment %s differs from its probe-backed tool-calling exclusion", assignment.GetAssignmentId()))
+			}
+			verifiedCount++
 			continue
 		}
 		assignmentReport, err := v.assignmentVerifier.Verify(ctx, CampaignAssignmentVerificationRequest{

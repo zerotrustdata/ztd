@@ -174,9 +174,9 @@ type TribunalIntentRequest struct {
 	// merges timeout_seconds into the reviewed RunShellCommandArguments.
 	ExecutionId    string `protobuf:"bytes,11,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	TimeoutSeconds int32  `protobuf:"varint,12,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
-	// member_inference is the template for every member call. The Gateway sets
-	// messages, provider_attempt_id and the role's response_format schema per
-	// call; the template must leave messages, tools, provider_attempt_id,
+	// member_inference is the template for generation member calls. The Gateway
+	// sets messages, provider_attempt_id and response_format per call; every
+	// stage template must leave messages, tools, provider_attempt_id,
 	// acting_app_id, stream and response_format empty.
 	MemberInference *v1.InferenceDispatchRequest `protobuf:"bytes,13,opt,name=member_inference,json=memberInference,proto3" json:"member_inference,omitempty"`
 	// provider_attempt_prefix names the member calls: call n (from 1, in
@@ -187,8 +187,20 @@ type TribunalIntentRequest struct {
 	Tier v11.ModelCampaignRole `protobuf:"varint,15,opt,name=tier,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"tier,omitempty"`
 	// step_start_index numbers the persona steps from step_start_index + 1.
 	StepStartIndex uint32 `protobuf:"varint,16,opt,name=step_start_index,json=stepStartIndex,proto3" json:"step_start_index,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// marshal_inference and auditor_inference select their stage's stack slot.
+	// Formation callers bind Lite members, Assistant Marshal and Primary Auditor;
+	// homogeneous callers bind all stages to the candidate model.
+	MarshalInference *v1.InferenceDispatchRequest `protobuf:"bytes,17,opt,name=marshal_inference,json=marshalInference,proto3" json:"marshal_inference,omitempty"`
+	AuditorInference *v1.InferenceDispatchRequest `protobuf:"bytes,18,opt,name=auditor_inference,json=auditorInference,proto3" json:"auditor_inference,omitempty"`
+	// personas freezes the expected authoring and vote persona identities. The
+	// Gateway compares these against its build-time registry before generating
+	// any call, preventing stale persona text from silently authoring an intent.
+	Personas []*v11.AgentPersonaBinding `protobuf:"bytes,19,rep,name=personas,proto3" json:"personas,omitempty"`
+	// homogeneous means all stage templates bind the same designated campaign
+	// candidate. When false, templates must match each persona's native tier.
+	Homogeneous   bool `protobuf:"varint,20,opt,name=homogeneous,proto3" json:"homogeneous,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TribunalIntentRequest) Reset() {
@@ -331,6 +343,34 @@ func (x *TribunalIntentRequest) GetStepStartIndex() uint32 {
 		return x.StepStartIndex
 	}
 	return 0
+}
+
+func (x *TribunalIntentRequest) GetMarshalInference() *v1.InferenceDispatchRequest {
+	if x != nil {
+		return x.MarshalInference
+	}
+	return nil
+}
+
+func (x *TribunalIntentRequest) GetAuditorInference() *v1.InferenceDispatchRequest {
+	if x != nil {
+		return x.AuditorInference
+	}
+	return nil
+}
+
+func (x *TribunalIntentRequest) GetPersonas() []*v11.AgentPersonaBinding {
+	if x != nil {
+		return x.Personas
+	}
+	return nil
+}
+
+func (x *TribunalIntentRequest) GetHomogeneous() bool {
+	if x != nil {
+		return x.Homogeneous
+	}
+	return false
 }
 
 // TribunalMemberCall is one governed INFERENCE dispatch made by the Tribunal.
@@ -632,7 +672,7 @@ var File_ztd_tribunal_v1_tribunal_proto protoreflect.FileDescriptor
 
 const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\n" +
-	"\x1eztd/tribunal/v1/tribunal.proto\x12\x0fztd.tribunal.v1\x1a\x16ztd/eval/v1/eval.proto\x1a\x1eztd/operator/v1/operator.proto\"\x9c\x05\n" +
+	"\x1eztd/tribunal/v1/tribunal.proto\x12\x0fztd.tribunal.v1\x1a\x16ztd/eval/v1/eval.proto\x1a\x1eztd/operator/v1/operator.proto\"\xac\a\n" +
 	"\x15TribunalIntentRequest\x12\x18\n" +
 	"\arequest\x18\x01 \x01(\tR\arequest\x12\x1e\n" +
 	"\n" +
@@ -652,7 +692,11 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x10member_inference\x18\r \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x0fmemberInference\x126\n" +
 	"\x17provider_attempt_prefix\x18\x0e \x01(\tR\x15providerAttemptPrefix\x122\n" +
 	"\x04tier\x18\x0f \x01(\x0e2\x1e.ztd.eval.v1.ModelCampaignRoleR\x04tier\x12(\n" +
-	"\x10step_start_index\x18\x10 \x01(\rR\x0estepStartIndex\"\xdb\x03\n" +
+	"\x10step_start_index\x18\x10 \x01(\rR\x0estepStartIndex\x12V\n" +
+	"\x11marshal_inference\x18\x11 \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x10marshalInference\x12V\n" +
+	"\x11auditor_inference\x18\x12 \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x10auditorInference\x12<\n" +
+	"\bpersonas\x18\x13 \x03(\v2 .ztd.eval.v1.AgentPersonaBindingR\bpersonas\x12 \n" +
+	"\vhomogeneous\x18\x14 \x01(\bR\vhomogeneous\"\xdb\x03\n" +
 	"\x12TribunalMemberCall\x124\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\x1e.ztd.tribunal.v1.TribunalStageR\x05stage\x12\x18\n" +
 	"\apersona\x18\x02 \x01(\tR\apersona\x12\x14\n" +
@@ -715,37 +759,41 @@ var file_ztd_tribunal_v1_tribunal_proto_goTypes = []any{
 	(*TribunalIntentResult)(nil),        // 4: ztd.tribunal.v1.TribunalIntentResult
 	(*v1.InferenceDispatchRequest)(nil), // 5: ztd.operator.v1.InferenceDispatchRequest
 	(v11.ModelCampaignRole)(0),          // 6: ztd.eval.v1.ModelCampaignRole
-	(*v1.InferenceResult)(nil),          // 7: ztd.operator.v1.InferenceResult
-	(*v1.EventReceipt)(nil),             // 8: ztd.operator.v1.EventReceipt
-	(*v1.InferenceDispatchFailure)(nil), // 9: ztd.operator.v1.InferenceDispatchFailure
-	(*v1.RunShellCommandArguments)(nil), // 10: ztd.operator.v1.RunShellCommandArguments
-	(*v1.ConsensusVoteInference)(nil),   // 11: ztd.operator.v1.ConsensusVoteInference
-	(*v11.AgentStep)(nil),               // 12: ztd.eval.v1.AgentStep
-	(*v1.GovernedDispatchResult)(nil),   // 13: ztd.operator.v1.GovernedDispatchResult
-	(*v1.GovernanceRejection)(nil),      // 14: ztd.operator.v1.GovernanceRejection
-	(*v1.IngressRefusal)(nil),           // 15: ztd.operator.v1.IngressRefusal
+	(*v11.AgentPersonaBinding)(nil),     // 7: ztd.eval.v1.AgentPersonaBinding
+	(*v1.InferenceResult)(nil),          // 8: ztd.operator.v1.InferenceResult
+	(*v1.EventReceipt)(nil),             // 9: ztd.operator.v1.EventReceipt
+	(*v1.InferenceDispatchFailure)(nil), // 10: ztd.operator.v1.InferenceDispatchFailure
+	(*v1.RunShellCommandArguments)(nil), // 11: ztd.operator.v1.RunShellCommandArguments
+	(*v1.ConsensusVoteInference)(nil),   // 12: ztd.operator.v1.ConsensusVoteInference
+	(*v11.AgentStep)(nil),               // 13: ztd.eval.v1.AgentStep
+	(*v1.GovernedDispatchResult)(nil),   // 14: ztd.operator.v1.GovernedDispatchResult
+	(*v1.GovernanceRejection)(nil),      // 15: ztd.operator.v1.GovernanceRejection
+	(*v1.IngressRefusal)(nil),           // 16: ztd.operator.v1.IngressRefusal
 }
 var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	5,  // 0: ztd.tribunal.v1.TribunalIntentRequest.member_inference:type_name -> ztd.operator.v1.InferenceDispatchRequest
 	6,  // 1: ztd.tribunal.v1.TribunalIntentRequest.tier:type_name -> ztd.eval.v1.ModelCampaignRole
-	0,  // 2: ztd.tribunal.v1.TribunalMemberCall.stage:type_name -> ztd.tribunal.v1.TribunalStage
-	7,  // 3: ztd.tribunal.v1.TribunalMemberCall.result:type_name -> ztd.operator.v1.InferenceResult
-	8,  // 4: ztd.tribunal.v1.TribunalMemberCall.receipt:type_name -> ztd.operator.v1.EventReceipt
-	9,  // 5: ztd.tribunal.v1.TribunalMemberCall.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
-	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	1,  // 7: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
-	10, // 8: ztd.tribunal.v1.TribunalIntentResult.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
-	11, // 9: ztd.tribunal.v1.TribunalIntentResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	12, // 10: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
-	3,  // 11: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
-	13, // 12: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
-	14, // 13: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
-	15, // 14: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	5,  // 2: ztd.tribunal.v1.TribunalIntentRequest.marshal_inference:type_name -> ztd.operator.v1.InferenceDispatchRequest
+	5,  // 3: ztd.tribunal.v1.TribunalIntentRequest.auditor_inference:type_name -> ztd.operator.v1.InferenceDispatchRequest
+	7,  // 4: ztd.tribunal.v1.TribunalIntentRequest.personas:type_name -> ztd.eval.v1.AgentPersonaBinding
+	0,  // 5: ztd.tribunal.v1.TribunalMemberCall.stage:type_name -> ztd.tribunal.v1.TribunalStage
+	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.result:type_name -> ztd.operator.v1.InferenceResult
+	9,  // 7: ztd.tribunal.v1.TribunalMemberCall.receipt:type_name -> ztd.operator.v1.EventReceipt
+	10, // 8: ztd.tribunal.v1.TribunalMemberCall.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
+	9,  // 9: ztd.tribunal.v1.TribunalMemberCall.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
+	1,  // 10: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
+	11, // 11: ztd.tribunal.v1.TribunalIntentResult.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
+	12, // 12: ztd.tribunal.v1.TribunalIntentResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	13, // 13: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
+	3,  // 14: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
+	14, // 15: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
+	15, // 16: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
+	16, // 17: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_ztd_tribunal_v1_tribunal_proto_init() }

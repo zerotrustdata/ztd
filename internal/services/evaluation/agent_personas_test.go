@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,11 @@ func testCatalogPersonas(t *testing.T) []*evalv1.AgentPersonaBinding {
 
 func TestCampaignRolePersona_EveryScoredRoleRunsANamedPersona(t *testing.T) {
 	bindings := testCatalogPersonas(t)
+	for _, id := range []string{agentpersona.IDAxiom, agentpersona.IDConcord, agentpersona.IDVariance, agentpersona.IDPragma, agentpersona.IDNemesis} {
+		binding := personaBinding(bindings, id)
+		require.NotNil(t, binding)
+		assert.NotEmpty(t, binding.GetVoteDigest(), "vote prompt digest for %s", id)
+	}
 	for role, want := range map[evalv1.ModelCampaignRole]string{
 		evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:   agentpersona.IDSage,
 		evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT: agentpersona.IDDash,
@@ -46,7 +52,7 @@ func TestCampaignRolePersona_EveryScoredRoleRunsANamedPersona(t *testing.T) {
 
 func TestFrozenRolePersona_FailsClosedOnMissingOrStaleBinding(t *testing.T) {
 	_, err := frozenRolePersona(nil, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
-	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "a catalog frozen before personas cannot execute")
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "a catalog frozen before personas cannot execute")
 
 	stale := testCatalogPersonas(t)
 	for _, binding := range stale {
@@ -55,7 +61,16 @@ func TestFrozenRolePersona_FailsClosedOnMissingOrStaleBinding(t *testing.T) {
 		}
 	}
 	_, err = frozenRolePersona(stale, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
-	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "an edited persona needs a fresh campaign")
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "an edited persona needs a fresh campaign")
+
+	staleVote := testCatalogPersonas(t)
+	for _, binding := range staleVote {
+		if binding.GetPersonaId() == agentpersona.IDAxiom {
+			binding.VoteDigest = "0000000000000000000000000000000000000000000000000000000000000000"
+		}
+	}
+	_, err = frozenPersona(staleVote, agentpersona.IDAxiom)
+	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "an edited vote rendering needs a fresh catalog binding")
 }
 
 func TestBuildScenarioCatalog_FreezesEveryPersonaIntoTheDigest(t *testing.T) {
@@ -116,26 +131,41 @@ func TestMaterializeSuite_RejectsStaleOrMissingPersonas(t *testing.T) {
 	def := customSuite(t, "persona-suite", "1.0.0", "instruction-exact-format")
 	_, _, err := MaterializeSuite(def)
 	require.NoError(t, err)
+	for _, persona := range def.Personas {
+		if slices.Contains([]string{agentpersona.IDAxiom, agentpersona.IDConcord, agentpersona.IDVariance, agentpersona.IDPragma, agentpersona.IDNemesis}, persona.ID) {
+			assert.NotEmpty(t, persona.VoteDigest, "suite persona %s must freeze its vote rendering", persona.ID)
+		}
+	}
 
 	missing := def
 	missing.Personas = nil
 	_, _, err = MaterializeSuite(missing)
-	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch)
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch)
 
 	stale := def
 	stale.Personas = append([]SuitePersona(nil), def.Personas...)
 	stale.Personas[0].Version = "0.9.0"
 	_, _, err = MaterializeSuite(stale)
-	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "a persona edit requires re-exporting the suite under a new version")
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "a persona edit requires re-exporting the suite under a new version")
+
+	staleVote := def
+	staleVote.Personas = append([]SuitePersona(nil), def.Personas...)
+	for i := range staleVote.Personas {
+		if staleVote.Personas[i].ID == agentpersona.IDNemesis {
+			staleVote.Personas[i].VoteDigest = "stale"
+		}
+	}
+	_, _, err = MaterializeSuite(staleVote)
+	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "a vote-rendering edit requires re-exporting the suite")
 }
 
 // builtinSuitePersonaPins records the persona set each built-in suite version
 // was released with. A persona edit fails this test until every built-in suite
 // is bumped and its new version is pinned here; never re-pin an old version.
 var builtinSuitePersonaPins = map[string]string{
-	DefaultSuiteID + "@" + DefaultSuiteVersion:               "5428673268d88af62b1b90b48e7104818fe7327bfb2c1a7b5fa1e674c7136b20",
-	SmokeSuiteID + "@" + SmokeSuiteVersion:                   "5428673268d88af62b1b90b48e7104818fe7327bfb2c1a7b5fa1e674c7136b20",
-	InvestigationsSuiteID + "@" + InvestigationsSuiteVersion: "5428673268d88af62b1b90b48e7104818fe7327bfb2c1a7b5fa1e674c7136b20",
+	DefaultSuiteID + "@1.25.0":        "52b0de054a1d2ccad403d4afe40ba7f8c96807c29a60d6aea5bde43cd933b599",
+	SmokeSuiteID + "@1.24.0":          "52b0de054a1d2ccad403d4afe40ba7f8c96807c29a60d6aea5bde43cd933b599",
+	InvestigationsSuiteID + "@1.24.0": "52b0de054a1d2ccad403d4afe40ba7f8c96807c29a60d6aea5bde43cd933b599",
 }
 
 func TestBuiltinSuites_PersonaChangeRequiresSuiteVersionBump(t *testing.T) {

@@ -71,10 +71,11 @@ func buildSuiteCatalog(ref *compliancev1.VersionedReference, blueprints []Scenar
 		return nil, nil, fmt.Errorf("evaluation: build suite %s catalog: %w", ref.GetId(), err)
 	}
 	catalog := &evalv1.EvaluationScenarioCatalog{
-		SchemaVersion: CampaignSchemaVersion,
-		CatalogRef:    ref,
-		Scenarios:     scenarios,
-		Personas:      personas,
+		SchemaVersion:            CampaignSchemaVersion,
+		CatalogRef:               ref,
+		Scenarios:                scenarios,
+		Personas:                 personas,
+		ToolCallingProbeRequired: true,
 	}
 	digest, err := ComputeScenarioCatalogDigest(catalog)
 	if err != nil {

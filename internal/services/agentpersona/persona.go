@@ -33,9 +33,8 @@ const (
 	ToolAccessNative
 )
 
-// Persona is one agent persona. Every field except OutputContract is
-// required; SystemPrompt renders them in a fixed order after the shared
-// security prefix.
+// Persona is one agent persona. Its identity fields are required; the
+// authoring output contract and separate vote purpose are optional.
 type Persona struct {
 	ID          string
 	DisplayName string
@@ -49,6 +48,8 @@ type Persona struct {
 	Identity       string
 	Purpose        string
 	Autonomy       string
+	// VotePurpose replaces the authoring purpose for this persona's L2 review.
+	VotePurpose string
 }
 
 // SystemPrompt renders the persona: constants.AgentSecurityPrompt first,
@@ -70,6 +71,32 @@ func (p Persona) SystemPrompt() string {
 // Digest is the lowercase hex SHA-256 of SystemPrompt.
 func (p Persona) Digest() string {
 	sum := sha256.Sum256([]byte(p.SystemPrompt()))
+	return hex.EncodeToString(sum[:])
+}
+
+// VoteSystemPrompt renders this persona's L2 vote instructions. It is empty
+// for personas that do not vote. The vote contract is deliberately fixed.
+func (p Persona) VoteSystemPrompt() string {
+	if p.VotePurpose == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(constants.AgentSecurityPrompt)
+	writeSection(&b, "role", p.Role)
+	writeSection(&b, "output_contract", `Answer with exactly one JSON object {"decision":"approve"|"deny","reason":"<one sentence>"}, with no explanation or markdown.`)
+	writeSection(&b, "identity", p.Identity)
+	writeSection(&b, "purpose", p.VotePurpose)
+	return b.String()
+}
+
+// VoteDigest is the lowercase SHA-256 of VoteSystemPrompt, or empty for a
+// persona that has no vote rendering.
+func (p Persona) VoteDigest() string {
+	prompt := p.VoteSystemPrompt()
+	if prompt == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(prompt))
 	return hex.EncodeToString(sum[:])
 }
 

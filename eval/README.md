@@ -24,7 +24,7 @@ The inventory file is the authoritative model list and records the provider tags
 
 ## Consensus qualification
 
-The custom suites originated from `default-suite@1.22.0`. `consensus-screen@1.1.0` and `consensus-evidence@1.1.0` update the affected scenarios from `default-suite@1.23.0`: searches require complete fixture evidence and judged interpretation, upstream identity is judged by meaning and prompts no longer ask for masked names, and missing-file recovery requires a concrete safe next check. `consensus-screen@1.2.0` and `consensus-safety@1.2.0` include Lite in their security scenarios from `default-suite@1.24.0`; Lite receives supplied file evidence without tools and uses the same security rules as Primary, Assistant, and Tribunal. All three consensus suites now use gold schema `1.3.0` under suite version `1.2.0`. Their prior campaign versions remain frozen. `consensus-screen` provides a short comparison across Primary, Assistant, and Lite. `consensus-safety` pairs seven refusal and bypass-resistance scenarios with `security-readonly-control`, so refusing every request cannot pass. `consensus-evidence` exercises allowed observations, receipt-backed history, argument correction, and evidence interpretation. These custom suites require no successful shell mutation, which the built-in default catalog excludes under L2-enforcing postures.
+The checked-in `consensus-screen`, `consensus-safety`, and `consensus-evidence` suites are `1.3.0`, refreshed from `default-suite@1.25.0` with frozen persona versions, authoring digests, and vote digests. Lite cells grade the typed Triage classification; Primary and Assistant cells grade the requested answer or security response. `consensus-screen` provides a short comparison across the three roles. `consensus-safety` pairs seven refusal and bypass-resistance scenarios with `security-readonly-control`, so refusing every request cannot pass. `consensus-evidence` exercises allowed observations, receipt-backed history, argument correction, and evidence interpretation. These custom suites require no successful shell mutation, which the built-in default catalog excludes under L2-enforcing postures. Earlier campaign versions retain their frozen fixtures and grades.
 
 The prepared October 28 program covers six additional registry models with distinct model digests. Each has a screening campaign and a full `default-suite@1.22.0` campaign. All campaigns use one repetition with fresh investigations and the frozen `gemma4:e4b` judge. The judge is distinct from every subject. The Gateway's bound L2 consensus remains independent of the scored model or formation.
 
@@ -110,8 +110,9 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 # manual `ollama create` from their Hugging Face GGUF.
 
 # 1. Freeze provider inventory into runtime registry. --probe-capabilities records
-#    governed capability observations for diagnostics. Probes never exclude a
-#    model or remove tools: every evaluation records the current provider response.
+#    governed capability observations for diagnostics. New campaign runs also
+#    freeze their own signed tool-call probe before the first tool-bearing cell.
+#    A failed structured-call probe excludes tool cells; answer-only cells still run.
 ./ztd eval models freeze --probe-capabilities
 
 ./ztd eval models list
@@ -149,7 +150,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval campaigns create` | Create a frozen campaign definition over one registry model |
 | `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags. Each run freezes the live Gateway posture and consensus binding when it starts and prints them |
 | `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
-| `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model that shares a digest with a queued model or with one earlier in rollout order (an alias). Capability probes never exclude a model |
+| `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model that shares a digest with a queued model or with one earlier in rollout order (an alias). Inventory capability observations do not exclude queue entries. Runs use their own receipt-backed tool-call probe to gate tool-bearing assignments |
 | `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models. A run in which the provider failed every assignment fails the entry as `provider_failure (<class>)`, for example `(capability_unsupported)` for a model without tool support; stopping a run ends the batch and leaves the entry pending. `--gate-smoke` screens with the smoke suite first; `--promote-on-pass` follows a smoke pass with the full run. The batch holds the queue lock: `rollout add`/`remove`/`retry`/`skip` fail until it ends. Model-driven runs refuse any Data Operator whose working directory is, contains, or sits inside the project, except a throwaway Operator directly under `.ztd/operators/<name>` (the embedded Operator included) (INV-EVAL-CAMP-32) |
 | `ztd eval rollout list` | Inspect queue entries |
 | `ztd eval rollout next` | Show the next pending model |

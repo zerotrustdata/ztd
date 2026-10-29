@@ -41,9 +41,9 @@ message TribunalIntentRequest {
   string execution_id = 11;
   int32 timeout_seconds = 12;
 
-  // member_inference is the template for every member call. The Gateway sets
-  // messages, provider_attempt_id and the role's response_format schema per
-  // call; the template must leave messages, tools, provider_attempt_id,
+  // member_inference is the template for generation member calls. The Gateway
+  // sets messages, provider_attempt_id and response_format per call; every
+  // stage template must leave messages, tools, provider_attempt_id,
   // acting_app_id, stream and response_format empty.
   ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
   // provider_attempt_prefix names the member calls: call n (from 1, in
@@ -54,6 +54,18 @@ message TribunalIntentRequest {
   ztd.eval.v1.ModelCampaignRole tier = 15;
   // step_start_index numbers the persona steps from step_start_index + 1.
   uint32 step_start_index = 16;
+  // marshal_inference and auditor_inference select their stage's stack slot.
+  // Formation callers bind Lite members, Assistant Marshal and Primary Auditor;
+  // homogeneous callers bind all stages to the candidate model.
+  ztd.operator.v1.InferenceDispatchRequest marshal_inference = 17;
+  ztd.operator.v1.InferenceDispatchRequest auditor_inference = 18;
+  // personas freezes the expected authoring and vote persona identities. The
+  // Gateway compares these against its build-time registry before generating
+  // any call, preventing stale persona text from silently authoring an intent.
+  repeated ztd.eval.v1.AgentPersonaBinding personas = 19;
+  // homogeneous means all stage templates bind the same designated campaign
+  // candidate. When false, templates must match each persona's native tier.
+  bool homogeneous = 20;
 }
 
 // TribunalStage is the deliberation stage of one member call.

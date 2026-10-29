@@ -52,7 +52,8 @@ func TestTribunalInferenceCallsCarrySharedSecurityPrompts(t *testing.T) {
 func TestConsensusVotePromptsCarrySharedSecurityRulesForEveryMember(t *testing.T) {
 	for _, member := range AllMembers {
 		t.Run(string(member), func(t *testing.T) {
-			system, user := ConsensusVotePrompt(member, ConsensusSubject{PayloadJSON: "untrusted-payload-marker"})
+			system, user, err := ConsensusVotePrompt(member, ConsensusSubject{PayloadJSON: "untrusted-payload-marker"})
+			require.NoError(t, err)
 			assertSharedSecurityPrompt(t, system)
 			assert.Contains(t, system, `"decision":"approve"|"deny"`)
 			assert.NotContains(t, system, "untrusted-payload-marker")

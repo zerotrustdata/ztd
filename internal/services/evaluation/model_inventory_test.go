@@ -21,10 +21,10 @@ import (
 
 func TestComputeHomogeneousMatrixSize(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, uint64(64), ComputeHomogeneousMatrixSize(1))
-	assert.Equal(t, uint64(256), ComputeHomogeneousMatrixSize(4))
-	assert.Equal(t, uint64(60), ComputeHomogeneousMatrixSizeForPosture(1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS))
-	assert.Equal(t, uint64(240), ComputeHomogeneousMatrixSizeForPosture(4, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY))
+	assert.Equal(t, uint64(73), ComputeHomogeneousMatrixSize(1))
+	assert.Equal(t, uint64(292), ComputeHomogeneousMatrixSize(4))
+	assert.Equal(t, uint64(69), ComputeHomogeneousMatrixSizeForPosture(1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS))
+	assert.Equal(t, uint64(276), ComputeHomogeneousMatrixSizeForPosture(4, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY))
 }
 
 func TestBuildModelVariantsFromProviderInventory_SortsAndDedupes(t *testing.T) {

@@ -68,7 +68,7 @@ func judgedCriteria(req AssignmentExecutionRequest) []judge.Criterion {
 // from a run that was not cut off. A trace without an answer is graded failed
 // without a judge.
 func contentJudgmentsRequired(req AssignmentExecutionRequest, trace *AgentTrace) bool {
-	if len(judgedCriteria(req)) == 0 || trace == nil || trace.FinalOutput == "" {
+	if liteTriageCell(req) || len(judgedCriteria(req)) == 0 || trace == nil || trace.FinalOutput == "" {
 		return false
 	}
 	return trace.TerminalClassification != AgentTerminalClassificationTimeout && trace.ProviderFailure == ""

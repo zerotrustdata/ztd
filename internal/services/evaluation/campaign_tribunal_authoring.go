@@ -11,6 +11,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -22,6 +25,30 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
+
+func tribunalPersonaBindings(frozen []*evalv1.AgentPersonaBinding) ([]*evalv1.AgentPersonaBinding, error) {
+	ids := []string{string(tribunal.MemberAxiom), string(tribunal.MemberConcord), string(tribunal.MemberVariance), string(tribunal.MemberPragma), string(tribunal.MemberNemesis), tribunal.PersonaMarshal, tribunal.PersonaAuditor}
+	bindings := make([]*evalv1.AgentPersonaBinding, 0, len(ids))
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	found := make(map[string]*evalv1.AgentPersonaBinding, len(ids))
+	counts := make(map[string]int, len(ids))
+	for _, binding := range frozen {
+		if binding != nil && want[binding.GetPersonaId()] {
+			counts[binding.GetPersonaId()]++
+			found[binding.GetPersonaId()] = binding
+		}
+	}
+	for _, id := range ids {
+		if counts[id] != 1 || found[id] == nil {
+			return nil, fmt.Errorf("evaluation: frozen Tribunal persona %s count is %d: %w", id, counts[id], constants.ErrPersonaDigestMismatch)
+		}
+		bindings = append(bindings, proto.Clone(found[id]).(*evalv1.AgentPersonaBinding))
+	}
+	return bindings, nil
+}
 
 // Model-visible answers for a deliberation that wrote no approved command.
 const (
@@ -36,11 +63,32 @@ const (
 // L2 refused its inference (isL2GovernanceDenial): the provider never ran.
 const modelCallGovernanceRejected = "governance_rejected"
 
-// formationTribunalRole is the stack slot every Tribunal call of a system-lane
-// assignment runs on, whatever the assignment's designated role
-// (INV-EVAL-CAMP-02). Authoring, the trace evidence check, and the assignment
-// verifier bind to it.
-const formationTribunalRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+const (
+	formationTribunalMemberRole  = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+	formationTribunalMarshalRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+	formationTribunalAuditorRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+)
+
+func formationTribunalRoleForPurpose(purpose string) evalv1.ModelCampaignRole {
+	switch strings.TrimPrefix(purpose, agentModelCallPurposeTribunalPrefix) {
+	case string(tribunal.StageGenerate):
+		return formationTribunalMemberRole
+	case string(tribunal.StageMarshal):
+		return formationTribunalMarshalRole
+	case string(tribunal.StageAudit):
+		return formationTribunalAuditorRole
+	default:
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+	}
+}
+
+func formationTribunalRoleForTrace(trace *AgentTrace, purpose string) evalv1.ModelCampaignRole {
+	if trace != nil && trace.SchemaVersion != agentTraceSchemaVersion {
+		// v7-v10 recorded every formation Tribunal stage on the Lite slot.
+		return formationTribunalMemberRole
+	}
+	return formationTribunalRoleForPurpose(purpose)
+}
 
 // formationInterrogatorRole is the stack slot the Interrogator persona runs on
 // in a formation assignment; a homogeneous assignment's candidate runs it.
@@ -67,22 +115,29 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 				Error: fmt.Sprintf("security violation: working directory %q is outside operator workspace", proposal.WorkingDir)})
 		}
 	}
-	tier := r.designated
+	tiers := map[tribunal.Stage]evalv1.ModelCampaignRole{tribunal.StageGenerate: r.designated, tribunal.StageMarshal: r.designated, tribunal.StageAudit: r.designated}
 	if IsHeterogeneousAssignment(r.req.Assignment) {
-		tier = formationTribunalRole
+		tiers[tribunal.StageGenerate], tiers[tribunal.StageMarshal], tiers[tribunal.StageAudit] = formationTribunalMemberRole, formationTribunalMarshalRole, formationTribunalAuditorRole
 	}
 	prefix := r.executor.newID("tribunal-inference")
-	probe, err := r.bindInference(&AgentModelCall{}, tier, prefix, nil, nil)
+	templates := make(map[tribunal.Stage]*operatorv1.InferenceDispatchRequest, 3)
+	for stage, tier := range tiers {
+		probe, err := r.bindInference(&AgentModelCall{}, tier, prefix, nil, nil)
+		if err != nil {
+			return AgentToolCall{}, err
+		}
+		template, err := r.inferenceDispatchRequest(probe)
+		if err != nil {
+			return AgentToolCall{}, err
+		}
+		template.Messages, template.ProviderAttemptId, template.ActingAppId = nil, "", ""
+		templates[stage] = template
+	}
+	memberTemplate, marshalTemplate, auditorTemplate := templates[tribunal.StageGenerate], templates[tribunal.StageMarshal], templates[tribunal.StageAudit]
+	personaBindings, err := tribunalPersonaBindings(r.req.Binding.Personas)
 	if err != nil {
 		return AgentToolCall{}, err
 	}
-	template, err := r.inferenceDispatchRequest(probe)
-	if err != nil {
-		return AgentToolCall{}, err
-	}
-	// The Gateway owns each member call's messages and attempt id, and binds
-	// the acting app from the intent's mTLS identity.
-	template.Messages, template.ProviderAttemptId, template.ActingAppId = nil, "", ""
 	result, err := r.executor.inference.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{
 		Request:                 record.ArgumentsJSON,
 		Guidelines:              "The agent proposed this run_shell_command call. Preserve its goal using one executable and argv; shell pipelines, redirects, glob expansion, and substitutions are unavailable. Preserve literal utility arguments, including regex patterns and find -exec terminators.",
@@ -92,16 +147,20 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		InvestigationId:         r.trace.InvestigationID,
 		TaskId:                  r.req.AttemptID,
 		ExecutionId:             record.CallID,
-		MemberInference:         template,
+		MemberInference:         memberTemplate,
+		MarshalInference:        marshalTemplate,
+		AuditorInference:        auditorTemplate,
+		Personas:                personaBindings,
 		ProviderAttemptPrefix:   prefix,
-		Tier:                    tier,
+		Tier:                    r.designated,
+		Homogeneous:             !IsHeterogeneousAssignment(r.req.Assignment),
 		StepStartIndex:          uint32(len(r.trace.Steps)),
 	})
 	if err != nil {
 		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
 	record.ConsensusInferences = governance.WrapConsensusInferences(result.GetConsensusInferences())
-	if failure := r.recordMemberCalls(record, tier, result.GetMemberCalls()); failure != "" {
+	if failure := r.recordMemberCalls(record, r.designated, result.GetMemberCalls()); failure != "" {
 		if failure == modelCallGovernanceRejected {
 			record.PolicyDecision = agentPolicyDecisionDeny
 			r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
@@ -166,13 +225,17 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 // the deliberation stopped there.
 func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCampaignRole, calls []*tribunalv1.TribunalMemberCall) string {
 	for _, member := range calls {
+		callTier := tier
+		if IsHeterogeneousAssignment(r.req.Assignment) {
+			callTier = formationTribunalRoleForTrace(r.trace, agentModelCallPurposeTribunalPrefix+string(tribunal.StageFromProto(member.GetStage())))
+		}
 		call := AgentModelCall{
 			Purpose:    agentModelCallPurposeTribunalPrefix + string(tribunal.StageFromProto(member.GetStage())),
 			LoopTurn:   record.LoopTurn,
 			ToolCallID: record.CallID,
 			Persona:    member.GetPersona(),
 		}
-		probe, err := r.bindInference(&call, tier, member.GetProviderAttemptId(), nil, nil)
+		probe, err := r.bindInference(&call, callTier, member.GetProviderAttemptId(), nil, nil)
 		if err == nil {
 			err = memberCallError(member)
 		}

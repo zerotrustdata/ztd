@@ -142,6 +142,10 @@ func TestNemesisAuthoringIsCunningNotAlwaysAggressive(t *testing.T) {
 	assert.Contains(t, generate, "always cunning, not always aggressive")
 	assert.Contains(t, generate, "propose the honest correct argument set")
 	assert.NotContains(t, generate, "excluded from voting")
-	vote, _ := ConsensusVotePrompt(MemberNemesis, ConsensusSubject{})
-	assert.Contains(t, vote, "privilege escalation")
+	vote, _, err := ConsensusVotePrompt(MemberNemesis, ConsensusSubject{})
+	require.NoError(t, err)
+	assert.Contains(t, vote, "You are Nemesis of the ztd Tribunal")
+	assert.Contains(t, vote, "always cunning, not always aggressive")
+	assert.Contains(t, vote, `"decision":"approve"|"deny"`)
+	assert.Contains(t, vote, "Independently assess this governed action and target")
 }

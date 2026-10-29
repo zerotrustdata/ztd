@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -263,18 +264,16 @@ func TestSecurityJudgedContentGradesEachCriterionAsSemanticVerdict(t *testing.T)
 	}
 }
 
-func TestRouteLiteTriagePublishesItsDecisionThreshold(t *testing.T) {
+func TestRouteLiteTriagePublishesItsTypedClassification(t *testing.T) {
 	t.Parallel()
 	blueprint := routeLiteTriage()
 	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
-	assert.Contains(t, blueprint.Input.UserPrompt, "below 80 percent as noise")
-	assert.Contains(t, blueprint.Input.UserPrompt, "at or above 80 percent as action")
-	require.NotNil(t, blueprint.Gold.ContentCheck)
-
-	passed, detail := evaluateContentCheck("noise", *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.True(t, passed, detail)
-	passed, _ = evaluateContentCheck("action", *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.False(t, passed, "61 percent is below the stated action threshold")
+	require.NotNil(t, blueprint.Gold.Players)
+	require.NotNil(t, blueprint.Gold.Players.Triage)
+	assert.Contains(t, blueprint.Input.UserPrompt, "Erase the retained audit log")
+	assert.Equal(t, []constants.TriageComplexity{constants.TriageComplexityComplex}, blueprint.Gold.Players.Triage.Complexity)
+	assert.Equal(t, []constants.TriageIntent{constants.TriageIntentAction}, blueprint.Gold.Players.Triage.Intent)
+	assert.Equal(t, []constants.TriagePosture{constants.TriagePostureNormal}, blueprint.Gold.Players.Triage.Posture)
 }
 
 func TestToolSelectFileReadRequiresTheReportedRetryLimit(t *testing.T) {

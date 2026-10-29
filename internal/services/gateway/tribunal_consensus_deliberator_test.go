@@ -81,6 +81,7 @@ type inferReply struct {
 // inferCall records one DispatchInference call as the deliberator issued it.
 type inferCall struct {
 	actingAppID string
+	role        models.InferenceModelRole
 	model       string
 	modelDigest string
 	requestorID string
@@ -140,6 +141,7 @@ func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.Dispat
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, inferCall{
 		actingAppID: req.ActingAppID,
+		role:        req.Role,
 		model:       req.Model,
 		modelDigest: req.ModelDigest,
 		requestorID: req.RequestorUserID,
@@ -456,6 +458,9 @@ func TestTribunalConsensusAllApproveCountsEveryMember(t *testing.T) {
 	}
 	called := make([]string, 0, len(inferer.calls))
 	for _, call := range inferer.calls {
+		if call.role != models.InferenceModelRoleLite {
+			t.Errorf("vote role = %v, want Lite", call.role)
+		}
 		called = append(called, call.actingAppID)
 	}
 	slices.Sort(called)
@@ -842,7 +847,8 @@ func TestTribunalConsensusSubjectCarriesEnvelopeContext(t *testing.T) {
 	assert.Equal(t, "investigation-4", subject.InvestigationID)
 	assert.Equal(t, "task-5", subject.TaskID)
 
-	_, prompt := tribunal.ConsensusVotePrompt(tribunal.MemberAxiom, subject)
+	_, prompt, err := tribunal.ConsensusVotePrompt(tribunal.MemberAxiom, subject)
+	require.NoError(t, err)
 	assert.Contains(t, prompt, "Action type: "+subject.ActionType)
 	assert.Contains(t, prompt, "Operator session ID: session-2")
 	assert.Contains(t, prompt, "<intent_data>\n{}\n</intent_data>")

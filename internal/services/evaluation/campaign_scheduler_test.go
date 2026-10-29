@@ -35,7 +35,7 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, 128)
+	assert.Len(t, assignments, 146)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T) {
@@ -55,7 +55,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, consensus, 60)
+	assert.Len(t, consensus, 69)
 	for _, assignment := range consensus {
 		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command"}, assignment.GetScenarioId())
 	}
@@ -66,7 +66,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, doctrine, 64)
+	assert.Len(t, doctrine, 73)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
@@ -152,7 +152,7 @@ func TestBuildHomogeneousAssignmentMatrix_SchedulesEachScenarioOnlyForItsEligibl
 		lite      = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
 	)
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{primary, assistant}, rolesByScenario["tool-arg-file-path"])
-	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{lite}, rolesByScenario["instruction-classify-severity"])
+	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{primary, assistant}, rolesByScenario["instruction-classify-severity"])
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{lite}, rolesByScenario["route-lite-triage"])
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{primary}, rolesByScenario["final-response-diagnosis"])
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{assistant}, rolesByScenario["route-handoff-assistant"])

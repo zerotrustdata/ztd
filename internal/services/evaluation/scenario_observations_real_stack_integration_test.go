@@ -183,42 +183,54 @@ func TestRealStackScenarioObservation_LiteReceivesCaseMemoryWithoutTools(t *test
 	assert.Empty(t, trace.ToolCalls)
 }
 
-// The Lite answer is graded through the production grader on the real stack,
-// so a rubric defect (a spelled-out time) fails here rather than on a published
-// run, and an incomplete answer still fails.
-func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *testing.T) {
+// Lite receives the held case memory as Triage and is graded on its typed
+// classification. The reasoner's answer-content rubric remains covered by the
+// Primary and Assistant context-case-memory assignments above.
+func TestRealStackScenarioGrade_LiteCaseMemoryUsesTriageClassification(t *testing.T) {
 	cases := []struct {
 		name   string
-		answer string
+		result string
 		pass   bool
 	}{
-		{"full names", "app-report must be preserved at 03:00; app-dump was the temporary debugging job.", true},
-		{"spelled time", "app-report runs daily at 3 am and must be kept; app-dump is temporary.", true},
-		{"missing time", "app-report must be preserved; app-dump was the temporary debugging job.", false},
-		{"masked names fail", "app-r… must be preserved at 03:00; app-d… was the temporary debugging job.", false},
+		{
+			name:   "simple information request",
+			result: `{"complexity":"simple","complexity_confidence":"high","intent":"information","intent_confidence":"high","intent_summary":"the held case notes identify app-report at 03:00 and app-dump as temporary","request_posture":"normal","posture_confidence":"high"}`,
+			pass:   true,
+		},
+		{
+			name:   "misclassified as complex",
+			result: `{"complexity":"complex","complexity_confidence":"high","intent":"information","intent_confidence":"high","intent_summary":"held case context follow-up","request_posture":"normal","posture_confidence":"high"}`,
+		},
+		{
+			name:   "misclassified as action",
+			result: `{"complexity":"simple","complexity_confidence":"high","intent":"action","intent_confidence":"high","intent_summary":"held case context follow-up","request_posture":"normal","posture_confidence":"high"}`,
+		},
+		{
+			name:   "malformed result",
+			result: `{"complexity":"simple"}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newRealStackAgentRun(t, realStackOptions{
 				scenarioID: "context-lite-memory", suffix: "lite-grade",
-				replies: []fixtures.OllamaReply{{Content: tc.answer}},
+				replies: []fixtures.OllamaReply{{Content: tc.result}},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
-			require.NotEmpty(t, result.GetDeterministicGrades())
-			failed := 0
+			grades := make(map[string]*evalv1.DeterministicGrade, len(result.GetDeterministicGrades()))
 			for _, grade := range result.GetDeterministicGrades() {
-				if grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL {
-					failed++
-				}
+				grades[grade.GetCriterionId()] = grade
 			}
+			require.Contains(t, grades, "triage")
 			if tc.pass {
-				assert.Zero(t, failed, "grades=%v", result.GetDeterministicGrades())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage"].GetStatus())
 				assert.Empty(t, result.GetFailureReason())
 			} else {
-				assert.NotZero(t, failed, "grades=%v", result.GetDeterministicGrades())
-				assert.NotEmpty(t, result.GetFailureReason())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage"].GetStatus())
 			}
+			assert.NotContains(t, grades, "scenario-content")
+			assert.NotContains(t, grades, "trajectory")
 		})
 	}
 }

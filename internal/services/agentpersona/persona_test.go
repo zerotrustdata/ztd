@@ -79,6 +79,38 @@ func TestPersona_SystemPromptRendersEverySectionAfterSecurityPrefix(t *testing.T
 	}
 }
 
+func TestTribunalVotePersonasHaveIndependentDigestBoundRenderings(t *testing.T) {
+	registry := mustRegistry(t)
+	for _, id := range []string{IDAxiom, IDConcord, IDVariance, IDPragma, IDNemesis} {
+		p, err := registry.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompt := p.VoteSystemPrompt()
+		if !strings.HasPrefix(prompt, constants.AgentSecurityPrompt) || !strings.Contains(prompt, "<identity>") || !strings.Contains(prompt, "<purpose>") || !strings.Contains(prompt, `"decision":"approve"|"deny"`) {
+			t.Errorf("%s vote prompt is incomplete: %s", id, prompt)
+		}
+		if p.VoteDigest() == "" || p.VoteDigest() == p.Digest() {
+			t.Errorf("%s vote digest must be nonempty and distinct from authoring digest", id)
+		}
+		changed := p
+		changed.VotePurpose += " A changed vote purpose."
+		if changed.VoteDigest() == p.VoteDigest() {
+			t.Errorf("%s vote digest did not change with the vote rendering", id)
+		}
+		if strings.Contains(prompt, "Author one run_shell_command") || strings.Contains(prompt, "propose an argument set") {
+			t.Errorf("%s vote prompt contains authoring instructions", id)
+		}
+	}
+	nemesis, err := registry.Get(IDNemesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(nemesis.VoteSystemPrompt(), nemesis.Identity) || !strings.Contains(nemesis.Identity, "always cunning, not always aggressive") {
+		t.Error("Nemesis vote rendering must preserve its identity as-is")
+	}
+}
+
 // TestPersona_TriageNeverInterrogates keeps Triage a classifier: it runs once
 // at ingest, and the Interrogator owns the I1-I4 questions in the loop.
 func TestPersona_TriageNeverInterrogates(t *testing.T) {

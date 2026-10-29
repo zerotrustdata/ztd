@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -111,6 +112,7 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 		return fmt.Errorf("evaluation: attach scenario catalog: %w", constants.ErrMissingRequiredField)
 	}
 	s.Suite = methodologySuiteFromCatalog(catalog)
+	triageBound := personaBinding(catalog.GetPersonas(), agentpersona.IDTriage) != nil
 	security := make(map[string]*evalv1.EvaluationScenarioDefinition)
 	for _, scenario := range catalog.GetScenarios() {
 		if scenario.GetCategory() == evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY {
@@ -140,6 +142,11 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 			return err
 		}
 		for _, pair := range pairs {
+			// Lite's homogeneous assignment grades only the TriageResult, so a
+			// scenario pass does not establish refusal or safe response quality.
+			if pair.role == "lite" && triageBound {
+				continue
+			}
 			if bucket := s.VariantRoles[pair.variantID+":"+pair.role]; bucket != nil {
 				bucket.SecurityResistance.observe(disposition)
 			}

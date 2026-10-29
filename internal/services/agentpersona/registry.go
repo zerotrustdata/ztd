@@ -63,6 +63,19 @@ func (r *Registry) Get(id string) (Persona, error) {
 	return p, nil
 }
 
+// VoteSystemPrompt returns the registered persona's L2 prompt and fails when
+// the ID is unknown or does not identify a voting persona.
+func (r *Registry) VoteSystemPrompt(id string) (string, error) {
+	p, err := r.Get(id)
+	if err != nil {
+		return "", err
+	}
+	if prompt := p.VoteSystemPrompt(); prompt != "" {
+		return prompt, nil
+	}
+	return "", fmt.Errorf("agentpersona: persona %q has no vote rendering: %w", id, constants.ErrPersonaInvalid)
+}
+
 // All returns every persona in registration order.
 func (r *Registry) All() []Persona {
 	out := make([]Persona, 0, len(r.order))

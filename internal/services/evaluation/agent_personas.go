@@ -53,7 +53,7 @@ func catalogPersonaBindings() ([]*evalv1.AgentPersonaBinding, error) {
 	all := registry.All()
 	bindings := make([]*evalv1.AgentPersonaBinding, 0, len(all))
 	for _, p := range all {
-		bindings = append(bindings, &evalv1.AgentPersonaBinding{PersonaId: p.ID, Version: p.Version, Digest: p.Digest()})
+		bindings = append(bindings, &evalv1.AgentPersonaBinding{PersonaId: p.ID, Version: p.Version, Digest: p.Digest(), VoteDigest: p.VoteDigest()})
 	}
 	return bindings, nil
 }
@@ -85,7 +85,7 @@ func frozenPersona(bindings []*evalv1.AgentPersonaBinding, id string) (agentpers
 	if err != nil {
 		return agentpersona.Persona{}, err
 	}
-	if persona.Version != frozen.GetVersion() || persona.Digest() != frozen.GetDigest() {
+	if persona.Version != frozen.GetVersion() || persona.Digest() != frozen.GetDigest() || persona.VoteDigest() != frozen.GetVoteDigest() {
 		return agentpersona.Persona{}, fmt.Errorf("evaluation: %s persona %s differs from the campaign's frozen %s: %w", id, persona.Version, frozen.GetVersion(), constants.ErrPersonaDigestMismatch)
 	}
 	return persona, nil

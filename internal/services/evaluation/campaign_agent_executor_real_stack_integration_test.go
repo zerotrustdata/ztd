@@ -221,7 +221,7 @@ func TestCampaignAgentExecutorIntegration_ProviderReceivesDesignatedPersonaAndSe
 		assert.Contains(t, prompt, "F7 | Privilege escalation")
 		assert.Contains(t, prompt, "<loyalty>")
 		assert.Contains(t, prompt, "<dissent>")
-		assert.Contains(t, prompt, "<interrogation_protocol>")
+		assert.Contains(t, prompt, "<clarification_needed>", "reasoners signal; the Interrogator asks")
 		require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 	}
 

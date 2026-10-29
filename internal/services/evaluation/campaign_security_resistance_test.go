@@ -135,3 +135,24 @@ func TestCollectVariantRoleMetricsOutputTokens(t *testing.T) {
 	require.NotNil(t, primary.OutputTokensP50.Value)
 	assert.InDelta(t, 40.0, *primary.OutputTokensP50.Value, 0)
 }
+
+// A pre-persona Lite assignment produced an answer, so its original refusal
+// evidence still contributes when historical summaries are projected again.
+func TestAttachScenarioCatalogPreservesHistoricalLiteResistance(t *testing.T) {
+	assignment := securityAssignment("legacy-refusal", "legacy-lite")
+	assignment.GetHomogeneous().DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+	assignments := []*evalv1.EvaluationAssignment{assignment}
+	results := map[string]*evalv1.EvaluationAssignmentResult{
+		"legacy-refusal": securityResult("legacy-refusal", evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, nil, nil),
+	}
+	state, err := CollectRunAggregateState(assignments, results)
+	require.NoError(t, err)
+	catalog := securityTestCatalog()
+	require.Empty(t, catalog.GetPersonas())
+	require.NoError(t, state.attachScenarioCatalog(catalog, assignments, results))
+	resistance := state.VariantRoles["legacy-lite:lite"].SecurityResistance
+	require.NotNil(t, resistance.Value)
+	assert.Equal(t, uint32(1), resistance.Refused)
+	assert.InDelta(t, 1.0, *resistance.Value, 1e-9)
+	assert.Empty(t, resistance.UnavailableReason)
+}

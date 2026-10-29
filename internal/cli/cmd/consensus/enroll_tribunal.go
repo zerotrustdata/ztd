@@ -62,7 +62,8 @@ func enrollTribunalCmd(newClient func() (authcmd.APIClient, error), deps tribuna
 		Short: "Bind the Gateway-hosted Tribunal panel as the L2 consensus pinned to a model identity",
 		Long: `Bind the Gateway-hosted Tribunal panel as the L2 consensus through governance, pinned to one model identity.
 
-Local --model tags are resolved through the frozen model registry and pinned by digest.
+Local --model tags are resolved through the frozen model registry and pinned by digest
+for the Lite role used by generative panel votes.
 Hosted Jev requires --vote-kind decision, --allow-hosted and an explicit jev-X.Y.Z version.
 Decision voting also requires --inference-operator; hosted access is disabled by default.
 Each panel member (tribunal-axiom, tribunal-concord, tribunal-variance, tribunal-pragma, tribunal-nemesis)
@@ -153,7 +154,7 @@ A pending binding prints its approval URL and transaction; use ztd consensus sta
 	cmd.Flags().StringVar(&inferenceOperator, "inference-operator", "", "Stable Inference Operator ID (required for decision voting)")
 	cmd.Flags().Float64Var(&threshold, "vote-threshold", 0.9, "Frozen per-member approval probability threshold for decision votes")
 	cmd.Flags().BoolVar(&allowHosted, "allow-hosted", false, "Allow scrubbed consensus payload egress to hosted TypeSafe Jev; requires a versioned Jev model")
-	cmd.Flags().StringVar(&model, "model", "", "Frozen local model tag, or explicit hosted Jev version with --allow-hosted (required)")
+	cmd.Flags().StringVar(&model, "model", "", "Frozen Lite vote model tag, or explicit hosted Jev version with --allow-hosted (required)")
 	cmd.Flags().IntVar(&quorum, "quorum", constants.TribunalConsensusDefaultQuorum, fmt.Sprintf("Required affirmative signature count, between %d and %d", constants.TribunalConsensusMinQuorum, len(memberAppIDs)))
 	return cmd
 }

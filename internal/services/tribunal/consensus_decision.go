@@ -17,7 +17,10 @@ import (
 
 // ConsensusDecisionRequest keeps each member's atomic questions with the Tribunal's stances.
 func ConsensusDecisionRequest(member Member, subject ConsensusSubject, allowHosted bool) (*operatorv1.InferenceDecisionRequest, error) {
-	_, state := ConsensusVotePrompt(member, subject)
+	_, state, err := ConsensusVotePrompt(member, subject)
+	if err != nil {
+		return nil, err
+	}
 	var questions []string
 	switch member {
 	case MemberAxiom:

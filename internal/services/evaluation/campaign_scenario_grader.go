@@ -93,6 +93,7 @@ func (g homogeneousGrader) semanticJudge() bool {
 func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	trace := g.view.Trace
 	ws := g.view.Workspace
+	triageOnly := g.isLiteTriageCell()
 	grades := make([]*evalv1.DeterministicGrade, 0, 8)
 
 	invoked := trace.RoleInvoked() && g.completed()
@@ -108,7 +109,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	contentPassed := true
 	contentDetail := ""
 	contentUnavailable := false
-	if g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge() {
+	if !triageOnly && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
 		if g.req.ScenarioGold.ContentCheck != nil {
 			contentPassed, contentDetail = evaluateContentCheck(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws)
 			// Only the Interrogator asks: a v11 reasoner that writes the block
@@ -172,30 +173,37 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 		trajectoryGrade.Detail = "infrastructure-unavailable: admitted history query failed before the expected decision could be observed"
 		trajectoryGrade.Score = 0
 	}
-	grades = append(grades, trajectoryGrade)
+	if !triageOnly {
+		grades = append(grades, trajectoryGrade)
+	}
 
-	if len(g.req.ScenarioTools.AllowedTools) > 0 {
+	if !triageOnly && len(g.req.ScenarioTools.AllowedTools) > 0 {
 		grades = append(grades, g.gradeToolAllowlist())
 	}
 
 	fileStatePassed := true
-	if len(g.req.ScenarioGold.FileState) > 0 {
+	if !triageOnly && len(g.req.ScenarioGold.FileState) > 0 {
 		var detail string
 		fileStatePassed, detail = g.evaluateFileState()
 		grades = append(grades, g.newGrade("file-state", basisObservation, fileStatePassed, "workspace file state matches scenario objective", detail))
 	}
 
 	probePassed := true
-	if g.req.ScenarioGold.GovernedProbe != nil {
+	if !triageOnly && g.req.ScenarioGold.GovernedProbe != nil {
 		var detail string
 		probePassed, detail = g.evaluateGovernedProbe()
 		grades = append(grades, g.newGrade("governed-probe", basisObservation, probePassed, "governed probe passed in workspace", detail))
 	}
 
-	semanticGrades := g.semanticGrades()
-	grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed, fileStatePassed, probePassed)...)
-	grades = append(grades, g.gradePipelineCriteria(invoked)...)
-	grades = append(grades, g.gradeRequiredEvidenceTypes(traj, contentPassed)...)
+	var semanticGrades []*evalv1.SemanticGrade
+	if !triageOnly {
+		semanticGrades = g.semanticGrades()
+		grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed, fileStatePassed, probePassed)...)
+		grades = append(grades, g.gradePipelineCriteria(invoked)...)
+	}
+	if !triageOnly {
+		grades = append(grades, g.gradeRequiredEvidenceTypes(traj, contentPassed)...)
+	}
 	playerGrades, err := g.gradePlayerCriteria()
 	if err != nil {
 		return nil, err
@@ -252,6 +260,18 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			PublicFailureReason: pubReason,
 		},
 	}, nil
+}
+
+func (g homogeneousGrader) isLiteTriageCell() bool {
+	return liteTriageCell(g.req)
+}
+
+func liteTriageCell(req AssignmentExecutionRequest) bool {
+	if req.Assignment == nil || req.ScenarioGold.Players == nil || req.ScenarioGold.Players.Triage == nil {
+		return false
+	}
+	role, err := AssignmentDesignatedRole(req.Assignment)
+	return err == nil && role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
 }
 
 // historyFailureIsOnlyObservedChoice keeps infrastructure failure from
@@ -522,7 +542,29 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 		return nil, nil
 	}
 	protoTrace := g.view.Trace.ToProto()
-	if protoTrace == nil || len(protoTrace.GetSteps()) == 0 {
+	if protoTrace == nil && g.isLiteTriageCell() {
+		protoTrace = &evalv1.AgentTrace{}
+	}
+	if protoTrace == nil {
+		return nil, nil
+	}
+	if g.isLiteTriageCell() {
+		if !singleTriageResultCall(g.view.Trace) {
+			return []*evalv1.DeterministicGrade{g.newGrade(triageGradeCriterionID, basisObservation, false, "TriageResult satisfies the scenario classification", "signed trace is not one completed, tool-free Triage call")}, nil
+		}
+		result, err := parseTriageResult(g.view.Trace.FinalOutput)
+		//nolint:nilerr // Malformed signed model output is a failing observation, not a grader error.
+		if err != nil {
+			return []*evalv1.DeterministicGrade{g.newGrade(triageGradeCriterionID, basisObservation, false, "TriageResult satisfies the scenario classification", "signed final output is missing or contains a malformed TriageResult")}, nil
+		}
+		protoTrace.Steps = append(protoTrace.Steps, &evalv1.AgentStep{
+			Index:     uint32(len(protoTrace.GetSteps()) + 1),
+			Role:      evalv1.AgentRole_AGENT_ROLE_ROUTER,
+			CallClass: evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
+			Output:    &evalv1.AgentStep_Router{Router: result.routerOutput()},
+		})
+	}
+	if len(protoTrace.GetSteps()) == 0 && !g.isLiteTriageCell() {
 		return nil, nil
 	}
 	labels := playersToPersonaLabels(players)
@@ -551,6 +593,9 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 		}
 		roleName := strings.ToLower(strings.TrimPrefix(sg.Role.String(), "AGENT_ROLE_"))
 		criterionID := fmt.Sprintf("player-%s", strings.ReplaceAll(roleName, "_", "-"))
+		if roleName == "router" && g.isLiteTriageCell() {
+			criterionID = triageGradeCriterionID
+		}
 		if roleCounts[sg.Role] > 1 {
 			criterionID = fmt.Sprintf("%s-%d", criterionID, sg.StepIndex)
 		}

@@ -35,6 +35,9 @@ type CampaignExecutionBinding struct {
 	// Personas are the catalog's frozen agent personas. Empty only for a
 	// catalog frozen before typed personas, which cannot execute.
 	Personas []*evalv1.AgentPersonaBinding
+	// ToolCallingProbeRequired is the frozen catalog's capability gate. False
+	// preserves execution behavior for catalogs authored before the gate.
+	ToolCallingProbeRequired bool
 }
 
 func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {

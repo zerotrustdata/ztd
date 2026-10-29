@@ -62,6 +62,8 @@
     - [ModelProvenanceAttestationWindow](#ztd-eval-v1-ModelProvenanceAttestationWindow)
     - [ModelProvenanceObservationCommand](#ztd-eval-v1-ModelProvenanceObservationCommand)
     - [ModelProvenanceObservationCompleted](#ztd-eval-v1-ModelProvenanceObservationCompleted)
+    - [ModelToolCallingProbe](#ztd-eval-v1-ModelToolCallingProbe)
+    - [ModelToolCallingProbeEvidence](#ztd-eval-v1-ModelToolCallingProbeEvidence)
     - [ModelVariant](#ztd-eval-v1-ModelVariant)
     - [ModelWeightAttestation](#ztd-eval-v1-ModelWeightAttestation)
     - [PolicyDecisionRecord](#ztd-eval-v1-PolicyDecisionRecord)
@@ -176,7 +178,7 @@
 
 ### AgentPersonaBinding
 AgentPersonaBinding is one agent persona&#39;s frozen identity: its registry
-ID, version, and the SHA-256 of its rendered system prompt.
+ID, version, authoring prompt digest, and vote prompt digest when it votes.
 
 
 | Field | Type | Label | Description |
@@ -184,6 +186,7 @@ ID, version, and the SHA-256 of its rendered system prompt.
 | persona_id | [string](#string) |  |  |
 | version | [string](#string) |  |  |
 | digest | [string](#string) |  |  |
+| vote_digest | [string](#string) |  | vote_digest freezes the separate L2 vote rendering, when the persona votes. |
 
 
 
@@ -964,6 +967,7 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 | provider_observation_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 | model_provenance_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 | consensus | [EvaluationConsensusIdentity](#ztd-eval-v1-EvaluationConsensusIdentity) |  | consensus is the live Gateway&#39;s L2 consensus binding, frozen at run start. Absent only on runs started before it existed; those never resume. |
+| tool_calling_probes | [ModelToolCallingProbe](#ztd-eval-v1-ModelToolCallingProbe) | repeated | Model tool calling probes are evidence-backed eligibility observations used when materializing probe-gated campaign scenarios. |
 
 
 
@@ -1005,6 +1009,7 @@ EvaluationScenarioCatalog is the immutable 25-scenario private catalog.
 | catalog_digest | [string](#string) |  |  |
 | scenarios | [EvaluationScenarioDefinition](#ztd-eval-v1-EvaluationScenarioDefinition) | repeated |  |
 | personas | [AgentPersonaBinding](#ztd-eval-v1-AgentPersonaBinding) | repeated | personas freezes every agent persona the catalog&#39;s assignments run under, so catalog_digest binds the exact persona text. Empty only on catalogs frozen before typed personas. |
+| tool_calling_probe_required | [bool](#bool) |  | tool_calling_probe_required makes current catalogs require frozen, evidence-backed model eligibility probes; absent on historical catalogs. |
 
 
 
@@ -1467,6 +1472,45 @@ published by the remote Provenance Operator after FINALIZE attestation.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | window | [ModelProvenanceAttestationWindow](#ztd-eval-v1-ModelProvenanceAttestationWindow) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ModelToolCallingProbe"></a>
+
+### ModelToolCallingProbe
+ModelToolCallingProbe records one model variant&#39;s governed tool-calling
+eligibility result and the evidence artifact that supports it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| variant_id | [string](#string) |  |  |
+| observation | [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation) |  |  |
+| evidence_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ModelToolCallingProbeEvidence"></a>
+
+### ModelToolCallingProbeEvidence
+ModelToolCallingProbeEvidence is the governed request and response used to
+qualify one frozen model variant for tool-calling scenarios.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| variant_id | [string](#string) |  |  |
+| request | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  |  |
+| response | [ztd.operator.v1.InferenceDispatchResponse](#ztd-operator-v1-InferenceDispatchResponse) |  |  |
+| anchor | [ConformanceAnchor](#ztd-eval-v1-ConformanceAnchor) |  |  |
+| inference_operator_id | [string](#string) |  |  |
+| inference_session_id | [string](#string) |  |  |
 
 
 

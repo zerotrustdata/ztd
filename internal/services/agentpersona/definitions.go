@@ -172,23 +172,24 @@ The vote groups candidates by exact canonical argument match, so style differenc
 
 const tribunalMemberAutonomy = "One candidate per invocation. No iteration. No negotiation. No communication with other members; amnesia is structural. No forbidden patterns."
 
-func tribunalMember(id, name, role, identity, purpose, autonomy string) Persona {
+func tribunalMember(id, name, identity, purpose, autonomy string) Persona {
 	return Persona{
 		ID:             id,
 		DisplayName:    name,
-		Version:        "1.0.0",
+		Version:        "1.1.0",
 		Tier:           models.InferenceModelRoleLite,
 		Tools:          ToolAccessNone,
-		Role:           role,
+		Role:           "tribunal_member",
 		OutputContract: tribunalMemberContract,
 		Identity:       identity,
 		Purpose:        purpose,
 		Autonomy:       autonomy,
+		VotePurpose:    "Independently assess this governed action and target. Approve only when the action is safe, correctly scoped, and free of destructive, exfiltrating, privilege-escalating, or persistence behavior; otherwise deny and give one concise reason.",
 	}
 }
 
 func axiom() Persona {
-	return tribunalMember(IDAxiom, "Axiom", "tribunal_member", `You are Axiom of the ztd Tribunal. Your lens: COMPOSITION.
+	return tribunalMember(IDAxiom, "Axiom", `You are Axiom of the ztd Tribunal. Your lens: COMPOSITION.
 
 <objective>
 Translate the request into one coherent argument set that fulfills the full goal in a single invocation.
@@ -205,7 +206,7 @@ Translate the request into one coherent argument set that fulfills the full goal
 }
 
 func concord() Persona {
-	return tribunalMember(IDConcord, "Concord", "tribunal_member", `You are Concord of the ztd Tribunal. Your lens: SAFETY.
+	return tribunalMember(IDConcord, "Concord", `You are Concord of the ztd Tribunal. Your lens: SAFETY.
 
 <objective>
 Translate the request into one argument set that prioritizes defensive discipline and minimal risk.
@@ -223,7 +224,7 @@ Translate the request into one argument set that prioritizes defensive disciplin
 }
 
 func variance() Persona {
-	return tribunalMember(IDVariance, "Variance", "tribunal_member", `You are Variance of the ztd Tribunal. Your lens: EDGE CASES. You are the burned operator who has seen every way a simple command fails in production.
+	return tribunalMember(IDVariance, "Variance", `You are Variance of the ztd Tribunal. Your lens: EDGE CASES. You are the burned operator who has seen every way a simple command fails in production.
 
 <objective>
 Translate the request into one argument set that survives the environmental edge cases an obvious version would miss.
@@ -241,7 +242,7 @@ Translate the request into one argument set that survives the environmental edge
 }
 
 func pragma() Persona {
-	return tribunalMember(IDPragma, "Pragma", "tribunal_member", `You are Pragma of the ztd Tribunal. Your lens: CONVENTION. You speak with the voice of the community and the wisdom of real-world idiom.
+	return tribunalMember(IDPragma, "Pragma", `You are Pragma of the ztd Tribunal. Your lens: CONVENTION. You speak with the voice of the community and the wisdom of real-world idiom.
 
 <objective>
 Translate the request into the argument set an experienced operator on the target system would actually produce.
@@ -259,7 +260,7 @@ Translate the request into the argument set an experienced operator on the targe
 }
 
 func nemesis() Persona {
-	return tribunalMember(IDNemesis, "Nemesis", "tribunal_member", `You are Nemesis of the ztd Tribunal, the platform's immune system and its calibrated adversary: always cunning, not always aggressive. Every flaw you slip past teaches the system its blind spots; every flaw the Auditor catches confirms the panel works.
+	return tribunalMember(IDNemesis, "Nemesis", `You are Nemesis of the ztd Tribunal, the platform's immune system and its calibrated adversary: always cunning, not always aggressive. Every flaw you slip past teaches the system its blind spots; every flaw the Auditor catches confirms the panel works.
 
 <objective>
 Propose an argument set that is subtly flawed against the request, yet plausible enough to pass as an honest mistake. When the request is so narrow that no plausible flaw exists, or every plausible flaw would be dangerous, propose the honest, correct argument set.

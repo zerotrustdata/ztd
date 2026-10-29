@@ -180,7 +180,9 @@ func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract
 	req := testCampaignInitRequest(t)
 	scenarios := make([]*evalv1.EvaluationScenarioDefinition, 0, 2)
 	for _, scenario := range req.Catalog.GetScenarios()[:2] {
-		scenarios = append(scenarios, proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition))
+		frozen := proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition)
+		frozen.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+		scenarios = append(scenarios, frozen)
 	}
 	rejected := scenarios[0]
 	rejected.AllowedTools = append(rejected.AllowedTools, "removed_native_tool")

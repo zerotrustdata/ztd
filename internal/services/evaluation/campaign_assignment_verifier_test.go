@@ -80,6 +80,37 @@ func TestVerifyAssignmentTraceModels_HeterogeneousLiteTraceVerifies(t *testing.T
 	assert.ErrorIs(t, verifyAssignmentTraceModels(req, trace), constants.ErrFormationRegistryBinding)
 }
 
+func TestVerifyAssignmentTraceModels_TribunalStagesUseFormationSlotsAndPreserveV10(t *testing.T) {
+	req := heterogeneousLiteRequest(t)
+	resolved, err := ResolveAssignmentModels(req)
+	require.NoError(t, err)
+	trace := &AgentTrace{SchemaVersion: agentTraceSchemaVersion, CampaignID: req.Assignment.GetCampaignId(), ScenarioID: req.Assignment.GetScenarioId(), DesignatedRole: "lite", ServedModelTag: resolved[evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE].GetServedModelTag(), ModelDigest: resolved[evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE].GetModelDigest(), ModelRegistryDigest: req.Binding.ModelRegistryDigest}
+	for _, stage := range []struct {
+		name string
+		role evalv1.ModelCampaignRole
+	}{{"generate", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}, {"marshal", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT}, {"audit", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}} {
+		variant := resolved[stage.role]
+		inferenceRole, err := tribunal.InferenceRoleForTier(stage.role)
+		require.NoError(t, err)
+		trace.ModelCalls = append(trace.ModelCalls, AgentModelCall{Purpose: agentModelCallPurposeTribunalPrefix + stage.name, ModelVariantID: variant.GetVariantId(), ModelRole: inferenceRole.ToProto().String(), ServedModelTag: variant.GetServedModelTag(), ModelDigest: variant.GetModelDigest()})
+	}
+	require.NoError(t, verifyAssignmentTraceModels(req, trace))
+
+	// v10 formation evidence predates the per-stage split and all Tribunal
+	// stages were dispatched to the Lite slot.
+	trace.SchemaVersion = agentTraceSchemaVersionV10
+	for i := range trace.ModelCalls {
+		variant := resolved[evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE]
+		liteRole, err := tribunal.InferenceRoleForTier(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+		require.NoError(t, err)
+		trace.ModelCalls[i].ModelVariantID = variant.GetVariantId()
+		trace.ModelCalls[i].ModelRole = liteRole.ToProto().String()
+		trace.ModelCalls[i].ServedModelTag = variant.GetServedModelTag()
+		trace.ModelCalls[i].ModelDigest = variant.GetModelDigest()
+	}
+	require.NoError(t, verifyAssignmentTraceModels(req, trace))
+}
+
 func TestCampaignAssignmentVerifier_FailsClosedOnModelRoleAssignment(t *testing.T) {
 	t.Parallel()
 	variants := testHeterogeneousVariants()

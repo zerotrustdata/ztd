@@ -149,10 +149,9 @@ const (
 	OutcomeAuditFailed Outcome = "audit_failed"
 )
 
-// Config binds one deliberation to the frozen model it runs on. Tier is the
-// campaign role every Tribunal call dispatches under: Service.Deliberate
-// requires the member template's role to be Tier's inference role. ModelTag
-// and ModelDigest identify the variant on each recorded step.
+// Config binds one deliberation to its frozen candidate and per-stage models.
+// Tier, ModelTag and ModelDigest identify the assignment's designated model;
+// StageModels record formation-specific model bindings for each persona stage.
 type Config struct {
 	Inferer Inferer
 	// Personas renders every stage's system prompt.
@@ -162,6 +161,14 @@ type Config struct {
 	Tier        evalv1.ModelCampaignRole
 	ModelTag    string
 	ModelDigest string
+	StageModels map[Stage]StageModel
+}
+
+// StageModel is the frozen role and model used by one Tribunal stage.
+type StageModel struct {
+	Tier   evalv1.ModelCampaignRole
+	Tag    string
+	Digest string
 }
 
 // Request is the agent's intent-only command request and the context the

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -122,8 +123,7 @@ func (r *governedCapabilityProbeRunner) probeCompletionCapability(ctx context.Co
 
 func (r *governedCapabilityProbeRunner) probeToolCallingCapability(ctx context.Context, variant *evalv1.ModelVariant) (*evalv1.ModelCapabilityObservation, error) {
 	req := r.baseProbeRequest(variant, "tools")
-	req.Prompt = "Call probe_echo with message capability-probe-tool"
-	req.Tools = []*operatorv1.InferenceToolDeclaration{ProbeEchoToolDeclaration()}
+	configureToolCallingProbe(&req)
 	// AUTO, as agent scenarios declare it: the inference handler and the Ollama
 	// backend reject every other mode as a capability the provider lacks.
 	req.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO}
@@ -132,10 +132,7 @@ func (r *governedCapabilityProbeRunner) probeToolCallingCapability(ctx context.C
 		//nolint:nilerr // intentional fallback: probe dispatch failure recorded as observation verdict
 		return probeDispatchFailure(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, "tool-call", err), nil
 	}
-	if inferenceResultHasToolCall(resp.GetResult(), "probe_echo") {
-		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "tool-call probe returned probe_echo"), nil
-	}
-	return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "tool-call probe did not return probe_echo"), nil
+	return toolCallingObservation(resp.GetResult()), nil
 }
 
 func (r *governedCapabilityProbeRunner) probeStructuredOutputCapability(ctx context.Context, variant *evalv1.ModelVariant) (*evalv1.ModelCapabilityObservation, error) {
@@ -218,16 +215,56 @@ func inferenceResultHasText(result *operatorv1.InferenceResult, expected string)
 	return strings.Contains(text, strings.ToLower(expected))
 }
 
-func inferenceResultHasToolCall(result *operatorv1.InferenceResult, name string) bool {
-	if result == nil {
-		return false
-	}
+const toolCallingProbeMessage = "capability-probe-tool"
+
+func configureToolCallingProbe(req *InferenceProbeRequest) {
+	req.Prompt = "Call probe_echo with message capability-probe-tool. Return exactly one structured tool call; do not call read_file or write a tool call as text."
+	req.Tools = []*operatorv1.InferenceToolDeclaration{ProbeEchoToolDeclaration(), {
+		Name: "read_file", Description: "Read a file at a supplied path.",
+		JsonSchema: `{"additionalProperties":false,"properties":{"path":{"type":"string"}},"required":["path"],"type":"object"}`,
+	}}
+	req.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO}
+}
+
+// toolCallingObservation accepts the structured protocol, including its exact
+// schema, rather than tool-shaped prose or a polluted function name.
+func toolCallingObservation(result *operatorv1.InferenceResult) *evalv1.ModelCapabilityObservation {
+	valid, calls := true, 0
 	for _, part := range result.GetParts() {
-		if part.GetToolCall() != nil && part.GetToolCall().GetName() == name {
+		if call := part.GetToolCall(); call != nil {
+			calls++
+			var args struct {
+				Message string `json:"message"`
+			}
+			decoder := json.NewDecoder(strings.NewReader(call.GetArgumentsJson()))
+			decoder.DisallowUnknownFields()
+			err := decoder.Decode(&args)
+			var trailing json.RawMessage
+			valid = valid && call.GetName() == "probe_echo" && err == nil && args.Message == toolCallingProbeMessage && decoder.Decode(&trailing) == io.EOF
+		}
+		text := strings.TrimSpace(part.GetText())
+		if text != "" && textLooksLikeProbeToolCall(text) {
+			valid = false
+		}
+	}
+	if valid && calls == 1 {
+		return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "tool-call probe returned a structured probe_echo call")
+	}
+	return capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "tool-call probe did not return a structured probe_echo call")
+}
+
+func textLooksLikeProbeToolCall(text string) bool {
+	for _, name := range []string{"probe_echo", "read_file"} {
+		if strings.HasPrefix(text, name) && json.Valid([]byte(strings.TrimSpace(strings.TrimPrefix(text, name)))) {
 			return true
 		}
 	}
-	return false
+	var call struct {
+		Name      string          `json:"name"`
+		Function  json.RawMessage `json:"function"`
+		ToolCalls json.RawMessage `json:"tool_calls"`
+	}
+	return json.Unmarshal([]byte(text), &call) == nil && (call.Name != "" || len(call.Function) > 0 || len(call.ToolCalls) > 0)
 }
 
 func inferenceResultHasThinking(result *operatorv1.InferenceResult) bool {

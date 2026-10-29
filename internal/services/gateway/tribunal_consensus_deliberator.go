@@ -370,10 +370,13 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		return memberVote{failure: fmt.Errorf("member owner: %w", err)}
 	}
 	attemptID := governance.ConsensusVoteAttemptID(txHash, memberAppID)
-	system, user := tribunal.ConsensusVotePrompt(member, subject)
+	system, user, err := tribunal.ConsensusVotePrompt(member, subject)
+	if err != nil {
+		return memberVote{failure: err}
+	}
 	request := dispatch.DispatchInferenceRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
-		Role:                 models.InferenceModelRolePrimary,
+		Role:                 models.InferenceModelRoleLite,
 		Messages: []*operatorv1.InferenceMessage{
 			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, system),
 			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, user),

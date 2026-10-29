@@ -116,7 +116,12 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
 		Personas:      catalog.GetPersonas(),
-		Scenarios:     catalog.GetScenarios()[:3],
+		Scenarios:     make([]*evalv1.EvaluationScenarioDefinition, 0, 3),
+	}
+	for _, scenario := range catalog.GetScenarios()[:3] {
+		frozen := proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition)
+		frozen.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+		truncated.Scenarios = append(truncated.Scenarios, frozen)
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)

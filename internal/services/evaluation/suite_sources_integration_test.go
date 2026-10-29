@@ -31,7 +31,7 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 			require.NoError(t, err)
 			suite, err := DecodeScenarioSuite(body)
 			require.NoError(t, err)
-			require.Equal(t, "1.2.0", suite.Version)
+			require.Equal(t, "1.3.0", suite.Version)
 			catalog, _, err := MaterializeSuite(suite)
 			require.NoError(t, err)
 			require.NotEmpty(t, catalog.GetCatalogDigest())

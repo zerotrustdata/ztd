@@ -59,9 +59,10 @@ type ScenarioSuite struct {
 
 // SuitePersona is one frozen agent persona of a suite.
 type SuitePersona struct {
-	ID      string `json:"id"`
-	Version string `json:"version"`
-	Digest  string `json:"digest"`
+	ID         string `json:"id"`
+	Version    string `json:"version"`
+	Digest     string `json:"digest"`
+	VoteDigest string `json:"vote_digest,omitempty"`
 }
 
 // SuiteScenario is one scenario of a suite: its public metadata, the private
@@ -295,7 +296,7 @@ func currentSuitePersonas() ([]SuitePersona, error) {
 	}
 	personas := make([]SuitePersona, 0, len(bindings))
 	for _, binding := range bindings {
-		personas = append(personas, SuitePersona{ID: binding.GetPersonaId(), Version: binding.GetVersion(), Digest: binding.GetDigest()})
+		personas = append(personas, SuitePersona{ID: binding.GetPersonaId(), Version: binding.GetVersion(), Digest: binding.GetDigest(), VoteDigest: binding.GetVoteDigest()})
 	}
 	return personas, nil
 }

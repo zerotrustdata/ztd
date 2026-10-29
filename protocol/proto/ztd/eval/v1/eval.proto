@@ -370,6 +370,9 @@ message EvaluationRun {
   // consensus is the live Gateway's L2 consensus binding, frozen at run
   // start. Absent only on runs started before it existed; those never resume.
   EvaluationConsensusIdentity consensus = 16;
+  // Model tool calling probes are evidence-backed eligibility observations
+  // used when materializing probe-gated campaign scenarios.
+  repeated ModelToolCallingProbe tool_calling_probes = 17;
 }
 
 // EvaluationConsensusIdentity is the L2 consensus binding one run executes
@@ -553,14 +556,19 @@ message EvaluationScenarioCatalog {
   // so catalog_digest binds the exact persona text. Empty only on catalogs
   // frozen before typed personas.
   repeated AgentPersonaBinding personas = 5;
+  // tool_calling_probe_required makes current catalogs require frozen,
+  // evidence-backed model eligibility probes; absent on historical catalogs.
+  bool tool_calling_probe_required = 6;
 }
 
 // AgentPersonaBinding is one agent persona's frozen identity: its registry
-// ID, version, and the SHA-256 of its rendered system prompt.
+// ID, version, authoring prompt digest, and vote prompt digest when it votes.
 message AgentPersonaBinding {
   string persona_id = 1;
   string version = 2;
   string digest = 3;
+  // vote_digest freezes the separate L2 vote rendering, when the persona votes.
+  string vote_digest = 4;
 }
 
 message PublicScenarioCriterion {
@@ -645,6 +653,25 @@ message ModelCapabilityObservation {
   ModelCapabilityKind capability = 1;
   EvaluationVerdictStatus outcome = 2;
   string observation_detail = 3;
+}
+
+// ModelToolCallingProbe records one model variant's governed tool-calling
+// eligibility result and the evidence artifact that supports it.
+message ModelToolCallingProbe {
+  string variant_id = 1;
+  ModelCapabilityObservation observation = 2;
+  ztd.compliance.v1.ComplianceEvidenceReference evidence_ref = 3;
+}
+
+// ModelToolCallingProbeEvidence is the governed request and response used to
+// qualify one frozen model variant for tool-calling scenarios.
+message ModelToolCallingProbeEvidence {
+  string variant_id = 1;
+  ztd.operator.v1.InferenceDispatchRequest request = 2;
+  ztd.operator.v1.InferenceDispatchResponse response = 3;
+  ConformanceAnchor anchor = 4;
+  string inference_operator_id = 5;
+  string inference_session_id = 6;
 }
 
 // RoleAssignment binds one designated responsibility to one frozen variant.

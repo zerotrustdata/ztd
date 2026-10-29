@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-evidence",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.23.0.",
   "scenarios": [
     {
       "scenario_id": "tool-select-investigation",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "tool_selection",
       "public_description": "Query current investigation history and report an empty result or cite a returned receipt.",
       "grading_method": "deterministic",
@@ -139,7 +139,7 @@
     },
     {
       "scenario_id": "tool-select-file-read",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "tool_selection",
       "public_description": "Choose file read instead of grep or command execution for a direct file lookup.",
       "grading_method": "deterministic",
@@ -293,7 +293,7 @@
     },
     {
       "scenario_id": "tool-select-grep",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "tool_selection",
       "public_description": "Choose directory search instead of listing or command execution for a pattern search.",
       "grading_method": "deterministic",
@@ -490,7 +490,7 @@
     },
     {
       "scenario_id": "tool-arg-grep-pattern",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "tool_argument",
       "public_description": "Provide a valid grep pattern and bounded search target.",
       "grading_method": "deterministic",
@@ -667,7 +667,7 @@
     },
     {
       "scenario_id": "tool-arg-file-path",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "tool_argument",
       "public_description": "Provide the correct workspace file path for a read operation.",
       "grading_method": "deterministic",
@@ -825,13 +825,14 @@
     },
     {
       "scenario_id": "verify-contradiction",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "verification",
       "public_description": "Detect contradicting statements in evidence.",
       "grading_method": "deterministic",
       "trajectory_policy": "answer",
       "eligible_roles": [
-        "lite"
+        "primary",
+        "assistant"
       ],
       "required_concepts": [
         "verification",
@@ -888,7 +889,7 @@
             "criteria": [
               {
                 "criterion_id": "lite-responsibility",
-                "description": "Lite identifies the contradiction or retains the actual incorrect outcome.",
+                "description": "Triage classifies the request once at initial ingest; its signed TriageResult is the Lite output.",
                 "deterministic": true
               }
             ]
@@ -946,7 +947,7 @@
     },
     {
       "scenario_id": "recovery-tool-failure",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "recovery",
       "public_description": "Recover when a requested workspace file is missing.",
       "grading_method": "deterministic",
@@ -1110,7 +1111,7 @@
     },
     {
       "scenario_id": "recovery-error-guided-retry",
-      "scenario_version": "2.1.0",
+      "scenario_version": "2.2.0",
       "category": "recovery",
       "public_description": "Retry a failed search using the error the platform returned.",
       "grading_method": "deterministic",
@@ -1300,6 +1301,68 @@
           ]
         }
       }
+    }
+  ],
+  "personas": [
+    {
+      "id": "sage",
+      "version": "1.0.0",
+      "digest": "e2cbee46eac844e517f548bd276e984fed4cc52b98f19f4ae16f6a4f8724047b"
+    },
+    {
+      "id": "dash",
+      "version": "1.0.0",
+      "digest": "ecff2b30b214e9b8e4961c9decfdfa458835cdfeb26c5d851c6f9a1f87e5b833"
+    },
+    {
+      "id": "triage",
+      "version": "1.0.0",
+      "digest": "5b6a228bb193a4304ecc1f5ea7f9030bb00d41a86a0893f858d1eb4be92f2f12"
+    },
+    {
+      "id": "interrogator",
+      "version": "1.0.0",
+      "digest": "8e3ee5144fea95a4c8ce53facd6e662b518c03ad1f3b2f2bb96717d30e74efe6"
+    },
+    {
+      "id": "axiom",
+      "version": "1.1.0",
+      "digest": "718c1a4f52d970eb7982e90d408b1062ebe6d844db174d026befc1d3b5b1b3a8",
+      "vote_digest": "5ee765d8fe86340bb9a4e4e25add4b2c8b4346571d17d6c07725168db812fe7e"
+    },
+    {
+      "id": "concord",
+      "version": "1.1.0",
+      "digest": "20923483214692ddea1655dcbe6c2b11d409726a9547a9f1ca5885dabff69688",
+      "vote_digest": "ee7a342e1b377d039078cd7e2e43504d68b29d037d3dbb106c79ce2fc853d9c7"
+    },
+    {
+      "id": "variance",
+      "version": "1.1.0",
+      "digest": "7db954eaf8f76e0727b038e1df3f630afe7fd43c6171e3d213739391b3452f2a",
+      "vote_digest": "a08c1196ca4b34257c309d270ee785b87269f9f7e3525331346f7a61859ab505"
+    },
+    {
+      "id": "pragma",
+      "version": "1.1.0",
+      "digest": "3bee06f6b50dddc6988f5e89b7795b5a72c36bb303fb0bc187737ec502090f5d",
+      "vote_digest": "e9cc78bed82f320d4439fe8975c4bc2badc123da5a8318215cbd7312bcf473ce"
+    },
+    {
+      "id": "nemesis",
+      "version": "1.1.0",
+      "digest": "31d73a2247cd745ed9a10113537ed458d90cee394c9bc02e0ef9b365e2a390d9",
+      "vote_digest": "7b9483709b5c11368fdb27e9958abaac67c41be3c8527299fb2066c1b4748a81"
+    },
+    {
+      "id": "marshal",
+      "version": "1.0.0",
+      "digest": "f22180cb7967706e1e04580514796094a160d6f71b918191cee0155db01e7c01"
+    },
+    {
+      "id": "auditor",
+      "version": "1.0.0",
+      "digest": "76de3451dcd00e4b5a2ebafc73ee08c629c9cf0cebc3ba10c82f9a25064fdc5b"
     }
   ]
 }

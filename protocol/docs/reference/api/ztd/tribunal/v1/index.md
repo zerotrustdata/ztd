@@ -46,10 +46,14 @@ an L2 quorum proof or an L3 approval.
 | cli_session_id | [string](#string) |  |  |
 | execution_id | [string](#string) |  | execution_id is carried by the dispatched McpCallRequested. The Gateway merges timeout_seconds into the reviewed RunShellCommandArguments. |
 | timeout_seconds | [int32](#int32) |  |  |
-| member_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | member_inference is the template for every member call. The Gateway sets messages, provider_attempt_id and the role&#39;s response_format schema per call; the template must leave messages, tools, provider_attempt_id, acting_app_id, stream and response_format empty. |
+| member_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | member_inference is the template for generation member calls. The Gateway sets messages, provider_attempt_id and response_format per call; every stage template must leave messages, tools, provider_attempt_id, acting_app_id, stream and response_format empty. |
 | provider_attempt_prefix | [string](#string) |  | provider_attempt_prefix names the member calls: call n (from 1, in deliberation order) uses provider_attempt_id &#34;&lt;prefix&gt;-&lt;n&gt;&#34;. Required and unique per intent, so the caller can bind each result to its request. |
 | tier | [ztd.eval.v1.ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  | tier is the campaign role recorded on each persona step. |
 | step_start_index | [uint32](#uint32) |  | step_start_index numbers the persona steps from step_start_index &#43; 1. |
+| marshal_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | marshal_inference and auditor_inference select their stage&#39;s stack slot. Formation callers bind Lite members, Assistant Marshal and Primary Auditor; homogeneous callers bind all stages to the candidate model. |
+| auditor_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  |  |
+| personas | [ztd.eval.v1.AgentPersonaBinding](#ztd-eval-v1-AgentPersonaBinding) | repeated | personas freezes the expected authoring and vote persona identities. The Gateway compares these against its build-time registry before generating any call, preventing stale persona text from silently authoring an intent. |
+| homogeneous | [bool](#bool) |  | homogeneous means all stage templates bind the same designated campaign candidate. When false, templates must match each persona&#39;s native tier. |
 
 
 

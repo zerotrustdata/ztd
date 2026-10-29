@@ -84,9 +84,9 @@ func TestLiteSecurityScenariosSupplyContextAndSharedPromptsWithoutTools(t *testi
 	}
 }
 
-func TestSecurityEvidenceRequirementsKeepResponderToolsAndGradeLiteAnswers(t *testing.T) {
+func TestSecurityEvidenceRequirementsKeepResponderToolObservations(t *testing.T) {
 	for _, blueprint := range []ScenarioBlueprint{securityUntrustedRunbook(), securityReadOnlyControl()} {
-		for _, role := range []string{"primary", "assistant", "lite"} {
+		for _, role := range []string{"primary", "assistant"} {
 			t.Run(blueprint.ScenarioID+"/"+role, func(t *testing.T) {
 				grader := homogeneousGrader{
 					req:  AssignmentExecutionRequest{ScenarioGold: blueprint.Gold},
@@ -97,14 +97,8 @@ func TestSecurityEvidenceRequirementsKeepResponderToolsAndGradeLiteAnswers(t *te
 				for _, grade := range grades {
 					byID[grade.GetCriterionId()] = grade
 				}
-				if role == "lite" {
-					assert.NotContains(t, byID, "required-evidence:tool_call")
-					require.Contains(t, byID, "required-evidence:final_response")
-					assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, byID["required-evidence:final_response"].GetStatus())
-				} else {
-					require.Contains(t, byID, "required-evidence:tool_call")
-					assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, byID["required-evidence:tool_call"].GetStatus())
-				}
+				require.Contains(t, byID, "required-evidence:tool_call")
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, byID["required-evidence:tool_call"].GetStatus())
 			})
 		}
 	}
@@ -132,7 +126,7 @@ func TestLiteSecurityEvidenceOverridesRejectUnobservableRequirements(t *testing.
 	}
 }
 
-func TestLiteSecurityAggregatePublishesMeasuredSuccessAndFailure(t *testing.T) {
+func TestLiteSecurityClassificationDoesNotClaimRefusalResistance(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
 		securityAssignment("safe", "lite-model"),
 		securityAssignment("unsafe", "lite-model"),
@@ -146,18 +140,19 @@ func TestLiteSecurityAggregatePublishesMeasuredSuccessAndFailure(t *testing.T) {
 	}
 	state, err := CollectRunAggregateState(assignments, results)
 	require.NoError(t, err)
-	require.NoError(t, state.attachScenarioCatalog(securityTestCatalog(), assignments, results))
+	catalog := securityTestCatalog()
+	catalog.Personas = testCatalogPersonas(t)
+	require.NoError(t, state.attachScenarioCatalog(catalog, assignments, results))
 	security := state.VariantRoles["lite-model:lite"].SecurityResistance
-	require.NotNil(t, security.Value)
-	assert.InDelta(t, 0.5, *security.Value, 1e-9)
-	assert.Equal(t, uint32(1), security.Refused)
-	assert.Equal(t, uint32(1), security.Persisted)
-	assert.Empty(t, security.UnavailableReason)
+	assert.Nil(t, security.Value)
+	assert.Equal(t, uint32(0), security.Refused)
+	assert.Equal(t, uint32(0), security.Persisted)
+	assert.Equal(t, "scenario_not_applicable", security.UnavailableReason)
 	summary := buildModelSummaryRecord("security-run", "2026-10-29T12:00:00Z", state.VariantRoles["lite-model:lite"], CampaignRelease{})
 	assert.Equal(t, "lite", summary.Role)
 	require.NotNil(t, summary.SecurityResistance)
-	require.NotNil(t, summary.SecurityResistance.Value)
-	assert.InDelta(t, 0.5, *summary.SecurityResistance.Value, 1e-9)
+	assert.Nil(t, summary.SecurityResistance.Value)
+	assert.Equal(t, "scenario_not_applicable", summary.SecurityResistance.UnavailableReason)
 }
 
 func TestMixedRoleMemoryStillRequiresResponderRetrieval(t *testing.T) {

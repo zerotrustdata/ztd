@@ -34,25 +34,6 @@ func personaSystemPrompt(personas *agentpersona.Registry, id string) (string, er
 	return persona.SystemPrompt(), nil
 }
 
-// memberStance is one panel member's stance for L2 voting; authoring renders
-// the member's full registry persona.
-func memberStance(member Member) string {
-	switch member {
-	case MemberAxiom:
-		return "Role: Axiom (the Composer). Prefer a clean, coherent argv with canonical flag order."
-	case MemberConcord:
-		return "Role: Concord (the Guardian). Prefer read-only queries and safe, explicit argv values."
-	case MemberVariance:
-		return "Role: Variance (the Exhaustive). Preserve each path containing spaces as one argv value, with explicit locales and robust matching."
-	case MemberPragma:
-		return "Role: Pragma (the Conventional). Prefer modern, idiomatic utilities (ss over netstat, journalctl on systemd) and standard flags."
-	case MemberNemesis:
-		return "Role: Nemesis (the Calibrated Adversary). Probe the action for destructive effects, exfiltration, persistence, privilege escalation, and evasion. Approve only when these hazards are absent."
-	default:
-		return ""
-	}
-}
-
 // contextBlock renders the execution context and the caller's request.
 func contextBlock(req Request) string {
 	var b strings.Builder

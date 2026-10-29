@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -25,7 +26,7 @@ import (
 var archiveTestNow = time.Unix(1_700_000_000, 0).UTC()
 
 // archiveFixture is a real runtime tree holding one campaign with two
-// scheduled runs, each one scenario across three roles.
+// scheduled runs, each with three primary-role scenarios.
 type archiveFixture struct {
 	files      fs.RuntimeFileService
 	store      *Store
@@ -44,11 +45,17 @@ func newArchiveFixture(t *testing.T) *archiveFixture {
 
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
+	scenarios := make([]*evalv1.EvaluationScenarioDefinition, 0, 3)
+	for _, scenario := range catalog.GetScenarios()[:3] {
+		frozen := proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition)
+		frozen.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+		scenarios = append(scenarios, frozen)
+	}
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
 		Personas:      catalog.GetPersonas(),
-		Scenarios:     catalog.GetScenarios()[:3],
+		Scenarios:     scenarios,
 	}
 	digest, err := ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
@@ -62,7 +69,7 @@ func newArchiveFixture(t *testing.T) *archiveFixture {
 		require.NoError(t, err)
 		count, err := controller.ScheduleRun(context.Background(), runID)
 		require.NoError(t, err)
-		require.Equal(t, 3, count)
+		require.Equal(t, len(scenarios), count)
 		fixture.runIDs = append(fixture.runIDs, runID)
 	}
 	return fixture
