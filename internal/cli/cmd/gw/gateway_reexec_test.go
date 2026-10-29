@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -40,6 +41,9 @@ func TestGatewayReExecArgs_PreserveSpectatorAndFollowingFlags(t *testing.T) {
 			cmd := gatewayStartCmd()
 			require.NoError(t, cmd.ParseFlags(args[2:]))
 			assert.Empty(t, cmd.Flags().Args(), "a boolean value must not become a positional argument")
+			acceptUnrecoverable, err := cmd.Flags().GetBool(shared.FlagAcceptUnrecoverable)
+			require.NoError(t, err)
+			assert.False(t, acceptUnrecoverable, "the child must use the existing master key rather than accept unrecoverable key creation")
 			spectator, err := cmd.Flags().GetBool("public-spectator")
 			require.NoError(t, err)
 			assert.Equal(t, enabled, spectator)
