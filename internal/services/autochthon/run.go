@@ -66,6 +66,9 @@ func Run(ctx context.Context, files fs.RuntimeFileService, logger *slog.Logger, 
 	}
 	c.recall(past)
 	logger.Info("Autochthon started; no Gateway", "dir", files.Resolve(constants.AutochthonDirname), "generation", c.gen, "tally", t.n)
+	if missing := readHostFacts().missing(); len(missing) > 0 {
+		logger.Warn("Autochthon host sense unavailable", "missing", missing)
+	}
 
 	ticker := time.NewTicker(cmp.Or(opts.Interval, time.Second))
 	defer ticker.Stop()
