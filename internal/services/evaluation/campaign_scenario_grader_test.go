@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -33,6 +34,131 @@ func TestParseFinalDiagnosisSections_UnicodeSummaryHeadings(t *testing.T) {
 		})
 	}
 	assert.Empty(t, parseFinalDiagnosisSections("Customer-safe summaryish: not a section")["summary"])
+}
+
+func TestHistoryContentGradeCitationContractKeepsRetrievalEvidence(t *testing.T) {
+	grader := homogeneousGrader{view: agentGradingView{
+		Trace: &AgentTrace{FinalOutput: "A file edit completed successfully."},
+		Calls: []AgentToolCall{{
+			ToolName:   constants.MCPToolEventReceiptList,
+			Success:    true,
+			ResultJSON: `{"receipts":[{"transactionId":"tx-1","actionType":"FILE_EDIT"}]}`,
+			Retrieval:  &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "tx-1"}}},
+		}},
+	}}
+	status, detail := grader.historyContentGrade(false)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status)
+	assert.Contains(t, detail, "retrieved history supports semantic")
+
+	status, detail = grader.historyContentGrade(true)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status)
+	assert.Contains(t, detail, "does not cite a returned receipt ID and action")
+
+	failed := grader
+	failed.view.Calls = []AgentToolCall{{
+		ToolName: constants.MCPToolEventReceiptList,
+		Success:  false,
+		Receipt:  &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}},
+	}}
+	status, detail = failed.historyContentGrade(false)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE, status)
+	assert.Contains(t, detail, "infrastructure-unavailable")
+}
+
+func TestReceiptCitationRequirementPreservesLegacyGoldAndHonorsExplicitFalse(t *testing.T) {
+	legacy := ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV2}
+	assert.True(t, legacy.requiresReceiptIDActionCitation(true), "absent field preserves the old expected-tool contract")
+	assert.False(t, legacy.requiresReceiptIDActionCitation(false))
+	newCatalogGold := baseGold("", "", "", "", "", "", nil)
+	require.NotNil(t, newCatalogGold.RequireReceiptIDActionCitation)
+	assert.False(t, *newCatalogGold.RequireReceiptIDActionCitation)
+	assert.Equal(t, ScenarioGradingContractV3, newCatalogGold.GradingContract)
+
+	newGold := ScenarioGoldCriteria{RequireReceiptIDActionCitation: boolPointer(false)}
+	assert.False(t, newGold.requiresReceiptIDActionCitation(true), "new prompt with no citation instruction does not require a literal citation")
+	newGold.RequireReceiptIDActionCitation = boolPointer(true)
+	assert.True(t, newGold.requiresReceiptIDActionCitation(false), "explicitly grounded citation requirement is frozen in gold")
+}
+
+func TestCitationFailureDetailDoesNotReplaceSemanticFailure(t *testing.T) {
+	detail := appendContentDetail("expected deployment failure was not reported", "answer does not cite a returned receipt ID and action")
+	assert.Contains(t, detail, "expected deployment failure was not reported")
+	assert.Contains(t, detail, "does not cite a returned receipt ID and action")
+}
+
+func TestGradeHomogeneousScenario_V3FileStateOnlyObjective(t *testing.T) {
+	const workspaceRoot = "/work/case"
+	const relativePath = "services/checkout/config.yaml"
+	const expectedContent = "ca_bundle: /etc/ssl/certs/checkout-ca-2026.pem\ntls_verify: true\n"
+	workspace := AgentTraceWorkspace{Root: workspaceRoot, OperatorWorkingDirectory: "/work"}
+	filePath := workspaceRoot + "/" + relativePath
+	arguments, err := canonicalToolJSON(mcp.FileReadRequest{Path: filePath})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name          string
+		observation   *AgentScenarioObservation
+		wantFileState bool
+	}{
+		{
+			name:          "correct signed observation passes",
+			observation:   fileStateObservation(t, filePath, arguments, expectedContent),
+			wantFileState: true,
+		},
+		{
+			name:        "wrong observed state fails",
+			observation: fileStateObservation(t, filePath, arguments, "tls_verify: false\n"),
+		},
+		{
+			name: "missing signed observation fails",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := &AgentTrace{
+				RunID: "run-file-state-only", AssignmentID: "assign-file-state-only", DesignatedRole: "primary",
+				Workspace:  workspace,
+				ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-turn"}},
+			}
+			if tc.observation != nil {
+				trace.Observations = []AgentScenarioObservation{*tc.observation}
+			}
+			req := AssignmentExecutionRequest{
+				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: trace.AssignmentID, RunId: trace.RunID},
+				ScenarioInput: ScenarioInputFixture{ScenarioID: "code-fix-ca-bundle", UserPrompt: "Update the checkout CA bundle."},
+				ScenarioGold: ScenarioGoldCriteria{
+					ScenarioID:            "code-fix-ca-bundle",
+					GradingContract:       ScenarioGradingContractV3,
+					FileState:             []investigation.FileState{{Path: relativePath, Contains: []string{"ca_bundle: /etc/ssl/certs/checkout-ca-2026.pem", "tls_verify: true"}}},
+					RequiredEvidenceTypes: []string{"model_inference"},
+				},
+				ScenarioTools: ScenarioToolExpectations{TrajectoryPolicy: evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER},
+				GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
+			}
+			grading, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+			require.NoError(t, err)
+			assert.False(t, hasDeterministicCriterion(grading.DeterministicGrades, "scenario-content"), "FileState-only objectives do not emit an answer-content verdict")
+			assert.Equal(t, tc.wantFileState, gradePassed(t, grading.DeterministicGrades, "file-state"))
+		})
+	}
+}
+
+func fileStateObservation(t *testing.T, filePath, arguments, content string) *AgentScenarioObservation {
+	t.Helper()
+	result, err := json.Marshal(mcp.FileReadResult{Path: filePath, Content: content})
+	require.NoError(t, err)
+	return &AgentScenarioObservation{Kind: scenarioObservationFile, Call: AgentToolCall{
+		ToolName: constants.MCPToolReadFile, ArgumentsJSON: arguments, Success: true,
+		Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{ResultSummary: string(result)}},
+	}}
+}
+
+func hasDeterministicCriterion(grades []*evalv1.DeterministicGrade, criterionID string) bool {
+	for _, grade := range grades {
+		if grade.GetCriterionId() == criterionID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *testing.T) {

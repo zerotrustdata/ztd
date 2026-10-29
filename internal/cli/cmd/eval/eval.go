@@ -112,6 +112,7 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 	}
 	cmd.PersistentFlags().String("project-root", "", "Override the repository root (defaults to cwd)")
 	cmd.AddCommand(
+		jsonLeaf(quickstartEvalCmd(deps)),
 		modelsEvalCmd(deps),
 		campaignsEvalCmd(deps),
 		runsEvalCmd(deps),

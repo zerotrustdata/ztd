@@ -54,7 +54,7 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 		// Keep this disclosure fixture to one role per scenario.
 		Scenarios: []*evalv1.EvaluationScenarioDefinition{
 			primaryOnlyScenario(scenariosByID["final-response-diagnosis"]),
-			primaryOnlyScenario(scenariosByID["instruction-bounded-count"]),
+			primaryOnlyScenario(scenariosByID["instruction-review-vote-approve"]),
 			primaryOnlyScenario(scenariosByID["instruction-classify-severity"]),
 		},
 	}
@@ -230,7 +230,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 		// Keep this disclosure fixture to one role per scenario.
 		Scenarios: []*evalv1.EvaluationScenarioDefinition{
 			primaryOnlyScenario(scenariosByID["final-response-diagnosis"]),
-			primaryOnlyScenario(scenariosByID["instruction-bounded-count"]),
+			primaryOnlyScenario(scenariosByID["instruction-review-vote-approve"]),
 			primaryOnlyScenario(scenariosByID["instruction-classify-severity"]),
 		},
 	}

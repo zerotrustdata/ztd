@@ -25,7 +25,9 @@ func TestTriageResultJSONSchemaIsCanonicalAndMatchesParser(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(triageResultJSONSchema), &decoded))
 	canonical, err := json.Marshal(decoded)
 	require.NoError(t, err)
-	assert.Equal(t, triageResultJSONSchema, string(canonical))
+	if triageResultJSONSchema != string(canonical) {
+		t.Fatal("TriageResult JSON schema is not canonically encoded")
+	}
 
 	properties := decoded["properties"].(map[string]any)
 	enum := func(field string) []string {

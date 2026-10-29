@@ -34,22 +34,28 @@ export function UnifiedGradeBadges({ assignment }: { assignment: AssignmentResul
       {gradeChips.map((grade) => {
         const criterion = criterionMap.get(grade.criterion_id);
         const tone = statusTone(grade.status);
+        const face = (
+          <>
+            <span className="badge-label">{grade.label}</span>
+            <span className="badge-status" aria-label={statusLabel(grade.status)}>
+              {statusLabel(grade.status)}
+            </span>
+            {grade.explanation ? <span className="badge-why">{grade.explanation}</span> : null}
+          </>
+        );
+        if (!criterion && !grade.detail) {
+          return <span key={grade.criterion_id} className={`grade-badge-summary grade-badge-static tone-${tone}`}>{face}</span>;
+        }
 
         return (
           <details
             key={grade.criterion_id}
             className={`grade-badge-details grade-${grade.status}`}
           >
-            <summary className={`grade-badge-summary tone-${tone}`}>
-              <span className="badge-label">{grade.label}</span>
-              <span className="badge-status" aria-label={statusLabel(grade.status)}>
-                {statusLabel(grade.status)}
-              </span>
-            </summary>
+            <summary className={`grade-badge-summary tone-${tone}`}>{face}</summary>
             <div className="grade-badge-details-panel">
               {criterion ? (
                 <>
-                  <DetailRow label="Status">{statusLabel(grade.status)}</DetailRow>
                   <DetailRow label="Grading method">
                     {criterion.grading_method === 'deterministic' ? 'Deterministic check' : 'Semantic judge'}
                   </DetailRow>
@@ -58,11 +64,6 @@ export function UnifiedGradeBadges({ assignment }: { assignment: AssignmentResul
                     <DetailRow label="Description">{criterion.public_description}</DetailRow>
                   ) : null}
                 </>
-              ) : (
-                <DetailRow label="Status">{statusLabel(grade.status)}</DetailRow>
-              )}
-              {grade.explanation ? (
-                <DetailRow label="Explanation">{grade.explanation}</DetailRow>
               ) : null}
               {grade.detail ? (
                 <DetailRow label="Grader detail"><span className="grade-detail">{grade.detail}</span></DetailRow>

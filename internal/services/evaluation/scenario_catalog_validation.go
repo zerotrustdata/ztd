@@ -101,7 +101,8 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	}
 	triageOnly := len(blueprint.EligibleRoles) == 1 && blueprint.EligibleRoles[0] == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE &&
 		blueprint.Gold.Players != nil && blueprint.Gold.Players.Triage != nil
-	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly {
+	fileStateObjective := blueprint.Gold.GradingContract == ScenarioGradingContractV3 && len(blueprint.Gold.FileState) > 0
+	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly && !fileStateObjective {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
 	if blueprint.Gold.ContentCheck != nil {
@@ -116,6 +117,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 		return err
 	}
 	if err := validatePromptHint(blueprint, catalog); err != nil {
+		return err
+	}
+	if err := validateGroundedToolArguments(blueprint); err != nil {
 		return err
 	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
@@ -419,6 +423,44 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolC
 	return nil
 }
 
+// validateGroundedToolArguments grades concrete hint values against their
+// argument rules without executing tools. A search objective also supplies a
+// reference regex when the model derives its pattern from the workspace.
+func validateGroundedToolArguments(blueprint ScenarioBlueprint) error {
+	// Derive a representative workspace so template tokens are rendered as
+	// they are during grading. This performs no filesystem I/O.
+	ws, err := NewScenarioWorkspace("/", "catalog-validation", blueprint.ScenarioID)
+	if err != nil {
+		return scenarioContractErrorWithCause(blueprint, err, "derive argument-validation workspace")
+	}
+	for _, validator := range blueprint.Gold.ArgumentValidators {
+		for _, constraint := range validator.Arguments {
+			var references []string
+			if hint := blueprint.Gold.PromptHint; hint != nil {
+				for _, argument := range hintArgumentsFor(hint, validator.ToolName, constraint.Name) {
+					switch argument.Source {
+					case sourcePrompt, sourceSeed, sourceWorkspace:
+						references = append(references, argument.Value)
+					}
+				}
+			}
+			if len(constraint.RegexMatches)+len(constraint.RegexRejects) > 0 && len(references) == 0 {
+				if check := blueprint.Gold.ContentCheck; validator.ToolName == constants.MCPToolSearchDirectory && constraint.Name == "pattern" && check != nil && check.SearchPattern != "" {
+					references = append(references, check.SearchPattern)
+				} else {
+					return scenarioContractError(blueprint, "regex constraint on %q.%q needs a concrete prompt, seed, workspace, or search-objective reference value", validator.ToolName, constraint.Name)
+				}
+			}
+			for _, reference := range references {
+				if ok, failure := validateToolArgument(ws.Render(reference), constraint, ws); !ok {
+					return scenarioContractError(blueprint, "reference value for %q.%q fails argument grading: %s", validator.ToolName, failure.FailedArg, failure.Rule)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // validatePromptHint enforces INV-EVAL-CAMP-11: every required argument of
 // every hinted tool is derivable from where the hint says it is.
 func validatePromptHint(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
@@ -482,11 +524,29 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 			return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not under the workspace", argument.ToolName, argument.Name, argument.Value)
 		}
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT:
-		if argument.Name != "target_operators" {
-			return scenarioUnanswerableError(blueprint, "%q.%q cannot come from operator context", argument.ToolName, argument.Name)
+		if argument.Name == "target_operators" {
+			return nil
 		}
+		if argument.ToolName == constants.MCPToolRestoreFile && argument.Name == "commit_hash" && argument.Value == "ledger_hash_before" &&
+			(slices.Contains(blueprint.AllowedTools, constants.MCPToolFileHistory) || slices.Contains(blueprint.AllowedTools, constants.MCPToolFileDiff)) {
+			for _, call := range blueprint.Input.Seed.ToolCalls {
+				if call.ToolName == constants.MCPToolFileEdit && call.Disclosure == ScenarioSeedDisclosureChainOnly && call.Outcome == scenarioSeedSuccess {
+					return nil
+				}
+			}
+		}
+		return scenarioUnanswerableError(blueprint, "%q.%q cannot come from operator context", argument.ToolName, argument.Name)
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED:
-		if argument.Name != "justification" && argument.Name != "request" {
+		allowed := false
+		switch {
+		case argument.Name == "justification", argument.Name == "request":
+			allowed = true
+		case argument.ToolName == constants.MCPToolRunShellCommand && argument.Name == "command":
+			allowed = strings.TrimSpace(argument.Value) != ""
+		case argument.ToolName == constants.MCPToolSearchDirectory && argument.Name == "pattern":
+			allowed = strings.TrimSpace(argument.Value) != ""
+		}
+		if !allowed {
 			return scenarioUnanswerableError(blueprint, "%q.%q cannot be authored by the model", argument.ToolName, argument.Name)
 		}
 	default:

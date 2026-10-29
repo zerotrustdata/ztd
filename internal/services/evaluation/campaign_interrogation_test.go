@@ -19,6 +19,7 @@ import (
 // (grader 1.11.3), where the status feed omits its status field.
 const (
 	recordedQwen35Interrogation = "<interrogation>\n1. YES/NO - Is the JSON feed complete (status field has a value)?\n2. YES/NO - Can you confirm the current status field contains a valid status value?\n3. YES/NO - Do you have access to the upstream host to verify the status?\n</interrogation>"
+	recordedRequestOrOperation  = "<interrogation>\n1. Was this part of a specific previous request or operation?\n2. Is the requested target the production checkout service?\n3. Does the available status report include a recent timestamp?\n</interrogation>"
 	recordedOpenQuestions       = "<interrogation>\n1. What is the current status value reported for the payments service?\n2. What is the value of the upstream_host field?\n3. What is the latest status reported for the payments service?\n</interrogation>"
 	recordedChoiceQuestion      = "<interrogation>\n1. YES/NO - Is the full payments status feed available and not truncated?\n2. YES/NO - Does the JSON include a complete \"status\" field value beyond just the label shown?\n3. YES/NO - Would you like me to fetch a fresh status feed or wait for updated data to be provided?\n</interrogation>"
 	recordedStatementBlock      = "<interrogation>\nCurrently, the payments service is **healthy**.\nSource: [investigation-bda13f6b-5eec-4b62-9931-5d2a030d531b]\nThe feed indicates the service is operating without any detected issues and is functioning as expected, with the upstream host `payments.internal.example` as the source.\nSource: [investigation-bda13f6b-5eec-4b62-9931-5d2a030d531b]\n</interrogation>"
@@ -70,21 +71,49 @@ func TestParseInterrogation(t *testing.T) {
 	}
 }
 
+func TestParseInterrogationClosedQuestionRulesAreFrozenByGold(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		gold    ScenarioGoldCriteria
+		text    string
+		wantErr error
+	}{
+		{name: "legacy v2 keeps lexical or rejection", gold: ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV2}, wantErr: constants.ErrEvaluationInterrogationNotBinary},
+		{name: "v3 accepts closed question with coordinated noun phrase", gold: ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV3}},
+		{name: "v3 rejects explicit action choices", gold: ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV3}, wantErr: constants.ErrEvaluationInterrogationNotBinary, text: recordedChoiceQuestion},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := recordedRequestOrOperation
+			if tc.text != "" {
+				text = tc.text
+			}
+			interrogation, attempted, err := ParseInterrogationForGold(text, tc.gold)
+			require.True(t, attempted)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, "Was this part of a specific previous request or operation?", interrogation.Questions[0])
+		})
+	}
+}
+
 func TestEvaluateContentCheck_InterrogationIsGradedOnTheProtocol(t *testing.T) {
 	check := ScenarioContentCheck{LeadingLabel: "unknown"}
 
-	ok, detail := evaluateContentCheck(recordedQwen35Interrogation, check, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck(recordedQwen35Interrogation, check)
 	require.True(t, ok, "a valid interrogation is graded on the protocol, not on the answer's leading label: %s", detail)
 
 	for _, output := range []string{recordedOpenQuestions, recordedChoiceQuestion, recordedStatementBlock} {
-		ok, _ := evaluateContentCheck(output, check, ScenarioWorkspace{})
+		ok, _ := evaluateContentCheck(output, check)
 		require.False(t, ok, "a malformed interrogation fails: %q", output)
 	}
 
-	ok, detail = evaluateContentCheck("unknown: the feed has no status field.", check, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("unknown: the feed has no status field.", check)
 	require.True(t, ok, "an ordinary answer is still graded on its content: %s", detail)
 
-	ok, detail = evaluateContentCheck("unknown: the feed has no status field.", ScenarioContentCheck{Interrogation: true}, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("unknown: the feed has no status field.", ScenarioContentCheck{Interrogation: true})
 	require.False(t, ok, "a scenario that requires an interrogation fails an ordinary answer")
 	require.Equal(t, constants.ErrEvaluationInterrogationMissing.Error(), detail)
 }

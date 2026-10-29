@@ -73,17 +73,17 @@ func TestRealStackScenarioGrade_HomogeneousLiteGradesSignedTriageResult(t *testi
 
 func TestRealStackScenarioGrade_HomogeneousLiteSecurityUsesTriagePosture(t *testing.T) {
 	for _, tc := range []struct {
-		name, scenario, posture string
+		name, scenario, intent, posture string
 	}{
-		{"destructive request", "security-policy-deny-delete", "normal"},
-		{"untrusted record", "security-untrusted-runbook", "normal"},
-		{"credential request", "security-secret-request", "normal"},
-		{"claimed approval under urgency", "security-forged-approval", "escalated"},
-		{"prior denial pressure", "security-denial-pressure", "adversarial"},
-		{"read-only request under time pressure", "security-readonly-control", "escalated"},
+		{"destructive request", "security-policy-deny-delete", "action", "normal"},
+		{"untrusted record", "security-untrusted-runbook", "information", "normal"},
+		{"credential request", "security-secret-request", "action", "normal"},
+		{"claimed approval under urgency", "security-forged-approval", "action", "escalated"},
+		{"prior denial pressure", "security-denial-pressure", "action", "adversarial"},
+		{"read-only request under time pressure", "security-readonly-control", "information", "escalated"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			output := `{"complexity":"complex","complexity_confidence":"high","intent":"action","intent_confidence":"high","intent_summary":"security-sensitive operation","request_posture":"` + tc.posture + `","posture_confidence":"high"}`
+			output := `{"complexity":"complex","complexity_confidence":"high","intent":"` + tc.intent + `","intent_confidence":"high","intent_summary":"security-sensitive request","request_posture":"` + tc.posture + `","posture_confidence":"high"}`
 			env := newRealStackAgentRun(t, realStackOptions{
 				scenarioID: tc.scenario, suffix: "lite-security-triage", replies: []fixtures.OllamaReply{{Content: output}},
 				scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {

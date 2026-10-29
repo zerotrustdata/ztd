@@ -110,11 +110,11 @@ func TestAgentEvidenceIntegration_FailedProbeLeavesAnswerOnlyCellEligible(t *tes
 		singleRole:            true,
 		suffix:                "tool-probe-answer-only",
 		scenarioID:            "tool-select-file-read",
-		additionalScenarioIDs: []string{"instruction-exact-format"},
+		additionalScenarioIDs: []string{"instruction-classify-severity"},
 		toolProbeRequired:     true,
 		replies: []fixtures.OllamaReply{
 			{Content: `probe_echo {"message":"capability-probe-tool"}`},
-			{Content: "READY"},
+			{Content: "ERROR"},
 		},
 	})
 	require.Equal(t, 2, env.scheduledCount)
@@ -127,7 +127,7 @@ func TestAgentEvidenceIntegration_FailedProbeLeavesAnswerOnlyCellEligible(t *tes
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, answer.GetLifecycleStatus(), answer.GetInvalidEvidenceDetail())
 	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, answer.GetAssignmentId())
 	require.NoError(t, err)
-	assert.Equal(t, "instruction-exact-format", trace.ScenarioID)
+	assert.Equal(t, "instruction-classify-severity", trace.ScenarioID)
 	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "the failed probe and answer-only turn each dispatch once")
 
 	report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)

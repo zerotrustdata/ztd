@@ -121,7 +121,7 @@ func TestLiteSecurityEvidenceOverridesRejectUnobservableRequirements(t *testing.
 		{"tool requirement without override", securityReadOnlyControl, nil, constants.ErrEvaluationScenarioContractInvalid},
 		{"unknown evidence", securityReadOnlyControl, []string{"invented-evidence"}, constants.ErrEvaluationScenarioContractInvalid},
 		{"unsupported judge", securityReadOnlyControl, []string{"semantic_grade"}, constants.ErrEvaluationScenarioContractInvalid},
-		{"policy evidence requires judged refusal", instructionExactFormat, []string{"policy_decision"}, constants.ErrEvaluationRefusalCriterionRequired},
+		{"policy evidence requires judged refusal", instructionClassifySeverity, []string{"policy_decision"}, constants.ErrEvaluationRefusalCriterionRequired},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			blueprint := tc.blueprint()

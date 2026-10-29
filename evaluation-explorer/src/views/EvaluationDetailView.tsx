@@ -96,7 +96,15 @@ export function EvaluationDetailView() {
         <QualityBadge state={run.quality_state} />
         {run.verifier_failure_summary ? <span className="verifier-failure">{run.verifier_failure_summary}</span> : null}
       </div>
-      {headlineLimitations.size > 0 ? <ul className="catalog-limitations">{Array.from(headlineLimitations).map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}
+      {headlineLimitations.size > 0 ? (
+        <details className="signal-fold signal-fold-inline">
+          <summary className="signal-fold-summary">
+            <span className="signal-fold-title">Coverage</span>
+            <span className="signal-fold-fact">{headlineLimitations.size} {headlineLimitations.size === 1 ? 'note' : 'notes'}</span>
+          </summary>
+          <ul className="catalog-limitations">{Array.from(headlineLimitations).map((reason) => <li key={reason}>{reason}</li>)}</ul>
+        </details>
+      ) : null}
       <EvidenceChain steps={[
         { key: 'run', label: 'Run', value: run.lifecycle_state, tone: lifecycleStateTone(run.lifecycle_state) },
         { key: 'results', label: run.native_result ? 'Scenarios' : 'Assignments', value: run.native_result ? `${run.native_result.passed_verdict_count}/${run.native_result.required_verdict_count} verdicts passed` : `${campaignTerminalProgress(run).done}/${run.assignment_total} terminal`, tone: run.native_result ? nativeResultTone(run.native_result.summary_status) : run.assignment_failed > 0 ? 'warn' : 'info' },
@@ -159,7 +167,7 @@ export function EvaluationDetailView() {
         </PanelSection>
       </> : null}
       <div className="evaluation-context">
-      <PanelSection id="run-identity" title="Run identity">
+      <PanelSection id="run-identity" title="Run identity" collapsed signal={[run.arm, run.evaluation_unit, run.campaign_id].filter(Boolean).join(' · ')}>
         <dl>
           <DetailRow label="Run ID">{run.run_id}</DetailRow>
           <DetailRow label="Execution arm">{run.arm}</DetailRow>
@@ -176,7 +184,7 @@ export function EvaluationDetailView() {
       </PanelSection>
 
       {run.model_role_mapping && Object.keys(run.model_role_mapping).length > 0 ? (
-        <PanelSection title="Model-role mapping">
+        <PanelSection title="Model-role mapping" collapsed signal={Object.values(run.model_role_mapping).join(' · ')}>
           <ul className="role-mapping">
             {Object.entries(run.model_role_mapping).map(([role, variantId]) => (
               <li key={role}>
@@ -200,7 +208,7 @@ export function EvaluationDetailView() {
           {run.verifier_failure_summary ? <DetailRow label="Failure summary">{run.verifier_failure_summary}</DetailRow> : null}
         </dl>
       </PanelSection>
-      <PanelSection id="run-evidence" title="Evidence bundle">
+      <PanelSection id="run-evidence" title="Evidence bundle" collapsed signal={run.evidence_link ? 'Published' : 'Not published'}>
         {run.evidence_link ? <SafeSourceLink href={run.evidence_link} label="Public-safe evidence" /> : <p className="panel-note">Evidence bundle not published.</p>}
       </PanelSection>
       </div>

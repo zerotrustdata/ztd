@@ -106,6 +106,7 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 | Use the browser console | `./ztd login web`, then open `https://localhost:8443/console/` |
 | Inspect the evidence for what ran | `./ztd gw data audit list --operator-session-id <id>` |
 | Govern an AI agent | `./ztd mcp agent run claude` |
+| Run a first model evaluation (needs a Gateway with `inference` and a served light model) | `./ztd eval models freeze`, then `./ztd eval quickstart` ([Quick Start](../architecture/evals.md#quick-start-one-cell-evaluation)) |
 | Stop the platform (state in `.ztd/` is kept) | `make down` (`./ztd gw stop` from the install directory) |
 
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.

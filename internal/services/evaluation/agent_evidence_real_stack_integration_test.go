@@ -54,9 +54,9 @@ const (
 	realStackModelTag   = "qwen3:4b"
 )
 
-// realStackRenderedHealthPath matches the absolute health fixture path the
+// realStackRenderedHealthPath matches the absolute health-check script path the
 // scenario prompt renders for one attempt's workspace.
-var realStackRenderedHealthPath = regexp.MustCompile(`/\S+?/workspaces/ws-[0-9a-f]{16}/status/health\.txt`)
+var realStackRenderedHealthPath = regexp.MustCompile(`/\S+?/workspaces/ws-[0-9a-f]{16}/bin/healthcheck\.sh`)
 
 // realStackShellArguments is the run_shell_command argument body for one command
 // and its arguments. A struct of strings cannot fail to marshal.
@@ -65,13 +65,13 @@ func realStackShellArguments(command string, args ...string) json.RawMessage {
 	return body
 }
 
-// realStackHealthCatReply cats the health fixture at the absolute path the
+// realStackHealthCheckReply runs the health check at the absolute path the
 // decoded request's prompt names. The path is the one the Data Operator
 // materialized for this attempt, so the shell reads the real workspace file.
-func realStackHealthCatReply(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+func realStackHealthCheckReply(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
 	for _, message := range request.Messages {
 		if path := realStackRenderedHealthPath.FindString(message.Content); path != "" {
-			return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("cat", path)}}}
+			return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("sh", path)}}}
 		}
 	}
 	return fixtures.OllamaReply{Failure: "scripted provider: the prompt names no workspace health fixture"}
@@ -140,7 +140,7 @@ func shellRepliesForTwoAssignments() []fixtures.OllamaReply {
 // answers from the output.
 func shellReplies() []fixtures.OllamaReply {
 	return []fixtures.OllamaReply{
-		{Respond: realStackHealthCatReply},
+		{Respond: realStackHealthCheckReply},
 		{Content: "HEALTHY"},
 	}
 }

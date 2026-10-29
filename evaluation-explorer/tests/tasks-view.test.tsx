@@ -55,7 +55,7 @@ describe('TasksView', () => {
   it('lists every catalog task grouped by category on the overview', () => {
     renderTasks();
 
-    expect(SCENARIO_TASKS).toHaveLength(39);
+    expect(SCENARIO_TASKS).toHaveLength(41);
     expect(screen.getByRole('heading', { name: 'Task catalog' })).toBeInTheDocument();
     expect(screen.getByText(SCENARIO_CATALOG_ID)).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'View full definition' })).toHaveLength(SCENARIO_TASKS.length);
@@ -84,6 +84,55 @@ describe('TasksView', () => {
       'href',
       scenarioTaskSourceUrl(task!),
     );
+  });
+
+  it('shows the eligible roles and the gold criteria for exactly those roles', () => {
+    const task = SCENARIO_TASKS.find((entry) => entry.id === 'route-lite-triage')!;
+    expect(task.eligibleRoles).toEqual(['lite']);
+    renderTasks(`/tasks/${task.id}`);
+
+    const panel = within(screen.getByRole('article'));
+    const roles = within(panel.getByRole('group', { name: 'Eligible roles' }));
+    expect(roles.getAllByText(/ role$/).map((flag) => flag.textContent)).toEqual(['Lite role']);
+    const criteria = within(panel.getByLabelText('Role criteria'));
+    expect(criteria.getByText('Lite.')).toBeInTheDocument();
+    expect(criteria.queryByText('Primary.')).not.toBeInTheDocument();
+    expect(criteria.queryByText('Assistant.')).not.toBeInTheDocument();
+    expect(criteria.getByText(task.roleCriteria[0]!.criteria[0]!.description, { exact: false })).toBeInTheDocument();
+    expect(panel.queryByText(/is not eligible/)).not.toBeInTheDocument();
+  });
+
+  it('lists eligible roles in role order with each role criterion and the judged requirements', () => {
+    const task = SCENARIO_TASKS.find((entry) => entry.id === 'security-policy-deny-delete')!;
+    renderTasks(`/tasks/${task.id}`);
+
+    const panel = within(screen.getByRole('article'));
+    const roles = within(panel.getByRole('group', { name: 'Eligible roles' }));
+    expect(roles.getAllByText(/ role$/).map((flag) => flag.textContent)).toEqual(['Primary role', 'Assistant role', 'Lite role']);
+    const criteria = panel.getByLabelText('Role criteria');
+    expect(within(criteria).getAllByRole('listitem').map((item) => item.querySelector('strong')?.textContent)).toEqual(['Primary.', 'Assistant.', 'Lite.']);
+
+    const judged = within(panel.getByLabelText('Judged requirements'));
+    expect(judged.getAllByRole('listitem')).toHaveLength(task.judgedCriteria!.length);
+    expect(judged.getByText(task.refusalCriterion!)).toBeInTheDocument();
+    expect(judged.getAllByText('refusal')).toHaveLength(1);
+  });
+
+  it('omits judged requirements for a scenario without a judged content check', () => {
+    const task = SCENARIO_TASKS.find((entry) => !entry.judgedCriteria?.length)!;
+    renderTasks(`/tasks/${task.id}`);
+    expect(screen.queryByLabelText('Judged requirements')).not.toBeInTheDocument();
+  });
+
+  it('publishes role criteria only for the roles each scenario is eligible for, in role order', () => {
+    const order = ['primary', 'assistant', 'lite'];
+    for (const task of SCENARIO_TASKS) {
+      expect(task.eligibleRoles.length, task.id).toBeGreaterThan(0);
+      expect(task.roleCriteria.map((entry) => entry.role), task.id).toEqual(task.eligibleRoles);
+      expect([...task.eligibleRoles].sort((a, b) => order.indexOf(a) - order.indexOf(b)), task.id).toEqual(task.eligibleRoles);
+      for (const entry of task.roleCriteria) expect(entry.criteria.length, `${task.id} ${entry.role}`).toBeGreaterThan(0);
+      if (task.refusalCriterion) expect(task.judgedCriteria?.map((criterion) => criterion.id), task.id).toContain(task.refusalCriterion);
+    }
   });
 
   it('redirects unknown task ids back to the overview', () => {

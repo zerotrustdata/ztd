@@ -32,9 +32,10 @@ func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
 
 	var payload suiteListJSON
 	require.NoError(t, env.runJSON(t, &payload, "suites", "list"))
-	require.Len(t, payload.Suites, 3)
+	require.Len(t, payload.Suites, 4)
 	assert.Equal(t, evaluation.DefaultSuiteID, payload.Suites[0].ID)
 	assert.Equal(t, evaluation.InvestigationsSuiteID, payload.Suites[2].ID)
+	assert.Equal(t, evaluation.QuickstartSuiteID, payload.Suites[3].ID)
 	assert.True(t, payload.Suites[0].Builtin)
 	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Suites[0].ScenarioCount)
 }
@@ -59,7 +60,7 @@ func TestSuitesExport_WritesTheCreateFormat(t *testing.T) {
 
 func TestSuitesCreate_ThenCampaignFreezesIt(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	path := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format", "tool-select-file-read")
+	path := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-classify-severity", "tool-select-file-read")
 
 	out := env.mustRun(t, "suites", "create", path)
 	assert.Contains(t, out, "my-suite@1.0.0 created")
@@ -111,15 +112,15 @@ func TestCampaignsCreate_UnknownSuiteFailsBeforeFreezing(t *testing.T) {
 
 func TestSuitesUpdate_RequiresANewVersionForChangedContent(t *testing.T) {
 	env := newStoreRunEnv(t)
-	env.mustRun(t, "suites", "create", writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format"))
+	env.mustRun(t, "suites", "create", writeSuiteFile(t, "my-suite", "1.0.0", "instruction-classify-severity"))
 
-	same := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format")
+	same := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-classify-severity")
 	env.mustRun(t, "suites", "update", same)
 
-	_, err := env.run(t, "suites", "update", writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format", "tool-select-file-read"))
+	_, err := env.run(t, "suites", "update", writeSuiteFile(t, "my-suite", "1.0.0", "instruction-classify-severity", "tool-select-file-read"))
 	require.ErrorIs(t, err, constants.ErrEvaluationSuiteInvalid)
 
-	env.mustRun(t, "suites", "update", writeSuiteFile(t, "my-suite", "1.1.0", "instruction-exact-format", "tool-select-file-read"))
+	env.mustRun(t, "suites", "update", writeSuiteFile(t, "my-suite", "1.1.0", "instruction-classify-severity", "tool-select-file-read"))
 	var show suiteShowJSON
 	require.NoError(t, env.runJSON(t, &show, "suites", "show", "my-suite"))
 	assert.Equal(t, "1.1.0", show.Version)
@@ -132,7 +133,7 @@ func TestSuites_BuiltinsAreProtectedAndBadFilesRejected(t *testing.T) {
 	_, err := env.run(t, "suites", "delete", evaluation.DefaultSuiteID)
 	require.ErrorIs(t, err, constants.ErrEvaluationSuiteBuiltin)
 
-	_, err = env.run(t, "suites", "create", writeSuiteFile(t, evaluation.SmokeSuiteID, "1.0.0", "instruction-exact-format"))
+	_, err = env.run(t, "suites", "create", writeSuiteFile(t, evaluation.SmokeSuiteID, "1.0.0", "instruction-classify-severity"))
 	require.ErrorIs(t, err, constants.ErrEvaluationSuiteBuiltin)
 
 	bad := filepath.Join(testutil.TempDir(t), "bad.json")

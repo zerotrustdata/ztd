@@ -63,16 +63,16 @@ func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
 	validators := toolArgShellCommand().Gold.ArgumentValidators
 	call := AgentToolCall{ToolName: constants.MCPToolRunShellCommand}
 
-	call.ArgumentsJSON = `{"command":"cat","args":["health.txt"]}`
+	call.ArgumentsJSON = `{"command":"sh","args":["bin/healthcheck.sh"]}`
 	ok, failure := validateToolCall(call, validators, ws)
 	assert.True(t, ok, failure.Rule)
 
 	// Without the health file the required term fails first.
-	call.ArgumentsJSON = `{"command":"cat","args":["x",">","y"]}`
+	call.ArgumentsJSON = `{"command":"sh","args":["x",">","y"]}`
 	ok, _ = validateToolCall(call, validators, ws)
 	assert.False(t, ok)
 
-	call.ArgumentsJSON = `{"command":"cat","args":["health.txt",">","y"]}`
+	call.ArgumentsJSON = `{"command":"sh","args":["bin/healthcheck.sh",">","y"]}`
 	ok, failure = validateToolCall(call, validators, ws)
 	assert.False(t, ok)
 	assert.Equal(t, agentToolArgCommand, failure.FailedArg)

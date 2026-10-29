@@ -40,7 +40,7 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	small := truncatedCatalog(t, catalog, 3)
 
 	assert.Equal(t, ComputeHomogeneousMatrixSize(1), ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), "the default suite sizes as it always did")
-	assert.Equal(t, uint64(39), uint64(StandardScenarioCount))
+	assert.Equal(t, uint64(41), uint64(StandardScenarioCount))
 
 	var wantCells uint64
 	for _, scenario := range small.GetScenarios() {
@@ -54,15 +54,15 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	assert.Equal(t, FormationMatrixSize(catalog, 5, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), uint64(5)*CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 }
 
-func TestDefaultSuiteConsensusMatrixExcludesLiveCommandErrorScenario(t *testing.T) {
+func TestDefaultSuiteConsensusMatrixExcludesRequiredStateChanges(t *testing.T) {
 	catalog, _, err := LoadScenarioCatalog()
 	require.NoError(t, err)
 
 	var consensusCells uint64
 	for _, scenario := range catalog.GetScenarios() {
 		switch scenario.GetScenarioId() {
-		case "recovery-live-command-error", "tool-arg-shell-command":
-			continue // required shell-command execution is governed by L2
+		case "recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change":
+			continue // required file mutations and shell execution are governed by L2
 		}
 		consensusCells += uint64(len(scenario.GetEligibleRoles()))
 	}

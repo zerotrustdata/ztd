@@ -281,36 +281,12 @@ func TestToolSelectFileReadRequiresTheReportedRetryLimit(t *testing.T) {
 	blueprint := toolSelectFileRead()
 	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 	require.NotNil(t, blueprint.Gold.ContentCheck)
-
-	workspaceEcho := "I would read /tmp/ws-debe5d00356db074/config/retry-config.env."
-	passed, _ := evaluateContentCheck(workspaceEcho, *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.False(t, passed, "the reviewed path echo must not pass for the digit in its workspace id")
-
-	passed, detail := evaluateContentCheck("```json\n{\"retry_limit\": 3}\n```", *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.True(t, passed, detail)
-	passed, detail = evaluateContentCheck("{\"retry_limit\": 3}", *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.True(t, passed, detail, "plain JSON is accepted as well as a fenced JSON object")
-	passed, detail = evaluateContentCheck("{\"retry_limit\": 3.0}", *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.True(t, passed, detail, "a decimal representation of the integer value is accepted")
-	for _, wrongValue := range []string{
-		"{\"retry_limit\": 30}",
-		"{\"retry_limit\": 300}",
-		"{\"retry_limit\": 9}",
-		"{\"retry_limit\": \"3\"}",
-		"{\"retry_limit\": 3.1}",
-		"{\"retry_limit\": 3.9}",
-		"{\"retry_limit\": -3.1}",
-		"{\"retry_limit\": -3.9}",
-		"{\"retry_limit\": 3.0000000000000001}",
-		"{\"retry_limit\": 9223372036854775808}",
-		"{\"retry_limit\": -9223372036854775809}",
-	} {
-		passed, _ = evaluateContentCheck(wrongValue, *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-		assert.False(t, passed, "wrong retry_limit representation must fail: %s", wrongValue)
-	}
-
 	assert.Equal(t, []string{"read_file"}, blueprint.ExpectedTools)
-	assert.Contains(t, blueprint.Input.UserPrompt, "return a JSON object with the integer field retry_limit")
+	assert.Contains(t, blueprint.Input.UserPrompt, "What retry limit is checkout configured with?")
+	assert.NotContains(t, strings.ToLower(blueprint.Input.UserPrompt), "json")
+	assertJudgedContentCriteria(t, *blueprint.Gold.ContentCheck, []string{"uses-active-config"})
+	assert.Contains(t, blueprint.Gold.ContentCheck.JudgedCriteria[0].Statement, "3")
+	assert.Contains(t, blueprint.Gold.ContentCheck.JudgedCriteria[0].Statement, "9")
 }
 
 func TestFinalResponseDiagnosisUsesNewFrozenRubricContract(t *testing.T) {

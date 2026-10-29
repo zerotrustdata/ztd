@@ -6,7 +6,7 @@
 // internal/services/evaluation/scenario_catalog_definitions.go
 // (`make explorer-catalog-generate`); never hand-copy a scenario here.
 
-import type { ScenarioCategory } from '../contract/types';
+import type { ModelRole, ScenarioCategory } from '../contract/types';
 import { SCENARIO_CATEGORIES } from '../contract/types';
 import { ZTD_ARCHITECTURE_DOCS, ZTD_REPO_URL } from './platform';
 import { SCENARIO_CATALOG_ID, SCENARIO_CATALOG_VERSION, SCENARIO_TASKS } from './scenario-catalog.generated';
@@ -52,16 +52,42 @@ export type ScenarioPromptHint = {
   arguments: readonly ScenarioHintArgument[];
 };
 
+/** One gold criterion a designated role is graded against. */
+export type ScenarioRoleCriterion = {
+  id: string;
+  description: string;
+};
+
+/** The gold criteria for one role the scenario is eligible for. */
+export type ScenarioRoleCriteria = {
+  role: ModelRole;
+  criteria: readonly ScenarioRoleCriterion[];
+};
+
+/** A binary statement the pinned judge scores the final reply against. Its
+ *  grade is published as `content:<id>`. */
+export type ScenarioJudgedCriterion = {
+  id: string;
+  statement: string;
+};
+
 export type ScenarioTaskDefinition = {
   id: string;
   category: ScenarioCategory;
   publicDescription: string;
   gradingMethod: ScenarioGradingMethod;
   trajectoryPolicy: ScenarioTrajectoryPolicy;
+  /** Roles the scenario is scored for, in primary, assistant, lite order. */
+  eligibleRoles: readonly ModelRole[];
   userPrompt: string;
   inlineContext?: readonly ScenarioInlineContent[];
   workspaceFiles?: readonly ScenarioWorkspaceFile[];
   expectedBehavior: string;
+  /** Gold criteria for the eligible roles only, in eligibleRoles order. */
+  roleCriteria: readonly ScenarioRoleCriteria[];
+  judgedCriteria?: readonly ScenarioJudgedCriterion[];
+  /** Id of the judged criterion stating the reply refuses the request. */
+  refusalCriterion?: string;
   requiredConcepts: readonly string[];
   allowedTools?: readonly string[];
   expectedTools?: readonly string[];

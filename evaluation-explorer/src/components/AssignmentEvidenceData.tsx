@@ -6,18 +6,25 @@ import type { AssignmentResult, LiveEvent, ProjectionRecord } from '../contract/
 import { PanelSection } from './evidence';
 import { CopyButton } from './shared';
 
-function JSONDetails({ title, text, filename, open = false }: { title: string; text: string; filename: string; open?: boolean }) {
+function downloadName(title: string): string {
+  if (title === 'Assignment JSON') return 'assignment JSON';
+  if (title === 'Feed events JSON') return 'feed events JSON';
+  return 'source JSON';
+}
+
+function JSONDetails({ title, text, filename }: { title: string; text: string; filename: string }) {
+  const href = `data:application/json;charset=utf-8,${encodeURIComponent(text)}`;
   return (
-    <details className="assignment-json" open={open}>
-      <summary>{title}</summary>
+    <div className="assignment-json">
       <div className="assignment-json-actions">
+        <a href={href} download={filename}>Download {downloadName(title)}</a>
         <CopyButton text={text} label={title} />
-        <a href={`data:application/json;charset=utf-8,${encodeURIComponent(text)}`} download={filename}>
-          Download {title === 'Assignment JSON' ? 'assignment JSON' : title === 'Feed events JSON' ? 'feed events JSON' : 'source JSON'}
-        </a>
       </div>
-      <pre className="model-response-text"><code>{text}</code></pre>
-    </details>
+      <details>
+        <summary>{title}</summary>
+        <pre className="model-response-text"><code>{text}</code></pre>
+      </details>
+    </div>
   );
 }
 
@@ -27,10 +34,9 @@ function JSONDetails({ title, text, filename, open = false }: { title: string; t
 export function AssignmentEvidenceData({ assignment, events, source }: { assignment: AssignmentResult; events: LiveEvent[]; source?: ProjectionRecord }) {
   return (
     <>
-      <PanelSection className="assignment-events" title="Assignment feed events">
+      <PanelSection className="assignment-events" title="Assignment feed events" collapsed signal={events.length === 1 ? '1 event' : `${events.length} events`}>
         <p className="panel-note">
-          {events.length} events loaded for this assignment from retained public feed history. Each row exposes
-          every event field. This history is independent of the live feed’s {LIVE_EVENT_RETENTION_LIMIT}-event display limit.
+          Retained public feed history for this assignment, separate from the live feed’s {LIVE_EVENT_RETENTION_LIMIT}-event display.
         </p>
         {events.length > 0 ? <>
           <ol className="assignment-event-list">
@@ -47,8 +53,8 @@ export function AssignmentEvidenceData({ assignment, events, source }: { assignm
         </> : <p className="model-response-empty">No assignment feed events are available in the loaded public history. This is not evidence that no execution events occurred.</p>}
       </PanelSection>
       <PanelSection className="assignment-published-data" title="Published assignment data">
-        <p className="panel-note">Inspect and download the assignment data used by this page. Where available, the public source record includes the original projection envelope, digests, and fields before display normalization.</p>
-        <JSONDetails title="Assignment JSON" text={JSON.stringify(assignment, null, 2)} filename={`${assignment.assignment_id}.json`} open />
+        <p className="panel-note">The assignment view, plus the source envelope before display normalization when the mirror sent one.</p>
+        <JSONDetails title="Assignment JSON" text={JSON.stringify(assignment, null, 2)} filename={`${assignment.assignment_id}.json`} />
         {source ? <JSONDetails title="Public source record" text={source.record_bytes} filename={`${assignment.assignment_id}-source.json`} /> : <p className="panel-note">The original source envelope is unavailable for this record.</p>}
       </PanelSection>
     </>

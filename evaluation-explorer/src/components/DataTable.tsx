@@ -7,7 +7,7 @@
 // Includes column-visibility controls so users can hide columns on wide
 // tables (e.g. the 1,125-row assignment table) and keep the view scannable.
 
-import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from 'react';
+import { Fragment, type ReactNode, useEffect, useId, useState, useSyncExternalStore } from 'react';
 import {
   type ColumnDef,
   type ColumnVisibilityState,
@@ -52,6 +52,9 @@ export interface DataTableProps<T extends RowData> {
   /** Optional controlled visibility for table presets. */
   columnVisibility?: ColumnVisibilityState;
   onColumnVisibilityChange?: OnChangeFn<ColumnVisibilityState>;
+  /** In-place drill-down rendered under an expanded row. */
+  renderDetail?: (record: T) => ReactNode;
+  isRowOpen?: (record: T) => boolean;
 }
 
 const cardMedia = '(max-width: 899px)';
@@ -73,6 +76,8 @@ export function DataTable<T extends RowData>({
   toolbar,
   columnVisibility: controlledVisibility,
   onColumnVisibilityChange,
+  renderDetail,
+  isRowOpen,
 }: DataTableProps<T>) {
   const mobile = useSyncExternalStore(subscribeToCardViewport, cardViewport, () => false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -194,15 +199,25 @@ export function DataTable<T extends RowData>({
           ))}
         </thead>
         <tbody>
-          {pageRows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} data-column={cell.column.id}>
-                  <table.FlexRender cell={cell} />
-                </td>
-              ))}
-            </tr>
-          ))}
+          {pageRows.map((row) => {
+            const open = Boolean(renderDetail && isRowOpen?.(row.original));
+            return (
+              <Fragment key={row.id}>
+                <tr>
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} data-column={cell.column.id}>
+                      <table.FlexRender cell={cell} />
+                    </td>
+                  ))}
+                </tr>
+                {open ? (
+                  <tr className="table-detail-row">
+                    <td colSpan={row.getVisibleCells().length}>{renderDetail!(row.original)}</td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>}
       {pageCount > 1 ? (

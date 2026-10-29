@@ -247,7 +247,7 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 }
 
 func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) ([]*evalv1.SemanticGrade, []*evalv1.DecomposedScoreRecord, error) {
-	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogation(trace.FinalOutput) {
+	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogationForGold(trace.FinalOutput, req.ScenarioGold) {
 		return nil, nil, nil
 	}
 	cfg, err := campaignJudgeConfig(req, e.newID)
@@ -554,7 +554,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 				return r.endAfterFailedInference(ctx)
 			}
 			text = asked
-			interrogation, interrogated, interrogationErr = ParseInterrogation(text)
+			interrogation, interrogated, interrogationErr = ParseInterrogationForGold(text, r.req.ScenarioGold)
 			if !interrogated {
 				interrogated, interrogationErr = true, constants.ErrEvaluationInterrogationNotWhole
 			}
