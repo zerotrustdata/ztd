@@ -139,6 +139,7 @@ var builtinSuites = []struct {
 	{DefaultSuiteID, func() (ScenarioSuite, error) { return DefaultScenarioSuite(), nil }},
 	{SmokeSuiteID, func() (ScenarioSuite, error) { return SmokeScenarioSuite(), nil }},
 	{InvestigationsSuiteID, InvestigationsScenarioSuite},
+	{QuickstartSuiteID, func() (ScenarioSuite, error) { return QuickstartScenarioSuite(), nil }},
 }
 
 // BuiltinSuiteIDs lists the built-in suite IDs in display order.

@@ -178,13 +178,15 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	summaries, err := store.ListSuites(ctx)
 	require.NoError(t, err)
-	require.Len(t, summaries, 3)
+	require.Len(t, summaries, 4)
 	assert.Equal(t, DefaultSuiteID, summaries[0].ID)
 	assert.True(t, summaries[0].Builtin)
 	assert.Equal(t, DefaultSuiteScenarioCount, summaries[0].ScenarioCount)
 	assert.Equal(t, SmokeSuiteID, summaries[1].ID)
 	assert.Equal(t, InvestigationsSuiteID, summaries[2].ID)
 	assert.True(t, summaries[2].Builtin)
+	assert.Equal(t, QuickstartSuiteID, summaries[3].ID)
+	assert.Equal(t, QuickstartScenarioCount, summaries[3].ScenarioCount)
 
 	v1 := customSuite(t, "my-suite", "1.0.0", "instruction-classify-severity")
 	require.NoError(t, store.CreateSuite(ctx, v1))
@@ -192,9 +194,9 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	summaries, err = store.ListSuites(ctx)
 	require.NoError(t, err)
-	require.Len(t, summaries, 4)
-	assert.Equal(t, "my-suite", summaries[3].ID)
-	assert.False(t, summaries[3].Builtin)
+	require.Len(t, summaries, 5)
+	assert.Equal(t, "my-suite", summaries[4].ID)
+	assert.False(t, summaries[4].Builtin)
 
 	resolved, builtin, err := store.ResolveSuite(ctx, "my-suite")
 	require.NoError(t, err)

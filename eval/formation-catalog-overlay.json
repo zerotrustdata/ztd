@@ -192,6 +192,54 @@
         "estimated_kv_cache_mib": 256,
         "model_digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
       }
+    },
+    {
+      "id": "formation-lite",
+      "display_name": "formation-lite",
+      "description": "Light quickstart formation: granite4:1b-h primary, llama3.2:1b assistant, gemma3:1b lite",
+      "max_vram_mib": 6144,
+      "primary": {
+        "variant_id": "granite4-1b-h",
+        "display_name": "granite4:1b-h",
+        "provider": "granitehybrid",
+        "family": "granitehybrid",
+        "provider_class": "ollama",
+        "served_model_tag": "granite4:1b-h",
+        "trust": "sovereign",
+        "quantization": "Q8_0",
+        "parameter_count": 1461538368,
+        "estimated_model_vram_mib": 1481,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "7761ae79cab940d37672a871bf6473282ddd0ebbc3b039227eb8ccd90532699f"
+      },
+      "assistant": {
+        "variant_id": "llama3-2-1b",
+        "display_name": "llama3.2:1b",
+        "provider": "llama",
+        "family": "llama",
+        "provider_class": "ollama",
+        "served_model_tag": "llama3.2:1b",
+        "trust": "sovereign",
+        "quantization": "Q8_0",
+        "parameter_count": 1235814432,
+        "estimated_model_vram_mib": 1253,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878"
+      },
+      "lite": {
+        "variant_id": "gemma3-1b",
+        "display_name": "gemma3:1b",
+        "provider": "gemma3",
+        "family": "gemma3",
+        "provider_class": "ollama",
+        "served_model_tag": "gemma3:1b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 999885952,
+        "estimated_model_vram_mib": 596,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79"
+      }
     }
   ],
   "removed_formation_ids": [

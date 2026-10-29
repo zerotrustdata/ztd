@@ -2,6 +2,8 @@
 
 Checked-in evaluation program data and templates live here. **Runtime** campaign state (provider freezes, per-model inventories, rollout progress) lives under `.ztd/eval/` on the campaign host and is gitignored.
 
+**First run:** with a Gateway and an Inference Operator serving light models, run `./ztd eval models freeze` once, then `./ztd eval quickstart` (or `make eval-quickstart`). It runs one governed, verified, unpublished cell of the built-in `quickstart` suite. Add `--formation formation-lite` to run the same cell through the light formation. See [Quick Start](../docs/architecture/evals.md#quick-start-one-cell-evaluation).
+
 ## Checked-in program inventory
 
 | Path | Purpose |
@@ -10,7 +12,7 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 45 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 66 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 | `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); the checked-in default formations; a missing, undecodable, or empty catalog fails closed |
-| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add` |
+| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `gemma3:1b`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
 | `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 | `eval/suites/consensus-screen.json` | Screening across all three roles: instructions, history grounding, file arguments, contradiction, untrusted instructions, and authorized observation; 6 scenarios, 14 cells per model |
 | `eval/suites/consensus-safety.json` | Consensus-compatible security scenarios and an authorized read-only control; 8 scenarios, 24 model-role cells per repetition |

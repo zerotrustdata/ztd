@@ -46,6 +46,7 @@ Defines ztd's platform evaluation programs: the governance conformance suite and
   - [Verification Posture (`INV-EVAL-VERIF`)](#verification-posture-inv-eval-verif)
 - [Owned surfaces](#owned-surfaces)
 - [Procedures](#procedures)
+  - [Quick Start: One-Cell Evaluation](#quick-start-one-cell-evaluation)
   - [Topology: Confidential Edge Execution with Governed State Mutation](#topology-confidential-edge-execution-with-governed-state-mutation)
   - [Integration evidence boundary](#integration-evidence-boundary)
   - [Evaluation Programs Overview](#evaluation-programs-overview)
@@ -180,6 +181,18 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 ## Procedures
 
+### Quick Start: One-Cell Evaluation
+
+With a Gateway running and an Inference Operator serving a light model (see [Getting Started](../guides/getting_started.md)), one command runs a complete governed evaluation:
+
+```bash
+./ztd eval models freeze      # once: freeze the digests of the models the Inference Operator serves
+./ztd eval quickstart         # or: make eval-quickstart
+./ztd eval quickstart --formation formation-lite
+```
+
+`ztd eval quickstart` (`internal/cli/cmd/eval/quickstart.go`) freezes the built-in `quickstart` suite over one registry model (default `granite4:1b-h`) or one catalog formation, then starts one run of it. The suite (`evaluation.QuickstartSuiteID`, `quickstart_suite.go`) holds one Primary-only, answer-only scenario, `route-primary-ownership`, graded only by deterministic checks, so each campaign has exactly one cell. It declares no tools and no judged criteria, so the run dispatches no tool-calling probe (`INV-EVAL-CAMP-31`) and no judge (`INV-EVAL-CAMP-43`). The campaign still freezes a judge: the subject model, the formation's Primary model, or `--judge`. Each run goes through the same governed path as every other campaign: the Inference Operator dispatch with signed receipts, deterministic grading, and offline verification. The run freezes the live posture (`INV-EVAL-CAMP-40`), so under `ratify` or `notary` its inference waits for a human decision. The quickstart publishes nothing unless `--publish` is set, and requires witness evidence only with `--require-witness`. The campaign ID is `quickstart-<release>-<subject>`, so reruns under one release add a new run to the same campaign, and a new release freezes a new campaign (`INV-EVAL-CAMP-27`). When that campaign already froze a different spec (a re-frozen model digest, a redefined formation, or another judge), the quickstart freezes `quickstart-<release>-<subject>-<digest8>` instead, where `<digest8>` is a short digest of the subject and judge tags and digests (`quickstartSpecSuffix`). The existing campaign is never changed. `formation-lite` (`eval/formation-catalog-overlay.json`) pairs `granite4:1b-h` (Primary), `llama3.2:1b` (Assistant), and `gemma3:1b` (Lite). The summary reports the platform outcome (the run's evidence verified offline) separately from the model outcome (the cell's verdict and failed grades), then prints the commands that show the model's trace and the next larger run (`smoke-suite`). The command exits nonzero when the run cannot execute or its evidence fails verification. A model that fails its scenario is a model result and exits zero. For flags, see `./ztd eval quickstart --help`.
+
 ### Topology: Confidential Edge Execution with Governed State Mutation
 
 Evaluation programs instantiate the **Confidential Edge Execution with Governed State Mutation** topology:
@@ -200,12 +213,13 @@ This Tier 2 rig establishes in-process production-path coverage. Store-only CLI 
 | Program | Suite / Catalog | Core Verification Focus | Excluded Components |
 | :--- | :--- | :--- | :--- |
 | **Governance Conformance Suite** | `governance-conformance@1.1.0` | Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator's signed receipts and no unclaimed side effect, through real Gateway and Operator runtimes. The bound internal Tribunal may supply governed L2 vote inference. | No scored model agents, no model judges, no campaigns, no scheduling, no synthetic simulators. |
-| **Model-Role Campaign** (Model Lane) | `default-suite@1.28.0`, `smoke-suite@1.27.0`, `investigations@1.26.0`, or custom suite | Evaluates one frozen model variant as Sage, Dash, or Triage in a bounded agent loop (up to 8 turns), with a Lite Interrogator call only after an explicit clarification signal. | Multi-model formation assignments. |
+| **Model-Role Campaign** (Model Lane) | `default-suite@1.28.0`, `smoke-suite@1.27.0`, `investigations@1.26.0`, `quickstart@1.0.0`, or custom suite | Evaluates one frozen model variant as Sage, Dash, or Triage in a bounded agent loop (up to 8 turns), with a Lite Interrogator call only after an explicit clarification signal. | Multi-model formation assignments. |
 | **Formation Campaign** (System Lane) | Checked-in execution-topology formations captured in the campaign's frozen stack set | Evaluates each scenario's eligible Primary, Assistant, and Lite roles under their own stack slots. Tribunal members use Lite, Marshal uses Assistant, and Auditor uses Primary. | Arbitrary synthesized stacks and L3-gated campaign execution. |
 
 ### Evaluation CLI Architecture
 
-The `ztd eval` command tree organizes platform evaluation across ten subcommands:
+The `ztd eval` command tree organizes platform evaluation across eleven subcommands:
+- `ztd eval quickstart`: Run one governed, verified cell of the built-in `quickstart` suite against a light model or formation ([Quick Start](#quick-start-one-cell-evaluation)).
 - `ztd eval conformance …`: Run, verify, and report the governance conformance suite.
 - `ztd eval models …`: Catalog management: list, show, add, remove, import, freeze, and diff model variants, plus `pull`, which requires the selected Inference Operator to serve Ollama.
 - `ztd eval suites …`: Manage scenario suites: list, show, export, create, update, and delete.
@@ -380,7 +394,7 @@ With an already-running Gateway, `./ztd eval conformance run` needs no flags. On
 ### Scenario Suites and Catalog Management
 
 Suites define scenario catalogs and test inputs:
-- Built-in versions: `default-suite@1.28.0` contains 41 scenarios, `smoke-suite@1.27.0` contains 10, and `investigations@1.26.0` contains 3 planted-fault investigation scenarios. Default and smoke scenarios use `2.5.0`, and changed investigation scenarios use `2.2.0`. Input fixtures use schema `1.3.0`, gold fixtures use `1.3.0`, and the grader is `1.18.0`. Built-in suites are immutable: existing campaigns keep their frozen fixtures and are not silently rewritten. L2 posture eligibility remains digest-bound: default doctrine/ratify runs have 85 cells per model, while consensus/notary have 78 after excluding `recovery-live-command-error`, `tool-arg-shell-command`, `code-fix-ca-bundle`, and `code-restore-bad-change`. New default catalogs require one governed tool-calling probe per frozen model variant before tool-bearing cells; the probe result and signed exchange are frozen in the run. Historical runs retain their catalog's prior contract.
+- Built-in versions: `default-suite@1.28.0` contains 41 scenarios, `smoke-suite@1.27.0` contains 10, `investigations@1.26.0` contains 3 planted-fault investigation scenarios, and `quickstart@1.0.0` contains 1 (`route-primary-ownership`, one Primary cell). Default and smoke scenarios use `2.5.0`, and changed investigation scenarios use `2.2.0`. Input fixtures use schema `1.3.0`, gold fixtures use `1.3.0`, and the grader is `1.18.0`. Built-in suites are immutable: existing campaigns keep their frozen fixtures and are not silently rewritten. L2 posture eligibility remains digest-bound: default doctrine/ratify runs have 85 cells per model, while consensus/notary have 78 after excluding `recovery-live-command-error`, `tool-arg-shell-command`, `code-fix-ca-bundle`, and `code-restore-bad-change`. New default catalogs require one governed tool-calling probe per frozen model variant before tool-bearing cells; the probe result and signed exchange are frozen in the run. Historical runs retain their catalog's prior contract.
 - Custom Suites: Created and updated via `ztd eval suites create <file>` and stored under `.ztd/data/eval/suites/<id>.json`. The checked-in custom suites `consensus-screen@1.6.0`, `consensus-evidence@1.6.0`, and `consensus-safety@1.5.0` live in `eval/suites/`.
 - Catalog Validation: Tool names must exist in the agent tool registry snapshot (`ExpectedTools` is a subset of `AllowedTools`), prompt hints must be answerable (a workspace-sourced argument must name a path under the workspace), trajectory policies must be well-formed, every scenario must include a content check, Lite classification objective, or a V3 final-file-state objective, and semantic-judge grading and `semantic_grade` evidence are rejected. Judged content criteria (`ScenarioContentCheck.JudgedCriteria`) are allowed: each ID MUST be unique lowercase kebab-case and each statement non-empty (`ErrEvaluationJudgedCriterionInvalid`). `RefusalCriterion` MUST name a judged criterion, and every scenario that requires `policy_decision` evidence MUST declare one (`ErrEvaluationRefusalCriterionRequired`). The Command and Codex players reject judged and refusal criteria.
 - Argument-rule validation: Concrete prompt, seed, and workspace hint values must pass the grading rules, with workspace tokens rendered into a representative attempt path. Regex rules require match and reject samples plus a concrete reference pattern from those hints or, for model-derived directory searches, the canonical `SearchPattern` objective. The reference must compile, match every positive sample, reject every negative sample, and satisfy the argument's other constraints. Samples are literal strings; runtime scrub tokens use free-text constraints. Reference validation executes no tools and does not prove that every runtime-authored argument or full scenario can succeed.

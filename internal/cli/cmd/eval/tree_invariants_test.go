@@ -173,7 +173,7 @@ func TestEvalCmd_ContainsExpectedGroups(t *testing.T) {
 	cmd := evalCmdWithConfig(deps)
 
 	expected := []string{
-		"backup", "campaigns", "conformance", "formations", "gates", "models", "restore", "rollout", "runs", "suites",
+		"backup", "campaigns", "conformance", "formations", "gates", "models", "quickstart", "restore", "rollout", "runs", "suites",
 	}
 	var actual []string
 	for _, subcmd := range cmd.Commands() {

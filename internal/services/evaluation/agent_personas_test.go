@@ -169,6 +169,7 @@ var builtinSuitePersonaPins = map[string]string{
 	DefaultSuiteID + "@1.28.0":        "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",
 	SmokeSuiteID + "@1.27.0":          "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",
 	InvestigationsSuiteID + "@1.26.0": "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",
+	QuickstartSuiteID + "@1.0.0":      "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",
 }
 
 func TestBuiltinSuites_PersonaChangeRequiresSuiteVersionBump(t *testing.T) {

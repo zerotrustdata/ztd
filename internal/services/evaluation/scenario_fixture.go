@@ -31,6 +31,7 @@ const (
 	DefaultSuiteVersion        = "1.28.0"
 	SmokeSuiteVersion          = "1.27.0"
 	InvestigationsSuiteVersion = "1.26.0"
+	QuickstartSuiteVersion     = "1.0.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
