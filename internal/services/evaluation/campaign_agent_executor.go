@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -90,6 +91,8 @@ func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, tools AgentToo
 
 // agentRun is the per-assignment state of one tool loop.
 type agentRun struct {
+	// persona is the campaign-frozen persona the designated role runs under.
+	persona    agentpersona.Persona
 	executor   *CampaignAgentExecutor
 	req        AssignmentExecutionRequest
 	designated evalv1.ModelCampaignRole
@@ -443,10 +446,15 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: scope tools", err)
 	}
-	if designated == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE && len(tools.Declarations()) > 0 {
-		return nil, assignmentExecutionError("evaluation: Lite receives injected context and cannot use tools", constants.ErrEvaluationScenarioContractInvalid)
+	persona, err := frozenRolePersona(binding.Personas, designated)
+	if err != nil {
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: persona", err)
+	}
+	if persona.Tools == agentpersona.ToolAccessNone && len(tools.Declarations()) > 0 {
+		return nil, assignmentExecutionError(fmt.Sprintf("evaluation: the %s persona answers without tools", persona.DisplayName), constants.ErrEvaluationScenarioContractInvalid)
 	}
 	return &agentRun{
+		persona:    persona,
 		executor:   e,
 		req:        req,
 		designated: designated,
@@ -466,6 +474,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 			CampaignID:          assignment.GetCampaignId(),
 			ScenarioID:          assignment.GetScenarioId(),
 			DesignatedRole:      roleLabel,
+			Persona:             &AgentTracePersona{ID: persona.ID, Version: persona.Version, Digest: persona.Digest()},
 			ServedModelTag:      variant.GetServedModelTag(),
 			ModelDigest:         variant.GetModelDigest(),
 			ModelRegistryDigest: binding.ModelRegistryDigest,
@@ -776,18 +785,9 @@ func (r *agentRun) conversation() ([]*operatorv1.InferenceMessage, error) {
 func (r *agentRun) systemPrompt() (string, error) {
 	seed := r.req.ScenarioInput.Seed
 	var b strings.Builder
-	// Keep the shared security prefix before persona and dynamic case context.
-	b.WriteString(constants.AgentSecurityPrompt)
-	switch r.designated {
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
-		b.WriteString(agentSagePrompt)
-		b.WriteString(agentInterrogationPrompt)
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT:
-		b.WriteString(agentDashPrompt)
-		b.WriteString(agentInterrogationPrompt)
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE:
-		b.WriteString(agentLitePrompt)
-	}
+	// The persona renders the shared security prefix first; dynamic case
+	// context follows it.
+	b.WriteString(r.persona.SystemPrompt())
 	if len(r.tools.Declarations()) == 0 {
 		b.WriteString("No tools are available for this request: answer the user directly from the conversation, and never invent tool output.\n\n")
 	} else {
@@ -1335,12 +1335,13 @@ func agentTraceSchemaPinError(trace *AgentTrace) error {
 }
 
 // agentTraceEvidenceError is every evidence rule an agent trace must pass
-// before it is graded: the sealed schema pin, the signed receipt evidence, and
-// the binding of each inference to the frozen campaign models. Live import and
+// before it is graded: the sealed schema pin, the signed receipt evidence, the
+// binding of each inference to the frozen campaign models, and the binding of
+// the system prompt to the frozen persona. Live import and
 // the assignment verifier both apply it, so a stored INVALID_EVIDENCE verdict is
 // recomputed from the same rules.
 func agentTraceEvidenceError(req AssignmentExecutionRequest, trace *AgentTrace) error {
-	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace), verifyScenarioObservationContract(req, trace), verifyContentJudgments(req, trace))
+	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace), tracePersonaError(req, trace), verifyScenarioObservationContract(req, trace), verifyContentJudgments(req, trace))
 }
 
 // agentTraceAssessment is the INVALID_EVIDENCE verdict on one agent trace.

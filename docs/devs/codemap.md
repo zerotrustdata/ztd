@@ -362,6 +362,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/scrubbing/` | Sensitive-value detection, tokenization, and rehydration. |
 | `internal/services/sqliteutil/` | Shared SQLite configuration and connection helpers. |
 | `internal/services/storage/` | Audit, execution, replay, suspension, commitment, and Git ledger persistence. |
+| `internal/services/agentpersona/` | Typed agent personas (Sage, Dash, Triage, the Tribunal members, Marshal, Auditor): one renderer (security prefix first), per-persona version and digest, and an explicitly constructed `Registry`. Imports only `constants` and `models`, so evaluation and the Tribunal share it. |
 | `internal/services/tribunal/` | Tribunal consensus: member dispatch, vote parsing and schema, decision and generative vote handling, and the Tribunal pipeline and auditor. Gateway-side wiring is in `internal/services/gateway/tribunal_intent.go`. |
 | `internal/services/system/` | Host metrics, OS details, and network interface sampling. |
 | `internal/services/vault/` | Encryption vault lifecycle. |

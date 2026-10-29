@@ -111,6 +111,7 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 		ModelVariants:           spec.GetModelRegistry(),
 		FormationStackSetDigest: spec.GetFormationStackSetDigest(),
 		JudgeVariant:            spec.GetJudgeVariant(),
+		Personas:                catalog.GetPersonas(),
 	}
 	switch run.GetLane() {
 	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:

@@ -66,10 +66,15 @@ func buildSuiteCatalog(ref *compliancev1.VersionedReference, blueprints []Scenar
 		artifacts[blueprint.ScenarioID] = pair
 		scenarios = append(scenarios, scenario)
 	}
+	personas, err := catalogPersonaBindings()
+	if err != nil {
+		return nil, nil, fmt.Errorf("evaluation: build suite %s catalog: %w", ref.GetId(), err)
+	}
 	catalog := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: CampaignSchemaVersion,
 		CatalogRef:    ref,
 		Scenarios:     scenarios,
+		Personas:      personas,
 	}
 	digest, err := ComputeScenarioCatalogDigest(catalog)
 	if err != nil {

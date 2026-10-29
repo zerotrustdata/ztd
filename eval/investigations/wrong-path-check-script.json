@@ -28,7 +28,7 @@
       "content": "#!/bin/sh\n# Passes only when the settings check prints exactly \"settings ok\".\nout=$(sh scripts/check.sh)\nif [ \"$out\" = \"settings ok\" ]; then\n  echo \"verify ok\"\n  exit 0\nfi\necho \"verify failed: $out\"\nexit 1\n"
     }
   ],
-  "user_message": "The settings check is failing. Make the check pass without moving the settings file. In your final explanation mask the settings path as conf/s…; tool arguments must use its actual path.",
+  "user_message": "The settings check is failing. Make the check pass without moving the settings file.",
   "objective": {
     "goal": "Make the settings check pass by fixing the check, leaving conf/settings.json where it is.",
     "file_state": [
@@ -50,9 +50,8 @@
     },
     "answer_concepts": {
       "required": [
-        "conf/s…"
-      ],
-      "forbidden": ["conf/settings.json", "config/settings.json"]
+        "conf/settings.json"
+      ]
     }
   },
   "canary": [

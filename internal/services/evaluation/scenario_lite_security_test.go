@@ -72,7 +72,7 @@ func TestLiteSecurityScenariosSupplyContextAndSharedPromptsWithoutTools(t *testi
 			require.NoError(t, err)
 			system := messages[0].GetParts()[0].GetText()
 			assert.True(t, strings.HasPrefix(system, constants.AgentSecurityPrompt))
-			assert.Contains(t, system, "You are the lightweight")
+			assert.Contains(t, system, "You are Triage,")
 			user := messages[len(messages)-1].GetParts()[0].GetText()
 			objective := contentJudgeObjective(req.ScenarioInput, run.trace, req.ScenarioGold.ContentCheck)
 			for _, file := range req.ScenarioInput.WorkspaceFiles {

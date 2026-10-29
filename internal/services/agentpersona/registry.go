@@ -1,0 +1,71 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+package agentpersona
+
+import (
+	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+)
+
+// Persona IDs. Tiers (owner direction): Lite runs Triage and the Tribunal
+// members, Assistant runs Dash and Marshal, Primary runs Sage and the Auditor.
+// Interrogation belongs to Triage, Sage, and Dash.
+const (
+	IDSage     = "sage"
+	IDDash     = "dash"
+	IDTriage   = "triage"
+	IDAxiom    = "axiom"
+	IDConcord  = "concord"
+	IDVariance = "variance"
+	IDPragma   = "pragma"
+	IDNemesis  = "nemesis"
+	IDMarshal  = "marshal"
+	IDAuditor  = "auditor"
+)
+
+// Registry holds every persona by ID in registration order.
+type Registry struct {
+	byID  map[string]Persona
+	order []string
+}
+
+// NewRegistry registers every persona explicitly and fails closed on a
+// duplicate ID or a persona missing a required section.
+func NewRegistry() (*Registry, error) {
+	r := &Registry{byID: make(map[string]Persona)}
+	for _, p := range []Persona{sage(), dash(), triage(), axiom(), concord(), variance(), pragma(), nemesis(), marshal(), auditor()} {
+		if err := p.validate(); err != nil {
+			return nil, err
+		}
+		if _, duplicate := r.byID[p.ID]; duplicate {
+			return nil, fmt.Errorf("agentpersona: duplicate persona %q: %w", p.ID, constants.ErrPersonaDuplicate)
+		}
+		r.byID[p.ID] = p
+		r.order = append(r.order, p.ID)
+	}
+	return r, nil
+}
+
+// Get returns the persona registered under id.
+func (r *Registry) Get(id string) (Persona, error) {
+	p, ok := r.byID[id]
+	if !ok {
+		return Persona{}, fmt.Errorf("agentpersona: persona %q: %w", id, constants.ErrNotFound)
+	}
+	return p, nil
+}
+
+// All returns every persona in registration order.
+func (r *Registry) All() []Persona {
+	out := make([]Persona, 0, len(r.order))
+	for _, id := range r.order {
+		out = append(out, r.byID[id])
+	}
+	return out
+}

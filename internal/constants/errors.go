@@ -1593,3 +1593,11 @@ var (
 	ErrEventRegistryUnknownField = errors.New("event registry entry has a field outside the declared shape")
 	ErrEventTransportViolation   = errors.New("event transport violation")
 )
+
+// Agent persona errors.
+var (
+	ErrPersonaDuplicate = errors.New("agentpersona: duplicate persona ID")
+	ErrPersonaInvalid   = errors.New("agentpersona: persona definition invalid")
+	// ErrPersonaDigestMismatch: a persona differs from the campaign's frozen binding.
+	ErrPersonaDigestMismatch = errors.New("agentpersona: persona does not match the frozen binding")
+)

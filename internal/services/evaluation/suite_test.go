@@ -22,7 +22,7 @@ import (
 func customSuite(t *testing.T, id, version string, scenarioIDs ...string) ScenarioSuite {
 	t.Helper()
 	def := DefaultScenarioSuite()
-	custom := ScenarioSuite{SchemaVersion: SuiteSchemaVersion, ID: id, Version: version, Description: "test suite"}
+	custom := ScenarioSuite{SchemaVersion: SuiteSchemaVersion, ID: id, Version: version, Description: "test suite", Personas: def.Personas}
 	for _, scenario := range def.Scenarios {
 		for _, want := range scenarioIDs {
 			if scenario.ScenarioID == want {

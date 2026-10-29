@@ -738,6 +738,7 @@ func (c *CampaignController) frozenAssignmentRequest(ctx context.Context, spec *
 	req.Binding.ModelVariants = spec.GetModelRegistry()
 	req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(spec.GetModelRegistry())
 	req.Binding.FormationStackSetDigest = spec.GetFormationStackSetDigest()
+	req.Binding.Personas = catalog.GetPersonas()
 	req.Binding.JudgeVariant = spec.GetJudgeVariant()
 	return req, nil
 }

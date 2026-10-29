@@ -11,7 +11,7 @@
 
 import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
 
-export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10'] as const;
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10', 'agent-trace.v11'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
 /** One canonical protojson message retained for offline signature verification. */
@@ -171,6 +171,13 @@ export interface AgentTraceRetrieval {
   receipts: AgentTraceRetrievalReceipt[];
 }
 
+/** The frozen persona the designated role ran under (agent-trace.v11). */
+export interface AgentTracePersona {
+  id: string;
+  version: string;
+  digest: string;
+}
+
 export interface AgentTrace {
   schema_version: AgentTraceSchemaVersion;
   evidence_digest: string;
@@ -180,6 +187,7 @@ export interface AgentTrace {
   campaign_id: string;
   scenario_id: string;
   designated_role: string;
+  persona?: AgentTracePersona;
   served_model_tag: string;
   model_digest: string;
   model_registry_digest: string;
@@ -205,10 +213,11 @@ export interface AgentTrace {
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 
-const isV7OrLater = (schemaVersion: string): boolean => ['agent-trace.v7', 'agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10'].includes(schemaVersion);
-const isV8OrLater = (schemaVersion: string): boolean => ['agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10'].includes(schemaVersion);
-const isV9OrLater = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v9' || schemaVersion === 'agent-trace.v10';
-const isV10 = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v10';
+const isV7OrLater = (schemaVersion: string): boolean => ['agent-trace.v7', 'agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10', 'agent-trace.v11'].includes(schemaVersion);
+const isV8OrLater = (schemaVersion: string): boolean => ['agent-trace.v8', 'agent-trace.v9', 'agent-trace.v10', 'agent-trace.v11'].includes(schemaVersion);
+const isV9OrLater = (schemaVersion: string): boolean => ['agent-trace.v9', 'agent-trace.v10', 'agent-trace.v11'].includes(schemaVersion);
+const isV10OrLater = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v10' || schemaVersion === 'agent-trace.v11';
+const isV11 = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v11';
 const isLiveContext = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v6' || isV7OrLater(schemaVersion);
 
 function optionalString(value: Record<string, unknown>, key: string, path: string): void {
@@ -541,7 +550,8 @@ export function parseAgentTrace(value: unknown): AgentTrace {
   rejectUnknown(value, [
     ...TRACE_FIELDS,
     ...(isV9OrLater(versionText) ? ['observations'] : []),
-    ...(isV10(versionText) ? ['content_judgments'] : []),
+    ...(isV10OrLater(versionText) ? ['content_judgments'] : []),
+    ...(isV11(versionText) ? ['persona'] : []),
   ], path);
   assert(
     typeof value.schema_version === 'string' && (AGENT_TRACE_SCHEMA_VERSIONS as readonly string[]).includes(value.schema_version),
@@ -565,6 +575,14 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     ['run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id', 'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'final_output'],
     path,
   );
+  let persona: AgentTracePersona | undefined;
+  if (isV11(schemaVersion)) {
+    assertObject(value.persona, `${path}.persona`);
+    rejectUnknown(value.persona, ['id', 'version', 'digest'], `${path}.persona`);
+    requiredStrings(value.persona, ['id', 'version', 'digest'], `${path}.persona`);
+    assert(SHA256.test(value.persona.digest as string), `${path}.persona.digest`, 'expected lowercase SHA-256');
+    persona = { id: value.persona.id as string, version: value.persona.version as string, digest: value.persona.digest as string };
+  }
   const inference = parseRuntime(value.inference, `${path}.inference`);
   const data = parseRuntime(value.data, `${path}.data`);
   const workspace = parseWorkspace(value.workspace, `${path}.workspace`);
@@ -627,6 +645,7 @@ export function parseAgentTrace(value: unknown): AgentTrace {
   }
   return {
     ...(value as unknown as AgentTrace),
+    persona,
     inference,
     data,
     workspace,

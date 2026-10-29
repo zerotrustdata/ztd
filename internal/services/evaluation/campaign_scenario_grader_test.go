@@ -279,6 +279,10 @@ func verifiedGradingTrace(t *testing.T, callClass evalv1.EvaluationCallClassific
 	require.NoError(t, err)
 	trace.Workspace = AgentTraceWorkspace(workspace)
 	trace.Steps = routerTrace(callClass).Steps
+	sage, err := frozenRolePersona(testCatalogPersonas(t), evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+	require.NoError(t, err)
+	trace.Persona = &AgentTracePersona{ID: sage.ID, Version: sage.Version, Digest: sage.Digest()}
+	trace.Input.Messages[0].Text = sage.SystemPrompt()
 	resealV7Trace(t, trace)
 	return trace
 }
@@ -287,8 +291,13 @@ func verifiedGradingTrace(t *testing.T, callClass evalv1.EvaluationCallClassific
 // was sealed for, graded against the caller's Gold.Players.
 func verifiedGradingRequest(trace *AgentTrace, players *ScenarioPlayerExpectations) AssignmentExecutionRequest {
 	candidate := &evalv1.ModelVariant{VariantId: "variant-a", ServedModelTag: trace.ServedModelTag, ModelDigest: trace.ModelDigest}
+	personas, err := catalogPersonaBindings()
+	if err != nil {
+		panic(err)
+	}
 	return AssignmentExecutionRequest{
 		Binding: CampaignExecutionBinding{
+			Personas:            personas,
 			ModelRegistryDigest: trace.ModelRegistryDigest,
 			ModelVariants:       []*evalv1.ModelVariant{candidate},
 			ModelRegistry:       []*operatorv1.InferenceModelVariant{{Model: trace.ServedModelTag, Digest: trace.ModelDigest}},
@@ -385,6 +394,9 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 func relabelAgentTrace(t *testing.T, trace *AgentTrace, version string) {
 	t.Helper()
 	trace.SchemaVersion = version
+	if version != agentTraceSchemaVersion {
+		trace.Persona = nil // an earlier schema has no persona field to relabel
+	}
 	trace.EvidenceDigest = ""
 	digest, err := ComputeAgentTraceDigest(trace)
 	require.NoError(t, err)

@@ -213,6 +213,7 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 	trace := &AgentTrace{
 		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1",
 		CampaignID: "campaign-1", ScenarioID: "scenario-1", DesignatedRole: "primary",
+		Persona:        &AgentTracePersona{ID: "sage", Version: "1.0.0", Digest: strings.Repeat("e", 64)},
 		ServedModelTag: "model:latest", ModelDigest: strings.Repeat("a", 64), ModelRegistryDigest: strings.Repeat("b", 64),
 		Inference: AgentTraceRuntime{OperatorID: "inference-1", SessionID: "session-inference"},
 		Data:      AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-data"},

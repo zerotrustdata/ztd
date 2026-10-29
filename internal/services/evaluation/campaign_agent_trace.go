@@ -30,8 +30,9 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v10
-// records each pinned-judge verdict on a judged content criterion with its
+// agentTraceSchemaVersion is the version every new trace is sealed with. v11
+// records the frozen persona (ID, version, digest) the designated role ran
+// under; v10 records each pinned-judge verdict on a judged content criterion with its
 // dispatched prompt and signed inference result; v9
 // separates harness seed and final-state observations from model tool calls; v8
 // records the Tribunal-approved arguments a run_shell_command call executed; v7
@@ -42,14 +43,15 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v10"
-	agentTraceSchemaVersionV9 = "agent-trace.v9"
-	agentTraceSchemaVersionV8 = "agent-trace.v8"
-	agentTraceSchemaVersionV7 = "agent-trace.v7"
-	agentTraceSchemaVersionV6 = "agent-trace.v6"
-	agentTraceSchemaVersionV5 = "agent-trace.v5"
-	agentTraceSchemaVersionV4 = "agent-trace.v4"
-	agentTraceSchemaVersionV3 = "agent-trace.v3"
+	agentTraceSchemaVersion    = "agent-trace.v11"
+	agentTraceSchemaVersionV10 = "agent-trace.v10"
+	agentTraceSchemaVersionV9  = "agent-trace.v9"
+	agentTraceSchemaVersionV8  = "agent-trace.v8"
+	agentTraceSchemaVersionV7  = "agent-trace.v7"
+	agentTraceSchemaVersionV6  = "agent-trace.v6"
+	agentTraceSchemaVersionV5  = "agent-trace.v5"
+	agentTraceSchemaVersionV4  = "agent-trace.v4"
+	agentTraceSchemaVersionV3  = "agent-trace.v3"
 )
 
 // agentModelCallPurposeTurn is the purpose of every governed agent turn. Each
@@ -231,9 +233,11 @@ type AgentTrace struct {
 	ScenarioID          string `json:"scenario_id"`
 	InvestigationID     string `json:"investigation_id,omitempty"`
 	DesignatedRole      string `json:"designated_role"`
-	ServedModelTag      string `json:"served_model_tag"`
-	ModelDigest         string `json:"model_digest"`
-	ModelRegistryDigest string `json:"model_registry_digest"`
+	// Persona is the frozen persona the designated role ran under (v11).
+	Persona             *AgentTracePersona `json:"persona,omitempty"`
+	ServedModelTag      string             `json:"served_model_tag"`
+	ModelDigest         string             `json:"model_digest"`
+	ModelRegistryDigest string             `json:"model_registry_digest"`
 	// Inference and Data are the runtimes the roles executed on. When one
 	// Operator holds both capabilities they name the same runtime, whose
 	// ledger bracket must then account for both roles' executions.
@@ -503,13 +507,19 @@ func agentTraceRuntime(runtime CampaignOperatorRuntime) AgentTraceRuntime {
 // CarriesModelIdentity reports whether the trace's schema seals each model
 // call's signed inference result and model identity (v7 and later).
 func (t *AgentTrace) CarriesModelIdentity() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV9 || t.SchemaVersion == agentTraceSchemaVersionV8 || t.SchemaVersion == agentTraceSchemaVersionV7)
+	return t != nil && (t.carriesObservationEvidence() || t.SchemaVersion == agentTraceSchemaVersionV8 || t.SchemaVersion == agentTraceSchemaVersionV7)
 }
 
 // carriesObservationEvidence reports whether the trace's schema records
 // harness observations and native tool request evidence (v9 and later).
 func (t *AgentTrace) carriesObservationEvidence() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV9)
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV10 || t.SchemaVersion == agentTraceSchemaVersionV9)
+}
+
+// carriesContentJudgments reports whether the trace's schema records pinned
+// judge verdicts (v10 and later).
+func (t *AgentTrace) carriesContentJudgments() bool {
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV10)
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -792,7 +802,7 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -809,7 +819,11 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	default:
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
 	}
-	if trace.SchemaVersion != agentTraceSchemaVersion && len(trace.ContentJudgments) > 0 {
+	// A v11 trace without a persona is rejected as evidence by verifyTracePersona.
+	if trace.SchemaVersion != agentTraceSchemaVersion && trace.Persona != nil {
+		return fmt.Errorf("evaluation: validate agent trace: historical trace carries a persona: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	if !trace.carriesObservationEvidence() && len(trace.Observations) > 0 {

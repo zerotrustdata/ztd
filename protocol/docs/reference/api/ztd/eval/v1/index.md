@@ -4,6 +4,7 @@
 ## Table of Contents
 
 - [ztd/eval/v1/eval.proto](#ztd_eval_v1_eval-proto)
+    - [AgentPersonaBinding](#ztd-eval-v1-AgentPersonaBinding)
     - [AgentStep](#ztd-eval-v1-AgentStep)
     - [AgentTrace](#ztd-eval-v1-AgentTrace)
     - [CampaignComplianceSourceArtifact](#ztd-eval-v1-CampaignComplianceSourceArtifact)
@@ -168,6 +169,24 @@
 <p align="right"><a href="#top">Top</a></p>
 
 ## ztd/eval/v1/eval.proto
+
+
+
+<a name="ztd-eval-v1-AgentPersonaBinding"></a>
+
+### AgentPersonaBinding
+AgentPersonaBinding is one agent persona&#39;s frozen identity: its registry
+ID, version, and the SHA-256 of its rendered system prompt.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| persona_id | [string](#string) |  |  |
+| version | [string](#string) |  |  |
+| digest | [string](#string) |  |  |
+
+
+
 
 
 
@@ -985,6 +1004,7 @@ EvaluationScenarioCatalog is the immutable 25-scenario private catalog.
 | catalog_ref | [ztd.compliance.v1.VersionedReference](#ztd-compliance-v1-VersionedReference) |  |  |
 | catalog_digest | [string](#string) |  |  |
 | scenarios | [EvaluationScenarioDefinition](#ztd-eval-v1-EvaluationScenarioDefinition) | repeated |  |
+| personas | [AgentPersonaBinding](#ztd-eval-v1-AgentPersonaBinding) | repeated | personas freezes every agent persona the catalog&#39;s assignments run under, so catalog_digest binds the exact persona text. Empty only on catalogs frozen before typed personas. |
 
 
 

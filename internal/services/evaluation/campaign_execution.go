@@ -32,6 +32,9 @@ type CampaignExecutionBinding struct {
 	// scored by it under its JudgeModelRegistry, whatever the assignment's
 	// own models. Nil only for a campaign frozen before pinned judging.
 	JudgeVariant *evalv1.ModelVariant
+	// Personas are the catalog's frozen agent personas. Empty only for a
+	// catalog frozen before typed personas, which cannot execute.
+	Personas []*evalv1.AgentPersonaBinding
 }
 
 func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {

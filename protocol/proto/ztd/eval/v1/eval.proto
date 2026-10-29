@@ -549,6 +549,18 @@ message EvaluationScenarioCatalog {
   ztd.compliance.v1.VersionedReference catalog_ref = 2;
   string catalog_digest = 3;
   repeated EvaluationScenarioDefinition scenarios = 4;
+  // personas freezes every agent persona the catalog's assignments run under,
+  // so catalog_digest binds the exact persona text. Empty only on catalogs
+  // frozen before typed personas.
+  repeated AgentPersonaBinding personas = 5;
+}
+
+// AgentPersonaBinding is one agent persona's frozen identity: its registry
+// ID, version, and the SHA-256 of its rendered system prompt.
+message AgentPersonaBinding {
+  string persona_id = 1;
+  string version = 2;
+  string digest = 3;
 }
 
 message PublicScenarioCriterion {

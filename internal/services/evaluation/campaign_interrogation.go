@@ -37,7 +37,7 @@ var binaryOpeners = []string{
 }
 
 // AgentInterrogation is one response under the Interrogation Protocol
-// (agentInterrogationPrompt I1-I4): exactly three numbered, strictly yes/no
+// (the agentpersona interrogation protocol I1-I4): exactly three numbered, strictly yes/no
 // questions that are the model's entire response.
 type AgentInterrogation struct {
 	Questions [3]string

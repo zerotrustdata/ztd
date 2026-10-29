@@ -46,11 +46,22 @@ const (
 // materialized catalog and fixture artifacts at creation, so editing or
 // deleting a suite never changes a campaign that already used it.
 type ScenarioSuite struct {
-	SchemaVersion string          `json:"schema_version"`
-	ID            string          `json:"id"`
-	Version       string          `json:"version"`
-	Description   string          `json:"description,omitempty"`
-	Scenarios     []SuiteScenario `json:"scenarios"`
+	SchemaVersion string `json:"schema_version"`
+	ID            string `json:"id"`
+	Version       string `json:"version"`
+	Description   string `json:"description,omitempty"`
+	// Personas freezes the agent personas the suite's scenarios were authored
+	// against. A persona edit makes every suite fail to materialize until it is
+	// re-exported under a new version.
+	Personas  []SuitePersona  `json:"personas"`
+	Scenarios []SuiteScenario `json:"scenarios"`
+}
+
+// SuitePersona is one frozen agent persona of a suite.
+type SuitePersona struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	Digest  string `json:"digest"`
 }
 
 // SuiteScenario is one scenario of a suite: its public metadata, the private
@@ -251,6 +262,9 @@ func MaterializeSuite(def ScenarioSuite) (*evalv1.EvaluationScenarioCatalog, map
 	if err := ValidateSuiteIdentity(def); err != nil {
 		return nil, nil, err
 	}
+	if err := validateSuitePersonas(def); err != nil {
+		return nil, nil, err
+	}
 	blueprints := make([]ScenarioBlueprint, 0, len(def.Scenarios))
 	for _, scenario := range def.Scenarios {
 		blueprint, err := scenario.blueprint()
@@ -273,8 +287,37 @@ func suiteInvalid(format string, args ...any) error {
 	return fmt.Errorf("evaluation: suite definition: %w: %s", constants.ErrEvaluationSuiteInvalid, fmt.Sprintf(format, args...))
 }
 
+// currentSuitePersonas is this build's persona registry in suite form.
+func currentSuitePersonas() ([]SuitePersona, error) {
+	bindings, err := catalogPersonaBindings()
+	if err != nil {
+		return nil, err
+	}
+	personas := make([]SuitePersona, 0, len(bindings))
+	for _, binding := range bindings {
+		personas = append(personas, SuitePersona{ID: binding.GetPersonaId(), Version: binding.GetVersion(), Digest: binding.GetDigest()})
+	}
+	return personas, nil
+}
+
+// validateSuitePersonas requires the suite's frozen personas to be exactly
+// this build's registry, in registry order.
+func validateSuitePersonas(def ScenarioSuite) error {
+	current, err := currentSuitePersonas()
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(def.Personas, current) {
+		return fmt.Errorf("evaluation: suite %s@%s froze agent personas that differ from this build; re-export it under a new version: %w", def.ID, def.Version, constants.ErrPersonaDigestMismatch)
+	}
+	return nil
+}
+
+// suiteDefinitionFromBlueprints freezes this build's personas into a built-in
+// suite. A registry error leaves them empty, so MaterializeSuite fails closed.
 func suiteDefinitionFromBlueprints(id, version, description string, blueprints []ScenarioBlueprint) ScenarioSuite {
-	def := ScenarioSuite{SchemaVersion: SuiteSchemaVersion, ID: id, Version: version, Description: description, Scenarios: make([]SuiteScenario, 0, len(blueprints))}
+	personas, _ := currentSuitePersonas() // an empty set fails validateSuitePersonas
+	def := ScenarioSuite{SchemaVersion: SuiteSchemaVersion, ID: id, Version: version, Description: description, Personas: personas, Scenarios: make([]SuiteScenario, 0, len(blueprints))}
 	for _, blueprint := range blueprints {
 		def.Scenarios = append(def.Scenarios, suiteScenarioFromBlueprint(blueprint))
 	}

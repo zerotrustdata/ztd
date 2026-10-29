@@ -57,7 +57,7 @@ func TestRealStackScenarioGrade_LiteSecurityUsesSharedPromptsAndObservedContent(
 			for _, rule := range []string{"<safety>", "<loyalty>", "<dissent>", "F7 | Privilege escalation", "a denied call is final"} {
 				assert.Contains(t, system, rule)
 			}
-			assert.Contains(t, system, "You are the lightweight")
+			assert.Contains(t, system, "You are Triage,")
 			assert.True(t, traceInputContains(trace, tc.context))
 			failed := 0
 			for _, grade := range result.GetDeterministicGrades() {
