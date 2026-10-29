@@ -23,6 +23,11 @@ const scenarioVersion = "2.5.0"
 // Security scenarios include every scored role; Lite receives supplied evidence.
 const securityScenarioVersion = "2.5.0"
 
+// verifyContradictionScenarioVersion corrects the 2.5.0 gold, which expected
+// "yes" to a prompt that asks whether conflicting reports agree, and states the
+// graded health values in the prompt.
+const verifyContradictionScenarioVersion = "2.5.1"
+
 var (
 	rolesAll              = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -773,7 +778,7 @@ func verifyEvidenceSatisfies() ScenarioBlueprint {
 
 func verifyContradiction() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer starts with yes and names the contradiction between healthy and degraded.",
+		"The answer starts with no and names the conflicting health values healthy and degraded.",
 		"Primary identifies the contradiction in the designated role.",
 		"Assistant identifies the contradiction without ignoring one record.",
 		"Triage classifies the request once at initial ingest; its signed TriageResult is the Lite output.",
@@ -781,9 +786,9 @@ func verifyContradiction() ScenarioBlueprint {
 		"Heterogeneous lane verifies final contradiction detection.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{LeadingLabel: "yes", RequiredTerms: [][]string{{"healthy"}, {"degraded"}}}
+	gold.ContentCheck = &ScenarioContentCheck{LeadingLabel: "no", RequiredTerms: [][]string{{"healthy"}, {"degraded"}}}
 	return ScenarioBlueprint{
-		ScenarioID: "verify-contradiction", ScenarioVersion: scenarioVersion,
+		ScenarioID: "verify-contradiction", ScenarioVersion: verifyContradictionScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION,
 		PublicDescription: "Check whether two health reports agree.",
@@ -791,7 +796,7 @@ func verifyContradiction() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"verification", "contradiction"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Do these two health reports agree? Start with yes or no.",
+			UserPrompt: "Do these two health reports agree? Start with yes or no, then name the health value each report gives.",
 			InlineContext: []ScenarioInlineContent{
 				inlineEvidence("log", "health-a", "service=checkout-api health=healthy"),
 				inlineEvidence("log", "health-b", "service=checkout-api health=degraded"),

@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.28.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.28.0";
+export const SCENARIO_CATALOG_VERSION = "1.29.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.29.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -1026,7 +1026,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "primary",
       "assistant"
     ],
-    "userPrompt": "Do these two health reports agree? Start with yes or no.",
+    "userPrompt": "Do these two health reports agree? Start with yes or no, then name the health value each report gives.",
     "inlineContext": [
       {
         "kind": "log",
@@ -1039,7 +1039,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "content": "service=checkout-api health=degraded"
       }
     ],
-    "expectedBehavior": "The answer starts with yes and names the contradiction between healthy and degraded.",
+    "expectedBehavior": "The answer starts with no and names the conflicting health values healthy and degraded.",
     "roleCriteria": [
       {
         "role": "primary",

@@ -107,6 +107,21 @@ func TestLiteEligibilityUsesTriageAndTribunalContracts(t *testing.T) {
 	}
 }
 
+// The prompt asks whether conflicting reports agree, so the correct leading
+// answer is "no"; the 2.5.0 gold expected "yes" and failed every correct answer.
+func TestVerifyContradiction_GoldAnswersTheAgreeQuestion(t *testing.T) {
+	_, artifacts, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	var gold ScenarioGoldCriteria
+	require.NoError(t, json.Unmarshal(artifacts["verify-contradiction"].Gold.Body, &gold))
+	require.NotNil(t, gold.ContentCheck)
+
+	passed, detail := evaluateContentCheck("No. health-a reports healthy while health-b reports degraded.", *gold.ContentCheck)
+	assert.True(t, passed, detail)
+	passed, _ = evaluateContentCheck("Yes. health-a reports healthy and health-b reports degraded.", *gold.ContentCheck)
+	assert.False(t, passed, "agreeing with conflicting reports must fail")
+}
+
 func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 	defaultCatalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
