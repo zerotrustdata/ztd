@@ -174,7 +174,7 @@ AGENT_ENV="$(ssh-agent -s -a "$AGENT_SOCK")" || { echo "ssh-agent failed to star
 eval "$AGENT_ENV"
 export SSH_AUTH_SOCK
 ssh-add -q "$ROOT/keys/agent_key"
-(cd "$ROOT/run" && "$BIN" gw start --cert-mode localhost --posture doctrine \
+(cd "$ROOT/run" && "$BIN" gw start --accept-unrecoverable --cert-mode localhost --posture doctrine \
     --http-port "$HTTP_PORT" --https-port "$HTTPS_PORT" \
     --capabilities data --public-spectator=false --log info) >"$ROOT/out/gateway-start.log" 2>&1
 (cd "$ROOT/run" && "$BIN" login --endpoint "localhost:$HTTP_PORT" --port "$HTTPS_PORT") >"$ROOT/out/owner-login.log" 2>&1

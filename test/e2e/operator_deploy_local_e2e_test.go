@@ -92,6 +92,7 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 		args := []string{"operator", "deploy", "--local", "--dest-dir", root,
 			"--count", strconv.Itoa(count), "--start-index", strconv.Itoa(start),
 			"--parallel", strconv.Itoa(min(count, 100)), "--background", "--capabilities", "data",
+			"--accept-unrecoverable",
 			"--endpoint", e2eCfg.gatewayHTTPSURL, "--operator-endpoint", e2eCfg.cfg.Paths.Host}
 		if httpPort != 0 {
 			args = append(args, "--gateway-http-port", strconv.Itoa(httpPort), "--gateway-https-port", strconv.Itoa(httpsPort))
@@ -247,7 +248,7 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	go func() {
 		defer close(canceledDone)
 		args := []string{"operator", "deploy", "--local", "--dest-dir", root,
-			"--count", "1", "--start-index", strconv.Itoa(n + 3), "--background",
+			"--count", "1", "--start-index", strconv.Itoa(n + 3), "--background", "--accept-unrecoverable",
 			"--trust-bundle", e2eCfg.cfg.ResolvedTrustBundlePath(),
 			"--operator-endpoint", "127.0.0.1", "--gateway-https-port", bootstrapPort,
 			"--endpoint", e2eCfg.gatewayHTTPSURL}

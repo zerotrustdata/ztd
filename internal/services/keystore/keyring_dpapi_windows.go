@@ -50,6 +50,15 @@ func (d *dpapiKeyring) Name() string {
 	return "dpapi"
 }
 
+// MasterKeyPresent reports the seal file only. It does not unprotect the key.
+func (d *dpapiKeyring) MasterKeyPresent() (bool, error) {
+	exists, err := d.fileSvc.FileExists(context.Background(), d.path)
+	if err != nil {
+		return false, fmt.Errorf("dpapi: stat sealed master key: %w", err)
+	}
+	return exists, nil
+}
+
 func (d *dpapiKeyring) RetrieveMasterKey() ([]byte, error) {
 	sealed, err := d.fileSvc.ReadFile(context.Background(), d.path)
 	if err != nil {

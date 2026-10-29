@@ -4,7 +4,7 @@ title: Encryption Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - internal/services/vault/
   - internal/services/keystore/
@@ -73,6 +73,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-ENC-STORE-04 | A key store with no master key MUST NOT generate one while `.ztd/secrets/` holds secrets sealed by the keystore; startup MUST fail with `ErrKeyStoreOrphanedSecrets` instead of orphaning them under a new key. |
 | INV-ENC-STORE-05 | Secret names MUST be a single non-hidden path component. Hidden names are reserved for sealed master keys and in-flight atomic writes, so no secret operation MUST overwrite, read, or delete them or leave the secrets directory. The one exception is `Keystore.Purge()`, which removes every non-directory entry under `.ztd/secrets/`, hidden names included. |
 | INV-ENC-STORE-06 | Client identity secrets outside `.ztd/secrets/` MUST be sealed with the same keystore and master key: the CLI private key (`.ztd/cli.key`), each app private key (`.ztd/apps/<name>.key`), and the pending app enrollment state (`.ztd/pki/pending-enrollment/app_<name>.json`, key plus token). Each MUST be stored as a sealed value bound to its runtime-relative path (`Keystore.Encrypt`), read by unsealing in memory then `tls.X509KeyPair`, and sealed under the platform key store master key (OS keyring or ssh-agent). A missing or locked master key MUST fail closed; a plaintext file at a sealed path MUST fail with `ErrIdentityFilePlaintext`, and unseal failures MUST wrap `ErrIdentityFileUnseal`. There is no migration. External clients MUST NOT read these keys: they use the `ztd mcp stdio` bridge, which unseals in process. |
+| INV-ENC-STORE-07 | The first time `gw start`, `gw restart`, or `operator start` creates a master key, the invoking terminal MUST show that key once as a recovery key and MUST NOT store it until the operator retypes it. A start with no terminal MUST fail with `ErrKeyStoreRecoveryRequired` unless `--accept-unrecoverable` is set. The recovery key MUST NOT be written into the runtime tree, a start log, or an error string. A declined or mismatched confirmation MUST leave the key store unchanged. `gw recover` and `operator recover` MUST install a saved key only when the OS key store is empty or already holds that same key, and MUST refuse to replace a different key. When sealed secrets exist, the key MUST decrypt them before it is stored. |
 
 ### Scrubbing and rehydration (`INV-ENC-SCRUB`)
 
@@ -192,9 +193,21 @@ The current code has no external file backend or `--master-key-file` flag, and t
 
 On Linux, `gw start` checks an existing ssh-agent seal before network identity detection and process launch; `gw restart` checks it before stopping the current process. This check only reads and unseals the existing master key, then zeroes it. A fresh runtime continues through normal provider selection. A missing or unreachable agent returns a typed `SSHAgentUnlockError` carrying the required public-key fingerprint. The CLI searches regular `~/.ssh/*.pub` sidecars for that fingerprint and a corresponding private-key file, then prints shell-quoted copy-and-paste commands and a retry command preserving explicit flags. With terminal input and a reachable agent named by `SSH_AUTH_SOCK`, it asks before invoking `ssh-add -t 8h` for that matching path. OpenSSH owns the passphrase prompt; ztd does not read the private key or passphrase. Startup continues only after the original master key decrypts successfully. Nonterminal input, refusal, unavailable agents, and unmatched keys fail closed with recovery instructions. No agent is started automatically, no shell profile is changed, and recovery never replaces the seal or changes providers. The eight-hour limit applies to the newly loaded agent key; a running Gateway retains its unlocked master key until it stops.
 
-OS key creation occurs only during initialization when lookup reports a missing key. It stores the new key and verifies it by reading it back and comparing in constant time; store, retrieval, and verification failures abort startup without switching backends or deleting a stored key. Backend construction performs no write probe.
+OS key creation occurs only during initialization when lookup reports a missing key. Gateway and Operator start show the recovery key and store it only after the operator retypes it (`INV-ENC-STORE-07`). The new key is then read back and compared in constant time; store, retrieval, and verification failures abort startup without switching backends or deleting a stored key. Backend construction performs no write probe.
 
 Changing to a different valid key is not migration or rotation: existing ciphertext will not decrypt. Restore the original key and configuration to recover. Never overwrite an existing key to repair startup; loss of the master key loses access to its encrypted data.
+
+### Recovery key
+
+The recovery key is the master key, encoded for a person to write down. It is not a second key and it is not wrapped. `gw start` and `operator start` generate it in memory, print it on the terminal once, and store it in the OS key store only after the operator types it back. A mismatch, an empty answer, or a closed terminal stores nothing. The next start generates a different key; the one that was not confirmed is void.
+
+The key is not written under `.ztd/`, not logged, and not put in an error. Terminal scrollback holds a copy until the operator clears it. Anyone who has the key can open that runtime. Losing both the paper copy and the OS key store means that gateway or operator cannot be restored. There is no backdoor and `gw clean` does not bring it back.
+
+On macOS Keychain and Linux Secret Service, one login holds one master key and every runtime on that login uses it, so the ceremony runs on the first create only. On the Linux ssh-agent seal and Windows DPAPI, each runtime tree has its own sealed master key, so each new gateway or operator runtime runs the ceremony.
+
+`--accept-unrecoverable` stores the key without showing it. Automated tests, scale runs, and the cloud systemd unit pass it because they have no terminal. Losing that OS key store then destroys the runtime. `gw recover` and `operator recover` read a saved key from the terminal and install it. They do not replace a different key already in the store. When `.ztd/secrets/` already holds sealed secrets, the key must decrypt them or nothing is stored.
+
+A local `operator deploy` runs the ceremony in the deploying terminal before it starts workers, so the key is not written to the worker start log. A remote deploy has no terminal on the far side: the worker refuses to create a key unless the deploy passes `--accept-unrecoverable`, or an operator runs `operator start` in a terminal on that host first.
 
 ### Secret Storage Format
 

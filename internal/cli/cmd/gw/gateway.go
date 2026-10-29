@@ -38,6 +38,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -330,6 +331,7 @@ func Cmd() *cobra.Command {
 
 	cmd.AddCommand(
 		gatewayStartCmd(),
+		gatewayRecoverCmd(),
 		gatewayStopCmd(),
 		gatewayStatusCmd(),
 		gatewayRestartCmd(),
@@ -422,6 +424,7 @@ func gatewayStartCmdWithConfig(
 	var follow bool
 	var interactive bool
 	var quiet bool
+	var acceptUnrecoverable bool
 
 	cmd := &cobra.Command{
 		Use:   string(constants.ThinkingPhaseStart),
@@ -442,6 +445,12 @@ key is missing, the CLI prints copy-and-paste recovery commands. In a terminal,
 it can ask to load the matching local key into the current agent for 8 hours;
 OpenSSH handles the SSH key passphrase. Recovery never replaces the vault key.
 
+The first start that creates a master key prints a recovery key once and stores
+it only after you type it back. There is no second copy. Lose that key and the
+OS key store, and this gateway cannot be restored. A start without a terminal
+refuses to create the key unless --accept-unrecoverable is set. Install a saved
+key with 'gw recover'.
+
 Posture Persistence: The complete launch configuration is persisted in
 .ztd/pids/operator-launch-profile.json on every successful background start. When
 using 'gateway restart', the full configuration (CORS, passkey, ports, posture,
@@ -455,7 +464,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				defer cmd.SetOut(previousOut)
 				cmd.SetOut(io.Discard)
 			}
-			_, err := configLoader("")
+			cfg, err := configLoader("")
 			if err != nil {
 				return fmt.Errorf("gateway: load config: %w", err)
 			}
@@ -513,6 +522,9 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				}
 			}
 			if err := prepareGatewayKeystore(cmd, fileSvc); err != nil {
+				return err
+			}
+			if err := shared.EnsureRecoveryKey(cmd.InOrStdin(), cmd.ErrOrStderr(), fileSvc, cfg.Keyring, keystore.RecoveryRoleGateway, acceptUnrecoverable); err != nil {
 				return err
 			}
 
@@ -591,6 +603,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Suppress startup guidance")
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Run gateway in foreground (Ctrl+C stops gateway)")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Launch interactive onboarding wizard")
+	cmd.Flags().BoolVar(&acceptUnrecoverable, shared.FlagAcceptUnrecoverable, false, shared.AcceptUnrecoverableHelp)
 
 	return cmd
 }
@@ -722,6 +735,7 @@ func gatewayRestartCmdWithConfig(
 	configLoader func(string) (*config.Config, error),
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 ) *cobra.Command {
+	var acceptUnrecoverable bool
 	cmd := &cobra.Command{
 		Use:   "restart",
 		Short: "Restart the ztd Gateway",
@@ -732,7 +746,7 @@ profile is missing, malformed, or unsupported, the restart fails closed rather
 than falling back to default settings. Network identity is re-detected on every
 restart.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, err := configLoader("")
+			cfg, err := configLoader("")
 			if err != nil {
 				return fmt.Errorf("gateway: load config: %w", err)
 			}
@@ -756,6 +770,9 @@ restart.`,
 			}
 			previousConfig := profile.Config
 			if err := prepareGatewayKeystore(cmd, fileSvc); err != nil {
+				return err
+			}
+			if err := shared.EnsureRecoveryKey(cmd.InOrStdin(), cmd.ErrOrStderr(), fileSvc, cfg.Keyring, keystore.RecoveryRoleGateway, acceptUnrecoverable); err != nil {
 				return err
 			}
 
@@ -834,6 +851,7 @@ restart.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&acceptUnrecoverable, shared.FlagAcceptUnrecoverable, false, shared.AcceptUnrecoverableHelp)
 
 	return cmd
 }

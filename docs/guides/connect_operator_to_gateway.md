@@ -107,6 +107,8 @@ For a same-host deployment, give the Operator its own working directory so it do
 ./ztd operator start --endpoint localhost --working-dir ~/.ztd-operator
 ```
 
+The first start of a new Operator runtime prints a recovery key once and waits for you to type it back. That key is the only offline copy of this operator's master key. Lose it and the OS key store, and this operator cannot be restored. `operator deploy` from a terminal on this machine shows the key before it starts a local worker. A remote deploy has no terminal on the far host, so pass `--accept-unrecoverable` or run `operator start` in a terminal on that host first. Install a saved key with `./ztd operator recover`. See [Recovery key](../architecture/encryption.md#recovery-key).
+
 The Operator executes:
 1. Generates Operator and CLI ECDSA P-256 keys, certificate signing requests (CSRs), and a request token in memory.
 2. Opens a websocket to `ws://<gateway-host>:8080/ws/operator/bootstrap` and sends the enrollment request.

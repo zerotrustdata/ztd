@@ -145,6 +145,32 @@ func (c *keychainKeyring) Name() string {
 	return "keychain"
 }
 
+// MasterKeyPresent looks the item up without asking for its secret, so a
+// gateway start does not prompt twice. A locked item counts as present: a
+// missing item is errSecItemNotFound, and minting a second key would orphan
+// whatever the locked item seals.
+func (c *keychainKeyring) MasterKeyPresent() (bool, error) {
+	query, err := c.query(c.api.matchLimit, c.api.matchLimitOne)
+	if err != nil {
+		return false, err
+	}
+	defer c.api.cfRelease(query)
+	var result uintptr
+	switch status := c.api.secItemCopyMatching(query, &result); status {
+	case errSecSuccess:
+		if result != 0 {
+			c.api.cfRelease(result)
+		}
+		return true, nil
+	case errSecItemNotFound:
+		return false, nil
+	case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
+		return true, nil
+	default:
+		return false, keychainStatusError("lookup", status)
+	}
+}
+
 // cfString returns an owned CFString; the caller releases it.
 func (c *keychainKeyring) cfString(s string) (uintptr, error) {
 	ref := c.api.cfStringCreate(0, s, kCFStringEncodingUTF8)

@@ -57,6 +57,13 @@ type Options struct {
 	// Keyring is an explicit master key store. Production leaves it nil;
 	// tests pass an isolated in-memory keyring (keystoretest.NewMemoryKeyring).
 	Keyring Keyring
+	// Ceremony is called with a newly generated master key before it is stored.
+	// The function must not retain key. A nil ceremony stores the key without
+	// a recovery prompt; Gateway and Operator start set one that fails closed
+	// until the operator retypes the key or explicitly accepts an unrecoverable
+	// runtime. A non-nil ceremony that returns an error leaves the key store
+	// unchanged.
+	Ceremony func(key []byte) error
 }
 
 // Keystore provides OS-protected key storage and encryption for platform secrets.
@@ -71,6 +78,7 @@ type Keystore struct {
 
 	mu        sync.Mutex
 	masterKey []byte
+	ceremony  func(key []byte) error
 }
 
 // NewWithKeyringAndFS creates a new Keystore instance with a custom keyring and
@@ -100,9 +108,10 @@ func NewWithFS(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts Options)
 		}
 	}
 	return &Keystore{
-		logger:  logger,
-		keyring: keyring,
-		fileSvc: fileSvc,
+		logger:   logger,
+		keyring:  keyring,
+		fileSvc:  fileSvc,
+		ceremony: opts.Ceremony,
 	}, nil
 }
 
@@ -198,6 +207,11 @@ func (k *Keystore) generateAndStoreMasterKeyLocked() error {
 	if _, err := rand.Read(key); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrKeyStoreGenerateFailed, err)
 	}
+	if k.ceremony != nil {
+		if err := k.ceremony(key); err != nil {
+			return err
+		}
+	}
 
 	if err := k.keyring.StoreMasterKey(key); err != nil {
 		return fmt.Errorf("%w: %w (%s)", constants.ErrKeyStoreStoreFailed, err, masterKeyProvisioning)
@@ -214,6 +228,103 @@ func (k *Keystore) generateAndStoreMasterKeyLocked() error {
 	k.masterKey = stored
 
 	k.logger.Info("[Keystore] Master key generated and stored", "keyring", k.keyring.Name())
+	return nil
+}
+
+// MasterKeyPresent reports whether the key store already holds a master key.
+// Platform stores answer without returning the key, so a check does not prompt
+// for the secret the way a read does.
+func (k *Keystore) MasterKeyPresent() (bool, error) {
+	type presence interface {
+		MasterKeyPresent() (bool, error)
+	}
+	if p, ok := k.keyring.(presence); ok {
+		return p.MasterKeyPresent()
+	}
+	key, err := k.keyring.RetrieveMasterKey()
+	if len(key) > 0 {
+		vault.SecureZero(key)
+	}
+	if errors.Is(err, constants.ErrKeyStoreKeyNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// InstallRecoveryKey stores key as the master key. stored is true when this
+// call wrote it. A store that already holds the same key returns stored false.
+// A different key is left in place. When sealed secrets exist, key must
+// decrypt every one of them or nothing is stored. The caller owns key.
+func (k *Keystore) InstallRecoveryKey(key []byte) (stored bool, err error) {
+	if len(key) != vault.KeySize {
+		return false, fmt.Errorf("%w: got %d, expected %d", constants.ErrKeyStoreInvalidKeyLength, len(key), vault.KeySize)
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	existing, err := k.retrieveMasterKey()
+	if err == nil {
+		match := subtle.ConstantTimeCompare(existing, key) == 1
+		vault.SecureZero(existing)
+		if match {
+			return false, nil
+		}
+		return false, constants.ErrKeyStoreRecoveryConflict
+	}
+	if !errors.Is(err, constants.ErrKeyStoreKeyNotFound) {
+		return false, fmt.Errorf("%w: %w", constants.ErrKeyStoreRetrieveFailed, err)
+	}
+	if err := k.verifySealedSecrets(key); err != nil {
+		return false, err
+	}
+	if err := k.keyring.StoreMasterKey(key); err != nil {
+		return false, fmt.Errorf("%w: %w (%s)", constants.ErrKeyStoreStoreFailed, err, masterKeyProvisioning)
+	}
+	readBack, err := k.keyring.RetrieveMasterKey()
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", constants.ErrKeyStoreVerifyFailed, err)
+	}
+	if subtle.ConstantTimeCompare(readBack, key) != 1 {
+		vault.SecureZero(readBack)
+		return false, constants.ErrKeyStoreVerifyFailed
+	}
+	k.dropMasterKeyLocked()
+	k.masterKey = readBack
+	k.logger.Info("[Keystore] Recovery key installed", "keyring", k.keyring.Name())
+	return true, nil
+}
+
+// verifySealedSecrets decrypts every sealed secret with key. A runtime with no
+// sealed secrets accepts the key. A single authentication failure rejects it
+// without naming the secret.
+func (k *Keystore) verifySealedSecrets(key []byte) error {
+	entries, err := k.fileSvc.ReadDir(context.Background(), constants.SecretsDirname)
+	if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("%w: %w", constants.ErrKeyStoreReadDir, err)
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || validateSecretName(entry.Name()) != nil {
+			continue
+		}
+		data, err := k.fileSvc.ReadFile(context.Background(), filepath.Join(constants.SecretsDirname, entry.Name()))
+		if err != nil {
+			return fmt.Errorf("%w: %s: %w", constants.ErrKeyStoreReadFailed, entry.Name(), err)
+		}
+		var enc EncryptedSecret
+		if json.Unmarshal(data, &enc) != nil || enc.Version == 0 || len(enc.Nonce) != vault.NonceSize || len(enc.Ciphertext) == 0 {
+			continue
+		}
+		plain, err := vault.DecryptAESGCM(key, enc.Nonce, enc.Ciphertext, []byte(secretAADPrefix+entry.Name()))
+		if err != nil {
+			return constants.ErrKeyStoreRecoveryMismatch
+		}
+		vault.SecureZero(plain)
+	}
 	return nil
 }
 

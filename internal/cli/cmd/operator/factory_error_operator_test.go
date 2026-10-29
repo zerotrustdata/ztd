@@ -99,6 +99,30 @@ func TestOperatorRunCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
+func TestOperatorStartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	cmd := operatorStartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.RunE(cmd, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, errFactory)
+}
+
+func TestOperatorRecoverCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	cmd := operatorRecoverCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.RunE(cmd, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, errFactory)
+}
+
 func TestOperatorListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := operatorListCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))

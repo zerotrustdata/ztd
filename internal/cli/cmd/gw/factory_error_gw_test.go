@@ -122,6 +122,18 @@ func TestDataAuditListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
+func TestGatewayRecoverCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	cmd := gatewayRecoverCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.RunE(cmd, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, errFactory)
+}
+
 func TestGatewayStartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayStartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory), nil)

@@ -45,6 +45,9 @@ type publicFileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, err
 // openPublicKeystore opens the keystore that seals the public-feed signing key
 // and ingest token. Tests replace it with an in-memory keyring.
 var openPublicKeystore = func(fileSvc fs.RuntimeFileService) (*keystore.Keystore, error) {
+	if err := shared.EnsureRecoveryKey(os.Stdin, os.Stderr, fileSvc, nil, keystore.RecoveryRoleRuntime, false); err != nil {
+		return nil, err
+	}
 	return keystore.Open(fileSvc, slog.Default(), keystore.Options{})
 }
 

@@ -4,7 +4,7 @@ title: Getting Started
 audience: new users and platform evaluators
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -111,6 +111,8 @@ Every step reuses existing state, so `make quickstart` is idempotent and safe to
 The headless identity drives the CLI and the TUI. The browser console uses passkey authentication, which `./ztd login web` registers; it also installs the Gateway root CA in the OS trust store.
 
 **Windows and macOS:** The Gateway seals its vault key with DPAPI on Windows and the Keychain on macOS automatically; no ssh-agent is needed.
+
+**First start, save the recovery key.** The first `./ztd gw start`, and the first `./ztd operator start` for a runtime that does not already share this login's master key, prints a recovery key once. Type it back to confirm you wrote it down. ztd does not write it to disk, does not log it, and will not show it again. If that key and the OS key store are both lost, that gateway or operator cannot be restored. A start without a terminal refuses to create the key unless you pass `--accept-unrecoverable`, which keeps the only copy in the OS key store. Put a saved key back with `./ztd gw recover` or `./ztd operator recover`. See [Recovery key](../architecture/encryption.md#recovery-key).
 
 **macOS first run, what to expect:** (1) The first Gateway start (and the first run after upgrading or rebuilding `ztd`) shows a Keychain prompt for the `ztd-platform` item. That dialog wants your **Mac login password**, not a ztd account. The item is the vault master key and it stays in the login keychain. Choose **Always Allow**. It needs a GUI session, so run the first start from a GUI terminal rather than SSH. `start.sh` and `make quickstart` print this before the Gateway start, so the dialog is not a silent hang. (2) `./ztd login web` prints the Gateway CA fingerprint and asks before it installs that CA into your **login keychain** as an HTTPS trust root, for your account only. It is not trusted for code signing. Other accounts on the Mac are unchanged, and this step does not use sudo. macOS may show its own confirmation. The CA private key stays in the local vault. Decline the prompt, or pass `--no-system-trust`, to skip it. A CA left in the System keychain by an older install is listed on its own; removing that one uses sudo, affects every account, and runs only after you agree. If trust installation fails, the error includes the `security` command output. A failed install (a cancelled confirmation, or an SSH session with no GUI to show it) leaves no copy of the CA in the keychain, so rerunning `./ztd login web` from a GUI terminal retries it. (3) The installer clears Gatekeeper quarantine (`com.apple.quarantine`) only after the checksum matches. A binary you downloaded in a browser yourself is still quarantined until you verify it and run `xattr -d com.apple.quarantine ./ztd` (or right-click → Open).
 
