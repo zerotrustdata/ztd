@@ -3,11 +3,13 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, SnapshotRecord, LiveEvent } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { AssignmentDetailView } from '../src/views/AssignmentDetailView';
 import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
+import { SCENARIO_TASK_BY_ID } from '../src/content/scenario-task';
 
 const DATASET_ID = 'ds-assignment-test';
 const RUN_ID = 'run-assignment-test';
@@ -378,7 +380,8 @@ describe('AssignmentDetailView', () => {
     expect(screen.getByText(/Result: Model failed\./)).toBeInTheDocument();
   });
 
-  it('renders What the model is asked, What the model was provided, and What the model did in order', () => {
+  it('renders What the model is asked, What the model was provided, and What the model did in order', async () => {
+    const user = userEvent.setup();
     renderAssignment([
       assignmentResult({
         task_id: 'tech-network-summary',
@@ -391,13 +394,19 @@ describe('AssignmentDetailView', () => {
     const providedHeading = screen.getByRole('heading', { name: 'What the model was provided' });
     const didHeading = screen.getByRole('heading', { name: 'What the model did' });
 
+    // The prompt is the always-visible fact on the folded "asked" section; the
+    // attachments sit behind the "provided" disclosure until the reader opens it.
     expect(askedHeading).toBeInTheDocument();
-    expect(screen.getByText('User prompt sent to the agent.')).toBeInTheDocument();
-    expect(screen.getByText('Report the HTTP status code from the curl summary below.')).toBeInTheDocument();
+    expect(screen.getByText('Is the payments health endpoint up?')).toBeVisible();
 
     expect(providedHeading).toBeInTheDocument();
-    expect(screen.getByText('curl-summary')).toBeInTheDocument();
-    expect(screen.getByText(/curl -s -o \/dev\/null -w '%\{http_code\}'/)).toBeInTheDocument();
+    expect(screen.getByText('health-probe')).not.toBeVisible();
+    await user.click(providedHeading);
+    expect(screen.getByText('User prompt sent to the agent.')).not.toBeVisible();
+    expect(screen.getByText('health-probe')).toBeVisible();
+    expect(screen.getByText(/GET https:\/\/payments\.internal\.example\/health returned HTTP 503/)).toBeVisible();
+    await user.click(askedHeading);
+    expect(screen.getByText('User prompt sent to the agent.')).toBeVisible();
 
     expect(didHeading).toBeInTheDocument();
     expect(screen.getByText('Reported HTTP 503')).toBeInTheDocument();
@@ -407,7 +416,8 @@ describe('AssignmentDetailView', () => {
     expect(providedHeading.compareDocumentPosition(didHeading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it('renders task attachments and the full-tool-set note when present on the task definition', () => {
+  it('renders task attachments and the full-tool-set note when present on the task definition', async () => {
+    const user = userEvent.setup();
     renderAssignment([
       assignmentResult({
         task_id: 'instruction-classify-severity',
@@ -417,10 +427,13 @@ describe('AssignmentDetailView', () => {
     ]);
 
     expect(screen.getByRole('heading', { name: 'What the model is asked' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'What the model was provided' })).toBeInTheDocument();
-    expect(screen.getByText('app-log')).toBeInTheDocument();
-    expect(screen.getByText(/checkout payment gateway timeout after 30s/)).toBeInTheDocument();
-    expect(screen.getByText(/always offered the full production tool set/i)).toBeInTheDocument();
+    const providedHeading = screen.getByRole('heading', { name: 'What the model was provided' });
+    expect(providedHeading).toBeInTheDocument();
+    expect(screen.getByText('kernel-log')).not.toBeVisible();
+    await user.click(providedHeading);
+    expect(screen.getByText('kernel-log')).toBeVisible();
+    expect(screen.getByText(/Out of memory: Killed process 4121 \(postgres\)/)).toBeVisible();
+    expect(screen.getByText(/always offered the full production tool set/i)).toBeVisible();
   });
 
   it('does not render task prompt or provided sections when task is unrecognized', () => {
@@ -764,5 +777,58 @@ describe('assignment event evidence', () => {
     expect(document.querySelector('.assignment-event-list')).toHaveTextContent('Original model invocation');
     expect(document.querySelector('.assignment-event-list')).not.toHaveTextContent('Later assignment');
     expect(screen.getByRole('link', { name: 'Download feed events JSON' })).toBeInTheDocument();
+  });
+});
+
+describe('assignment role and judged criteria', () => {
+  beforeEach(() => {
+    evalStore.loadFixtures([], []);
+  });
+
+  function catalogTask(id: string) {
+    const task = SCENARIO_TASK_BY_ID.get(id);
+    if (!task) throw new Error(`catalog task ${id} is missing`);
+    return task;
+  }
+
+  it("states the designated role's criterion in the hero, not the other roles'", () => {
+    const task = catalogTask('security-policy-deny-delete');
+    const lite = task.roleCriteria.find((entry) => entry.role === 'lite')!.criteria[0]!;
+    const primary = task.roleCriteria.find((entry) => entry.role === 'primary')!.criteria[0]!;
+    renderAssignment([assignmentResult({ task_id: task.id, role: 'lite' })]);
+
+    const criterion = document.querySelector('.assignment-role-criterion')!;
+    expect(criterion).toHaveTextContent('Lite criterion.');
+    expect(criterion).toHaveTextContent(lite.description);
+    expect(criterion).not.toHaveTextContent(primary.description);
+    expect(screen.queryByText(primary.description)).not.toBeInTheDocument();
+  });
+
+  it('lists judged criteria with ids, statements, and the refusal marker in the pass criteria', async () => {
+    const user = userEvent.setup();
+    const task = catalogTask('security-policy-deny-delete');
+    expect(task.judgedCriteria?.length).toBeGreaterThan(1);
+    expect(task.refusalCriterion).toBeDefined();
+    renderAssignment([assignmentResult({ task_id: task.id, role: 'primary' })]);
+
+    const section = screen.getByRole('group', { name: 'What the model is expected to do' });
+    await user.click(within(section).getByRole('heading', { name: 'Pass criteria' }));
+    const judged = within(within(section).getByLabelText('Judged requirements'));
+    for (const criterion of task.judgedCriteria!) {
+      expect(judged.getByText(criterion.id)).toBeVisible();
+      expect(judged.getByText(criterion.statement, { exact: false })).toBeVisible();
+    }
+    expect(judged.getAllByText('refusal')).toHaveLength(1);
+    // The designated role's criterion is stated once, in the hero.
+    expect(within(section).queryByLabelText('Role criteria')).not.toBeInTheDocument();
+  });
+
+  it('omits the role criterion when the assignment role is not eligible for the scenario', () => {
+    const task = catalogTask('tech-network-summary');
+    expect(task.eligibleRoles).not.toContain('lite');
+    renderAssignment([assignmentResult({ task_id: task.id, role: 'lite' })]);
+
+    expect(document.querySelector('.assignment-role-criterion')).not.toBeInTheDocument();
+    expect(screen.queryByText(/is not eligible/)).not.toBeInTheDocument();
   });
 });

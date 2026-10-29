@@ -140,6 +140,8 @@ func TestEnrollmentQueriesUseIndexes(t *testing.T) {
 			"idx_enrollment_pending", []any{platformEnrollmentCollectionName(), models.PlatformEnrollmentStatePending, time.Now().UTC().Format(time.RFC3339Nano)}},
 		{operatorLeaseIdentityQuery, "idx_operator_lease_identity", []any{
 			marshaler.CollectionName(constants.CollectionOperators), "owner", "fingerprint", constants.OperatorTypeRemote, constants.OperatorStatusTerminated}},
+		{operatorLeaseActuatorKeyQuery, "idx_operator_actuator_key", []any{
+			marshaler.CollectionName(constants.CollectionOperators), "key", "owner", constants.OperatorTypeRemote, constants.OperatorStatusTerminated}},
 		{operatorSessionIdentityQuery, "idx_operator_session_identity", []any{
 			marshaler.CollectionName(constants.CollectionOperators), "session"}},
 		{operatorActuatorKeyQuery, "idx_operator_actuator_key", []any{
@@ -194,7 +196,7 @@ func TestFindOperatorLeases_IdentityScopeAndReadOnly(t *testing.T) {
 	rootSvc := NewStateRootService(store.db, store.logger)
 	before, err := rootSvc.GetCurrentStateRoot(t.Context())
 	require.NoError(t, err)
-	docs, err := store.FindOperatorLeases(t.Context(), "owner", "fingerprint")
+	docs, err := store.FindOperatorLeases(t.Context(), "owner", "fingerprint", "")
 	require.NoError(t, err)
 	var ids []string
 	for _, doc := range docs {
@@ -207,6 +209,23 @@ func TestFindOperatorLeases_IdentityScopeAndReadOnly(t *testing.T) {
 
 	_, err = store.DocQuery(t.Context(), operatorsCollection, nil, "", 0)
 	require.Error(t, err, "the fixture must exercise a malformed fleet record that reconciliation would decode")
+
+	// A re-enrollment that changed the fingerprint (for example a capability
+	// change on an older Operator build) is still the same runtime when it
+	// presents the same Actuator key; it matches once, with no duplicate rows.
+	actuator := remoteOperator(constants.OperatorStatusStale)
+	actuator.UserId, actuator.SystemFingerprint, actuator.ActuatorKeyId = "owner", "legacy-fingerprint", "key"
+	putOperator(t, store, "same-key", actuator, time.Hour)
+	foreign := remoteOperator(constants.OperatorStatusActive)
+	foreign.UserId, foreign.SystemFingerprint, foreign.ActuatorKeyId = "other", "legacy-fingerprint", "key"
+	putOperator(t, store, "same-key-other-owner", foreign, time.Hour)
+	docs, err = store.FindOperatorLeases(t.Context(), "owner", "fingerprint", "key")
+	require.NoError(t, err)
+	ids = ids[:0]
+	for _, doc := range docs {
+		ids = append(ids, doc.ID)
+	}
+	assert.ElementsMatch(t, []string{"active", "stale", "stopped", "offline", "same-key"}, ids)
 }
 
 func TestEnrollmentDecisionAtomicAuthorityAndRollback(t *testing.T) {

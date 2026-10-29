@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -44,8 +45,12 @@ const (
 	agentMaxMessages = 224
 	// agentToolResultMaxBytes caps model-visible tool output so one large file
 	// or command output cannot exceed the per-message text bound.
-	agentToolResultMaxBytes = 64 * 1024
-	agentCallSiteTurn       = "agent:turn"
+	agentToolResultMaxBytes    = 64 * 1024
+	agentCallSiteTurn          = "agent:turn"
+	agentCallSiteInterrogation = "agent:interrogation"
+	// interrogationMissingPrefix introduces the missing context a reasoner's
+	// clarification signal named, as the Interrogator's last user message.
+	interrogationMissingPrefix = "Missing context named by the reasoning agent: "
 	// agentCallSiteTribunalPrefix prefixes a Tribunal inference's call site:
 	// tribunal:generate, tribunal:marshal, or tribunal:audit.
 	agentCallSiteTribunalPrefix = "tribunal:"
@@ -90,6 +95,8 @@ func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, tools AgentToo
 
 // agentRun is the per-assignment state of one tool loop.
 type agentRun struct {
+	// persona is the campaign-frozen persona the designated role runs under.
+	persona    agentpersona.Persona
 	executor   *CampaignAgentExecutor
 	req        AssignmentExecutionRequest
 	designated evalv1.ModelCampaignRole
@@ -227,6 +234,9 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 }
 
 func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequest) bool {
+	if liteTriageCell(req) {
+		return false
+	}
 	if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
 		return true
 	}
@@ -237,7 +247,7 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 }
 
 func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) ([]*evalv1.SemanticGrade, []*evalv1.DecomposedScoreRecord, error) {
-	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogation(trace.FinalOutput) {
+	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogationForGold(trace.FinalOutput, req.ScenarioGold) {
 		return nil, nil, nil
 	}
 	cfg, err := campaignJudgeConfig(req, e.newID)
@@ -443,10 +453,15 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: scope tools", err)
 	}
-	if designated == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE && len(tools.Declarations()) > 0 {
-		return nil, assignmentExecutionError("evaluation: Lite receives injected context and cannot use tools", constants.ErrEvaluationScenarioContractInvalid)
+	persona, err := frozenRolePersona(binding.Personas, designated)
+	if err != nil {
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: persona", err)
+	}
+	if persona.Tools == agentpersona.ToolAccessNone && len(tools.Declarations()) > 0 {
+		return nil, assignmentExecutionError(fmt.Sprintf("evaluation: the %s persona answers without tools", persona.DisplayName), constants.ErrEvaluationScenarioContractInvalid)
 	}
 	return &agentRun{
+		persona:    persona,
 		executor:   e,
 		req:        req,
 		designated: designated,
@@ -466,6 +481,7 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 			CampaignID:          assignment.GetCampaignId(),
 			ScenarioID:          assignment.GetScenarioId(),
 			DesignatedRole:      roleLabel,
+			Persona:             &AgentTracePersona{ID: persona.ID, Version: persona.Version, Digest: persona.Digest()},
 			ServedModelTag:      variant.GetServedModelTag(),
 			ModelDigest:         variant.GetModelDigest(),
 			ModelRegistryDigest: binding.ModelRegistryDigest,
@@ -503,18 +519,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 		}
 		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
-				r.trace.TerminalClassification = AgentTerminalClassificationTimeout
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				return context.DeadlineExceeded
-			}
-			// A turn infer already classified (a signed L2 denial) keeps it.
-			if r.trace.TerminalClassification == "" {
-				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
-			}
-			return nil
+			return r.endAfterFailedInference(ctx)
 		}
 		text, thinking, toolCalls := agentResponseParts(result)
 		call.Text = text
@@ -524,8 +529,36 @@ func (r *agentRun) loop(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if r.persona.ID == agentpersona.IDTriage {
+			// Triage runs once at initial ingest. Its signed first result is the
+			// complete classifier output; it never asks the Interrogator, invokes
+			// tools, or re-enters the model loop.
+			r.trace.FinalOutput = text
+			r.trace.TerminalClassification = classifyTerminalState(r.trace)
+			return nil
+		}
 
-		interrogation, interrogated, interrogationErr := ParseInterrogation(text)
+		// Only the Interrogator asks: a reasoner's clarification signal
+		// dispatches it, and its questions stand in for the signalling turn.
+		var (
+			interrogation    AgentInterrogation
+			interrogated     bool
+			interrogationErr error
+		)
+		if missing, signalled := ParseClarificationSignal(text); signalled {
+			asked, ok, err := r.interrogate(ctx, turn, messages, missing)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return r.endAfterFailedInference(ctx)
+			}
+			text = asked
+			interrogation, interrogated, interrogationErr = ParseInterrogationForGold(text, r.req.ScenarioGold)
+			if !interrogated {
+				interrogated, interrogationErr = true, constants.ErrEvaluationInterrogationNotWhole
+			}
+		}
 		if interrogated {
 			// Interrogation hand-off drops pending execution, while the trace
 			// preserves the tool-call count covered by the signed result. Only a
@@ -754,14 +787,26 @@ func (r *agentRun) conversation() ([]*operatorv1.InferenceMessage, error) {
 		}
 		if r.trace != nil {
 			for _, observation := range r.trace.Observations {
-				if observation.Kind == scenarioObservationSeed {
-					messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, seedObservationText(observation.Call)))
+				if observation.Kind != scenarioObservationSeed {
+					continue
+				}
+				text, shown, err := seedObservationMessage(observation.Disclosure, observation.Call)
+				if err != nil {
+					return nil, err
+				}
+				if shown {
+					messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, text))
 				}
 			}
 		}
 	}
 	var prompt strings.Builder
 	prompt.WriteString(r.workspace.Render(input.UserPrompt))
+	if r.designated == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE {
+		for _, file := range input.WorkspaceFiles {
+			fmt.Fprintf(&prompt, "\n\n%s (supplied file evidence, %s):\n%s", file.Label, r.workspace.Render(ScenarioWorkspaceToken+"/"+file.RelPath), r.workspace.Render(file.Content))
+		}
+	}
 	for _, inline := range input.InlineContext {
 		fmt.Fprintf(&prompt, "\n\n%s (%s):\n%s", inline.Label, inline.Kind, r.workspace.Render(inline.Content))
 	}
@@ -771,23 +816,16 @@ func (r *agentRun) conversation() ([]*operatorv1.InferenceMessage, error) {
 func (r *agentRun) systemPrompt() (string, error) {
 	seed := r.req.ScenarioInput.Seed
 	var b strings.Builder
-	// Keep the shared security prefix before persona and dynamic case context.
-	b.WriteString(agentSafetyPrompt)
-	b.WriteString(agentLoyaltyPrompt)
-	b.WriteString(agentDissentPrompt)
-	switch r.designated {
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
-		b.WriteString(agentSagePrompt)
-		b.WriteString(agentInterrogationPrompt)
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT:
-		b.WriteString(agentDashPrompt)
-		b.WriteString(agentInterrogationPrompt)
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE:
-		b.WriteString(agentLitePrompt)
-	}
-	if len(r.tools.Declarations()) == 0 {
+	// The persona renders the shared security prefix first; dynamic case
+	// context follows it.
+	b.WriteString(r.persona.SystemPrompt())
+	switch {
+	case liteTriageCell(r.req):
+		// Triage's output contract is its whole answer, enforced by the
+		// response schema; telling it to answer the user would contradict it.
+	case len(r.tools.Declarations()) == 0:
 		b.WriteString("No tools are available for this request: answer the user directly from the conversation, and never invent tool output.\n\n")
-	} else {
+	default:
 		b.WriteString(agentExecutionPrompt)
 	}
 	fmt.Fprintf(&b, "Operator ID: %s\nWorking Directory: %s\n", r.target.OperatorID, r.workspace.OperatorWorkingDirectory)
@@ -814,6 +852,69 @@ func (r *agentRun) systemPrompt() (string, error) {
 
 func agentTextMessage(role operatorv1.InferenceMessageRole, text string) *operatorv1.InferenceMessage {
 	return &operatorv1.InferenceMessage{Role: role, Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: text}}}}
+}
+
+// endAfterFailedInference ends the loop after infer recorded a failed call:
+// a deadline is a timeout, a classification infer already made (a signed L2
+// denial) stands, and anything else is a harness failure.
+func (r *agentRun) endAfterFailedInference(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || r.trace.TerminalClassification == AgentTerminalClassificationTimeout {
+		r.trace.TerminalClassification = AgentTerminalClassificationTimeout
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return context.DeadlineExceeded
+	}
+	if r.trace.TerminalClassification == "" {
+		r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+	}
+	return nil
+}
+
+// interrogationContext is the text of the conversation's user and assistant
+// messages, in order. The Interrogator sees what was asked and answered, never
+// the reasoner's system prompt, tool calls, or tool results.
+func interrogationContext(conversation []*operatorv1.InferenceMessage) []*operatorv1.InferenceMessage {
+	var out []*operatorv1.InferenceMessage
+	for _, message := range conversation {
+		role := message.GetRole()
+		if role != operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER && role != operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT {
+			continue
+		}
+		var text strings.Builder
+		for _, part := range message.GetParts() {
+			text.WriteString(part.GetText())
+		}
+		if text.Len() > 0 {
+			out = append(out, agentTextMessage(role, text.String()))
+		}
+	}
+	return out
+}
+
+// interrogate dispatches the frozen Interrogator persona for a reasoner's
+// clarification signal: its system prompt, the conversation's text messages so
+// far, and the missing context the reasoner named. ok is false when the call
+// failed and infer already recorded the failure on the trace.
+func (r *agentRun) interrogate(ctx context.Context, turn int, conversation []*operatorv1.InferenceMessage, missing string) (string, bool, error) {
+	persona, err := frozenPersona(r.req.Binding.Personas, agentpersona.IDInterrogator)
+	if err != nil {
+		return "", false, assignmentExecutionError("evaluation: interrogate: persona", err)
+	}
+	messages := []*operatorv1.InferenceMessage{agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, persona.SystemPrompt())}
+	messages = append(messages, interrogationContext(conversation)...)
+	messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, interrogationMissingPrefix+missing))
+	input, err := agentTraceMessages(messages)
+	if err != nil {
+		return "", false, err
+	}
+	result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeInterrogation, LoopTurn: turn, Persona: persona.ID, Input: input}, messages, nil)
+	if call == nil {
+		return "", false, nil
+	}
+	text, thinking, toolCalls := agentResponseParts(result)
+	call.Text, call.Thinking, call.ToolCallCount = text, thinking, len(toolCalls)
+	return text, true, nil
 }
 
 // agentResponseParts splits one response into the answer text sent back to
@@ -876,6 +977,9 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	purpose, turn := call.Purpose, call.LoopTurn
 	modelRole := r.designated
+	if purpose == agentModelCallPurposeInterrogation && IsHeterogeneousAssignment(r.req.Assignment) {
+		modelRole = formationInterrogatorRole
+	}
 	probe, err := r.bindInference(&call, modelRole, r.executor.newID("agent-inference"), messages, tools)
 	if err != nil {
 		return nil, call, err
@@ -930,6 +1034,9 @@ func (r *agentRun) bindInference(call *AgentModelCall, modelRole evalv1.ModelCam
 	}
 	if len(tools) > 0 {
 		probe.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO}
+	}
+	if liteTriageCell(r.req) {
+		probe.ResponseFormat = triageResultResponseFormat()
 	}
 	return probe, nil
 }
@@ -1051,6 +1158,16 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		}
 		r.injectEventReceiptListDefaults(&args)
 	}
+	if failure := args.WorkspacePathFailure(r.workspace); failure != nil {
+		return r.fail(record, *failure)
+	}
+	governed, isGoverned, err := mcp.LookupGovernedActionTool(tool)
+	if err != nil {
+		return AgentToolCall{}, fmt.Errorf("evaluation: look up %s: %w", tool, err)
+	}
+	if isGoverned {
+		return r.runGovernedActionTool(ctx, record, governed, args)
+	}
 	var argsJSON []byte
 	if request.Shell != nil {
 		shellReq := *request.Shell
@@ -1114,6 +1231,47 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 		return r.succeed(record, result)
 	}
 	return r.completeNativeToolCall(record)
+}
+
+// runGovernedActionTool maps one governed action tool onto its own typed
+// action, bound to the attempt's verified Operator session, so a model's edit
+// or restore is the same ledgered FILE_EDIT or RESTORE_FILE as any other.
+func (r *agentRun) runGovernedActionTool(ctx context.Context, record AgentToolCall, tool mcp.GovernedActionTool, args agentToolArguments) (AgentToolCall, error) {
+	argsJSON, err := args.CanonicalJSON()
+	if err != nil {
+		return AgentToolCall{}, err
+	}
+	request, payload, err := governedToolAction(tool, argsJSON, r.target.SessionID, record.CallID)
+	if err != nil {
+		if errors.Is(err, constants.ErrMCPToolSessionRequired) {
+			return AgentToolCall{}, err
+		}
+		return r.fail(record, *agentToolValidationFailure(record.ToolName, []string{err.Error()}))
+	}
+	record.ActionType = string(request.ActionType)
+	dispatched, denied, err := r.dispatch(ctx, &record, request.ActionType, request.TargetResource, payload)
+	if err != nil || denied {
+		return record, err
+	}
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(record.ToolName, dispatched)})
+	}
+	return r.completeNativeToolCall(record)
+}
+
+// governedToolAction builds the typed action of one governed action tool call
+// bound to the attempt's Operator session. The executor dispatches it and the
+// verifier rebuilds it from the recorded arguments.
+func governedToolAction(tool mcp.GovernedActionTool, argumentsJSON, sessionID, callID string) (mcp.GovernedActionRequest, []byte, error) {
+	request, err := tool.GovernedAction(json.RawMessage(argumentsJSON), mcp.GovernedActionBinding{OperatorSessionID: sessionID, ExecutionID: callID})
+	if err != nil {
+		return mcp.GovernedActionRequest{}, nil, err
+	}
+	payload, err := request.MarshalPayload()
+	if err != nil {
+		return mcp.GovernedActionRequest{}, nil, fmt.Errorf("evaluation: encode %s action: %w", tool.Name(), err)
+	}
+	return request, payload, nil
 }
 
 // completeNativeToolCall derives the model-visible answer from the signed
@@ -1332,12 +1490,13 @@ func agentTraceSchemaPinError(trace *AgentTrace) error {
 }
 
 // agentTraceEvidenceError is every evidence rule an agent trace must pass
-// before it is graded: the sealed schema pin, the signed receipt evidence, and
-// the binding of each inference to the frozen campaign models. Live import and
+// before it is graded: the sealed schema pin, the signed receipt evidence, the
+// binding of each inference to the frozen campaign models, and the binding of
+// the system prompt to the frozen persona. Live import and
 // the assignment verifier both apply it, so a stored INVALID_EVIDENCE verdict is
 // recomputed from the same rules.
 func agentTraceEvidenceError(req AssignmentExecutionRequest, trace *AgentTrace) error {
-	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace), verifyScenarioObservationContract(req, trace), verifyContentJudgments(req, trace))
+	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace), tracePersonaError(req, trace), verifyScenarioObservationContract(req, trace), verifyContentJudgments(req, trace))
 }
 
 // agentTraceAssessment is the INVALID_EVIDENCE verdict on one agent trace.
@@ -1618,7 +1777,10 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 		}
 		retryCount := call.RetryCount
 		persona, callSite := trace.DesignatedRole, agentCallSiteTurn
-		if !call.IsTurn() {
+		switch {
+		case call.Purpose == agentModelCallPurposeInterrogation:
+			persona, callSite = call.Persona, agentCallSiteInterrogation
+		case !call.IsTurn():
 			persona = call.Persona
 			callSite = agentCallSiteTribunalPrefix + strings.TrimPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix)
 		}

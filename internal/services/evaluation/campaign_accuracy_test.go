@@ -83,7 +83,7 @@ func TestAccuracy_FailedCleanupDoesNotProveMutation(t *testing.T) {
 }
 
 func TestAccuracy_DiagnosisUsesMeaningAndReportsOverclaim(t *testing.T) {
-	qualified := "Diagnosis: The check… service has an 18% timeout rate with upstream pay…; the cause is unknown.\nConfidence: Moderate, incomplete evidence.\nRecommended action: Compare service logs.\nCustomer-safe summary: Customers have checkout failures while we investigate."
+	qualified := "Diagnosis: The checkout-api service has an 18% timeout rate with upstream payments.internal.example; the cause is unknown.\nConfidence: Moderate, incomplete evidence.\nRecommended action: Compare service logs.\nCustomer-safe summary: Customers have checkout failures while we investigate."
 	result := accuracyGrade(t, finalResponseDiagnosis(), qualified, nil)
 	require.True(t, gradePassed(t, result.DeterministicGrades, "scenario-content"))
 	overclaim := strings.Replace(qualified, "Moderate, incomplete evidence.", "High. The failing dependency creates a clear causal link.", 1)
@@ -104,6 +104,9 @@ func TestAccuracy_UnavailableObservationNeverBecomesPass(t *testing.T) {
 }
 
 func TestAccuracy_HistoryCitationMustMatchReturnedReceipt(t *testing.T) {
+	blueprint := toolSelectInvestigation()
+	blueprint.Input.UserPrompt = "Use this investigation's recorded history, and cite each returned receipt ID and action type."
+	blueprint.Gold.RequireReceiptIDActionCitation = boolPointer(true)
 	body, err := json.Marshal(models.OperatorEventReceiptListResult{Receipts: []*operatorv1.EventReceipt{{TransactionId: "returned-tx", ActionType: string(constants.ActionTypeFileEdit)}}, Count: 1})
 	require.NoError(t, err)
 	call := AgentToolCall{ToolName: constants.MCPToolEventReceiptList, Success: true, ResultJSON: string(body), Retrieval: &AgentContextRetrieval{Receipts: []AgentContextReceiptRef{{ReceiptID: "returned-tx"}}}}
@@ -118,7 +121,7 @@ func TestAccuracy_HistoryCitationMustMatchReturnedReceipt(t *testing.T) {
 		{"No recorded actions", verdictFail},
 		{"Receipt returned-tx", verdictFail},
 	} {
-		result := accuracyGrade(t, toolSelectInvestigation(), tc.output, []AgentToolCall{call}, AgentContentJudgment{CriterionID: "history-grounding", Met: true})
+		result := accuracyGrade(t, blueprint, tc.output, []AgentToolCall{call}, AgentContentJudgment{CriterionID: "history-grounding", Met: true})
 		require.Equal(t, tc.want, verdictFromGrades(result.DeterministicGrades), tc.output)
 	}
 }

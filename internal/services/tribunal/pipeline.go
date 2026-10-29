@@ -41,7 +41,7 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 	}
 	result.Candidates = candidates
 	result.Vote = vote(1, candidates)
-	steps.candidates(candidates, result.Vote)
+	steps.candidates(candidates)
 	if result.Vote.Winner.Command == "" {
 		candidates, err = generate(ctx, cfg, req, 2, result.Vote.Clusters)
 		if err != nil {
@@ -49,7 +49,7 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 		}
 		result.Candidates = append(result.Candidates, candidates...)
 		result.Vote = vote(2, candidates)
-		steps.candidates(candidates, result.Vote)
+		steps.candidates(candidates)
 	}
 	steps.vote(result.Vote, candidates)
 	if result.Vote.Winner.Command == "" {
@@ -108,25 +108,36 @@ type stepRecorder struct {
 
 func (s *stepRecorder) add(role evalv1.AgentRole, persona string, output func(*evalv1.AgentStep)) {
 	s.index++
+	stage := StageGenerate
+	switch role {
+	case evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST:
+		stage = StageMarshal
+	case evalv1.AgentRole_AGENT_ROLE_REVIEWER:
+		stage = StageAudit
+	}
+	model := s.cfg.StageModels[stage]
+	if model.Tier == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED {
+		model = StageModel{Tier: s.cfg.Tier, Tag: s.cfg.ModelTag, Digest: s.cfg.ModelDigest}
+	}
 	step := &evalv1.AgentStep{
 		Index:        s.index,
 		Role:         role,
 		PersonaLabel: persona,
-		ResolvedTier: s.cfg.Tier,
-		ModelTag:     s.cfg.ModelTag,
-		ModelDigest:  s.cfg.ModelDigest,
+		ResolvedTier: model.Tier,
+		ModelTag:     model.Tag,
+		ModelDigest:  model.Digest,
 		CallClass:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 	}
 	output(step)
 	s.steps = append(s.steps, step)
 }
 
-// candidates records one round's candidates, marking each that v excluded
-// because it matched Nemesis's proposal.
-func (s *stepRecorder) candidates(candidates []Candidate, v Vote) {
+// candidates records one round's candidates. Excluded stays false: Nemesis's
+// candidate is tallied like any other (it is set only in historical steps).
+func (s *stepRecorder) candidates(candidates []Candidate) {
 	for _, candidate := range candidates {
 		s.add(evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, string(candidate.Member), func(step *evalv1.AgentStep) {
-			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Arguments: candidate.Arguments.Proto(), Excluded: candidate.excludedBy(v.Excluded)}}
+			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Arguments: candidate.Arguments.Proto()}}
 		})
 	}
 }

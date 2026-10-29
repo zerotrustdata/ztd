@@ -47,6 +47,7 @@ import {
 } from './derived';
 import {
   DetailLayout,
+  ModelScoreCoverage,
   NON_VERDICT_NOTE,
   OutcomeBreakdown,
   PageHero,
@@ -190,6 +191,7 @@ export function ModelDetailView() {
         }
       >
         <div className="quality-banner">
+          <ModelScoreCoverage models={[model]} />
           <QualityBadge state={model.quality_state} />
           {roleVariantsInDataset.length > 1 ? (
             <div className="role-switcher-pills" role="group" aria-label="Switch model role">
@@ -221,7 +223,11 @@ export function ModelDetailView() {
       <DetailLayout
         aside={
           <>
-            <PanelSection title="Identity">
+            <PanelSection
+              title="Identity"
+              collapsed
+              signal={[profile.family, profile.quantization, profile.artifact_label].filter(Boolean).join(' · ')}
+            >
               <dl>
                 <DetailRow label="Variant ID">{model.variant_id}</DetailRow>
                 <DetailRow label="Display name">{model.display_name}</DetailRow>
@@ -272,10 +278,8 @@ export function ModelDetailView() {
               </PanelSection>
             ) : null}
             {modelFormations.length > 0 ? (
-              <PanelSection title={`Formations (${modelFormations.length})`}>
-                <p className="panel-note">
-                  Catalog formations that bind this model variant. A system-lane campaign over a formation scores its stack as one unit.
-                </p>
+              <PanelSection title={`Formations (${modelFormations.length})`} collapsed signal={modelFormations.slice(0, 3).map(({ formation }) => formation.display_name).join(', ')}>
+                <p className="panel-note">Stacks that bind this variant. A system-lane campaign scores the stack as one unit.</p>
                 <ul className="run-card-list">
                   {modelFormations.slice(0, 6).map(({ formation, role }) => (
                     <li key={`${formation.id}:${role}`} className="run-card formation-mini-card">

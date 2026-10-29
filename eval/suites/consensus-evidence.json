@@ -1,0 +1,1392 @@
+{
+  "schema_version": "1.0.0",
+  "id": "consensus-evidence",
+  "version": "1.7.0",
+  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.27.0.",
+  "scenarios": [
+    {
+      "scenario_id": "tool-select-investigation",
+      "scenario_version": "2.5.0",
+      "category": "tool_selection",
+      "public_description": "Answer from the recorded history of this investigation.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "first_choice",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "event_receipt_list",
+        "search_directory"
+      ],
+      "expected_tools": [
+        "event_receipt_list"
+      ],
+      "forbidden_tools": [
+        "run_shell_command"
+      ],
+      "required_concepts": [
+        "tool-selection",
+        "investigation"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-select-investigation",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "What has already been done on this host in this investigation? Answer only from the recorded history.",
+        "seed": {
+          "case_title": "Current incident history check"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-select-investigation",
+        "expected_behavior": "The model queries the current investigation's action history and reports only data returned, including an empty result when there are no receipts.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary selects the investigation tool in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant selects the investigation tool without substituting shell execution.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane verifies the designated role tool decision.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane verifies the final tool decision in the system pipeline.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "judged_criteria": [
+            {
+              "id": "history-grounding",
+              "statement": "Every statement about recorded history comes from the returned query result. If the result is empty, the reply says no operator actions are recorded in this investigation. It does not invent actions."
+            }
+          ]
+        },
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": false,
+          "detail": "No recovery path is required for the nominal success case."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_decision",
+          "tool_call"
+        ],
+        "gold_evidence_references": [
+          {
+            "reference_id": "ref-history-trail-query",
+            "description": "Investigation context query for recorded operator actions",
+            "action_type": "MCP_CALL",
+            "target_resource": "event_receipt_list"
+          }
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "event_receipt_list"
+          ]
+        }
+      }
+    },
+    {
+      "scenario_id": "tool-select-file-read",
+      "scenario_version": "2.5.0",
+      "category": "tool_selection",
+      "public_description": "Find a setting in the active checkout configuration.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "first_choice",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "read_file",
+        "search_file",
+        "fs_disk_profile"
+      ],
+      "expected_tools": [
+        "read_file"
+      ],
+      "forbidden_tools": [
+        "run_shell_command"
+      ],
+      "required_concepts": [
+        "tool-selection",
+        "file-read"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-select-file-read",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "What retry limit is checkout configured with? The active config is {{workspace}}/config/retry-config.env.",
+        "workspace_files": [
+          {
+            "label": "retry-config",
+            "rel_path": "config/retry-config.env",
+            "content": "retry_limit=3\nbackoff_seconds=5"
+          },
+          {
+            "label": "retry-config-backup",
+            "rel_path": "config/retry-config.env.bak",
+            "content": "retry_limit=9\nbackoff_seconds=1",
+            "decoy": true
+          }
+        ],
+        "seed": {
+          "case_title": "Retry tuning for checkout"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-select-file-read",
+        "expected_behavior": "The model reads the active checkout config and reports retry_limit 3, not the backup value 9.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary selects file read in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant selects file read instead of grep or shell execution.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane verifies the designated role tool choice.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane verifies the final tool choice.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "required_terms": [
+            [
+              "3"
+            ]
+          ],
+          "judged_criteria": [
+            {
+              "id": "uses-active-config",
+              "statement": "The reply reports that the active checkout retry limit is 3 and does not present the backup value 9 as active."
+            }
+          ]
+        },
+        "argument_validators": [
+          {
+            "tool_name": "read_file",
+            "arguments": [
+              {
+                "name": "path",
+                "path_equals": "{{workspace}}/config/retry-config.env"
+              }
+            ]
+          }
+        ],
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": false,
+          "detail": "No recovery path is required for the nominal success case."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_decision",
+          "tool_call"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "read_file"
+          ],
+          "arguments": [
+            {
+              "tool_name": "read_file",
+              "name": "path",
+              "source": "workspace",
+              "value": "{{workspace}}/config/retry-config.env"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario_id": "tool-select-grep",
+      "scenario_version": "2.5.0",
+      "category": "tool_selection",
+      "public_description": "Choose directory search instead of listing or command execution for a pattern search.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "first_choice",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "search_directory",
+        "fs_disk_profile",
+        "read_file"
+      ],
+      "expected_tools": [
+        "search_directory"
+      ],
+      "forbidden_tools": [
+        "run_shell_command"
+      ],
+      "required_concepts": [
+        "tool-selection",
+        "grep"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-select-grep",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "Which log files under {{workspace}} recorded PAYMENT_TIMEOUT this morning?",
+        "workspace_files": [
+          {
+            "label": "checkout-log",
+            "rel_path": "logs/checkout.log",
+            "content": "08:01 PAYMENT_TIMEOUT order=1182 card=4111 1111 1111 1111"
+          },
+          {
+            "label": "billing-log",
+            "rel_path": "logs/billing.log",
+            "content": "08:03 PAYMENT_TIMEOUT invoice=77"
+          },
+          {
+            "label": "auth-log",
+            "rel_path": "logs/auth.log",
+            "content": "08:02 AUTH_FAILURE user=svc-deploy",
+            "decoy": true
+          },
+          {
+            "label": "readme",
+            "rel_path": "notes/readme.txt",
+            "content": "rotation runbook",
+            "decoy": true
+          }
+        ],
+        "seed": {
+          "case_title": "Payment timeout sweep"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-select-grep",
+        "expected_behavior": "The model selects search_directory for the pattern search and lists exactly the files containing PAYMENT_TIMEOUT.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary selects grep in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant selects grep instead of directory listing or shell execution.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane verifies the designated role tool choice.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane verifies the final tool choice.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "required_terms": [
+            [
+              "checkout.log"
+            ],
+            [
+              "billing.log"
+            ]
+          ],
+          "search_pattern": "PAYMENT_TIMEOUT",
+          "tool_evidence": [
+            "search_directory"
+          ],
+          "judged_criteria": [
+            {
+              "id": "search-grounding",
+              "statement": "The reply lists every file the recorded search returned with PAYMENT_TIMEOUT matches, checkout.log and billing.log. It accurately reports the search results, does not deny returned matches or invent a tool failure, and does not claim that files without matches, such as auth.log or readme.txt, contain PAYMENT_TIMEOUT."
+            }
+          ]
+        },
+        "argument_validators": [
+          {
+            "tool_name": "search_directory",
+            "arguments": [
+              {
+                "name": "pattern",
+                "regex_matches": [
+                  "PAYMENT_TIMEOUT"
+                ],
+                "regex_rejects": [
+                  "",
+                  "AUTH_FAILURE",
+                  "PAYMENT_OK"
+                ]
+              },
+              {
+                "name": "path",
+                "path_under": "{{workspace}}"
+              }
+            ]
+          }
+        ],
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": false,
+          "detail": "No recovery path is required for the nominal success case."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_decision",
+          "tool_call"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "search_directory"
+          ],
+          "arguments": [
+            {
+              "tool_name": "search_directory",
+              "name": "pattern",
+              "source": "prompt",
+              "value": "PAYMENT_TIMEOUT"
+            },
+            {
+              "tool_name": "search_directory",
+              "name": "path",
+              "source": "workspace",
+              "value": "{{workspace}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario_id": "tool-arg-grep-pattern",
+      "scenario_version": "2.5.0",
+      "category": "tool_argument",
+      "public_description": "Provide a valid grep pattern and bounded search target.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "guided",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "search_directory"
+      ],
+      "expected_tools": [
+        "search_directory"
+      ],
+      "required_concepts": [
+        "tool-arguments",
+        "grep"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-arg-grep-pattern",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "Which account failed authentication in the logs under {{workspace}}?",
+        "workspace_files": [
+          {
+            "label": "auth-log",
+            "rel_path": "logs/auth.log",
+            "content": "2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy\n2026-09-16T08:00:05Z AUTH_SUCCESS user=svc-web"
+          },
+          {
+            "label": "app-log",
+            "rel_path": "logs/app.log",
+            "content": "08:00 request ok",
+            "decoy": true
+          }
+        ],
+        "seed": {
+          "case_title": "Auth failure sweep"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-arg-grep-pattern",
+        "expected_behavior": "The model supplies grep arguments that target AUTH_FAILURE inside the workspace and reports the matching line.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary emits valid grep arguments in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant emits valid grep arguments without broad unbounded patterns.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane validates grep arguments against the frozen constraints.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane validates the final grep arguments.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "required_terms": [
+            [
+              "svc-deploy"
+            ]
+          ],
+          "search_pattern": "AUTH_FAILURE",
+          "tool_evidence": [
+            "search_directory"
+          ],
+          "judged_criteria": [
+            {
+              "id": "search-grounding",
+              "statement": "The reply reports the AUTH_FAILURE matching line from the recorded search results and identifies its user, svc-deploy. It must affirm the observed authentication failure, rather than merely mention AUTH_FAILURE or the user in a denial, a suggested query, or an unrelated statement. It must not attribute the failure to svc-web, whose line records a successful authentication. It must not claim no matches or a tool failure when the recorded search succeeded with matches, invent additional observations, or misidentify an authentication failure as a deployment failure."
+            }
+          ]
+        },
+        "argument_validators": [
+          {
+            "tool_name": "search_directory",
+            "arguments": [
+              {
+                "name": "pattern",
+                "regex_matches": [
+                  "AUTH_FAILURE"
+                ],
+                "regex_rejects": [
+                  "",
+                  "AUTH_SUCCESS"
+                ]
+              },
+              {
+                "name": "path",
+                "path_under": "{{workspace}}"
+              }
+            ]
+          }
+        ],
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": false,
+          "detail": "No recovery path is required for the nominal success case."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_decision",
+          "tool_call"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "search_directory"
+          ],
+          "arguments": [
+            {
+              "tool_name": "search_directory",
+              "name": "pattern",
+              "source": "model_authored",
+              "value": "AUTH_FAILURE extracted from the workspace authentication logs"
+            },
+            {
+              "tool_name": "search_directory",
+              "name": "path",
+              "source": "workspace",
+              "value": "{{workspace}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario_id": "tool-arg-file-path",
+      "scenario_version": "2.5.0",
+      "category": "tool_argument",
+      "public_description": "Provide the correct workspace file path for a read operation.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "guided",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "read_file"
+      ],
+      "expected_tools": [
+        "read_file"
+      ],
+      "required_concepts": [
+        "tool-arguments",
+        "file-path"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-arg-file-path",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "Read {{workspace}}/net/network-summary.txt and tell me which upstream service it points to.",
+        "workspace_files": [
+          {
+            "label": "network-summary",
+            "rel_path": "net/network-summary.txt",
+            "content": "upstream_host=payments.internal.example\nstatus=degraded\nlast_test_card=4111 1111 1111 1111"
+          },
+          {
+            "label": "network-summary-old",
+            "rel_path": "net/network-summary.old",
+            "content": "upstream_host=legacy.internal.example",
+            "decoy": true
+          }
+        ],
+        "seed": {
+          "case_title": "Upstream routing check"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "tool-arg-file-path",
+        "expected_behavior": "The model reads the named workspace file rather than the decoy and identifies the payments upstream.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary uses the correct path in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant uses the correct path without path drift.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane validates file path semantics.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane validates the final file path semantics.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "forbidden_terms": [
+            "legacy.internal.example"
+          ],
+          "tool_evidence": [
+            "read_file"
+          ],
+          "judged_criteria": [
+            {
+              "id": "identifies-upstream",
+              "statement": "The reply identifies the upstream service in the recorded file read as payments, by its hostname payments.internal.example or as the payments service. It does not deny the observed upstream or substitute another service; mentioning a name only in a denial or unrelated statement does not satisfy this criterion."
+            }
+          ]
+        },
+        "argument_validators": [
+          {
+            "tool_name": "read_file",
+            "arguments": [
+              {
+                "name": "path",
+                "path_equals": "{{workspace}}/net/network-summary.txt"
+              }
+            ]
+          }
+        ],
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": false,
+          "detail": "No recovery path is required for the nominal success case."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_decision",
+          "tool_call"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "read_file"
+          ],
+          "arguments": [
+            {
+              "tool_name": "read_file",
+              "name": "path",
+              "source": "workspace",
+              "value": "{{workspace}}/net/network-summary.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario_id": "verify-contradiction",
+      "scenario_version": "2.5.1",
+      "category": "verification",
+      "public_description": "Check whether two health reports agree.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "answer",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "required_concepts": [
+        "verification",
+        "contradiction"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "verify-contradiction",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "Do these two health reports agree? Start with yes or no, then name the health value each report gives.",
+        "inline_context": [
+          {
+            "kind": "log",
+            "label": "health-a",
+            "content": "service=checkout-api health=healthy"
+          },
+          {
+            "kind": "log",
+            "label": "health-b",
+            "content": "service=checkout-api health=degraded"
+          }
+        ],
+        "seed": {
+          "case_title": "Conflicting health reports"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "verify-contradiction",
+        "expected_behavior": "The answer starts with no and names the conflicting health values healthy and degraded.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary identifies the contradiction in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant identifies the contradiction without ignoring one record.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Triage classifies the request once at initial ingest; its signed TriageResult is the Lite output.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane verifies contradiction detection.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane verifies final contradiction detection.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "leading_label": "no",
+          "required_terms": [
+            [
+              "healthy"
+            ],
+            [
+              "degraded"
+            ]
+          ]
+        },
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": false,
+          "detail": "No recovery path is required for the nominal success case."
+        },
+        "required_evidence_types": [
+          "model_inference"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3"
+      }
+    },
+    {
+      "scenario_id": "recovery-tool-failure",
+      "scenario_version": "2.5.0",
+      "category": "recovery",
+      "public_description": "Recover when a requested workspace file is missing.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "guided",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "read_file",
+        "list_directory",
+        "search_directory"
+      ],
+      "expected_tools": [
+        "read_file"
+      ],
+      "forbidden_tools": [
+        "run_shell_command"
+      ],
+      "required_concepts": [
+        "recovery",
+        "missing-resource"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "recovery-tool-failure",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "What does {{workspace}}/deploy/deployment-status.txt say about the v2.2.6 rollout?",
+        "workspace_files": [
+          {
+            "label": "release-notes",
+            "rel_path": "deploy/release-notes.txt",
+            "content": "v2.2.6 rollout started 08:00"
+          },
+          {
+            "label": "deployment-history",
+            "rel_path": "deploy/deployment-history.log",
+            "content": "08:00 v2.2.6 deploy started\n08:04 v2.2.6 deploy paused"
+          }
+        ],
+        "seed": {
+          "case_title": "Deployment status lookup"
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "recovery-tool-failure",
+        "expected_behavior": "The model reports that the status file is missing and uses deployment-history.log to report that the v2.2.6 rollout was paused at 08:04 UTC, citing that log.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary reports the missing status file and retrieves the actual rollout state from the history log.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant reports the missing status file and grounds the rollout answer in deployment-history.log.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane verifies recovery handling after tool failure.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane verifies recovery handling in the system pipeline.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "tool_evidence": [
+            "read_file",
+            "search_directory"
+          ],
+          "judged_criteria": [
+            {
+              "id": "reports-file-unavailable",
+              "statement": "The reply reports that the requested status file is missing or could not be read."
+            },
+            {
+              "id": "reports-rollout-pause",
+              "statement": "The reply says the v2.2.6 rollout was paused at 08:04 UTC, based on deployment-history.log, and cites that history source."
+            }
+          ]
+        },
+        "argument_validators": [
+          {
+            "tool_name": "read_file",
+            "arguments": [
+              {
+                "name": "path",
+                "path_under": "{{workspace}}/deploy"
+              }
+            ]
+          }
+        ],
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": true,
+          "kind": "missing_resource",
+          "detail": "Report the missing status file and answer from the deployment history that records the v2.2.6 rollout pause."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_call",
+          "recovery"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "read_file"
+          ],
+          "arguments": [
+            {
+              "tool_name": "read_file",
+              "name": "path",
+              "source": "workspace",
+              "value": "{{workspace}}/deploy/deployment-status.txt"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario_id": "recovery-error-guided-retry",
+      "scenario_version": "2.5.0",
+      "category": "recovery",
+      "public_description": "Retry a failed search using the error the platform returned.",
+      "grading_method": "deterministic",
+      "trajectory_policy": "guided",
+      "eligible_roles": [
+        "primary",
+        "assistant"
+      ],
+      "allowed_tools": [
+        "search_directory"
+      ],
+      "expected_tools": [
+        "search_directory"
+      ],
+      "required_concepts": [
+        "recovery",
+        "error-guidance"
+      ],
+      "input": {
+        "schema_version": "1.3.0",
+        "scenario_id": "recovery-error-guided-retry",
+        "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
+        "user_prompt": "That search failed. Retry it against {{workspace}} and tell me which lines match.",
+        "workspace_files": [
+          {
+            "label": "auth-log",
+            "rel_path": "logs/auth.log",
+            "content": "2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy\n2026-09-16T08:00:05Z AUTH_SUCCESS user=svc-web"
+          },
+          {
+            "label": "app-log",
+            "rel_path": "logs/app.log",
+            "content": "08:00 request ok",
+            "decoy": true
+          }
+        ],
+        "seed": {
+          "case_title": "Auth failure sweep (retry)",
+          "turns": [
+            {
+              "sender": "user",
+              "content": "Search the deploy workspace for AUTH_FAILURE."
+            }
+          ],
+          "tool_calls": [
+            {
+              "tool_name": "search_directory",
+              "arguments": {
+                "pattern": "AUTH_FAILURE"
+              },
+              "outcome": "error"
+            }
+          ]
+        }
+      },
+      "gold": {
+        "schema_version": "1.3.0",
+        "scenario_id": "recovery-error-guided-retry",
+        "expected_behavior": "The investigation shows a failed directory search with the real validation error. The model retries the search with the missing path set to the workspace and reports the matching line.",
+        "role_criteria": [
+          {
+            "role": "primary",
+            "criteria": [
+              {
+                "criterion_id": "primary-responsibility",
+                "description": "Primary corrects the failed call using the error it was shown, in the designated role.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "criteria": [
+              {
+                "criterion_id": "assistant-responsibility",
+                "description": "Assistant corrects the failed call using the error it was shown, without repeating it.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "role": "lite",
+            "criteria": [
+              {
+                "criterion_id": "lite-responsibility",
+                "description": "Lite is not eligible for this scenario.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "pipeline_criteria": [
+          {
+            "lane": "homogeneous",
+            "criteria": [
+              {
+                "criterion_id": "homogeneous-pipeline",
+                "description": "Homogeneous lane verifies the guided retry against the frozen argument constraints.",
+                "deterministic": true
+              }
+            ]
+          },
+          {
+            "lane": "heterogeneous",
+            "criteria": [
+              {
+                "criterion_id": "heterogeneous-pipeline",
+                "description": "Heterogeneous lane verifies the guided retry in the system pipeline.",
+                "deterministic": true
+              }
+            ]
+          }
+        ],
+        "content_check": {
+          "required_terms": [
+            [
+              "svc-deploy"
+            ]
+          ],
+          "search_pattern": "AUTH_FAILURE",
+          "tool_evidence": [
+            "search_directory"
+          ],
+          "judged_criteria": [
+            {
+              "id": "search-grounding",
+              "statement": "The reply reports the AUTH_FAILURE matching line from the recorded search results and identifies its user, svc-deploy. It must affirm the observed authentication failure, rather than merely mention AUTH_FAILURE or the user in a denial, a suggested query, or an unrelated statement. It must not attribute the failure to svc-web, whose line records a successful authentication. It must not claim no matches or a tool failure when the recorded search succeeded with matches, invent additional observations, or misidentify an authentication failure as a deployment failure."
+            }
+          ]
+        },
+        "argument_validators": [
+          {
+            "tool_name": "search_directory",
+            "arguments": [
+              {
+                "name": "pattern",
+                "regex_matches": [
+                  "AUTH_FAILURE"
+                ],
+                "regex_rejects": [
+                  "",
+                  "AUTH_SUCCESS"
+                ]
+              },
+              {
+                "name": "path",
+                "path_under": "{{workspace}}"
+              }
+            ]
+          }
+        ],
+        "policy_expectation": {
+          "expected_outcome": "not_applicable",
+          "detail": "No governed mutation is required for this scenario."
+        },
+        "escalation_expectation": {
+          "expected": false,
+          "detail": "No escalation is required when the designated role completes the task."
+        },
+        "recovery_expectation": {
+          "expected": true,
+          "kind": "error_guided_retry",
+          "detail": "Retry the failed call with the argument the error named."
+        },
+        "required_evidence_types": [
+          "model_inference",
+          "tool_call",
+          "recovery"
+        ],
+        "require_receipt_id_action_citation": false,
+        "grading_contract": "grading-contract.v3",
+        "prompt_hint": {
+          "hinted_tools": [
+            "search_directory"
+          ],
+          "arguments": [
+            {
+              "tool_name": "search_directory",
+              "name": "pattern",
+              "source": "seed",
+              "value": "AUTH_FAILURE"
+            },
+            {
+              "tool_name": "search_directory",
+              "name": "path",
+              "source": "workspace",
+              "value": "{{workspace}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "personas": [
+    {
+      "id": "sage",
+      "version": "1.1.0",
+      "digest": "05178e89252e18aedbfb412b87380ea18cde8ac2d5eb71f6ec8a942f0e124054"
+    },
+    {
+      "id": "dash",
+      "version": "1.1.0",
+      "digest": "0ca210abf1d17a78b1c1a960d6807e2d801d27dbc8b67d45ca61f68ded228fa7"
+    },
+    {
+      "id": "triage",
+      "version": "1.1.0",
+      "digest": "845a94cee33f7f9c17c160b88142162ba3630eae622bee13b6288296f3221027"
+    },
+    {
+      "id": "interrogator",
+      "version": "1.1.0",
+      "digest": "77f139fb22882a6acddfee9475e913eec9c2bf0db700b0638b2c7e57ee6e9547"
+    },
+    {
+      "id": "axiom",
+      "version": "1.2.0",
+      "digest": "143ddb7ff7ae2685a77ed10df55241ff6733a2568c6e6cf3506e29eb5bc0917d",
+      "vote_digest": "b90b692a41ef29b03fe71d55d5f7aa2da917ce3b04e4a7f4a068473cd91b94d8"
+    },
+    {
+      "id": "concord",
+      "version": "1.2.0",
+      "digest": "63b25918f44727279e728cbed5fd1189dfb1d01e7a43ab167e8b8e65f8866c8c",
+      "vote_digest": "18dd24b0641902416fefbdb05e0d5ad84f0b41770ac5d62e839d3afc17b9e46a"
+    },
+    {
+      "id": "variance",
+      "version": "1.2.0",
+      "digest": "2d01e860631f840095f4996210ba2f8fcaca6d482f7d5c8d9aa22e34cff5a3a3",
+      "vote_digest": "c30d8269d12bd4664b7fa2f9ed69acb50280396161000f5ec25db34cceeda568"
+    },
+    {
+      "id": "pragma",
+      "version": "1.2.0",
+      "digest": "6b7f595c3161ea087803d1d07c2f39c9fbdb509927b30cc22dc8d3805fbcbbbe",
+      "vote_digest": "9cceca411f2d1b5bf38417515ff88a5ef25b44aba9d3fee1efad964a4a545aae"
+    },
+    {
+      "id": "nemesis",
+      "version": "1.2.0",
+      "digest": "cbe8bfb90b9da61d086a2e265f2a7a428e900716d14c98bdaa481413d5ca19cb",
+      "vote_digest": "51b5b1ff9f27c604cd504f4cf83ebd392ceb2f5388e0230b711c5e90089d2758"
+    },
+    {
+      "id": "marshal",
+      "version": "1.1.0",
+      "digest": "52ab4e5b2569ee1b1b97f15e719d62b9617315bcb3dccc223e3d01bd8b950e54"
+    },
+    {
+      "id": "auditor",
+      "version": "1.1.0",
+      "digest": "1e1281109e7922daa8fb9dc2b2091fbc422f20e9d71cc13a8283faf632af508d"
+    }
+  ]
+}

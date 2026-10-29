@@ -83,7 +83,7 @@ export function SponsorsView({
         meta={
           <>
             <span>Solo builder · Portland, OR</span>
-            <span>Runway: basically empty</span>
+            <span>Independent · no investors</span>
           </>
         }
         verdict={
@@ -133,7 +133,7 @@ export function SponsorsView({
           <div className="sponsors-first-cta-copy">
             <span className="sponsors-first-cta-kicker">#1 spot is open</span>
             <h3>Be the first sponsor on the board</h3>
-            <p>Nobody’s claimed #1 yet. Any amount helps, one-time or monthly.</p>
+            <p>Nobody’s claimed #1 yet. Any amount, one-time or monthly.</p>
           </div>
           <div className="sponsors-first-cta-action">
             <a

@@ -54,9 +54,9 @@ const (
 	realStackModelTag   = "qwen3:4b"
 )
 
-// realStackRenderedHealthPath matches the absolute health fixture path the
+// realStackRenderedHealthPath matches the absolute health-check script path the
 // scenario prompt renders for one attempt's workspace.
-var realStackRenderedHealthPath = regexp.MustCompile(`/\S+?/workspaces/ws-[0-9a-f]{16}/status/health\.txt`)
+var realStackRenderedHealthPath = regexp.MustCompile(`/\S+?/workspaces/ws-[0-9a-f]{16}/bin/healthcheck\.sh`)
 
 // realStackShellArguments is the run_shell_command argument body for one command
 // and its arguments. A struct of strings cannot fail to marshal.
@@ -65,13 +65,13 @@ func realStackShellArguments(command string, args ...string) json.RawMessage {
 	return body
 }
 
-// realStackHealthCatReply cats the health fixture at the absolute path the
+// realStackHealthCheckReply runs the health check at the absolute path the
 // decoded request's prompt names. The path is the one the Data Operator
 // materialized for this attempt, so the shell reads the real workspace file.
-func realStackHealthCatReply(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+func realStackHealthCheckReply(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
 	for _, message := range request.Messages {
 		if path := realStackRenderedHealthPath.FindString(message.Content); path != "" {
-			return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("cat", path)}}}
+			return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("sh", path)}}}
 		}
 	}
 	return fixtures.OllamaReply{Failure: "scripted provider: the prompt names no workspace health fixture"}
@@ -140,7 +140,7 @@ func shellRepliesForTwoAssignments() []fixtures.OllamaReply {
 // answers from the output.
 func shellReplies() []fixtures.OllamaReply {
 	return []fixtures.OllamaReply{
-		{Respond: realStackHealthCatReply},
+		{Respond: realStackHealthCheckReply},
 		{Content: "HEALTHY"},
 	}
 }
@@ -176,6 +176,11 @@ type realStackOptions struct {
 	catalog func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error)
 	// scenarioID names the one scenario the run keeps; empty means realStackScenarioID.
 	scenarioID string
+	// additionalScenarioIDs are extra scenarios frozen into this focused run.
+	additionalScenarioIDs []string
+	// toolProbeRequired opts this focused catalog into the frozen H2 capability
+	// gate. Zero preserves the legacy trace-only fixture behavior.
+	toolProbeRequired bool
 	// scenario edits the kept scenario before the catalog digest is recomputed.
 	scenario func(*evalv1.EvaluationScenarioDefinition)
 	// repetitions is the campaign RepetitionCount; zero means 1.
@@ -311,13 +316,30 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	if opts.scenario != nil {
 		opts.scenario(target)
 	}
+	targets := []*evalv1.EvaluationScenarioDefinition{target}
+	for _, additionalID := range opts.additionalScenarioIDs {
+		var additional *evalv1.EvaluationScenarioDefinition
+		for _, scenario := range catalog.GetScenarios() {
+			if scenario.GetScenarioId() == additionalID {
+				additional = scenario
+				break
+			}
+		}
+		require.NotNil(t, additional, "scenario %s must exist in catalog", additionalID)
+		if opts.singleRole {
+			additional.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+		}
+		targets = append(targets, additional)
+	}
 	// The rig scripts every model reply, so a scenario gated out of L2 postures
 	// for live-model runs still exercises the Tribunal deterministically here.
 	target.ExcludeWhenL2Enforced = false
 	truncated := &evalv1.EvaluationScenarioCatalog{
-		SchemaVersion: catalog.GetSchemaVersion(),
-		CatalogRef:    catalog.GetCatalogRef(),
-		Scenarios:     []*evalv1.EvaluationScenarioDefinition{target},
+		SchemaVersion:            catalog.GetSchemaVersion(),
+		CatalogRef:               catalog.GetCatalogRef(),
+		Personas:                 catalog.GetPersonas(),
+		ToolCallingProbeRequired: opts.toolProbeRequired,
+		Scenarios:                targets,
 	}
 	truncated.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
@@ -417,7 +439,7 @@ func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
 	require.NoError(t, err)
 	require.Positive(t, scheduled)
 	if plan.singleRole {
-		require.Equal(t, int(repetitions), scheduled)
+		require.Equal(t, int(repetitions)*len(env.catalog.GetScenarios()), scheduled)
 	}
 	env.req = req
 	env.scheduledCount = scheduled

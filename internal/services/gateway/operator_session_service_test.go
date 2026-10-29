@@ -20,31 +20,35 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestNewOperatorSessionService(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
 
-	svc, err := NewOperatorSessionService(infra.DocStore, infra.EventsStore, infra.Logger)
+	svc, err := NewOperatorSessionService(db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 
 	require.NoError(t, err)
 	require.NotNil(t, svc)
-	assert.Equal(t, infra.DocStore, svc.db)
-	assert.Equal(t, infra.Logger, svc.logger)
+	assert.Equal(t, db.GetDocStore(), svc.db)
+	assert.Equal(t, logger, svc.logger)
 }
 
 func TestNewOperatorSessionService_RequiresEventsStore(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
 
-	svc, err := NewOperatorSessionService(infra.DocStore, nil, infra.Logger)
+	svc, err := NewOperatorSessionService(db.GetDocStore(), nil, logger)
 
 	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRequired)
 	assert.Nil(t, svc)
 }
 
 func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
-	infra := setupTestInfrastructure(t, true)
-	svc := infra.OperatorSessionSvc
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	svc := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), logger)
 
 	t.Run("Success_AllFieldsPersisted", func(t *testing.T) {
 		operatorSessionID := "op-session-123"
@@ -56,7 +60,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, userID, orgID, operatorID, loginMethod)
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 
@@ -91,7 +95,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -106,7 +110,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -121,7 +125,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -150,7 +154,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -163,19 +167,19 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), "", "user-1", "org-1", "operator-1", "mTLS")
 		require.ErrorIs(t, err, constants.ErrEventsStoreSessionMissing)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), "")
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), "")
 		require.NoError(t, err)
 		require.Nil(t, doc)
 	})
 
 	t.Run("StartsAuditSessionOnce", func(t *testing.T) {
 		operatorSessionID := "op-session-audit-start"
-		before, err := infra.EventsStore.GetOperatorSession(operatorSessionID)
+		before, err := db.GetLocalFirstEventsStore().GetOperatorSession(operatorSessionID)
 		require.NoError(t, err)
 		require.Nil(t, before)
 
 		require.NoError(t, svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS"))
-		started, err := infra.EventsStore.GetOperatorSession(operatorSessionID)
+		started, err := db.GetLocalFirstEventsStore().GetOperatorSession(operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, started)
 		assert.Equal(t, string(constants.SessionTypeOperator), started.SessionType)
@@ -183,7 +187,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 
 		// Re-persisting the same session (idempotent re-claim) leaves the row intact.
 		require.NoError(t, svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "mTLS"))
-		again, err := infra.EventsStore.GetOperatorSession(operatorSessionID)
+		again, err := db.GetLocalFirstEventsStore().GetOperatorSession(operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, again)
 		assert.Equal(t, started.CreatedAt, again.CreatedAt)
@@ -195,7 +199,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 
@@ -210,7 +214,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 
@@ -225,7 +229,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 
@@ -240,7 +244,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 
@@ -250,7 +254,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 	})
 
 	t.Run("NilDatabase_PanicsOnPersist", func(t *testing.T) {
-		svcNilDB := newTestOperatorSessionService(t, nil, infra.EventsStore, infra.Logger)
+		svcNilDB := newTestOperatorSessionService(t, nil, db.GetLocalFirstEventsStore(), logger)
 
 		assert.Panics(t, func() {
 			svcNilDB.PersistOperatorSession(t.Context(), "op-session-nil-db", "user-1", "org-1", "operator-1", "mTLS")
@@ -258,12 +262,12 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 	})
 
 	t.Run("NilLogger_PersistsWithoutError", func(t *testing.T) {
-		svcNilLogger := newTestOperatorSessionService(t, infra.DocStore, infra.EventsStore, nil)
+		svcNilLogger := newTestOperatorSessionService(t, db.GetDocStore(), db.GetLocalFirstEventsStore(), nil)
 
 		err := svcNilLogger.PersistOperatorSession(t.Context(), "op-session-nil-logger", "user-1", "org-1", "operator-1", "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), "op-session-nil-logger")
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), "op-session-nil-logger")
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 	})
@@ -279,7 +283,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err = svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-2", "org-2", "operator-1", "passkey")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -309,7 +313,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, specialUserID, specialOrgID, specialOperatorID, "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -331,7 +335,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, longVal, longVal, longVal, "mTLS")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession
@@ -350,7 +354,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		}
 
 		for _, sid := range sessionIDs {
-			doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), sid)
+			doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), sid)
 			require.NoError(t, err)
 			require.NotNil(t, doc)
 
@@ -381,7 +385,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 				LoginMethod: "mTLS",
 			})
 			require.NoError(t, err)
-			require.NoError(t, infra.DocStore.DocSetWithTimestamps(t.Context(),
+			require.NoError(t, db.GetDocStore().DocSetWithTimestamps(t.Context(),
 				marshaler.CollectionName(constants.CollectionOperatorSessions), sessionID, b, createdAt, createdAt))
 		}
 		persist("op-sess-embedded", string(constants.DocIDEmbeddedOperator), now.Add(-2*time.Hour))
@@ -400,7 +404,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		err := svc.PersistOperatorSession(t.Context(), operatorSessionID, "user-1", "org-1", "operator-1", "passkey")
 		require.NoError(t, err)
 
-		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
+		doc, err := db.GetDocStore().DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperatorSessions), operatorSessionID)
 		require.NoError(t, err)
 
 		var stored models.OperatorSession

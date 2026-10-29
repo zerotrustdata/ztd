@@ -4,7 +4,7 @@ title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -47,6 +47,7 @@ Diagnose and resolve common contributor setup, build, test, Gateway startup, aut
   - [Gateway Process Diagnosis](#gateway-process-diagnosis)
   - [Gateway CPU and Memory Profiling](#gateway-cpu-and-memory-profiling)
   - [Vault Validation and Key Recovery](#vault-validation-and-key-recovery)
+  - [WSL Ollama Reachability](#wsl-ollama-reachability)
   - [CLI Authentication and Session Recovery](#cli-authentication-and-session-recovery)
   - [Operator Connectivity and Enrollment Triage](#operator-connectivity-and-enrollment-triage)
   - [Governance Pipeline Diagnosis](#governance-pipeline-diagnosis)
@@ -77,6 +78,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` MUST be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and allows five minutes for approval in addition to its startup budget. The dialog wants the Mac login password, not a ztd account. Approve it and choose **Always Allow**. The dialog needs a GUI session. If approval or subsequent startup does not complete within that allowance, the start fails and includes the latest child diagnostic. |
 | INV-TROUBLE-GW-06 | `gw start --pprof-listen` accepts only `localhost` or a loopback IP (`ErrProfilingListenAddress`); profiles expose command lines, heap contents, and goroutine stacks. Profiling is off when the flag is unset, and it is a startup flag covered by `INV-TROUBLE-GW-04`. |
 | INV-TROUBLE-GW-07 | The public spectator mirror verifies `.ztd/public-mirror/mirror.db` and its proof files on every open; a tampered or truncated store fails startup with `ErrPublicFeedMirrorStoreCorrupt` and MUST NOT be hand-edited back into shape. Restore `.ztd/public-mirror/` from backup. |
+| INV-TROUBLE-GW-08 | The first `gw start` or `operator start` that creates a master key prints a recovery key once and stores it only after the operator retypes it. A start with no terminal fails with `ErrKeyStoreRecoveryRequired` unless `--accept-unrecoverable` is set. Losing the recovery key and the OS key store makes that runtime unrecoverable. `gw recover` and `operator recover` install a saved key and refuse to replace a different one. `gw clean` and `gw reset` MUST NOT be used to repair a lost master key. |
 
 Managed startup failures include the latest bounded child diagnostic from the current attempt and the full log location. Verification progress records preserve their stage, counts, and elapsed time in timeout diagnostics. See [Durable Mirror Store](../architecture/public_spectator.md#durable-mirror-store) for verification budgets and readiness behavior.
 
@@ -180,12 +182,67 @@ go tool trace .ztd/tmp/pprof/gw.trace
 # Validate existing vault header with stored vault key
 ./ztd vault unlock
 
-# Linux when the Secret Service is unreachable or has no default keyring (SSH-only sessions, servers, WSL):
-# the master key is sealed under an Ed25519 or RSA key loaded in ssh-agent; the sealed form is stored at
-# .ztd/secrets/.master_key.ssh-agent. An existing seal is used first.
-eval "$(ssh-agent)" && ssh-add   # run ssh-keygen -t ed25519 first if no key exists
+# On Linux, rerun the original start command with your intended flags.
+# An existing SSH seal is checked before a process is launched.
 ./ztd gw start
 ```
+
+When the original sealing key is missing, `gw start` and `gw restart` print its SHA-256 fingerprint, the matching local key path when found, and exact copy-and-paste commands. Copy those commands into the same terminal. They include `ssh-add -t 8h` for that specific key, `eval "$(ssh-agent -s)"` if a new agent is needed, and a retry command preserving explicit Gateway flags. In a terminal, a reachable current agent can be loaded after a default-no confirmation; OpenSSH asks for the SSH key's passphrase, then ztd verifies that the existing master key decrypts before continuing. `--quiet` still shows recovery instructions. A restart that cannot unlock leaves the running Gateway alone.
+
+If the key is not found under `~/.ssh`, compare public fingerprints:
+
+```bash
+ssh-add -l
+for ztd_pub in "$HOME"/.ssh/*.pub; do
+    [ -f "$ztd_pub" ] && ssh-keygen -lf "$ztd_pub"
+done
+```
+
+Restore the original key pair or reconnect with agent forwarding from the machine holding that key. A newly generated SSH key cannot open an existing vault. Do not delete the seal or run `gw clean` or `gw reset` to repair retained data. The recovery flow and key lifetime are described in [Master Key and Keyring Providers](../architecture/encryption.md#master-key-and-keyring-providers).
+
+If the OS key store itself is gone and you saved the recovery key printed at first start, install it from a terminal. The key is not echoed into the log:
+
+```bash
+./ztd gw recover
+./ztd operator recover
+```
+
+Pass `--working-dir` when the operator runtime is not the current directory.
+
+A key that does not open the sealed secrets is rejected and nothing is stored. A key store that already holds a different master key is left as it is. See [Recovery key](../architecture/encryption.md#recovery-key).
+
+### WSL Ollama Reachability
+
+The Gateway does not probe Ollama at startup. When an inference call from WSL fails with `inference: backend unavailable` (`constants.ErrInferenceBackendUnavailable`), check the configured Ollama endpoint. A nonloopback endpoint can be an intentionally remote provider; its address does not establish that it is the Windows host, that its address changes on restart, or how the provider binds its listener. Keep an intentional remote endpoint and restrict API access.
+
+For Ollama on the same Windows host, Windows 11 22H2 or newer supports WSL mirrored networking so WSL can reach Windows loopback. Quit Ollama from the Windows tray. In PowerShell, set its user environment and open the WSL configuration:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OLLAMA_HOST', '127.0.0.1:11434', 'User')
+notepad "$env:USERPROFILE\.wslconfig"
+```
+
+Merge these settings into that file, preserving other settings:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+Save, then run this in PowerShell. It stops all WSL sessions, including any running ztd Gateway:
+
+```powershell
+wsl --shutdown
+```
+
+Start Ollama again from the Windows Start menu and reopen WSL. Verify the API, then restart the Gateway with your intended flags and an explicit loopback endpoint; for example:
+
+```bash
+curl --fail --show-error http://127.0.0.1:11434/api/version
+./ztd gw start --listen-host=0.0.0.0 --public-spectator --capabilities inference,data --posture consensus --inference-ollama-endpoint http://127.0.0.1:11434
+```
+
+The explicit endpoint overrides a remote `ZTD_OLLAMA_ENDPOINT` in `.env`; it does not edit that file. Alternatively, run Ollama inside WSL bound to loopback. See [Microsoft's WSL networking documentation](https://learn.microsoft.com/windows/wsl/networking) and [Ollama's FAQ](https://docs.ollama.com/faq).
 
 ### CLI Authentication and Session Recovery
 

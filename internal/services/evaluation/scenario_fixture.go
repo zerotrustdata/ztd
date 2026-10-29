@@ -23,14 +23,15 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.12.1"
+	GraderVersion = "1.18.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.22.0"
-	SmokeSuiteVersion          = "1.21.0"
-	InvestigationsSuiteVersion = "1.21.0"
+	DefaultSuiteVersion        = "1.29.0"
+	SmokeSuiteVersion          = "1.28.0"
+	InvestigationsSuiteVersion = "1.26.0"
+	QuickstartSuiteVersion     = "1.0.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -39,9 +40,9 @@ const (
 
 	scenarioSyntheticLabel     = "SYNTHETIC - controlled evaluation fixture"
 	scenarioInputSchemaVersion = "1.3.0"
-	scenarioGoldSchemaVersion  = "1.1.0"
+	scenarioGoldSchemaVersion  = "1.3.0"
 	scenarioInputSchemaRef     = "evaluation-scenario-input@1.3.0"
-	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.1.0"
+	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.3.0"
 
 	// ScenarioWorkspaceToken is the typed template variable a prompt, seed, or
 	// argument validator uses for the attempt-scoped fixture workspace root.
@@ -59,6 +60,24 @@ const (
 	ScenarioDiagnosisRubricCheckoutTimeoutV2 ScenarioDiagnosisRubric = "checkout-timeout-v2"
 	ScenarioDiagnosisRubricCheckoutTimeoutV3 ScenarioDiagnosisRubric = "checkout-timeout-v3"
 	ScenarioDiagnosisRubricCheckoutTimeoutV4 ScenarioDiagnosisRubric = "checkout-timeout-v4"
+	ScenarioDiagnosisRubricCheckoutTimeoutV5 ScenarioDiagnosisRubric = "checkout-timeout-v5"
+)
+
+// ScenarioGradingContract selects the versioned grading rules frozen with a
+// scenario's gold. The empty contract is the original one; it stays so a
+// campaign frozen before a later contract regrades exactly as it was graded.
+type ScenarioGradingContract string
+
+const (
+	// ScenarioGradingContractV2 counts a Lite cell's TriageResult toward its
+	// verdict (the classification is the cell's whole task) and renders the
+	// content judge's objective from the typed judge.Objective (criterion-v2):
+	// the seed conversation, the platform records the model was shown, and
+	// every receipted tool result it observed.
+	ScenarioGradingContractV2 ScenarioGradingContract = "grading-contract.v2"
+	// ScenarioGradingContractV3 inherits v2 and validates Interrogator questions
+	// as closed questions rather than rejecting every use of the word "or".
+	ScenarioGradingContractV3 ScenarioGradingContract = "grading-contract.v3"
 )
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
@@ -80,8 +99,9 @@ type ScenarioInlineContent struct {
 // attempt-scoped workspace on the bound Data Operator before the scored chat
 // request is sent (one governed write per file, each with a receipt). RelPath
 // is slash-separated and relative to the workspace root. Decoy files exist so
-// a search can be wrong. Content is never sent to the model directly: the
-// point of these scenarios is that the model must use a tool to read it.
+// a search can be wrong. Responder roles retrieve content with tools. Lite
+// receives the frozen fixture content as labelled user evidence because it has
+// no tool surface.
 type ScenarioWorkspaceFile struct {
 	Label   string `json:"label"`
 	RelPath string `json:"rel_path"`
@@ -122,10 +142,30 @@ type InvestigationSeed struct {
 // tool result. Outcome is success, error, deny, or pre-envelope refusal; a
 // mismatch is a setup failure rather than a model failure.
 type ScenarioSeedToolCall struct {
-	ToolName  string          `json:"tool_name"`
-	Arguments json.RawMessage `json:"arguments"`
-	Outcome   string          `json:"outcome"`
+	ToolName   string                 `json:"tool_name"`
+	Arguments  json.RawMessage        `json:"arguments"`
+	Outcome    string                 `json:"outcome"`
+	Disclosure ScenarioSeedDisclosure `json:"disclosure,omitempty"`
 }
+
+// ScenarioSeedDisclosure says how a seeded governed call reaches the scored
+// conversation.
+type ScenarioSeedDisclosure string
+
+const (
+	// ScenarioSeedDisclosureProse is the original rendering, one user message
+	// of labelled prose. It stays so frozen catalogs replay unchanged.
+	ScenarioSeedDisclosureProse ScenarioSeedDisclosure = ""
+	// ScenarioSeedDisclosurePlatformRecord renders the call as one typed
+	// platform record (scenarioPlatformRecord, canonical JSON) in a user
+	// message labelled as platform evidence. It never poses as the model's call.
+	ScenarioSeedDisclosurePlatformRecord ScenarioSeedDisclosure = "platform_record"
+	// ScenarioSeedDisclosureChainOnly keeps the call out of the conversation:
+	// it exists only as the signed receipt the executing Operator recorded,
+	// which the agent retrieves from the investigation with event_receipt_list.
+	// Only an executed call (success or error) leaves that receipt.
+	ScenarioSeedDisclosureChainOnly ScenarioSeedDisclosure = "chain_only"
+)
 
 // ScenarioScriptedFollowUp defines one frozen scripted user response to a clarification
 // question in an investigation episode. Each follow-up has a declared trigger.
@@ -162,6 +202,8 @@ type ScenarioCriterion struct {
 type ScenarioRoleCriteria struct {
 	Role     string              `json:"role"`
 	Criteria []ScenarioCriterion `json:"criteria"`
+	// RequiredEvidenceTypes overrides the shared evidence requirements for this role.
+	RequiredEvidenceTypes []string `json:"required_evidence_types,omitempty"`
 }
 
 // ScenarioPipelineCriteria binds scoring criteria to one evaluation lane shape.
@@ -185,6 +227,13 @@ type ScenarioContentCheck struct {
 	JSONStringFields  map[string]string       `json:"json_string_fields,omitempty"`
 	JSONIntegerFields map[string]int64        `json:"json_integer_fields,omitempty"`
 	DiagnosisRubric   ScenarioDiagnosisRubric `json:"diagnosis_rubric,omitempty"`
+	// SearchPattern requires successful directory searches to retrieve every
+	// fixture line matching this reference regex. Filters and result limits
+	// cannot turn an incomplete or empty retrieval into a successful task.
+	SearchPattern string `json:"search_pattern,omitempty"`
+	// ToolEvidence names receipt-backed tool results included in the content
+	// judge's objective. It is frozen with the criteria and replayed offline.
+	ToolEvidence []string `json:"tool_evidence,omitempty"`
 	// Interrogation requires the whole answer to be the Interrogation Protocol
 	// block Sage and Dash are told to emit when context is missing: one
 	// <interrogation> element holding exactly three numbered, strictly binary
@@ -316,6 +365,40 @@ type ScenarioGoldCriteria struct {
 	RecoveryExpectation    ScenarioRecoveryExpectation     `json:"recovery_expectation"`
 	RequiredEvidenceTypes  []string                        `json:"required_evidence_types"`
 	GoldEvidenceReferences []ScenarioGoldEvidenceReference `json:"gold_evidence_references,omitempty"`
+	// RequireReceiptIDActionCitation freezes whether the prompt asks the agent
+	// to cite a retrieved receipt by ID and action. Nil is reserved for gold
+	// authored before this field existed and preserves its historical grading.
+	RequireReceiptIDActionCitation *bool                   `json:"require_receipt_id_action_citation,omitempty"`
+	GradingContract                ScenarioGradingContract `json:"grading_contract,omitempty"`
+}
+
+// requiresReceiptIDActionCitation preserves the old expected-tool rule only
+// for gold that predates the explicit citation contract. New gold records true
+// or false based on its prompt.
+func (gold *ScenarioGoldCriteria) requiresReceiptIDActionCitation(expectedReceiptList bool) bool {
+	if gold.RequireReceiptIDActionCitation != nil {
+		return *gold.RequireReceiptIDActionCitation
+	}
+	return expectedReceiptList
+}
+
+// gradingContractV2 reports whether the gold was frozen under
+// ScenarioGradingContractV2.
+func (gold *ScenarioGoldCriteria) gradingContractV2() bool {
+	return gold.GradingContract == ScenarioGradingContractV2 || gold.GradingContract == ScenarioGradingContractV3
+}
+
+func (gold *ScenarioGoldCriteria) closedInterrogationContract() bool {
+	return gold.GradingContract == ScenarioGradingContractV3
+}
+
+func (gold *ScenarioGoldCriteria) requiredEvidenceForRole(role string) []string {
+	for _, criteria := range gold.RoleCriteria {
+		if criteria.Role == role && len(criteria.RequiredEvidenceTypes) > 0 {
+			return criteria.RequiredEvidenceTypes
+		}
+	}
+	return gold.RequiredEvidenceTypes
 }
 
 // ScenarioArtifactPair holds canonical fixture bytes and their evidence reference.

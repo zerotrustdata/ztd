@@ -321,6 +321,17 @@ func TestRegistrationService_TerminateOperator(t *testing.T) {
 		assert.Contains(t, err.Error(), "does not belong to user")
 	})
 
+	t.Run("Embedded operator cannot be terminated", func(t *testing.T) {
+		raw, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{
+			Id: "embedded-owned", UserId: "user-123", OperatorType: string(constants.OperatorTypeEmbedded), Status: string(constants.OperatorStatusActive),
+		})
+		require.NoError(t, err)
+		require.NoError(t, infra.DocStore.DocSet(t.Context(), "operators", "embedded-owned", raw))
+
+		err = regSvc.TerminateOperator(t.Context(), "embedded-owned", "user-123", "test")
+		require.ErrorIs(t, err, constants.ErrOperatorTerminateEmbedded)
+	})
+
 	t.Run("Already terminated operator returns nil", func(t *testing.T) {
 		slot, err := regSvc.createSlot(t.Context(), "user-123", "org-123")
 		require.NoError(t, err)

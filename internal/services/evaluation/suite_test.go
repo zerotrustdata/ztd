@@ -22,7 +22,7 @@ import (
 func customSuite(t *testing.T, id, version string, scenarioIDs ...string) ScenarioSuite {
 	t.Helper()
 	def := DefaultScenarioSuite()
-	custom := ScenarioSuite{SchemaVersion: SuiteSchemaVersion, ID: id, Version: version, Description: "test suite"}
+	custom := ScenarioSuite{SchemaVersion: SuiteSchemaVersion, ID: id, Version: version, Description: "test suite", Personas: def.Personas}
 	for _, scenario := range def.Scenarios {
 		for _, want := range scenarioIDs {
 			if scenario.ScenarioID == want {
@@ -90,7 +90,7 @@ func artifactBodies(artifacts map[string]ScenarioArtifacts) map[string][2]string
 }
 
 func TestMaterializeSuite_CustomSuiteIsNotHeldToTheDefaultSuiteGates(t *testing.T) {
-	custom := customSuite(t, "tiny-suite", "1.0.0", "instruction-exact-format")
+	custom := customSuite(t, "tiny-suite", "1.0.0", "instruction-classify-severity")
 
 	catalog, artifacts, err := MaterializeSuite(custom)
 	require.NoError(t, err)
@@ -105,9 +105,9 @@ func TestMaterializeSuite_CustomSuiteIsNotHeldToTheDefaultSuiteGates(t *testing.
 }
 
 func TestMaterializeSuite_SameScenariosUnderAnotherSuiteYieldAnotherCatalog(t *testing.T) {
-	first, _, err := MaterializeSuite(customSuite(t, "suite-a", "1.0.0", "instruction-exact-format"))
+	first, _, err := MaterializeSuite(customSuite(t, "suite-a", "1.0.0", "instruction-classify-severity"))
 	require.NoError(t, err)
-	second, _, err := MaterializeSuite(customSuite(t, "suite-b", "1.0.0", "instruction-exact-format"))
+	second, _, err := MaterializeSuite(customSuite(t, "suite-b", "1.0.0", "instruction-classify-severity"))
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first.GetCatalogDigest(), second.GetCatalogDigest())
@@ -141,7 +141,7 @@ func TestMaterializeSuite_RejectsInvalidDefinitions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			custom := customSuite(t, "bad-suite", "1.0.0", "instruction-exact-format")
+			custom := customSuite(t, "bad-suite", "1.0.0", "instruction-classify-severity")
 			tt.mutate(&custom)
 			_, _, err := MaterializeSuite(custom)
 			require.Error(t, err)
@@ -151,7 +151,7 @@ func TestMaterializeSuite_RejectsInvalidDefinitions(t *testing.T) {
 }
 
 func TestDecodeScenarioSuite_RejectsUnknownFieldsAndTrailingContent(t *testing.T) {
-	good, err := EncodeScenarioSuite(customSuite(t, "tiny-suite", "1.0.0", "instruction-exact-format"))
+	good, err := EncodeScenarioSuite(customSuite(t, "tiny-suite", "1.0.0", "instruction-classify-severity"))
 	require.NoError(t, err)
 
 	_, err = DecodeScenarioSuite(good)
@@ -178,23 +178,25 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	summaries, err := store.ListSuites(ctx)
 	require.NoError(t, err)
-	require.Len(t, summaries, 3)
+	require.Len(t, summaries, 4)
 	assert.Equal(t, DefaultSuiteID, summaries[0].ID)
 	assert.True(t, summaries[0].Builtin)
 	assert.Equal(t, DefaultSuiteScenarioCount, summaries[0].ScenarioCount)
 	assert.Equal(t, SmokeSuiteID, summaries[1].ID)
 	assert.Equal(t, InvestigationsSuiteID, summaries[2].ID)
 	assert.True(t, summaries[2].Builtin)
+	assert.Equal(t, QuickstartSuiteID, summaries[3].ID)
+	assert.Equal(t, QuickstartScenarioCount, summaries[3].ScenarioCount)
 
-	v1 := customSuite(t, "my-suite", "1.0.0", "instruction-exact-format")
+	v1 := customSuite(t, "my-suite", "1.0.0", "instruction-classify-severity")
 	require.NoError(t, store.CreateSuite(ctx, v1))
 	require.ErrorIs(t, store.CreateSuite(ctx, v1), constants.ErrEvaluationSuiteExists)
 
 	summaries, err = store.ListSuites(ctx)
 	require.NoError(t, err)
-	require.Len(t, summaries, 4)
-	assert.Equal(t, "my-suite", summaries[3].ID)
-	assert.False(t, summaries[3].Builtin)
+	require.Len(t, summaries, 5)
+	assert.Equal(t, "my-suite", summaries[4].ID)
+	assert.False(t, summaries[4].Builtin)
 
 	resolved, builtin, err := store.ResolveSuite(ctx, "my-suite")
 	require.NoError(t, err)
@@ -211,7 +213,7 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 	// Resubmitting identical content is a no-op; changed content at the same
 	// version is refused; changed content at a new version is accepted.
 	require.NoError(t, store.UpdateSuite(ctx, v1))
-	changed := customSuite(t, "my-suite", "1.0.0", "instruction-exact-format", "tool-select-file-read")
+	changed := customSuite(t, "my-suite", "1.0.0", "instruction-classify-severity", "tool-select-file-read")
 	require.ErrorIs(t, store.UpdateSuite(ctx, changed), constants.ErrEvaluationSuiteInvalid)
 	changed.Version = "1.1.0"
 	require.NoError(t, store.UpdateSuite(ctx, changed))
@@ -231,7 +233,7 @@ func TestSuiteStore_BuiltinSuitesAreReadOnlyAndReserved(t *testing.T) {
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 
-	shadow := customSuite(t, DefaultSuiteID, "9.9.9", "instruction-exact-format")
+	shadow := customSuite(t, DefaultSuiteID, "9.9.9", "instruction-classify-severity")
 	require.ErrorIs(t, store.CreateSuite(ctx, shadow), constants.ErrEvaluationSuiteBuiltin)
 	require.ErrorIs(t, store.UpdateSuite(ctx, shadow), constants.ErrEvaluationSuiteBuiltin)
 	require.ErrorIs(t, store.DeleteSuite(ctx, DefaultSuiteID), constants.ErrEvaluationSuiteBuiltin)
@@ -239,12 +241,12 @@ func TestSuiteStore_BuiltinSuitesAreReadOnlyAndReserved(t *testing.T) {
 
 	// The pre-rename catalog id stays reserved: a custom suite named after it
 	// would be mistaken for an old built-in run and skip grade recomputation.
-	legacy := customSuite(t, LegacyDefaultSuiteID, "1.0.0", "instruction-exact-format")
+	legacy := customSuite(t, LegacyDefaultSuiteID, "1.0.0", "instruction-classify-severity")
 	require.ErrorIs(t, store.CreateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
 	require.ErrorIs(t, store.UpdateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
 
 	// The investigations built-in is reserved and read-only like the others.
-	investigations := customSuite(t, InvestigationsSuiteID, "9.9.9", "instruction-exact-format")
+	investigations := customSuite(t, InvestigationsSuiteID, "9.9.9", "instruction-classify-severity")
 	require.ErrorIs(t, store.CreateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
 	require.ErrorIs(t, store.UpdateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
 	require.ErrorIs(t, store.DeleteSuite(ctx, InvestigationsSuiteID), constants.ErrEvaluationSuiteBuiltin)
@@ -272,7 +274,7 @@ func TestSuiteStore_InvalidSuiteIsNeverStored(t *testing.T) {
 	ctx := context.Background()
 	store := NewStore(newCampaignMemoryFileService())
 
-	bad := customSuite(t, "bad-suite", "1.0.0", "instruction-exact-format")
+	bad := customSuite(t, "bad-suite", "1.0.0", "instruction-classify-severity")
 	bad.Scenarios[0].AllowedTools = []string{"no_such_tool"}
 
 	require.ErrorIs(t, store.CreateSuite(ctx, bad), constants.ErrEvaluationScenarioContractInvalid)

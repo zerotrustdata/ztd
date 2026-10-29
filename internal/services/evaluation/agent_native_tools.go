@@ -196,6 +196,12 @@ func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope
 			return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tool %q is not in the agent tool catalog: %w", name, constants.ErrEvaluationScenarioContractInvalid)
 		}
 	}
+	if tools.ContextOnly {
+		if len(tools.ExpectedTools) > 0 || tools.TribunalCommands {
+			return agentToolScope{}, fmt.Errorf("evaluation: context-only role cannot require tools: %w", constants.ErrEvaluationScenarioContractInvalid)
+		}
+		return agentToolScope{}, nil
+	}
 	scope := agentToolScope{
 		specs:        make(map[string]agentToolSpec, len(surface)),
 		declarations: make([]*operatorv1.InferenceToolDeclaration, 0, len(surface)),
@@ -309,6 +315,44 @@ func (a *agentToolArguments) EventReceiptListScopeFailure(investigationID string
 		return nil
 	}
 	return agentToolValidationFailure(a.tool, problems)
+}
+
+// WorkspacePathFailure is the model-visible rejection of a file tool path
+// that resolves outside the attempt workspace. A scored cell reads and changes
+// only its own fixtures, so the call fails before dispatch and binds no
+// governed action. Real Operators keep host-wide file access under the
+// FILE_EDIT path policy; this confinement belongs to the evaluation harness only.
+func (a *agentToolArguments) WorkspacePathFailure(workspace ScenarioWorkspace) *agentToolFailure {
+	field := "path"
+	var value string
+	switch contract := a.contract.(type) {
+	case typedAgentToolContract[mcp.FileReadRequest]:
+		value = contract.value.Path
+	case typedAgentToolContract[mcp.SearchFileRequest]:
+		value = contract.value.Path
+	case typedAgentToolContract[mcp.SearchDirectoryRequest]:
+		value = contract.value.Path
+	case typedAgentToolContract[mcp.ListDirectoryRequest]:
+		value = contract.value.Path
+	case typedAgentToolContract[mcp.FileEditToolRequest]:
+		field, value = "file_path", contract.value.FilePath
+	case typedAgentToolContract[mcp.FileHistoryRequest]:
+		field, value = "file_path", contract.value.FilePath
+	case typedAgentToolContract[mcp.RestoreFileToolRequest]:
+		field, value = "file_path", contract.value.FilePath
+	case typedAgentToolContract[mcp.FileDiffRequest]:
+		// A diff_id alone is scoped to the verified session by the Operator.
+		if contract.value.FilePath == "" {
+			return nil
+		}
+		field, value = "file_path", contract.value.FilePath
+	default:
+		return nil
+	}
+	if workspace.Root != "" && pathWithin(workspace.Resolve(value), workspace.Root) {
+		return nil
+	}
+	return agentToolValidationFailure(a.tool, []string{field + "\n  Input should be inside the investigation workspace " + workspace.Root})
 }
 
 func (a *agentToolArguments) CanonicalJSON() (string, error) {
@@ -600,6 +644,16 @@ func decodeAgentToolContract(tool, raw string) (agentToolContract, error) {
 		return decodeTypedAgentToolContract[mcp.EventReceiptListRequest](raw)
 	case constants.MCPToolEventReceiptGet:
 		return decodeTypedAgentToolContract[mcp.EventReceiptGetRequest](raw)
+	case constants.MCPToolListDirectory:
+		return decodeTypedAgentToolContract[mcp.ListDirectoryRequest](raw)
+	case constants.MCPToolFileEdit:
+		return decodeTypedAgentToolContract[mcp.FileEditToolRequest](raw)
+	case constants.MCPToolFileHistory:
+		return decodeTypedAgentToolContract[mcp.FileHistoryRequest](raw)
+	case constants.MCPToolFileDiff:
+		return decodeTypedAgentToolContract[mcp.FileDiffRequest](raw)
+	case constants.MCPToolRestoreFile:
+		return decodeTypedAgentToolContract[mcp.RestoreFileToolRequest](raw)
 	default:
 		return nil, fmt.Errorf("evaluation: decode agent tool contract %q: %w", tool, constants.ErrMCPNativeToolUnknown)
 	}

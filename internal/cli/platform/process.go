@@ -823,19 +823,14 @@ func diagnosticFromChildOutput(output string) string {
 	return ""
 }
 
+// StopOperator stops the Gateway that OperatorStatus reports, so a Gateway
+// whose PID file was lost is still stopped rather than reported as stopped.
 func (pm *ProcessManager) StopOperator() error {
-	pid, err := pm.readPID(constants.OperatorPIDFilename)
+	running, pid, err := pm.OperatorStatus()
 	if err != nil {
 		return err
 	}
-
-	if pid != 0 && !pm.isProcessRunning(pid) {
-		// Stale PID file - clean it up
-		_ = pm.deletePID(constants.OperatorPIDFilename)
-		pid = 0
-	}
-
-	if pid == 0 {
+	if !running {
 		return nil
 	}
 

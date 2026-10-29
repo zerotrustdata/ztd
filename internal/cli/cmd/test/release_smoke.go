@@ -380,7 +380,7 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 }
 func (r *releaseSmokeRun) startGateway(ctx context.Context) error {
 	r.addCleanup("Gateway", func(ctx context.Context) error { _, err := r.ztdGateway(ctx, "gateway-stop", "gw", "stop"); return err })
-	args := []string{"gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false"}
+	args := []string{"gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false", "--accept-unrecoverable"}
 	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, append(args, r.opts.GatewayArgs...)...)
 	if err != nil {
 		return err
@@ -428,7 +428,7 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 		return err
 	}
 	trust := cfg.ResolvedTrustBundlePath()
-	out, err := r.ztd(ctx, "deploy-worker", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", r.workerRoot, "--background", "--approve", "--capabilities", "data", "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
+	out, err := r.ztd(ctx, "deploy-worker", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", r.workerRoot, "--background", "--approve", "--capabilities", "data", "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https), "--accept-unrecoverable")
 	if err != nil {
 		return err
 	}

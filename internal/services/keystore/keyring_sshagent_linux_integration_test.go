@@ -10,17 +10,48 @@
 package keystore
 
 import (
+	"context"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+func TestCheckSSHAgentMasterKey_IsReadOnly(t *testing.T) {
+	ctx := testutil.Context(t)
+	files, _ := setupTestFileService(t)
+	dials := 0
+	dial := func() (agent.ExtendedAgent, func() error, error) {
+		dials++
+		return noAgent()
+	}
+	require.NoError(t, checkSSHAgentMasterKey(ctx, files, dial))
+	assert.Zero(t, dials, "a fresh runtime must not select an agent or create a key")
+	exists, err := files.FileExists(ctx, constants.MasterKeySSHAgentRelPath)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	working := memoryAgentDialer(t, newEd25519(t))
+	require.NoError(t, newSSHAgentKeyring(files, working).StoreMasterKey(testMasterKey(27)))
+	before, err := files.ReadFile(ctx, constants.MasterKeySSHAgentRelPath)
+	require.NoError(t, err)
+	require.NoError(t, checkSSHAgentMasterKey(ctx, files, working))
+	require.ErrorIs(t, checkSSHAgentMasterKey(ctx, files, dial), constants.ErrKeyStoreSSHAgentUnavailable)
+	after, err := files.ReadFile(ctx, constants.MasterKeySSHAgentRelPath)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "neither successful unlock nor recovery failure may replace the seal")
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	require.ErrorIs(t, checkSSHAgentMasterKey(cancelled, files, working), context.Canceled)
+}
 
 // These tests open real Unix sockets, so they run in Tier 2 (INV-TEST-RUN-02).
 

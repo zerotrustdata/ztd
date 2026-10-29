@@ -92,6 +92,27 @@ func (k *secretServiceKeyring) Name() string {
 	return "secret-service"
 }
 
+// MasterKeyPresent searches for the item and does not read or unlock the secret.
+func (k *secretServiceKeyring) MasterKeyPresent() (bool, error) {
+	svc, err := k.open()
+	if err != nil {
+		return false, err
+	}
+	defer svc.Close()
+	unlocked, locked, err := svc.SearchItems(masterKeyAttributes())
+	if err != nil {
+		return false, fmt.Errorf("%w: search master key: %w", constants.ErrKeyStoreSecretServiceDown, err)
+	}
+	switch len(unlocked) + len(locked) {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, fmt.Errorf("%w: %d items match %s=%s", constants.ErrKeyStoreDuplicateKey, len(unlocked)+len(locked), keyStoreName, masterKeyName)
+	}
+}
+
 func (k *secretServiceKeyring) open() (secretService, error) {
 	svc, err := k.dial()
 	if err != nil {

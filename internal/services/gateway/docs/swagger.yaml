@@ -805,6 +805,19 @@ definitions:
     x-enum-varnames:
     - UserStatusActive
     - UserStatusDisabled
+  evalv1.AgentPersonaBinding:
+    properties:
+      digest:
+        type: string
+      persona_id:
+        type: string
+      version:
+        type: string
+      vote_digest:
+        description: vote_digest freezes the separate L2 vote rendering, when the
+          persona votes.
+        type: string
+    type: object
   evalv1.AgentRole:
     enum:
     - 0
@@ -3849,6 +3862,8 @@ definitions:
     type: object
   tribunalv1.TribunalIntentRequest:
     properties:
+      auditor_inference:
+        $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
       case_id:
         type: string
       cli_session_id:
@@ -3861,18 +3876,38 @@ definitions:
       guidelines:
         description: Orchestration constraints that each member must follow.
         type: string
+      homogeneous:
+        description: |-
+          homogeneous means all stage templates bind the same designated campaign
+          candidate. When false, templates must match each persona's native tier.
+        type: boolean
       investigation_id:
         type: string
+      marshal_inference:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
+        description: |-
+          marshal_inference and auditor_inference select their stage's stack slot.
+          Formation callers bind Lite members, Assistant Marshal and Primary Auditor;
+          homogeneous callers bind all stages to the candidate model.
       member_inference:
         allOf:
         - $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
         description: |-
-          member_inference is the template for every member call. The Gateway sets
-          messages, provider_attempt_id and the role's response_format schema per
-          call; the template must leave messages, tools, provider_attempt_id,
+          member_inference is the template for generation member calls. The Gateway
+          sets messages, provider_attempt_id and response_format per call; every
+          stage template must leave messages, tools, provider_attempt_id,
           acting_app_id, stream and response_format empty.
       os:
         type: string
+      personas:
+        description: |-
+          personas freezes the expected authoring and vote persona identities. The
+          Gateway compares these against its build-time registry before generating
+          any call, preventing stale persona text from silently authoring an intent.
+        items:
+          $ref: '#/definitions/evalv1.AgentPersonaBinding'
+        type: array
       provider_attempt_prefix:
         description: |-
           provider_attempt_prefix names the member calls: call n (from 1, in
@@ -5357,7 +5392,8 @@ paths:
         MCP_CALL run_shell_command. Under ratify or notary posture the command dispatch is suspended
         until a human approves or denies it. The Gateway never mints the approval proof.
       parameters:
-      - description: Command intent and member inference template
+      - description: Command intent, per-stage inference templates, and frozen Tribunal
+          persona bindings
         in: body
         name: request
         required: true
@@ -5372,9 +5408,9 @@ paths:
           schema:
             $ref: '#/definitions/tribunalv1.TribunalIntentResult'
         "400":
-          description: Bad Request — malformed body, missing field, a member template
-            that sets a Gateway-owned field, or a member template role that does not
-            run the requested tier
+          description: Bad Request — malformed body, missing stage template or persona
+            binding, a Gateway-owned field set by the caller, or a stage role that
+            does not match its persona tier or homogeneous candidate
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
         "401":

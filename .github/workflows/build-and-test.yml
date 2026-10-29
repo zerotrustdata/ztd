@@ -70,8 +70,8 @@ jobs:
           trap 'make down || true; ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
           ssh-keygen -q -t ed25519 -N '' -f "$scratch/agent_key"
           ssh-add -q "$scratch/agent_key"
-          make quickstart
-          make quickstart
+          make quickstart QUICKSTART_ARGS='-- --accept-unrecoverable'
+          make quickstart QUICKSTART_ARGS='-- --accept-unrecoverable'
           make status
           make down
           trap - EXIT
@@ -141,8 +141,14 @@ jobs:
 
       - name: Install pinned Go tools
         run: |
-          make ci-tools
           echo "golangci_lint=$(sed -n 's/^GOLANGCI_LINT_VERSION[[:space:]]*:=[[:space:]]*//p' Makefile)" >> "$GITHUB_ENV"
+          # The Go module proxy intermittently drops HTTP/2 download streams.
+          for attempt in 1 2 3; do
+            make ci-tools && exit 0
+            echo "Go tool install attempt ${attempt} failed" >&2
+            sleep 5
+          done
+          exit 1
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

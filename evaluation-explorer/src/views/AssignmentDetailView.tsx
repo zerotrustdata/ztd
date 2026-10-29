@@ -20,7 +20,7 @@ import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../comp
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
 import { RoleTranscripts } from '../components/RoleTranscripts';
 import { ScenarioContextCard } from '../components/ScenarioContextCard';
-import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '../components/TaskPromptSection';
+import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection, TaskRoleCriterion } from '../components/TaskPromptSection';
 import { UnifiedGradeBadges } from '../components/UnifiedGradeBadges';
 import { DetailLayout, EvidenceChain, NON_VERDICT_NOTE, PageHero, PanelSection, TonePill } from '../components/evidence';
 import { SCENARIO_CATEGORY_COPY, SCENARIO_TASK_BY_ID } from '../content/scenario-task';
@@ -202,13 +202,6 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
 
   return (
     <PanelSection id={SECTION.trail} className="assignment-model-response" title="What the model did">
-      {transcripts.length > 0 ? (
-        <p className="task-section-note">
-          Lifted verbatim from the digest-bound role trace, in execution order: the exact arguments, the command
-          the Operator resolved, and the result the model saw.
-        </p>
-      ) : null}
-
       {assignment.terminal_status === 'completed' ? <FailureTrajectoryMeta assignment={assignment} /> : null}
       {transcripts.length > 0 ? <RoleTranscripts transcripts={transcripts} variantId={assignment.variant_id} /> : null}
       {hasResponse && !transcripts.some((transcript) => transcript.response === assignment.model_response) ? (
@@ -384,20 +377,15 @@ function measureGroups(assignment: AssignmentResult): Array<{ title: string; mea
     .filter((group) => group.measures.length > 0);
 }
 
-function MeasuredValues({ groups }: { groups: ReturnType<typeof measureGroups> }) {
+function MeasuredStrip({ groups }: { groups: ReturnType<typeof measureGroups> }) {
+  const measures = groups.flatMap((group) => group.measures);
+  if (measures.length === 0) return null;
   return (
-    <PanelSection className="assignment-resources" title="Measured values">
-      {groups.map((group) => (
-        <div key={group.title} className="resource-group">
-          <h3 className="resource-group-heading">{group.title}</h3>
-          <div className="stat-tile-grid stat-tile-grid-compact">
-            {group.measures.map((measure) => (
-              <StatTile key={measure.label} label={measure.label} value={measure.format(measure.value!)} />
-            ))}
-          </div>
-        </div>
+    <div className="signal-metrics assignment-resources" aria-label="Measured values">
+      {measures.map((measure) => (
+        <StatTile key={measure.label} label={measure.label} value={measure.format(measure.value!)} />
       ))}
-    </PanelSection>
+    </div>
   );
 }
 
@@ -464,7 +452,7 @@ export function AssignmentDetailView() {
   const hasProof = hasEvidence || hasAuditSlice;
   const hasSignals = assignmentSecuritySignals(assignment).length > 0;
   const hasAside =
-    hasProof || hasSignals || groups.length > 0 || assignment.stage_summary.length > 0 || lifecycleEvents.length > 0 || siblingAssignments.length > 0;
+    hasProof || hasSignals || assignment.stage_summary.length > 0 || lifecycleEvents.length > 0 || siblingAssignments.length > 0;
   const limitation = failureDiagnosisShowsMissingness(assignment)
     ? assignment.benchmark_observations?.unavailable_reasons.join(' · ')
     : assignment.missingness_reason ?? assignment.benchmark_observations?.unavailable_reasons.join(' · ');
@@ -514,7 +502,9 @@ export function AssignmentDetailView() {
           </div>}
       >
 
+        <MeasuredStrip groups={groups} />
         <ScenarioContextCard scenario={assignment.scenario_summary} />
+        {task ? <TaskRoleCriterion task={task} role={assignment.role} /> : null}
 
         {gradeChips.length > 0 ? (
           <div id="assignment-grades" className="assignment-criteria-strip">
@@ -542,10 +532,8 @@ export function AssignmentDetailView() {
 
             <SignalsSection assignment={assignment} />
 
-            {groups.length > 0 ? <MeasuredValues groups={groups} /> : null}
-
             {assignment.stage_summary.length > 0 ? (
-              <PanelSection className="assignment-stages" title="Stages">
+              <PanelSection className="assignment-stages" title="Stages" collapsed signal={`${assignment.stage_summary.length} stages`}>
                 <ul className="stage-list">
                   {assignment.stage_summary.map((stage, index) => (
                     <li key={index}>
@@ -558,7 +546,7 @@ export function AssignmentDetailView() {
             ) : null}
 
             {lifecycleEvents.length > 0 ? (
-              <PanelSection className="assignment-feed-timeline" title="Timeline">
+              <PanelSection className="assignment-feed-timeline" title="Timeline" collapsed signal={`${lifecycleEvents.length} events`}>
                 <Timeline
                   events={lifecycleEvents.map((event) => ({
                     observed_at: event.observed_at,
@@ -593,14 +581,14 @@ export function AssignmentDetailView() {
             ) : null}
           </> : undefined}>
         {task ? <Anchor id={SECTION.task}>
-          <TaskPromptSection task={task} className="assignment-task-prompt" />
-          <TaskProvidedSection task={task} className="assignment-task-provided" />
+          <TaskPromptSection task={task} className="assignment-task-prompt" fold />
+          <TaskProvidedSection task={task} className="assignment-task-provided" fold />
         </Anchor> : null}
         <ScenarioFixtureSection id={SECTION.fixture} bindings={assignment.evidence_bindings} scenarioId={assignment.scenario_id} />
         <ModelResponseSection assignment={assignment} />
         <AgentTraceSection id={SECTION.agentTrace} bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
         <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
-        {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" /></Anchor> : null}
+        {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" fold showRoleCriteria={false} /></Anchor> : null}
         <ScoresSection assignment={assignment} />
         <AssignmentEvidenceData assignment={assignment} events={lifecycleEvents} source={sourceRecord} />
       </DetailLayout>

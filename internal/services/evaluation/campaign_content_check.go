@@ -64,10 +64,14 @@ func foldSemanticContentTerm(s string) string {
 // detail of the first failing constraint rule. An interrogation is graded on
 // the Interrogation Protocol alone: the answer rules describe an answer the
 // model chose not to give.
-func evaluateContentCheck(output string, check ScenarioContentCheck, ws ScenarioWorkspace) (bool, string) {
+func evaluateContentCheck(output string, check ScenarioContentCheck) (bool, string) {
+	return evaluateContentCheckForGold(output, check, ScenarioWorkspace{}, ScenarioGoldCriteria{})
+}
+
+func evaluateContentCheckForGold(output string, check ScenarioContentCheck, ws ScenarioWorkspace, gold ScenarioGoldCriteria) (bool, string) {
 	trimmed := strings.TrimSpace(output)
 
-	if _, interrogated, err := ParseInterrogation(trimmed); interrogated {
+	if _, interrogated, err := ParseInterrogationForGold(trimmed, gold); interrogated {
 		if err != nil {
 			return false, err.Error()
 		}

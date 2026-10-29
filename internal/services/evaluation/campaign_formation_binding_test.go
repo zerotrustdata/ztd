@@ -28,7 +28,7 @@ func createBoundSystemCampaign(t *testing.T, fixture *archiveFixture, campaignID
 		CampaignID:   campaignID,
 		Seed:         17,
 		Variants:     inventory.Variants,
-		FormationIDs: []string{"qwen-powerhouse"},
+		FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	_, err = fixture.controller.CreateCampaign(context.Background(), CampaignCreateRequest{
@@ -157,7 +157,7 @@ func TestCampaignFormationBinding_ValidatesFrozenHistoricalStackWithoutLiveCatal
 		CampaignID:   campaignID,
 		Seed:         23,
 		Variants:     inventory.Variants,
-		FormationIDs: []string{"qwen-powerhouse"},
+		FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	historical := cloneFormationStackSet(stackSet)

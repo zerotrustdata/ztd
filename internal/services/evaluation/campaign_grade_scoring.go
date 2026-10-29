@@ -19,6 +19,12 @@ import (
 // never counts toward the verdict or the deterministic pass rate.
 const triageGradeCriterionID = "triage"
 
+// liteTriageCriterionID is the Triage grade of a Lite cell frozen under
+// ScenarioGradingContractV2. The classification is that cell's whole task, so
+// the grade counts toward the verdict and the deterministic pass rate; a cell
+// whose only grade is a failed classification can no longer pass.
+const liteTriageCriterionID = "triage-classification"
+
 // gradeTally is the one reading of a result's deterministic grades. The
 // verdict (DerivePublicSummaryStatus), the `task_score` and
 // `deterministic_pass_rate` scores, the verifier's recomputation, and
@@ -54,9 +60,12 @@ func tallyDeterministicGrades(grades []*evalv1.DeterministicGrade) (gradeTally, 
 		judged := failed || grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 		switch grade.GetBasis() {
 		case evalv1.GradeBasis_GRADE_BASIS_OBSERVATION:
-			if grade.GetCriterionId() == triageGradeCriterionID {
+			switch grade.GetCriterionId() {
+			case triageGradeCriterionID:
 				tally.TriageOK = judged && !failed
 				continue
+			case liteTriageCriterionID:
+				tally.TriageOK = judged && !failed
 			}
 			if grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
 				tally.ObservationUnavailable = true

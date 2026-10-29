@@ -4,7 +4,7 @@ title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - protocol/
   - internal/services/
@@ -404,6 +404,10 @@ The canonical protobuf `ztd.operator.v1.ReceiptPersistenceAttestation`, signed b
 
 ---
 
+## Recovery key
+
+The master key, shown once when a gateway or operator runtime creates it, encoded so a person can write it down. It is the only offline copy. `gw start` and `operator start` store it in the OS key store only after the operator types it back. `gw recover` and `operator recover` install a saved copy. Losing the recovery key and the OS key store makes that runtime unrecoverable. See [Recovery key](../architecture/encryption.md#recovery-key) (`INV-ENC-STORE-07`).
+
 ## Replay Protection
 
 The multi-tiered defense that prevents duplicate or replayed transactions from executing. The L4 Warden reserves each envelope's nonce in-flight, durably records it with expiration tracking through `ReserveNonce` in the SQLite replay store (`storage.ReplayStore` over the `nonces` table in the runtime's own `ztd.db`), recomputes and verifies the deterministic transaction hash, and rejects expired or duplicated transactions. Failed transactions release their nonce reservations.
@@ -458,7 +462,7 @@ A Governance Envelope paused while awaiting required L3 Notary human approval (`
 
 ## System Fingerprint
 
-A SHA-256 host identifier (`internal/services/auth/fingerprint.go`, `SystemFingerprint`) derived from operating system, CPU architecture, core count, machine ID, and hostname. It is stable only while the machine ID is readable; otherwise the literal `fallback` stands in for it. The generator supports operator-differentiating parameters (`local_dir`, `account`, `port`, `capabilities`) so multiple Operator instances can coexist on the same physical host without collision.
+A SHA-256 host identifier (`internal/services/auth/fingerprint.go`, `SystemFingerprint`) derived from operating system, CPU architecture, core count, machine ID, and hostname. It is stable only while the machine ID is readable; otherwise the literal `fallback` stands in for it. The generator supports operator-differentiating parameters (`local_dir`, `account`, `port`) so multiple Operator instances can coexist on the same physical host without collision.
 
 ---
 

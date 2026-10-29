@@ -39,7 +39,7 @@ const (
 	// judgeJudgeTurn is the 1-based provider turn of the judge's own inference;
 	// the agent's final answer is turn 1.
 	judgeJudgeTurn = 2
-	judgeDiagnosis = "Diagnosis: The check… service has an 18 percent timeout rate, and its pay… upstream is unreachable; the evidence does not prove that the upstream caused the timeouts.\n" +
+	judgeDiagnosis = "Diagnosis: The checkout-api service has an 18 percent timeout rate, and its payments upstream is unreachable; the evidence does not prove that the upstream caused the timeouts.\n" +
 		"Confidence: Moderate; the available evidence is incomplete.\n" +
 		"Recommended action: Compare the service and upstream observations before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while the timeout issue is investigated."
@@ -538,7 +538,7 @@ func TestRealStackAgentTraceV7_RejectsResealedToolArguments(t *testing.T) {
 }
 
 func TestRealStackJudge_HighConfidenceInObservedSymptomsPasses(t *testing.T) {
-	answer := "Diagnosis: The check… service has an 18 percent timeout rate, and its pay… upstream is configured.\n" +
+	answer := "Diagnosis: The checkout-api service has an 18 percent timeout rate, and its payments upstream is configured.\n" +
 		"Confidence: High confidence in the observed symptoms; no root cause has been established.\n" +
 		"Recommended action: Investigate service and upstream telemetry before assigning a cause.\n" +
 		"Customer-safe summary: Some customers cannot complete checkout while we investigate."

@@ -94,11 +94,11 @@ func newPublicationEnv(t *testing.T, replies []fixtures.OllamaReply) (*runEnv, *
 	return env, run
 }
 
-// readyReplies answers n model turns with READY.
-func readyReplies(n int) []fixtures.OllamaReply {
+// severityReplies answers n model turns with ERROR.
+func severityReplies(n int) []fixtures.OllamaReply {
 	replies := make([]fixtures.OllamaReply, n)
 	for i := range replies {
-		replies[i] = fixtures.OllamaReply{Content: "READY"}
+		replies[i] = fixtures.OllamaReply{Content: "ERROR"}
 	}
 	return replies
 }
@@ -120,7 +120,10 @@ func createPublicationCampaignOn(t *testing.T, run *realStackRun, campaignID str
 	suite.ID = campaignID + "-suite"
 	suite.Version = evaluation.SuiteSchemaVersion
 	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
+		if scenario.ScenarioID == "instruction-classify-severity" {
+			// The catalog scenario is eligible for primary and assistant; the fixture executes
+			// one turn per repetition, so restrict it to the primary role.
+			scenario.EligibleRoles = []string{"primary"}
 			suite.Scenarios = []evaluation.SuiteScenario{scenario}
 			break
 		}
@@ -333,7 +336,7 @@ func loadPublicationState(t *testing.T, run *realStackRun, runID string) *evalua
 }
 
 func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-scheduled", 3)
 	out, err := env.run(t, "runs", "start", "pub-scheduled", "--prepare-only")
 	require.NoError(t, err, out)
@@ -359,7 +362,7 @@ func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 }
 
 func TestPublicationRealStack_CancelDoesNotPublishByDefaultAfterDeferredRun(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-cancel-deferred", 3)
 	out, err := env.run(t, "runs", "start", "pub-cancel-deferred", "--prepare-only", "--publish=false")
 	require.NoError(t, err, out)
@@ -372,7 +375,7 @@ func TestPublicationRealStack_CancelDoesNotPublishByDefaultAfterDeferredRun(t *t
 }
 
 func TestPublicationRealStack_CatchUpAfterLiveExecutionKeepsEveryResultOnce(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-catchup", 3)
 	executeCampaign(t, env, "pub-catchup")
 	runID := onlyRunID(t, run)
@@ -396,7 +399,7 @@ func TestPublicationRealStack_CatchUpAfterLiveExecutionKeepsEveryResultOnce(t *t
 // Completion publishes the run's summary; a repeated verify re-exports summary
 // revisions but never a second copy of a lifecycle or result record.
 func TestPublicationRealStack_CompletionAndRepeatVerifyKeepEachResultSingle(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-completion", 3)
 	executeCampaign(t, env, "pub-completion")
 	runID := onlyRunID(t, run)
@@ -415,7 +418,7 @@ func TestPublicationRealStack_CompletionAndRepeatVerifyKeepEachResultSingle(t *t
 }
 
 func TestPublicationRealStack_ForceRepublishAppendsEveryProjectionAgain(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-force", 3)
 	executeCampaign(t, env, "pub-force")
 	runID := onlyRunID(t, run)
@@ -440,7 +443,7 @@ func TestPublicationRealStack_ForceRepublishAppendsEveryProjectionAgain(t *testi
 }
 
 func TestPublicationRealStack_VerificationRevisionPublishesSummariesAndTranscript(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-verify", 3)
 	executeCampaign(t, env, "pub-verify")
 	runID := onlyRunID(t, run)
@@ -487,7 +490,7 @@ func TestPublicationRealStack_VerificationRevisionPublishesSummariesAndTranscrip
 }
 
 func TestPublicationRealStack_BoundVerificationSurvivesForcedCatchUp(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-survive", 3)
 	executeCampaign(t, env, "pub-survive")
 	runID := onlyRunID(t, run)
@@ -509,7 +512,7 @@ func TestPublicationRealStack_BoundVerificationSurvivesForcedCatchUp(t *testing.
 }
 
 func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-stale", 3)
 	out, err := env.run(t, "runs", "start", "pub-stale", "--prepare-only")
 	require.NoError(t, err, out)
@@ -535,7 +538,7 @@ func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun
 // runs publish of an unsettled run follows the aggregate path: a stale partial
 // verification is not bound, so the publish continues instead of failing closed.
 func TestPublicationRealStack_RunsPublishIgnoresStalePartialVerificationOnUnsettledRun(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-stale-publish", 3)
 	out, err := env.run(t, "runs", "start", "pub-stale-publish", "--prepare-only")
 	require.NoError(t, err, out)
@@ -561,7 +564,7 @@ func TestPublicationRealStack_RunsPublishIgnoresStalePartialVerificationOnUnsett
 // assignment's audit proof, or the Gateway has no records to build the database
 // from.
 func TestPublicationRealStack_DeferredPublishDeliversEventsBeforeAuditProof(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-deferred", 3)
 	out, err := env.run(t, "runs", "start", "pub-deferred", "--publish=false")
 	require.NoError(t, err, out)
@@ -584,7 +587,7 @@ func TestPublicationRealStack_DeferredPublishDeliversEventsBeforeAuditProof(t *t
 }
 
 func TestPublicationRealStack_MismatchedPersistedReportFailsClosedWithoutPublishing(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-mismatch", 3)
 	executeCampaign(t, env, "pub-mismatch")
 	runID := onlyRunID(t, run)
@@ -606,7 +609,7 @@ func TestPublicationRealStack_MismatchedPersistedReportFailsClosedWithoutPublish
 }
 
 func TestPublicationRealStack_BoundFailureIsProjected(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-failure", 3)
 	executeCampaign(t, env, "pub-failure")
 	runID := onlyRunID(t, run)
@@ -654,7 +657,7 @@ func TestPublicationRealStack_ProviderFailedAssignmentIsPublishedOnce(t *testing
 }
 
 func TestPublicationRealStack_AssignmentResultBindsSealedObservationWindow(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(1))
+	env, run := newPublicationEnv(t, severityReplies(1))
 	createPublicationCampaign(t, run, "pub-observed", 1)
 	executeCampaign(t, env, "pub-observed")
 	runID := onlyRunID(t, run)
@@ -681,7 +684,7 @@ func TestPublicationRealStack_AssignmentResultBindsSealedObservationWindow(t *te
 }
 
 func TestPublicationRealStack_CatchUpSkipsProofRebuildWhenHashesAreRecorded(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-proof-skip", 3)
 	executeCampaign(t, env, "pub-proof-skip")
 	runID := onlyRunID(t, run)
@@ -731,7 +734,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env, run := newPublicationEnv(t, readyReplies(3))
+			env, run := newPublicationEnv(t, severityReplies(3))
 			createPublicationCampaign(t, run, "pub-proof-rebuild", 3)
 			executeCampaign(t, env, "pub-proof-rebuild")
 			runID := onlyRunID(t, run)
@@ -776,7 +779,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 }
 
 func TestPublicationRealStack_ProofIsIngestedBeforeResultsAndTheMirrorServesIt(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-proof-order", 3)
 	executeCampaign(t, env, "pub-proof-order")
 	runID := onlyRunID(t, run)
@@ -801,7 +804,7 @@ func TestPublicationRealStack_ProofIsIngestedBeforeResultsAndTheMirrorServesIt(t
 }
 
 func TestPublicationRealStack_VerifiedRepublishBindsTheSameGatewayDigest(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-verified-proof", 3)
 	executeCampaign(t, env, "pub-verified-proof")
 	runID := onlyRunID(t, run)
@@ -831,7 +834,7 @@ func TestPublicationRealStack_VerifiedRepublishBindsTheSameGatewayDigest(t *test
 }
 
 func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-lease", 3)
 	out, err := env.run(t, "runs", "start", "pub-lease", "--prepare-only")
 	require.NoError(t, err, out)
@@ -891,7 +894,7 @@ func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T)
 // The backfill republishes the model-verification revisions whose idempotency
 // keys were lost, and only those, and a second republish appends nothing.
 func TestPublicationRealStack_VerificationBackfillRepublishesModelSummariesAfterKeysAreLost(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaign(t, run, "pub-backfill", 3)
 	// Execute without verifying, so the one verification below publishes the only
 	// verified model revision the backfill must republish.
@@ -957,7 +960,7 @@ func TestPublicationRealStack_ReleaseProvenanceReachesEveryPublicRecord(t *testi
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			campaignID := "pub-release-" + tt.name
-			env, run := newPublicationEnv(t, readyReplies(3))
+			env, run := newPublicationEnv(t, severityReplies(3))
 			createPublicationCampaignOn(t, run, campaignID, 3, tt.platform)
 			if tt.legacy {
 				markCampaignPreRelease(t, run, campaignID)
@@ -1017,7 +1020,7 @@ func TestPublicationRealStack_ReleaseProvenanceReachesEveryPublicRecord(t *testi
 // A release tag file that does not name its campaign fails publication closed:
 // nothing reaches the mirror.
 func TestPublicationRealStack_MalformedReleaseTagFailsPublishClosed(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(3))
+	env, run := newPublicationEnv(t, severityReplies(3))
 	createPublicationCampaignOn(t, run, "pub-bad-tag", 3, testPlatform)
 	markCampaignPreRelease(t, run, "pub-bad-tag")
 	out, err := env.run(t, "runs", "start", "pub-bad-tag", "--prepare-only")

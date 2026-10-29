@@ -201,12 +201,13 @@ func operatorCapabilities(opts ServeOperatorOptions) constants.OperatorCapabilit
 	return operatorcapability.ResolveOperatorCapabilities(&operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(opts.OperatorCapabilities)})
 }
 
-func operatorFingerprintOptions(opts ServeOperatorOptions, localDir, account string) auth.FingerprintOptions {
+// operatorFingerprintOptions identifies the Operator by where it runs. Capabilities
+// are deliberately absent so a capability change re-enrolls the same Operator.
+func operatorFingerprintOptions(localDir, account string) auth.FingerprintOptions {
 	return auth.FingerprintOptions{
-		LocalDir:     localDir,
-		Account:      account,
-		Port:         constants.Ports.OperatorHttp,
-		Capabilities: operatorCapabilities(opts),
+		LocalDir: localDir,
+		Account:  account,
+		Port:     constants.Ports.OperatorHttp,
 	}
 }
 

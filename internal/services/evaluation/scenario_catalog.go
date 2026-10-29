@@ -43,7 +43,7 @@ type ScenarioArtifacts struct {
 
 // DefaultSuiteScenarioCount is the number of scenarios in the built-in default
 // suite.
-const DefaultSuiteScenarioCount = 35
+const DefaultSuiteScenarioCount = 41
 
 // buildSuiteCatalog materializes one suite's blueprints into a catalog and its
 // content-addressed fixture artifacts, preserving authored workflow order. Every
@@ -66,10 +66,16 @@ func buildSuiteCatalog(ref *compliancev1.VersionedReference, blueprints []Scenar
 		artifacts[blueprint.ScenarioID] = pair
 		scenarios = append(scenarios, scenario)
 	}
+	personas, err := catalogPersonaBindings()
+	if err != nil {
+		return nil, nil, fmt.Errorf("evaluation: build suite %s catalog: %w", ref.GetId(), err)
+	}
 	catalog := &evalv1.EvaluationScenarioCatalog{
-		SchemaVersion: CampaignSchemaVersion,
-		CatalogRef:    ref,
-		Scenarios:     scenarios,
+		SchemaVersion:            CampaignSchemaVersion,
+		CatalogRef:               ref,
+		Scenarios:                scenarios,
+		Personas:                 personas,
+		ToolCallingProbeRequired: true,
 	}
 	digest, err := ComputeScenarioCatalogDigest(catalog)
 	if err != nil {
@@ -114,7 +120,7 @@ const SmokeGateScenarioCount = 10
 // a caller cannot mutate the shared smoke selection.
 func SmokeGateScenarioIDs() []string {
 	return []string{
-		"instruction-exact-format",
+		"instruction-review-vote-deny",
 		"tech-log-parse",
 		"verify-contradiction",
 		"route-primary-ownership",
@@ -304,17 +310,32 @@ func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, c
 // postures. Expected denials and refusals remain scoreable.
 func scenarioRequiresL2(blueprint ScenarioBlueprint) bool {
 	for _, tool := range blueprint.ExpectedTools {
-		if constants.ActionTypeMcpCall.ChangesState(tool) {
+		if agentToolChangesState(tool) {
 			return true
 		}
 	}
 	for _, call := range blueprint.Input.Seed.ToolCalls {
 		if call.Outcome != scenarioSeedDeny && call.Outcome != scenarioSeedRefusal &&
-			constants.ActionTypeMcpCall.ChangesState(call.ToolName) {
+			agentToolChangesState(call.ToolName) {
 			return true
 		}
 	}
 	return false
+}
+
+// agentToolChangesState reports whether a call of tool changes state: a
+// governed action tool by its own action (FILE_EDIT and RESTORE_FILE change
+// state for every target), any other native tool as an MCP_CALL target. An
+// unknown classification fails closed as a state change.
+func agentToolChangesState(tool string) bool {
+	action, governed, err := agentToolActionType(tool)
+	if err != nil {
+		return true
+	}
+	if governed != nil {
+		return action.IsStateChange()
+	}
+	return action.ChangesState(tool)
 }
 
 // publicPromptHint projects the private hint to its public form. Values are
@@ -352,14 +373,14 @@ func validateScenarioArtifactBinding(reference *compliancev1.ComplianceEvidenceR
 
 func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDefinition) error {
 	expected := map[evalv1.EvaluationScenarioCategory]int{
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 5,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION:        4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT:         3,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    5,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    6,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION:    3,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          2,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       8,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              4,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          4,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       11,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              5,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE:        1,
 	}
 	counts := make(map[evalv1.EvaluationScenarioCategory]int, len(expected))

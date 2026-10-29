@@ -85,8 +85,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, the platform-default Operator HTTP port, and canonical `operator_capabilities`. |
-| INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` matches an existing non-terminated Operator under the same owner MUST supersede that document: the replacement is persisted first, then each prior non-terminated document for the owner and fingerprint is terminated and its session deactivated (`supersedeOperatorLeases` in `internal/services/pubsub/platform_enrollment_handlers.go`). A successful issuance leaves the replacement as the only non-terminated lease for that owner and fingerprint. The persist-first order never leaves zero leases; a failure between the steps MAY leave a redundant lease, the issuance returns an error without credentials, and a retried issuance (which mints a new `operator_id`) supersedes it. The guarantee covers sequential issuance: the handler takes no lock across its persist and terminate steps. |
+| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, and the platform-default Operator HTTP port. Capabilities MUST NOT contribute to the fingerprint: they are owner-approved attributes of one runtime, and changing them re-enrolls the same Operator. |
+| INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` or Actuator key matches an existing non-terminated remote Operator under the same owner MUST supersede that document: the replacement is persisted first, then each prior non-terminated document for the owner and fingerprint or Actuator key is terminated and its session deactivated (`supersedeOperatorLeases` in `internal/services/pubsub/platform_enrollment_handlers.go`). A successful issuance leaves the replacement as the only non-terminated lease for that owner and identity. The same match exempts the prior lease from singleton capability and Actuator key claims, so a re-enrollment that adds or drops a capability takes over its prior claims. The persist-first order never leaves zero leases; a failure between the steps MAY leave a redundant lease, the issuance returns an error without credentials, and a retried issuance (which mints a new `operator_id`) supersedes it. The guarantee covers sequential issuance: the handler takes no lock across its persist and terminate steps. |
 
 ### Readiness (`INV-OP-READY`)
 
@@ -217,13 +217,14 @@ Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persiste
 
 ### Multi-Operator Coexistence and Composite Fingerprinting
 
-Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by four factors:
+Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by three factors:
 1. `local_dir`: The runtime working directory containing sovereign `.ztd/` state.
 2. `account`: The operating system user running the process.
 3. `port`: The platform-default Operator HTTP port included in the fingerprint.
-4. `operator_capabilities`: The canonical set of enabled capabilities.
 
-The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, the platform-default Operator HTTP port, and `capabilities`. Re-enrolling an existing fingerprint persists the replacement Operator document first, then terminates each prior non-terminated document for that fingerprint and deactivates its session. A failure between those steps leaves a redundant lease, and a retried enrollment supersedes it.
+Capabilities are not part of this identity. One working directory holds one Operator runtime (runtime lock and Actuator key), so restarting it with `--capabilities` added or removed re-enrolls the same Operator rather than creating a second one.
+
+The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, and the platform-default Operator HTTP port. Re-enrolling an existing fingerprint or Actuator key persists the replacement Operator document first, then terminates each prior non-terminated document for that identity and deactivates its session. A failure between those steps leaves a redundant lease, and a retried enrollment supersedes it.
 
 ### Liveness, Heartbeats, and Staleness Derivation
 
@@ -299,7 +300,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 ### Local State, Native Tools, and Git File Ledger
 
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
-- **Git File Ledger**: A governed `FILE_EDIT` that mutates a file writes encrypted snapshots to the Git file ledger before and after the change. `RESTORE_FILE` restores a file from a ledger commit under the same path policy.
+- **Git File Ledger**: A governed `FILE_EDIT` that mutates a file writes encrypted snapshots to the Git file ledger before and after the change. `RESTORE_FILE` restores a file from a ledger commit under the same path policy. The model-facing governed action tools use these typed handlers, with history, diff, and restore scoped to the platform-bound Operator session. A diff requested by mutation ID must belong to that session (`ErrFileDiffOutsideSession`). File edit, directory listing, history, diff, and restore handlers return their canonical typed result in `result_summary`, which L5 scrubs and signs; consumers must decode that result rather than expect a command string.
 - **Native Tools**: A verified `MCP_CALL` envelope runs a tool from the shared registry (`RegisterNativeTools`) on the Operator's own host, `mcp.NewOperatorNativeToolHandler`; the Operator never constructs `mcp.GatewayService`. `event_receipt_list` and `event_receipt_get` read the Operator's own Local-First Events Store, so their answers are authoritative for its receipts. Every other tool's result is scrubbed before it enters the signed receipt, and a missing egress scrubber fails the call closed. Witness-only Operators run only the event-receipt reads (INV-OP-CAP-01). L1 screens `run_shell_command` as the command line it executes, exactly as `EXECUTE_BASH`.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
 - **Unsupported Patches**: A file-edit request whose operation is outside the handled set (`read`, `write`, `replace`, `insert`, `delete`), including `patch`, fails with `ErrFileEditUnsupportedOperation`. The target is opened first, and for an existing file the pre-mutation ledger snapshot (`beginLedgerTwoPhaseCommit`) is taken before execution and never completed. The file is not modified and no backup is created. Protobuf field 12 (`patch_content`) remains in the wire contract and is not consumed by the file-edit handler.

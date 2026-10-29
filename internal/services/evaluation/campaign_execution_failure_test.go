@@ -141,6 +141,7 @@ func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:3],
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
@@ -179,13 +180,16 @@ func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract
 	req := testCampaignInitRequest(t)
 	scenarios := make([]*evalv1.EvaluationScenarioDefinition, 0, 2)
 	for _, scenario := range req.Catalog.GetScenarios()[:2] {
-		scenarios = append(scenarios, proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition))
+		frozen := proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition)
+		frozen.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+		scenarios = append(scenarios, frozen)
 	}
 	rejected := scenarios[0]
 	rejected.AllowedTools = append(rejected.AllowedTools, "removed_native_tool")
 	catalog := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: req.Catalog.GetSchemaVersion(),
 		CatalogRef:    req.Catalog.GetCatalogRef(),
+		Personas:      req.Catalog.GetPersonas(),
 		Scenarios:     scenarios,
 	}
 	digest, err := ComputeScenarioCatalogDigest(catalog)

@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -65,14 +66,14 @@ func (f *fakeMemberDispatcher) answer(req *operatorv1.InferenceDispatchRequest) 
 	system := messageText(req, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM)
 	user := messageText(req, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER)
 	switch system {
-	case marshalSystemPrompt:
+	case testPersonaPrompt(PersonaMarshal):
 		return StageMarshal, f.marshal
-	case auditorSystemPrompt:
+	case testPersonaPrompt(PersonaAuditor):
 		f.auditCalls++
 		return StageAudit, f.audit[min(f.auditCalls, len(f.audit))-1]
 	}
 	for _, member := range AllMembers {
-		if system == memberSystemPrompt(member) {
+		if system == testPersonaPrompt(string(member)) {
 			round := uint32(1)
 			if strings.Contains(user, "did not agree in round 1") {
 				round = 2
@@ -110,12 +111,22 @@ func memberTemplate() *operatorv1.InferenceDispatchRequest {
 
 // intentRequest is a valid intent request over the given member template.
 func intentRequest(template *operatorv1.InferenceDispatchRequest) *tribunalv1.TribunalIntentRequest {
+	registry, _ := agentpersona.NewRegistry()
+	bindings := make([]*evalv1.AgentPersonaBinding, 0, len(AllMembers)+2)
+	for _, id := range []string{string(MemberAxiom), string(MemberConcord), string(MemberVariance), string(MemberPragma), string(MemberNemesis), PersonaMarshal, PersonaAuditor} {
+		p, _ := registry.Get(id)
+		bindings = append(bindings, &evalv1.AgentPersonaBinding{PersonaId: p.ID, Version: p.Version, Digest: p.Digest(), VoteDigest: p.VoteDigest()})
+	}
 	return &tribunalv1.TribunalIntentRequest{
 		Request:                 testRequest,
 		TargetOperatorSessionId: "operator-session-1",
 		ProviderAttemptPrefix:   testPrefix,
 		Tier:                    evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 		MemberInference:         template,
+		MarshalInference:        proto.Clone(template).(*operatorv1.InferenceDispatchRequest),
+		AuditorInference:        proto.Clone(template).(*operatorv1.InferenceDispatchRequest),
+		Personas:                bindings,
+		Homogeneous:             true,
 	}
 }
 
@@ -124,7 +135,7 @@ func TestDeliberateApproved(t *testing.T) {
 	original := proto.Clone(template)
 	dispatcher := &fakeMemberDispatcher{
 		generate: proposals(map[Member]string{
-			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
+			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "netstat -tlpn",
 		}),
 		marshal: lowRisk,
 		audit:   []string{approve},
@@ -161,13 +172,13 @@ func TestDeliberateApproved(t *testing.T) {
 		switch {
 		case i < len(AllMembers):
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_GENERATE, string(AllMembers[i]), generationJSONSchema
-			assert.Equal(t, memberSystemPrompt(AllMembers[i]), system)
+			assert.Equal(t, testPersonaPrompt(string(AllMembers[i])), system)
 		case i == len(AllMembers):
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_MARSHAL, PersonaMarshal, marshalJSONSchema
-			assert.Equal(t, marshalSystemPrompt, system)
+			assert.Equal(t, testPersonaPrompt(PersonaMarshal), system)
 		default:
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, PersonaAuditor, auditorJSONSchema([]string{"cluster_b"})
-			assert.Equal(t, auditorSystemPrompt, system)
+			assert.Equal(t, testPersonaPrompt(PersonaAuditor), system)
 		}
 		assert.Equal(t, constants.MediaTypeJSON, request.GetResponseFormat().GetMediaType())
 		assert.Equal(t, schema, request.GetResponseFormat().GetJsonSchema())
@@ -180,6 +191,33 @@ func TestDeliberateApproved(t *testing.T) {
 		assert.Nil(t, calls[i].GetFailure())
 	}
 	assert.True(t, proto.Equal(original, template), "member template must not be mutated")
+}
+
+func TestDeliberateDispatchesEachPersonaOnItsStageTemplate(t *testing.T) {
+	request := intentRequest(memberTemplate())
+	request.Homogeneous = false
+	request.MemberInference.Role = operatorv1.ModelRole_MODEL_ROLE_LITE
+	request.MarshalInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+	request.AuditorInference.Role = operatorv1.ModelRole_MODEL_ROLE_PRIMARY
+	dispatcher := &fakeMemberDispatcher{
+		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ss -l"}),
+		marshal:  lowRisk, audit: []string{approve},
+	}
+	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	require.NoError(t, err)
+	_, err = service.Deliberate(context.Background(), request)
+	require.NoError(t, err)
+	for _, dispatched := range dispatcher.requests {
+		system := messageText(dispatched, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM)
+		want := operatorv1.ModelRole_MODEL_ROLE_LITE
+		switch system {
+		case testPersonaPrompt(PersonaMarshal):
+			want = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+		case testPersonaPrompt(PersonaAuditor):
+			want = operatorv1.ModelRole_MODEL_ROLE_PRIMARY
+		}
+		assert.Equal(t, want, dispatched.GetRole(), "persona prompt selects stage's frozen inference template")
+	}
 }
 
 func TestDeliberateMemberFailure(t *testing.T) {
@@ -268,6 +306,10 @@ func TestValidateIntentRequest(t *testing.T) {
 		{name: "missing target_operator_session_id", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.TargetOperatorSessionId = "" }, want: constants.ErrMissingRequiredField},
 		{name: "missing provider_attempt_prefix", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.ProviderAttemptPrefix = "" }, want: constants.ErrMissingRequiredField},
 		{name: "nil member_inference", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.MemberInference = nil }, want: constants.ErrMissingRequiredField},
+		{name: "nil marshal_inference", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.MarshalInference = nil }, want: constants.ErrMissingRequiredField},
+		{name: "nil auditor_inference", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.AuditorInference = nil }, want: constants.ErrMissingRequiredField},
+		{name: "stale expected persona digest", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.Personas[0].Digest = strings.Repeat("0", 64) }, want: constants.ErrPersonaDigestMismatch},
+		{name: "stale expected vote digest", mutate: func(req *tribunalv1.TribunalIntentRequest) { req.Personas[0].VoteDigest = strings.Repeat("0", 64) }, want: constants.ErrPersonaDigestMismatch},
 		{
 			name: "unspecified role",
 			mutate: func(req *tribunalv1.TribunalIntentRequest) {
@@ -330,17 +372,37 @@ func TestValidateIntentRequest(t *testing.T) {
 			want:   constants.ErrInferenceRoleInvalid,
 		},
 		{
-			name: "member role runs a different tier",
+			name: "stage templates may use different model roles",
 			mutate: func(req *tribunalv1.TribunalIntentRequest) {
-				req.Tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+				req.Homogeneous = false
+				req.MemberInference.Role = operatorv1.ModelRole_MODEL_ROLE_LITE
+				req.MarshalInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+				req.AuditorInference.Role = operatorv1.ModelRole_MODEL_ROLE_PRIMARY
 			},
-			want: constants.ErrTribunalTierMismatch,
+			want: nil,
 		},
+		{name: "formation member must use Lite", mutate: func(req *tribunalv1.TribunalIntentRequest) {
+			req.Homogeneous = false
+			req.MemberInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+		}, want: constants.ErrTribunalTierMismatch},
+		{name: "formation Marshal must use Assistant", mutate: func(req *tribunalv1.TribunalIntentRequest) {
+			req.Homogeneous = false
+			req.MarshalInference.Role = operatorv1.ModelRole_MODEL_ROLE_LITE
+		}, want: constants.ErrTribunalTierMismatch},
+		{name: "formation Auditor must use Primary", mutate: func(req *tribunalv1.TribunalIntentRequest) {
+			req.Homogeneous = false
+			req.AuditorInference.Role = operatorv1.ModelRole_MODEL_ROLE_LITE
+		}, want: constants.ErrTribunalTierMismatch},
+		{name: "homogeneous stages must bind the same candidate", mutate: func(req *tribunalv1.TribunalIntentRequest) {
+			req.AuditorInference.ModelDigest = "other"
+		}, want: constants.ErrTribunalTierMismatch},
 		{
 			name: "assistant tier with assistant member role",
 			mutate: func(req *tribunalv1.TribunalIntentRequest) {
 				req.Tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
 				req.MemberInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+				req.MarshalInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+				req.AuditorInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
 			},
 			want: nil,
 		},

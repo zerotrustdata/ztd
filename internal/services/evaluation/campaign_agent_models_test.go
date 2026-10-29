@@ -25,13 +25,13 @@ func TestResolveAssignmentModels_RejectsStackOutsideFrozenFormationSet(t *testin
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   agentTestCampaignID,
 		Variants:     variants,
-		FormationIDs: []string{"qwen-powerhouse"},
+		FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	otherSet, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   agentTestCampaignID,
 		Variants:     variants,
-		FormationIDs: []string{"gemma-cascade"},
+		FormationIDs: []string{"heterogeneous-0001"},
 	})
 	require.NoError(t, err)
 	req := AssignmentExecutionRequest{

@@ -55,7 +55,10 @@ else
 fi
 
 # One argv line. An unquoted heredoc discards backslash-newline continuations.
-EXEC_START="/usr/local/bin/ztd gw start --follow --listen-host 0.0.0.0 --http-port 8080 --https-port 8443 --cert-mode full"
+# systemd has no terminal, so this unit does not print a recovery key.
+# Losing this VM's OS key store destroys the gateway. To keep an offline copy,
+# run the first `ztd gw start` from an SSH terminal and save the key it prints.
+EXEC_START="/usr/local/bin/ztd gw start --follow --accept-unrecoverable --listen-host 0.0.0.0 --http-port 8080 --https-port 8443 --cert-mode full"
 if [ -n "$PUBLIC_BASE_ARG" ]; then
     EXEC_START="${EXEC_START} ${PUBLIC_BASE_ARG}"
 fi

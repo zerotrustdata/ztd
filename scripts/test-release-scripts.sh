@@ -49,6 +49,8 @@ mkdir -p "$REPO/scripts" "$REPO/docs/release_notes/v1.0.x" \
 	"$REPO/internal/tools" "$REPO/internal/services"
 cp "$SOURCE_ROOT/scripts/release-preflight.sh" "$REPO/scripts/"
 cp "$SOURCE_ROOT/scripts/release-artifacts.sh" "$REPO/scripts/"
+cp "$SOURCE_ROOT/Makefile" "$REPO/"
+cp "$SOURCE_ROOT/scripts/release-rehearse.sh" "$REPO/scripts/"
 cp -R "$SOURCE_ROOT/scripts/lib" "$REPO/scripts/"
 cp "$SOURCE_ROOT/go.mod" "$SOURCE_ROOT/go.sum" "$REPO/"
 ln -s "$SOURCE_ROOT/vendor" "$REPO/vendor"
@@ -59,10 +61,10 @@ cp -R "$SOURCE_ROOT/internal/tools/ztdbinaries" "$REPO/internal/tools/"
 printf 'v1.0.0\n' > "$REPO/VERSION"
 printf 'Synthetic release notes for script tests.\n' > "$REPO/docs/release_notes/v1.0.x/v1.0.0.md"
 cd "$REPO"
-git init -q
+git init -q --initial-branch=main
 git config user.name 'Release Fixture'
 git config user.email 'release-fixture@example.invalid'
-git add VERSION docs scripts go.mod go.sum internal vendor
+git add VERSION Makefile docs scripts go.mod go.sum internal vendor
 fixture_commit baseline
 git tag v1.0.0
 HEAD_SHA="$(git rev-parse HEAD)"
@@ -91,6 +93,92 @@ git add later.txt
 fixture_commit 'move checkout after tag'
 expect_rejection "does not match tag" scripts/release-preflight.sh --event workflow_dispatch --ref refs/tags/v1.0.0 --sha "$(git rev-parse HEAD)" --publish false
 echo 'PASS: release preflight tag, revision, rehearsal, and dirty-publication cases'
+
+# Exercise the real Make target with a local origin and a fake GitHub CLI. A
+# successful dispatch may print nothing; run discovery must use structured data.
+git switch -q main
+git clone -q --bare . "$SCRATCH/origin.git"
+git remote add origin "$SCRATCH/origin.git"
+MOCK_BIN="$SCRATCH/mock-bin"
+mkdir "$MOCK_BIN"
+cat > "$MOCK_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$REHEARSAL_CASE/calls"
+case "$1 $2" in
+	'workflow run')
+		if [ "$REHEARSAL_MODE" = dispatch-error ]; then
+			echo 'HTTP 403: dispatch denied (https://github.com/fixture/repo/actions/runs/999)' >&2
+			exit 1
+		fi
+		if [ "$REHEARSAL_MODE" = dispatch-url ]; then
+			echo 'https://github.com/fixture/repo/actions/runs/101'
+		fi
+		;;
+	'run list')
+		count=0
+		if [ -f "$REHEARSAL_CASE/list-count" ]; then
+			read -r count < "$REHEARSAL_CASE/list-count"
+		fi
+		printf '%s\n' "$((count + 1))" > "$REHEARSAL_CASE/list-count"
+		if [ "$REHEARSAL_MODE" = list-error ] || { [ "$REHEARSAL_MODE" = poll-error ] && [ "$count" -gt 0 ]; }; then
+			echo 'HTTP 503: run discovery unavailable' >&2
+			exit 1
+		fi
+		case "$*" in
+			*'--event workflow_dispatch --branch main --commit '*'--json databaseId --jq '*) ;;
+			*) echo 'missing workflow/ref/revision filters or structured run lookup' >&2; exit 2 ;;
+		esac
+		if [ "$REHEARSAL_MODE" = timeout ] || { [ "$REHEARSAL_MODE" = delayed ] && [ "$count" -lt 2 ]; }; then
+			echo 100
+		elif [ "$count" -gt 0 ]; then
+			echo 101
+		fi
+		;;
+	'run watch')
+		[ "$3" = 101 ] && [ "$4" = --exit-status ] || exit 2
+		[ "$REHEARSAL_MODE" != watch-error ] || exit 1
+		;;
+	*) echo "unexpected gh call: $*" >&2; exit 2 ;;
+esac
+EOF
+cat > "$MOCK_BIN/sleep" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$REHEARSAL_CASE/sleeps"
+EOF
+chmod +x "$MOCK_BIN/gh" "$MOCK_BIN/sleep"
+
+rehearse() {
+	REHEARSAL_MODE=$1
+	REHEARSAL_CASE="$SCRATCH/rehearsal-$1"
+	export REHEARSAL_MODE REHEARSAL_CASE
+	mkdir "$REHEARSAL_CASE"
+	PATH="$MOCK_BIN:$PATH" make --no-print-directory -f "$REPO/Makefile" \
+		"GO_BIN_DIR=$MOCK_BIN" TOOLCHAIN_FREE_GOALS=release-rehearse release-rehearse
+}
+
+for mode in silent dispatch-url delayed; do
+	if ! rehearse "$mode" > "$SCRATCH/result" 2>&1; then
+		cat "$SCRATCH/result" >&2
+		fail "release rehearsal rejected successful $mode dispatch"
+	fi
+	grep -qx 'run watch 101 --exit-status' "$SCRATCH/rehearsal-$mode/calls" || fail 'did not watch the newly dispatched rehearsal'
+done
+[ "$(wc -l < "$SCRATCH/rehearsal-delayed/sleeps")" -eq 1 ] || fail 'did not wait for the new run to become visible'
+for mode in dispatch-error list-error poll-error timeout; do
+	case "$mode" in
+		dispatch-error) reason='HTTP 403: dispatch denied' ;;
+		list-error|poll-error) reason='HTTP 503: run discovery unavailable' ;;
+		timeout) reason='dispatched but its run is not visible' ;;
+	esac
+	expect_rejection "$reason" rehearse "$mode"
+	if grep -q '^run watch ' "$SCRATCH/rehearsal-$mode/calls"; then
+		fail "watched a run after $mode"
+	fi
+done
+expect_rejection 'Error' rehearse watch-error
+[ "$(wc -l < "$SCRATCH/rehearsal-timeout/sleeps")" -le 12 ] || fail 'run discovery exceeded its retry budget'
+echo 'PASS: rehearsal silent/URL dispatch, delayed discovery, dispatch/list/watch failures, and bounded polling'
 
 BIN="$SCRATCH/bin"
 mkdir -p "$BIN"

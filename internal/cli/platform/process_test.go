@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -333,21 +335,39 @@ func TestStopOperator(t *testing.T) {
 		t.Fatalf("ensureDirectories failed: %v", err)
 	}
 
-	// Test stopping when no PID file exists: StopOperator must succeed (noop)
-	// and never fall back to killing arbitrary processes (INV-CODE-04).
-	fallbackCalled := false
-	pm.findOperatorProcessFn = func() int {
-		fallbackCalled = true
-		return 999998
-	}
+	// Test stopping when no PID file exists and discovery finds nothing:
+	// StopOperator must succeed (noop).
+	pm.findOperatorProcessFn = func() int { return 0 }
 	if err := pm.StopOperator(); err != nil {
-		t.Errorf("StopOperator should not error when no PID file exists: %v", err)
+		t.Errorf("StopOperator should not error when no Gateway is running: %v", err)
 	}
-	if fallbackCalled {
-		t.Errorf("StopOperator must not invoke fallback discovery when PID file is missing")
+
+	// Test stopping a discovered Gateway whose PID file was lost: StopOperator
+	// must stop the same process OperatorStatus reports, not report success
+	// while it keeps running.
+	if runtime.GOOS != "windows" {
+		child := exec.Command("sleep", "60")
+		if err := child.Start(); err != nil {
+			t.Fatalf("start child: %v", err)
+		}
+		waitCh := make(chan error, 1)
+		go func() { waitCh <- child.Wait() }()
+		t.Cleanup(func() {
+			_ = child.Process.Kill()
+			<-waitCh
+		})
+		pm.findOperatorProcessFn = func() int { return child.Process.Pid }
+		if err := pm.StopOperator(); err != nil {
+			t.Fatalf("StopOperator failed for discovered Gateway: %v", err)
+		}
+		select {
+		case <-waitCh:
+			waitCh <- nil
+		case <-time.After(5 * time.Second):
+			t.Fatal("StopOperator returned but the discovered Gateway is still running")
+		}
 	}
-	// Reset mock
-	pm.findOperatorProcessFn = nil
+	pm.findOperatorProcessFn = func() int { return 0 }
 
 	// Test stopping non-existent process with PID file
 	if err := pm.writePID(constants.OperatorPIDFilename, 999999); err != nil {

@@ -118,7 +118,7 @@ type realStackRun struct {
 
 // newRealStackRun starts the real stack under posture and creates campaignID on
 // it: one answer-only scenario repeated repetitions times, each assignment one
-// real model turn that the scripted provider answers READY. runControl is the
+// real model turn that the scripted provider answers ERROR. runControl is the
 // run's process boundary.
 func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string, repetitions uint32, runControl runControlDeps) *realStackRun {
 	t.Helper()
@@ -128,20 +128,23 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 	t.Cleanup(cancel)
 	replies := make([]fixtures.OllamaReply, repetitions)
 	for i := range replies {
-		replies[i] = fixtures.OllamaReply{Content: "READY"}
+		replies[i] = fixtures.OllamaReply{Content: "ERROR"}
 	}
 	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: posture, Replies: replies}, runControl)
 	deps, stack, evidenceFiles := run.deps, run.stack, run.fileSvc
 	dataWorkload, err := stack.Data.Workload()
 	require.NoError(t, err)
 
-	// Keep the live run to the answer-only Lite scenario: each assignment is one
+	// Keep the live run to the answer-only severity scenario: each assignment is one
 	// real model turn with no synthetic tools or receipts.
 	suite := evaluation.DefaultScenarioSuite()
 	suite.ID = "real-stack-suite"
 	suite.Version = evaluation.SuiteSchemaVersion
 	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
+		if scenario.ScenarioID == "instruction-classify-severity" {
+			// The catalog scenario is eligible for primary and assistant; the fixture executes
+			// one turn per repetition, so restrict it to the primary role.
+			scenario.EligibleRoles = []string{"primary"}
 			suite.Scenarios = []evaluation.SuiteScenario{scenario}
 			break
 		}
@@ -244,7 +247,7 @@ func newGatewayRunEnvWithOptions(t *testing.T, opts fixtures.EvalStackOptions) (
 	if opts.Replies == nil {
 		opts.Replies = make([]fixtures.OllamaReply, 16)
 		for i := range opts.Replies {
-			opts.Replies[i] = fixtures.OllamaReply{Content: "READY"}
+			opts.Replies[i] = fixtures.OllamaReply{Content: "ERROR"}
 		}
 	}
 	run := newRealStackEnvironment(t, opts, testRunControl(control))
@@ -300,7 +303,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			require.Len(t, trace.ModelCalls, 1)
-			assert.Equal(t, "READY", trace.FinalOutput)
+			assert.Equal(t, "ERROR", trace.FinalOutput)
 			require.NotNil(t, trace.ModelCalls[0].Receipt)
 			receipt := trace.ModelCalls[0].Receipt.EventReceipt
 			workload, err := run.stack.Inference.Workload()

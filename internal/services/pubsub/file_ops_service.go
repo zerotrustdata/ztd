@@ -154,7 +154,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 	if err != nil {
 		return "", err
 	}
-	result, commandStr, execErr := edit.result, edit.command, edit.err
+	result, execErr := edit.result, edit.err
 
 	protoResult := &operatorv1.FileEditResult{
 		ExecutionId:     result.ExecutionID,
@@ -198,7 +198,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 	if err := errors.Join(execErr, publishErr); err != nil {
 		return "", fmt.Errorf("file edit: %w", err)
 	}
-	return commandStr, nil
+	return typedResultSummary(protoResult)
 }
 
 // HandleEvaluationWorkspaceSeedRequest writes one evaluation fixture file into
@@ -558,7 +558,7 @@ func (fs *FileOpsService) HandleFsListRequest(ctx context.Context, msg *PubSubCo
 	if err := errors.Join(execErr, executionResultError(result.Status, result.ErrorMessage), publishErr); err != nil {
 		return "", fmt.Errorf("FsList: %w", err)
 	}
-	return "", nil
+	return typedResultSummary(protoResult)
 }
 
 // HandleFsGrepRequest processes an inbound filesystem grep request.

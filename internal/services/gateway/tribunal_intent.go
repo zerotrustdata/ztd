@@ -97,9 +97,9 @@ func newTribunalIntentController(d TribunalIntentControllerDeps) *TribunalIntent
 // @Tags			operators
 // @Accept			json
 // @Produce		json
-// @Param			request	body		tribunalv1.TribunalIntentRequest	true	"Command intent and member inference template"
+// @Param			request	body		tribunalv1.TribunalIntentRequest	true	"Command intent, per-stage inference templates, and frozen Tribunal persona bindings"
 // @Success		200		{object}	tribunalv1.TribunalIntentResult	"Deliberation record and, for an approved command, its governed outcome"
-// @Failure		400		{object}	operatorv1.IngressRefusal	"Bad Request — malformed body, missing field, a member template that sets a Gateway-owned field, or a member template role that does not run the requested tier"
+// @Failure		400		{object}	operatorv1.IngressRefusal	"Bad Request — malformed body, missing stage template or persona binding, a Gateway-owned field set by the caller, or a stage role that does not match its persona tier or homogeneous candidate"
 // @Failure		401		{object}	operatorv1.IngressRefusal	"Unauthorized — missing delegated user identity"
 // @Failure		403		{object}	operatorv1.IngressRefusal	"Forbidden — not an app workload"
 // @Failure		405		{object}	operatorv1.IngressRefusal	"Method Not Allowed"

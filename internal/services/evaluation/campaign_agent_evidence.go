@@ -167,7 +167,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 // The final diagnosis and requested tool arguments are grader inputs too. Bind
 // them to the signed responses rather than trusting the trace's repeated copy.
 func verifyV7EpisodeOutputs(trace *AgentTrace) error {
-	var lastTurn *AgentModelCall
+	var lastTurn, lastInterrogation *AgentModelCall
 	turns := make(map[string]*AgentModelCall)
 	seenAttempts := make(map[string]bool)
 	seenTransactions := make(map[string]bool)
@@ -182,6 +182,15 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 			lastTurn = call
 			turns[call.ProviderAttemptID] = call
 		}
+		if call.Purpose == agentModelCallPurposeInterrogation && call.Completed() && call.InferenceResult != nil {
+			lastInterrogation = call
+		}
+	}
+	// An unanswered clarification ends on the Interrogator's signed questions,
+	// dispatched after the reasoner's last signalling turn.
+	if trace.FinalOutput != "" && trace.TerminalClassification == AgentTerminalClassificationUnsupportedClarification &&
+		lastTurn != nil && lastInterrogation != nil && lastInterrogation.LoopTurn == lastTurn.LoopTurn {
+		lastTurn = lastInterrogation
 	}
 	if trace.FinalOutput != "" && (lastTurn == nil || lastTurn.Text != trace.FinalOutput) {
 		return fmt.Errorf("final output differs from the last signed model turn: %w", constants.ErrEvaluationEvidenceTraceMismatch)
@@ -390,11 +399,10 @@ func verifyV7ModelCallIdentity(trace *AgentTrace, call AgentModelCall, outcome o
 		if call.ServedModelTag != trace.ServedModelTag || call.ModelDigest != trace.ModelDigest {
 			return fail("per-call designated variant identity differs from the trace identity")
 		}
-	} else if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) || campaignRoleFromInferenceString(call.ModelRole) != formationTribunalRole {
-		// A heterogeneous system assignment dispatches Tribunal calls to its
-		// formationTribunalRole slot while the trace-level identity names the
-		// designated role. Exact variant-to-slot binding is checked against the
-		// frozen assignment by the campaign verifier.
+	} else if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) || campaignRoleFromInferenceString(call.ModelRole) != formationTribunalRoleForTrace(trace, call.Purpose) {
+		// A heterogeneous system assignment dispatches each Tribunal stage to
+		// its stage-specific formation slot while trace-level identity names the
+		// designated role. Exact variant-to-slot binding is checked by verifier.
 		return fail("model role differs from the designated campaign role")
 	}
 	if result == nil {

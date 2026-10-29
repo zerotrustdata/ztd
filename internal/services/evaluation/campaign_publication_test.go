@@ -220,6 +220,7 @@ func scheduledTestCampaign(t *testing.T, store *Store) (*CampaignController, Cam
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:3],
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)

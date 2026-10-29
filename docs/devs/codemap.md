@@ -4,7 +4,7 @@ title: ztd Code Map
 audience: maintainers and coding agents
 status: current
 version: v1.5.0
-last_updated: 2026-10-28
+last_updated: 2026-10-29
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -200,12 +200,12 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 
 | Group | Package | Path | Alias | Owns |
 | :--- | :--- | :--- | :--- | :--- |
-| `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. |
+| `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. `gw recover` installs a saved master-key recovery key. |
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
 | `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture), `enroll app` (governed application binding), and `enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel pinned to one frozen model tag). |
 | `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
-| `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
+| `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `recover`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
 | `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, `eval-loop`, and `conformance-loop`. |
@@ -362,6 +362,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/scrubbing/` | Sensitive-value detection, tokenization, and rehydration. |
 | `internal/services/sqliteutil/` | Shared SQLite configuration and connection helpers. |
 | `internal/services/storage/` | Audit, execution, replay, suspension, commitment, and Git ledger persistence. |
+| `internal/services/agentpersona/` | Typed agent personas (Sage, Dash, Triage, the Tribunal members, Marshal, Auditor): one renderer (security prefix first), per-persona version and digest, and an explicitly constructed `Registry`. Imports only `constants` and `models`, so evaluation and the Tribunal share it. |
 | `internal/services/tribunal/` | Tribunal consensus: member dispatch, vote parsing and schema, decision and generative vote handling, and the Tribunal pipeline and auditor. Gateway-side wiring is in `internal/services/gateway/tribunal_intent.go`. |
 | `internal/services/system/` | Host metrics, OS details, and network interface sampling. |
 | `internal/services/vault/` | Encryption vault lifecycle. |

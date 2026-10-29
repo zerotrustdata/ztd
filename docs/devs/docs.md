@@ -318,6 +318,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 - [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
 - [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Trust and evidence integrity, removal of ungoverned data API writes, signed audit checkpoints, judge-scored evals, and the llama.cpp inference provider.
+- [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 
 ## Procedures
 

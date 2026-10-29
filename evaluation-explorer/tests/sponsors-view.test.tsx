@@ -31,9 +31,8 @@ describe('SponsorsView', () => {
 
     const view = within(screen.getByRole('region', { name: 'Sponsors and project sustainability' }));
     expect(view.getByRole('heading', { level: 1, name: SPONSORS_HERO_TITLE })).toBeInTheDocument();
-    expect(view.getByRole('heading', { name: 'Why I need help right now' })).toBeInTheDocument();
-    expect(view.getByText(/out of personal runway/i)).toBeInTheDocument();
-    expect(view.getByText(/convenience store counter/i)).toBeInTheDocument();
+    expect(view.getByRole('heading', { name: 'Why I’m doing this' })).toBeInTheDocument();
+    expect(view.getByText(/Sponsorship buys research time/i)).toBeInTheDocument();
 
     // First-sponsor CTA
     const firstCta = within(view.getByRole('region', { name: 'First sponsor call to action' }));

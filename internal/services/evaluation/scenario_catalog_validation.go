@@ -99,19 +99,27 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	if blueprint.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE || slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "semantic_grade") {
 		return scenarioContractError(blueprint, "scenario requires a semantic judge, which no executor provides")
 	}
-	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) {
+	triageOnly := len(blueprint.EligibleRoles) == 1 && blueprint.EligibleRoles[0] == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE &&
+		blueprint.Gold.Players != nil && blueprint.Gold.Players.Triage != nil
+	fileStateObjective := blueprint.Gold.GradingContract == ScenarioGradingContractV3 && len(blueprint.Gold.FileState) > 0
+	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly && !fileStateObjective {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
-	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
-		return err
-	}
-	if err := validateJudgedCriteria(blueprint, blueprint.Gold.ContentCheck); err != nil {
-		return err
+	if blueprint.Gold.ContentCheck != nil {
+		if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
+			return err
+		}
+		if err := validateJudgedCriteria(blueprint, blueprint.Gold.ContentCheck); err != nil {
+			return err
+		}
 	}
 	if err := validateArgumentValidators(blueprint, catalog); err != nil {
 		return err
 	}
 	if err := validatePromptHint(blueprint, catalog); err != nil {
+		return err
+	}
+	if err := validateGroundedToolArguments(blueprint); err != nil {
 		return err
 	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
@@ -164,7 +172,7 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Command != nil && players.Command.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
-	if players.Command != nil && (len(players.Command.JudgedCriteria) > 0 || players.Command.RefusalCriterion != "") {
+	if players.Command != nil && (len(players.Command.JudgedCriteria) > 0 || players.Command.RefusalCriterion != "" || len(players.Command.ToolEvidence) > 0 || players.Command.SearchPattern != "") {
 		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
 	}
 	if marshal := players.Marshal; marshal != nil {
@@ -183,7 +191,7 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Codex != nil && players.Codex.DiagnosisRubric != "" {
 		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
-	if players.Codex != nil && (len(players.Codex.JudgedCriteria) > 0 || players.Codex.RefusalCriterion != "") {
+	if players.Codex != nil && (len(players.Codex.JudgedCriteria) > 0 || players.Codex.RefusalCriterion != "" || len(players.Codex.ToolEvidence) > 0 || players.Codex.SearchPattern != "") {
 		return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "judged criteria are only supported by scenario content checks")
 	}
 	return nil
@@ -206,10 +214,11 @@ func validateScenarioContext(blueprint ScenarioBlueprint, catalog *agentToolCata
 		return scenarioContractError(blueprint, "user prompt is empty")
 	}
 	lite := slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
-	if lite && (len(blueprint.AllowedTools)+len(blueprint.ForbiddenTools)+len(blueprint.Input.Seed.ToolCalls) > 0) {
-		return scenarioContractError(blueprint, "Lite receives injected context and cannot retrieve or seed tool calls")
+	if lite && (len(blueprint.ExpectedTools) > 0 || blueprint.TribunalCommands) {
+		return scenarioContractError(blueprint, "Lite receives injected context and cannot require tool calls")
 	}
-	if !lite && blueprint.Input.Seed.CaseMemory != nil && !slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile) {
+	responders := slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY) || slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT)
+	if responders && blueprint.Input.Seed.CaseMemory != nil && !slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile) {
 		return scenarioUnanswerableError(blueprint, "case memory requires read_file for responder retrieval")
 	}
 	for _, turn := range blueprint.Input.Seed.Turns {
@@ -228,6 +237,20 @@ func validateScenarioContext(blueprint ScenarioBlueprint, catalog *agentToolCata
 		}
 		if !slices.Contains([]string{scenarioSeedSuccess, scenarioSeedError, scenarioSeedDeny, scenarioSeedRefusal}, call.Outcome) {
 			return scenarioContractError(blueprint, "seed tool %s has unspecified outcome", call.ToolName)
+		}
+		switch call.Disclosure {
+		case ScenarioSeedDisclosureProse, ScenarioSeedDisclosurePlatformRecord:
+		case ScenarioSeedDisclosureChainOnly:
+			// A refused or denied call never reaches L5, so no receipt exists
+			// for the agent to retrieve.
+			if call.Outcome != scenarioSeedSuccess && call.Outcome != scenarioSeedError {
+				return scenarioUnanswerableError(blueprint, "chain-only seed %s must execute to leave a receipt", call.ToolName)
+			}
+			if responders && !slices.Contains(blueprint.AllowedTools, constants.MCPToolEventReceiptList) {
+				return scenarioUnanswerableError(blueprint, "chain-only seed %s requires event_receipt_list for responder retrieval", call.ToolName)
+			}
+		default:
+			return scenarioContractError(blueprint, "seed tool %s has unknown disclosure %q", call.ToolName, call.Disclosure)
 		}
 	}
 	return nil
@@ -309,7 +332,7 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 	return check.ExactToken != "" || len(check.ExactLabels) > 0 || check.LeadingLabel != "" || check.WordCount > 0 ||
 		check.MaxSentences > 0 || len(check.RequiredTerms) > 0 || len(check.ForbiddenTerms) > 0 ||
 		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != "" ||
-		len(check.JudgedCriteria) > 0
+		len(check.JudgedCriteria) > 0 || check.SearchPattern != ""
 }
 
 // validateJudgedCriteria fails closed on a judged criterion the judge could not
@@ -319,11 +342,31 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 // refusal is otherwise unobservable and would read as "did not refuse".
 func validateJudgedCriteria(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
 	refusalRequired := slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "policy_decision")
+	for _, role := range blueprint.Gold.RoleCriteria {
+		refusalRequired = refusalRequired || slices.Contains(role.RequiredEvidenceTypes, "policy_decision")
+	}
 	if check == nil {
 		if refusalRequired {
 			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "scenario has no content check")
 		}
 		return nil
+	}
+	seenTools := make(map[string]struct{}, len(check.ToolEvidence))
+	for _, tool := range check.ToolEvidence {
+		if _, duplicate := seenTools[tool]; duplicate || !slices.Contains(blueprint.AllowedTools, tool) || len(check.JudgedCriteria) == 0 {
+			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationJudgedCriterionInvalid, "tool evidence %q must be unique, allowed, and used by judged criteria", tool)
+		}
+		seenTools[tool] = struct{}{}
+	}
+	if check.SearchPattern != "" {
+		matches, err := fixtureSearchMatches(blueprint.Input, ScenarioWorkspace{}, check.SearchPattern)
+		if err != nil {
+			return scenarioContractErrorWithCause(blueprint, err, "invalid search evidence contract")
+		}
+		if len(matches) == 0 || !slices.Contains(blueprint.ExpectedTools, constants.MCPToolSearchDirectory) ||
+			len(check.JudgedCriteria) == 0 || !slices.Contains(check.ToolEvidence, constants.MCPToolSearchDirectory) {
+			return scenarioContractError(blueprint, "search evidence requires a directory search, matching fixture lines, and tool-grounded judged criteria")
+		}
 	}
 	seen := make(map[string]struct{}, len(check.JudgedCriteria))
 	for _, criterion := range check.JudgedCriteria {
@@ -353,7 +396,7 @@ func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContent
 		return nil
 	}
 	switch check.DiagnosisRubric {
-	case "", ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4:
+	case "", ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4, ScenarioDiagnosisRubricCheckoutTimeoutV5:
 		return nil
 	}
 	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)
@@ -374,6 +417,44 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolC
 			hasRegex := len(constraint.RegexMatches) > 0 || len(constraint.RegexRejects) > 0
 			if hasRegex && (len(constraint.RegexMatches) == 0 || len(constraint.RegexRejects) == 0) {
 				return scenarioContractError(blueprint, "regex constraint on %q.%q needs both match and reject samples", validator.ToolName, constraint.Name)
+			}
+		}
+	}
+	return nil
+}
+
+// validateGroundedToolArguments grades concrete hint values against their
+// argument rules without executing tools. A search objective also supplies a
+// reference regex when the model derives its pattern from the workspace.
+func validateGroundedToolArguments(blueprint ScenarioBlueprint) error {
+	// Derive a representative workspace so template tokens are rendered as
+	// they are during grading. This performs no filesystem I/O.
+	ws, err := NewScenarioWorkspace("/", "catalog-validation", blueprint.ScenarioID)
+	if err != nil {
+		return scenarioContractErrorWithCause(blueprint, err, "derive argument-validation workspace")
+	}
+	for _, validator := range blueprint.Gold.ArgumentValidators {
+		for _, constraint := range validator.Arguments {
+			var references []string
+			if hint := blueprint.Gold.PromptHint; hint != nil {
+				for _, argument := range hintArgumentsFor(hint, validator.ToolName, constraint.Name) {
+					switch argument.Source {
+					case sourcePrompt, sourceSeed, sourceWorkspace:
+						references = append(references, argument.Value)
+					}
+				}
+			}
+			if len(constraint.RegexMatches)+len(constraint.RegexRejects) > 0 && len(references) == 0 {
+				if check := blueprint.Gold.ContentCheck; validator.ToolName == constants.MCPToolSearchDirectory && constraint.Name == "pattern" && check != nil && check.SearchPattern != "" {
+					references = append(references, check.SearchPattern)
+				} else {
+					return scenarioContractError(blueprint, "regex constraint on %q.%q needs a concrete prompt, seed, workspace, or search-objective reference value", validator.ToolName, constraint.Name)
+				}
+			}
+			for _, reference := range references {
+				if ok, failure := validateToolArgument(ws.Render(reference), constraint, ws); !ok {
+					return scenarioContractError(blueprint, "reference value for %q.%q fails argument grading: %s", validator.ToolName, failure.FailedArg, failure.Rule)
+				}
 			}
 		}
 	}
@@ -443,11 +524,29 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 			return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not under the workspace", argument.ToolName, argument.Name, argument.Value)
 		}
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT:
-		if argument.Name != "target_operators" {
-			return scenarioUnanswerableError(blueprint, "%q.%q cannot come from operator context", argument.ToolName, argument.Name)
+		if argument.Name == "target_operators" {
+			return nil
 		}
+		if argument.ToolName == constants.MCPToolRestoreFile && argument.Name == "commit_hash" && argument.Value == "ledger_hash_before" &&
+			(slices.Contains(blueprint.AllowedTools, constants.MCPToolFileHistory) || slices.Contains(blueprint.AllowedTools, constants.MCPToolFileDiff)) {
+			for _, call := range blueprint.Input.Seed.ToolCalls {
+				if call.ToolName == constants.MCPToolFileEdit && call.Disclosure == ScenarioSeedDisclosureChainOnly && call.Outcome == scenarioSeedSuccess {
+					return nil
+				}
+			}
+		}
+		return scenarioUnanswerableError(blueprint, "%q.%q cannot come from operator context", argument.ToolName, argument.Name)
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED:
-		if argument.Name != "justification" && argument.Name != "request" {
+		allowed := false
+		switch {
+		case argument.Name == "justification", argument.Name == "request":
+			allowed = true
+		case argument.ToolName == constants.MCPToolRunShellCommand && argument.Name == "command":
+			allowed = strings.TrimSpace(argument.Value) != ""
+		case argument.ToolName == constants.MCPToolSearchDirectory && argument.Name == "pattern":
+			allowed = strings.TrimSpace(argument.Value) != ""
+		}
+		if !allowed {
 			return scenarioUnanswerableError(blueprint, "%q.%q cannot be authored by the model", argument.ToolName, argument.Name)
 		}
 	default:
@@ -508,9 +607,25 @@ func validatorsUseWorkspace(validators []ToolArgumentValidator) bool {
 }
 
 func validateRequiredEvidenceTypes(blueprint ScenarioBlueprint) error {
-	for _, evidenceType := range blueprint.Gold.RequiredEvidenceTypes {
-		if _, ok := scenarioEvidenceTypes[evidenceType]; !ok {
-			return scenarioContractError(blueprint, "required evidence type %q is not in the closed vocabulary", evidenceType)
+	if slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE) {
+		for _, evidenceType := range blueprint.Gold.requiredEvidenceForRole("lite") {
+			if slices.Contains([]string{"tool_call", "tool_decision", "governed_action"}, evidenceType) {
+				return scenarioContractError(blueprint, "Lite cannot require tool evidence %s", evidenceType)
+			}
+		}
+	}
+	requirements := [][]string{blueprint.Gold.RequiredEvidenceTypes}
+	for _, role := range blueprint.Gold.RoleCriteria {
+		if slices.Contains(role.RequiredEvidenceTypes, "semantic_grade") {
+			return scenarioContractError(blueprint, "role %s requires a semantic judge, which no executor provides", role.Role)
+		}
+		requirements = append(requirements, role.RequiredEvidenceTypes)
+	}
+	for _, evidenceTypes := range requirements {
+		for _, evidenceType := range evidenceTypes {
+			if _, ok := scenarioEvidenceTypes[evidenceType]; !ok {
+				return scenarioContractError(blueprint, "required evidence type %q is not in the closed vocabulary", evidenceType)
+			}
 		}
 	}
 	return nil

@@ -20,6 +20,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -148,17 +149,26 @@ const (
 	OutcomeAuditFailed Outcome = "audit_failed"
 )
 
-// Config binds one deliberation to the frozen model it runs on. Tier is the
-// campaign role every Tribunal call dispatches under: Service.Deliberate
-// requires the member template's role to be Tier's inference role. ModelTag
-// and ModelDigest identify the variant on each recorded step.
+// Config binds one deliberation to its frozen candidate and per-stage models.
+// Tier, ModelTag and ModelDigest identify the assignment's designated model;
+// StageModels record formation-specific model bindings for each persona stage.
 type Config struct {
 	Inferer Inferer
+	// Personas renders every stage's system prompt.
+	Personas *agentpersona.Registry
 	// Doctrine is the active Gateway doctrine, also used by governed dispatch.
 	Doctrine    *governance.L1Doctrine
 	Tier        evalv1.ModelCampaignRole
 	ModelTag    string
 	ModelDigest string
+	StageModels map[Stage]StageModel
+}
+
+// StageModel is the frozen role and model used by one Tribunal stage.
+type StageModel struct {
+	Tier   evalv1.ModelCampaignRole
+	Tag    string
+	Digest string
 }
 
 // Request is the agent's intent-only command request and the context the
@@ -206,16 +216,13 @@ type Vote struct {
 	// Winner is the selected command; empty when no cluster reached the
 	// minimum consensus or the tie-break ladder left a tie.
 	Winner models.RunShellCommandRequest
-	// Excluded is Nemesis's proposal in this round; empty when Nemesis
-	// abstained. It and every matching proposal are never tallied.
-	Excluded models.RunShellCommandRequest
 }
 
-// Unanimous reports whether every eligible panel member (all non-Nemesis members) proposed the winner.
+// Unanimous reports whether every panel member proposed the winner.
 func (v Vote) Unanimous() bool {
 	for _, cluster := range v.Clusters {
 		if cluster.Arguments.CanonicalJSON() == v.Winner.CanonicalJSON() {
-			return len(cluster.Members) == len(AllMembers)-1
+			return len(cluster.Members) == len(AllMembers)
 		}
 	}
 	return false

@@ -262,6 +262,13 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	require.Len(t, bodies, 9)
 	for _, body := range bodies[1:8] {
 		assert.Empty(t, body.Tools, "a Tribunal call declares no tools")
+		require.NotEmpty(t, body.Messages)
+		assert.Equal(t, "system", body.Messages[0].Role)
+		assert.Contains(t, body.Messages[0].Content, "<safety>")
+		assert.Contains(t, body.Messages[0].Content, "<loyalty>")
+		assert.Contains(t, body.Messages[0].Content, "<dissent>")
+		assert.Contains(t, body.Messages[0].Content, "F7 | Privilege escalation")
+		assert.Contains(t, body.Messages[0].Content, "a denied call is final")
 	}
 
 	trace := executorLoadTrace(t, env, res)
@@ -659,7 +666,7 @@ func tribunalVariantByID(t *testing.T, variants []*evalv1.ModelVariant, id strin
 func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRoles(t *testing.T) {
 	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
-		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
+		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	require.Len(t, set.Stacks, 1)
@@ -693,7 +700,7 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 	assert.Contains(t, bodies[0].Messages[0].Content, "You are Sage,")
 	assert.Contains(t, bodies[0].Messages[0].Content, "F7 | Privilege escalation")
 	for _, body := range bodies[1:] {
-		assert.Contains(t, body.Messages[0].Content, "You are a member of the Tribunal")
+		assert.Contains(t, body.Messages[0].Content, "of the ztd Tribunal", "each member renders its registry persona")
 		assert.NotContains(t, body.Messages[0].Content, "You are Dash,", "Lite-tier Tribunal calls retain their member persona")
 	}
 	trace := executorLoadTrace(t, env, res)
@@ -706,5 +713,63 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 	assert.Equal(t, lite.GetModelDigest(), trace.ModelCalls[1].ModelDigest)
 	assert.Equal(t, operatorv1.ModelRole_MODEL_ROLE_LITE.String(), trace.ModelCalls[1].ModelRole)
 	assert.Equal(t, "lite tribunal answer", trace.ModelCalls[1].Text)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}
+
+func TestCampaignTribunalIntegration_SystemLaneRoutesEachStageToItsFrozenRole(t *testing.T) {
+	variants := tribunalFormationVariants(t)
+	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"heterogeneous-0000"}})
+	require.NoError(t, err)
+	require.Len(t, set.Stacks, 1)
+	stack := set.Stacks[0]
+	primary := tribunalVariantByID(t, variants, stack.GetPrimarySlot().GetVariantId())
+	assistant := tribunalVariantByID(t, variants, stack.GetAssistantSlot().GetVariantId())
+	lite := tribunalVariantByID(t, variants, stack.GetLiteSlot().GetVariantId())
+	require.NotEqual(t, primary.GetVariantId(), assistant.GetVariantId())
+	require.NotEqual(t, assistant.GetVariantId(), lite.GetVariantId())
+
+	env := newRealStackAgentRun(t, realStackOptions{
+		suffix:   "system-lane-stage-roles",
+		replies:  append(append(append(append(tribunalIntent("call-1"), tribunalUnanimous(tribunalRealCommand)...), tribunalTurn(tribunalRealLowRisk)...), tribunalTurn(tribunalRealApprove)...), tribunalTurn("HEALTHY")...),
+		scenario: tribunalScenario, modelTags: evaluation.FormationCatalogServedTags(),
+		request: func(req *evaluation.CampaignInitRequest, _ string) {
+			inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, variants)
+			require.NoError(t, err)
+			req.Inventory = inventory
+			req.FormationStackSet = set
+			req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
+		},
+	})
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	assert.Equal(t, []string{primary.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), lite.GetServedModelTag(), assistant.GetServedModelTag(), primary.GetServedModelTag(), primary.GetServedModelTag()}, tribunalWireModels(t, env))
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 9)
+	assert.Contains(t, bodies[1].Messages[0].Content, "You are Axiom of the ztd Tribunal.")
+	assert.Contains(t, bodies[6].Messages[0].Content, "You are Marshal,")
+	assert.Contains(t, bodies[7].Messages[0].Content, "You are the Auditor,")
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ModelCalls, 9)
+	want := []struct {
+		variant *evalv1.ModelVariant
+		role    operatorv1.ModelRole
+	}{
+		{primary, operatorv1.ModelRole_MODEL_ROLE_PRIMARY},
+		{lite, operatorv1.ModelRole_MODEL_ROLE_LITE}, {lite, operatorv1.ModelRole_MODEL_ROLE_LITE}, {lite, operatorv1.ModelRole_MODEL_ROLE_LITE}, {lite, operatorv1.ModelRole_MODEL_ROLE_LITE}, {lite, operatorv1.ModelRole_MODEL_ROLE_LITE},
+		{assistant, operatorv1.ModelRole_MODEL_ROLE_ASSISTANT},
+		{primary, operatorv1.ModelRole_MODEL_ROLE_PRIMARY},
+		{primary, operatorv1.ModelRole_MODEL_ROLE_PRIMARY},
+	}
+	for i, call := range trace.ModelCalls {
+		assert.Equal(t, want[i].variant.GetVariantId(), call.ModelVariantID)
+		assert.Equal(t, want[i].variant.GetServedModelTag(), call.ServedModelTag)
+		assert.Equal(t, want[i].variant.GetModelDigest(), call.ModelDigest)
+		assert.Equal(t, want[i].role.String(), call.ModelRole)
+	}
+	wantStepTiers := []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+	require.Len(t, trace.Steps, len(wantStepTiers))
+	for i, step := range trace.Steps {
+		assert.Equal(t, wantStepTiers[i], step.GetResolvedTier(), "Tribunal persona step %d is bound to its stage model", i)
+	}
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }

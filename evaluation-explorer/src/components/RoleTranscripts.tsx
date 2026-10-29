@@ -18,6 +18,15 @@ export function prettyJSON(text: string): string {
   }
 }
 
+/** One readable line of JSON, with the spaces pretty-printing would insert. */
+export function oneLineJSON(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 1).replace(/\n\s*/g, ' ').trim();
+  } catch {
+    return text.replace(/\s+/g, ' ').trim();
+  }
+}
+
 export function label(value: string): string {
   return value.replace(/_/g, ' ').toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
@@ -34,28 +43,25 @@ function ToolCall({ call, index }: { call: RoleTranscriptToolCall; index: number
         </span>
       </div>
       {call.arguments_json ? (
-        <div className="transcript-field">
-          <div className="transcript-field-label">
-            Arguments
-            {call.arguments_hash ? <code title="sha256 of the exact arguments recorded in the trace">sha256 {call.arguments_hash}</code> : null}
-            <CopyButton text={call.arguments_json} label={`${call.tool_name} arguments`} />
-          </div>
-          <pre className="model-response-text"><code>{prettyJSON(call.arguments_json)}</code></pre>
+        <div className="transcript-inline-row">
+          <code className="transcript-inline" title="Arguments recorded in the trace">{oneLineJSON(call.arguments_json)}</code>
+          <CopyButton text={call.arguments_json} label={`${call.tool_name} arguments`} />
         </div>
       ) : null}
+      {call.arguments_hash ? (
+        <code className="transcript-hash" title="sha256 of the exact arguments recorded in the trace">sha256 {call.arguments_hash}</code>
+      ) : null}
       {call.approved_arguments_json && call.approved_arguments_json !== call.arguments_json ? (
-        <div className="transcript-field">
-          <div className="transcript-field-label">
-            Approved arguments
-            <CopyButton text={call.approved_arguments_json} label={`${call.tool_name} approved arguments`} />
-          </div>
-          <pre className="model-response-text"><code>{prettyJSON(call.approved_arguments_json)}</code></pre>
+        <div className="transcript-inline-row">
+          <span className="transcript-inline-label">Approved</span>
+          <code className="transcript-inline">{oneLineJSON(call.approved_arguments_json)}</code>
+          <CopyButton text={call.approved_arguments_json} label={`${call.tool_name} approved arguments`} />
         </div>
       ) : null}
       {call.command ? (
-        <div className="transcript-field">
-          <div className="transcript-field-label">Resolved command<CopyButton text={call.command} label={`${call.tool_name} command`} /></div>
-          <pre className="model-response-text"><code>{call.command}</code></pre>
+        <div className="transcript-inline-row">
+          <code className="transcript-inline">{call.command}</code>
+          <CopyButton text={call.command} label={`${call.tool_name} command`} />
         </div>
       ) : null}
       {call.result_json ? (

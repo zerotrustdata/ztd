@@ -86,6 +86,26 @@ const (
 	// MCPToolFsDiskProfile recursively sizes the directories under one path.
 	MCPToolFsDiskProfile = "fs_disk_profile"
 
+	// Governed action tools. A call to one is not an MCP_CALL: the ingress
+	// turns it into the typed governed action it names, so that action's L1
+	// checks, path policy, ledger snapshots and receipts apply unchanged.
+
+	// MCPToolListDirectory lists one directory's entries as FS_LIST.
+	MCPToolListDirectory = "list_directory"
+
+	// MCPToolFileEdit writes or edits one file as FILE_EDIT.
+	MCPToolFileEdit = "file_edit"
+
+	// MCPToolFileHistory lists one file's ledger commits as FETCH_FILE_HISTORY.
+	MCPToolFileHistory = "file_history"
+
+	// MCPToolFileDiff lists one file's recorded mutations, or returns one
+	// mutation's diff, as FETCH_FILE_DIFF.
+	MCPToolFileDiff = "file_diff"
+
+	// MCPToolRestoreFile restores one file from a ledger commit as RESTORE_FILE.
+	MCPToolRestoreFile = "restore_file"
+
 	// The read-only native tools below change no state. The action registry
 	// lists them as MCP_CALL read-only targets (ActionType.ChangesState).
 	MCPToolDBDiscoverTopology = "db_discover_topology"

@@ -10,7 +10,6 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -92,12 +92,15 @@ func seedEgressAudit(t *testing.T, store *storage.LocalFirstEventsStore) {
 	}))
 }
 
-func newEgressController(t *testing.T, scrubber *scrubbing.ScrubbingService) *AuditController {
+func newEgressController(t *testing.T, cfg *scrubbing.Config) *AuditController {
 	t.Helper()
-	infra := setupTestInfrastructure(t, false)
-	seedEgressAudit(t, infra.EventsStore)
+	db := newTestDB(t)
+	logger := testutil.NewTestLogger()
+	scrubber, err := scrubbing.NewScrubbingService(t.Context(), cfg, logger, NewEncryptedKVAdapter(db.GetKVStore(), db.GetVault()))
+	require.NoError(t, err)
+	seedEgressAudit(t, db.GetLocalFirstEventsStore())
 	controller, err := newAuditController(AuditControllerDeps{
-		Cfg: infra.Cfg, Logger: infra.Logger, EventsStore: infra.EventsStore, Responder: infra.Responder, Scrubber: scrubber,
+		Cfg: testutil.NewTestConfig(t), Logger: logger, EventsStore: db.GetLocalFirstEventsStore(), Responder: response.NewWriter(logger), Scrubber: scrubber,
 	})
 	require.NoError(t, err)
 	return controller
@@ -119,7 +122,7 @@ func TestNewAuditController_RequiresScrubber(t *testing.T) {
 // Everything the audit endpoints return leaves the runtime, so no planted secret may appear in
 // any response, and the response still carries the identifiers and the (scrubbed) command.
 func TestAuditController_EventsAndReportNeverReturnRawContent(t *testing.T) {
-	controller := newEgressController(t, newTestScrubber(t))
+	controller := newEgressController(t, scrubbing.DefaultConfig())
 
 	t.Run("events", func(t *testing.T) {
 		rr := httptest.NewRecorder()
@@ -173,9 +176,7 @@ func TestAuditController_EventsAndReportNeverReturnRawContent(t *testing.T) {
 func TestAuditController_DisabledScrubberWithholds(t *testing.T) {
 	cfg := scrubbing.DefaultConfig()
 	cfg.Enabled = false
-	disabled, err := scrubbing.NewScrubbingService(context.Background(), cfg, testutil.NewTestLogger(), nil)
-	require.NoError(t, err)
-	controller := newEgressController(t, disabled)
+	controller := newEgressController(t, cfg)
 
 	for name, call := range map[string]func(http.ResponseWriter, *http.Request){
 		"events":          controller.handleAuditEvents,

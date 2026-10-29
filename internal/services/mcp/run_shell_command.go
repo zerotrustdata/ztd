@@ -245,21 +245,15 @@ func validateCommandSafety(command string, args []string, workingDir string) err
 	return nil
 }
 
-// shellQuoteArg quotes a single argument for safe shell execution.
-// Uses POSIX shell quoting: replace ' with '"'"' and wrap in single quotes.
-func shellQuoteArg(arg string) string {
-	return fmt.Sprintf("'%s'", strings.ReplaceAll(arg, "'", "'\"'\"'"))
-}
-
 // shellQuoteCommand builds a safely quoted shell command from command and args.
 func shellQuoteCommand(command string, args []string) string {
-	quotedCmd := shellQuoteArg(command)
+	quotedCmd := ssh.QuoteArg(command)
 	if len(args) == 0 {
 		return quotedCmd
 	}
 	quotedArgs := make([]string, len(args))
 	for i, arg := range args {
-		quotedArgs[i] = shellQuoteArg(arg)
+		quotedArgs[i] = ssh.QuoteArg(arg)
 	}
 	return fmt.Sprintf("%s %s", quotedCmd, strings.Join(quotedArgs, " "))
 }
@@ -469,7 +463,7 @@ func runShellCommandViaSSH(ctx context.Context, hostname, command string, args [
 
 	// Add working directory if specified (properly quoted to prevent injection)
 	if workingDir != "" {
-		quotedDir := shellQuoteArg(workingDir)
+		quotedDir := ssh.QuoteArg(workingDir)
 		fullCmd = fmt.Sprintf("cd %s && %s", quotedDir, fullCmd)
 	}
 

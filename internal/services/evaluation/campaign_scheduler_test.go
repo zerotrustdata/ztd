@@ -35,7 +35,7 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, 112)
+	assert.Len(t, assignments, 170)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T) {
@@ -47,6 +47,8 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 	}
 	assert.True(t, byID["recovery-live-command-error"].GetExcludeWhenL2Enforced())
 	assert.True(t, byID["tool-arg-shell-command"].GetExcludeWhenL2Enforced())
+	assert.True(t, byID["code-fix-ca-bundle"].GetExcludeWhenL2Enforced())
+	assert.True(t, byID["code-restore-bad-change"].GetExcludeWhenL2Enforced())
 
 	variant := testModelVariant()
 	consensus, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
@@ -55,9 +57,9 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, consensus, 52)
+	assert.Len(t, consensus, 78)
 	for _, assignment := range consensus {
-		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command"}, assignment.GetScenarioId())
+		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change"}, assignment.GetScenarioId())
 	}
 
 	doctrine, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
@@ -66,7 +68,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, doctrine, 56)
+	assert.Len(t, doctrine, 85)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
@@ -152,7 +154,7 @@ func TestBuildHomogeneousAssignmentMatrix_SchedulesEachScenarioOnlyForItsEligibl
 		lite      = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
 	)
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{primary, assistant}, rolesByScenario["tool-arg-file-path"])
-	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{lite}, rolesByScenario["instruction-classify-severity"])
+	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{primary, assistant}, rolesByScenario["instruction-classify-severity"])
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{lite}, rolesByScenario["route-lite-triage"])
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{primary}, rolesByScenario["final-response-diagnosis"])
 	assert.ElementsMatch(t, []evalv1.ModelCampaignRole{assistant}, rolesByScenario["route-handoff-assistant"])
@@ -179,7 +181,7 @@ func TestBuildHomogeneousAssignmentMatrix_PreservesFilteredCatalogOrderAfterRelo
 	require.NoError(t, err)
 	// A custom suite's declared order is authoritative even when it differs
 	// from the built-in workflow and the filter is supplied in reverse order.
-	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[34]}
+	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[len(catalog.Scenarios)-1]}
 	catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(catalog)
 	require.NoError(t, err)
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{

@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -37,6 +38,7 @@ type MemberDispatcher interface {
 type Service struct {
 	members  MemberDispatcher
 	doctrine *governance.L1Doctrine
+	personas *agentpersona.Registry
 }
 
 // NewService builds the Tribunal over governed inference and the active
@@ -48,7 +50,11 @@ func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine) (*Ser
 	if doctrine == nil {
 		return nil, fmt.Errorf("tribunal: %w", constants.ErrDoctrineRequired)
 	}
-	return &Service{members: members, doctrine: doctrine}, nil
+	personas, err := agentpersona.NewRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("tribunal: personas: %w", err)
+	}
+	return &Service{members: members, doctrine: doctrine, personas: personas}, nil
 }
 
 // Deliberate runs one intent through the Tribunal. The result never carries an
@@ -60,13 +66,16 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 		return nil, err
 	}
 	template := req.GetMemberInference()
-	inferer := &memberInferer{members: s.members, template: template, prefix: req.GetProviderAttemptPrefix()}
+	templates := tribunalTemplates(req)
+	inferer := &memberInferer{members: s.members, templates: templates, prefix: req.GetProviderAttemptPrefix()}
 	cfg := Config{
 		Inferer:     inferer,
+		Personas:    s.personas,
 		Doctrine:    s.doctrine,
 		Tier:        req.GetTier(),
 		ModelTag:    template.GetModel(),
 		ModelDigest: template.GetModelDigest(),
+		StageModels: stageModels(templates),
 	}
 	run, err := Run(ctx, cfg, Request{
 		Request:          req.GetRequest(),
@@ -130,9 +139,10 @@ func (s *Service) ReviewAdmitted(ctx context.Context, req *tribunalv1.TribunalIn
 		return fmt.Errorf("tribunal: contextual review: %w", err)
 	}
 	arguments := models.RunShellCommandRequestFromProto(result.GetArguments())
-	inferer := &memberInferer{members: s.members, template: req.GetMemberInference(), prefix: req.GetProviderAttemptPrefix(), calls: result.GetMemberCalls()}
+	templates := tribunalTemplates(req)
+	inferer := &memberInferer{members: s.members, templates: templates, prefix: req.GetProviderAttemptPrefix(), calls: result.GetMemberCalls()}
 	defer func() { result.MemberCalls = inferer.calls }()
-	cfg := Config{Inferer: inferer, Doctrine: s.doctrine, Tier: req.GetTier(), ModelTag: req.GetMemberInference().GetModel(), ModelDigest: req.GetMemberInference().GetModelDigest()}
+	cfg := Config{Inferer: inferer, Personas: s.personas, Doctrine: s.doctrine, Tier: req.GetTier(), ModelTag: req.GetMemberInference().GetModel(), ModelDigest: req.GetMemberInference().GetModelDigest(), StageModels: stageModels(templates)}
 	index := req.GetStepStartIndex() + uint32(len(result.GetSteps()))
 	steps := stepRecorder{cfg: cfg, index: index}
 	defer func() { result.Steps = append(result.Steps, steps.steps...) }()
@@ -174,9 +184,8 @@ func (s *Service) ReviewAdmitted(ctx context.Context, req *tribunalv1.TribunalIn
 }
 
 // ValidateIntentRequest checks the fields the Tribunal needs, rejects a member
-// template that sets what the Gateway owns per call, and requires the member
-// template's role to be the inference role of the requested tier, so every
-// recorded step is attributed to the role its calls actually run under.
+// templates that set what the Gateway owns per call, and freezes every
+// authoring and vote persona so a stale Gateway fails closed before dispatch.
 func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 	switch {
 	case strings.TrimSpace(req.GetRequest()) == "":
@@ -189,30 +198,93 @@ func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 		return fmt.Errorf("tribunal: tier: %w", constants.ErrMissingRequiredField)
 	case req.GetMemberInference() == nil:
 		return fmt.Errorf("tribunal: member_inference: %w", constants.ErrMissingRequiredField)
-	case models.InferenceModelRoleFromProto(req.GetMemberInference().GetRole()) == models.InferenceModelRoleUnspecified:
-		return fmt.Errorf("tribunal: member_inference.role: %w", constants.ErrMissingRequiredField)
+	case req.GetMarshalInference() == nil:
+		return fmt.Errorf("tribunal: marshal_inference: %w", constants.ErrMissingRequiredField)
+	case req.GetAuditorInference() == nil:
+		return fmt.Errorf("tribunal: auditor_inference: %w", constants.ErrMissingRequiredField)
 	}
-	template := req.GetMemberInference()
-	switch {
-	case len(template.GetMessages()) > 0:
-		return fmt.Errorf("tribunal: member_inference.messages are set per call: %w", constants.ErrTribunalTemplateInvalid)
-	case len(template.GetTools()) > 0:
-		return fmt.Errorf("tribunal: member_inference.tools must be empty: %w", constants.ErrTribunalTemplateInvalid)
-	case template.GetProviderAttemptId() != "":
-		return fmt.Errorf("tribunal: member_inference.provider_attempt_id is set per call: %w", constants.ErrTribunalTemplateInvalid)
-	case template.GetActingAppId() != "":
-		return fmt.Errorf("tribunal: member_inference.acting_app_id comes from the caller identity: %w", constants.ErrTribunalTemplateInvalid)
-	case template.GetStream():
-		return fmt.Errorf("tribunal: member_inference.stream must be false: %w", constants.ErrTribunalTemplateInvalid)
-	case template.GetResponseFormat() != nil:
-		return fmt.Errorf("tribunal: member_inference.response_format is set per call: %w", constants.ErrTribunalTemplateInvalid)
-	}
-	tierRole, err := InferenceRoleForTier(req.GetTier())
-	if err != nil {
+	if _, err := InferenceRoleForTier(req.GetTier()); err != nil {
 		return fmt.Errorf("tribunal: tier: %w", err)
 	}
-	if models.InferenceModelRoleFromProto(template.GetRole()) != tierRole {
-		return fmt.Errorf("tribunal: member_inference.role %s does not run tier %s: %w", template.GetRole(), req.GetTier(), constants.ErrTribunalTierMismatch)
+	for stage, template := range tribunalTemplates(req) {
+		if models.InferenceModelRoleFromProto(template.GetRole()) == models.InferenceModelRoleUnspecified {
+			return fmt.Errorf("tribunal: %s inference.role: %w", stage, constants.ErrMissingRequiredField)
+		}
+		if len(template.GetMessages()) > 0 || len(template.GetTools()) > 0 || template.GetProviderAttemptId() != "" || template.GetActingAppId() != "" || template.GetStream() || template.GetResponseFormat() != nil {
+			return fmt.Errorf("tribunal: %s template has gateway-owned per-call fields: %w", stage, constants.ErrTribunalTemplateInvalid)
+		}
+	}
+	if err := validateStageRoles(req); err != nil {
+		return err
+	}
+	return validatePersonaBindings(req.GetPersonas())
+}
+
+func validateStageRoles(req *tribunalv1.TribunalIntentRequest) error {
+	registry, err := agentpersona.NewRegistry()
+	if err != nil {
+		return fmt.Errorf("tribunal: personas: %w", err)
+	}
+	stagePersonas := map[Stage]string{StageGenerate: string(MemberAxiom), StageMarshal: PersonaMarshal, StageAudit: PersonaAuditor}
+	templates := tribunalTemplates(req)
+	if req.GetHomogeneous() {
+		wantRole, err := InferenceRoleForTier(req.GetTier())
+		if err != nil {
+			return fmt.Errorf("tribunal: tier: %w", err)
+		}
+		candidate := templates[StageGenerate]
+		candidateIdentity := proto.Clone(candidate).(*operatorv1.InferenceDispatchRequest)
+		for stage, template := range templates {
+			stageIdentity := proto.Clone(template).(*operatorv1.InferenceDispatchRequest)
+			stageIdentity.Role = candidateIdentity.GetRole()
+			if models.InferenceModelRoleFromProto(template.GetRole()) != wantRole || !proto.Equal(stageIdentity, candidateIdentity) {
+				return fmt.Errorf("tribunal: homogeneous %s template differs from the designated candidate: %w", stage, constants.ErrTribunalTierMismatch)
+			}
+		}
+		return nil
+	}
+	for stage, template := range templates {
+		personaIDs := []string{stagePersonas[stage]}
+		if stage == StageGenerate {
+			personaIDs = make([]string, 0, len(AllMembers))
+			for _, member := range AllMembers {
+				personaIDs = append(personaIDs, string(member))
+			}
+		}
+		for _, personaID := range personaIDs {
+			persona, err := registry.Get(personaID)
+			if err != nil || models.InferenceModelRoleFromProto(template.GetRole()) != persona.Tier {
+				return fmt.Errorf("tribunal: %s template role does not match persona %s tier: %w", stage, personaID, constants.ErrTribunalTierMismatch)
+			}
+		}
+	}
+	return nil
+}
+
+func validatePersonaBindings(bindings []*evalv1.AgentPersonaBinding) error {
+	registry, err := agentpersona.NewRegistry()
+	if err != nil {
+		return fmt.Errorf("tribunal: personas: %w", err)
+	}
+	wantIDs := append([]Member(nil), AllMembers...)
+	expected := make(map[string]bool, len(wantIDs)+2)
+	for _, id := range wantIDs {
+		expected[string(id)] = true
+	}
+	expected[PersonaMarshal], expected[PersonaAuditor] = true, true
+	seen := make(map[string]bool, len(expected))
+	for _, binding := range bindings {
+		if binding == nil || !expected[binding.GetPersonaId()] || seen[binding.GetPersonaId()] {
+			return fmt.Errorf("tribunal: invalid persona binding: %w", constants.ErrPersonaDigestMismatch)
+		}
+		p, err := registry.Get(binding.GetPersonaId())
+		if err != nil || binding.GetVersion() != p.Version || binding.GetDigest() != p.Digest() || binding.GetVoteDigest() != p.VoteDigest() {
+			return fmt.Errorf("tribunal: persona %s binding differs from Gateway registry: %w", binding.GetPersonaId(), constants.ErrPersonaDigestMismatch)
+		}
+		seen[binding.GetPersonaId()] = true
+	}
+	if len(seen) != len(expected) {
+		return fmt.Errorf("tribunal: incomplete persona bindings: %w", constants.ErrPersonaDigestMismatch)
 	}
 	return nil
 }
@@ -281,14 +353,18 @@ func StageFromProto(stage tribunalv1.TribunalStage) Stage {
 // memberInferer answers each deliberation call with one governed inference
 // built from the request's template, and records every call it made.
 type memberInferer struct {
-	members  MemberDispatcher
-	template *operatorv1.InferenceDispatchRequest
-	prefix   string
-	calls    []*tribunalv1.TribunalMemberCall
+	members   MemberDispatcher
+	templates map[Stage]*operatorv1.InferenceDispatchRequest
+	prefix    string
+	calls     []*tribunalv1.TribunalMemberCall
 }
 
 func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
-	req := proto.Clone(m.template).(*operatorv1.InferenceDispatchRequest)
+	template := m.templates[call.Stage]
+	if template == nil {
+		return "", fmt.Errorf("tribunal: no inference template for %s: %w", call.Stage, constants.ErrMissingRequiredField)
+	}
+	req := proto.Clone(template).(*operatorv1.InferenceDispatchRequest)
 	req.ProviderAttemptId = fmt.Sprintf("%s-%d", m.prefix, len(m.calls)+1)
 	req.Messages = []*operatorv1.InferenceMessage{
 		textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, call.System),
@@ -317,6 +393,31 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	record.Receipt = response.GetReceipt()
 	record.ObservationReceipts = response.GetObservationReceipts()
 	return models.InferenceResultText(response.GetResult()), nil
+}
+
+func tribunalTemplates(req *tribunalv1.TribunalIntentRequest) map[Stage]*operatorv1.InferenceDispatchRequest {
+	return map[Stage]*operatorv1.InferenceDispatchRequest{StageGenerate: req.GetMemberInference(), StageMarshal: req.GetMarshalInference(), StageAudit: req.GetAuditorInference()}
+}
+
+func stageModels(templates map[Stage]*operatorv1.InferenceDispatchRequest) map[Stage]StageModel {
+	out := make(map[Stage]StageModel, len(templates))
+	for stage, template := range templates {
+		if template == nil {
+			continue
+		}
+		role := models.InferenceModelRoleFromProto(template.GetRole())
+		tier := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+		switch role {
+		case models.InferenceModelRoleLite:
+			tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+		case models.InferenceModelRoleAssistant:
+			tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+		case models.InferenceModelRolePrimary:
+			tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+		}
+		out[stage] = StageModel{Tier: tier, Tag: template.GetModel(), Digest: template.GetModelDigest()}
+	}
+	return out
 }
 
 func textMessage(role operatorv1.InferenceMessageRole, text string) *operatorv1.InferenceMessage {

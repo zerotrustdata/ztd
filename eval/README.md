@@ -2,22 +2,75 @@
 
 Checked-in evaluation program data and templates live here. **Runtime** campaign state (provider freezes, per-model inventories, rollout progress) lives under `.ztd/eval/` on the campaign host and is gitignored.
 
+**First run:** with a Gateway and an Inference Operator serving light models, run `./ztd eval models freeze` once, then `./ztd eval quickstart` (or `make eval-quickstart`). It runs one governed, verified, unpublished cell of the built-in `quickstart` suite. Add `--formation formation-lite` to run the same cell through the light formation. See [Quick Start](../docs/architecture/evals.md#quick-start-one-cell-evaluation).
+
 ## Checked-in program inventory
 
 | Path | Purpose |
 | --- | --- |
-| `eval/base-model-inventory.json` | **Default genesis program inventory** — 111 init-campaign models (41 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 4,551 cells total) |
-| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 45 entries at 41 cells each (`cells_per_run: 41`). Every entry is a model in `base-model-inventory.json`; the other 66 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
+| `eval/base-model-inventory.json` | **Default genesis program inventory** — 111 init-campaign models; each new campaign freezes the selected suite and its eligible-role matrix |
+| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 45 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 66 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
-| `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); loaded when present, otherwise built-in defaults apply |
-| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add` |
+| `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); the checked-in default formations; a missing, undecodable, or empty catalog fails closed |
+| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `gemma3:1b`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
 | `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
+| `eval/suites/consensus-screen.json` | Screening across all three roles: instructions, history grounding, file arguments, contradiction, untrusted instructions, and authorized observation; 6 scenarios, 14 cells per model |
+| `eval/suites/consensus-safety.json` | Consensus-compatible security scenarios and an authorized read-only control; 8 scenarios, 24 model-role cells per repetition |
+| `eval/suites/consensus-evidence.json` | History grounding, read-only tool selection and arguments, recovery, and contradiction handling; 8 scenarios, 16 model-role cells per repetition |
 
 The base inventory is the canonical 111-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are reference snapshots from the provider or public model manifests; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 
 The optional Hugging Face/Ollama rollout intake (`eval/rollout-intake-hf.json`) records pull routes and pending provider adapters, including Qwen 2.5 1B RLCD and Nemotron Dory 4B. Trend selection favors small models that can generate text for the existing campaign harness; embedding, classification, image-generation, and audio-only models are excluded.
 
-The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). Each single-model run is **41** assignments under `default-suite`.
+The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). New single-model runs have **85** doctrine/ratify assignments across 41 scenarios under `default-suite`, or **78** under consensus/notary; existing campaigns retain their frozen counts.
+
+## Consensus qualification
+
+The checked-in `consensus-screen` and `consensus-evidence` suites are `1.7.0`, refreshed from `default-suite@1.29.0`. `consensus-safety` is `1.5.0`, refreshed from `default-suite@1.28.0`. All three freeze persona versions, authoring digests, and vote digests. Lite cells grade the typed Triage classification; Primary and Assistant cells grade the requested answer or security response. `consensus-screen` provides a short comparison across the three roles. `consensus-safety` pairs seven refusal and bypass-resistance scenarios with `security-readonly-control`, so refusing every request cannot pass. `consensus-evidence` exercises allowed observations, receipt-backed history, argument correction, and evidence interpretation. These custom suites require no successful shell mutation, which the built-in default catalog excludes under L2-enforcing postures. Earlier campaign versions retain their frozen fixtures and grades.
+
+The prepared October 28 program covers six additional registry models with distinct model digests. Each has a screening campaign and a full `default-suite@1.22.0` campaign. All campaigns use one repetition with fresh investigations and the frozen `gemma4:e4b` judge. The judge is distinct from every subject. The Gateway's bound L2 consensus remains independent of the scored model or formation.
+
+| Model | Served tag |
+| --- | --- |
+| Granite 4 3B-H | `granite4:3b-h` |
+| LFM 2.5 1.2B Instruct | `hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` |
+| Spark X2.6 4B | `hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M` |
+| OLMo 3 7B Instruct | `olmo-3:7b-instruct` |
+| Qwen3 4B Instruct-2507 | `qwen3:4b-instruct-2507-q4_K_M` |
+| Nemotron 3.5 Bolt E4B | `hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M` |
+
+Three formations are added to the project overlay. Every role binds to an installed registry entry with provider class `ollama`; Rnj-1 is excluded because it cannot run on this installation. Their new frozen system campaigns cover screening, safety, and evidence suites. A system assignment executes its designated eligible role from the formation; it does not automatically execute all three roles in sequence.
+
+| Formation | Primary | Assistant | Lite | Estimated model and KV-cache memory / budget |
+| --- | --- | --- | --- | --- |
+| `formation-02` | Spark X2.6 4B | Granite 4 3B-H | LFM 2.5 1.2B Instruct | 6,532 / 12,288 MiB |
+| `formation-03` | Qwen3 4B Instruct-2507 | Granite 4 3B-H | LFM 2.5 1.2B Instruct | 6,279 / 12,288 MiB |
+| `formation-04` | Nemotron 3.5 Bolt E4B | Ministral 3 3B | LFM 2.5 1.2B Instruct | 8,755 / 16,384 MiB |
+
+These estimates cover formation slots, not the independent judge and bound consensus models or a measured provider memory-fit result. The corrected rollout definitions are dry-run validated. No evaluations of the new Qwen3 campaigns or replacement formation campaigns have started; earlier screening and formation evidence is retained.
+
+| Saved rollout | Campaigns | Assignments under Consensus |
+| --- | --- | --- |
+| `consensus-new-screen-20261028` | One screening campaign per model | 60 |
+| `consensus-new-full-20261028` | One full campaign per model | 312 |
+| `consensus-ollama-formations-20261028` | All three formations across screening, safety, and evidence | 123 |
+
+The screening and full rollout definitions replace their Rnj-1 campaign with Qwen3 Instruct. The earlier `consensus-new-formations-20261028` definition also points to the replacement formation campaigns for future fresh executions. Use the new `consensus-ollama-formations-20261028` name for the corrected batch: resuming a historical execution preserves its original frozen campaigns, including Rnj-1. The old Rnj-containing formation was removed from the project overlay, and its active safety run was cancelled after its current assignment; its recorded evidence remains intact.
+
+Run the saved rollouts from the repository root. Each executes serially with strict provider observation, model provenance, and evidence verification. Inspect the Gateway and consensus first: every run freezes the actual posture and bound consensus, and refuses to resume if either changes. See [Evaluation Programs](../docs/architecture/evals.md) for evidence and verification ownership.
+
+```bash
+export SSH_AUTH_SOCK=/run/user/1000/ztd-ssh-agent.sock
+./ztd gw status
+./ztd consensus status --json
+./ztd eval rollout run consensus-new-screen-20261028
+./ztd eval rollout run consensus-new-full-20261028
+./ztd eval rollout run consensus-ollama-formations-20261028
+```
+
+Keep the bound L2 vote model constant across a comparison. Repeat a saved rollout to allocate fresh runs, or use `ztd eval rollout resume` to continue an interrupted execution. To run only its first campaign, add `--until 1`. A later suite revision requires a new campaign ID to preserve earlier evidence. To use the checked-in fairness fixes, update the registered screening/evidence suites with `ztd eval suites update eval/suites/consensus-screen.json` and `ztd eval suites update eval/suites/consensus-evidence.json`, then create new campaigns and a new named rollout. Updating a registered suite does not replace any campaign’s frozen copy. Existing rollout resumes retain their original criteria; they do not adopt the new suite revision. On a fresh runtime, register the custom suites with `ztd eval suites create`, then freeze campaigns with `ztd eval campaigns create`; the saved campaigns and rollout definitions live in the local evaluation store.
+
+A verified run means its evidence passes verification; its models can still fail tasks. Review assignment verdicts, failed grades, and sealed traces with `ztd eval runs assignments` and `ztd eval runs trace`, and correlate transaction and provider-attempt IDs with `ztd gw logs`. Report invalid evidence, provider failures, and missing witnesses separately from observed model failures. Preserve the original runs when fixing an evaluator bug, and execute fresh runs to validate the correction.
 
 ## Small-model catalog refresh (2026-10-24)
 
@@ -59,8 +112,9 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 # manual `ollama create` from their Hugging Face GGUF.
 
 # 1. Freeze provider inventory into runtime registry. --probe-capabilities records
-#    governed capability observations for diagnostics. Probes never exclude a
-#    model or remove tools: every evaluation records the current provider response.
+#    governed capability observations for diagnostics. New campaign runs also
+#    freeze their own signed tool-call probe before the first tool-bearing cell.
+#    A failed structured-call probe excludes tool cells; answer-only cells still run.
 ./ztd eval models freeze --probe-capabilities
 
 ./ztd eval models list
@@ -98,7 +152,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval campaigns create` | Create a frozen campaign definition over one registry model |
 | `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags. Each run freezes the live Gateway posture and consensus binding when it starts and prints them |
 | `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
-| `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model that shares a digest with a queued model or with one earlier in rollout order (an alias). Capability probes never exclude a model |
+| `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model that shares a digest with a queued model or with one earlier in rollout order (an alias). Inventory capability observations do not exclude queue entries. Runs use their own receipt-backed tool-call probe to gate tool-bearing assignments |
 | `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models. A run in which the provider failed every assignment fails the entry as `provider_failure (<class>)`, for example `(capability_unsupported)` for a model without tool support; stopping a run ends the batch and leaves the entry pending. `--gate-smoke` screens with the smoke suite first; `--promote-on-pass` follows a smoke pass with the full run. The batch holds the queue lock: `rollout add`/`remove`/`retry`/`skip` fail until it ends. Model-driven runs refuse any Data Operator whose working directory is, contains, or sits inside the project, except a throwaway Operator directly under `.ztd/operators/<name>` (the embedded Operator included) (INV-EVAL-CAMP-32) |
 | `ztd eval rollout list` | Inspect queue entries |
 | `ztd eval rollout next` | Show the next pending model |

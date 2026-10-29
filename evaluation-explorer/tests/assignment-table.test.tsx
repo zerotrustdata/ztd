@@ -35,6 +35,22 @@ function rowIds() {
 }
 
 describe('AssignmentTable', () => {
+  it('opens the assignment reply and tool calls in the same table', async () => {
+    const user = userEvent.setup();
+    renderTable([assignment(0, {
+      model_response: undefined,
+      failure_reason: 'The model never called the expected tool.',
+      trajectory_outcome: 'no_tool_call',
+      role_transcripts: [{ role: 'primary', response: 'I looked and stopped.', tool_calls: [{ tool_name: 'read_file', arguments_json: '{"path":"/tmp/a"}', success: false }] }],
+    })]);
+    expect(screen.queryByText('I looked and stopped.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show task-0 detail' }));
+    expect(screen.getByText('I looked and stopped.')).toBeInTheDocument();
+    expect(screen.getByText(/read_file failed/)).toBeInTheDocument();
+    expect(screen.getByText('no tool call')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open assignment' })).toHaveAttribute('href', expect.stringContaining(`/assignments/${ids[0]}`));
+  });
+
   it('prioritizes tasks and outcomes, abbreviates IDs, and keeps full detail links', () => {
     renderTable([assignment(0)]);
     const table = screen.getByRole('table');

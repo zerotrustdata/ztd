@@ -17,6 +17,8 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -170,10 +172,11 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 	}
 
 	// Assert every cobra flag is emitted when all options are populated,
-	// except for UI-only flags that are not re-executed.
+	// except for flags handled by the invoking process before re-execution.
 	skipReExec := map[string]bool{
-		"interactive": true, // --interactive is a one-time UI flow, not re-executed
-		"quiet":       true, // --quiet only controls parent CLI startup guidance
+		"interactive":                  true, // --interactive is a one-time UI flow, not re-executed
+		"quiet":                        true, // --quiet only controls parent CLI startup guidance
+		shared.FlagAcceptUnrecoverable: true, // The parent completes the recovery-key ceremony before spawning.
 	}
 	cobraFlags.VisitAll(func(f *pflag.Flag) {
 		if skipReExec[f.Name] {

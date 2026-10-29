@@ -6,7 +6,7 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { evalStore } from '../src/state/store';
 import { AboutView } from '../src/views/AboutView';
-import { ZTD_CORE_DOCS, ZTD_REPO_URL, PLATFORM_CONTACT_CALENDLY, PLATFORM_CONTACT_EMAIL, PLATFORM_CONTACT_LINKEDIN } from '../src/content/platform';
+import { ZTD_CORE_DOCS, ZTD_REPO_URL, PLATFORM_CONTACT_CALENDLY, PLATFORM_CONTACT_EMAIL, PLATFORM_CONTACT_LINKEDIN, SPONSOR_URL } from '../src/content/platform';
 
 describe('AboutView', () => {
   beforeEach(() => {
@@ -44,6 +44,7 @@ describe('AboutView', () => {
     expect(panel.getByRole('link', { name: 'Connect on LinkedIn' })).toHaveAttribute('href', PLATFORM_CONTACT_LINKEDIN);
     expect(panel.getByRole('link', { name: PLATFORM_CONTACT_EMAIL })).toHaveAttribute('href', `mailto:${PLATFORM_CONTACT_EMAIL}`);
     expect(panel.getByRole('link', { name: 'Book a call with Calendly' })).toHaveAttribute('href', PLATFORM_CONTACT_CALENDLY);
+    expect(panel.getByRole('link', { name: 'sponsor it' })).toHaveAttribute('href', SPONSOR_URL);
     expect(panel.getByRole('link', { name: 'Explore the ztd Codebase on GitHub' })).toHaveAttribute('href', ZTD_REPO_URL);
   });
 });

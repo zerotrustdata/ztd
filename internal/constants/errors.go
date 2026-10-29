@@ -110,10 +110,14 @@ var (
 	ErrKeyStoreNoDefaultCollection = errors.New("secret service has no default keyring: create a persistent one (Seahorse > Passwords and Keys > New Password Keyring > Set as default)")
 	ErrKeyStoreDPAPIFailed         = errors.New("dpapi: protect or unprotect master key failed")
 	ErrKeyStoreSSHAgentUnavailable = errors.New("ssh-agent unavailable: start one and add an Ed25519 or RSA key (eval \"$(ssh-agent)\" && ssh-add), or forward yours with ssh -A")
-	ErrKeyStoreSSHAgentKeyMissing  = errors.New("ssh-agent does not hold the key that sealed the master key: ssh-add it")
+	ErrKeyStoreSSHAgentKeyMissing  = errors.New("ssh-agent does not hold the key that sealed the master key")
 
 	ErrKeyStoreInvalidSecretName = errors.New("secret name must be a single non-hidden path component")
 	ErrKeyStoreOrphanedSecrets   = errors.New("secrets are sealed under a master key the selected key store does not hold")
+	ErrKeyStoreRecoveryRequired  = errors.New("refusing to create a master key until its recovery key is saved from a terminal, or --accept-unrecoverable is set")
+	ErrKeyStoreRecoveryDeclined  = errors.New("recovery key was not confirmed; nothing was stored")
+	ErrKeyStoreRecoveryMismatch  = errors.New("recovery key does not match; nothing was stored")
+	ErrKeyStoreRecoveryConflict  = errors.New("OS key store already holds a different master key; refusing to replace it")
 	ErrKeyStoreSSHAgentUntrusted = errors.New("ssh-agent socket is served by another user")
 	ErrKeyStoreKeychainFailed    = errors.New("macOS Keychain call failed")
 
@@ -286,6 +290,19 @@ var (
 	// ErrMCPToolUnsupportedPlatform marks a native tool whose OS data source
 	// (/proc, systemctl, kernel log) does not exist on this host.
 	ErrMCPToolUnsupportedPlatform = errors.New("tool is unsupported on this platform")
+
+	// ErrMCPToolGovernedAction marks a governed action tool reached as an
+	// MCP_CALL. It runs only as its own typed action, so an MCP_CALL naming it
+	// can never skip that action's checks.
+	ErrMCPToolGovernedAction = errors.New("tool runs only as its own governed action")
+
+	// ErrMCPToolSessionRequired marks a governed action tool built without the
+	// verified Operator session that scopes its ledger.
+	ErrMCPToolSessionRequired = errors.New("governed action tool requires the verified operator session")
+
+	// ErrFileDiffOutsideSession marks a FETCH_FILE_DIFF diff_id whose file
+	// mutation belongs to a different operator session than the request.
+	ErrFileDiffOutsideSession = errors.New("file diff belongs to another operator session")
 
 	// MCP OOM detection errors
 	ErrMCPGetWorkingDirectory = errors.New("get working directory")
@@ -964,6 +981,8 @@ var (
 	ErrRegistrationOperatorNoActiveSession        = errors.New("operator has no active session")
 	ErrOperatorStopEmbedded                       = errors.New("embedded operator cannot be stopped remotely")
 	ErrOperatorStopNotRemote                      = errors.New("only remote operators can be stopped")
+	ErrOperatorTerminateEmbedded                  = errors.New("embedded operator cannot be terminated")
+	ErrOperatorTerminateIDMismatch                = errors.New("operator_id does not match the request path")
 	ErrRegistrationFailedToMarshalSessionIDs      = errors.New("failed to marshal session IDs")
 	ErrRegistrationFailedToSetKVBinding           = errors.New("failed to set KV binding")
 	ErrRegistrationFailedToGetBoundSessions       = errors.New("failed to get bound sessions document")
@@ -1415,6 +1434,7 @@ var (
 
 	// Execution topology formation errors.
 	ErrFormationInvalid                    = errors.New("formation: configuration is invalid")
+	ErrFormationCatalogUnavailable         = errors.New("formation: checked-in catalog is missing, undecodable, or empty")
 	ErrFormationProviderOverlap            = errors.New("formation: provider overlap is not permitted")
 	ErrFormationFamilyOverlap              = errors.New("formation: model-family overlap is not permitted")
 	ErrFormationVRAMBudgetExceeded         = errors.New("formation: estimated VRAM exceeds budget")
@@ -1499,6 +1519,7 @@ var (
 	ErrEvaluationInterrogationCount        = errors.New("evaluation: interrogation block does not hold exactly three questions")
 	ErrEvaluationInterrogationNotNumbered  = errors.New("evaluation: interrogation line is not a numbered question")
 	ErrEvaluationInterrogationNotBinary    = errors.New("evaluation: interrogation question is not strictly yes/no")
+	ErrEvaluationInterrogationNotSignalled = errors.New("evaluation: the reasoner wrote the interrogation instead of signalling the Interrogator")
 	ErrEvaluationSuiteInvalid              = errors.New("evaluation: suite definition is invalid")
 	ErrEvaluationSuiteBuiltin              = errors.New("evaluation: built-in suites are read-only")
 	ErrEvaluationSuiteExists               = errors.New("evaluation: suite already exists")
@@ -1592,4 +1613,12 @@ var (
 	ErrEventStreamTransport      = errors.New("stream events must use sse transport only")
 	ErrEventRegistryUnknownField = errors.New("event registry entry has a field outside the declared shape")
 	ErrEventTransportViolation   = errors.New("event transport violation")
+)
+
+// Agent persona errors.
+var (
+	ErrPersonaDuplicate = errors.New("agentpersona: duplicate persona ID")
+	ErrPersonaInvalid   = errors.New("agentpersona: persona definition invalid")
+	// ErrPersonaDigestMismatch: a persona differs from the campaign's frozen binding.
+	ErrPersonaDigestMismatch = errors.New("agentpersona: persona does not match the frozen binding")
 )

@@ -137,13 +137,15 @@ func TestAuthoringPreservesLiteralUtilityArguments(t *testing.T) {
 	}
 }
 
-func TestNemesisNegativeControlIsConfinedToAuthoring(t *testing.T) {
-	generate := memberSystemPrompt(MemberNemesis)
-	assert.Contains(t, generate, "negative control")
-	assert.Contains(t, generate, "excluded from voting")
-	assert.NotContains(t, generate, "emit the standard argv")
-	vote, _ := ConsensusVotePrompt(MemberNemesis, ConsensusSubject{})
-	assert.NotContains(t, vote, "negative control")
-	assert.NotContains(t, vote, "excluded from voting")
-	assert.Contains(t, vote, "privilege escalation")
+func TestNemesisAuthoringIsCunningNotAlwaysAggressive(t *testing.T) {
+	generate := testPersonaPrompt(string(MemberNemesis))
+	assert.Contains(t, generate, "always cunning, not always aggressive")
+	assert.Contains(t, generate, "propose the honest correct argument set")
+	assert.NotContains(t, generate, "excluded from voting")
+	vote, _, err := ConsensusVotePrompt(MemberNemesis, ConsensusSubject{})
+	require.NoError(t, err)
+	assert.Contains(t, vote, "You are Nemesis of the ztd Tribunal")
+	assert.Contains(t, vote, "always cunning, not always aggressive")
+	assert.Contains(t, vote, `"decision":"approve"|"deny"`)
+	assert.Contains(t, vote, "Independently assess this governed action and target")
 }

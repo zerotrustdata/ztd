@@ -46,6 +46,7 @@ type executorChatBody struct {
 			Parameters json.RawMessage `json:"parameters"`
 		} `json:"function"`
 	} `json:"tools"`
+	Format json.RawMessage `json:"format"`
 }
 
 // executorChatBodies decodes every /api/chat body the Inference Operator sent,
@@ -197,7 +198,7 @@ func executorImportRequest(t *testing.T, env *realStackAgentRun, assignmentID st
 // the prompt names, with a stable provider call ID.
 func executorShellCallReply() fixtures.OllamaReply {
 	return fixtures.OllamaReply{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
-		reply := realStackHealthCatReply(request)
+		reply := realStackHealthCheckReply(request)
 		for i := range reply.ToolCalls {
 			reply.ToolCalls[i].ID = "call-1"
 		}
@@ -221,7 +222,7 @@ func TestCampaignAgentExecutorIntegration_ProviderReceivesDesignatedPersonaAndSe
 		assert.Contains(t, prompt, "F7 | Privilege escalation")
 		assert.Contains(t, prompt, "<loyalty>")
 		assert.Contains(t, prompt, "<dissent>")
-		assert.Contains(t, prompt, "<interrogation_protocol>")
+		assert.Contains(t, prompt, "<clarification_needed>", "reasoners signal; the Interrogator asks")
 		require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 	}
 
@@ -256,10 +257,10 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenA
 	assert.True(t, call.Success)
 	assert.Equal(t, constants.MCPToolRunShellCommand, call.ToolName)
 	assert.Equal(t, string(constants.ActionTypeMcpCall), call.ActionType)
-	healthPath := trace.Workspace.Root + "/status/health.txt"
-	assert.JSONEq(t, string(realStackShellArguments("cat", healthPath)), call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
-	// cat reads the absolute path the prompt rendered, so the result is the
-	// workspace fixture's own content as the Data Operator returned it.
+	healthPath := trace.Workspace.Root + "/bin/healthcheck.sh"
+	assert.JSONEq(t, string(realStackShellArguments("sh", healthPath)), call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
+	// sh runs the absolute path the prompt rendered, so the result is the
+	// workspace fixture's own output as the Data Operator returned it.
 	assert.Contains(t, call.ResultJSON, "HEALTHY")
 	require.NotNil(t, call.Receipt, "the executed MCP_CALL keeps its signed receipt")
 	assert.Equal(t, call.TransactionID, call.Receipt.GetTransactionId())
@@ -313,6 +314,7 @@ func TestCampaignAgentExecutorIntegration_AnswerScenarioDeclaresNoTools(t *testi
 	assert.Contains(t, bodies[0].Messages[0].Content, "You are Sage,")
 	assert.Contains(t, bodies[0].Messages[0].Content, "F7 | Privilege escalation")
 	assert.Contains(t, bodies[0].Messages[0].Content, "No tools are available")
+	assert.Empty(t, bodies[0].Format, "only a Triage turn is constrained to a response schema")
 	trace := executorLoadTrace(t, env, res)
 	require.NotNil(t, trace.Input)
 	assert.Empty(t, trace.Input.Tools)
@@ -645,7 +647,7 @@ func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerif
 							if providerFails {
 								return fixtures.OllamaReply{Failure: "provider failed after deadline"}
 							}
-							reply := realStackHealthCatReply(request)
+							reply := realStackHealthCheckReply(request)
 							reply.Content = "late answer"
 							return reply
 						}},
@@ -707,14 +709,14 @@ func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOut
 func executorSecretHealthCatalog(secret string) func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error) {
 	return func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error) {
 		def := evaluation.DefaultScenarioSuite()
-		suite := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: "suite-secret-health", Version: "1.0.0", Description: "secret health fixture"}
+		suite := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: "suite-secret-health", Version: "1.0.0", Description: "secret health fixture", Personas: def.Personas}
 		for _, scenario := range def.Scenarios {
 			if scenario.ScenarioID != realStackScenarioID {
 				continue
 			}
 			for i, file := range scenario.Input.WorkspaceFiles {
-				if file.RelPath == "status/health.txt" {
-					scenario.Input.WorkspaceFiles[i].Content = "HEALTHY\nKey: " + secret + "\n"
+				if file.RelPath == "bin/healthcheck.sh" {
+					scenario.Input.WorkspaceFiles[i].Content = "printf 'HEALTHY\\nKey: " + secret + "\\n'\n"
 				}
 			}
 			suite.Scenarios = append(suite.Scenarios, scenario)

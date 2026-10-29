@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -302,27 +304,59 @@ type ExecutionTopologies struct {
 	formations []Formation
 }
 
-// NewExecutionTopologies returns the preregistered sovereign benchmark formations.
-// It loads from eval/formation-catalog.json if available, otherwise uses hardcoded defaults.
-func NewExecutionTopologies() (*ExecutionTopologies, error) {
-	var formations []Formation
-
-	// Try to load from checked-in catalog file first
-	if data, err := os.ReadFile(constants.EvaluationFormationCatalogPath); err == nil {
-		var catalogData persistedFormationCatalogOverlay
-		if err := json.Unmarshal(data, &catalogData); err == nil {
-			formations = make([]Formation, 0, len(catalogData.Formations))
-			for _, entry := range catalogData.Formations {
-				formations = append(formations, entry.toFormation())
-			}
+// NewExecutionTopologies returns the preregistered sovereign benchmark formations
+// from the checked-in eval/formation-catalog.json. It fails closed with
+// ErrFormationCatalogUnavailable when the catalog is missing, undecodable, or
+// empty: no formation or model is ever synthesized in its place.
+func resolveCatalogPath() string {
+	catalogPath := constants.EvaluationFormationCatalogPath
+	if _, err := os.Stat(catalogPath); err == nil {
+		return catalogPath
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return catalogPath
+	}
+	// If the current working directory is inside a protected runtime path (such as
+	// an isolated test sandbox under .ztd/tmp), do not escape upward to the parent repository.
+	if security.IsProtectedRuntimePath(dir) {
+		return catalogPath
+	}
+	for {
+		candidate := filepath.Join(dir, constants.EvaluationFormationCatalogPath)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
 		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
 	}
+	return catalogPath
+}
 
-	// Fall back to defaults if catalog file not loaded
-	if len(formations) == 0 {
-		formations = defaultExecutionTopologies()
+// NewExecutionTopologies returns the preregistered sovereign benchmark formations
+// from the checked-in eval/formation-catalog.json. It fails closed with
+// ErrFormationCatalogUnavailable when the catalog is missing, undecodable, or
+// empty: no formation or model is ever synthesized in its place.
+func NewExecutionTopologies() (*ExecutionTopologies, error) {
+	catalogPath := resolveCatalogPath()
+	data, err := os.ReadFile(catalogPath)
+	if err != nil {
+		return nil, fmt.Errorf("formation: read catalog %s: %w: %w", constants.EvaluationFormationCatalogPath, constants.ErrFormationCatalogUnavailable, err)
 	}
-
+	var catalogData persistedFormationCatalogOverlay
+	if err := json.Unmarshal(data, &catalogData); err != nil {
+		return nil, fmt.Errorf("formation: decode catalog %s: %w: %w", constants.EvaluationFormationCatalogPath, constants.ErrFormationCatalogUnavailable, err)
+	}
+	if len(catalogData.Formations) == 0 {
+		return nil, fmt.Errorf("formation: catalog %s lists no formations: %w", constants.EvaluationFormationCatalogPath, constants.ErrFormationCatalogUnavailable)
+	}
+	formations := make([]Formation, 0, len(catalogData.Formations))
+	for _, entry := range catalogData.Formations {
+		formations = append(formations, entry.toFormation())
+	}
 	for _, formation := range formations {
 		if err := formation.Validate(); err != nil {
 			return nil, err
@@ -408,48 +442,4 @@ func RemoveFormation(topologies *ExecutionTopologies, id string) (*ExecutionTopo
 	}
 
 	return &ExecutionTopologies{formations: remaining}, removed, nil
-}
-
-func defaultExecutionTopologies() []Formation {
-	return []Formation{
-		{
-			ID: "qwen-powerhouse", DisplayName: "Qwen Powerhouse", Description: "Qwen3.5 reasoning primary with a Ministral assistant and Gemma lite triage.", MaxVRAMMiB: FormationMaxVRAMMiB,
-			Primary:   formationModel("qwen35-9b", "Qwen 3.5 9B", "Alibaba", "Qwen 3.5", "qwen3.5:9b", 9_000_000_000, "Q4_K_M", 5632, 512),
-			Assistant: formationModel("ministral-3b-qwen", "Ministral 3 3B", "Mistral", "Mistral 3", "ministral-3:3b", 3_800_000_000, "Q4_K_M", 2560, 512),
-			Lite:      formationModel("gemma3-1b", "Gemma 3 1B", "Google", "Gemma 3", "gemma3:1b", 999_890_000, "Q4_K_M", 768, 256),
-		},
-		{
-			ID: "deepseek-reasoning-tower", DisplayName: "DeepSeek Reasoning Tower", Description: "DeepSeek R1 reasoning primary with efficient companions for fast triage and structured work.", MaxVRAMMiB: FormationMaxVRAMMiB,
-			Primary:   formationModel("deepseek-r1-7b", "DeepSeek R1 7B", "DeepSeek", "DeepSeek", "deepseek-r1:7b", 7_600_000_000, "Q4_K_M", 4736, 512),
-			Assistant: formationModel("ministral-3b", "Ministral 3 3B", "Mistral", "Mistral 3", "ministral-3:3b", 3_800_000_000, "Q4_K_M", 2560, 512),
-			Lite:      formationModel("llama32-1b", "Llama 3.2 1B", "Meta", "Llama 3.2", "llama3.2:1b", 1_200_000_000, "Q8_0", 1024, 256),
-		},
-		{
-			ID: "gemma-cascade", DisplayName: "Gemma Cascade", Description: "Gemma 4 primary with a Qwen assistant and Llama lite triage.", MaxVRAMMiB: FormationMaxVRAMMiB,
-			Primary:   formationModel("gemma4-e4b", "Gemma 4 E4B", "Google", "Gemma 4", "gemma4:e4b", 8_000_000_000, "Q4_K_M", 5120, 512),
-			Assistant: formationModel("qwen25-7b", "Qwen 2.5 7B", "Alibaba", "Qwen 2.5", "qwen2.5:7b", 7_600_000_000, "Q4_K_M", 4736, 512),
-			Lite:      formationModel("llama32-1b-gemma", "Llama 3.2 1B", "Meta", "Llama 3.2", "llama3.2:1b", 1_200_000_000, "Q8_0", 1024, 256),
-		},
-		{
-			ID: "llama-meta-stack", DisplayName: "Llama Meta Stack", Description: "Llama 3.1 primary with a Phi 4 assistant and Gemma lite triage.", MaxVRAMMiB: FormationMaxVRAMMiB,
-			Primary:   formationModel("llama31-8b", "Llama 3.1 8B", "Meta", "Llama 3.1", "llama3.1:8b", 8_000_000_000, "Q4_K_M", 5120, 512),
-			Assistant: formationModel("phi4-mini-38b", "Phi4 Mini 3.8B", "Microsoft", "Phi 4", "phi4-mini:3.8b", 3_800_000_000, "Q4_K_M", 2560, 512),
-			Lite:      formationModel("gemma3-1b-llama", "Gemma 3 1B", "Google", "Gemma 3", "gemma3:1b", 999_890_000, "Q4_K_M", 768, 256),
-		},
-		{
-			ID: "ultra-efficient-speedster", DisplayName: "Ultra-Efficient Speedster", Description: "Small, fast models across all roles for latency-sensitive tasks.", MaxVRAMMiB: FormationMaxVRAMMiB,
-			Primary:   formationModel("qwen35-4b", "Qwen 3.5 4B", "Alibaba", "Qwen 3.5", "qwen3.5:4b", 4_000_000_000, "Q4_K_M", 2560, 256),
-			Assistant: formationModel("gemma4-e2b", "Gemma 4 E2B", "Google", "Gemma 4", "gemma4:e2b", 5_100_000_000, "Q4_K_M", 3200, 256),
-			Lite:      formationModel("llama32-1b-speed", "Llama 3.2 1B", "Meta", "Llama 3.2", "llama3.2:1b", 1_200_000_000, "Q8_0", 1024, 256),
-		},
-	}
-}
-
-func formationModel(variantID, displayName, provider, family, tag string, parameters uint64, quantization string, modelVRAMMiB, cacheMiB uint64) FormationModel {
-	return FormationModel{
-		VariantID: variantID, DisplayName: displayName, Provider: provider, Family: family,
-		ProviderClass: constants.InferenceProviderOllama, ServedModelTag: tag, Trust: FormationTrustSovereign,
-		Quantization: quantization, ParameterCount: parameters, EstimatedModelVRAMMiB: modelVRAMMiB,
-		EstimatedKVCacheMiB: cacheMiB,
-	}
 }

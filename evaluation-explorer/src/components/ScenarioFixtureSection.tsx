@@ -145,11 +145,11 @@ export function ScenarioFixtureSection({ id, bindings, scenarioId }: {
 
   if (!scenarioId || !input || !gold || !inputArtifact || !goldArtifact) return null;
 
+  const failed = inputState.status === 'failed' || goldState.status === 'failed';
   return (
-    <PanelSection id={id} className="assignment-scenario-fixture" title="Scenario fixture">
+    <PanelSection id={id} className="assignment-scenario-fixture" title="Scenario fixture" collapsed={!failed} signal={failed ? 'Verification failed' : 'Frozen input and gold criteria'}>
       <p className="task-section-note">
-        The exact scenario bytes the campaign froze, verified in this browser against their published SHA-256 and this
-        assignment's scenario before display.
+        The bytes the campaign froze, checked in this browser against their published SHA-256.
       </p>
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Input</span></div>

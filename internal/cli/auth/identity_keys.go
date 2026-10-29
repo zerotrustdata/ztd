@@ -44,6 +44,14 @@ func openIdentityKeystore(fileSvc fs.RuntimeFileService, cfg *config.Config, cre
 	if err != nil {
 		return nil, fmt.Errorf("auth: configure logger: %w", err)
 	}
+	if create && cfg.Keyring == nil {
+		// A fresh OS key store is created here only when no gateway or operator
+		// start has stored the master key yet. Tests inject a keyring and skip
+		// this ceremony.
+		opts.Ceremony = func(key []byte) error {
+			return keystore.ConfirmRecoveryKey(os.Stderr, os.Stdin, keystore.RecoveryRoleRuntime, "", key, keystore.ReaderIsTerminal(os.Stdin), false)
+		}
+	}
 	if create {
 		return keystore.Open(fileSvc, logger, opts)
 	}

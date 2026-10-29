@@ -28,12 +28,12 @@ func TestScenarioCatalog_OperationalPromptsAndRoleCapabilities(t *testing.T) {
 			assert.NotContains(t, strings.ToLower(bp.Input.UserPrompt), "synthetic")
 			for _, role := range bp.EligibleRoles {
 				if role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE {
-					assert.Empty(t, bp.AllowedTools, "Lite gets injected context, never retrieval tools")
-					assert.Empty(t, bp.ForbiddenTools)
+					assert.Empty(t, bp.ExpectedTools, "Lite gets injected context, never required tool calls")
+					assert.False(t, bp.TribunalCommands)
 				}
-				if len(bp.Gold.FileState) > 0 && bp.Gold.PolicyExpectation.ExpectedOutcome != "deny" {
+				if bp.ScenarioID == "code-restore-bad-change" {
 					assert.NotEqual(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, role,
-						"multi-step repair belongs to Sage rather than Dash's fast path")
+						"multi-step ledger restore belongs to Sage rather than Dash's fast path")
 				}
 			}
 		})
@@ -61,9 +61,10 @@ func TestAgentConversation_LiteReceivesSeedMemoryAsEvidence(t *testing.T) {
 	assert.NotContains(t, messages[0].GetParts()[0].GetText(), "app-report", "case notes cannot become system instructions")
 }
 
-func TestScenarioLiteMemory_InjectedCaseMemoryCarriesGoldScheduleFact(t *testing.T) {
+func TestScenarioLiteMemory_IncludesHeldContextInTriageInput(t *testing.T) {
 	blueprint := contextLiteMemory()
-	require.NotNil(t, blueprint.Gold.ContentCheck)
+	require.NotNil(t, blueprint.Gold.Players)
+	require.NotNil(t, blueprint.Gold.Players.Triage)
 	run := &agentRun{designated: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE,
 		req: AssignmentExecutionRequest{ScenarioInput: blueprint.Input}}
 	messages, err := run.conversation()
@@ -73,24 +74,8 @@ func TestScenarioLiteMemory_InjectedCaseMemoryCarriesGoldScheduleFact(t *testing
 	for _, part := range messages[1].GetParts() {
 		injected.WriteString(part.GetText())
 	}
-	// Lite has no tools, so each unmasked gold term group must be reachable from the injected case memory.
-	// Masked job names (containing "…") are produced by the model from the unmasked notes.
-	for _, group := range blueprint.Gold.ContentCheck.RequiredTerms {
-		var unmasked []string
-		for _, term := range group {
-			if !strings.Contains(term, "…") {
-				unmasked = append(unmasked, term)
-			}
-		}
-		if len(unmasked) == 0 {
-			continue
-		}
-		found := false
-		for _, term := range unmasked {
-			found = found || strings.Contains(injected.String(), term)
-		}
-		assert.True(t, found, "gold fact %q missing from Lite injected memory: %s", unmasked, injected.String())
-	}
+	assert.Contains(t, injected.String(), "app-report", "the held case context is part of Triage's user input")
+	assert.Contains(t, injected.String(), "app-dump")
 	assert.Contains(t, injected.String(), "03:00")
 }
 

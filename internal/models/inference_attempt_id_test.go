@@ -24,7 +24,7 @@ func TestValidateProviderAttemptID(t *testing.T) {
 		wantErr error
 	}{
 		{name: "uuid with prefix", id: "attempt-3f2b8c1e-9d4a-4b7e-8a11-0c5d6e7f8091"},
-		{name: "formation role id", id: "qwen-powerhouse-primary_1.retry"},
+		{name: "formation role id", id: "formation-01-primary_1.retry"},
 		{name: "max length", id: strings.Repeat("a", maxProviderAttemptIDBytes)},
 		{name: "empty", id: "", wantErr: constants.ErrInferenceProviderAttemptRequired},
 		{name: "over max length", id: strings.Repeat("a", maxProviderAttemptIDBytes+1), wantErr: constants.ErrInferenceProviderAttemptIDInvalid},

@@ -111,13 +111,33 @@ func TestRegisterOperatorConcurrentSingletonOwnership(t *testing.T) {
 	}
 }
 
-func TestRegisterOperatorRejectsSharedActuatorAcrossCapabilities(t *testing.T) {
+func TestRegisterOperatorRejectsSharedActuatorAcrossOwners(t *testing.T) {
 	store := newOperatorOwnershipStore(t)
 	require.NoError(t, store.RegisterOperator(t.Context(), ownershipOperator("provenance", 1, constants.OperatorCapabilityProvenance)))
-	err := store.RegisterOperator(t.Context(), ownershipOperator("observer", 1, constants.OperatorCapabilityObserver))
+	other := ownershipOperator("observer", 1, constants.OperatorCapabilityObserver)
+	other.UserId = "another-owner"
+	err := store.RegisterOperator(t.Context(), other)
 	require.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInUse)
 	require.ErrorContains(t, err, "provenance")
 	require.ErrorContains(t, err, "observer")
+}
+
+// A runtime that re-enrolls with an added capability keeps its working
+// directory and Actuator key. Its prior lease, even one whose fingerprint was
+// computed by an older build that hashed capabilities, is the same Operator:
+// the replacement takes over its claims, and other runtimes still cannot.
+func TestOperatorClaimsAllowCapabilityChangeReenrollment(t *testing.T) {
+	store := newOperatorOwnershipStore(t)
+	first := ownershipOperator("witness", 1, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver)
+	first.SystemFingerprint = "fingerprint-with-capabilities"
+	first.Status = string(constants.OperatorStatusStale)
+	require.NoError(t, store.RegisterOperator(t.Context(), first))
+	blended := ownershipOperator("blended", 1, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver)
+	blended.SystemFingerprint = "fingerprint-by-location"
+	require.NoError(t, store.RegisterOperator(t.Context(), blended))
+
+	elsewhere := ownershipOperator("elsewhere", 2, constants.OperatorCapabilityProvenance)
+	require.ErrorIs(t, store.RegisterOperator(t.Context(), elsewhere), constants.ErrOperatorCapabilityInUse)
 }
 
 func TestOperatorClaimsReserveAcrossOwnersUntilTermination(t *testing.T) {

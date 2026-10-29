@@ -303,6 +303,7 @@ help:
 		'' \
 		'Run locally' \
 		'  quickstart                Start a Gateway, sign in, and run a first governed action' \
+		'  eval-quickstart           Run a one-cell governed evaluation of a light model (needs a Gateway with inference)' \
 		'  up                        Build and start the Gateway on this host' \
 		'  up-public                 Like up, listening on all interfaces for Operators on other hosts' \
 		'  gw                        Start the Gateway with every embedded Operator capability' \
@@ -330,12 +331,14 @@ env:
 		'  GW_ARGS             Extra gw start flags for up and gw (default: none)' \
 		'  OPERATOR_ARGS       Extra operator start flags (default: none)' \
 		'  QUICKSTART_ARGS     Options for the quickstart script (default: none)' \
+		'  EVAL_ARGS           Options for ztd eval quickstart, e.g. --model llama3.2:1b (default: none)' \
 		'  GW_CAPABILITIES     Embedded Operator capabilities for gw (default: data)' \
 		'  MODEL_STORAGE_ROOT  Local model store; enables provenance for gw (default: unset)' \
 		'' \
 		'Examples:' \
 		'  make status ZTD_ARGS="--json"' \
 		'  make gw MODEL_STORAGE_ROOT=~/.ollama/models' \
+		"  make eval-quickstart EVAL_ARGS='--formation formation-lite'" \
 		'' \
 		'See ./ztd --help, ./ztd gw start --help, ./ztd operator start --help,' \
 		'or bash scripts/quickstart.sh --help for available flags.'
@@ -1122,6 +1125,15 @@ GW_LISTEN_ARGS :=
 quickstart:
 	@bash scripts/quickstart.sh $(QUICKSTART_ARGS)
 
+# One-cell evaluation smoke against the running Gateway: freezes the built-in
+# quickstart suite over a light model (default granite4:1b-h), runs it through the
+# governed Inference Operator, verifies it offline, and publishes nothing.
+# EVAL_ARGS carries ztd eval quickstart flags, for example
+#   make eval-quickstart EVAL_ARGS='--formation formation-lite'
+.PHONY: eval-quickstart
+eval-quickstart:
+	@./ztd eval quickstart $(ZTD_ARGS) $(EVAL_ARGS)
+
 .PHONY: up
 up: build
 	@echo "Starting the ztd Gateway on this host..."
@@ -1353,14 +1365,4 @@ release:
 # downloaded artifact set. make release requires a successful rehearsal of HEAD.
 .PHONY: release-rehearse
 release-rehearse:
-	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ] || [ -n "$$(git status --porcelain)" ]; then \
-		echo "Error: make release-rehearse runs on a clean main checkout."; exit 1; \
-	fi; \
-	git fetch -q origin main || exit 1; \
-	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
-		echo "Error: HEAD is not origin/main. Push or pull, then retry."; exit 1; \
-	fi; \
-	URL=$$(gh workflow run release-binary.yml --ref main -f publish=false 2>&1 | grep -o 'https://[^ ]*/actions/runs/[0-9]*') \
-		|| { echo "Error: could not dispatch release-binary.yml"; exit 1; }; \
-	echo "Rehearsal: $$URL"; \
-	gh run watch "$${URL##*/}" --exit-status
+	@bash scripts/release-rehearse.sh

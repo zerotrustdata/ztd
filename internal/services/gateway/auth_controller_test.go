@@ -98,7 +98,7 @@ func setupTestPasskeyService(t *testing.T) (*PasskeyHandler, *UserService, stora
 		Logger:           logger,
 		Responder:        resp,
 		SuspendedStore:   suspendedTxService,
-		ScrubbingService: newTestScrubber(t),
+		ScrubbingService: newTestScrubber(t, db),
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  cfg.Gateway.MaxPayloadBytes,
 		Posture:          cfg.Gateway.Posture,

@@ -54,9 +54,9 @@ func TestEvalCmd_ContainsProgramGroups(t *testing.T) {
 		names = append(names, child.Name())
 	}
 	assert.ElementsMatch(t, []string{
-		"backup", "campaigns", "conformance", "formations", "gates", "models", "restore", "rollout", "runs", "suites",
+		"backup", "campaigns", "conformance", "formations", "gates", "models", "quickstart", "restore", "rollout", "runs", "suites",
 	}, names)
-	assert.Len(t, names, 10)
+	assert.Len(t, names, 11)
 	assert.Empty(t, command.Aliases, "eval has no aliases")
 	for _, child := range command.Commands() {
 		assert.Empty(t, child.Aliases, "group %s must have no aliases", child.Name())

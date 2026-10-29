@@ -25,6 +25,7 @@ func truncatedCatalog(t *testing.T, catalog *evalv1.EvaluationScenarioCatalog, s
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     catalog.GetScenarios()[:scenarios],
 	}
 	digest, err := ComputeScenarioCatalogDigest(truncated)
@@ -39,7 +40,7 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	small := truncatedCatalog(t, catalog, 3)
 
 	assert.Equal(t, ComputeHomogeneousMatrixSize(1), ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), "the default suite sizes as it always did")
-	assert.Equal(t, uint64(35), uint64(StandardScenarioCount))
+	assert.Equal(t, uint64(41), uint64(StandardScenarioCount))
 
 	var wantCells uint64
 	for _, scenario := range small.GetScenarios() {
@@ -53,20 +54,20 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	assert.Equal(t, FormationMatrixSize(catalog, 5, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), uint64(5)*CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
 }
 
-func TestDefaultSuiteConsensusMatrixExcludesLiveCommandErrorScenario(t *testing.T) {
+func TestDefaultSuiteConsensusMatrixExcludesRequiredStateChanges(t *testing.T) {
 	catalog, _, err := LoadScenarioCatalog()
 	require.NoError(t, err)
 
 	var consensusCells uint64
 	for _, scenario := range catalog.GetScenarios() {
 		switch scenario.GetScenarioId() {
-		case "recovery-live-command-error", "tool-arg-shell-command":
-			continue // required shell-command execution is governed by L2
+		case "recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change":
+			continue // required file mutations and shell execution are governed by L2
 		}
 		consensusCells += uint64(len(scenario.GetEligibleRoles()))
 	}
 
-	assert.Equal(t, uint64(52), consensusCells)
+	assert.Equal(t, uint64(78), consensusCells)
 	assert.Equal(t, consensusCells, CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), "the consensus matrix must exclude the posture-dependent seed scenario")
 }
 

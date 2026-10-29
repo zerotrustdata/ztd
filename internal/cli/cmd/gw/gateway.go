@@ -38,6 +38,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -330,6 +331,7 @@ func Cmd() *cobra.Command {
 
 	cmd.AddCommand(
 		gatewayStartCmd(),
+		gatewayRecoverCmd(),
 		gatewayStopCmd(),
 		gatewayStatusCmd(),
 		gatewayRestartCmd(),
@@ -422,6 +424,7 @@ func gatewayStartCmdWithConfig(
 	var follow bool
 	var interactive bool
 	var quiet bool
+	var acceptUnrecoverable bool
 
 	cmd := &cobra.Command{
 		Use:   string(constants.ThinkingPhaseStart),
@@ -437,6 +440,17 @@ it to a temporary JSON file in the runtime directory, and passes that file to
 the Gateway subprocess. --cert-mode localhost continues to use loopback-only
 identities, including IPv6 localhost when available.
 
+On Linux, an existing ssh-agent-sealed vault is checked before startup. If its
+key is missing, the CLI prints copy-and-paste recovery commands. In a terminal,
+it can ask to load the matching local key into the current agent for 8 hours;
+OpenSSH handles the SSH key passphrase. Recovery never replaces the vault key.
+
+The first start that creates a master key prints a recovery key once and stores
+it only after you type it back. There is no second copy. Lose that key and the
+OS key store, and this gateway cannot be restored. A start without a terminal
+refuses to create the key unless --accept-unrecoverable is set. Install a saved
+key with 'gw recover'.
+
 Posture Persistence: The complete launch configuration is persisted in
 .ztd/pids/operator-launch-profile.json on every successful background start. When
 using 'gateway restart', the full configuration (CORS, passkey, ports, posture,
@@ -450,7 +464,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				defer cmd.SetOut(previousOut)
 				cmd.SetOut(io.Discard)
 			}
-			_, err := configLoader("")
+			cfg, err := configLoader("")
 			if err != nil {
 				return fmt.Errorf("gateway: load config: %w", err)
 			}
@@ -490,73 +504,6 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			// A running Gateway is checked before identity detection so a
 			// rerun reports reuse or a configuration conflict without first
 			// printing the startup network inventory.
-			if !follow {
-				fileSvc, err := fileSvcFactory("", slog.Default())
-				if err != nil {
-					return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-				}
-				pm, err := platform.NewProcessManager(fileSvc)
-				if err != nil {
-					return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-				}
-				running, pid, err := pm.OperatorStatus()
-				if err != nil {
-					return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
-				}
-				if running {
-					return reuseRunningGateway(cmd, fileSvc, gatewayFlagsToServeConfig(resolved), pid)
-				}
-			}
-
-			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
-			if err != nil {
-				return fmt.Errorf("gateway: create logger: %w", err)
-			}
-			identityResult := detectIdentity(context.Background(), logger, resolved.CertIdentityMode)
-
-			if identityResult.ShouldFallback {
-				cmd.Printf("Warning: Failed to detect network identity\n")
-				cmd.Println("Falling back to localhost-only mode")
-			} else {
-				printNetworkIdentity(cmd, resolved.ListenHost, identityResult.Identity)
-			}
-
-			// Foreground mode: run gateway directly in the current process
-			if follow {
-				cmd.Println("[ztd] Starting ztd Gateway in foreground...")
-				cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
-
-				// Write network identity to file if needed
-				var networkIdentityFile string
-				if len(identityResult.IdentityData) > 0 {
-					fileSvc, err := fileSvcFactory("", slog.Default())
-					if err != nil {
-						return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
-					}
-					pm, err := platform.NewProcessManager(fileSvc)
-					if err != nil {
-						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-					}
-					if err := pm.CreateDirectories(); err != nil {
-						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-					}
-					networkIdentityFile, err = pm.WriteNetworkIdentityFile(identityResult.IdentityData)
-					if err != nil {
-						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
-					}
-				}
-
-				// Build gateway config for foreground execution
-				gatewayCfg := gatewayFlagsToServeConfig(resolved)
-				gatewayCfg.CertIdentityMode = identityResult.CertMode
-				gatewayCfg.NetworkIdentityFile = networkIdentityFile
-				gatewayCfg.ConsensusMemberSignerFactory = tribunalConsensusSignerFactory(gatewayCfg.WorkingDir)
-
-				// Run gateway (this blocks until shutdown)
-				return serve.RunGateway(gatewayCfg, shared.VersionInfoFromCmd(cmd))
-			}
-
-			// Background mode: start gateway as a background process
 			fileSvc, err := fileSvcFactory("", slog.Default())
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
@@ -565,20 +512,62 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
 			}
-
-			cmd.Println("[ztd] Starting ztd Gateway service...")
-			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
-			if resolved.InferenceLlamaCppEndpoint == "" {
-				for _, a := range platform.DetectEnvironment().OllamaAdvisories(cmd.Context(), platform.OllamaAdvisoryInput{
-					Endpoint:         resolved.InferenceOllamaEndpoint,
-					ModelStorageRoot: resolved.ProvenanceOperatorModelStorageRoot,
-				}) {
-					cmd.PrintErrf("[ztd] WSL: %s\n[ztd]      Fix: %s\n", a.Problem, a.Fix)
+			if !follow {
+				running, pid, err := pm.OperatorStatus()
+				if err != nil {
+					return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
 				}
+				if running {
+					return reuseRunningGateway(cmd, fileSvc, gatewayFlagsToServeConfig(resolved), pid)
+				}
+			}
+			if err := prepareGatewayKeystore(cmd, fileSvc); err != nil {
+				return err
+			}
+			if err := shared.EnsureRecoveryKey(cmd.InOrStdin(), cmd.ErrOrStderr(), fileSvc, cfg.Keyring, keystore.RecoveryRoleGateway, acceptUnrecoverable); err != nil {
+				return err
+			}
+
+			logger, err := logging.NewLogger(constants.LogLevelInfo, os.Stderr)
+			if err != nil {
+				return fmt.Errorf("gateway: create logger: %w", err)
+			}
+			identityResult := detectIdentity(cmd.Context(), logger, resolved.CertIdentityMode)
+
+			if identityResult.ShouldFallback {
+				cmd.Printf("Warning: Failed to detect network identity\n")
+				cmd.Println("Falling back to localhost-only mode")
+			} else {
+				printNetworkIdentity(cmd, resolved.ListenHost, identityResult.Identity)
 			}
 
 			gatewayCfg := gatewayFlagsToServeConfig(resolved)
 			gatewayCfg.CertIdentityMode = identityResult.CertMode
+
+			// Foreground mode: run gateway directly in the current process
+			if follow {
+				cmd.Println("[ztd] Starting ztd Gateway in foreground...")
+				cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
+
+				if len(identityResult.IdentityData) > 0 {
+					if err := pm.CreateDirectories(); err != nil {
+						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
+					}
+					gatewayCfg.NetworkIdentityFile, err = pm.WriteNetworkIdentityFile(identityResult.IdentityData)
+					if err != nil {
+						return fmt.Errorf("%w: %w", constants.ErrInternal, err)
+					}
+				}
+				gatewayCfg.ConsensusMemberSignerFactory = tribunalConsensusSignerFactory(gatewayCfg.WorkingDir)
+
+				// Run gateway (this blocks until shutdown)
+				return serve.RunGateway(gatewayCfg, shared.VersionInfoFromCmd(cmd))
+			}
+
+			// Background mode: start gateway as a background process
+			cmd.Println("[ztd] Starting ztd Gateway service...")
+			cmd.Printf("[ztd] Gateway posture: %s\n", posture.Description())
+
 			startOpts := platform.OperatorStartOptions{GatewayConfig: gatewayCfg, Notices: cmd.ErrOrStderr()}
 			if err := pm.StartOperator(cmd.Context(), &startOpts); err != nil {
 				return err
@@ -614,6 +603,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Suppress startup guidance")
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Run gateway in foreground (Ctrl+C stops gateway)")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Launch interactive onboarding wizard")
+	cmd.Flags().BoolVar(&acceptUnrecoverable, shared.FlagAcceptUnrecoverable, false, shared.AcceptUnrecoverableHelp)
 
 	return cmd
 }
@@ -658,6 +648,11 @@ managed process. If the gateway is not running, this command is a no-op.`,
 			cmd.Printf("Stopping ztd Gateway (PID: %d)...\n", pid)
 			if err := pm.StopOperator(); err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrProcessStopFailed, err)
+			}
+			if running, pid, err := pm.OperatorStatus(); err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
+			} else if running {
+				return fmt.Errorf("%w: Gateway still running (PID: %d)", constants.ErrProcessStopFailed, pid)
 			}
 
 			cmd.Println("ztd Gateway stopped successfully")
@@ -745,6 +740,7 @@ func gatewayRestartCmdWithConfig(
 	configLoader func(string) (*config.Config, error),
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 ) *cobra.Command {
+	var acceptUnrecoverable bool
 	cmd := &cobra.Command{
 		Use:   "restart",
 		Short: "Restart the ztd Gateway",
@@ -755,7 +751,7 @@ profile is missing, malformed, or unsupported, the restart fails closed rather
 than falling back to default settings. Network identity is re-detected on every
 restart.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, err := configLoader("")
+			cfg, err := configLoader("")
 			if err != nil {
 				return fmt.Errorf("gateway: load config: %w", err)
 			}
@@ -778,6 +774,12 @@ restart.`,
 				return fmt.Errorf("gateway: read launch profile: %w", err)
 			}
 			previousConfig := profile.Config
+			if err := prepareGatewayKeystore(cmd, fileSvc); err != nil {
+				return err
+			}
+			if err := shared.EnsureRecoveryKey(cmd.InOrStdin(), cmd.ErrOrStderr(), fileSvc, cfg.Keyring, keystore.RecoveryRoleGateway, acceptUnrecoverable); err != nil {
+				return err
+			}
 
 			running, _, err := pm.OperatorStatus()
 			if err != nil {
@@ -803,7 +805,7 @@ restart.`,
 			if err != nil {
 				return fmt.Errorf("gateway: create logger: %w", err)
 			}
-			identityResult := detectIdentity(context.Background(), logger, profile.Config.CertIdentityMode)
+			identityResult := detectIdentity(cmd.Context(), logger, profile.Config.CertIdentityMode)
 
 			if identityResult.ShouldFallback {
 				cmd.Printf("Warning: Failed to detect network identity, falling back to localhost-only mode\n")
@@ -854,6 +856,7 @@ restart.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&acceptUnrecoverable, shared.FlagAcceptUnrecoverable, false, shared.AcceptUnrecoverableHelp)
 
 	return cmd
 }

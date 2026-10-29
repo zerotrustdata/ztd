@@ -27,24 +27,24 @@ import (
 
 // SystemFingerprint represents a unique, stable identifier for the system or specific operator instance.
 type SystemFingerprint struct {
-	Fingerprint  string                         `json:"fingerprint"`
-	OS           string                         `json:"os"`
-	Architecture string                         `json:"architecture"`
-	CPUCount     int                            `json:"cpu_count"`
-	MachineID    string                         `json:"machine_id,omitempty"`
-	LocalDir     string                         `json:"local_dir,omitempty"`
-	Account      string                         `json:"account,omitempty"`
-	Port         int                            `json:"port,omitempty"`
-	Capabilities constants.OperatorCapabilities `json:"capabilities,omitempty"`
+	Fingerprint  string `json:"fingerprint"`
+	OS           string `json:"os"`
+	Architecture string `json:"architecture"`
+	CPUCount     int    `json:"cpu_count"`
+	MachineID    string `json:"machine_id,omitempty"`
+	LocalDir     string `json:"local_dir,omitempty"`
+	Account      string `json:"account,omitempty"`
+	Port         int    `json:"port,omitempty"`
 }
 
 // FingerprintOptions specifies operator-specific parameters that differentiate
-// multiple operators coexisting on the same host system.
+// multiple operators coexisting on the same host system. Capabilities are not
+// identity: one working directory holds one Operator runtime, and changing its
+// capabilities re-enrolls that same Operator rather than creating another.
 type FingerprintOptions struct {
-	LocalDir     string
-	Account      string
-	Port         int
-	Capabilities constants.OperatorCapabilities
+	LocalDir string
+	Account  string
+	Port     int
 }
 
 // ResolveCurrentAccount returns the current operating system user account username or UID.
@@ -67,14 +67,9 @@ func GenerateSystemFingerprint(logger *slog.Logger) (*SystemFingerprint, error) 
 }
 
 // GenerateOperatorFingerprint creates a unique fingerprint incorporating system properties,
-// local directory, launching account, port, and operator capabilities. This guarantees that
-// multiple operators running on the same host for unique purposes are completely separated.
+// local directory, launching account, and port. This guarantees that multiple operators
+// running on the same host are completely separated.
 func GenerateOperatorFingerprint(logger *slog.Logger, opts FingerprintOptions) (*SystemFingerprint, error) {
-	if err := opts.Capabilities.Validate(); err != nil {
-		return nil, err
-	}
-	opts.Capabilities = opts.Capabilities.Canonical()
-
 	logger.Info("Generating system fingerprint based on immutable system and operator properties...")
 
 	osType := runtime.GOOS
@@ -115,10 +110,6 @@ func GenerateOperatorFingerprint(logger *slog.Logger, opts FingerprintOptions) (
 		components = append(components, fmt.Sprintf("port:%d", opts.Port))
 	}
 
-	if len(opts.Capabilities) > 0 {
-		components = append(components, fmt.Sprintf("capabilities:%s", opts.Capabilities))
-	}
-
 	hasher := sha256.New()
 	fingerprintInput := strings.Join(components, "|")
 	hasher.Write([]byte(fingerprintInput))
@@ -133,7 +124,6 @@ func GenerateOperatorFingerprint(logger *slog.Logger, opts FingerprintOptions) (
 		LocalDir:     cleanDir,
 		Account:      account,
 		Port:         opts.Port,
-		Capabilities: opts.Capabilities,
 	}
 
 	logger.Info("System fingerprint generated successfully",
@@ -145,7 +135,6 @@ func GenerateOperatorFingerprint(logger *slog.Logger, opts FingerprintOptions) (
 		"local_dir", cleanDir,
 		"account", account,
 		"port", opts.Port,
-		"capabilities", opts.Capabilities,
 		"fingerprint", fingerprintHash[:16])
 
 	return fingerprint, nil

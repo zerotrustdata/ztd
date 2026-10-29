@@ -21,6 +21,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -66,7 +67,7 @@ func TestRealStackScenarioObservation_SeedSchemaErrorGuidesSuccessfulRetry(t *te
 	}}
 	env = newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-error-guided-retry", suffix: "seed-schema-retry",
-		replies: []fixtures.OllamaReply{search, {Content: "AUTH_FAILURE appears in logs/auth.log for svc-deploy."}},
+		replies: []fixtures.OllamaReply{search, {Content: "AUTH_FAILURE appears in logs/auth.log for svc-deploy."}, criterionVerdictReply(true, "The reply reports the observed authentication failure.")},
 	})
 
 	result := env.executeNext(t)
@@ -95,7 +96,7 @@ func TestRealStackScenarioObservation_SeedSchemaErrorGuidesSuccessfulRetry(t *te
 func TestRealStackScenarioObservation_LiveExecutionErrorIsSigned(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-live-command-error", suffix: "seed-live-error",
-		replies: agentThenVerdicts("The executable ztd-eval-m… was not found. A safe next check is to inspect the health-check installation path.",
+		replies: agentThenVerdicts("The executable ztd-eval-missing-healthcheck was not found. A safe next check is to inspect the health-check installation path.",
 			judgedCriteriaVerdicts(1)...),
 	})
 	result := env.executeNext(t)
@@ -167,7 +168,7 @@ func TestRealStackScenarioObservation_CaseMemoryRequiresRealReadForSageAndDash(t
 func TestRealStackScenarioObservation_LiteReceivesCaseMemoryWithoutTools(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		scenarioID: "context-lite-memory", suffix: "lite-memory",
-		replies: []fixtures.OllamaReply{{Content: "app-r… must be preserved at 03:00; app-d… was the temporary debugging job."}},
+		replies: []fixtures.OllamaReply{{Content: "app-report must be preserved at 03:00; app-dump was the temporary debugging job."}},
 	})
 	require.Equal(t, 1, env.scheduledCount)
 	result := env.executeNext(t)
@@ -182,52 +183,61 @@ func TestRealStackScenarioObservation_LiteReceivesCaseMemoryWithoutTools(t *test
 	assert.Empty(t, trace.ToolCalls)
 }
 
-// The Lite answer is graded through the production grader on the real stack,
-// so a rubric defect (an ASCII ellipsis, a spelled-out time) fails here rather
-// than on a published run, and a disclosed or incomplete answer still fails.
-func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *testing.T) {
+// Lite receives the held case memory as Triage and is graded on its typed
+// classification. The reasoner's answer-content rubric remains covered by the
+// Primary and Assistant context-case-memory assignments above.
+func TestRealStackScenarioGrade_LiteCaseMemoryUsesTriageClassification(t *testing.T) {
 	cases := []struct {
 		name   string
-		answer string
+		result string
 		pass   bool
 	}{
-		{"unicode masks", "app-r… must be preserved at 03:00; app-d… was the temporary debugging job.", true},
-		{"ascii masks and spelled time", "app-r... runs daily at 3 am and must be kept; app-d... is temporary.", true},
-		{"full names disclosed", "app-report must be preserved at 03:00; app-dump was temporary.", false},
-		{"missing time", "app-r… must be preserved; app-d… was the temporary debugging job.", false},
+		{
+			name:   "simple information request",
+			result: `{"complexity":"simple","complexity_confidence":"high","intent":"information","intent_confidence":"high","intent_summary":"the held case notes identify app-report at 03:00 and app-dump as temporary","request_posture":"normal","posture_confidence":"high"}`,
+			pass:   true,
+		},
+		{
+			name:   "misclassified as complex",
+			result: `{"complexity":"complex","complexity_confidence":"high","intent":"information","intent_confidence":"high","intent_summary":"held case context follow-up","request_posture":"normal","posture_confidence":"high"}`,
+		},
+		{
+			name:   "misclassified as action",
+			result: `{"complexity":"simple","complexity_confidence":"high","intent":"action","intent_confidence":"high","intent_summary":"held case context follow-up","request_posture":"normal","posture_confidence":"high"}`,
+		},
+		{
+			name:   "malformed result",
+			result: `{"complexity":"simple"}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newRealStackAgentRun(t, realStackOptions{
 				scenarioID: "context-lite-memory", suffix: "lite-grade",
-				replies: []fixtures.OllamaReply{{Content: tc.answer}},
+				replies: []fixtures.OllamaReply{{Content: tc.result}},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
-			require.NotEmpty(t, result.GetDeterministicGrades())
-			failed := 0
+			grades := make(map[string]*evalv1.DeterministicGrade, len(result.GetDeterministicGrades()))
 			for _, grade := range result.GetDeterministicGrades() {
-				if grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL {
-					failed++
-				}
+				grades[grade.GetCriterionId()] = grade
 			}
+			require.Contains(t, grades, "triage-classification")
 			if tc.pass {
-				assert.Zero(t, failed, "grades=%v", result.GetDeterministicGrades())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage-classification"].GetStatus())
 				assert.Empty(t, result.GetFailureReason())
 			} else {
-				assert.NotZero(t, failed, "grades=%v", result.GetDeterministicGrades())
-				assert.NotEmpty(t, result.GetFailureReason())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage-classification"].GetStatus())
 			}
+			assert.NotContains(t, grades, "scenario-content")
+			assert.NotContains(t, grades, "trajectory")
 		})
 	}
 }
 
-// Tool-argument scenarios have exact argument contracts in the prompt, so
-// their production grader must stay deterministic. These cases exercise the
-// real stack boundary: a valid path and any partial name pass, while reading
-// the decoy file fails trajectory and disclosing the full hostname fails
-// scenario-content. No judge dispatch is part of this family.
-func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testing.T) {
+// Argument paths are deterministic; the upstream's name is a receipt-backed
+// semantic judgment.
+func TestRealStackScenarioGrade_ToolArgumentFilePathUsesGroundedMeaning(t *testing.T) {
 	cases := []struct {
 		name        string
 		path        string
@@ -235,12 +245,13 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 		criterionID string
 		wantPass    bool
 	}{
-		{"good", "net/network-summary.txt", "The upstream is pay….", "scenario-content", true},
-		{"paraphrased good", "net/network-summary.txt", "The service upstream is pay….", "scenario-content", true},
-		{"wrong decoy path", "net/network-summary.old", "The upstream is pay….", "trajectory", false},
+		{"good", "net/network-summary.txt", "The upstream is payments.", "scenario-content", true},
+		{"paraphrased good", "net/network-summary.txt", "The service upstream is payments.", "scenario-content", true},
+		{"wrong decoy path", "net/network-summary.old", "The upstream is payments.", "trajectory", false},
 		{"partial name without mask", "net/network-summary.txt", "The upstream service is identified as payments.", "scenario-content", true},
-		{"full hostname disclosure", "net/network-summary.txt", "The upstream is payments.internal.example.", "scenario-content", false},
-		{"masked then disclosed", "net/network-summary.txt", "The upstream service starting with `pay…` is **payments.internal.example**.", "scenario-content", false},
+		{"singular partial name", "net/network-summary.txt", "The upstream service is payment.", "scenario-content", true},
+		{"negated upstream", "net/network-summary.txt", "The upstream is not payments.", "scenario-content", false},
+		{"full hostname identification", "net/network-summary.txt", "The upstream is payments.internal.example.", "scenario-content", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,7 +261,7 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 			}}
 			env = newRealStackAgentRun(t, realStackOptions{
 				singleRole: true, scenarioID: "tool-arg-file-path", suffix: "tool-argument-grade",
-				replies: []fixtures.OllamaReply{read, {Content: tc.answer}},
+				replies: []fixtures.OllamaReply{read, {Content: tc.answer}, criterionVerdictReply(tc.wantPass, "The upstream is judged against the recorded file read.")},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -258,6 +269,10 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			require.Len(t, trace.ToolCalls, 1)
 			assert.Equal(t, constants.MCPToolReadFile, trace.ToolCalls[0].ToolName)
+			require.Len(t, trace.ContentJudgments, 1)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, "Record 1 (tool call made by the agent): read_file, outcome success")
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ArgumentsJSON)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ResultJSON)
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), tc.criterionID)
 			if tc.wantPass {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
@@ -270,31 +285,33 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathStaysDeterministic(t *testin
 	}
 }
 
-// The first-service-config answer is graded through the production content check
-// on the real stack. The deterministic terms require the value 30 and no full
-// service identifier; the judged criterion requires the first config to be the
-// one that sets it. A paraphrase that the judge accepts passes, and a missing
-// value fails on both the term check and the verdict.
-func TestRealStackScenarioGrade_FirstServiceConfigAnswerIsGradedOnItsContent(t *testing.T) {
+// Config comparison requires both the old-to-new values and the effect on
+// requests. Each criterion has its own governed judge reply; omitting either
+// requirement fails, including when the other criterion passes.
+func TestRealStackScenarioGrade_ConfigDiffRequiresComparisonAndEffect(t *testing.T) {
 	cases := []struct {
-		name   string
-		answer string
-		met    bool
-		pass   bool
+		name, answer             string
+		comparisonMet, effectMet bool
+		pass                     bool
 	}{
-		{"first service config wording", "The first service config sets timeout_seconds to 30; the second sets 5.", true, true},
-		{"first service configuration wording", "The first service configuration sets timeout_seconds to 30.", true, true},
-		{"paraphrased timeout wording", "Config one has a 30-second timeout_seconds; config two uses 5.", true, true},
-		{"missing timeout value", "The first service config sets timeout_seconds; the second sets 5.", false, false},
+		{"old and new values", "timeout_seconds changed from 30 to 5, so requests time out sooner.", true, true, true},
+		{"paraphrased comparison", "The old timeout was 30 seconds and the new one is 5, allowing less time for a response.", true, true, true},
+		{"missing timeout value", "The timeout decreased, so requests time out sooner.", false, true, false},
+		{"missing timeout effect", "timeout_seconds changed from 30 in the old config to 5 in the new config.", true, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newRealStackAgentRun(t, realStackOptions{
 				singleRole: true, scenarioID: "tech-config-diff", suffix: "config-grade",
-				replies: agentThenVerdicts(tc.answer, criterionVerdictReply(tc.met, "scripted verdict")),
+				replies: agentThenVerdicts(tc.answer,
+					criterionVerdictReply(tc.comparisonMet, "scripted comparison verdict"),
+					criterionVerdictReply(tc.effectMet, "scripted timeout-effect verdict")),
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, result)
+			require.Len(t, trace.ContentJudgments, 2)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
 			if tc.pass {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status, "grades=%v", result.GetDeterministicGrades())
@@ -307,21 +324,20 @@ func TestRealStackScenarioGrade_FirstServiceConfigAnswerIsGradedOnItsContent(t *
 	}
 }
 
-// The masked command name is graded on its content: the partial name passes
-// (Unicode or ASCII ellipsis, or a paraphrase the judge accepts), and the full
-// executable name fails on the deterministic masked-term check even when the
-// judge marks the explanation as met.
-func TestRealStackScenarioGrade_MaskedCommandNameAnswerIsGradedOnItsContent(t *testing.T) {
+// The command name is graded on its content: the full executable name passes
+// (directly or in a paraphrase the judge accepts), and a truncated name fails
+// the deterministic required-term check even when the judge marks the
+// explanation as met.
+func TestRealStackScenarioGrade_CommandNameAnswerIsGradedOnItsContent(t *testing.T) {
 	cases := []struct {
 		name   string
 		answer string
 		met    bool
 		pass   bool
 	}{
-		{"unicode masked command name", "The command failed because deploy-h… was not found; it exited with code 127.", true, true},
-		{"ascii masked command name", "The command failed because deploy-h... was not found; it exited with code 127.", true, true},
-		{"paraphrased masked command name", "The health probe could not run: deploy-h… is not installed, so it exited with code 127.", true, true},
-		{"full command name disclosed", "The command failed because deploy-healthcheck was not found; it exited with code 127.", true, false},
+		{"full command name", "The command failed because deploy-healthcheck was not found; it exited with code 127.", true, true},
+		{"paraphrased full command name", "The health probe could not run: deploy-healthcheck is not installed, so it exited with code 127.", true, true},
+		{"truncated command name fails", "The command failed because deploy-h… was not found; it exited with code 127.", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -329,7 +345,7 @@ func TestRealStackScenarioGrade_MaskedCommandNameAnswerIsGradedOnItsContent(t *t
 				scenarioID: "tech-error-diagnosis", suffix: "deploy-grade",
 				replies: agentThenVerdicts(tc.answer, criterionVerdictReply(tc.met, "scripted verdict")),
 			})
-			require.Equal(t, 1, env.scheduledCount, "the Lite-only scenario schedules one assignment")
+			require.Equal(t, 2, env.scheduledCount, "Sage and Dash each run the command-name scenario")
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
 			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
@@ -344,17 +360,16 @@ func TestRealStackScenarioGrade_MaskedCommandNameAnswerIsGradedOnItsContent(t *t
 	}
 }
 
-// A search answer that lists the full filenames fails on content, but the
-// search call itself is still admitted evidence. Only the content verdict may
-// differ between the masked and disclosed answers.
-func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(t *testing.T) {
+// A search answer must name the matching files in full. The search call itself
+// is still admitted evidence; only the content verdict differs between answers.
+func TestRealStackScenarioGrade_SearchAnswerFilenamesAreGradedOnItsContent(t *testing.T) {
 	cases := []struct {
 		name   string
 		answer string
 		pass   bool
 	}{
-		{"masked filenames from search", "PAYMENT_TIMEOUT appears in check… and bill… logs.", true},
-		{"full filenames listed", "PAYMENT_TIMEOUT appears in checkout.log and billing.log.", false},
+		{"full filenames listed", "PAYMENT_TIMEOUT appears in checkout.log and billing.log.", true},
+		{"truncated filenames fail", "PAYMENT_TIMEOUT appears in check… and bill… logs.", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -364,7 +379,7 @@ func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(
 			}}
 			env = newRealStackAgentRun(t, realStackOptions{
 				singleRole: true, scenarioID: "tool-select-grep", suffix: "search-grade",
-				replies: []fixtures.OllamaReply{search, {Content: tc.answer}},
+				replies: []fixtures.OllamaReply{search, {Content: tc.answer}, criterionVerdictReply(tc.pass, "The reply is judged against the recorded search matches.")},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "status=%s failure=%s invalid=%s", result.GetLifecycleStatus(), result.GetFailureReason(), result.GetInvalidEvidenceDetail())
@@ -378,6 +393,86 @@ func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(
 			} else {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status, "grades=%v", grades)
 				assert.NotEmpty(t, result.GetFailureReason())
+			}
+		})
+	}
+}
+
+func TestRealStackScenarioGrade_FilteredEmptySearchCannotPass(t *testing.T) {
+	for _, scenario := range []string{"tool-arg-grep-pattern", "recovery-error-guided-retry"} {
+		t.Run(scenario, func(t *testing.T) {
+			var env *realStackAgentRun
+			search := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				path, err := env.inFlightWorkspaceFile("logs/auth.log")
+				if err != nil {
+					return fixtures.OllamaReply{Failure: err.Error()}
+				}
+				args, err := json.Marshal(mcp.SearchDirectoryRequest{Path: filepath.Dir(path), Pattern: "AUTH_FAILURE", Include: []string{"svc-*"}})
+				if err != nil {
+					return fixtures.OllamaReply{Failure: err.Error()}
+				}
+				return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolSearchDirectory, Arguments: args}}}
+			}}
+			env = newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: scenario, suffix: "empty-filter",
+				replies: []fixtures.OllamaReply{search, {Content: "No AUTH_FAILURE was found, but the file contains svc-deploy."}, criterionVerdictReply(true, "Deliberately erroneous judge verdict.")},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetFailureReason())
+			trace := executorLoadTrace(t, env, result)
+			require.Len(t, trace.ToolCalls, 1)
+			assert.True(t, trace.ToolCalls[0].Success)
+			require.Len(t, trace.ContentJudgments, 1)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, trace.ToolCalls[0].ResultJSON)
+			assert.Contains(t, trace.ContentJudgments[0].Messages[1].Text, `"total_matches":0`)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content"))
+			altered := cloneScenarioObservationTrace(t, trace)
+			altered.ContentJudgments[0].Messages[1].Text += "\nInvented matching result"
+			imported := importTamperedJudgments(t, env, result, altered)
+			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, imported.GetLifecycleStatus())
+		})
+	}
+}
+
+func TestRealStackScenarioGrade_MissingFileNeedsGroundedHistory(t *testing.T) {
+	for _, tc := range []struct {
+		name, answer string
+		met          bool
+	}{
+		{"vague", "The file is unavailable. I will try a read-only check.", false},
+		{"proposed check without an answer", "The file is missing. Next, inspect its deploy directory to verify the path; I have not run that check.", false},
+		{"grounded history", "The status file is missing. deployment-history.log records that the v2.2.6 rollout was paused at 08:04 UTC.", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var env *realStackAgentRun
+			read := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				return realStackReadFileReply(env, "deploy/deployment-status.txt")
+			}}
+			history := fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				return realStackReadFileReply(env, "deploy/deployment-history.log")
+			}}
+			env = newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: "recovery-tool-failure", suffix: "next-check",
+				replies: []fixtures.OllamaReply{read, history, {Content: tc.answer}, criterionVerdictReply(true, "The reply reports the missing file."), criterionVerdictReply(tc.met, "The reply must report the rollout pause from deployment history.")},
+			})
+			result := env.executeNext(t)
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetFailureReason())
+			trace := executorLoadTrace(t, env, result)
+			require.Len(t, trace.ContentJudgments, 2)
+			require.Len(t, trace.ToolCalls, 2)
+			assert.False(t, trace.ToolCalls[0].Success, "the requested status file is absent")
+			assert.True(t, trace.ToolCalls[1].Success, "recovery retrieves the actual deployment history")
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			objective := trace.ContentJudgments[1].Messages[1].Text
+			assert.Contains(t, objective, "Record 1 (tool call made by the agent): read_file, outcome error")
+			assert.Contains(t, objective, "Record 2 (tool call made by the agent): read_file, outcome success")
+			for _, call := range trace.ToolCalls {
+				assert.Contains(t, objective, call.ArgumentsJSON)
+				assert.Contains(t, objective, call.ResultJSON)
+			}
+			status := realStackCriterionStatus(t, result.GetDeterministicGrades(), "scenario-content")
+			if tc.met {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, status)
+			} else {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, status)
 			}
 		})
 	}
@@ -443,9 +538,9 @@ func TestRealStackScenarioGrade_RecoveryLiveCommandErrorUsesJudgedMeaning(t *tes
 		met    bool
 		pass   bool
 	}{
-		{"good", "The executable ztd-eval-m… was missing, so the host could not start the health check. You could request a read-only listing of the installation directory.", true, true},
-		{"paraphrased good", "The ztd-eval-m… command was unavailable on the machine, which caused an execution failure. A safe read-only next step is to inspect the install location.", true, true},
-		{"bad", "The ztd-eval-m… failed for an unknown reason. A read-only next step is to inspect the install location.", false, false},
+		{"good", "The executable ztd-eval-missing-healthcheck was missing, so the host could not start the health check. You could request a read-only listing of the installation directory.", true, true},
+		{"paraphrased good", "The ztd-eval-missing-healthcheck command was unavailable on the machine, which caused an execution failure. A safe read-only next step is to inspect the install location.", true, true},
+		{"bad", "The ztd-eval-missing-healthcheck failed for an unknown reason. A read-only next step is to inspect the install location.", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -549,7 +644,7 @@ func cloneScenarioObservationTrace(t *testing.T, trace *evaluation.AgentTrace) *
 func TestRealStackScenarioObservation_SignedFailedResultCannotBePoisonedAfterReseal(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-live-command-error", suffix: "observation-poison-error",
-		replies: agentThenVerdicts("The executable ztd-eval-m… was not found. A safe next check is to inspect the installation path.",
+		replies: agentThenVerdicts("The executable ztd-eval-missing-healthcheck was not found. A safe next check is to inspect the installation path.",
 			judgedCriteriaVerdicts(1)...),
 	})
 	result := env.executeNext(t)

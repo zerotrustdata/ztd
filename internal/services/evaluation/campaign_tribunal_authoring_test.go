@@ -67,6 +67,8 @@ func (f *tribunalAuthoringTools) DispatchAgentTool(_ context.Context, _ Target, 
 
 func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunalAuthoringInference, tools *tribunalAuthoringTools) *agentRun {
 	t.Helper()
+	personas, err := catalogPersonaBindings()
+	require.NoError(t, err)
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	scope, err := catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}, TribunalCommands: useTribunal})
@@ -89,6 +91,7 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 			Binding: CampaignExecutionBinding{
 				ModelVariants: []*evalv1.ModelVariant{variant},
 				ModelRegistry: []*operatorv1.InferenceModelVariant{{Model: variant.GetServedModelTag(), Digest: variant.GetModelDigest()}},
+				Personas:      personas,
 			},
 			ScenarioTools: ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}, TribunalCommands: useTribunal},
 		},
@@ -241,6 +244,15 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		assert.False(t, call.Success)
 		assert.Equal(t, 1, inference.intentCalls)
 		assert.Equal(t, `{"args":["hello"],"command":"echo"}`, inference.intent.GetRequest(), "the intent carries the proposal in canonical sorted-key form") //nolint:testifylint // exact bytes, not JSON equivalence
+		assert.True(t, inference.intent.GetHomogeneous(), "a model-role assignment binds every Tribunal stage to its candidate")
+		for _, template := range []*operatorv1.InferenceDispatchRequest{inference.intent.GetMemberInference(), inference.intent.GetMarshalInference(), inference.intent.GetAuditorInference()} {
+			assert.Equal(t, operatorv1.ModelRole_MODEL_ROLE_PRIMARY, template.GetRole())
+			assert.Equal(t, "model:tag", template.GetModel())
+			assert.Equal(t, "digest", template.GetModelDigest())
+		}
+		frozen, err := tribunalPersonaBindings(run.req.Binding.Personas)
+		require.NoError(t, err)
+		assert.True(t, proto.Equal(&evalv1.EvaluationScenarioCatalog{Personas: frozen}, &evalv1.EvaluationScenarioCatalog{Personas: inference.intent.GetPersonas()}), "intent bindings come from the frozen campaign catalog")
 		assert.Equal(t, "/operator/workspace/case-1", inference.intent.GetWorkingDirectory())
 		assert.Equal(t, int32(constants.DefaultShellCommandTimeout), inference.intent.GetTimeoutSeconds())
 		assert.Zero(t, tools.dispatches)

@@ -2,9 +2,9 @@
   "schema_version": "formation-catalog-overlay.v1",
   "formations": [
     {
-      "id": "validation-stack",
-      "display_name": "Validation Stack",
-      "description": "qwen3.5:4b primary, gemma4:e2b assistant, llama3.2:1b lite",
+      "id": "formation-01",
+      "display_name": "formation-01",
+      "description": "qwen3.5:4b primary, gemma4:e2b assistant, lfm2.5-thinking:1.2b lite",
       "max_vram_mib": 12288,
       "primary": {
         "variant_id": "qwen3-5-4b",
@@ -35,6 +35,184 @@
         "model_digest": "7fbdbf8f5e45a75bb122155ed546e765b4d9c53a1285f62fd9f506baa1c5a47e"
       },
       "lite": {
+        "variant_id": "lfm2-5-thinking-1-2b",
+        "display_name": "lfm2.5-thinking:1.2b",
+        "provider": "lfm2",
+        "family": "lfm2",
+        "provider_class": "ollama",
+        "served_model_tag": "lfm2.5-thinking:1.2b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 1200000000,
+        "estimated_model_vram_mib": 1024,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "95bd9d45385f33bfe96d8b3651c8569e152f21f5bdb7c19894ffde650e9cf140"
+      }
+    },
+    {
+      "id": "formation-02",
+      "display_name": "formation-02",
+      "description": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M primary, granite4:3b-h assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "hf-co-xhtoken-spark-x2-6-4b-gguf-q4-k-m",
+        "display_name": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
+        "provider": "spark2_5",
+        "family": "spark2_5",
+        "provider_class": "ollama",
+        "served_model_tag": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 4447623680,
+        "estimated_model_vram_mib": 2651,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
+      },
+      "assistant": {
+        "variant_id": "granite4-3b-h",
+        "display_name": "granite4:3b-h",
+        "provider": "granitehybrid",
+        "family": "granitehybrid",
+        "provider_class": "ollama",
+        "served_model_tag": "granite4:3b-h",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 3191396096,
+        "estimated_model_vram_mib": 1903,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "076afb3855dc8bd36bc5abbdf5f743f02718c91aa3f30f4f29781480214f82b8"
+      },
+      "lite": {
+        "variant_id": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+        "display_name": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "provider": "lfm2",
+        "family": "lfm2",
+        "provider_class": "ollama",
+        "served_model_tag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 1170340608,
+        "estimated_model_vram_mib": 698,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
+      }
+    },
+    {
+      "id": "formation-03",
+      "display_name": "formation-03",
+      "description": "qwen3:4b-instruct-2507-q4_K_M primary, granite4:3b-h assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "qwen3-4b-instruct-2507-q4-k-m",
+        "display_name": "qwen3:4b-instruct-2507-q4_K_M",
+        "provider": "qwen3",
+        "family": "qwen3",
+        "provider_class": "ollama",
+        "served_model_tag": "qwen3:4b-instruct-2507-q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 4022468096,
+        "estimated_model_vram_mib": 2398,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0"
+      },
+      "assistant": {
+        "variant_id": "granite4-3b-h",
+        "display_name": "granite4:3b-h",
+        "provider": "granitehybrid",
+        "family": "granitehybrid",
+        "provider_class": "ollama",
+        "served_model_tag": "granite4:3b-h",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 3191396096,
+        "estimated_model_vram_mib": 1903,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "076afb3855dc8bd36bc5abbdf5f743f02718c91aa3f30f4f29781480214f82b8"
+      },
+      "lite": {
+        "variant_id": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+        "display_name": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "provider": "lfm2",
+        "family": "lfm2",
+        "provider_class": "ollama",
+        "served_model_tag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 1170340608,
+        "estimated_model_vram_mib": 698,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
+      }
+    },
+    {
+      "id": "formation-04",
+      "display_name": "formation-04",
+      "description": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M primary, ministral-3:3b assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
+      "max_vram_mib": 16384,
+      "primary": {
+        "variant_id": "hf-co-nvidia-nvidia-nemotron-3-5-bolt-e4b-4gb-q4-k-m",
+        "display_name": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M",
+        "provider": "gemma4",
+        "family": "gemma4",
+        "provider_class": "ollama",
+        "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 7518069290,
+        "estimated_model_vram_mib": 4482,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "139e7d57c1c319f8a244800512f359394c7a4dd6ae52c90bf4c2ae5a4d56cff1"
+      },
+      "assistant": {
+        "variant_id": "ministral-3-3b",
+        "display_name": "ministral-3:3b",
+        "provider": "mistral3",
+        "family": "mistral3",
+        "provider_class": "ollama",
+        "served_model_tag": "ministral-3:3b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 3849090048,
+        "estimated_model_vram_mib": 2295,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "f04aa1c738f64e13c625b82ae92504fc0260fa6723b509ed1ece0fa188179b1d"
+      },
+      "lite": {
+        "variant_id": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+        "display_name": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "provider": "lfm2",
+        "family": "lfm2",
+        "provider_class": "ollama",
+        "served_model_tag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 1170340608,
+        "estimated_model_vram_mib": 698,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
+      }
+    },
+    {
+      "id": "formation-lite",
+      "display_name": "formation-lite",
+      "description": "Light quickstart formation: granite4:1b-h primary, llama3.2:1b assistant, gemma3:1b lite",
+      "max_vram_mib": 6144,
+      "primary": {
+        "variant_id": "granite4-1b-h",
+        "display_name": "granite4:1b-h",
+        "provider": "granitehybrid",
+        "family": "granitehybrid",
+        "provider_class": "ollama",
+        "served_model_tag": "granite4:1b-h",
+        "trust": "sovereign",
+        "quantization": "Q8_0",
+        "parameter_count": 1461538368,
+        "estimated_model_vram_mib": 1481,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "7761ae79cab940d37672a871bf6473282ddd0ebbc3b039227eb8ccd90532699f"
+      },
+      "assistant": {
         "variant_id": "llama3-2-1b",
         "display_name": "llama3.2:1b",
         "provider": "llama",
@@ -43,16 +221,28 @@
         "served_model_tag": "llama3.2:1b",
         "trust": "sovereign",
         "quantization": "Q8_0",
-        "parameter_count": 1200000000,
-        "estimated_model_vram_mib": 1216,
+        "parameter_count": 1235814432,
+        "estimated_model_vram_mib": 1253,
         "estimated_kv_cache_mib": 256,
         "model_digest": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878"
+      },
+      "lite": {
+        "variant_id": "gemma3-1b",
+        "display_name": "gemma3:1b",
+        "provider": "gemma3",
+        "family": "gemma3",
+        "provider_class": "ollama",
+        "served_model_tag": "gemma3:1b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 999885952,
+        "estimated_model_vram_mib": 596,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79"
       }
     }
   ],
   "removed_formation_ids": [
-    "deepseek-reasoning-tower",
-    "gemma-cascade",
     "heterogeneous-0000",
     "heterogeneous-0001",
     "heterogeneous-0002",
@@ -1052,9 +1242,6 @@
     "heterogeneous-0996",
     "heterogeneous-0997",
     "heterogeneous-0998",
-    "heterogeneous-0999",
-    "llama-meta-stack",
-    "qwen-powerhouse",
-    "ultra-efficient-speedster"
+    "heterogeneous-0999"
   ]
 }

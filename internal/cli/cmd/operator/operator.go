@@ -36,6 +36,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/ollama"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
 
@@ -75,7 +76,9 @@ func Cmd() *cobra.Command {
 		operatorRunCmd(),
 		operatorStopCmd(),
 		operatorResetIdentityCmd(),
+		operatorTerminateCmd(),
 		operatorStartCmd(),
+		operatorRecoverCmd(),
 		operatorCpCmd(),
 		operatorScpCmd(),
 		operatorDeployCmd(),
@@ -326,6 +329,13 @@ func resolveOperatorWorkingDir(dir string) (string, error) {
 }
 
 func operatorStartCmd() *cobra.Command {
+	return operatorStartCmdWithConfig(shared.LoadConfig, shared.NewFileSvc)
+}
+
+func operatorStartCmdWithConfig(
+	configLoader func(string) (*config.Config, error),
+	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
+) *cobra.Command {
 	var trustBundle string
 	var workingDir string
 	var deploymentID string
@@ -347,11 +357,14 @@ func operatorStartCmd() *cobra.Command {
 	var provenanceOperatorID string
 	var provenanceOperatorModelStorageRoot string
 	var provenanceOperatorModelStorageFormat string
+	var acceptUnrecoverable bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the ztd Operator in foreground",
-		Long:  `Start the ztd Operator in foreground. This connects to the Gateway and executes commands. This is the re-exec target for remote deployment and can also be run directly for debugging.`,
+		Long: `Start the ztd Operator in foreground. This connects to the Gateway and executes commands. This is the re-exec target for remote deployment and can also be run directly for debugging.
+
+The first start that creates a master key prints a recovery key once and stores it only after you type it back. Lose that key and the OS key store, and this operator cannot be restored. A start without a terminal refuses to create the key unless --accept-unrecoverable is set. Install a saved key with 'operator recover'.`,
 		// Anything after "--" is positional and would otherwise be silently
 		// dropped, starting the Operator without the intended flags.
 		Args: cobra.NoArgs,
@@ -396,6 +409,18 @@ func operatorStartCmd() *cobra.Command {
 				ProvenanceOperatorModelStorageFormat: provenanceOperatorModelStorageFormat,
 			}
 
+			cfg, err := configLoader("")
+			if err != nil {
+				return fmt.Errorf("operator start: load config: %w", err)
+			}
+			fileSvc, err := fileSvcFactory(workingDir, slog.Default())
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+			}
+			if err := shared.EnsureRecoveryKey(cmd.InOrStdin(), cmd.ErrOrStderr(), fileSvc, cfg.Keyring, keystore.RecoveryRoleOperator, acceptUnrecoverable); err != nil {
+				return err
+			}
+
 			// Run operator (this blocks until shutdown)
 			serve.RunOperator(opts, shared.VersionInfoFromCmd(cmd))
 			return nil
@@ -403,6 +428,7 @@ func operatorStartCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&trustBundle, "trust-bundle", "", "Path to an explicit CA trust bundle (read-only; overrides the bundle delivered at enrollment)")
+	cmd.Flags().BoolVar(&acceptUnrecoverable, shared.FlagAcceptUnrecoverable, false, shared.AcceptUnrecoverableHelp)
 	cmd.Flags().StringVar(&workingDir, "working-dir", "", "Working directory for command execution")
 	cmd.Flags().StringVar(&deploymentID, "deployment-id", "", "Launch identifier for structured deployment progress")
 	_ = cmd.Flags().MarkHidden("deployment-id")

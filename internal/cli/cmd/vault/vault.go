@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -52,10 +53,13 @@ type fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)
 type keystoreFactory func(fileSvc fs.RuntimeFileService, create bool) (*keystore.Keystore, error)
 
 func openKeystore(fileSvc fs.RuntimeFileService, create bool) (*keystore.Keystore, error) {
-	if create {
-		return keystore.Open(fileSvc, slog.Default(), keystore.Options{})
+	if !create {
+		return keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{})
 	}
-	return keystore.NewWithFS(fileSvc, slog.Default(), keystore.Options{})
+	if err := shared.EnsureRecoveryKey(os.Stdin, os.Stderr, fileSvc, nil, keystore.RecoveryRoleRuntime, false); err != nil {
+		return nil, err
+	}
+	return keystore.Open(fileSvc, slog.Default(), keystore.Options{})
 }
 
 func vaultInitCmd() *cobra.Command {

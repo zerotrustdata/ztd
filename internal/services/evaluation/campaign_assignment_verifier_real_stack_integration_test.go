@@ -32,7 +32,7 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	ctx := t.Context()
 	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
-		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
+		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"heterogeneous-0000"},
 	})
 	require.NoError(t, err)
 	require.Len(t, set.Stacks, 1)
@@ -77,6 +77,7 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	binding := env.binding
 	binding.ModelVariants = variants
 	binding.FormationStackSetDigest = set.SetDigest
+	binding.Personas = env.req.Catalog.GetPersonas()
 
 	// verifyRequest builds the verifier input from the persisted trace and result,
 	// with the scenario expectations, grading method, and catalog the run executed

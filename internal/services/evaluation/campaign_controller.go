@@ -18,6 +18,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -57,6 +59,8 @@ type CampaignRunSummary struct {
 
 // CampaignStore is the canonical persistence surface used by the campaign controller.
 type CampaignStore interface {
+	SaveProtoArtifact(context.Context, EvidenceScope, complianceevidence.ArtifactType, proto.Message) (*compliancev1.ComplianceEvidenceReference, error)
+	LoadToolCallingProbeEvidence(context.Context, string, *compliancev1.ComplianceEvidenceReference) (*evalv1.ModelToolCallingProbeEvidence, error)
 	SaveCampaignSpec(ctx context.Context, spec *evalv1.EvaluationCampaignSpec) error
 	LoadCampaignSpec(ctx context.Context, campaignID string) (*evalv1.EvaluationCampaignSpec, error)
 	LoadCampaignRelease(ctx context.Context, campaignID string) (CampaignRelease, error)
@@ -662,8 +666,11 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", err)
 	}
 	var result *evalv1.EvaluationAssignmentResult
-	execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
-	if err == nil {
+	result, err = c.toolCallingGate(ctx, run, execReq)
+	if err == nil && result == nil {
+		execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
+	}
+	if err == nil && result == nil {
 		result, err = c.executor.ExecuteAssignment(ctx, execReq)
 	}
 	if err != nil {
@@ -738,6 +745,8 @@ func (c *CampaignController) frozenAssignmentRequest(ctx context.Context, spec *
 	req.Binding.ModelVariants = spec.GetModelRegistry()
 	req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(spec.GetModelRegistry())
 	req.Binding.FormationStackSetDigest = spec.GetFormationStackSetDigest()
+	req.Binding.Personas = catalog.GetPersonas()
+	req.Binding.ToolCallingProbeRequired = catalog.GetToolCallingProbeRequired()
 	req.Binding.JudgeVariant = spec.GetJudgeVariant()
 	return req, nil
 }
@@ -772,13 +781,21 @@ func scenarioToolsForAssignment(catalog *evalv1.EvaluationScenarioCatalog, assig
 	}
 	for _, scenario := range catalog.GetScenarios() {
 		if scenario.GetScenarioId() == assignment.GetScenarioId() {
-			return ScenarioToolExpectations{
+			tools := ScenarioToolExpectations{
 				AllowedTools:     append([]string(nil), scenario.GetAllowedTools()...),
 				ExpectedTools:    append([]string(nil), scenario.GetExpectedTools()...),
 				ForbiddenTools:   append([]string(nil), scenario.GetForbiddenTools()...),
 				TrajectoryPolicy: scenario.GetTrajectoryPolicy(),
 				TribunalCommands: scenario.GetTribunalCommands(),
-			}, nil
+			}
+			role, err := AssignmentDesignatedRole(assignment)
+			if err != nil {
+				return ScenarioToolExpectations{}, err
+			}
+			if role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE {
+				tools.ContextOnly = true
+			}
+			return tools, nil
 		}
 	}
 	return ScenarioToolExpectations{}, fmt.Errorf("evaluation: scenario tool lookup: unknown scenario %s", assignment.GetScenarioId())

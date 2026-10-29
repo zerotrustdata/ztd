@@ -107,16 +107,13 @@ func TestNewOperatorRuntimeFileServiceUsesWorkingDir(t *testing.T) {
 	assert.Equal(t, filepath.Join(workingDir, constants.RuntimeDirname), fileSvc.Resolve(""))
 }
 
-func TestOperatorFingerprintOptions_ProvenanceIncludesRuntimePort(t *testing.T) {
-	opts := ServeOperatorOptions{OperatorCapabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}}
-
-	got := operatorFingerprintOptions(opts, "/var/lib/ollama/models", "operator-user")
+func TestOperatorFingerprintOptions_IncludesRuntimePort(t *testing.T) {
+	got := operatorFingerprintOptions("/var/lib/ollama/models", "operator-user")
 
 	assert.Equal(t, auth.FingerprintOptions{
-		LocalDir:     "/var/lib/ollama/models",
-		Account:      "operator-user",
-		Port:         constants.Ports.OperatorHttp,
-		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance},
+		LocalDir: "/var/lib/ollama/models",
+		Account:  "operator-user",
+		Port:     constants.Ports.OperatorHttp,
 	}, got)
 }
 

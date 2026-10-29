@@ -27,6 +27,13 @@ func (c AgentToolCall) IsDenied() bool {
 	return c.Receipt != nil && governance.IsGovernanceRejectionReceipt(c.Receipt.EventReceipt)
 }
 
+// IsExecutedFailure reports a call that reached execution and failed, as its
+// signed receipt records. Argument-validation and dispatch rejections carry no
+// receipt, so they never count as an executed failure.
+func (c AgentToolCall) IsExecutedFailure() bool {
+	return !c.Success && !c.IsDenied() && c.Receipt != nil && c.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+}
+
 // agentGradingView is the typed trace content deterministic grading reads:
 // only the tool calls the model executed, never fixture-supplied history.
 type agentGradingView struct {
@@ -75,82 +82,92 @@ func validateToolCall(call AgentToolCall, validators []ToolArgumentValidator, ws
 			return false, toolArgumentFailure{FailedArg: c.Name, Rule: err.Error()}
 		}
 
-		if c.Equals != "" {
-			rendered := ws.Render(c.Equals)
-			if strVal != rendered {
-				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("equals %q failed, got %q", rendered, strVal)}
+		if ok, failure := validateToolArgument(strVal, c, ws); !ok {
+			return false, failure
+		}
+	}
+
+	return true, toolArgumentFailure{}
+}
+
+// validateToolArgument applies the same rules to a graded argument and to its
+// concrete catalog reference, so authoring validation cannot drift from grading.
+func validateToolArgument(strVal string, c ToolArgumentConstraint, ws ScenarioWorkspace) (bool, toolArgumentFailure) {
+	if c.Equals != "" {
+		rendered := ws.Render(c.Equals)
+		if strVal != rendered {
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("equals %q failed, got %q", rendered, strVal)}
+		}
+	}
+
+	if len(c.OneOf) > 0 {
+		matched := false
+		for _, opt := range c.OneOf {
+			if strVal == ws.Render(opt) {
+				matched = true
+				break
 			}
 		}
+		if !matched {
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("%q not in %v", strVal, c.OneOf)}
+		}
+	}
 
-		if len(c.OneOf) > 0 {
-			matched := false
-			for _, opt := range c.OneOf {
-				if strVal == ws.Render(opt) {
-					matched = true
+	if c.PathEquals != "" {
+		resolved := ws.Resolve(strVal)
+		expected := ws.Resolve(ws.Render(c.PathEquals))
+		if resolved != expected {
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q != %q", resolved, expected)}
+		}
+	}
+
+	if c.PathUnder != "" {
+		resolved := ws.Resolve(strVal)
+		expectedUnder := ws.Resolve(ws.Render(c.PathUnder))
+		if !pathWithin(resolved, expectedUnder) {
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q not under %q", resolved, expectedUnder)}
+		}
+	}
+
+	if len(c.RegexMatches) > 0 || len(c.RegexRejects) > 0 {
+		re, err := regexp.Compile(strVal)
+		if err != nil {
+			return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("regex compilation failed: %v", err)}
+		}
+		for _, sample := range c.RegexMatches {
+			if !re.MatchString(sample) {
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q does not match %q", strVal, sample)}
+			}
+		}
+		for _, sample := range c.RegexRejects {
+			if re.MatchString(sample) {
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q unexpectedly matched %q", strVal, sample)}
+			}
+		}
+	}
+
+	if len(c.RequiredTerms) > 0 {
+		valLower := strings.ToLower(strVal)
+		for _, group := range c.RequiredTerms {
+			hit := false
+			for _, term := range group {
+				if strings.Contains(valLower, strings.ToLower(ws.Render(term))) {
+					hit = true
 					break
 				}
 			}
-			if !matched {
-				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("%q not in %v", strVal, c.OneOf)}
+			if !hit {
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("missing required term from group %v", group)}
 			}
 		}
+	}
 
-		if c.PathEquals != "" {
-			resolved := ws.Resolve(strVal)
-			expected := ws.Resolve(ws.Render(c.PathEquals))
-			if resolved != expected {
-				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q != %q", resolved, expected)}
-			}
-		}
-
-		if c.PathUnder != "" {
-			resolved := ws.Resolve(strVal)
-			expectedUnder := ws.Resolve(ws.Render(c.PathUnder))
-			if !pathWithin(resolved, expectedUnder) {
-				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("resolved path %q not under %q", resolved, expectedUnder)}
-			}
-		}
-
-		if len(c.RegexMatches) > 0 || len(c.RegexRejects) > 0 {
-			re, err := regexp.Compile(strVal)
-			if err != nil {
-				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("regex compilation failed: %v", err)}
-			}
-			for _, sample := range c.RegexMatches {
-				if !re.MatchString(sample) {
-					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q does not match %q", strVal, sample)}
-				}
-			}
-			for _, sample := range c.RegexRejects {
-				if re.MatchString(sample) {
-					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("pattern %q unexpectedly matched %q", strVal, sample)}
-				}
-			}
-		}
-
-		if len(c.RequiredTerms) > 0 {
-			valLower := strings.ToLower(strVal)
-			for _, group := range c.RequiredTerms {
-				hit := false
-				for _, term := range group {
-					if strings.Contains(valLower, strings.ToLower(ws.Render(term))) {
-						hit = true
-						break
-					}
-				}
-				if !hit {
-					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("missing required term from group %v", group)}
-				}
-			}
-		}
-
-		if len(c.ForbiddenTerms) > 0 {
-			valLower := strings.ToLower(strVal)
-			for _, term := range c.ForbiddenTerms {
-				rendered := ws.Render(term)
-				if strings.Contains(valLower, strings.ToLower(rendered)) {
-					return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("contains forbidden term %q", rendered)}
-				}
+	if len(c.ForbiddenTerms) > 0 {
+		valLower := strings.ToLower(strVal)
+		for _, term := range c.ForbiddenTerms {
+			rendered := ws.Render(term)
+			if strings.Contains(valLower, strings.ToLower(rendered)) {
+				return false, toolArgumentFailure{FailedArg: c.Name, Rule: fmt.Sprintf("contains forbidden term %q", rendered)}
 			}
 		}
 	}
@@ -222,7 +239,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 				}
 			}
 		}
-		if len(tools.AllowedTools) > 0 {
+		if len(tools.AllowedTools) > 0 && !tools.ContextOnly {
 			observed := false
 			for _, call := range calls {
 				if call.Success && !call.IsDenied() {
@@ -278,7 +295,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 			if gold.RecoveryExpectation.Kind == recoveryKindMissingResource {
 				// This task deliberately requests an absent file and asks for a
 				// diagnosis, rather than requiring an impossible successful read.
-				observed = !call.Success && !call.IsDenied() && call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+				observed = call.IsExecutedFailure()
 			}
 			if valid && observed {
 				outcome := evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT

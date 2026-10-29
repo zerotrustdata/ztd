@@ -210,7 +210,7 @@ func TestCampaignLongitudinal_PlantedFaultFixturesEvaluateAcrossAllThreeScenario
 			backupSource:  "scripts/check.sh",
 			backupPath:    "scripts/check.sh.bak",
 			sedArgs:       []string{"-i", `s/config\/settings.json/conf\/settings.json/`, "scripts/check.sh"},
-			diagnosisText: "Diagnosis: the check script used a stale settings path; I updated it to conf/s… and verified the repair.",
+			diagnosisText: "Diagnosis: the check script used a stale settings path; I updated it to conf/settings.json and verified the repair.",
 		},
 		{
 			scenarioID:    "cron-disk-fill",
@@ -218,7 +218,7 @@ func TestCampaignLongitudinal_PlantedFaultFixturesEvaluateAcrossAllThreeScenario
 			backupSource:  "cron/app.cron",
 			backupPath:    "cron/app.cron.bak",
 			sedArgs:       []string{"-i", "/app-dump/d", "cron/app.cron"},
-			diagnosisText: "Diagnosis: the app-d… cron job filled disk; I removed that entry, kept app-r…, and verified the cron repair.",
+			diagnosisText: "Diagnosis: the app-dump cron job filled disk; I removed that entry, kept app-report, and verified the cron repair.",
 		},
 	}
 

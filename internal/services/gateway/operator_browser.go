@@ -59,7 +59,7 @@ func (c *OperatorController) handleOperatorBrowserSubpath(w http.ResponseWriter,
 			c.responder.Error(w, http.StatusForbidden, constants.ErrForbidden.Error())
 			return
 		}
-		c.handleTerminateOperator(w, r)
+		c.handleTerminateOperator(w, r, operatorID)
 	default:
 		c.responder.Error(w, http.StatusNotFound, "not found")
 	}

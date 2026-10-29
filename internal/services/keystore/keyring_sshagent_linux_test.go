@@ -21,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -83,6 +84,22 @@ func TestSSHAgentKeyring_WrongKeyCannotUnseal(t *testing.T) {
 	otherDial := memoryAgentDialer(t, newEd25519(t))
 	_, err := newSSHAgentKeyring(fileSvc, otherDial).RetrieveMasterKey()
 	require.ErrorIs(t, err, constants.ErrKeyStoreSSHAgentKeyMissing)
+	var unlock *SSHAgentUnlockError
+	require.ErrorAs(t, err, &unlock)
+	assert.NotEmpty(t, unlock.Fingerprint)
+}
+
+func TestSSHAgentKeyring_UnavailableAgentIdentifiesRequiredKey(t *testing.T) {
+	fileSvc, _ := setupTestFileService(t)
+	privateKey := newEd25519(t)
+	dial := memoryAgentDialer(t, privateKey)
+	require.NoError(t, newSSHAgentKeyring(fileSvc, dial).StoreMasterKey(testMasterKey(26)))
+	publicKey, err := ssh.NewPublicKey(privateKey.Public())
+	require.NoError(t, err)
+
+	_, err = newSSHAgentKeyring(fileSvc, noAgent).RetrieveMasterKey()
+	require.ErrorIs(t, err, constants.ErrKeyStoreSSHAgentUnavailable)
+	assert.Contains(t, err.Error(), ssh.FingerprintSHA256(publicKey), "recovery must identify the original key even when the agent is down")
 }
 
 func TestSSHAgentKeyring_RejectsNondeterministicKeys(t *testing.T) {

@@ -187,7 +187,7 @@ func TestNamedRollout_MixesSuitesConditionsAndFormationLane(t *testing.T) {
 	env.mustRun(t, "campaigns", "create", "held", "qwen3:4b", "--condition", "held-context", "--reps", "2", "--suite", evaluation.SmokeSuiteID)
 	variants := evaluation.FormationCatalogFixtureVariants(func(string) string { return repeatTestHex('a') })
 	writeTestFrozenInventory(t, env.root, variants...)
-	env.mustRun(t, "campaigns", "create", "system", "--formations", "ultra-efficient-speedster")
+	env.mustRun(t, "campaigns", "create", "system", "--formations", "heterogeneous-0000")
 	env.mustRun(t, "rollout", "create", "mixed", "control", "system", "held", "longitudinal")
 	var plan namedRolloutPlan
 	require.NoError(t, env.runJSON(t, &plan, "rollout", "run", "mixed", "--dry-run"))

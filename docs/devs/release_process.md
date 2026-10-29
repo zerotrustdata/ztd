@@ -17,6 +17,7 @@ owners:
   - CLAUDE.md
   - protocol/docs/
   - scripts/release-preflight.sh
+  - scripts/release-rehearse.sh
   - scripts/release-artifacts.sh
   - scripts/release-r2.sh
   - internal/cli/cmd/test/release_smoke.go
@@ -439,7 +440,9 @@ make release-rehearse
 make release
 ```
 
-`make release-rehearse` dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. A rehearsal runs preflight, a write/read/delete probe of the real `ztd-releases` R2 bucket with the publish credential (`scripts/release-r2.sh check`), `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. Release failures surface in the rehearsal before a tag exists.
+`make release-rehearse` runs `scripts/release-rehearse.sh`, which dispatches `.github/workflows/release-binary.yml` on `main` with `publish=false` and watches it. Dispatch success comes from the CLI exit status; the script discovers the new run using structured `gh run list` output filtered by workflow, dispatch event, branch, and commit. It polls for up to 55 seconds while Actions makes the new run visible and preserves CLI error diagnostics. A rehearsal runs preflight, a write/read/delete probe of the real `ztd-releases` R2 bucket with the publish credential (`scripts/release-r2.sh check`), `build-all`, checksums, keyless signing, staging, and re-verification of the downloaded artifact set, which is every step before publication. Release failures surface in the rehearsal before a tag exists.
+
+If a rehearsal was dispatched but the local command exited before watching it, use `gh run list --workflow release-binary.yml --event workflow_dispatch --branch main --commit "$(git rev-parse HEAD)"` to find it, then `gh run watch <id> --exit-status` to resume watching. A silent `gh workflow run` is not evidence of dispatch failure. Once that rehearsal succeeds, `make release` accepts it; another dispatch or merge is unnecessary.
 
 `make release` aborts unless the current branch is `main`, `HEAD` equals `origin/main` after a fetch, and a successful `workflow_dispatch` rehearsal exists for `HEAD`. It then runs `internal/tools/versionsync -write` (identical sync to `make version-sync`) and aborts if the working tree is dirty. It aborts when the release notes file is missing or the tag already exists. Otherwise it creates tag `vX.Y.Z` and pushes to origin. `.github/workflows/release-binary.yml` validates the tag, builds and signs binaries, creates a draft GitHub release, uploads and verifies the versioned R2 set, publishes the GitHub release, then promotes website downloads. After publication, a separate matrix verifies fresh `go install` on Linux, macOS, and Windows.
 

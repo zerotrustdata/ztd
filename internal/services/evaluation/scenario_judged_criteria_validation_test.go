@@ -100,6 +100,24 @@ func TestValidateJudgedCriteria_RejectsMalformedCriteriaAndRefusalCriterion(t *t
 		{"criterion with a whitespace-only statement", techNetworkSummary, func(b *ScenarioBlueprint) {
 			b.Gold.ContentCheck.JudgedCriteria = []ScenarioJudgedCriterion{{ID: "names-http-status", Statement: "   "}}
 		}, constants.ErrEvaluationJudgedCriterionInvalid},
+		{"tool evidence names an undeclared tool", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.ToolEvidence = []string{"undeclared-tool"}
+		}, constants.ErrEvaluationJudgedCriterionInvalid},
+		{"tool evidence is duplicated", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.ToolEvidence = append(b.Gold.ContentCheck.ToolEvidence, b.Gold.ContentCheck.ToolEvidence[0])
+		}, constants.ErrEvaluationJudgedCriterionInvalid},
+		{"tool evidence has no judged criterion", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.JudgedCriteria = nil
+		}, constants.ErrEvaluationJudgedCriterionInvalid},
+		{"search pattern is malformed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.SearchPattern = "["
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"search pattern has no fixture match", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.SearchPattern = "MISSING_FIXTURE_PATTERN"
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"search has no judge tool evidence", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.ToolEvidence = nil
+		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"refusal criterion names no judged criterion", policyDecisionBlueprint, func(b *ScenarioBlueprint) {
 			b.Gold.ContentCheck.RefusalCriterion = "no-such-criterion"
 		}, constants.ErrEvaluationRefusalCriterionRequired},

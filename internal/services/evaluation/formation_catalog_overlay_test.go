@@ -23,7 +23,7 @@ import (
 func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
 	overlay := FormationCatalogOverlay{
 		Formations:          []Formation{newTestFormation("test-new-formation")},
-		RemovedFormationIDs: []string{"gemma-cascade"},
+		RemovedFormationIDs: []string{"heterogeneous-0001"},
 	}
 	data, err := MarshalFormationCatalogOverlay(overlay)
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestMarshalAndLoadFormationCatalogOverlayRoundTrips(t *testing.T) {
 	require.Len(t, loaded.Formations, 1)
 	assert.Equal(t, "test-new-formation", loaded.Formations[0].ID)
 	assert.Equal(t, "TestProvider", loaded.Formations[0].Primary.Provider)
-	assert.Equal(t, []string{"gemma-cascade"}, loaded.RemovedFormationIDs)
+	assert.Equal(t, []string{"heterogeneous-0001"}, loaded.RemovedFormationIDs)
 }
 
 func TestLoadFormationCatalogOverlayFileMissingWrapsNotExist(t *testing.T) {
@@ -47,22 +47,26 @@ func TestLoadFormationCatalogOverlayFileMissingWrapsNotExist(t *testing.T) {
 func TestApplyFormationCatalogOverlayAddsAndRemoves(t *testing.T) {
 	overlay := &FormationCatalogOverlay{
 		Formations:          []Formation{newTestFormation("test-new-formation")},
-		RemovedFormationIDs: []string{"gemma-cascade"},
+		RemovedFormationIDs: []string{"heterogeneous-0001"},
 	}
 	topologies, err := ApplyFormationCatalogOverlay(overlay)
 	require.NoError(t, err)
-	require.Len(t, topologies.Formations(), 5)
+	catalog, err := NewExecutionTopologies()
+	require.NoError(t, err)
+	require.Len(t, topologies.Formations(), len(catalog.Formations()))
 
 	_, err = topologies.Formation("test-new-formation")
 	require.NoError(t, err)
-	_, err = topologies.Formation("gemma-cascade")
+	_, err = topologies.Formation("heterogeneous-0001")
 	assert.ErrorIs(t, err, constants.ErrFormationInvalid)
 }
 
 func TestApplyFormationCatalogOverlayNilReturnsDefaults(t *testing.T) {
 	topologies, err := ApplyFormationCatalogOverlay(nil)
 	require.NoError(t, err)
-	assert.Len(t, topologies.Formations(), 5)
+	catalog, err := NewExecutionTopologies()
+	require.NoError(t, err)
+	assert.Len(t, topologies.Formations(), len(catalog.Formations()))
 }
 
 func TestApplyFormationCatalogOverlayEmptyingTheCatalogStillErrors(t *testing.T) {

@@ -183,7 +183,7 @@ func (r *releaseSmokeRun) deployEvalInference(ctx context.Context, root, endpoin
 		return "", "", err
 	}
 	trust := cfg.ResolvedTrustBundlePath()
-	out, err := r.ztd(ctx, "deploy-inference", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", root, "--background", "--approve", "--capabilities", "inference,observer", "--inference-ollama-endpoint", endpoint, "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https))
+	out, err := r.ztd(ctx, "deploy-inference", r.gwRoot, "-e", "127.0.0.1", "operator", "deploy", "--local", "--dest-dir", root, "--background", "--approve", "--capabilities", "inference,observer", "--inference-ollama-endpoint", endpoint, "--trust-bundle", trust, "--gateway-http-port", strconv.Itoa(r.ports.http), "--gateway-https-port", strconv.Itoa(r.ports.https), "--accept-unrecoverable")
 	if err != nil {
 		return "", "", err
 	}
@@ -296,7 +296,7 @@ func (r *releaseSmokeRun) runEvalCampaigns(ctx context.Context, files fs.Runtime
 // Model-call purposes, the intent tool, and the scripted answers of the loop.
 const (
 	evalLoopScriptedModel    = "qwen3:4b"
-	evalLoopDirectAnswer     = "READY"
+	evalLoopDirectAnswer     = "ERROR"
 	evalLoopIntentTool       = "run_shell_command"
 	evalLoopPurposeTurn      = "agent_turn"
 	evalLoopPurposeGenerate  = "tribunal_generate"
@@ -327,7 +327,7 @@ func logEvalLoopChatRequests(t *testing.T, requests []json.RawMessage) {
 }
 
 // evalLoopReplies is the scripted provider's answer sequence for the whole loop,
-// in chat order: the direct campaign's READY; then the Tribunal campaign's first
+// in chat order: the direct campaign's ERROR; then the Tribunal campaign's first
 // agent turn calling the intent tool, its eight member replies (five generations
 // where four agree and Nemesis dissents, one LOW marshal, one APPROVE audit, and the APPROVE of the
 // contextual review that ratify and notary run once the command holds its L3
@@ -371,7 +371,7 @@ type evalLoopRun struct {
 // evalLoopCampaigns returns the loop's campaigns in run order: the direct
 // instruction scenario, then the Tribunal intent scenario.
 func evalLoopCampaigns() ([]evalLoopCampaign, error) {
-	direct, err := singleScenarioSuite(evaluation.DefaultScenarioSuite(), "cross-process-suite", "instruction-exact-format")
+	direct, err := singleScenarioSuite(evaluation.DefaultScenarioSuite(), "cross-process-suite", "instruction-classify-severity")
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,7 @@ import (
 // DefaultJudgeServedModelTag is the governed-registry model every new campaign
 // freezes as its judge unless it names another one. Its digest is pinned from
 // the model registry when the campaign freezes, never from this tag.
-const DefaultJudgeServedModelTag = "gemma4:e4b"
+const DefaultJudgeServedModelTag = "qwen3.5:4b"
 
 // ResolveCampaignJudge returns the registry variant a campaign freezes as its
 // judge: the one serving servedModelTag, or DefaultJudgeServedModelTag when it

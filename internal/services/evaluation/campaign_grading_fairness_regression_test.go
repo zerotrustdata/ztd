@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -55,7 +56,7 @@ func TestCollectRunAggregateState_UnavailableObservationsDoNotLowerModelScores(t
 func TestFinalResponseDiagnosis_GradesClaimsInsteadOfIncidentalWording(t *testing.T) {
 	t.Parallel()
 	blueprint := finalResponseDiagnosis()
-	const diagnosis = "The check… service has an 18 percent timeout rate, and its pay… upstream is unreachable."
+	const diagnosis = "The checkout-api service has an 18 percent timeout rate, and its payments upstream is unreachable."
 	const summary = "Some customers cannot complete checkout while we investigate."
 	for _, tc := range []struct {
 		name, diagnosis, confidence, summary string
@@ -111,12 +112,19 @@ func TestGradeHomogeneousScenario_FinalResponseRestatementDoesNotCountTwice(t *t
 	assert.InDelta(t, 0.5, rate, 0)
 }
 
-func TestRecoveryToolFailure_DisclosesShellRestrictionAndAcceptsMissingFileWording(t *testing.T) {
+func TestRecoveryToolFailure_UsesHistoryAfterMissingStatusFile(t *testing.T) {
 	t.Parallel()
 	blueprint := recoveryToolFailure()
-	assert.Contains(t, blueprint.Input.UserPrompt, "Do not use run_shell_command")
-	passed, detail := evaluateContentCheck("The requested file is not present. Next, inspect the deploy directory with fs_disk_profile.", *blueprint.Gold.ContentCheck, ScenarioWorkspace{})
-	assert.True(t, passed, detail)
+	assert.Contains(t, blueprint.Input.UserPrompt, "v2.2.6 rollout")
+	assert.Equal(t, []string{constants.MCPToolReadFile}, blueprint.ExpectedTools)
+	assert.Contains(t, blueprint.AllowedTools, constants.MCPToolListDirectory)
+	assert.Contains(t, blueprint.AllowedTools, constants.MCPToolSearchDirectory)
+	assert.Equal(t, []string{"reports-file-unavailable", "reports-rollout-pause"}, []string{
+		blueprint.Gold.ContentCheck.JudgedCriteria[0].ID,
+		blueprint.Gold.ContentCheck.JudgedCriteria[1].ID,
+	})
+	assert.Contains(t, blueprint.Gold.ContentCheck.JudgedCriteria[1].Statement, "08:04 UTC")
+	assert.Contains(t, blueprint.Gold.ContentCheck.JudgedCriteria[1].Statement, "deployment-history.log")
 }
 
 func TestDiagnosisRubricV3_RetainsFrozenSummaryAndEvidenceWeights(t *testing.T) {

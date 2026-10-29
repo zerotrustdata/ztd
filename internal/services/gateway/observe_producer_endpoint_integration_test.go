@@ -66,7 +66,7 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 		Logger:           infra.Logger,
 		Responder:        infra.Responder,
 		SuspendedStore:   infra.SuspendedStore,
-		ScrubbingService: newTestScrubber(t),
+		ScrubbingService: infra.Scrubber,
 		ThreatScanner:    governance.NewL1Doctrine(),
 		MaxPayloadBytes:  infra.Cfg.Gateway.MaxPayloadBytes,
 		Posture:          infra.Cfg.Gateway.Posture,

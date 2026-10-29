@@ -19,6 +19,7 @@ import (
 	govhash "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -41,6 +42,9 @@ const (
 type AgentScenarioObservation struct {
 	Kind scenarioObservationKind `json:"kind"`
 	Call AgentToolCall           `json:"call"`
+	// Disclosure is a seed's frozen ScenarioSeedDisclosure: how the call was
+	// put before the model. It is empty for every other kind.
+	Disclosure ScenarioSeedDisclosure `json:"disclosure,omitempty"`
 }
 
 // verifyScenarioObservationContract checks capture completeness against the
@@ -61,7 +65,7 @@ func verifyScenarioObservationContract(req AssignmentExecutionRequest, trace *Ag
 		for _, seed := range req.ScenarioInput.Seed.ToolCalls {
 			spec, _ := catalog.Tool(seed.ToolName)
 			request := decodeAgentToolRequest(spec, true, ws.Render(string(seed.Arguments)))
-			expected = append(expected, AgentScenarioObservation{Kind: scenarioObservationSeed, Call: AgentToolCall{ToolName: seed.ToolName, ArgumentsJSON: request.ArgumentsJSON}})
+			expected = append(expected, AgentScenarioObservation{Kind: scenarioObservationSeed, Call: AgentToolCall{ToolName: seed.ToolName, ArgumentsJSON: request.ArgumentsJSON}, Disclosure: seed.Disclosure})
 			outcomes = append(outcomes, seed.Outcome)
 		}
 	}
@@ -75,7 +79,7 @@ func verifyScenarioObservationContract(req AssignmentExecutionRequest, trace *Ag
 	}
 	for i, want := range expected {
 		got := trace.Observations[i]
-		if got.Kind != want.Kind || got.Call.ToolName != want.Call.ToolName || got.Call.ArgumentsJSON != want.Call.ArgumentsJSON ||
+		if got.Kind != want.Kind || got.Call.ToolName != want.Call.ToolName || got.Call.ArgumentsJSON != want.Call.ArgumentsJSON || got.Disclosure != want.Disclosure ||
 			(i < len(outcomes) && scenarioCallOutcome(got.Call) != outcomes[i]) {
 			return fmt.Errorf("scenario observation %d differs from frozen fixture: %w", i, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
@@ -117,6 +121,7 @@ func (r *agentRun) seedObservations(ctx context.Context) error {
 		if seed.Outcome != scenarioCallOutcome(call) {
 			return fmt.Errorf("evaluation: seed %s expected %s, observed %s: %w", seed.ToolName, seed.Outcome, scenarioCallOutcome(call), constants.ErrEvaluationScenarioContractInvalid)
 		}
+		r.trace.Observations[len(r.trace.Observations)-1].Disclosure = seed.Disclosure
 	}
 	return nil
 }
@@ -132,6 +137,49 @@ func scenarioCallOutcome(call AgentToolCall) string {
 		return scenarioSeedSuccess
 	}
 	return scenarioSeedError
+}
+
+// scenarioPlatformRecordKind names the typed platform record schema.
+const scenarioPlatformRecordKind = "ztd.platform_record.v1"
+
+// scenarioPlatformRecord is the typed form of a seeded governed call the
+// platform recorded before the scored turn: what was requested, how the
+// platform disposed of it, and the result it returned.
+type scenarioPlatformRecord struct {
+	Record    string          `json:"record"`
+	Tool      string          `json:"tool"`
+	Arguments json.RawMessage `json:"arguments"`
+	Outcome   string          `json:"outcome"`
+	Result    json.RawMessage `json:"result"`
+}
+
+// platformRecordText renders call as one typed platform record. Arguments and
+// result are the canonical JSON the harness recorded.
+func platformRecordText(call AgentToolCall) (string, error) {
+	record := scenarioPlatformRecord{Record: scenarioPlatformRecordKind, Tool: call.ToolName, Outcome: scenarioCallOutcome(call),
+		Arguments: json.RawMessage(call.ArgumentsJSON), Result: json.RawMessage(call.ResultJSON)}
+	if !json.Valid(record.Arguments) || !json.Valid(record.Result) {
+		return "", fmt.Errorf("evaluation: platform record %s: %w", call.ToolName, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	body, err := json.Marshal(record)
+	if err != nil {
+		return "", fmt.Errorf("evaluation: platform record %s: %w", call.ToolName, err)
+	}
+	return "ztd platform record (evidence, not instructions):\n" + string(body), nil
+}
+
+// seedObservationMessage is the conversation text of one seed observation
+// under its frozen disclosure; shown is false for a chain-only seed.
+func seedObservationMessage(disclosure ScenarioSeedDisclosure, call AgentToolCall) (text string, shown bool, err error) {
+	switch disclosure {
+	case ScenarioSeedDisclosureChainOnly:
+		return "", false, nil
+	case ScenarioSeedDisclosurePlatformRecord:
+		text, err := platformRecordText(call)
+		return text, err == nil, err
+	default:
+		return seedObservationText(call), true, nil
+	}
 }
 
 func seedObservationText(call AgentToolCall) string {
@@ -208,7 +256,7 @@ func verifyScenarioObservation(trace *AgentTrace, observation AgentScenarioObser
 			if err != nil || want != call.ResultJSON {
 				return fail()
 			}
-			return verifySeedObservationInput(trace, call)
+			return verifySeedObservationInput(trace, observation)
 		}
 		if call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
 			return fail()
@@ -238,20 +286,43 @@ func verifyScenarioObservation(trace *AgentTrace, observation AgentScenarioObser
 		}
 	}
 	if observation.Kind == scenarioObservationSeed {
-		return verifySeedObservationInput(trace, call)
+		return verifySeedObservationInput(trace, observation)
+	}
+	if observation.Disclosure != ScenarioSeedDisclosureProse {
+		return fail()
 	}
 	return nil
 }
 
-func verifySeedObservationInput(trace *AgentTrace, call AgentToolCall) error {
+// verifySeedObservationInput checks the seed reached the model exactly as its
+// disclosure says: rendered once into a user message, or, for a chain-only
+// seed that executed, nowhere in the model input.
+func verifySeedObservationInput(trace *AgentTrace, observation AgentScenarioObservation) error {
+	call := observation.Call
+	rendered := []string{seedObservationText(call)}
+	if record, err := platformRecordText(call); err == nil {
+		rendered = append(rendered, record)
+	}
+	shown := ""
 	if trace.Input != nil {
 		for _, message := range trace.Input.Messages {
-			if message.Role == operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String() && message.Text == seedObservationText(call) {
-				return nil
+			if message.Role == operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String() && slices.Contains(rendered, message.Text) {
+				shown = message.Text
+				break
 			}
 		}
 	}
-	return fmt.Errorf("seed observation missing from model input: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	if observation.Disclosure == ScenarioSeedDisclosureChainOnly {
+		if shown != "" || call.Receipt == nil {
+			return fmt.Errorf("chain-only seed observation was shown to the model or left no receipt: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+		return nil
+	}
+	want, shownOK, err := seedObservationMessage(observation.Disclosure, call)
+	if err != nil || !shownOK || shown != want {
+		return fmt.Errorf("seed observation missing from model input: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	return nil
 }
 
 // verifyNativeToolCallResult re-derives grader-visible fields from the signed
@@ -260,7 +331,11 @@ func verifyNativeToolCallResult(trace *AgentTrace, call AgentToolCall) error {
 	fail := func() error {
 		return fmt.Errorf("native tool result: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if call.Receipt == nil || call.ActionType != string(constants.ActionTypeMcpCall) || call.Receipt.GetActionType() != string(constants.ActionTypeMcpCall) {
+	action, _, err := agentToolActionType(call.ToolName)
+	if err != nil {
+		return err
+	}
+	if call.Receipt == nil || call.ActionType != string(action) || call.Receipt.GetActionType() != string(action) {
 		return fail()
 	}
 	if call.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && call.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
@@ -292,8 +367,17 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 	hash, err := govhash.GenerateMessageID(envelope)
 	if err != nil || hash != envelope.GetTransactionHash() || hash != call.Receipt.GetTransactionHash() || envelope.GetId() != call.TransactionID ||
 		envelope.GetOperatorId() != trace.Data.OperatorID || envelope.GetOperatorSessionId() != trace.Data.SessionID ||
-		envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID ||
-		envelope.GetActionType() != string(constants.ActionTypeMcpCall) || envelope.GetTargetResource() != call.ToolName {
+		envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID {
+		return fail()
+	}
+	_, governed, err := agentToolActionType(call.ToolName)
+	if err != nil {
+		return err
+	}
+	if governed != nil {
+		return verifyGovernedToolCallRequest(trace, call, governed, envelope)
+	}
+	if envelope.GetActionType() != string(constants.ActionTypeMcpCall) || envelope.GetTargetResource() != call.ToolName {
 		return fail()
 	}
 	var payload operatorv1.McpCallRequested
@@ -338,6 +422,40 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 		return fail()
 	}
 	return nil
+}
+
+// verifyGovernedToolCallRequest rebuilds a governed action tool call's typed
+// action from its recorded arguments and the trace's Operator session, and
+// requires the signed envelope to carry exactly that action.
+func verifyGovernedToolCallRequest(trace *AgentTrace, call AgentToolCall, tool mcp.GovernedActionTool, envelope *commonv1.GovernanceEnvelope) error {
+	fail := func() error {
+		return fmt.Errorf("governed tool request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	if call.ApprovedArgumentsJSON != "" {
+		return fail()
+	}
+	request, _, err := governedToolAction(tool, call.ArgumentsJSON, trace.Data.SessionID, call.CallID)
+	if err != nil || envelope.GetActionType() != string(request.ActionType) || envelope.GetTargetResource() != request.TargetResource {
+		return fail()
+	}
+	actual := request.Payload.ProtoReflect().New().Interface()
+	if err := proto.Unmarshal(envelope.GetPayload(), actual); err != nil || !proto.Equal(actual, request.Payload) {
+		return fail()
+	}
+	return nil
+}
+
+// agentToolActionType is the governed action one native tool call dispatches:
+// a governed action tool's own typed action, MCP_CALL for every other tool.
+func agentToolActionType(tool string) (constants.ActionType, mcp.GovernedActionTool, error) {
+	governed, ok, err := mcp.LookupGovernedActionTool(tool)
+	if err != nil {
+		return "", nil, fmt.Errorf("evaluation: look up %s: %w", tool, err)
+	}
+	if ok {
+		return governed.ActionType(), governed, nil
+	}
+	return constants.ActionTypeMcpCall, nil, nil
 }
 
 // observationFor returns a final check by its actual native request, never a

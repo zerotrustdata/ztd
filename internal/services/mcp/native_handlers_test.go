@@ -180,9 +180,9 @@ func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
 		require.Equal(t, customRegistry, customHandler.registry, "expected handler to use provided registry")
 	})
 
-	t.Run("all 33 tools registered", func(t *testing.T) {
+	t.Run("all 38 tools registered", func(t *testing.T) {
 		tools := handler.ListTools()
-		require.Len(t, tools, 33, "expected 33 registered tools")
+		require.Len(t, tools, 38, "expected 38 registered tools")
 
 		expectedTools := []string{
 			"db_discover_topology",
@@ -1255,8 +1255,8 @@ func TestNativeTools(t *testing.T) {
 	require.NoError(t, err)
 	nativeTools := handler.ListTools()
 
-	if len(nativeTools) != 33 {
-		t.Errorf("expected 33 native tools, got %d", len(nativeTools))
+	if len(nativeTools) != 38 {
+		t.Errorf("expected 38 native tools, got %d", len(nativeTools))
 	}
 
 	expectedTools := []string{

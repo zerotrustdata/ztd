@@ -3,8 +3,8 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-29
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -106,6 +106,8 @@ For a same-host deployment, give the Operator its own working directory so it do
 ```bash
 ./ztd operator start --endpoint localhost --working-dir ~/.ztd-operator
 ```
+
+The first start of a new Operator runtime prints a recovery key once and waits for you to type it back. That key is the only offline copy of this operator's master key. Lose it and the OS key store, and this operator cannot be restored. `operator deploy` from a terminal on this machine shows the key before it starts a local worker. A remote deploy has no terminal on the far host, so pass `--accept-unrecoverable` or run `operator start` in a terminal on that host first. Install a saved key with `./ztd operator recover`. See [Recovery key](../architecture/encryption.md#recovery-key).
 
 The Operator executes:
 1. Generates Operator and CLI ECDSA P-256 keys, certificate signing requests (CSRs), and a request token in memory.
@@ -247,7 +249,15 @@ To stop all local Operators running under the current user (Linux, macOS, and Wi
 
 This discovers `ztd operator start` processes owned by the current user and targets only those Operators; it does not stop the Gateway or unrelated `ztd` commands. It first requests governed shutdown where an active Gateway connection is available, then waits for exit and escalates to the platform process termination mechanism if needed. On Windows, both escalation signals terminate the process because Windows has no catchable `TERM` signal. Processes owned by another user, or that cannot be inspected due to permissions or bitness, are skipped. Local stop does not revoke enrollment; because Operator credentials are memory-only, the next start performs enrollment again and needs owner approval.
 
-Enrolling again with the same system fingerprint supersedes the prior lease. The fingerprint covers the OS, architecture, CPU count, machine ID, hostname, working directory, account, port, and capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
+Enrolling again with the same system fingerprint or Actuator key supersedes the prior lease. The fingerprint covers the OS, architecture, CPU count, machine ID, hostname, working directory, account, and port. Capabilities are not part of it, so restarting an Operator with a capability added (for example `--capabilities inference,provenance,observer`) replaces its prior lease and takes over that lease's capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
+
+A lease can only be superseded by an enrollment the Gateway can tie to it. If an Operator's Actuator key changed (for example its working directory was reset) and it was first enrolled before capabilities left the fingerprint, enrollment fails with `operator capability is already assigned: <capability> belongs to Operator <id>`. Retire that record once, then restart the Operator:
+
+```bash
+./ztd operator terminate <operator-id> --reason "actuator key rotated"
+```
+
+`terminate` takes the operator ID from `ztd gw status` or `ztd operator list`, not a session ID. It marks one of your remote Operator records terminated, so it can no longer authenticate and its capabilities are released. It does not stop a process, and the embedded Operator cannot be terminated.
 
 ---
 

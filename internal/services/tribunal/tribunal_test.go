@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -110,9 +110,27 @@ func proposalAnswer(command string) string {
 	return string(b)
 }
 
+// testPersonaPrompt is the registry persona prompt a stage renders.
+func testPersonaPrompt(id string) string {
+	personas, err := agentpersona.NewRegistry()
+	if err != nil {
+		panic(err)
+	}
+	prompt, err := personaSystemPrompt(personas, id)
+	if err != nil {
+		panic(err)
+	}
+	return prompt
+}
+
 func testConfig(inferer Inferer) Config {
+	personas, err := agentpersona.NewRegistry()
+	if err != nil {
+		panic(err)
+	}
 	return Config{
 		Inferer:     inferer,
+		Personas:    personas,
 		Doctrine:    governance.NewL1Doctrine(),
 		Tier:        evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 		ModelTag:    "model:tag",
@@ -142,7 +160,7 @@ func argsFor(command string) models.RunShellCommandRequest {
 	return models.RunShellCommandRequest{Command: fields[0], Args: fields[1:]}
 }
 
-func TestVoteExcludesNemesisAndMatchingProposals(t *testing.T) {
+func TestVoteTalliesNemesisLikeAnyMember(t *testing.T) {
 	candidates := []Candidate{
 		{Member: MemberAxiom, Arguments: argsFor("ss -tlpn")},
 		{Member: MemberConcord, Arguments: argsFor("ss -tlpn")},
@@ -151,60 +169,11 @@ func TestVoteExcludesNemesisAndMatchingProposals(t *testing.T) {
 		{Member: MemberNemesis, Arguments: argsFor("ss -tlpn")},
 	}
 	v := vote(1, candidates)
-	// ss -tlpn matches Nemesis, so it and all matching proposals are excluded.
-	// Only netstat -tlpn remains, but it has support 1 < MinConsensus (2), so no winner (triggers round 2).
-	assert.Empty(t, v.Winner.CommandLine())
-	require.Len(t, v.Clusters, 1)
-	assert.Equal(t, "netstat -tlpn", v.Clusters[0].Arguments.CommandLine())
-	assert.Equal(t, []Member{MemberPragma}, v.Clusters[0].Members)
-	assert.Equal(t, "ss -tlpn", v.Excluded.CommandLine(), "the excluded proposal is recorded, never tallied")
-}
-
-func TestRunRestartsOnNemesisExclusion(t *testing.T) {
-	// In round 1, Axiom/Concord/Variance propose "ss -tlpn", Nemesis also proposes "ss -tlpn", Pragma proposes "netstat -tlpn".
-	// "ss -tlpn" is excluded because Nemesis proposed it. "netstat -tlpn" has only 1 vote (< MinConsensus 2).
-	// This MUST trigger round 2.
-	// In round 2, members converge on "pwd" (with Nemesis proposing "ls"), and "pwd" is approved.
-	inferer := &fakeInferer{
-		generate: func(round uint32, member Member) string {
-			if round == 1 {
-				if member == MemberPragma {
-					return proposalAnswer("netstat -tlpn")
-				}
-				if member == MemberNemesis {
-					return proposalAnswer("ss -tlpn")
-				}
-				return proposalAnswer("ss -tlpn")
-			}
-			// round 2
-			if member == MemberNemesis {
-				return proposalAnswer("ls")
-			}
-			return proposalAnswer("pwd")
-		},
-		marshal: lowRisk,
-		audit:   []string{approve},
-	}
-	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
-	require.NoError(t, err)
-	assert.Equal(t, OutcomeApproved, result.Outcome)
-	assert.Equal(t, "pwd", result.Arguments.Command)
-	// 2 generation rounds of 5 members each: 10 candidate inferences
-	assert.Len(t, result.Candidates, 2*len(AllMembers))
-	round2 := inferer.calls[len(AllMembers)]
-	assert.Equal(t, uint32(2), round2.Round)
-	// The anonymized prompt should present the remaining cluster from round 1 (netstat)
-	assert.Contains(t, round2.User, "netstat")
-	assert.NotContains(t, round2.User, "ss -tlpn")
-	// Every candidate matching Nemesis's proposal in its round, Nemesis's own
-	// included, is recorded as excluded; the rest are not.
-	var excluded []string
-	for _, step := range result.Steps {
-		if candidate := step.GetCandidate(); candidate.GetExcluded() {
-			excluded = append(excluded, fmt.Sprintf("%d:%s", step.GetIndex(), step.GetPersonaLabel()))
-		}
-	}
-	assert.Equal(t, []string{"1:axiom", "2:concord", "3:variance", "5:nemesis", "10:nemesis"}, excluded)
+	// An honest Nemesis abstention no longer knocks out the matching cluster.
+	assert.Equal(t, "ss -tlpn", v.Winner.CommandLine())
+	require.Len(t, v.Clusters, 2)
+	assert.Equal(t, []Member{MemberAxiom, MemberConcord, MemberVariance, MemberNemesis}, v.Clusters[0].Members)
+	assert.False(t, v.Unanimous(), "Pragma dissented")
 }
 
 func TestVote(t *testing.T) {
@@ -251,10 +220,10 @@ func TestVote(t *testing.T) {
 }
 
 func TestVoteUnanimous(t *testing.T) {
-	all := map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "ls"}
+	all := map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "pwd"}
 	assert.True(t, vote(1, candidatesFor(all)).Unanimous())
-	all[MemberPragma] = "whoami"
-	assert.False(t, vote(1, candidatesFor(all)).Unanimous())
+	all[MemberNemesis] = "ls"
+	assert.False(t, vote(1, candidatesFor(all)).Unanimous(), "Nemesis is a full panel member")
 }
 
 func TestAssessRisk(t *testing.T) {
@@ -358,11 +327,12 @@ func TestAuditClustersLabelWinnerFirst(t *testing.T) {
 		MemberAxiom: "lsof -i", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat", MemberNemesis: "ps",
 	}))
 	clusters := auditClusters(v)
-	require.Len(t, clusters, 3)
+	require.Len(t, clusters, 4, "Nemesis's ps is a cluster like any other")
 	assert.Equal(t, Cluster{ID: "cluster_a", Arguments: argsFor("ss -tlpn"), Members: []Member{MemberConcord, MemberVariance}}, clusters[0])
 	assert.Equal(t, "cluster_b", clusters[1].ID)
 	assert.Equal(t, "lsof -i", clusters[1].Arguments.CommandLine())
 	assert.Equal(t, "cluster_c", clusters[2].ID)
+	assert.Equal(t, "cluster_d", clusters[3].ID)
 }
 
 func TestRunApproved(t *testing.T) {

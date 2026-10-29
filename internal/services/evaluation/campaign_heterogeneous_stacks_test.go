@@ -61,6 +61,7 @@ func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.Heterog
 			ModelRegistryDigest:     registry.RegistryDigest,
 			ModelRegistry:           InferenceVariantsFromEvalRegistry(variants),
 			ModelVariants:           variants,
+			Personas:                testCatalogPersonas(t),
 		},
 	}
 }

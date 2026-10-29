@@ -4,7 +4,7 @@ title: Cloud VM Deployment Guide
 audience: maintainers and coding agents
 status: current
 version: v1.5.0
-last_updated: 2026-10-27
+last_updated: 2026-10-29
 owners:
   - deploy/cloud_gateway/
   - internal/cli/cmd/gw/
@@ -164,12 +164,12 @@ Per `INV-ENC-STORE-01`, ztd seals platform secrets (CA keys, vault key, spectato
    eval "$(ssh-agent -s)"
    ssh-add ~/.ssh/id_ed25519
 
-   # Launch gateway
+   # First start prints a recovery key and waits for it to be typed back.
    /usr/local/bin/ztd gw start --public-spectator --listen-host=0.0.0.0 --capabilities data
    ```
 
 2. **For Automated Daemon Execution**:
-   Under systemd supervision, the service unit manages its own private ssh-agent socket at `/run/ztd/ssh-agent.sock` via `ExecStartPre`, guaranteeing clean startup across reboots without requiring manual intervention.
+   Under systemd supervision, the service unit manages its own private ssh-agent socket at `/run/ztd/ssh-agent.sock` via `ExecStartPre`. The unit passes `--accept-unrecoverable` because systemd has no terminal. That keeps the only copy of the master key in this VM's OS key store. Losing the VM's ssh-agent key destroys the gateway. To keep an offline recovery key, run the first `ztd gw start` from an SSH terminal and save the key it prints before enabling the unit. See [Recovery key](../architecture/encryption.md#recovery-key).
 
 ### Binary Build and Deployment
 

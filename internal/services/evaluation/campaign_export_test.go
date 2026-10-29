@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -49,11 +50,12 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
-		// Keep this disclosure fixture's primary/lite population explicit.
+		Personas:      catalog.GetPersonas(),
+		// Keep this disclosure fixture to one role per scenario.
 		Scenarios: []*evalv1.EvaluationScenarioDefinition{
-			scenariosByID["final-response-diagnosis"],
-			scenariosByID["instruction-bounded-count"],
-			scenariosByID["instruction-classify-severity"],
+			primaryOnlyScenario(scenariosByID["final-response-diagnosis"]),
+			primaryOnlyScenario(scenariosByID["instruction-review-vote-approve"]),
+			primaryOnlyScenario(scenariosByID["instruction-classify-severity"]),
 		},
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
@@ -121,7 +123,7 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 	assert.Equal(t, 1, assignmentCount)
 	var modelSummaryCount int
 	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM model_summaries`).Scan(&modelSummaryCount))
-	assert.Equal(t, 2, modelSummaryCount)
+	assert.Equal(t, 1, modelSummaryCount)
 }
 
 func TestBuildCampaignExportSchemaDocumentUsesTypedFileAndTableContracts(t *testing.T) {
@@ -224,11 +226,12 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
-		// Keep this disclosure fixture's primary/lite population explicit.
+		Personas:      catalog.GetPersonas(),
+		// Keep this disclosure fixture to one role per scenario.
 		Scenarios: []*evalv1.EvaluationScenarioDefinition{
-			scenariosByID["final-response-diagnosis"],
-			scenariosByID["instruction-bounded-count"],
-			scenariosByID["instruction-classify-severity"],
+			primaryOnlyScenario(scenariosByID["final-response-diagnosis"]),
+			primaryOnlyScenario(scenariosByID["instruction-review-vote-approve"]),
+			primaryOnlyScenario(scenariosByID["instruction-classify-severity"]),
 		},
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
@@ -356,7 +359,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	modelSummariesJSONL, err := files.ReadFile(context.Background(), filepath.Join(outputDir, "model_summaries.jsonl"))
 	require.NoError(t, err)
 	modelLines := strings.Split(strings.TrimSpace(string(modelSummariesJSONL)), "\n")
-	require.Len(t, modelLines, 2)
+	require.Len(t, modelLines, 1)
 	for _, line := range modelLines {
 		var ms modelSummaryRecord
 		require.NoError(t, json.Unmarshal([]byte(line), &ms))
@@ -376,6 +379,12 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 		assert.Equal(t, evalv1.PublicVerificationProvenance_PUBLIC_VERIFICATION_PROVENANCE_BOUND, ar.Projection.GetVerificationMetadata().GetProvenance())
 		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, ar.Projection.GetVerificationMetadata().GetVerifierState())
 	}
+}
+
+func primaryOnlyScenario(scenario *evalv1.EvaluationScenarioDefinition) *evalv1.EvaluationScenarioDefinition {
+	frozen := proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition)
+	frozen.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+	return frozen
 }
 
 func TestBuildAssignmentResultsCSV_EmitsHeaderAndRow(t *testing.T) {

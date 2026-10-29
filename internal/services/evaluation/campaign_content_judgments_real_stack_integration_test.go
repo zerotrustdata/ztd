@@ -286,8 +286,9 @@ func TestRealStackContentJudgments_EmptyHistoryGoodParaphrasedAndBad(t *testing.
 				assert.Contains(t, imported.GetInvalidEvidenceDetail(), constants.ErrEvaluationContentJudgmentMismatch.Error())
 			}
 			prompt := trace.ContentJudgments[0].Messages[0].Text + trace.ContentJudgments[0].Messages[1].Text
-			assert.Contains(t, prompt, "Recorded history query result")
+			assert.Contains(t, prompt, "Record 1 (tool call made by the agent): event_receipt_list, outcome success")
 			require.Len(t, trace.ToolCalls, 1)
+			assert.Contains(t, prompt, trace.ToolCalls[0].ArgumentsJSON)
 			assert.Contains(t, prompt, trace.ToolCalls[0].ResultJSON)
 			for _, grade := range result.GetSemanticGrades() {
 				if grade.GetCriterionId() == "content:history-grounding" {

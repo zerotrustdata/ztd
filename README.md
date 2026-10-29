@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.5.0-green.svg)](docs/release_notes/v1.5.x/v1.5.0.md)
+[![Version](https://img.shields.io/badge/version-v1.6.0-green.svg)](docs/release_notes/v1.6.x/v1.6.0.md)
 
 ## Verify, then execute.
 
@@ -45,7 +45,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
                                          ▼
                      ┌────────────────────────────────────────┐
                      │        ztd Gateway (PDP)               │
-                     │  - Validates L1 Doctrine (heuristics)   │
+                     │  - Validates L1 Doctrine (heuristics)  │
                      │  - Coordinates L2 Consensus (Ed25519)  │
                      │  - Enforces L3 Notary (WebAuthn)       │
                      │  - Issues signed GovernanceEnvelope    │
@@ -58,7 +58,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
                      │  - L4 Warden: Re-verifies hash & root  │
                      │  - L5 Actuator: Mint ephemeral cap     │
                      │  - Executes locally on target host     │
-                     │  - Appends signed EventReceipt to     │
+                     │  - Appends signed EventReceipt to      │
                      │    local SQLite ledger & Git history   │
                      └────────────────────────────────────────┘
 ```

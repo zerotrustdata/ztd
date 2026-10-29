@@ -629,10 +629,10 @@ campaign per model.
 Examples:
   ztd eval campaigns create eval-qwen-held qwen3:4b --reps 3
   ztd eval campaigns create eval-qwen-fresh qwen3:4b --reps 3 --hold-context=false
-  ztd eval campaigns create eval-gemma gemma4:e4b
+  ztd eval campaigns create eval-qwen35 qwen3.5:4b
   ztd eval campaigns create eval-custom qwen3:4b --suite my-suite
-  ztd eval campaigns create eval-system --formations ultra-efficient-speedster
-  ztd eval campaigns create eval-system-pair --formations qwen-powerhouse,ultra-efficient-speedster
+  ztd eval campaigns create eval-system --formations formation-01
+  ztd eval campaigns create eval-system-pair --formations formation-01,formation-02
   ztd eval campaigns create eval-repeat qwen3:4b --investigation persistent:checkout-incident --data-operator op-123
   ztd eval campaigns create eval-longitudinal qwen3:4b --condition longitudinal --reps 3 --data-operator op-123`,
 		Args: cobra.MinimumNArgs(1),

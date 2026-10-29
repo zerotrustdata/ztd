@@ -23,7 +23,7 @@ import {
   type ModelCapabilityKey,
   type ResolvedModelProfile,
 } from '../content/framework-catalog';
-import { OutcomeBreakdown, PassRateBar, TonePill } from '../components/evidence';
+import { ModelScoreCoverage, OutcomeBreakdown, PassRateBar, TonePill } from '../components/evidence';
 import {
   EmptyState,
   QualityBadge,
@@ -368,7 +368,7 @@ export function ModelsView() {
         id: 'pass_rate',
         header: 'Pass rate',
         accessorFn: (row: ModelSummary) => row.pass_rate?.estimate ?? -1,
-        cell: ({ row }) => <PassRateBar interval={row.original.pass_rate} />,
+        cell: ({ row }) => <><PassRateBar interval={row.original.pass_rate} /><ModelScoreCoverage models={[row.original]} /></>,
       },
       {
         id: 'outcomes',
@@ -592,6 +592,7 @@ export function ModelsView() {
               <CapabilityProbeBadges capabilities={profile.capability_list} compact />
               {model.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
               <PassRateBar interval={model.pass_rate} />
+              <ModelScoreCoverage models={[model]} />
               <OutcomeBreakdown outcomes={model.terminal_outcomes} />
               <QualityBadge state={model.quality_state} />
             </article>
