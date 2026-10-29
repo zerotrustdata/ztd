@@ -65,14 +65,14 @@ func (f *fakeMemberDispatcher) answer(req *operatorv1.InferenceDispatchRequest) 
 	system := messageText(req, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM)
 	user := messageText(req, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER)
 	switch system {
-	case marshalSystemPrompt:
+	case testPersonaPrompt(PersonaMarshal):
 		return StageMarshal, f.marshal
-	case auditorSystemPrompt:
+	case testPersonaPrompt(PersonaAuditor):
 		f.auditCalls++
 		return StageAudit, f.audit[min(f.auditCalls, len(f.audit))-1]
 	}
 	for _, member := range AllMembers {
-		if system == memberSystemPrompt(member) {
+		if system == testPersonaPrompt(string(member)) {
 			round := uint32(1)
 			if strings.Contains(user, "did not agree in round 1") {
 				round = 2
@@ -124,7 +124,7 @@ func TestDeliberateApproved(t *testing.T) {
 	original := proto.Clone(template)
 	dispatcher := &fakeMemberDispatcher{
 		generate: proposals(map[Member]string{
-			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
+			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "netstat -tlpn",
 		}),
 		marshal: lowRisk,
 		audit:   []string{approve},
@@ -161,13 +161,13 @@ func TestDeliberateApproved(t *testing.T) {
 		switch {
 		case i < len(AllMembers):
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_GENERATE, string(AllMembers[i]), generationJSONSchema
-			assert.Equal(t, memberSystemPrompt(AllMembers[i]), system)
+			assert.Equal(t, testPersonaPrompt(string(AllMembers[i])), system)
 		case i == len(AllMembers):
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_MARSHAL, PersonaMarshal, marshalJSONSchema
-			assert.Equal(t, marshalSystemPrompt, system)
+			assert.Equal(t, testPersonaPrompt(PersonaMarshal), system)
 		default:
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, PersonaAuditor, auditorJSONSchema([]string{"cluster_b"})
-			assert.Equal(t, auditorSystemPrompt, system)
+			assert.Equal(t, testPersonaPrompt(PersonaAuditor), system)
 		}
 		assert.Equal(t, constants.MediaTypeJSON, request.GetResponseFormat().GetMediaType())
 		assert.Equal(t, schema, request.GetResponseFormat().GetJsonSchema())

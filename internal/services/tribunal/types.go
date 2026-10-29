@@ -20,6 +20,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -154,6 +155,8 @@ const (
 // and ModelDigest identify the variant on each recorded step.
 type Config struct {
 	Inferer Inferer
+	// Personas renders every stage's system prompt.
+	Personas *agentpersona.Registry
 	// Doctrine is the active Gateway doctrine, also used by governed dispatch.
 	Doctrine    *governance.L1Doctrine
 	Tier        evalv1.ModelCampaignRole
@@ -206,16 +209,13 @@ type Vote struct {
 	// Winner is the selected command; empty when no cluster reached the
 	// minimum consensus or the tie-break ladder left a tie.
 	Winner models.RunShellCommandRequest
-	// Excluded is Nemesis's proposal in this round; empty when Nemesis
-	// abstained. It and every matching proposal are never tallied.
-	Excluded models.RunShellCommandRequest
 }
 
-// Unanimous reports whether every eligible panel member (all non-Nemesis members) proposed the winner.
+// Unanimous reports whether every panel member proposed the winner.
 func (v Vote) Unanimous() bool {
 	for _, cluster := range v.Clusters {
 		if cluster.Arguments.CanonicalJSON() == v.Winner.CanonicalJSON() {
-			return len(cluster.Members) == len(AllMembers)-1
+			return len(cluster.Members) == len(AllMembers)
 		}
 	}
 	return false

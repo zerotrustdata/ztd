@@ -165,7 +165,7 @@ func TestReviewAdmittedRevisionRequiresFreshDecisions(t *testing.T) {
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, result.GetOutcome())
 	assert.True(t, proto.Equal(original, env), "earlier decisions stay bound to the earlier envelope")
 	require.Len(t, dispatcher.requests, 2, "Marshal assesses the revision before it can be dispatched")
-	assert.Equal(t, marshalSystemPrompt, messageText(dispatcher.requests[1], operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM))
+	assert.Equal(t, testPersonaPrompt(PersonaMarshal), messageText(dispatcher.requests[1], operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM))
 	require.Len(t, result.GetSteps(), 2)
 	assert.NotNil(t, result.GetSteps()[0].GetReview())
 }

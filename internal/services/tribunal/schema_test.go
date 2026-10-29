@@ -136,7 +136,7 @@ func TestDecodersRejectTheLiveUnconstrainedShapes(t *testing.T) {
 
 func TestEveryRoleCallCarriesItsSchema(t *testing.T) {
 	inferer := &fakeInferer{
-		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ps"}),
+		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ss -l"}),
 		marshal:  lowRisk,
 		audit:    []string{approve},
 	}

@@ -77,6 +77,7 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	binding := env.binding
 	binding.ModelVariants = variants
 	binding.FormationStackSetDigest = set.SetDigest
+	binding.Personas = env.req.Catalog.GetPersonas()
 
 	// verifyRequest builds the verifier input from the persisted trace and result,
 	// with the scenario expectations, grading method, and catalog the run executed

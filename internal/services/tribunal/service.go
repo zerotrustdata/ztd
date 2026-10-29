@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -37,6 +38,7 @@ type MemberDispatcher interface {
 type Service struct {
 	members  MemberDispatcher
 	doctrine *governance.L1Doctrine
+	personas *agentpersona.Registry
 }
 
 // NewService builds the Tribunal over governed inference and the active
@@ -48,7 +50,11 @@ func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine) (*Ser
 	if doctrine == nil {
 		return nil, fmt.Errorf("tribunal: %w", constants.ErrDoctrineRequired)
 	}
-	return &Service{members: members, doctrine: doctrine}, nil
+	personas, err := agentpersona.NewRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("tribunal: personas: %w", err)
+	}
+	return &Service{members: members, doctrine: doctrine, personas: personas}, nil
 }
 
 // Deliberate runs one intent through the Tribunal. The result never carries an
@@ -63,6 +69,7 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 	inferer := &memberInferer{members: s.members, template: template, prefix: req.GetProviderAttemptPrefix()}
 	cfg := Config{
 		Inferer:     inferer,
+		Personas:    s.personas,
 		Doctrine:    s.doctrine,
 		Tier:        req.GetTier(),
 		ModelTag:    template.GetModel(),
@@ -132,7 +139,7 @@ func (s *Service) ReviewAdmitted(ctx context.Context, req *tribunalv1.TribunalIn
 	arguments := models.RunShellCommandRequestFromProto(result.GetArguments())
 	inferer := &memberInferer{members: s.members, template: req.GetMemberInference(), prefix: req.GetProviderAttemptPrefix(), calls: result.GetMemberCalls()}
 	defer func() { result.MemberCalls = inferer.calls }()
-	cfg := Config{Inferer: inferer, Doctrine: s.doctrine, Tier: req.GetTier(), ModelTag: req.GetMemberInference().GetModel(), ModelDigest: req.GetMemberInference().GetModelDigest()}
+	cfg := Config{Inferer: inferer, Personas: s.personas, Doctrine: s.doctrine, Tier: req.GetTier(), ModelTag: req.GetMemberInference().GetModel(), ModelDigest: req.GetMemberInference().GetModelDigest()}
 	index := req.GetStepStartIndex() + uint32(len(result.GetSteps()))
 	steps := stepRecorder{cfg: cfg, index: index}
 	defer func() { result.Steps = append(result.Steps, steps.steps...) }()

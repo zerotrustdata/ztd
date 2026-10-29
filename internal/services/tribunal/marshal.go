@@ -12,16 +12,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 )
-
-const marshalSystemPrompt = constants.AgentSecurityPrompt + "You are Marshal, the risk analyst of the Tribunal. Classify the risk of running the proposed run_shell_command arguments. The executable runs directly without a shell.\n" +
-	"The argument object contains one executable and its argv; pipes, &&, redirects, globs, and substitutions are not interpreted by a shell.\n" +
-	"- LOW: read-only diagnostics, state inspection, log reads.\n" +
-	"- MEDIUM: localized, reversible changes such as a config edit with a backup.\n" +
-	"- HIGH: broad deletion, destructive overwrite, global system configuration, or unguarded service disruption.\n\n" +
-	`Answer with exactly one JSON object and nothing else: {"risk": "LOW"|"MEDIUM"|"HIGH", "rationale": "<why>"}. For HIGH, also include "feedback": "<how to reach the goal more safely>".`
 
 type marshalAnswer struct {
 	Risk      string `json:"risk"`
@@ -33,8 +25,12 @@ type marshalAnswer struct {
 // a valid assessment classifies the command HIGH by fail-closed rule; only an
 // inference failure returns an error.
 func assessRisk(ctx context.Context, cfg Config, req Request, arguments models.RunShellCommandRequest) (*Risk, error) {
+	system, err := personaSystemPrompt(cfg.Personas, PersonaMarshal)
+	if err != nil {
+		return nil, err
+	}
 	user := contextBlock(req) + fmt.Sprintf("\n<proposed_arguments>\n%s\n</proposed_arguments>", arguments.CanonicalJSON())
-	text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageMarshal, Persona: PersonaMarshal, Round: 1, System: marshalSystemPrompt, User: user, JSONSchema: marshalJSONSchema})
+	text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageMarshal, Persona: PersonaMarshal, Round: 1, System: system, User: user, JSONSchema: marshalJSONSchema})
 	if err != nil {
 		return nil, fmt.Errorf("tribunal: marshal: %w", err)
 	}
