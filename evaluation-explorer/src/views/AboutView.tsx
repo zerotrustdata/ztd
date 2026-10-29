@@ -28,6 +28,7 @@ import {
   PLATFORM_CONTACT_CALENDLY,
   PLATFORM_CONTACT_EMAIL,
   PLATFORM_CONTACT_LINKEDIN,
+  SPONSOR_URL,
 } from '../content/platform';
 import { StreamStatusIndicator } from '../components/shared';
 import { PageHero, PanelSection } from '../components/evidence';
@@ -120,6 +121,11 @@ export function AboutView() {
           <p className="sys-platform-lede about-availability">
             Reach me at{' '}
             <a href={`mailto:${PLATFORM_CONTACT_EMAIL}`}>{PLATFORM_CONTACT_EMAIL}</a>.
+          </p>
+          <p className="sys-platform-lede about-availability">
+            And if you’d just like to see the work keep going, you can{' '}
+            <a href={SPONSOR_URL} target="_blank" rel="noopener noreferrer">sponsor it</a>.
+            {' '}Any amount helps keep the evals running and the results public.
           </p>
 
         </PanelSection>

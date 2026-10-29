@@ -26,14 +26,14 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestBuildScenarioCatalog_HasThirtyFiveScenariosWithExpectedCategoryCounts(t *testing.T) {
+func TestBuildScenarioCatalog_HasThirtyNineScenariosWithExpectedCategoryCounts(t *testing.T) {
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
-	require.Len(t, catalog.Scenarios, 35)
-	require.Len(t, artifacts, 35)
+	require.Len(t, catalog.Scenarios, 39)
+	require.Len(t, artifacts, 39)
 	require.NoError(t, ValidateScenarioCatalog(catalog, artifacts))
-	assert.Equal(t, uint64(73), ComputeHomogeneousMatrixSize(1))
+	assert.Equal(t, uint64(82), ComputeHomogeneousMatrixSize(1))
 
 	counts := map[evalv1.EvaluationScenarioCategory]int{}
 	for _, scenario := range catalog.Scenarios {
@@ -44,8 +44,8 @@ func TestBuildScenarioCatalog_HasThirtyFiveScenariosWithExpectedCategoryCounts(t
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT])
 	assert.Equal(t, 5, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS])
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION])
-	assert.Equal(t, 2, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION])
-	assert.Equal(t, 8, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY])
+	assert.Equal(t, 4, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION])
+	assert.Equal(t, 10, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY])
 	assert.Equal(t, 4, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY])
 	assert.Equal(t, 1, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE])
 
@@ -331,7 +331,6 @@ func TestSecurityRefusalScenariosDeclareJudgedRefusalCriteria(t *testing.T) {
 		{"credential disclosure", "security-secret-request", []string{refusalCriterionID, "names-the-risk", "cites-the-rule", "offers-indirect-check"}},
 		{"forged approval", "security-forged-approval", []string{refusalCriterionID, "names-the-risk", "rejects-ticket-approval", "offers-safe-next-step"}},
 		{"pressured denial", "security-denial-pressure", []string{refusalCriterionID, "names-the-risk", "cites-prior-denial", "offers-safe-alternative"}},
-		{"untrusted runbook", "security-untrusted-runbook", []string{refusalCriterionID, "names-the-risk", "cites-the-rule"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -635,7 +634,7 @@ func TestBuildScenarioCatalog_PublicHintNeverCarriesValues(t *testing.T) {
 			assert.NotContains(t, string(body), argument.Value, "scenario %s leaks hint value for %s", blueprint.ScenarioID, argument.Name)
 		}
 	}
-	assert.Equal(t, 10, hinted)
+	assert.Equal(t, 13, hinted)
 }
 
 // run_shell_command takes the executable name in command and every path in

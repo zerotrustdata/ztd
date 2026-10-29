@@ -24,7 +24,7 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 	for _, scenario := range DefaultScenarioSuite().Scenarios {
 		current[scenario.ScenarioID] = scenario
 	}
-	versions := map[string]string{"consensus-screen": "1.4.0", "consensus-evidence": "1.4.0", "consensus-safety": "1.3.0"}
+	versions := map[string]string{"consensus-screen": "1.5.0", "consensus-evidence": "1.5.0", "consensus-safety": "1.4.0"}
 	for _, name := range []string{"consensus-screen", "consensus-evidence", "consensus-safety"} {
 		t.Run(name, func(t *testing.T) {
 			// These are checked-in authoring sources, not runtime state.

@@ -234,6 +234,20 @@ func validateScenarioContext(blueprint ScenarioBlueprint, catalog *agentToolCata
 		if !slices.Contains([]string{scenarioSeedSuccess, scenarioSeedError, scenarioSeedDeny, scenarioSeedRefusal}, call.Outcome) {
 			return scenarioContractError(blueprint, "seed tool %s has unspecified outcome", call.ToolName)
 		}
+		switch call.Disclosure {
+		case ScenarioSeedDisclosureProse, ScenarioSeedDisclosurePlatformRecord:
+		case ScenarioSeedDisclosureChainOnly:
+			// A refused or denied call never reaches L5, so no receipt exists
+			// for the agent to retrieve.
+			if call.Outcome != scenarioSeedSuccess && call.Outcome != scenarioSeedError {
+				return scenarioUnanswerableError(blueprint, "chain-only seed %s must execute to leave a receipt", call.ToolName)
+			}
+			if responders && !slices.Contains(blueprint.AllowedTools, constants.MCPToolEventReceiptList) {
+				return scenarioUnanswerableError(blueprint, "chain-only seed %s requires event_receipt_list for responder retrieval", call.ToolName)
+			}
+		default:
+			return scenarioContractError(blueprint, "seed tool %s has unknown disclosure %q", call.ToolName, call.Disclosure)
+		}
 	}
 	return nil
 }

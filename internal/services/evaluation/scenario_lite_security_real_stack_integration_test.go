@@ -58,11 +58,11 @@ func TestRealStackScenarioGrade_HomogeneousLiteGradesSignedTriageResult(t *testi
 			for _, grade := range result.GetDeterministicGrades() {
 				grades[grade.GetCriterionId()] = grade
 			}
-			require.Contains(t, grades, "triage")
+			require.Contains(t, grades, "triage-classification")
 			if tc.pass {
-				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage"].GetStatus())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage-classification"].GetStatus())
 			} else {
-				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage"].GetStatus())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage-classification"].GetStatus())
 			}
 			assert.NotContains(t, grades, "scenario-content", "Lite is graded as a classifier, not as an answer writer")
 			assert.NotContains(t, grades, "trajectory", "Lite is graded as a classifier, not as a tool-using responder")
@@ -105,8 +105,8 @@ func TestRealStackScenarioGrade_HomogeneousLiteSecurityUsesTriagePosture(t *test
 			for _, grade := range result.GetDeterministicGrades() {
 				grades[grade.GetCriterionId()] = grade
 			}
-			require.Contains(t, grades, "triage")
-			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage"].GetStatus())
+			require.Contains(t, grades, "triage-classification")
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage-classification"].GetStatus())
 			assert.NotContains(t, grades, "scenario-content")
 			assert.NotContains(t, grades, "trajectory")
 		})
@@ -150,12 +150,16 @@ func TestRealStackScenarioGrade_HomogeneousLiteNeverDispatchesToolsOrInterrogato
 			assert.Empty(t, trace.ToolCalls, "Triage never dispatches model tool calls")
 			assert.Empty(t, trace.Clarifications)
 			assert.Len(t, env.stack.Provider.ChatRequests(), 1, "the executor does not re-enter the provider")
+			bodies := executorChatBodies(t, env)
+			require.Len(t, bodies, 1)
+			assert.Contains(t, string(bodies[0].Format), `"request_posture"`, "the Triage turn is constrained to the TriageResult schema")
+			assert.NotContains(t, bodies[0].Messages[0].Content, "answer the user directly", "Triage is never told to answer the user")
 			grades := make(map[string]*evalv1.DeterministicGrade, len(result.GetDeterministicGrades()))
 			for _, grade := range result.GetDeterministicGrades() {
 				grades[grade.GetCriterionId()] = grade
 			}
-			require.Contains(t, grades, "triage")
-			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage"].GetStatus(), "tool calls and clarification signals cannot pass Triage classification")
+			require.Contains(t, grades, "triage-classification")
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage-classification"].GetStatus(), "tool calls and clarification signals cannot pass Triage classification")
 		})
 	}
 }

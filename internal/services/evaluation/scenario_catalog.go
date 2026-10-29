@@ -43,7 +43,7 @@ type ScenarioArtifacts struct {
 
 // DefaultSuiteScenarioCount is the number of scenarios in the built-in default
 // suite.
-const DefaultSuiteScenarioCount = 35
+const DefaultSuiteScenarioCount = 39
 
 // buildSuiteCatalog materializes one suite's blueprints into a catalog and its
 // content-addressed fixture artifacts, preserving authored workflow order. Every
@@ -363,8 +363,8 @@ func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDe
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT:         3,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    5,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION:    3,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          2,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       8,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          4,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       10,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE:        1,
 	}

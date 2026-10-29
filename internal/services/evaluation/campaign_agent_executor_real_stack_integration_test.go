@@ -46,6 +46,7 @@ type executorChatBody struct {
 			Parameters json.RawMessage `json:"parameters"`
 		} `json:"function"`
 	} `json:"tools"`
+	Format json.RawMessage `json:"format"`
 }
 
 // executorChatBodies decodes every /api/chat body the Inference Operator sent,
@@ -313,6 +314,7 @@ func TestCampaignAgentExecutorIntegration_AnswerScenarioDeclaresNoTools(t *testi
 	assert.Contains(t, bodies[0].Messages[0].Content, "You are Sage,")
 	assert.Contains(t, bodies[0].Messages[0].Content, "F7 | Privilege escalation")
 	assert.Contains(t, bodies[0].Messages[0].Content, "No tools are available")
+	assert.Empty(t, bodies[0].Format, "only a Triage turn is constrained to a response schema")
 	trace := executorLoadTrace(t, env, res)
 	require.NotNil(t, trace.Input)
 	assert.Empty(t, trace.Input.Tools)

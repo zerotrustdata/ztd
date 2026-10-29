@@ -23,14 +23,14 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.16.0"
+	GraderVersion = "1.17.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.26.0"
-	SmokeSuiteVersion          = "1.25.0"
-	InvestigationsSuiteVersion = "1.24.0"
+	DefaultSuiteVersion        = "1.27.0"
+	SmokeSuiteVersion          = "1.26.0"
+	InvestigationsSuiteVersion = "1.25.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -60,6 +60,20 @@ const (
 	ScenarioDiagnosisRubricCheckoutTimeoutV3 ScenarioDiagnosisRubric = "checkout-timeout-v3"
 	ScenarioDiagnosisRubricCheckoutTimeoutV4 ScenarioDiagnosisRubric = "checkout-timeout-v4"
 	ScenarioDiagnosisRubricCheckoutTimeoutV5 ScenarioDiagnosisRubric = "checkout-timeout-v5"
+)
+
+// ScenarioGradingContract selects the versioned grading rules frozen with a
+// scenario's gold. The empty contract is the original one; it stays so a
+// campaign frozen before a later contract regrades exactly as it was graded.
+type ScenarioGradingContract string
+
+const (
+	// ScenarioGradingContractV2 counts a Lite cell's TriageResult toward its
+	// verdict (the classification is the cell's whole task) and renders the
+	// content judge's objective from the typed judge.Objective (criterion-v2):
+	// the seed conversation, the platform records the model was shown, and
+	// every receipted tool result it observed.
+	ScenarioGradingContractV2 ScenarioGradingContract = "grading-contract.v2"
 )
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
@@ -124,10 +138,30 @@ type InvestigationSeed struct {
 // tool result. Outcome is success, error, deny, or pre-envelope refusal; a
 // mismatch is a setup failure rather than a model failure.
 type ScenarioSeedToolCall struct {
-	ToolName  string          `json:"tool_name"`
-	Arguments json.RawMessage `json:"arguments"`
-	Outcome   string          `json:"outcome"`
+	ToolName   string                 `json:"tool_name"`
+	Arguments  json.RawMessage        `json:"arguments"`
+	Outcome    string                 `json:"outcome"`
+	Disclosure ScenarioSeedDisclosure `json:"disclosure,omitempty"`
 }
+
+// ScenarioSeedDisclosure says how a seeded governed call reaches the scored
+// conversation.
+type ScenarioSeedDisclosure string
+
+const (
+	// ScenarioSeedDisclosureProse is the original rendering, one user message
+	// of labelled prose. It stays so frozen catalogs replay unchanged.
+	ScenarioSeedDisclosureProse ScenarioSeedDisclosure = ""
+	// ScenarioSeedDisclosurePlatformRecord renders the call as one typed
+	// platform record (scenarioPlatformRecord, canonical JSON) in a user
+	// message labelled as platform evidence. It never poses as the model's call.
+	ScenarioSeedDisclosurePlatformRecord ScenarioSeedDisclosure = "platform_record"
+	// ScenarioSeedDisclosureChainOnly keeps the call out of the conversation:
+	// it exists only as the signed receipt the executing Operator recorded,
+	// which the agent retrieves from the investigation with event_receipt_list.
+	// Only an executed call (success or error) leaves that receipt.
+	ScenarioSeedDisclosureChainOnly ScenarioSeedDisclosure = "chain_only"
+)
 
 // ScenarioScriptedFollowUp defines one frozen scripted user response to a clarification
 // question in an investigation episode. Each follow-up has a declared trigger.
@@ -327,6 +361,13 @@ type ScenarioGoldCriteria struct {
 	RecoveryExpectation    ScenarioRecoveryExpectation     `json:"recovery_expectation"`
 	RequiredEvidenceTypes  []string                        `json:"required_evidence_types"`
 	GoldEvidenceReferences []ScenarioGoldEvidenceReference `json:"gold_evidence_references,omitempty"`
+	GradingContract        ScenarioGradingContract         `json:"grading_contract,omitempty"`
+}
+
+// gradingContractV2 reports whether the gold was frozen under
+// ScenarioGradingContractV2.
+func (gold ScenarioGoldCriteria) gradingContractV2() bool {
+	return gold.GradingContract == ScenarioGradingContractV2
 }
 
 func (gold *ScenarioGoldCriteria) requiredEvidenceForRole(role string) []string {

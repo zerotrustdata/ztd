@@ -787,8 +787,15 @@ func (r *agentRun) conversation() ([]*operatorv1.InferenceMessage, error) {
 		}
 		if r.trace != nil {
 			for _, observation := range r.trace.Observations {
-				if observation.Kind == scenarioObservationSeed {
-					messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, seedObservationText(observation.Call)))
+				if observation.Kind != scenarioObservationSeed {
+					continue
+				}
+				text, shown, err := seedObservationMessage(observation.Disclosure, observation.Call)
+				if err != nil {
+					return nil, err
+				}
+				if shown {
+					messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, text))
 				}
 			}
 		}
@@ -812,9 +819,13 @@ func (r *agentRun) systemPrompt() (string, error) {
 	// The persona renders the shared security prefix first; dynamic case
 	// context follows it.
 	b.WriteString(r.persona.SystemPrompt())
-	if len(r.tools.Declarations()) == 0 {
+	switch {
+	case liteTriageCell(r.req):
+		// Triage's output contract is its whole answer, enforced by the
+		// response schema; telling it to answer the user would contradict it.
+	case len(r.tools.Declarations()) == 0:
 		b.WriteString("No tools are available for this request: answer the user directly from the conversation, and never invent tool output.\n\n")
-	} else {
+	default:
 		b.WriteString(agentExecutionPrompt)
 	}
 	fmt.Fprintf(&b, "Operator ID: %s\nWorking Directory: %s\n", r.target.OperatorID, r.workspace.OperatorWorkingDirectory)
@@ -1023,6 +1034,9 @@ func (r *agentRun) bindInference(call *AgentModelCall, modelRole evalv1.ModelCam
 	}
 	if len(tools) > 0 {
 		probe.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO}
+	}
+	if liteTriageCell(r.req) {
+		probe.ResponseFormat = triageResultResponseFormat()
 	}
 	return probe, nil
 }

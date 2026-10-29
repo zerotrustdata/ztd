@@ -16,6 +16,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // MarshalRisk is the risk level Marshal assigns a command (agent RiskLevel).
@@ -46,6 +47,27 @@ type TriageResult struct {
 	IntentSummary        string                     `json:"intent_summary"`
 	RequestPosture       constants.TriagePosture    `json:"request_posture"`
 	PostureConfidence    string                     `json:"posture_confidence"`
+}
+
+// triageResultJSONSchema is the TriageResult contract as the canonical JSON
+// Schema (sorted keys, no whitespace) the Inference Operator requires. A Lite
+// cell dispatches its one Triage turn with it, so the provider constrains the
+// answer to the typed object and the cell measures the classification rather
+// than whether prose leaked around it.
+const triageResultJSONSchema = `{"additionalProperties":false,"properties":{` +
+	`"complexity":{"enum":["simple","complex"],"type":"string"},` +
+	`"complexity_confidence":{"enum":["high","low"],"type":"string"},` +
+	`"intent":{"enum":["information","action","unknown"],"type":"string"},` +
+	`"intent_confidence":{"enum":["high","low"],"type":"string"},` +
+	`"intent_summary":{"minLength":1,"type":"string"},` +
+	`"posture_confidence":{"enum":["high","low"],"type":"string"},` +
+	`"request_posture":{"enum":["normal","escalated","adversarial","confused"],"type":"string"}},` +
+	`"required":["complexity","complexity_confidence","intent","intent_confidence","intent_summary","request_posture","posture_confidence"],` +
+	`"type":"object"}`
+
+// triageResultResponseFormat is the typed response format of a Triage turn.
+func triageResultResponseFormat() *operatorv1.InferenceResponseFormat {
+	return &operatorv1.InferenceResponseFormat{MediaType: "application/json", JsonSchema: triageResultJSONSchema}
 }
 
 func singleTriageResultCall(trace *AgentTrace) bool {

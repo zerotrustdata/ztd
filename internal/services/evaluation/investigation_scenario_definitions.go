@@ -24,7 +24,7 @@ const InvestigationsSuiteID = "investigations"
 
 // investigationScenarioVersion binds the repair, memory, canary and remote
 // verification contracts together.
-const investigationScenarioVersion = "2.1.0"
+const investigationScenarioVersion = "2.2.0"
 
 var investigationGoldReferences = map[string][]ScenarioGoldEvidenceReference{
 	"wrong-port-config": {

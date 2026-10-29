@@ -3,8 +3,8 @@ doc_id: console
 title: Console Architecture and Development Guide
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-29
 owners:
   - console/
   - internal/services/gateway/console/
@@ -137,7 +137,7 @@ The Approvals view handles human-in-the-loop decisions:
 
 - **Binding**: Attaches an Operator to the browser's web session via `POST /api/v1/operators/bind` and `POST /api/v1/operators/unbind`. The Gateway updates the `bound_web_session_id` on the Operator document. Binding an Operator held by another session of the same user moves it to the current session.
 - **Deploy**: `DeployPanel` (`console/src/features/operators/DeployPanel.tsx`) offers a Linux/macOS auto-detect command, a Windows PowerShell auto-detect command, and a platform selector that shows a binary download and a matching `ztd operator start -e` command. The scripts and binaries are served on the Gateway's plain-HTTP bootstrap port, not the HTTPS console port, through the public `/ztd-deploy.sh`, `/ztd-deploy.ps1`, and `/.well-known/ztd/bin/` routes. The panel links to the bootstrap origin unless the console itself was loaded over plain HTTP.
-- **Remote Stop**: Calls `POST /api/v1/operators/{operator_id}/stop` over browser session auth. The Gateway accepts the request only for an active remote Operator with a live Operator session. It dispatches `ztd.v1.operator.shutdown.requested` to that session and then marks the Operator stopped. Embedded Operators cannot be stopped from the console. Termination (`POST /api/v1/operators/{operator_id}`) is not called by the console. The route is handled by `handleTerminateOperator`, and a POST authenticated only by a web session is rejected with 403; the request must also carry a client certificate.
+- **Remote Stop**: Calls `POST /api/v1/operators/{operator_id}/stop` over browser session auth. The Gateway accepts the request only for an active remote Operator with a live Operator session. It dispatches `ztd.v1.operator.shutdown.requested` to that session and then marks the Operator stopped. Embedded Operators cannot be stopped from the console. Termination (`POST /api/v1/operators/{operator_id}`) is not called by the console; `ztd operator terminate` calls it. The route is handled by `handleTerminateOperator`, and a POST authenticated only by a web session is rejected with 403; the request must also carry a client certificate. The owner is the authenticated caller, never a body `user_id`, and the embedded Operator cannot be terminated.
 - **Dynamic Liveness**: The Gateway stamps `stale_at` on each active remote Operator record at read time and removes it from other Operators. The console derives liveness locally in `console/src/lib/liveness.ts` for an Operator that carries `stale_at`. Operators without `stale_at` show their stored status.
   $$\text{status} = \begin{cases} \text{active} & \text{if } \text{now} \le \text{stale\_at} \\ \text{stale} & \text{if } \text{now} > \text{stale\_at} \end{cases}$$
   A single client timer arms for the earliest future `stale_at`, avoiding polling loops.

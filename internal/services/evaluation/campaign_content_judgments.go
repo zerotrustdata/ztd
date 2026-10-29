@@ -50,6 +50,50 @@ func contentJudgeObjective(input ScenarioInputFixture, trace *AgentTrace, check 
 	return objective
 }
 
+// contentJudgeTypedObjective is the grading-contract.v2 objective: the
+// rendered request, the seed conversation, the evidence supplied with the
+// request, every seeded platform record the conversation showed, and every
+// governed tool call the role made with the result it observed. A chain-only
+// seed is absent unless the role retrieved its receipt, exactly as for the role.
+func contentJudgeTypedObjective(req AssignmentExecutionRequest, trace *AgentTrace) judge.Objective {
+	input := req.ScenarioInput
+	ws := trace.ScenarioWorkspace()
+	objective := judge.Objective{Task: ws.Render(input.UserPrompt)}
+	for _, turn := range input.Seed.Turns {
+		objective.Conversation = append(objective.Conversation, judge.ObjectiveTurn{Sender: turn.Sender, Text: ws.Render(turn.Content)})
+	}
+	for _, inline := range input.InlineContext {
+		objective.Evidence = append(objective.Evidence, judge.ObjectiveEvidence{Label: inline.Label, Source: inline.Kind, Content: ws.Render(inline.Content)})
+	}
+	if trace.DesignatedRole == "lite" {
+		for _, file := range input.WorkspaceFiles {
+			objective.Evidence = append(objective.Evidence, judge.ObjectiveEvidence{Label: file.Label, Source: "supplied file " + ws.Render(ScenarioWorkspaceToken+"/"+file.RelPath), Content: ws.Render(file.Content)})
+		}
+	}
+	for _, observation := range trace.Observations {
+		if observation.Kind == scenarioObservationSeed && observation.Disclosure != ScenarioSeedDisclosureChainOnly {
+			objective.Records = append(objective.Records, objectiveRecord(judge.ObjectiveRecordPlatform, observation.Call))
+		}
+	}
+	for _, call := range trace.ToolCalls {
+		objective.Records = append(objective.Records, objectiveRecord(judge.ObjectiveRecordAgent, call))
+	}
+	return objective
+}
+
+func objectiveRecord(source judge.ObjectiveRecordSource, call AgentToolCall) judge.ObjectiveRecord {
+	return judge.ObjectiveRecord{Source: source, Tool: call.ToolName, Arguments: call.ArgumentsJSON, Outcome: scenarioCallOutcome(call), Result: call.ResultJSON}
+}
+
+// contentJudgeMessages renders the criterion prompt and names the rubric
+// version the scenario's frozen grading contract requires.
+func contentJudgeMessages(req AssignmentExecutionRequest, trace *AgentTrace, criterion judge.Criterion) (string, []*operatorv1.InferenceMessage) {
+	if req.ScenarioGold.gradingContractV2() {
+		return judge.ObjectiveCriterionRubricVersion, judge.ObjectiveCriterionMessages(criterion, contentJudgeTypedObjective(req, trace), trace.FinalOutput)
+	}
+	return judge.CriterionRubricVersion, judge.CriterionMessages(criterion, contentJudgeObjective(req.ScenarioInput, trace, req.ScenarioGold.ContentCheck), trace.FinalOutput)
+}
+
 // judgedCriteria returns the scenario's declared judged criteria.
 func judgedCriteria(req AssignmentExecutionRequest) []judge.Criterion {
 	check := req.ScenarioGold.ContentCheck
@@ -118,8 +162,14 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 		return fmt.Errorf("evaluation: judge content criteria: %w: %w", constants.ErrEvaluationContentJudgeFailed, err)
 	}
 	objective := contentJudgeObjective(req.ScenarioInput, trace, req.ScenarioGold.ContentCheck)
+	typed := contentJudgeTypedObjective(req, trace)
 	for _, criterion := range judgedCriteria(req) {
-		score := j.ScoreCriterion(ctx, criterion, objective, trace.FinalOutput)
+		var score judge.Score
+		if req.ScenarioGold.gradingContractV2() {
+			score = j.ScoreObjectiveCriterion(ctx, criterion, typed, trace.FinalOutput)
+		} else {
+			score = j.ScoreCriterion(ctx, criterion, objective, trace.FinalOutput)
+		}
 		if score.Status != judge.StatusScored {
 			return fmt.Errorf("evaluation: judge content criterion %q: %w: %s", criterion.ID, constants.ErrEvaluationContentJudgeFailed, score.Detail)
 		}
@@ -169,16 +219,16 @@ func verifyContentJudgments(req AssignmentExecutionRequest, trace *AgentTrace) e
 	if err != nil {
 		return fmt.Errorf("evaluation: verify content judgments: %w", err)
 	}
-	objective := contentJudgeObjective(req.ScenarioInput, trace, req.ScenarioGold.ContentCheck)
 	attempts := make(map[string]struct{}, len(criteria))
 	var errs []error
 	for i, criterion := range criteria {
-		errs = append(errs, verifyContentJudgment(cfg, anchors, trace, criterion, objective, trace.ContentJudgments[i], attempts))
+		rubricVersion, expected := contentJudgeMessages(req, trace, criterion)
+		errs = append(errs, verifyContentJudgment(cfg, anchors, trace, criterion, rubricVersion, expected, trace.ContentJudgments[i], attempts))
 	}
 	return errors.Join(errs...)
 }
 
-func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, objective string, judgment AgentContentJudgment, attempts map[string]struct{}) error {
+func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, rubricVersion string, rendered []*operatorv1.InferenceMessage, judgment AgentContentJudgment, attempts map[string]struct{}) error {
 	mismatch := func(format string, args ...any) error {
 		return fmt.Errorf("evaluation: content judgment %q: %s: %w", criterion.ID, fmt.Sprintf(format, args...), constants.ErrEvaluationContentJudgmentMismatch)
 	}
@@ -188,14 +238,14 @@ func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *A
 	if judgment.JudgeVariantID != cfg.Variant.GetVariantId() || judgment.ServedModelTag != cfg.Variant.GetServedModelTag() || judgment.ModelDigest != cfg.Variant.GetModelDigest() {
 		return mismatch("judge %q is not the frozen judge %q", judgment.JudgeVariantID, cfg.Variant.GetVariantId())
 	}
-	if judgment.RubricVersion != judge.CriterionRubricVersion {
-		return mismatch("rubric %q is not %q", judgment.RubricVersion, judge.CriterionRubricVersion)
+	if judgment.RubricVersion != rubricVersion {
+		return mismatch("rubric %q is not %q", judgment.RubricVersion, rubricVersion)
 	}
 	if _, seen := attempts[judgment.ProviderAttemptID]; seen || judgment.ProviderAttemptID == "" {
 		return mismatch("provider attempt %q is empty or reused", judgment.ProviderAttemptID)
 	}
 	attempts[judgment.ProviderAttemptID] = struct{}{}
-	expected, err := agentTraceMessages(judge.CriterionMessages(criterion, objective, trace.FinalOutput))
+	expected, err := agentTraceMessages(rendered)
 	if err != nil {
 		return fmt.Errorf("evaluation: content judgment %q: render prompt: %w", criterion.ID, err)
 	}

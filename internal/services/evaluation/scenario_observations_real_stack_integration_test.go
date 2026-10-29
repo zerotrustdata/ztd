@@ -222,12 +222,12 @@ func TestRealStackScenarioGrade_LiteCaseMemoryUsesTriageClassification(t *testin
 			for _, grade := range result.GetDeterministicGrades() {
 				grades[grade.GetCriterionId()] = grade
 			}
-			require.Contains(t, grades, "triage")
+			require.Contains(t, grades, "triage-classification")
 			if tc.pass {
-				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage"].GetStatus())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades["triage-classification"].GetStatus())
 				assert.Empty(t, result.GetFailureReason())
 			} else {
-				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage"].GetStatus())
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades["triage-classification"].GetStatus())
 			}
 			assert.NotContains(t, grades, "scenario-content")
 			assert.NotContains(t, grades, "trajectory")

@@ -17,7 +17,7 @@ export const PLATFORM_CONTACT_CALENDLY = 'https://calendly.com/danny-lateralusla
 export const PLATFORM_CONTACT_LINKEDIN = 'https://www.linkedin.com/in/dannybarbour/';
 
 export const SPONSORSHIP_LEDE =
-  'I build OpenDevOps.ai and ztd solo, on my own hardware, with no VC money. If the benchmarks are useful to you, chipping in keeps the servers and GPUs running.';
+  'I build ztd and OpenDevOps.ai on my own, on my own hardware, with no investors. If the evals are useful to you, sponsorship pays for the GPUs, the power bill, and the research time, and keeps the results public.';
 
 export type SponsorTier = 'founding' | 'principal' | 'supporter' | 'community';
 
@@ -64,19 +64,21 @@ export const SPONSORS_MANIFEST: SponsorsDataManifest = {
 
 export const TOP_SPONSORS: readonly SponsorEntry[] = SPONSORS_MANIFEST.sponsors;
 
-export const SPONSORS_HERO_TITLE = 'Help keep the evals running.';
+export const SPONSORS_HERO_TITLE = 'Keep the evals running.';
 
-export const SPONSORS_URGENCY_HEADING = 'Why I need help right now';
+export const SPONSORS_URGENCY_HEADING = 'Why I’m doing this';
 
 export const SPONSORS_URGENCY_PARAGRAPHS = [
-  "I'm out of personal runway. I've been job hunting for months, and soon I may have to take any day job I can get, even behind a convenience store counter. That would pull me off this work and the evals would go cold. Sponsorship buys me time to keep it going.",
+  'I spent thirty years making sure data came back after something went wrong. That work matters, but the problem I can’t stop thinking about is a newer one: AI systems are getting the authority to act on real infrastructure, and very little checks what they do before they do it.',
+  'So I’m working on that instead. ztd is my attempt at an answer: a model can ask, but it cannot directly act. These evals are how I find out where I’m wrong. So far they’ve turned up bugs in my own governance layers, and one of them deleted the repo root. That’s the job.',
+  'Sponsorship buys research time. It keeps me on this problem instead of someone else’s backup schedule, and it keeps the evidence open for anyone to check.',
 ] as const;
 
 export const SPONSORS_AUTOMATION_NOTE =
   'I update this board by hand within 24 hours of each contribution. After checkout, email me with how you want to be listed.';
 
 export const SPONSORS_ABOUT_PARAGRAPH =
-  "I'm Danny Barbour, founder of Lateralus Labs and a principal engineer in Portland. I built ztd solo, from architecture through production ops. I'm open to ztd licensing, consulting, contract work, or a full-time role.";
+  "I'm Danny Barbour, founder of Lateralus Labs in Portland. I design, build, and run ztd myself, from architecture through production ops. If you'd rather work together than sponsor, I'm open to ztd licensing, consulting, contract work, or a role on a team working on the same problem.";
 
 export const PLATFORM_SOLO_NOTE = 'Solo operator · home-PC hardware · live pipeline';
 
@@ -157,9 +159,9 @@ export const ABOUT_ORIGIN =
 export const ABOUT_HEADING = 'The solo builder';
 export const ABOUT_OPENING_BEFORE = "I'm ";
 export const ABOUT_OPENING_AFTER =
-  ' — founder of Lateralus Labs, principal engineer, and U.S. Navy veteran in Portland, Oregon. I designed, built, and operate ztd as a solo builder.';
+  ' — founder of Lateralus Labs, principal engineer, and U.S. Navy veteran in Portland, Oregon. I design, build, and run ztd myself.';
 export const ABOUT_BACKGROUND =
-  'Thirty years in data protection, distributed systems, and production operations shape my work in AI security and agentic infrastructure. I take work from architecture through code, deployment, and incident response, while mentoring engineers and working directly with customers.';
+  'I spent thirty years in data protection, distributed systems, and production operations, a lot of it on the bridge call when something broke. That’s where ztd comes from. I take work from architecture through code, deployment, and incident response.';
 
 export const ABOUT_EXPERIENCE = [
   {
@@ -186,7 +188,7 @@ export const ABOUT_EXPERIENCE = [
 
 export const ABOUT_AVAILABILITY_HEADING = 'Let’s work together';
 export const ABOUT_PORTFOLIO =
-  'This is also my working portfolio: a platform I designed, built, and operate, with its development and evaluation evidence open to inspection. I’m looking for a team to join or contracts where I can put that experience to work.';
+  'This site doubles as my portfolio. Everything here, the passing runs and the broken ones, is open to inspection. If you’re working on the same problem, I’d like to hear from you.';
 export const ABOUT_AVAILABILITY =
   'Reach out about ztd licensing, consulting, contract engagements, or full-time W-2 roles.';
 export const ABOUT_AVAILABILITY_DETAIL =

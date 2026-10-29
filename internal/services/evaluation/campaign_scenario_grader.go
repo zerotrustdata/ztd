@@ -266,6 +266,16 @@ func (g homogeneousGrader) isLiteTriageCell() bool {
 	return liteTriageCell(g.req)
 }
 
+// liteTriageCriterionID is the criterion a Lite cell's Triage grade is stored
+// under: counted toward the verdict under ScenarioGradingContractV2, reported
+// beside it under the original contract.
+func (g homogeneousGrader) liteTriageCriterionID() string {
+	if g.req.ScenarioGold.gradingContractV2() {
+		return liteTriageCriterionID
+	}
+	return triageGradeCriterionID
+}
+
 func liteTriageCell(req AssignmentExecutionRequest) bool {
 	if req.Assignment == nil || req.ScenarioGold.Players == nil || req.ScenarioGold.Players.Triage == nil {
 		return false
@@ -550,12 +560,12 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 	}
 	if g.isLiteTriageCell() {
 		if !singleTriageResultCall(g.view.Trace) {
-			return []*evalv1.DeterministicGrade{g.newGrade(triageGradeCriterionID, basisObservation, false, "TriageResult satisfies the scenario classification", "signed trace is not one completed, tool-free Triage call")}, nil
+			return []*evalv1.DeterministicGrade{g.newGrade(g.liteTriageCriterionID(), basisObservation, false, "TriageResult satisfies the scenario classification", "signed trace is not one completed, tool-free Triage call")}, nil
 		}
 		result, err := parseTriageResult(g.view.Trace.FinalOutput)
 		//nolint:nilerr // Malformed signed model output is a failing observation, not a grader error.
 		if err != nil {
-			return []*evalv1.DeterministicGrade{g.newGrade(triageGradeCriterionID, basisObservation, false, "TriageResult satisfies the scenario classification", "signed final output is missing or contains a malformed TriageResult")}, nil
+			return []*evalv1.DeterministicGrade{g.newGrade(g.liteTriageCriterionID(), basisObservation, false, "TriageResult satisfies the scenario classification", "signed final output is missing or contains a malformed TriageResult")}, nil
 		}
 		protoTrace.Steps = append(protoTrace.Steps, &evalv1.AgentStep{
 			Index:     uint32(len(protoTrace.GetSteps()) + 1),
@@ -594,7 +604,7 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 		roleName := strings.ToLower(strings.TrimPrefix(sg.Role.String(), "AGENT_ROLE_"))
 		criterionID := fmt.Sprintf("player-%s", strings.ReplaceAll(roleName, "_", "-"))
 		if roleName == "router" && g.isLiteTriageCell() {
-			criterionID = triageGradeCriterionID
+			criterionID = g.liteTriageCriterionID()
 		}
 		if roleCounts[sg.Role] > 1 {
 			criterionID = fmt.Sprintf("%s-%d", criterionID, sg.StepIndex)

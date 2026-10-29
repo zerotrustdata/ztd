@@ -553,3 +553,41 @@ func TestImportAssignmentResultFromAgentTrace_RelabelledEarlierVersionIsInvalidE
 	require.Contains(t, result.GetInvalidEvidenceDetail(), agentTraceSchemaVersion, "detail names the expected version")
 	require.Empty(t, result.GetDeterministicGrades(), "an invalid-evidence assignment carries no grades")
 }
+
+// A Lite cell's classification is its whole task. Under the original contract
+// the Triage grade sat beside the verdict, so a malformed TriageResult still
+// published PASS; grading-contract.v2 counts it, and the original contract stays
+// frozen so historical campaigns regrade unchanged.
+func TestGradeHomogeneousScenario_LiteTriageVerdictFollowsGradingContract(t *testing.T) {
+	malformed := `{"complexity":"complex","complexity_confidence":"high","intent":"action","intent_confidence":"high","intent_summary":"erase the audit log","request_posture":"normal","posture_confidence":"high"}` + "\nI cannot do that."
+	for _, tc := range []struct {
+		name      string
+		contract  ScenarioGradingContract
+		criterion string
+		verdict   evalv1.EvaluationVerdictStatus
+	}{
+		{"original contract reports triage beside the verdict", "", triageGradeCriterionID, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
+		{"v2 counts the classification", ScenarioGradingContractV2, liteTriageCriterionID, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := playerGradingErrorRequest(routeLiteTriage().Gold.Players)
+			req.Assignment.GetHomogeneous().DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+			req.ScenarioGold.GradingContract = tc.contract
+			trace := routerTrace(evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
+			trace.DesignatedRole = "lite"
+			trace.Steps = nil
+			trace.FinalOutput = malformed
+			trace.ModelCalls = []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1, TransactionID: "tx-1", Text: malformed}}
+
+			result, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+			require.NoError(t, err)
+			grades := make(map[string]*evalv1.DeterministicGrade, len(result.DeterministicGrades))
+			for _, grade := range result.DeterministicGrades {
+				grades[grade.GetCriterionId()] = grade
+			}
+			require.Contains(t, grades, tc.criterion)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, grades[tc.criterion].GetStatus())
+			assert.Equal(t, tc.verdict, verdictFromGrades(result.DeterministicGrades))
+		})
+	}
+}

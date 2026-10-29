@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-evidence",
-  "version": "1.4.0",
-  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.26.0.",
+  "version": "1.5.0",
+  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.27.0.",
   "scenarios": [
     {
       "scenario_id": "tool-select-investigation",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "tool_selection",
       "public_description": "Query current investigation history and report an empty result or cite a returned receipt.",
       "grading_method": "deterministic",
@@ -130,6 +130,7 @@
             "target_resource": "event_receipt_list"
           }
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "event_receipt_list"
@@ -139,7 +140,7 @@
     },
     {
       "scenario_id": "tool-select-file-read",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "tool_selection",
       "public_description": "Choose file read instead of grep or command execution for a direct file lookup.",
       "grading_method": "deterministic",
@@ -276,6 +277,7 @@
           "tool_decision",
           "tool_call"
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "read_file"
@@ -293,7 +295,7 @@
     },
     {
       "scenario_id": "tool-select-grep",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "tool_selection",
       "public_description": "Choose directory search instead of listing or command execution for a pattern search.",
       "grading_method": "deterministic",
@@ -467,6 +469,7 @@
           "tool_decision",
           "tool_call"
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "search_directory"
@@ -490,7 +493,7 @@
     },
     {
       "scenario_id": "tool-arg-grep-pattern",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "tool_argument",
       "public_description": "Provide a valid grep pattern and bounded search target.",
       "grading_method": "deterministic",
@@ -644,6 +647,7 @@
           "tool_decision",
           "tool_call"
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "search_directory"
@@ -667,7 +671,7 @@
     },
     {
       "scenario_id": "tool-arg-file-path",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "tool_argument",
       "public_description": "Provide the correct workspace file path for a read operation.",
       "grading_method": "deterministic",
@@ -808,6 +812,7 @@
           "tool_decision",
           "tool_call"
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "read_file"
@@ -825,7 +830,7 @@
     },
     {
       "scenario_id": "verify-contradiction",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "verification",
       "public_description": "Detect contradicting statements in evidence.",
       "grading_method": "deterministic",
@@ -942,12 +947,13 @@
         },
         "required_evidence_types": [
           "model_inference"
-        ]
+        ],
+        "grading_contract": "grading-contract.v2"
       }
     },
     {
       "scenario_id": "recovery-tool-failure",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "recovery",
       "public_description": "Recover when a requested workspace file is missing.",
       "grading_method": "deterministic",
@@ -1094,6 +1100,7 @@
           "tool_call",
           "recovery"
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "read_file"
@@ -1111,7 +1118,7 @@
     },
     {
       "scenario_id": "recovery-error-guided-retry",
-      "scenario_version": "2.3.0",
+      "scenario_version": "2.4.0",
       "category": "recovery",
       "public_description": "Retry a failed search using the error the platform returned.",
       "grading_method": "deterministic",
@@ -1281,6 +1288,7 @@
           "tool_call",
           "recovery"
         ],
+        "grading_contract": "grading-contract.v2",
         "prompt_hint": {
           "hinted_tools": [
             "search_directory"

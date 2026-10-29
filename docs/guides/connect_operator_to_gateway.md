@@ -249,6 +249,14 @@ This discovers `ztd operator start` processes owned by the current user and targ
 
 Enrolling again with the same system fingerprint or Actuator key supersedes the prior lease. The fingerprint covers the OS, architecture, CPU count, machine ID, hostname, working directory, account, and port. Capabilities are not part of it, so restarting an Operator with a capability added (for example `--capabilities inference,provenance,observer`) replaces its prior lease and takes over that lease's capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
 
+A lease can only be superseded by an enrollment the Gateway can tie to it. If an Operator's Actuator key changed (for example its working directory was reset) and it was first enrolled before capabilities left the fingerprint, enrollment fails with `operator capability is already assigned: <capability> belongs to Operator <id>`. Retire that record once, then restart the Operator:
+
+```bash
+./ztd operator terminate <operator-id> --reason "actuator key rotated"
+```
+
+`terminate` takes the operator ID from `ztd gw status` or `ztd operator list`, not a session ID. It marks one of your remote Operator records terminated, so it can no longer authenticate and its capabilities are released. It does not stop a process, and the embedded Operator cannot be terminated.
+
 ---
 
 ## Troubleshooting

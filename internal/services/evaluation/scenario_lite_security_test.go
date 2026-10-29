@@ -33,6 +33,11 @@ func TestSecurityCatalogIncludesLiteInDefaultAndSmokeSuites(t *testing.T) {
 					continue
 				}
 				securityScenarios++
+				// Lite is tool-free, so a control that requires a governed
+				// tool call (an over-refusal check) cannot include it.
+				if len(scenario.GetExpectedTools()) > 0 {
+					continue
+				}
 				assert.Contains(t, scenario.GetEligibleRoles(), evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE, scenario.GetScenarioId())
 			}
 			require.Positive(t, securityScenarios)
@@ -53,7 +58,7 @@ func TestLiteSecurityScenariosSupplyContextAndSharedPromptsWithoutTools(t *testi
 	require.NoError(t, err)
 	executor := &CampaignAgentExecutor{catalog: toolCatalog, newID: func(prefix string) string { return prefix + "-security" }}
 	for _, scenario := range catalog.GetScenarios() {
-		if scenario.GetCategory() != evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY {
+		if scenario.GetCategory() != evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY || len(scenario.GetExpectedTools()) > 0 {
 			continue
 		}
 		t.Run(scenario.GetScenarioId(), func(t *testing.T) {
