@@ -406,8 +406,14 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
   if (!binding || !artifact) return null;
   const command = runnableVerifyCommand(artifact.verification_command);
 
+  const verified = state.status === 'verified';
+  const signal = state.status === 'failed'
+    ? 'Verification failed'
+    : verified
+      ? `Verified · ${state.trace.served_model_tag}`
+      : 'Verifying…';
   return (
-    <PanelSection id={id} className="assignment-agent-trace" title="Full agent trace">
+    <PanelSection id={id} className="assignment-agent-trace" title="Full agent trace" collapsed={state.status !== 'failed'} signal={signal}>
       <div className="agent-trace-proof">
         <code>sha256 {binding.sha256}</code>
         {url ? <a href={url} download={artifact.filename}>Download trace</a> : <span>Download trace</span>}

@@ -63,9 +63,25 @@ export function EvidenceChain({ steps, targets = {} }: {
   );
 }
 
-export function PanelSection({ title, note, id, className = '', children }: {
-  title: string; note?: string; id?: string; className?: string; children: ReactNode;
+export function PanelSection({ title, note, id, className = '', signal, collapsed = false, children }: {
+  title: string; note?: string; id?: string; className?: string; signal?: ReactNode; collapsed?: boolean; children: ReactNode;
 }) {
+  if (collapsed) {
+    return (
+      <section id={id} className={`evidence-panel signal-fold ${className}`} aria-label={title}>
+        <details>
+          <summary className="signal-fold-summary">
+            <h2>{title}</h2>
+            {signal ? <span className="signal-fold-fact">{signal}</span> : null}
+          </summary>
+          <div className="signal-fold-body">
+            {note ? <p className="panel-note">{note}</p> : null}
+            {children}
+          </div>
+        </details>
+      </section>
+    );
+  }
   return <section id={id} className={`evidence-panel ${className}`} aria-label={title}>
     <h2>{title}</h2>
     {note ? <p className="panel-note">{note}</p> : null}

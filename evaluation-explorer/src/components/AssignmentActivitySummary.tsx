@@ -155,10 +155,10 @@ function GovernedActionRecord({ record }: { record: PublicGovernedActionActivity
 function ActivityFamily<T>({ title, family, renderRecord }: { title: string; family: PublicActivityFamily<T> | undefined; renderRecord: (record: T, index: number) => ReactNode }) {
   const records = family?.availability === 'observed' ? family.records : [];
   return (
-    <details className="activity-family" open>
+    <details className="activity-family" open={records.length > 0}>
       <summary><span>{title}</span><span className="activity-availability">{family ? activityFamilySummaryText(family) : 'Not published'}</span></summary>
       {records.length > 0 ? <ol>{records.map((record, index) => <li key={`${title}-${index}`}>{renderRecord(record, index)}</li>)}</ol> :
-        <p className="panel-note">{family?.availability === 'observed' ? 'The source recorded this activity family and reported zero records.' : 'No records are available for this activity family.'}</p>}
+        <p className="panel-note">{family?.availability === 'observed' ? 'None recorded.' : 'Not published.'}</p>}
     </details>
   );
 }

@@ -313,7 +313,7 @@ export function EvaluationsView() {
     <div className="evaluations-view">
       <SectionHeading
         title="Evaluations"
-        description="Governed evaluation runs, the campaigns that group them, and the 3-role formation catalog. Scores are never averaged across suites."
+        description="Runs, the campaigns that group them, and the formation catalog. Scores stay with their suite."
       />
 
       <div className="eval-tabs-row">
@@ -383,10 +383,19 @@ export function EvaluationsView() {
       </div>
 
       {activeTab === 'formations' ? (
-        <PanelSection
-          title="Formations"
-          note={`Catalog of Lite, Assistant, and Primary model stacks within a ${formatNumber(EVALUATION_FRAMEWORK_VALUES.maxVramBudgetMib)} MiB combined VRAM budget. Showing ${formatNumber(FORMATION_CATALOG.length)} of ${formatNumber(EVALUATION_FRAMEWORK_VALUES.totalFormationsCount)} catalogued stacks. Formations run in system-lane campaigns, which score each selected stack as one unit against every scenario.`}
-        >
+        <PanelSection title="Formations">
+          <details className="signal-fold signal-fold-inline">
+            <summary className="signal-fold-summary">
+              <span className="signal-fold-title">Catalog</span>
+              <span className="signal-fold-fact">
+                {formatNumber(filteredFormations.length)} shown · {formatNumber(EVALUATION_FRAMEWORK_VALUES.maxVramBudgetMib)} MiB budget
+              </span>
+            </summary>
+            <p className="panel-note">
+              Lite, Assistant, and Primary stacks. A system-lane campaign scores one stack as a unit.
+              {formatNumber(FORMATION_CATALOG.length)} of {formatNumber(EVALUATION_FRAMEWORK_VALUES.totalFormationsCount)} catalogued stacks are listed.
+            </p>
+          </details>
           <DataTable data={filteredFormations} columns={formationColumns} pageSize={25} enableColumnVisibility={false}
             caption="Formation catalog" empty={<p className="table-empty">No formations match these filters.</p>} />
         </PanelSection>

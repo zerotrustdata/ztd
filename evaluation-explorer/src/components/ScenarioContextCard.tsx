@@ -33,10 +33,12 @@ export function ScenarioContextCard({ scenario }: { scenario: PublicScenarioSumm
       <p className="assignment-scenario-description">{scenario.public_description}</p>
       {toolNotes.length > 0 ? <p className="assignment-scenario-tools">{toolNotes.join(' · ')}</p> : null}
       {scenario.trajectory_policy ? (
-        <p className="assignment-scenario-policy">
-          <strong>{TRAJECTORY_POLICY_META[scenario.trajectory_policy].label}.</strong>{' '}
-          {TRAJECTORY_POLICY_META[scenario.trajectory_policy].note}
-        </p>
+        <details className="signal-fold signal-fold-inline">
+          <summary className="signal-fold-summary">
+            <span className="signal-fold-title">{TRAJECTORY_POLICY_META[scenario.trajectory_policy].label}.</span>
+          </summary>
+          <p className="assignment-scenario-policy">{TRAJECTORY_POLICY_META[scenario.trajectory_policy].note}</p>
+        </details>
       ) : null}
       {scenario.prompt_hint && scenario.prompt_hint.hinted_tools.length > 0 ? (
         <p className="assignment-scenario-hint">

@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AssignmentResult } from '../contract/types';
+import { AssignmentInsight } from './AssignmentInsight';
 import { DataTable, type DataTableColumn } from './DataTable';
 import { NON_VERDICT_NOTE } from './evidence';
 import { abbreviateAssignmentId, formatLatency, formatNumber, formatThroughput } from '../utils/format';
@@ -55,6 +56,7 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
   const [status, setStatus] = useState('all');
   const [role, setRole] = useState('all');
   const [view, setView] = useState<TableView>('results');
+  const [openId, setOpenId] = useState<string | null>(null);
   const [visibilityOverrides, setVisibilityOverrides] = useState<Record<string, boolean>>({});
   const rows = useMemo(() => assignments.map(assignmentRow), [assignments]);
   // Build the column catalog from the whole run, never from the filtered rows.
@@ -71,10 +73,23 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
   const columns = useMemo<DataTableColumn<AssignmentRow>[]>(() => [
     {
       id: 'task', header: 'Task', accessorFn: (row) => row.assignment.task_id, enableHiding: false,
-      cell: ({ row: { original: row } }) => <div className="assignment-task-cell">
-        <Link to={assignmentHref(row.assignment)} title={row.description}>{row.assignment.task_id}</Link>
-        {row.assignment.failure_reason ? <span className="assignment-failure-reason" title={row.assignment.failure_reason}>{row.assignment.failure_reason}</span> : null}
-      </div>,
+      cell: ({ row: { original: row } }) => {
+        const id = row.assignment.assignment_id;
+        const open = openId === id;
+        return <div className="assignment-task-cell">
+          <div className="assignment-task-lead">
+            <button
+              type="button"
+              className={`row-peek${open ? ' is-open' : ''}`}
+              aria-expanded={open}
+              aria-label={`${open ? 'Hide' : 'Show'} ${row.assignment.task_id} detail`}
+              onClick={() => setOpenId(open ? null : id)}
+            />
+            <Link to={assignmentHref(row.assignment)} title={row.description}>{row.assignment.task_id}</Link>
+          </div>
+          {row.assignment.failure_reason ? <span className="assignment-failure-reason" title={row.assignment.failure_reason}>{row.assignment.failure_reason}</span> : null}
+        </div>;
+      },
     },
     {
       id: 'status', header: 'Outcome', accessorFn: (row) => row.assignment.terminal_status,
@@ -121,7 +136,7 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
       id: 'assignment', header: 'Assignment', accessorFn: (row) => row.assignment.assignment_id,
       cell: ({ row }) => <Link className="assignment-short-id" to={assignmentHref(row.original.assignment)} title={row.original.assignment.assignment_id} aria-label={row.original.assignment.assignment_id}>{abbreviateAssignmentId(row.original.assignment.assignment_id)}</Link>,
     },
-  ], [criteria]);
+  ], [criteria, openId]);
   const visibility = Object.fromEntries(columns.map((column) => [column.id!,
     visibilityOverrides[column.id!] ?? (VIEW_COLUMNS[view].includes(column.id!) || (view === 'grading' && column.id!.startsWith('criterion:'))),
   ]));
@@ -163,6 +178,8 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
     {view === 'performance' ? <p className="assignment-table-note">Measured values only. Output rate uses generation time. — means not published; zero means an observed zero.</p> : null}
     <DataTable key={view} data={filtered} columns={columns} pageSize={50} caption={`Assignments for ${runId}`}
       columnVisibility={visibility} onColumnVisibilityChange={(update) => setVisibilityOverrides(typeof update === 'function' ? update(visibility) : update)}
+      isRowOpen={(row) => row.assignment.assignment_id === openId}
+      renderDetail={(row) => <AssignmentInsight assignment={row.assignment} />}
       empty={<p>No assignments match these filters.</p>} />
   </div>;
 }
