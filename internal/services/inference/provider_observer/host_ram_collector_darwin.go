@@ -11,22 +11,11 @@ package provider_observer
 
 import (
 	"context"
-	"encoding/binary"
-	"fmt"
-	"os"
 	"time"
 
+	"github.com/zerotrustdata/ztd/internal/services/system"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	"golang.org/x/sys/unix"
 )
-
-// darwinAvailablePageSysctls count the pages macOS reclaims without swapping.
-var darwinAvailablePageSysctls = []string{
-	"vm.page_free_count",
-	"vm.page_speculative_count",
-	"vm.page_pageable_external_count",
-	"vm.page_purgeable_count",
-}
 
 // DarwinHostRAMCollector reads host RAM usage from the kernel VM sysctls.
 type DarwinHostRAMCollector struct{}
@@ -51,46 +40,13 @@ func (c *DarwinHostRAMCollector) Collect(_ context.Context, observedAt time.Time
 	}, nil
 }
 
-// readDarwinMemory counts free, speculative, file-backed, and purgeable pages
-// as available, the pages macOS reclaims without swapping; the rest of
-// hw.memsize (app, wired, and compressed memory) is used. The vm.page_* counts
-// are in kernel pages (16 KiB on Apple silicon), the size the Go runtime reads
-// at startup; hw.pagesize is a 64-bit sysctl, so SysctlUint32 cannot read it.
+// readDarwinMemory is the host RAM the evaluation collector reports. Available
+// bytes are the pages macOS reclaims without swapping; the rest of hw.memsize
+// is in use.
 func readDarwinMemory() (totalBytes, usedBytes uint64, ok bool) {
-	totalBytes, err := unix.SysctlUint64("hw.memsize")
-	if err != nil || totalBytes == 0 {
+	totalBytes, available, ok := system.ReclaimableRAM()
+	if !ok {
 		return 0, 0, false
 	}
-	pageSize := os.Getpagesize()
-	if pageSize <= 0 {
-		return 0, 0, false
-	}
-	var availablePages uint64
-	for _, name := range darwinAvailablePageSysctls {
-		pages, err := sysctlCount(name)
-		if err != nil {
-			return 0, 0, false
-		}
-		availablePages += pages
-	}
-	availableBytes := min(availablePages*uint64(pageSize), totalBytes)
-	return totalBytes, totalBytes - availableBytes, true
-}
-
-// sysctlCount reads an unsigned counter sysctl. The kernel exports VM counters
-// as 32- or 64-bit integers depending on the counter and release, so the width
-// comes from the returned length rather than a fixed-size read.
-func sysctlCount(name string) (uint64, error) {
-	raw, err := unix.SysctlRaw(name)
-	if err != nil {
-		return 0, fmt.Errorf("read sysctl %s: %w", name, err)
-	}
-	switch len(raw) {
-	case 4:
-		return uint64(binary.LittleEndian.Uint32(raw)), nil
-	case 8:
-		return binary.LittleEndian.Uint64(raw), nil
-	default:
-		return 0, fmt.Errorf("read sysctl %s: %d-byte value: %w", name, len(raw), unix.EIO)
-	}
+	return totalBytes, totalBytes - available, true
 }
