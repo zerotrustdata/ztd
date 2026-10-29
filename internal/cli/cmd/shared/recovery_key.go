@@ -40,25 +40,32 @@ func EnsureRecoveryKey(in io.Reader, out io.Writer, fileSvc fs.RuntimeFileServic
 	}
 	recoveryMu.Lock()
 	defer recoveryMu.Unlock()
+	return provisionRecoveryKey(in, out, fileSvc, nil, role, acceptUnrecoverable)
+}
 
+// provisionRecoveryKey owns the master-key ceremony, independent of runtime
+// directory creation and permissions, which belong to service startup.
+func provisionRecoveryKey(in io.Reader, out io.Writer, fileSvc fs.RuntimeFileService, kr keystore.Keyring, role string, acceptUnrecoverable bool) error {
 	logger := slog.New(slog.DiscardHandler)
-	probe, err := keystore.NewWithFS(fileSvc, logger, keystore.Options{})
+	var store *keystore.Keystore
+	store, err := keystore.NewWithFS(fileSvc, logger, keystore.Options{
+		Keyring: kr,
+		Ceremony: func(key []byte) error {
+			return keystore.ConfirmRecoveryKey(out, in, role, store.KeyringName(), key, keystore.ReaderIsTerminal(in), acceptUnrecoverable)
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("recovery key: %w", err)
 	}
-	present, err := probe.MasterKeyPresent()
+	defer store.Close()
+	present, err := store.MasterKeyPresent()
 	if err != nil {
 		return fmt.Errorf("recovery key: %w", err)
 	}
 	if present {
 		return nil
 	}
-	_, err = keystore.Open(fileSvc, logger, keystore.Options{
-		Ceremony: func(key []byte) error {
-			return keystore.ConfirmRecoveryKey(out, in, role, probe.KeyringName(), key, keystore.ReaderIsTerminal(in), acceptUnrecoverable)
-		},
-	})
-	if err != nil {
+	if err := store.Initialize(); err != nil {
 		return fmt.Errorf("recovery key: %w", err)
 	}
 	return nil

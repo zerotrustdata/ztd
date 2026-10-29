@@ -195,6 +195,8 @@ On Linux, `gw start` checks an existing ssh-agent seal before network identity d
 
 OS key creation occurs only during initialization when lookup reports a missing key. Gateway and Operator start show the recovery key and store it only after the operator retypes it (`INV-ENC-STORE-07`). The new key is then read back and compared in constant time; store, retrieval, and verification failures abort startup without switching backends or deleting a stored key. Backend construction performs no write probe.
 
+The CLI recovery-key ceremony can run before the runtime tree exists. It initializes the master key without enforcing secrets-directory permissions. Gateway and Operator service startup create the runtime tree before opening the keystore and enforcing those permissions.
+
 Changing to a different valid key is not migration or rotation: existing ciphertext will not decrypt. Restore the original key and configuration to recover. Never overwrite an existing key to repair startup; loss of the master key loses access to its encrypted data.
 
 ### Recovery key
