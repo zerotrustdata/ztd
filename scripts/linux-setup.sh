@@ -70,90 +70,10 @@ ztd_linux_pkg_install() {
     esac
 }
 
-# Installs the official Go tarball matching go.mod into /usr/local/go. Works on
-# every distro and on WSL; the snap alternative needs a running snapd, which WSL
-# often lacks, and distro golang packages are usually too old.
-ztd_linux_install_go() {
-    local goarch tarball scratch tmp want got
-    case "$(uname -m)" in
-        x86_64) goarch="amd64" ;;
-        aarch64|arm64) goarch="arm64" ;;
-        *) echo "  no official Go tarball flow for $(uname -m); install Go from https://go.dev/dl/"; return 1 ;;
-    esac
-    tarball="go${ZTD_GO_MIN}.linux-${goarch}.tar.gz"
-    scratch="$(ztd_scratch_dir "$REPO_ROOT" ztd-go)" || return 1
-    tmp="$scratch/${tarball}"
-
-    echo "Downloading ${tarball}..."
-    if ! curl -fSL "https://go.dev/dl/${tarball}" -o "$tmp" ||
-        ! want="$(curl -fsSL "https://dl.google.com/go/${tarball}.sha256")"; then
-        rm -rf "$scratch"
-        return 1
-    fi
-    got="$(ztd_sha256 "$tmp")"
-    if [[ "$got" != "$want" ]]; then
-        echo "  checksum mismatch for ${tarball} (expected ${want}, got ${got})"
-        rm -rf "$scratch"
-        return 1
-    fi
-
-    echo "Installing Go ${ZTD_GO_MIN} to /usr/local/go (replaces any existing /usr/local/go)..."
-    $SUDO rm -rf /usr/local/go
-    $SUDO tar -C /usr/local -xzf "$tmp"
-    rm -rf "$scratch"
-    # Ahead of any older distro Go (e.g. /usr/bin/go) so the re-check sees this one.
-    export PATH="/usr/local/go/bin:$PATH"
-    hash -r
-}
-
-# Node.js release line installed when node is missing; its latest release must
-# satisfy ZTD_NODE_REQUIREMENT.
-ZTD_NODE_LTS_MAJOR=22
-
-# Installs the newest Node ${ZTD_NODE_LTS_MAJOR}.x LTS tarball from nodejs.org
-# into /usr/local/lib/nodejs and links node/npm/npx into /usr/local/bin.
-# Ubuntu's apt nodejs is older than the supported lines.
-ztd_linux_install_node() {
-    local nodearch sums tarball scratch tmp want got dest
-    case "$(uname -m)" in
-        x86_64) nodearch="x64" ;;
-        aarch64|arm64) nodearch="arm64" ;;
-        *) echo "  no official Node.js tarball flow for $(uname -m); install Node.js ${ZTD_NODE_REQUIREMENT} from https://nodejs.org/"; return 1 ;;
-    esac
-    local base="https://nodejs.org/dist/latest-v${ZTD_NODE_LTS_MAJOR}.x"
-    sums="$(curl -fsSL "${base}/SHASUMS256.txt")" || return 1
-    tarball="$(echo "$sums" | awk -v arch="linux-${nodearch}.tar.gz" '$2 ~ arch"$" {print $2; exit}')"
-    want="$(echo "$sums" | awk -v t="$tarball" '$2 == t {print $1}')"
-    if [[ -z "$tarball" || -z "$want" ]]; then
-        echo "  could not find a Node ${ZTD_NODE_LTS_MAJOR}.x linux-${nodearch} tarball in ${base}/SHASUMS256.txt"
-        return 1
-    fi
-
-    scratch="$(ztd_scratch_dir "$REPO_ROOT" ztd-node)" || return 1
-    tmp="$scratch/${tarball}"
-    echo "Downloading ${tarball}..."
-    if ! curl -fSL "${base}/${tarball}" -o "$tmp"; then
-        rm -rf "$scratch"
-        return 1
-    fi
-    got="$(ztd_sha256 "$tmp")"
-    if [[ "$got" != "$want" ]]; then
-        echo "  checksum mismatch for ${tarball} (expected ${want}, got ${got})"
-        rm -rf "$scratch"
-        return 1
-    fi
-
-    dest="/usr/local/lib/nodejs"
-    echo "Installing ${tarball%.tar.gz} to ${dest}..."
-    $SUDO mkdir -p "$dest"
-    $SUDO tar -C "$dest" -xzf "$tmp"
-    rm -rf "$scratch"
-    for bin in node npm npx corepack; do
-        $SUDO ln -sf "${dest}/${tarball%.tar.gz}/bin/${bin}" "/usr/local/bin/${bin}"
-    done
-    export PATH="/usr/local/bin:$PATH"
-    hash -r
-}
+# Official Go and Node tarballs. Shared with Intel macOS (scripts/lib/dev-setup-common.sh):
+# distro packages lag go.mod, and Ubuntu's apt nodejs is older than the supported lines.
+ztd_linux_install_go() { ztd_install_official_go linux; }
+ztd_linux_install_node() { ztd_install_official_node linux; }
 
 ztd_linux_install_missing() {
     local item index
