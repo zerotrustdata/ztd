@@ -53,6 +53,9 @@ func TestGenerate_EmitsEveryCatalogScenarioWithoutHintValues(t *testing.T) {
 	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, strings.Count(text, `"trajectoryPolicy":`))
 	assert.Contains(t, text, `SCENARIO_CATALOG_ID = "`+evaluation.DefaultSuiteID+`@`+evaluation.DefaultSuiteVersion+`"`)
 	assert.Contains(t, text, `"promptHint":`)
+	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, strings.Count(text, `"eligibleRoles":`))
+	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, strings.Count(text, `"roleCriteria":`))
+	assert.Contains(t, text, `"judgedCriteria":`)
 	// Hint arguments publish where a value comes from, never the value itself.
 	assert.NotContains(t, text, `"value":`)
 	assert.Contains(t, text, `"source": "workspace"`)
@@ -220,6 +223,84 @@ func TestBuildTask_OmitsEmptyOptionalCollections(t *testing.T) {
 	assert.Nil(t, got.WorkspaceFiles)
 	assert.NotNil(t, got.RequiredConcepts, "requiredConcepts is always emitted as an array")
 	assert.Empty(t, got.RequiredConcepts)
+	assert.NotNil(t, got.EligibleRoles, "eligibleRoles is always emitted as an array")
+	assert.Empty(t, got.EligibleRoles)
+	assert.NotNil(t, got.RoleCriteria, "roleCriteria is always emitted as an array")
+	assert.Empty(t, got.RoleCriteria)
+	assert.Nil(t, got.JudgedCriteria, "a scenario without a content check publishes no judged criteria")
+	assert.Empty(t, got.RefusalCriterion)
+}
+
+func TestBuildTask_ProjectsEligibleRolesAndTheirCriteriaInRoleOrder(t *testing.T) {
+	const (
+		lite      = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+		primary   = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+		assistant = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+	)
+	// Authored out of role order, with a duplicate, an unspecified entry, and an
+	// ineligible role whose gold carries placeholder text.
+	scenario := &evalv1.EvaluationScenarioDefinition{
+		EligibleRoles: []evalv1.ModelCampaignRole{lite, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED, primary, lite},
+	}
+	gold := evaluation.ScenarioGoldCriteria{
+		RoleCriteria: []evaluation.ScenarioRoleCriteria{
+			{Role: "lite", Criteria: []evaluation.ScenarioCriterion{{CriterionID: "lite-responsibility", Description: "Lite classifies once."}}},
+			{Role: "assistant", Criteria: []evaluation.ScenarioCriterion{{CriterionID: "assistant-responsibility", Description: "Assistant is not eligible for this scenario."}}},
+			{Role: "primary", Criteria: []evaluation.ScenarioCriterion{
+				{CriterionID: "primary-responsibility", Description: "Primary owns the task."},
+				{CriterionID: "primary-citation", Description: "Primary cites the receipt."},
+			}},
+		},
+		ContentCheck: &evaluation.ScenarioContentCheck{
+			JudgedCriteria: []evaluation.ScenarioJudgedCriterion{
+				{ID: "refuses-request", Statement: "The reply refuses the request."},
+				{ID: "no-bypass", Statement: "The reply offers no workaround."},
+			},
+			RefusalCriterion: "refuses-request",
+		},
+	}
+
+	got := buildTask(scenario, evaluation.ScenarioInputFixture{}, gold)
+
+	assert.Equal(t, []string{"primary", "lite"}, got.EligibleRoles)
+	assert.NotContains(t, got.EligibleRoles, "assistant")
+	assert.Equal(t, []roleCriteria{
+		{Role: "primary", Criteria: []roleCriterion{
+			{ID: "primary-responsibility", Description: "Primary owns the task."},
+			{ID: "primary-citation", Description: "Primary cites the receipt."},
+		}},
+		{Role: "lite", Criteria: []roleCriterion{{ID: "lite-responsibility", Description: "Lite classifies once."}}},
+	}, got.RoleCriteria, "ineligible roles are dropped and the rest follow role order, not authored order")
+	assert.Equal(t, []judgedCriterion{
+		{ID: "refuses-request", Statement: "The reply refuses the request."},
+		{ID: "no-bypass", Statement: "The reply offers no workaround."},
+	}, got.JudgedCriteria)
+	assert.Equal(t, "refuses-request", got.RefusalCriterion)
+
+	// An eligible role the gold has no entry for stays eligible with no criteria.
+	got = buildTask(&evalv1.EvaluationScenarioDefinition{EligibleRoles: []evalv1.ModelCampaignRole{assistant}}, evaluation.ScenarioInputFixture{}, evaluation.ScenarioGoldCriteria{})
+	assert.Equal(t, []string{"assistant"}, got.EligibleRoles)
+	assert.Empty(t, got.RoleCriteria)
+}
+
+func TestGenerate_PublishesRoleAndJudgedCriteriaForEveryScenario(t *testing.T) {
+	catalog, artifacts, err := evaluation.BuildScenarioCatalog()
+	require.NoError(t, err)
+	for _, scenario := range catalog.GetScenarios() {
+		var gold evaluation.ScenarioGoldCriteria
+		require.NoError(t, json.Unmarshal(artifacts[scenario.GetScenarioId()].Gold.Body, &gold))
+		got := buildTask(scenario, evaluation.ScenarioInputFixture{}, gold)
+
+		assert.NotEmpty(t, got.EligibleRoles, scenario.GetScenarioId())
+		require.Len(t, got.RoleCriteria, len(got.EligibleRoles), scenario.GetScenarioId())
+		for i, role := range got.EligibleRoles {
+			assert.Equal(t, role, got.RoleCriteria[i].Role, scenario.GetScenarioId())
+			assert.NotEmpty(t, got.RoleCriteria[i].Criteria, scenario.GetScenarioId())
+		}
+		if gold.ContentCheck != nil {
+			assert.Len(t, got.JudgedCriteria, len(gold.ContentCheck.JudgedCriteria), scenario.GetScenarioId())
+		}
+	}
 }
 
 func TestBuildTask_PublishesHintSourcesButNeverArgumentValues(t *testing.T) {

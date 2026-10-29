@@ -119,6 +119,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	if err := validatePromptHint(blueprint, catalog); err != nil {
 		return err
 	}
+	if err := validateGroundedToolArguments(blueprint); err != nil {
+		return err
+	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
 		return err
 	}
@@ -414,6 +417,40 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolC
 			hasRegex := len(constraint.RegexMatches) > 0 || len(constraint.RegexRejects) > 0
 			if hasRegex && (len(constraint.RegexMatches) == 0 || len(constraint.RegexRejects) == 0) {
 				return scenarioContractError(blueprint, "regex constraint on %q.%q needs both match and reject samples", validator.ToolName, constraint.Name)
+			}
+		}
+	}
+	return nil
+}
+
+// validateGroundedToolArguments grades concrete hint values against their
+// argument rules without executing tools. A search objective also supplies a
+// reference regex when the model derives its pattern from the workspace.
+func validateGroundedToolArguments(blueprint ScenarioBlueprint) error {
+	// This workspace is symbolic; validation performs no filesystem I/O.
+	ws := ScenarioWorkspace{Root: ScenarioWorkspaceToken}
+	for _, validator := range blueprint.Gold.ArgumentValidators {
+		for _, constraint := range validator.Arguments {
+			var references []string
+			if hint := blueprint.Gold.PromptHint; hint != nil {
+				for _, argument := range hintArgumentsFor(hint, validator.ToolName, constraint.Name) {
+					switch argument.Source {
+					case sourcePrompt, sourceSeed, sourceWorkspace:
+						references = append(references, argument.Value)
+					}
+				}
+			}
+			if len(constraint.RegexMatches)+len(constraint.RegexRejects) > 0 && len(references) == 0 {
+				if check := blueprint.Gold.ContentCheck; validator.ToolName == constants.MCPToolSearchDirectory && constraint.Name == "pattern" && check != nil && check.SearchPattern != "" {
+					references = append(references, check.SearchPattern)
+				} else {
+					return scenarioContractError(blueprint, "regex constraint on %q.%q needs a concrete prompt, seed, workspace, or search-objective reference value", validator.ToolName, constraint.Name)
+				}
+			}
+			for _, reference := range references {
+				if ok, failure := validateToolArgument(ws.Render(reference), constraint, ws); !ok {
+					return scenarioContractError(blueprint, "reference value for %q.%q fails argument grading: %s", validator.ToolName, failure.FailedArg, failure.Rule)
+				}
 			}
 		}
 	}

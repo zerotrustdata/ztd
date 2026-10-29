@@ -1866,6 +1866,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .task-detail { padding: 0; overflow: hidden; }
 .task-detail-lede { margin: 0; max-width: 72ch; color: var(--fg-muted); font-size: 17px; line-height: 1.6; }
 .task-detail-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.task-detail-meta + .task-detail-meta { margin-top: 8px; }
 .task-flag {
   display: inline-block;
   padding: 4px 10px;
@@ -1900,6 +1901,11 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   font-size: var(--fs-body);
   line-height: 1.5;
 }
+.task-criteria-group { display: grid; gap: 6px; margin-top: 14px; }
+.task-criteria-group h3 { margin: 0; font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-dim); }
+.task-criteria-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; max-width: 82ch; color: var(--fg-muted); font-size: var(--fs-body); line-height: 1.55; }
+.task-criteria-list code { padding: 2px 8px; border-radius: 6px; background: var(--bg-elev2); }
+.task-criteria-list .task-flag { margin-left: 6px; padding: 1px 8px; }
 .task-tool-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2223,6 +2229,8 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .assignment-scenario-description { margin: 0 0 8px; color: var(--fg); font-size: var(--fs-lede); line-height: 1.55; }
 .assignment-scenario-tools { margin: 0; color: var(--fg-dim); font-size: var(--fs-body); }
 .assignment-scenario-policy, .assignment-scenario-hint { margin: 6px 0 0; color: var(--fg-muted); font-size: var(--fs-body); line-height: 1.5; }
+.assignment-role-criterion { margin: 6px 0 0; max-width: 88ch; color: var(--fg-muted); font-size: var(--fs-body); line-height: 1.5; }
+.assignment-role-criterion strong { color: var(--fg); }
 .assignment-criteria-strip { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; }
 .assignment-strip-label {
   padding-top: 5px;

@@ -7,6 +7,8 @@ import {
   TRAJECTORY_POLICY_META,
   type ScenarioTaskDefinition,
 } from '../content/scenario-task';
+import type { ModelRole } from '../contract/types';
+import { roleLabel } from '../views/derived';
 
 function taskHasToolBoundaries(task: ScenarioTaskDefinition): boolean {
   return Boolean(task.allowedTools?.length || task.expectedTools?.length || task.forbiddenTools?.length);
@@ -44,6 +46,57 @@ function gradingMethodNote(task: ScenarioTaskDefinition): string {
   return taskHasToolBoundaries(task)
     ? `${base} Tool boundaries below refine what counts as a correct tool choice.`
     : base;
+}
+
+/** The designated role's gold criterion, stated in one line for a headline. */
+export function TaskRoleCriterion({ task, role }: { task: ScenarioTaskDefinition; role: ModelRole }) {
+  const criteria = task.roleCriteria.find((entry) => entry.role === role)?.criteria ?? [];
+  if (criteria.length === 0) return null;
+  return (
+    <p className="assignment-role-criterion">
+      <strong>{roleLabel(role)} criterion.</strong> {criteria.map((criterion) => criterion.description).join(' ')}
+    </p>
+  );
+}
+
+/** Gold criteria for every role the scenario is scored for. Ineligible roles
+ *  are not published, so a role never reads a placeholder as its criterion. */
+function TaskRoleCriteria({ task }: { task: ScenarioTaskDefinition }) {
+  const entries = task.roleCriteria.filter((entry) => entry.criteria.length > 0);
+  if (entries.length === 0) return null;
+  return (
+    <div className="task-criteria-group" aria-label="Role criteria">
+      <h3>Role criteria</h3>
+      <ul className="task-criteria-list">
+        {entries.flatMap((entry) =>
+          entry.criteria.map((criterion) => (
+            <li key={`${entry.role}:${criterion.id}`}>
+              <strong>{roleLabel(entry.role)}.</strong> {criterion.description}
+            </li>
+          )),
+        )}
+      </ul>
+    </div>
+  );
+}
+
+/** The binary requirements the pinned judge scores the final reply against. */
+function TaskJudgedCriteria({ task }: { task: ScenarioTaskDefinition }) {
+  if (!task.judgedCriteria?.length) return null;
+  return (
+    <div className="task-criteria-group" aria-label="Judged requirements">
+      <h3>Judged requirements</h3>
+      <ul className="task-criteria-list">
+        {task.judgedCriteria.map((criterion) => (
+          <li key={criterion.id}>
+            <code>{criterion.id}</code>
+            {criterion.id === task.refusalCriterion ? <span className="task-flag">refusal</span> : null}{' '}
+            {criterion.statement}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function TaskPromptSection({
@@ -170,15 +223,21 @@ export function TaskExpectationSection({
   task,
   className,
   fold = false,
+  showRoleCriteria = true,
 }: {
   task: ScenarioTaskDefinition;
   className?: string;
   fold?: boolean;
+  /** An assignment states its designated role's criterion in its headline
+   *  (TaskRoleCriterion), so it lists the judged requirements only. */
+  showRoleCriteria?: boolean;
 }) {
   const criteriaBody = (
     <>
       <p className="task-section-note">{gradingMethodNote(task)}</p>
       <p>{task.expectedBehavior}</p>
+      {showRoleCriteria ? <TaskRoleCriteria task={task} /> : null}
+      <TaskJudgedCriteria task={task} />
       <p className="task-section-note">
         <strong>{TRAJECTORY_POLICY_META[task.trajectoryPolicy].label}.</strong>{' '}
         {TRAJECTORY_POLICY_META[task.trajectoryPolicy].note}

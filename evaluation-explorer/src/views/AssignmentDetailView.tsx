@@ -20,7 +20,7 @@ import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../comp
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
 import { RoleTranscripts } from '../components/RoleTranscripts';
 import { ScenarioContextCard } from '../components/ScenarioContextCard';
-import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '../components/TaskPromptSection';
+import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection, TaskRoleCriterion } from '../components/TaskPromptSection';
 import { UnifiedGradeBadges } from '../components/UnifiedGradeBadges';
 import { DetailLayout, EvidenceChain, NON_VERDICT_NOTE, PageHero, PanelSection, TonePill } from '../components/evidence';
 import { SCENARIO_CATEGORY_COPY, SCENARIO_TASK_BY_ID } from '../content/scenario-task';
@@ -504,6 +504,7 @@ export function AssignmentDetailView() {
 
         <MeasuredStrip groups={groups} />
         <ScenarioContextCard scenario={assignment.scenario_summary} />
+        {task ? <TaskRoleCriterion task={task} role={assignment.role} /> : null}
 
         {gradeChips.length > 0 ? (
           <div id="assignment-grades" className="assignment-criteria-strip">
@@ -587,7 +588,7 @@ export function AssignmentDetailView() {
         <ModelResponseSection assignment={assignment} />
         <AgentTraceSection id={SECTION.agentTrace} bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
         <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
-        {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" fold /></Anchor> : null}
+        {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" fold showRoleCriteria={false} /></Anchor> : null}
         <ScoresSection assignment={assignment} />
         <AssignmentEvidenceData assignment={assignment} events={lifecycleEvents} source={sourceRecord} />
       </DetailLayout>

@@ -24,7 +24,7 @@ import { ZTD_REPO_URL } from '../content/platform';
 import type { ScenarioCategory } from '../contract/types';
 import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '../components/TaskPromptSection';
 import { DetailLayout, NON_VERDICT_NOTE, PageHero, PanelSection, TonePill } from '../components/evidence';
-import { assignmentVerdictTone, isNonVerdictOutcome } from './derived';
+import { assignmentVerdictTone, isNonVerdictOutcome, roleLabel } from './derived';
 import { useStoreState } from '../state/store';
 import { scrollToAnchor, scrollToAnchorOnClick } from '../utils/scroll';
 
@@ -63,6 +63,11 @@ function TaskDetailPanel({ task }: { task: ScenarioTaskDefinition }) {
           <TaskFlag>{meta.label}</TaskFlag>
           <TaskFlag>{formatGradingMethod(task.gradingMethod)}</TaskFlag>
           <TaskFlag>{TRAJECTORY_POLICY_META[task.trajectoryPolicy].label}</TaskFlag>
+        </div>
+        <div className="task-detail-meta" role="group" aria-label="Eligible roles">
+          {task.eligibleRoles.map((role) => (
+            <TaskFlag key={role}>{roleLabel(role)} role</TaskFlag>
+          ))}
         </div>
         <TaskFlagNotes task={task} />
       </PageHero>

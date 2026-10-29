@@ -34,6 +34,9 @@ func TestRunsStart_AllowsSharedRuntimeUnderTribunalConsensus(t *testing.T) {
 	suite.Version = evaluation.SuiteSchemaVersion
 	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
 		if scenario.ScenarioID == "instruction-classify-severity" {
+			// The catalog scenario is eligible for primary and assistant; the fixture executes
+			// one turn per repetition, so restrict it to the primary role.
+			scenario.EligibleRoles = []string{"primary"}
 			suite.Scenarios = []evaluation.SuiteScenario{scenario}
 			break
 		}

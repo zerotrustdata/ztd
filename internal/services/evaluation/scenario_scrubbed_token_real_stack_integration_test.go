@@ -58,6 +58,7 @@ func TestRealStackScrubbedTokenPassthroughUsesReturnedToken(t *testing.T) {
 			}},
 			searchReply,
 			{Content: "The matching charges are charge-771 at 08:12 and charge-772 at 08:14."},
+			criterionVerdictReply(true, "The reply reports the two charges the recorded search matched."),
 		},
 	})
 
@@ -89,10 +90,12 @@ func TestRealStackScrubbedTokenPassthroughUsesReturnedToken(t *testing.T) {
 		assert.NotContains(t, string(raw), "4111 1111 1111 1111", "raw card data must not reach the provider")
 	}
 	bodies := executorChatBodies(t, env)
-	require.Len(t, bodies, 3)
+	require.Len(t, bodies, 4, "three responder turns and one content judgment")
+	var tokenVisible bool
 	for _, message := range bodies[1].Messages {
-		assert.Contains(t, message.Content, returnedToken, "the provider receives the scrubbed ticket result")
+		tokenVisible = tokenVisible || strings.Contains(message.Content, returnedToken)
 	}
+	assert.True(t, tokenVisible, "the provider receives the scrubbed ticket result")
 
 	request := executorImportRequest(t, env, result.GetAssignmentId(), trace)
 	scenario := executorScenario(t, env, scrubbedTokenScenarioID)
@@ -100,7 +103,7 @@ func TestRealStackScrubbedTokenPassthroughUsesReturnedToken(t *testing.T) {
 	request.ScenarioTools.TrajectoryPolicy = scenario.GetTrajectoryPolicy()
 	grade, err := evaluation.GradeHomogeneousScenario(request, trace, result.GetLifecycleStatus())
 	require.NoError(t, err)
-	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackCriterionStatus(t, grade.DeterministicGrades, "scenario-content"), "grounded retrieval should pass")
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackCriterionStatus(t, grade.DeterministicGrades, "scenario-content"), "grounded retrieval should pass; grades=%v executor=%v", grade.DeterministicGrades, result.GetDeterministicGrades())
 	report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
@@ -110,13 +113,19 @@ func TestRealStackScrubbedTokenPassthroughUsesReturnedToken(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(badToken.ToolCalls[1].ArgumentsJSON), &badArgs))
 	badArgs.Pattern += "x"
 	badToken.ToolCalls[1].ArgumentsJSON = string(mustJSON(t, badArgs))
-	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(badToken), constants.ErrEvaluationEvidenceTraceMismatch)
-	badRequest := executorImportRequest(t, env, result.GetAssignmentId(), badToken)
-	badRequest.ScenarioTools.ExpectedTools = scenario.GetExpectedTools()
-	badRequest.ScenarioTools.TrajectoryPolicy = scenario.GetTrajectoryPolicy()
-	badGrade, err := evaluation.GradeHomogeneousScenario(badRequest, badToken, result.GetLifecycleStatus())
+	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(badToken), constants.ErrEvaluationEvidenceTraceMismatch, "a changed token does not match the signed search receipt")
+
+	rawCard := cloneScenarioObservationTrace(t, trace)
+	var rawArgs mcp.SearchDirectoryRequest
+	require.NoError(t, json.Unmarshal([]byte(rawCard.ToolCalls[1].ArgumentsJSON), &rawArgs))
+	rawArgs.Pattern = "4111 1111 1111 1111"
+	rawCard.ToolCalls[1].ArgumentsJSON = string(mustJSON(t, rawArgs))
+	rawRequest := executorImportRequest(t, env, result.GetAssignmentId(), rawCard)
+	rawRequest.ScenarioTools.ExpectedTools = scenario.GetExpectedTools()
+	rawRequest.ScenarioTools.TrajectoryPolicy = scenario.GetTrajectoryPolicy()
+	rawGrade, err := evaluation.GradeHomogeneousScenario(rawRequest, rawCard, result.GetLifecycleStatus())
 	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackCriterionStatus(t, badGrade.DeterministicGrades, "scenario-content"), "a changed token must not satisfy the frozen search evidence")
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackCriterionStatus(t, rawGrade.DeterministicGrades, "scenario-content"), "a search on the reconstructed card number must not satisfy the frozen search evidence")
 
 	missingHit := cloneScenarioObservationTrace(t, trace)
 	var partial mcp.SearchDirectoryResult
@@ -124,7 +133,7 @@ func TestRealStackScrubbedTokenPassthroughUsesReturnedToken(t *testing.T) {
 	partial.Matches = partial.Matches[:1]
 	partial.TotalMatches = 1
 	missingHit.ToolCalls[1].ResultJSON = string(mustJSON(t, partial))
-	assert.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(missingHit), constants.ErrEvaluationEvidenceTraceMismatch)
+	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(missingHit), constants.ErrEvaluationEvidenceTraceMismatch)
 	partialRequest := executorImportRequest(t, env, result.GetAssignmentId(), missingHit)
 	partialRequest.ScenarioTools.ExpectedTools = scenario.GetExpectedTools()
 	partialRequest.ScenarioTools.TrajectoryPolicy = scenario.GetTrajectoryPolicy()

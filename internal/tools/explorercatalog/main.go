@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -101,21 +102,45 @@ type promptHint struct {
 	Arguments   []hintArgument `json:"arguments"`
 }
 
+// roleCriterion is one gold criterion a designated role is graded against.
+type roleCriterion struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+}
+
+// roleCriteria is the gold criteria for one eligible role. Only roles the
+// scenario is eligible for are projected; the others carry placeholder text.
+type roleCriteria struct {
+	Role     string          `json:"role"`
+	Criteria []roleCriterion `json:"criteria"`
+}
+
+// judgedCriterion is one binary statement the pinned judge scores the final
+// reply against. Its grade is published as `content:<id>`.
+type judgedCriterion struct {
+	ID        string `json:"id"`
+	Statement string `json:"statement"`
+}
+
 type task struct {
-	ID                string          `json:"id"`
-	Category          string          `json:"category"`
-	PublicDescription string          `json:"publicDescription"`
-	GradingMethod     string          `json:"gradingMethod"`
-	TrajectoryPolicy  string          `json:"trajectoryPolicy"`
-	UserPrompt        string          `json:"userPrompt"`
-	InlineContext     []inlineContent `json:"inlineContext,omitempty"`
-	WorkspaceFiles    []workspaceFile `json:"workspaceFiles,omitempty"`
-	ExpectedBehavior  string          `json:"expectedBehavior"`
-	RequiredConcepts  []string        `json:"requiredConcepts"`
-	AllowedTools      []string        `json:"allowedTools,omitempty"`
-	ExpectedTools     []string        `json:"expectedTools,omitempty"`
-	ForbiddenTools    []string        `json:"forbiddenTools,omitempty"`
-	PromptHint        *promptHint     `json:"promptHint,omitempty"`
+	ID                string            `json:"id"`
+	Category          string            `json:"category"`
+	PublicDescription string            `json:"publicDescription"`
+	GradingMethod     string            `json:"gradingMethod"`
+	TrajectoryPolicy  string            `json:"trajectoryPolicy"`
+	EligibleRoles     []string          `json:"eligibleRoles"`
+	UserPrompt        string            `json:"userPrompt"`
+	InlineContext     []inlineContent   `json:"inlineContext,omitempty"`
+	WorkspaceFiles    []workspaceFile   `json:"workspaceFiles,omitempty"`
+	ExpectedBehavior  string            `json:"expectedBehavior"`
+	RoleCriteria      []roleCriteria    `json:"roleCriteria"`
+	JudgedCriteria    []judgedCriterion `json:"judgedCriteria,omitempty"`
+	RefusalCriterion  string            `json:"refusalCriterion,omitempty"`
+	RequiredConcepts  []string          `json:"requiredConcepts"`
+	AllowedTools      []string          `json:"allowedTools,omitempty"`
+	ExpectedTools     []string          `json:"expectedTools,omitempty"`
+	ForbiddenTools    []string          `json:"forbiddenTools,omitempty"`
+	PromptHint        *promptHint       `json:"promptHint,omitempty"`
 }
 
 func main() {
@@ -284,6 +309,13 @@ func buildTask(scenario *evalv1.EvaluationScenarioDefinition, input evaluation.S
 	if out.Category == "tool_argument" {
 		out.Category = "tool_arguments"
 	}
+	out.EligibleRoles, out.RoleCriteria = projectRoles(scenario.GetEligibleRoles(), gold.RoleCriteria)
+	if check := gold.ContentCheck; check != nil {
+		for _, criterion := range check.JudgedCriteria {
+			out.JudgedCriteria = append(out.JudgedCriteria, judgedCriterion{ID: criterion.ID, Statement: criterion.Statement})
+		}
+		out.RefusalCriterion = check.RefusalCriterion
+	}
 	for _, block := range input.InlineContext {
 		out.InlineContext = append(out.InlineContext, inlineContent{Kind: block.Kind, Label: block.Label, Content: block.Content})
 	}
@@ -302,6 +334,36 @@ func buildTask(scenario *evalv1.EvaluationScenarioDefinition, input evaluation.S
 		out.PromptHint = published
 	}
 	return out
+}
+
+// projectRoles returns the scenario's eligible role wire names and the gold
+// criteria of exactly those roles, both in role-enum order (primary, assistant,
+// lite) so authored order never changes the output. A role the gold has no
+// entry for is eligible but contributes no criteria.
+func projectRoles(eligible []evalv1.ModelCampaignRole, gold []evaluation.ScenarioRoleCriteria) ([]string, []roleCriteria) {
+	ordered := slices.DeleteFunc(slices.Clone(eligible), func(role evalv1.ModelCampaignRole) bool {
+		return role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+	})
+	slices.Sort(ordered)
+	ordered = slices.Compact(ordered)
+	roles := make([]string, 0, len(ordered))
+	criteria := []roleCriteria{}
+	for _, role := range ordered {
+		wire := enumSuffix(role.String(), "MODEL_CAMPAIGN_ROLE_")
+		roles = append(roles, wire)
+		for _, entry := range gold {
+			if entry.Role != wire {
+				continue
+			}
+			projected := roleCriteria{Role: wire, Criteria: make([]roleCriterion, 0, len(entry.Criteria))}
+			for _, criterion := range entry.Criteria {
+				projected.Criteria = append(projected.Criteria, roleCriterion{ID: criterion.CriterionID, Description: criterion.Description})
+			}
+			criteria = append(criteria, projected)
+			break
+		}
+	}
+	return roles, criteria
 }
 
 func enumSuffix(value, prefix string) string {
