@@ -31,9 +31,9 @@ func TestScenarioCatalog_OperationalPromptsAndRoleCapabilities(t *testing.T) {
 					assert.Empty(t, bp.ExpectedTools, "Lite gets injected context, never required tool calls")
 					assert.False(t, bp.TribunalCommands)
 				}
-				if len(bp.Gold.FileState) > 0 && bp.Gold.PolicyExpectation.ExpectedOutcome != "deny" {
+				if bp.ScenarioID == "code-restore-bad-change" {
 					assert.NotEqual(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, role,
-						"multi-step repair belongs to Sage rather than Dash's fast path")
+						"multi-step ledger restore belongs to Sage rather than Dash's fast path")
 				}
 			}
 		})

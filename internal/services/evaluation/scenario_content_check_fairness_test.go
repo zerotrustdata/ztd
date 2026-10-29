@@ -18,11 +18,11 @@ import (
 func assertContentCheck(t *testing.T, check ScenarioContentCheck, passing, failing []string) {
 	t.Helper()
 	for _, output := range passing {
-		passed, detail := evaluateContentCheck(output, check, ScenarioWorkspace{})
+		passed, detail := evaluateContentCheck(output, check)
 		assert.True(t, passed, "%q: %s", output, detail)
 	}
 	for _, output := range failing {
-		passed, _ := evaluateContentCheck(output, check, ScenarioWorkspace{})
+		passed, _ := evaluateContentCheck(output, check)
 		assert.False(t, passed, "%q must not pass", output)
 	}
 }

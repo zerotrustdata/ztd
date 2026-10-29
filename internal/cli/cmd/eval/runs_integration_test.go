@@ -415,7 +415,7 @@ func TestRunsStart_RequiresACampaignArgument(t *testing.T) {
 }
 
 func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(1))
+	env, run := newPublicationEnv(t, severityReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 3)
 	before := mirrorHighWater(t)
 
@@ -433,7 +433,7 @@ func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
 }
 
 func TestRunsStart_VerificationCanBeDisabled(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(1))
+	env, run := newPublicationEnv(t, severityReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 1)
 	out := env.mustRun(t, "runs", "start", "eval-a", "--publish=false", "--verify=false")
 	assert.Contains(t, out, "Executed 1 assignment(s)")
@@ -483,7 +483,7 @@ func TestRunsResume_Verification(t *testing.T) {
 		{name: "disabled", args: []string{"--verify=false"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			env, run := newPublicationEnv(t, readyReplies(1))
+			env, run := newPublicationEnv(t, severityReplies(1))
 			createPublicationCampaign(t, run, "eval-a", 3)
 			env.mustRun(t, "runs", "start", "eval-a", "--prepare-only", "--publish=false")
 			runID := onlyRunID(t, run)
@@ -518,7 +518,7 @@ func TestRunsResume_Verification(t *testing.T) {
 }
 
 func TestRunsResume_VerificationFailureReturnsAnError(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(2))
+	env, run := newPublicationEnv(t, severityReplies(2))
 	createPublicationCampaign(t, run, "eval-a", 3)
 	env.mustRun(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--verify=false")
 	runID := onlyRunID(t, run)
@@ -689,7 +689,7 @@ func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
 }
 
 func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(1))
+	env, run := newPublicationEnv(t, severityReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 3)
 	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 	require.NoError(t, err, out)
@@ -723,7 +723,7 @@ func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
 }
 
 func TestRunsVerify_DoesNotPublishWithoutPublishFlag(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(1))
+	env, run := newPublicationEnv(t, severityReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 3)
 	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 	require.NoError(t, err, out)
@@ -751,7 +751,7 @@ func TestVerifyRun_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env, run := newPublicationEnv(t, readyReplies(1))
+	env, run := newPublicationEnv(t, severityReplies(1))
 	createPublicationCampaign(t, run, "eval-a", 3)
 	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false")
 	require.NoError(t, err, out)

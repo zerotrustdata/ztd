@@ -23,14 +23,14 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.17.0"
+	GraderVersion = "1.18.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.27.0"
-	SmokeSuiteVersion          = "1.26.0"
-	InvestigationsSuiteVersion = "1.25.0"
+	DefaultSuiteVersion        = "1.28.0"
+	SmokeSuiteVersion          = "1.27.0"
+	InvestigationsSuiteVersion = "1.26.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -74,6 +74,9 @@ const (
 	// the seed conversation, the platform records the model was shown, and
 	// every receipted tool result it observed.
 	ScenarioGradingContractV2 ScenarioGradingContract = "grading-contract.v2"
+	// ScenarioGradingContractV3 inherits v2 and validates Interrogator questions
+	// as closed questions rather than rejecting every use of the word "or".
+	ScenarioGradingContractV3 ScenarioGradingContract = "grading-contract.v3"
 )
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
@@ -361,13 +364,31 @@ type ScenarioGoldCriteria struct {
 	RecoveryExpectation    ScenarioRecoveryExpectation     `json:"recovery_expectation"`
 	RequiredEvidenceTypes  []string                        `json:"required_evidence_types"`
 	GoldEvidenceReferences []ScenarioGoldEvidenceReference `json:"gold_evidence_references,omitempty"`
-	GradingContract        ScenarioGradingContract         `json:"grading_contract,omitempty"`
+	// RequireReceiptIDActionCitation freezes whether the prompt asks the agent
+	// to cite a retrieved receipt by ID and action. Nil is reserved for gold
+	// authored before this field existed and preserves its historical grading.
+	RequireReceiptIDActionCitation *bool                   `json:"require_receipt_id_action_citation,omitempty"`
+	GradingContract                ScenarioGradingContract `json:"grading_contract,omitempty"`
+}
+
+// requiresReceiptIDActionCitation preserves the old expected-tool rule only
+// for gold that predates the explicit citation contract. New gold records true
+// or false based on its prompt.
+func (gold *ScenarioGoldCriteria) requiresReceiptIDActionCitation(expectedReceiptList bool) bool {
+	if gold.RequireReceiptIDActionCitation != nil {
+		return *gold.RequireReceiptIDActionCitation
+	}
+	return expectedReceiptList
 }
 
 // gradingContractV2 reports whether the gold was frozen under
 // ScenarioGradingContractV2.
-func (gold ScenarioGoldCriteria) gradingContractV2() bool {
-	return gold.GradingContract == ScenarioGradingContractV2
+func (gold *ScenarioGoldCriteria) gradingContractV2() bool {
+	return gold.GradingContract == ScenarioGradingContractV2 || gold.GradingContract == ScenarioGradingContractV3
+}
+
+func (gold *ScenarioGoldCriteria) closedInterrogationContract() bool {
+	return gold.GradingContract == ScenarioGradingContractV3
 }
 
 func (gold *ScenarioGoldCriteria) requiredEvidenceForRole(role string) []string {

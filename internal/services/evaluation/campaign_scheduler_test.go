@@ -35,7 +35,7 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, 164)
+	assert.Len(t, assignments, 170)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T) {
@@ -47,6 +47,8 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 	}
 	assert.True(t, byID["recovery-live-command-error"].GetExcludeWhenL2Enforced())
 	assert.True(t, byID["tool-arg-shell-command"].GetExcludeWhenL2Enforced())
+	assert.True(t, byID["code-fix-ca-bundle"].GetExcludeWhenL2Enforced())
+	assert.True(t, byID["code-restore-bad-change"].GetExcludeWhenL2Enforced())
 
 	variant := testModelVariant()
 	consensus, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
@@ -57,7 +59,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 	require.NoError(t, err)
 	assert.Len(t, consensus, 78)
 	for _, assignment := range consensus {
-		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command"}, assignment.GetScenarioId())
+		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change"}, assignment.GetScenarioId())
 	}
 
 	doctrine, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
@@ -66,7 +68,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, doctrine, 82)
+	assert.Len(t, doctrine, 85)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
@@ -179,7 +181,7 @@ func TestBuildHomogeneousAssignmentMatrix_PreservesFilteredCatalogOrderAfterRelo
 	require.NoError(t, err)
 	// A custom suite's declared order is authoritative even when it differs
 	// from the built-in workflow and the filter is supplied in reverse order.
-	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[38]}
+	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[len(catalog.Scenarios)-1]}
 	catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(catalog)
 	require.NoError(t, err)
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{

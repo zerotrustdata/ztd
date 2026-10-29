@@ -33,7 +33,7 @@ func TestRunsStart_AllowsSharedRuntimeUnderTribunalConsensus(t *testing.T) {
 	suite.ID = "shared-tribunal-runtime-suite"
 	suite.Version = evaluation.SuiteSchemaVersion
 	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
+		if scenario.ScenarioID == "instruction-classify-severity" {
 			suite.Scenarios = []evaluation.SuiteScenario{scenario}
 			break
 		}

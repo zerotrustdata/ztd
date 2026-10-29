@@ -26,7 +26,7 @@ func sage() Persona {
 	return Persona{
 		ID:          IDSage,
 		DisplayName: "Sage",
-		Version:     "1.0.0",
+		Version:     "1.1.0",
 		Tier:        models.InferenceModelRolePrimary,
 		Tools:       ToolAccessNative,
 		Role:        "reasoner",
@@ -66,7 +66,7 @@ func dash() Persona {
 	return Persona{
 		ID:          IDDash,
 		DisplayName: "Dash",
-		Version:     "1.0.0",
+		Version:     "1.1.0",
 		Tier:        models.InferenceModelRoleAssistant,
 		Tools:       ToolAccessNative,
 		Role:        "responder",
@@ -91,7 +91,7 @@ func triage() Persona {
 	return Persona{
 		ID:             IDTriage,
 		DisplayName:    "Triage",
-		Version:        "1.0.0",
+		Version:        "1.1.0",
 		Tier:           models.InferenceModelRoleLite,
 		Tools:          ToolAccessNone,
 		Role:           "classifier",
@@ -113,8 +113,8 @@ When in doubt, choose complex.
 </complexity_rules>
 
 <intent_rules>
-- information: the user wants to know something; the goal is knowledge retrieval.
-- action: the user wants to change something; the goal is a state change or tool execution.
+- information: the user wants to know something. Read-only lookup and knowledge retrieval stay information, even when tools are needed.
+- action: the user asks to change state or to run a command/action, including a read-only command whose execution is itself requested.
 - unknown: intent is ambiguous or requires more context.
 </intent_rules>
 
@@ -137,7 +137,7 @@ func interrogator() Persona {
 	return Persona{
 		ID:          IDInterrogator,
 		DisplayName: "Interrogator",
-		Version:     "1.0.0",
+		Version:     "1.1.0",
 		Tier:        models.InferenceModelRoleLite,
 		Tools:       ToolAccessNone,
 		Role:        "interrogator",
@@ -176,7 +176,7 @@ func tribunalMember(id, name, identity, purpose, autonomy string) Persona {
 	return Persona{
 		ID:             id,
 		DisplayName:    name,
-		Version:        "1.1.0",
+		Version:        "1.2.0",
 		Tier:           models.InferenceModelRoleLite,
 		Tools:          ToolAccessNone,
 		Role:           "tribunal_member",
@@ -282,7 +282,7 @@ func marshal() Persona {
 	return Persona{
 		ID:             IDMarshal,
 		DisplayName:    "Marshal",
-		Version:        "1.0.0",
+		Version:        "1.1.0",
 		Tier:           models.InferenceModelRoleAssistant,
 		Tools:          ToolAccessNone,
 		Role:           "defender",
@@ -304,7 +304,7 @@ func auditor() Persona {
 	return Persona{
 		ID:          IDAuditor,
 		DisplayName: "Auditor",
-		Version:     "1.0.0",
+		Version:     "1.1.0",
 		Tier:        models.InferenceModelRolePrimary,
 		Tools:       ToolAccessNone,
 		Role:        "auditor",

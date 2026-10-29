@@ -323,7 +323,8 @@ func (a *agentToolArguments) EventReceiptListScopeFailure(investigationID string
 // governed action. Real Operators keep host-wide file access under the
 // FILE_EDIT path policy; this confinement belongs to the evaluation harness only.
 func (a *agentToolArguments) WorkspacePathFailure(workspace ScenarioWorkspace) *agentToolFailure {
-	field, value := "path", ""
+	field := "path"
+	var value string
 	switch contract := a.contract.(type) {
 	case typedAgentToolContract[mcp.FileReadRequest]:
 		value = contract.value.Path

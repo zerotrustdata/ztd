@@ -109,12 +109,14 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	contentPassed := true
 	contentDetail := ""
 	contentUnavailable := false
-	if !triageOnly && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
+	fileStateOnlyObjective := !triageOnly && g.req.ScenarioGold.GradingContract == ScenarioGradingContractV3 &&
+		g.req.ScenarioGold.ContentCheck == nil && len(g.req.ScenarioGold.FileState) > 0
+	if !triageOnly && !fileStateOnlyObjective && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
 		if g.req.ScenarioGold.ContentCheck != nil {
-			contentPassed, contentDetail = evaluateContentCheck(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws)
+			contentPassed, contentDetail = evaluateContentCheckForGold(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws, g.req.ScenarioGold)
 			// Only the Interrogator asks: a v11 reasoner that writes the block
 			// itself did not signal for clarification.
-			if contentPassed && trace.SchemaVersion == agentTraceSchemaVersion && endedInInterrogation(trace.FinalOutput) && !trace.interrogatorAsked(trace.FinalOutput) {
+			if contentPassed && trace.SchemaVersion == agentTraceSchemaVersion && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
 				contentPassed, contentDetail = false, constants.ErrEvaluationInterrogationNotSignalled.Error()
 			}
 			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
@@ -122,7 +124,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			}
 			// The content check alone grades an interrogation; the diagnosis
 			// rubric and judged criteria describe an answer it does not give.
-			if !endedInInterrogation(trace.FinalOutput) {
+			if !endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) {
 				if contentPassed {
 					switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
 					case "":
@@ -148,11 +150,15 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			contentPassed, contentDetail = false, "scenario content check is missing"
 		}
 		if slices.Contains(g.req.ScenarioTools.ExpectedTools, constants.MCPToolEventReceiptList) {
-			status, detail := g.historyContentGrade()
+			status, detail := g.historyContentGrade(g.req.ScenarioGold.requiresReceiptIDActionCitation(true))
 			contentPassed = contentPassed && status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 			contentUnavailable = status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
 			if status != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
-				contentDetail = detail
+				if g.req.ScenarioGold.RequireReceiptIDActionCitation == nil {
+					contentDetail = detail
+				} else {
+					contentDetail = appendContentDetail(contentDetail, detail)
+				}
 			}
 		}
 		passDetail := "designated role output matches scenario content requirements"
@@ -260,6 +266,16 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			PublicFailureReason: pubReason,
 		},
 	}, nil
+}
+
+func appendContentDetail(existing, additional string) string {
+	if existing == "" {
+		return additional
+	}
+	if additional == "" {
+		return existing
+	}
+	return existing + "; " + additional
 }
 
 func (g homogeneousGrader) isLiteTriageCell() bool {
@@ -1129,7 +1145,7 @@ func deriveScenarioDecomposedScores(assignmentID string, grades []*evalv1.Determ
 // historyContentGrade binds the answer to the executed query, never to the
 // presence of the word "receipt". A failed admitted query is unavailable;
 // missing calls and fabricated history remain model failures.
-func (g homogeneousGrader) historyContentGrade() (evalv1.EvaluationVerdictStatus, string) {
+func (g homogeneousGrader) historyContentGrade(requireCitation bool) (evalv1.EvaluationVerdictStatus, string) {
 	unavailable := false
 	output := strings.ToLower(g.view.Trace.FinalOutput)
 	for i := len(g.view.Calls) - 1; i >= 0; i-- {
@@ -1151,6 +1167,9 @@ func (g homogeneousGrader) historyContentGrade() (evalv1.EvaluationVerdictStatus
 			// this empty result faithfully. This gate establishes retrieval;
 			// gradeJudgedCriteria supplies the receipt-bound semantic verdict.
 			return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "retrieved history is empty"
+		}
+		if !requireCitation {
+			return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, "retrieved history supports semantic content grading"
 		}
 		var result models.OperatorEventReceiptListResult
 		if err := json.Unmarshal([]byte(call.ResultJSON), &result); err != nil {

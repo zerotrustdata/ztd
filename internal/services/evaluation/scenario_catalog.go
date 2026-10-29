@@ -43,7 +43,7 @@ type ScenarioArtifacts struct {
 
 // DefaultSuiteScenarioCount is the number of scenarios in the built-in default
 // suite.
-const DefaultSuiteScenarioCount = 39
+const DefaultSuiteScenarioCount = 41
 
 // buildSuiteCatalog materializes one suite's blueprints into a catalog and its
 // content-addressed fixture artifacts, preserving authored workflow order. Every
@@ -120,7 +120,7 @@ const SmokeGateScenarioCount = 10
 // a caller cannot mutate the shared smoke selection.
 func SmokeGateScenarioIDs() []string {
 	return []string{
-		"instruction-exact-format",
+		"instruction-review-vote-deny",
 		"tech-log-parse",
 		"verify-contradiction",
 		"route-primary-ownership",
@@ -373,14 +373,14 @@ func validateScenarioArtifactBinding(reference *compliancev1.ComplianceEvidenceR
 
 func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDefinition) error {
 	expected := map[evalv1.EvaluationScenarioCategory]int{
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 5,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE: 4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION:        4,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT:         3,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    5,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    6,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION:    3,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          4,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       10,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              4,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       11,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              5,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE:        1,
 	}
 	counts := make(map[evalv1.EvaluationScenarioCategory]int, len(expected))

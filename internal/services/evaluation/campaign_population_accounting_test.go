@@ -119,13 +119,13 @@ func TestCampaignPopulationAccountant_UsesFrozenPostureForMatrix(t *testing.T) {
 			name:             "consensus with gated scenarios is extra population",
 			posture:          evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
 			scheduledPosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
-			wantExpected:     78, wantExtra: 4,
+			wantExpected:     78, wantExtra: 7,
 		},
 		{
 			name:             "doctrine reduced matrix is incomplete",
 			posture:          evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 			scheduledPosture: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS,
-			wantExpected:     82,
+			wantExpected:     85,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestCampaignPopulationAccountant_UsesFrozenPostureForMatrix(t *testing.T) {
 
 			scenarios := []string(nil)
 			if tc.name == "consensus with gated scenarios is extra population" {
-				scenarios = []string{"recovery-live-command-error", "tool-arg-shell-command"}
+				scenarios = []string{"recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change"}
 			}
 			assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
 				CampaignID: req.CampaignID, RunID: run.GetRunId(), Catalog: req.Catalog,
@@ -267,7 +267,7 @@ func persistValidToolProbeForTest(t *testing.T, ctx context.Context, store *Stor
 func TestCampaignRunVerifier_VerdictFollowsFrozenPostureMatrix(t *testing.T) {
 	consensus := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
-	gatedScenarios := []string{"recovery-live-command-error", "tool-arg-shell-command"}
+	gatedScenarios := []string{"recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change"}
 	for _, tc := range []struct {
 		name             string
 		posture          evalv1.EvaluationGovernancePosture
@@ -280,9 +280,9 @@ func TestCampaignRunVerifier_VerdictFollowsFrozenPostureMatrix(t *testing.T) {
 		{name: "reduced consensus matrix passes", posture: consensus, scheduledPosture: consensus,
 			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, wantExpected: 78, wantVerified: 78},
 		{name: "consensus run with a gated scenario fails", posture: consensus, scheduledPosture: consensus, extraScenarios: gatedScenarios,
-			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, wantExpected: 78, wantVerified: 82},
+			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, wantExpected: 78, wantVerified: 85},
 		{name: "reduced doctrine matrix is incomplete", posture: doctrine, scheduledPosture: consensus,
-			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, wantExpected: 82, wantVerified: 78},
+			wantStatus: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, wantExpected: 85, wantVerified: 78},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, req, run, _ := persistPostureGatedRun(t, tc.posture, tc.scheduledPosture, tc.extraScenarios)
@@ -303,7 +303,7 @@ func TestCampaignRunVerifier_VerdictFollowsFrozenPostureMatrix(t *testing.T) {
 
 func TestCampaignPublication_RejectsReportDenominatorMatchedToIncompletePopulation(t *testing.T) {
 	ctx := context.Background()
-	// A doctrine run expects 82 cells; only the 78-cell consensus matrix exists.
+	// A doctrine run expects 85 cells; only the 78-cell consensus matrix exists.
 	store, req, run, assignments := persistPostureGatedRun(t,
 		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, nil)

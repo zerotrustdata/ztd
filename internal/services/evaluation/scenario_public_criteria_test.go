@@ -142,7 +142,7 @@ func TestBuildScenarioCatalog_PublicToolScoreDimensionsFollowScenarioShape(t *te
 		}
 	}
 
-	assert.Empty(t, got["instruction-exact-format"], "an answer-only scenario exercises no tool dimension")
+	assert.Empty(t, got["instruction-classify-severity"], "an answer-only scenario exercises no tool dimension")
 	assert.Empty(t, got["recovery-malformed-resource"], "an answer-only recovery has no tool result to interpret")
 	assert.Equal(t, []evalv1.PublicToolScoreDimension{recognition, selection}, got["tool-select-constraints"])
 	assert.Equal(t, []evalv1.PublicToolScoreDimension{recognition, selection, schema, semantics}, got["tool-select-file-read"])

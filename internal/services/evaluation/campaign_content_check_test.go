@@ -16,17 +16,17 @@ import (
 func TestEvaluateContentCheck_TermsMatchAcrossSeparators(t *testing.T) {
 	check := ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}}, ForbiddenTerms: []string{"svc-web"}}
 
-	ok, detail := evaluateContentCheck("The checkout API owns the failing route.", check, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck("The checkout API owns the failing route.", check)
 	require.True(t, ok, detail)
 
-	ok, _ = evaluateContentCheck("Route owner: checkout_api", check, ScenarioWorkspace{})
+	ok, _ = evaluateContentCheck("Route owner: checkout_api", check)
 	require.True(t, ok)
 
-	ok, detail = evaluateContentCheck("The checkout service owns it.", check, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("The checkout service owns it.", check)
 	require.False(t, ok)
 	require.Contains(t, detail, "missing required term")
 
-	ok, detail = evaluateContentCheck("checkout-api, not svc web", check, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("checkout-api, not svc web", check)
 	require.False(t, ok)
 	require.Contains(t, detail, "forbidden term")
 }
@@ -38,11 +38,11 @@ func TestEvaluateContentCheck_UnicodeDashesAreSeparators(t *testing.T) {
 	check := ScenarioContentCheck{RequiredTerms: [][]string{{"deploy-h…"}}, ForbiddenTerms: []string{"deploy-healthcheck"}}
 
 	for _, answer := range []string{"program named `deploy‑h…` was not found", "program named deploy–h… was not found"} {
-		ok, detail := evaluateContentCheck(answer, check, ScenarioWorkspace{})
+		ok, detail := evaluateContentCheck(answer, check)
 		require.True(t, ok, "%q: %s", answer, detail)
 	}
 
-	ok, detail := evaluateContentCheck("deploy‑healthcheck was not found, so deploy-h… failed", check, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck("deploy‑healthcheck was not found, so deploy-h… failed", check)
 	require.False(t, ok)
 	require.Contains(t, detail, "forbidden term")
 }
@@ -52,19 +52,19 @@ func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForSemanticTerms(t *tes
 		RequiredTerms:  [][]string{{"svc-d…"}},
 		ForbiddenTerms: []string{"svc-deploy"},
 	}
-	ok, detail := evaluateContentCheck("The matching account is svc-d...", semantic, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck("The matching account is svc-d...", semantic)
 	require.True(t, ok, "detail: %s; ASCII and Unicode ellipses should express the same semantic mask", detail)
 
-	ok, detail = evaluateContentCheck("The matching account is svc-deploy", ScenarioContentCheck{ForbiddenTerms: []string{"svc-deploy"}}, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("The matching account is svc-deploy", ScenarioContentCheck{ForbiddenTerms: []string{"svc-deploy"}})
 	require.False(t, ok, "the full identifier must remain forbidden")
 	require.Contains(t, detail, "forbidden term")
 
 	exact := ScenarioContentCheck{ExactToken: "svc-d…"}
-	ok, detail = evaluateContentCheck("svc-d...", exact, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("svc-d...", exact)
 	require.False(t, ok, "exact tokens retain byte-for-byte matching")
 	require.Contains(t, detail, "exact token mismatch")
 
-	ok, detail = evaluateContentCheck("svc-deploy", semantic, ScenarioWorkspace{})
+	ok, detail = evaluateContentCheck("svc-deploy", semantic)
 	require.False(t, ok, "the full identifier must not satisfy a partial-mask requirement")
 	require.Contains(t, detail, "missing required term")
 }
@@ -72,11 +72,11 @@ func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForSemanticTerms(t *tes
 func TestEvaluateContentCheck_MaskedEllipsesAreEquivalentForExactLabels(t *testing.T) {
 	exactLabel := ScenarioContentCheck{ExactLabels: []string{"svc-d…"}}
 	for _, output := range []string{"svc-d…", "svc-d...", "**svc-d...**."} {
-		ok, detail := evaluateContentCheck(output, exactLabel, ScenarioWorkspace{})
+		ok, detail := evaluateContentCheck(output, exactLabel)
 		require.True(t, ok, "output %q: %s; ASCII and Unicode ellipses should normalize to the same label", output, detail)
 	}
 
-	ok, detail := evaluateContentCheck("svc-deploy", exactLabel, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck("svc-deploy", exactLabel)
 	require.False(t, ok, "the full identifier must not satisfy a partial-mask exact label")
 	require.Contains(t, detail, "exact label mismatch")
 }
@@ -87,11 +87,11 @@ func TestEvaluateContentCheck_MaskedEllipsesDoNotInflateSentenceCount(t *testing
 		"check... experienced a 18% timeout spike during deploy",
 		"check… experienced a 18% timeout spike during deploy",
 	} {
-		ok, detail := evaluateContentCheck(output, check, ScenarioWorkspace{})
+		ok, detail := evaluateContentCheck(output, check)
 		require.True(t, ok, "output %q: %s", output, detail)
 	}
 
-	ok, detail := evaluateContentCheck("The service timed out. The cause is unknown.", check, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck("The service timed out. The cause is unknown.", check)
 	require.False(t, ok)
 	require.Contains(t, detail, "sentence count 2 exceeds maximum 1")
 }
@@ -108,11 +108,11 @@ func TestRouteHandoffAssistant_CorrelatingEvidenceIsDeterministic(t *testing.T) 
 		"Both records name serial 4F2A, so the failures are consistent with the rotation; this is not proven.",
 		"The handshake failures start at 08:02, two minutes after the rotation; the cause is not proven.",
 	} {
-		ok, detail := evaluateContentCheck(answer, check, ScenarioWorkspace{})
+		ok, detail := evaluateContentCheck(answer, check)
 		require.True(t, ok, "%s: %s", answer, detail)
 	}
 
-	ok, detail := evaluateContentCheck("The failures look related to the certificate rotation, though the cause is not proven.", check, ScenarioWorkspace{})
+	ok, detail := evaluateContentCheck("The failures look related to the certificate rotation, though the cause is not proven.", check)
 	require.False(t, ok)
 	require.Contains(t, detail, "missing required term")
 }

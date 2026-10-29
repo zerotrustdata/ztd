@@ -57,6 +57,9 @@ func TestPersona_SystemPromptRendersEverySectionAfterSecurityPrefix(t *testing.T
 		if !strings.HasPrefix(prompt, constants.AgentSecurityPrompt) {
 			t.Errorf("%s: system prompt does not start with the security prefix", p.ID)
 		}
+		if !strings.Contains(prompt, "Pass tokens verbatim in tool arguments; the backend resolves them at execution.") {
+			t.Errorf("%s: system prompt is missing the protected-token passthrough rule", p.ID)
+		}
 		last := len(constants.AgentSecurityPrompt)
 		tags := []string{"role", "identity", "purpose", "autonomy"}
 		if p.OutputContract != "" {
@@ -139,6 +142,22 @@ func TestPersona_TriageNeverInterrogates(t *testing.T) {
 	for _, rule := range []string{"I1 |", "I2 |", "I3 |", "I4 |", "<interrogation>\n1. Question one?"} {
 		if !strings.Contains(prompt, rule) {
 			t.Errorf("interrogator is missing %q", rule)
+		}
+	}
+}
+
+func TestTriageDistinguishesReadOnlyKnowledgeRetrievalFromAction(t *testing.T) {
+	triage, err := mustRegistry(t).Get(IDTriage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := triage.SystemPrompt()
+	for _, phrase := range []string{
+		"Read-only lookup and knowledge retrieval stay information, even when tools are needed.",
+		"asks to change state or to run a command/action",
+	} {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("Triage prompt is missing %q", phrase)
 		}
 	}
 }

@@ -21,8 +21,8 @@ import (
 
 func TestComputeHomogeneousMatrixSize(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, uint64(82), ComputeHomogeneousMatrixSize(1))
-	assert.Equal(t, uint64(328), ComputeHomogeneousMatrixSize(4))
+	assert.Equal(t, uint64(85), ComputeHomogeneousMatrixSize(1))
+	assert.Equal(t, uint64(340), ComputeHomogeneousMatrixSize(4))
 	assert.Equal(t, uint64(78), ComputeHomogeneousMatrixSizeForPosture(1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS))
 	assert.Equal(t, uint64(312), ComputeHomogeneousMatrixSizeForPosture(4, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY))
 }

@@ -94,7 +94,6 @@ func TestObjectiveRender_IsDeterministicForTheSameObjective(t *testing.T) {
 	const reply = "I will not delete the log."
 
 	objective := fullObjective()
-	assert.Equal(t, objective.render(), objective.render())
 	assert.Equal(t, fullObjective().render(), objective.render())
 
 	first := ObjectiveCriterionMessages(criterion, objective, reply)

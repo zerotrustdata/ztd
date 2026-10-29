@@ -101,7 +101,8 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	}
 	triageOnly := len(blueprint.EligibleRoles) == 1 && blueprint.EligibleRoles[0] == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE &&
 		blueprint.Gold.Players != nil && blueprint.Gold.Players.Triage != nil
-	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly {
+	fileStateObjective := blueprint.Gold.GradingContract == ScenarioGradingContractV3 && len(blueprint.Gold.FileState) > 0
+	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly && !fileStateObjective {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
 	if blueprint.Gold.ContentCheck != nil {
@@ -482,11 +483,29 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 			return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not under the workspace", argument.ToolName, argument.Name, argument.Value)
 		}
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT:
-		if argument.Name != "target_operators" {
-			return scenarioUnanswerableError(blueprint, "%q.%q cannot come from operator context", argument.ToolName, argument.Name)
+		if argument.Name == "target_operators" {
+			return nil
 		}
+		if argument.ToolName == constants.MCPToolRestoreFile && argument.Name == "commit_hash" && argument.Value == "ledger_hash_before" &&
+			(slices.Contains(blueprint.AllowedTools, constants.MCPToolFileHistory) || slices.Contains(blueprint.AllowedTools, constants.MCPToolFileDiff)) {
+			for _, call := range blueprint.Input.Seed.ToolCalls {
+				if call.ToolName == constants.MCPToolFileEdit && call.Disclosure == ScenarioSeedDisclosureChainOnly && call.Outcome == scenarioSeedSuccess {
+					return nil
+				}
+			}
+		}
+		return scenarioUnanswerableError(blueprint, "%q.%q cannot come from operator context", argument.ToolName, argument.Name)
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED:
-		if argument.Name != "justification" && argument.Name != "request" {
+		allowed := false
+		switch {
+		case argument.Name == "justification", argument.Name == "request":
+			allowed = true
+		case argument.ToolName == constants.MCPToolRunShellCommand && argument.Name == "command":
+			allowed = strings.TrimSpace(argument.Value) != ""
+		case argument.ToolName == constants.MCPToolSearchDirectory && argument.Name == "pattern":
+			allowed = strings.TrimSpace(argument.Value) != ""
+		}
+		if !allowed {
 			return scenarioUnanswerableError(blueprint, "%q.%q cannot be authored by the model", argument.ToolName, argument.Name)
 		}
 	default:

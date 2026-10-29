@@ -36,7 +36,7 @@ func TestNamedRollout_RealStackStartResumeAndRerun(t *testing.T) {
 	suite := evaluation.DefaultScenarioSuite()
 	suite.ID = "rollout-answer-suite"
 	for _, scenario := range suite.Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
+		if scenario.ScenarioID == "instruction-classify-severity" {
 			suite.Scenarios = []evaluation.SuiteScenario{scenario}
 			break
 		}
