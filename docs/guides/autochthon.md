@@ -3,8 +3,8 @@ doc_id: autochthon
 title: Run an Autochthon
 audience: platform operators and host owners
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.5.0
+last_updated: 2026-10-29
 owners:
   - docs/guides/autochthon.md
   - internal/cli/cmd/autochthon/
@@ -70,7 +70,7 @@ Describes running `ztd autochthon` on a host, reading `ztd autochthon status`, r
 | :--- | :--- |
 | INV-AUTO-EVID-01 | The tally is a local SHA-256 hash chain from a genesis hash. It is not the commitment ledger, not an `EventReceipt`, and `ztd audit verify` does not walk it. |
 | INV-AUTO-EVID-02 | Chain verification detects an edited, reordered, or inserted line. `status` reports an unterminated last line as pending and does not verify it, and start refuses to run on it. Chain verification does not detect removal of whole trailing lines without an external anchor verified via `status --anchor`. |
-| INV-AUTO-EVID-03 | Sensed metrics (load, memory, process count) come from `/proc/loadavg` and `/proc/meminfo`. On platforms where those files are missing, those senses read as zero. |
+| INV-AUTO-EVID-03 | Load, memory in use, and process count are senses 0, 1, and 6. Load is the one-minute load average scaled by `l/(l+CPUs)`. Memory is the fraction of physical RAM that is not available to allocate without swapping. Process count is the number of processes the kernel lists, scaled by `n/(n+512)`. Linux reads load from `/proc/loadavg`, memory from `/proc/meminfo` (`MemAvailable`, or `MemFree` + `Buffers` + `Cached` when `MemAvailable` is absent), and processes as the numeric directory names under `/proc`. Darwin reads load from the `vm.loadavg` sysctl, memory from reclaimable VM page counts against `hw.memsize`, and processes from `kern.proc.all`. A failed read leaves that sense at zero. Any other platform leaves all three at zero. |
 
 ## Owned surfaces
 

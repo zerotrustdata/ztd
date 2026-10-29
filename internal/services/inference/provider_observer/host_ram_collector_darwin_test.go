@@ -10,23 +10,17 @@
 package provider_observer
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Names the sysctl that fails, which the collector's UNAVAILABLE sample hides.
-func TestReadDarwinMemory_ReadsEverySysctl(t *testing.T) {
-	for _, name := range darwinAvailablePageSysctls {
-		_, err := sysctlCount(name)
-		require.NoError(t, err, name)
-	}
-	assert.Positive(t, os.Getpagesize())
-
+func TestReadDarwinMemory(t *testing.T) {
+	t.Parallel()
 	totalBytes, usedBytes, ok := readDarwinMemory()
 	require.True(t, ok)
 	assert.Positive(t, totalBytes)
 	assert.LessOrEqual(t, usedBytes, totalBytes)
+	assert.Positive(t, usedBytes)
 }

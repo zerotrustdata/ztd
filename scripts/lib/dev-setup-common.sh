@@ -19,6 +19,9 @@
 # frontend engines range (jsdom: ^22.22.2 || ^24.15.0 || >=26.0.0); keep it in
 # step with console/package.json "engines".
 ZTD_NODE_REQUIREMENT="22.22.2+, 24.15+, or 26+"
+# Release line installed from nodejs.org when node is missing. Its latest
+# release must satisfy ZTD_NODE_REQUIREMENT.
+ZTD_NODE_LTS_MAJOR=22
 ZTD_EXPLORER_DIR="evaluation-explorer"
 ZTD_EXPLORER_DIST="${ZTD_EXPLORER_DIR}/dist/index.html"
 ZTD_PATH_MARKER="# ztd: add repository root to PATH"
@@ -169,6 +172,155 @@ ztd_sha256() {
     else
         shasum -a 256 "$1" | awk '{print $1}'
     fi
+}
+
+# Loads the scratch helper when a caller (dev-check) did not source it.
+ztd_source_scratch() {
+    if declare -F ztd_scratch_dir >/dev/null 2>&1; then
+        return 0
+    fi
+    # shellcheck source=scratch.sh
+    source "${SCRIPT_DIR}/lib/scratch.sh"
+}
+
+# True when a write under /usr/local needs sudo. Root, and a user who already
+# owns the prefix (Homebrew on Intel), do not.
+ztd_usr_local_needs_sudo() {
+    [[ "$(id -u)" -eq 0 ]] && return 1
+    [[ -d /usr/local && -w /usr/local ]] && return 1
+    return 0
+}
+
+# Runs a command that writes under /usr/local.
+ztd_usr_local() {
+    if ! ztd_usr_local_needs_sudo; then
+        "$@"
+        return
+    fi
+    if command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+        return
+    fi
+    echo "  /usr/local is not writable and sudo is not available"
+    return 1
+}
+
+# ztd_official_node_arch: prints the nodejs.org CPU name (x64 or arm64).
+ztd_official_node_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64) echo "x64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        *) return 1 ;;
+    esac
+}
+
+# ztd_official_go_arch: prints the go.dev CPU name (amd64 or arm64).
+ztd_official_go_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64) echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        *) return 1 ;;
+    esac
+}
+
+# Installs the official Go tarball matching go.mod into /usr/local/go.
+# <platform> is the tarball OS name: linux or darwin.
+# Distro and Homebrew Go packages lag go.mod; Homebrew also stopped shipping
+# Intel macOS bottles.
+ztd_install_official_go() {
+    local platform="$1" goarch tarball scratch tmp want got
+    goarch="$(ztd_official_go_arch)" || {
+        echo "  no official Go tarball for $(uname -s)/$(uname -m); install Go from https://go.dev/dl/"
+        return 1
+    }
+    case "$platform" in
+        linux|darwin) ;;
+        *) echo "  unsupported Go platform '${platform}'"; return 1 ;;
+    esac
+    ztd_source_scratch || return 1
+    tarball="go${ZTD_GO_MIN}.${platform}-${goarch}.tar.gz"
+    scratch="$(ztd_scratch_dir "$REPO_ROOT" ztd-go)" || return 1
+    tmp="$scratch/${tarball}"
+
+    echo "Downloading ${tarball}..."
+    if ! curl -fSL "https://go.dev/dl/${tarball}" -o "$tmp" ||
+        ! want="$(curl -fsSL "https://dl.google.com/go/${tarball}.sha256")"; then
+        rm -rf "$scratch"
+        return 1
+    fi
+    got="$(ztd_sha256 "$tmp")"
+    if [[ "$got" != "$want" ]]; then
+        echo "  checksum mismatch for ${tarball} (expected ${want}, got ${got})"
+        rm -rf "$scratch"
+        return 1
+    fi
+
+    echo "Installing Go ${ZTD_GO_MIN} to /usr/local/go (replaces any existing /usr/local/go)..."
+    if ztd_usr_local_needs_sudo; then
+        echo "  /usr/local is not writable by you, so this step uses sudo."
+    fi
+    ztd_usr_local rm -rf /usr/local/go
+    ztd_usr_local tar -C /usr/local -xzf "$tmp"
+    rm -rf "$scratch"
+    # Ahead of any older Go (distro /usr/bin/go, or a stale Homebrew go) so the
+    # re-check sees this one.
+    export PATH="/usr/local/go/bin:$PATH"
+    hash -r
+}
+
+# Installs the newest Node ${ZTD_NODE_LTS_MAJOR}.x LTS tarball from nodejs.org
+# into /usr/local/lib/nodejs and links node/npm/npx/corepack into /usr/local/bin.
+# <platform> is the tarball OS name: linux or darwin.
+# Ubuntu's apt nodejs is older than the supported lines. Homebrew on Intel
+# macOS no longer ships bottles, and building the node formula from source
+# fails in its sphinx-doc dependency.
+ztd_install_official_node() {
+    local platform="$1" nodearch sums tarball scratch tmp want got dest base
+    nodearch="$(ztd_official_node_arch)" || {
+        echo "  no official Node.js tarball for $(uname -s)/$(uname -m); install Node.js ${ZTD_NODE_REQUIREMENT} from https://nodejs.org/"
+        return 1
+    }
+    case "$platform" in
+        linux|darwin) ;;
+        *) echo "  unsupported Node.js platform '${platform}'"; return 1 ;;
+    esac
+    ztd_source_scratch || return 1
+    base="https://nodejs.org/dist/latest-v${ZTD_NODE_LTS_MAJOR}.x"
+    sums="$(curl -fsSL "${base}/SHASUMS256.txt")" || return 1
+    tarball="$(echo "$sums" | awk -v arch="${platform}-${nodearch}.tar.gz" '$2 ~ arch"$" {print $2; exit}')"
+    want="$(echo "$sums" | awk -v t="$tarball" '$2 == t {print $1}')"
+    if [[ -z "$tarball" || -z "$want" ]]; then
+        echo "  could not find a Node ${ZTD_NODE_LTS_MAJOR}.x ${platform}-${nodearch} tarball in ${base}/SHASUMS256.txt"
+        return 1
+    fi
+
+    scratch="$(ztd_scratch_dir "$REPO_ROOT" ztd-node)" || return 1
+    tmp="$scratch/${tarball}"
+    echo "Downloading ${tarball}..."
+    if ! curl -fSL "${base}/${tarball}" -o "$tmp"; then
+        rm -rf "$scratch"
+        return 1
+    fi
+    got="$(ztd_sha256 "$tmp")"
+    if [[ "$got" != "$want" ]]; then
+        echo "  checksum mismatch for ${tarball} (expected ${want}, got ${got})"
+        rm -rf "$scratch"
+        return 1
+    fi
+
+    dest="/usr/local/lib/nodejs"
+    echo "Installing ${tarball%.tar.gz} to ${dest}..."
+    if ztd_usr_local_needs_sudo; then
+        echo "  /usr/local is not writable by you, so this step uses sudo."
+    fi
+    ztd_usr_local mkdir -p "$dest" /usr/local/bin
+    ztd_usr_local tar -C "$dest" -xzf "$tmp"
+    rm -rf "$scratch"
+    for bin in node npm npx corepack; do
+        ztd_usr_local ln -sf "${dest}/${tarball%.tar.gz}/bin/${bin}" "/usr/local/bin/${bin}"
+    done
+    export PATH="/usr/local/bin:$PATH"
+    hash -r
 }
 
 # --- prerequisite checks: print one line each, return 1 when missing -----------
@@ -777,8 +929,9 @@ ztd_configure_path_unix() {
     if [[ "$(command -v go 2>/dev/null)" == /usr/local/go/bin/go ]]; then
         ztd_plan_path_entry /usr/local/go/bin "# ztd: Go toolchain" prepend
     fi
-    # The Linux Node tarball links into /usr/local/bin, which a fresh shell's
-    # base PATH may omit. Preserve it in both setup modes, ahead of distro Node.
+    # The official Node tarball (Linux, and Intel macOS) links into /usr/local/bin,
+    # which a fresh shell's base PATH may omit. Preserve it in both setup modes,
+    # ahead of a distro or Homebrew Node.
     if [[ "$(command -v node 2>/dev/null)" == /usr/local/bin/node ]]; then
         ztd_plan_path_entry /usr/local/bin "# ztd: Node.js toolchain" prepend
     fi
