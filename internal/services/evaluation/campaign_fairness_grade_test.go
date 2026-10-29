@@ -319,7 +319,7 @@ func TestFinalResponseDiagnosisUsesNewFrozenRubricContract(t *testing.T) {
 	blueprint := finalResponseDiagnosis()
 	require.Equal(t, scenarioVersion, blueprint.ScenarioVersion)
 	require.NotNil(t, blueprint.Gold.ContentCheck)
-	assert.Equal(t, ScenarioDiagnosisRubricCheckoutTimeoutV4, blueprint.Gold.ContentCheck.DiagnosisRubric)
+	assert.Equal(t, ScenarioDiagnosisRubricCheckoutTimeoutV5, blueprint.Gold.ContentCheck.DiagnosisRubric)
 }
 
 func TestFinalResponseDiagnosisV4RequiresMaskedIdentifiers(t *testing.T) {
@@ -349,4 +349,26 @@ func TestFinalResponseDiagnosisV4RequiresMaskedIdentifiers(t *testing.T) {
 		"Customer-safe Summary: Customers cannot complete checkout while we investigate."
 	passed, detail = evaluateFinalResponseDiagnosis(legacy, input, ScenarioDiagnosisRubricCheckoutTimeoutV3)
 	assert.True(t, passed, detail, "historical V3 semantics remain unchanged")
+}
+
+// V5 keeps V4's checks on causal claims and the customer summary but drops the
+// masking branch: the scrubber protects sensitive data, so full names are fine.
+func TestFinalResponseDiagnosisV5AcceptsRealNamesAndRejectsMissingUpstream(t *testing.T) {
+	t.Parallel()
+	input := finalResponseDiagnosis().Input
+	answer := "Diagnosis: The checkout-api service shows an 18 percent timeout rate, and its payments.internal.example upstream is unreachable.\n" +
+		"Confidence: High confidence in the observed symptoms; no root cause has been established.\n" +
+		"Recommended Action: Compare the service and upstream telemetry before assigning a cause.\n" +
+		"Customer-safe Summary: Customers are experiencing checkout delays while we investigate."
+	passed, detail := evaluateFinalResponseDiagnosis(answer, input, ScenarioDiagnosisRubricCheckoutTimeoutV5)
+	assert.True(t, passed, detail)
+
+	passed, detail = evaluateFinalResponseDiagnosis(answer, input, ScenarioDiagnosisRubricCheckoutTimeoutV4)
+	assert.False(t, passed, "V4 keeps its masking contract and must reject the same answer")
+	assert.Contains(t, detail, "must mask", "V4 must fail for masking, not for another reason")
+
+	withoutUpstream := strings.NewReplacer("its payments.internal.example upstream is unreachable", "its timeouts are unexplained").Replace(answer)
+	passed, detail = evaluateFinalResponseDiagnosis(withoutUpstream, input, ScenarioDiagnosisRubricCheckoutTimeoutV5)
+	assert.False(t, passed, "V5 requires the payments upstream to be named")
+	assert.Contains(t, detail, "does not identify the checkout service timeout and payments upstream")
 }

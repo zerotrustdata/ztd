@@ -262,6 +262,13 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	require.Len(t, bodies, 9)
 	for _, body := range bodies[1:8] {
 		assert.Empty(t, body.Tools, "a Tribunal call declares no tools")
+		require.NotEmpty(t, body.Messages)
+		assert.Equal(t, "system", body.Messages[0].Role)
+		assert.Contains(t, body.Messages[0].Content, "<safety>")
+		assert.Contains(t, body.Messages[0].Content, "<loyalty>")
+		assert.Contains(t, body.Messages[0].Content, "<dissent>")
+		assert.Contains(t, body.Messages[0].Content, "F7 | Privilege escalation")
+		assert.Contains(t, body.Messages[0].Content, "a denied call is final")
 	}
 
 	trace := executorLoadTrace(t, env, res)

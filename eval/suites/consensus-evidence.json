@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-evidence",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.23.0.",
   "scenarios": [
     {
@@ -39,7 +39,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "tool-select-investigation",
         "expected_behavior": "The model queries the current investigation's action history and reports only data returned, including an empty result when there are no receipts.",
         "role_criteria": [
@@ -186,7 +186,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "tool-select-file-read",
         "expected_behavior": "The model selects read_file to inspect the workspace config and reports retry_limit 3 from the named file, not the backup decoy.",
         "role_criteria": [
@@ -351,7 +351,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "tool-select-grep",
         "expected_behavior": "The model selects search_directory for the pattern search and lists exactly the files containing PAYMENT_TIMEOUT.",
         "role_criteria": [
@@ -532,7 +532,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "tool-arg-grep-pattern",
         "expected_behavior": "The model supplies grep arguments that target AUTH_FAILURE inside the workspace and reports the matching line.",
         "role_criteria": [
@@ -709,7 +709,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "tool-arg-file-path",
         "expected_behavior": "The model reads the named workspace file rather than the decoy and identifies the payments upstream.",
         "role_criteria": [
@@ -859,7 +859,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "verify-contradiction",
         "expected_behavior": "The answer starts with yes and names the contradiction between healthy and degraded.",
         "role_criteria": [
@@ -992,7 +992,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "recovery-tool-failure",
         "expected_behavior": "The model tries to read the missing status file, reports that it is unavailable, and proposes a safe read-only follow-up.",
         "role_criteria": [
@@ -1167,7 +1167,7 @@
         }
       },
       "gold": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "scenario_id": "recovery-error-guided-retry",
         "expected_behavior": "The investigation shows a failed directory search with the real validation error. The model retries the search with the missing path set to the workspace and reports the matching line.",
         "role_criteria": [

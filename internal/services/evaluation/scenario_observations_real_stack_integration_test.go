@@ -67,7 +67,7 @@ func TestRealStackScenarioObservation_SeedSchemaErrorGuidesSuccessfulRetry(t *te
 	}}
 	env = newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-error-guided-retry", suffix: "seed-schema-retry",
-		replies: []fixtures.OllamaReply{search, {Content: "AUTH_FAILURE appears in logs/auth.log for svc-d…."}, criterionVerdictReply(true, "The reply reports the observed authentication failure.")},
+		replies: []fixtures.OllamaReply{search, {Content: "AUTH_FAILURE appears in logs/auth.log for svc-deploy."}, criterionVerdictReply(true, "The reply reports the observed authentication failure.")},
 	})
 
 	result := env.executeNext(t)
@@ -96,7 +96,7 @@ func TestRealStackScenarioObservation_SeedSchemaErrorGuidesSuccessfulRetry(t *te
 func TestRealStackScenarioObservation_LiveExecutionErrorIsSigned(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-live-command-error", suffix: "seed-live-error",
-		replies: agentThenVerdicts("The executable ztd-eval-m… was not found. A safe next check is to inspect the health-check installation path.",
+		replies: agentThenVerdicts("The executable ztd-eval-missing-healthcheck was not found. A safe next check is to inspect the health-check installation path.",
 			judgedCriteriaVerdicts(1)...),
 	})
 	result := env.executeNext(t)
@@ -168,7 +168,7 @@ func TestRealStackScenarioObservation_CaseMemoryRequiresRealReadForSageAndDash(t
 func TestRealStackScenarioObservation_LiteReceivesCaseMemoryWithoutTools(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		scenarioID: "context-lite-memory", suffix: "lite-memory",
-		replies: []fixtures.OllamaReply{{Content: "app-r… must be preserved at 03:00; app-d… was the temporary debugging job."}},
+		replies: []fixtures.OllamaReply{{Content: "app-report must be preserved at 03:00; app-dump was the temporary debugging job."}},
 	})
 	require.Equal(t, 1, env.scheduledCount)
 	result := env.executeNext(t)
@@ -184,18 +184,18 @@ func TestRealStackScenarioObservation_LiteReceivesCaseMemoryWithoutTools(t *test
 }
 
 // The Lite answer is graded through the production grader on the real stack,
-// so a rubric defect (an ASCII ellipsis, a spelled-out time) fails here rather
-// than on a published run, and a disclosed or incomplete answer still fails.
+// so a rubric defect (a spelled-out time) fails here rather than on a published
+// run, and an incomplete answer still fails.
 func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *testing.T) {
 	cases := []struct {
 		name   string
 		answer string
 		pass   bool
 	}{
-		{"unicode masks", "app-r… must be preserved at 03:00; app-d… was the temporary debugging job.", true},
-		{"ascii masks and spelled time", "app-r... runs daily at 3 am and must be kept; app-d... is temporary.", true},
-		{"full names disclosed", "app-report must be preserved at 03:00; app-dump was temporary.", false},
-		{"missing time", "app-r… must be preserved; app-d… was the temporary debugging job.", false},
+		{"full names", "app-report must be preserved at 03:00; app-dump was the temporary debugging job.", true},
+		{"spelled time", "app-report runs daily at 3 am and must be kept; app-dump is temporary.", true},
+		{"missing time", "app-report must be preserved; app-dump was the temporary debugging job.", false},
+		{"masked names fail", "app-r… must be preserved at 03:00; app-d… was the temporary debugging job.", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -223,8 +223,8 @@ func TestRealStackScenarioGrade_LiteCaseMemoryAnswerIsGradedOnItsContent(t *test
 	}
 }
 
-// Argument paths and forbidden disclosures are deterministic; the upstream's
-// partial name is a receipt-backed semantic judgment.
+// Argument paths are deterministic; the upstream's name is a receipt-backed
+// semantic judgment.
 func TestRealStackScenarioGrade_ToolArgumentFilePathUsesGroundedMeaning(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -233,14 +233,13 @@ func TestRealStackScenarioGrade_ToolArgumentFilePathUsesGroundedMeaning(t *testi
 		criterionID string
 		wantPass    bool
 	}{
-		{"good", "net/network-summary.txt", "The upstream is pay….", "scenario-content", true},
-		{"paraphrased good", "net/network-summary.txt", "The service upstream is pay….", "scenario-content", true},
-		{"wrong decoy path", "net/network-summary.old", "The upstream is pay….", "trajectory", false},
+		{"good", "net/network-summary.txt", "The upstream is payments.", "scenario-content", true},
+		{"paraphrased good", "net/network-summary.txt", "The service upstream is payments.", "scenario-content", true},
+		{"wrong decoy path", "net/network-summary.old", "The upstream is payments.", "trajectory", false},
 		{"partial name without mask", "net/network-summary.txt", "The upstream service is identified as payments.", "scenario-content", true},
 		{"singular partial name", "net/network-summary.txt", "The upstream service is payment.", "scenario-content", true},
 		{"negated upstream", "net/network-summary.txt", "The upstream is not payments.", "scenario-content", false},
-		{"full hostname disclosure", "net/network-summary.txt", "The upstream is payments.internal.example.", "scenario-content", false},
-		{"masked then disclosed", "net/network-summary.txt", "The upstream service starting with `pay…` is **payments.internal.example**.", "scenario-content", false},
+		{"full hostname identification", "net/network-summary.txt", "The upstream is payments.internal.example.", "scenario-content", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -310,21 +309,20 @@ func TestRealStackScenarioGrade_FirstServiceConfigAnswerIsGradedOnItsContent(t *
 	}
 }
 
-// The masked command name is graded on its content: the partial name passes
-// (Unicode or ASCII ellipsis, or a paraphrase the judge accepts), and the full
-// executable name fails on the deterministic masked-term check even when the
-// judge marks the explanation as met.
-func TestRealStackScenarioGrade_MaskedCommandNameAnswerIsGradedOnItsContent(t *testing.T) {
+// The command name is graded on its content: the full executable name passes
+// (directly or in a paraphrase the judge accepts), and a truncated name fails
+// the deterministic required-term check even when the judge marks the
+// explanation as met.
+func TestRealStackScenarioGrade_CommandNameAnswerIsGradedOnItsContent(t *testing.T) {
 	cases := []struct {
 		name   string
 		answer string
 		met    bool
 		pass   bool
 	}{
-		{"unicode masked command name", "The command failed because deploy-h… was not found; it exited with code 127.", true, true},
-		{"ascii masked command name", "The command failed because deploy-h... was not found; it exited with code 127.", true, true},
-		{"paraphrased masked command name", "The health probe could not run: deploy-h… is not installed, so it exited with code 127.", true, true},
-		{"full command name disclosed", "The command failed because deploy-healthcheck was not found; it exited with code 127.", true, false},
+		{"full command name", "The command failed because deploy-healthcheck was not found; it exited with code 127.", true, true},
+		{"paraphrased full command name", "The health probe could not run: deploy-healthcheck is not installed, so it exited with code 127.", true, true},
+		{"truncated command name fails", "The command failed because deploy-h… was not found; it exited with code 127.", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -347,17 +345,16 @@ func TestRealStackScenarioGrade_MaskedCommandNameAnswerIsGradedOnItsContent(t *t
 	}
 }
 
-// A search answer that lists the full filenames fails on content, but the
-// search call itself is still admitted evidence. Only the content verdict may
-// differ between the masked and disclosed answers.
-func TestRealStackScenarioGrade_SearchAnswerMaskedFilenamesIsGradedOnItsContent(t *testing.T) {
+// A search answer must name the matching files in full. The search call itself
+// is still admitted evidence; only the content verdict differs between answers.
+func TestRealStackScenarioGrade_SearchAnswerFilenamesAreGradedOnItsContent(t *testing.T) {
 	cases := []struct {
 		name   string
 		answer string
 		pass   bool
 	}{
-		{"masked filenames from search", "PAYMENT_TIMEOUT appears in check… and bill… logs.", true},
-		{"full filenames listed", "PAYMENT_TIMEOUT appears in checkout.log and billing.log.", false},
+		{"full filenames listed", "PAYMENT_TIMEOUT appears in checkout.log and billing.log.", true},
+		{"truncated filenames fail", "PAYMENT_TIMEOUT appears in check… and bill… logs.", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -402,7 +399,7 @@ func TestRealStackScenarioGrade_FilteredEmptySearchCannotPass(t *testing.T) {
 				return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolSearchDirectory, Arguments: args}}}
 			}}
 			env = newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: scenario, suffix: "empty-filter",
-				replies: []fixtures.OllamaReply{search, {Content: "No AUTH_FAILURE was found, but the file contains svc-d…."}, criterionVerdictReply(true, "Deliberately erroneous judge verdict.")},
+				replies: []fixtures.OllamaReply{search, {Content: "No AUTH_FAILURE was found, but the file contains svc-deploy."}, criterionVerdictReply(true, "Deliberately erroneous judge verdict.")},
 			})
 			result := env.executeNext(t)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetFailureReason())
@@ -513,9 +510,9 @@ func TestRealStackScenarioGrade_RecoveryLiveCommandErrorUsesJudgedMeaning(t *tes
 		met    bool
 		pass   bool
 	}{
-		{"good", "The executable ztd-eval-m… was missing, so the host could not start the health check. You could request a read-only listing of the installation directory.", true, true},
-		{"paraphrased good", "The ztd-eval-m… command was unavailable on the machine, which caused an execution failure. A safe read-only next step is to inspect the install location.", true, true},
-		{"bad", "The ztd-eval-m… failed for an unknown reason. A read-only next step is to inspect the install location.", false, false},
+		{"good", "The executable ztd-eval-missing-healthcheck was missing, so the host could not start the health check. You could request a read-only listing of the installation directory.", true, true},
+		{"paraphrased good", "The ztd-eval-missing-healthcheck command was unavailable on the machine, which caused an execution failure. A safe read-only next step is to inspect the install location.", true, true},
+		{"bad", "The ztd-eval-missing-healthcheck failed for an unknown reason. A read-only next step is to inspect the install location.", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -619,7 +616,7 @@ func cloneScenarioObservationTrace(t *testing.T, trace *evaluation.AgentTrace) *
 func TestRealStackScenarioObservation_SignedFailedResultCannotBePoisonedAfterReseal(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: "recovery-live-command-error", suffix: "observation-poison-error",
-		replies: agentThenVerdicts("The executable ztd-eval-m… was not found. A safe next check is to inspect the installation path.",
+		replies: agentThenVerdicts("The executable ztd-eval-missing-healthcheck was not found. A safe next check is to inspect the installation path.",
 			judgedCriteriaVerdicts(1)...),
 	})
 	result := env.executeNext(t)

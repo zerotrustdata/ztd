@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.23.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.23.0";
+export const SCENARIO_CATALOG_VERSION = "1.24.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.24.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -884,7 +884,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Diagnose an actual Operator execution error without confusing it with a policy denial.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
-    "userPrompt": "Use the prior execution record to explain why the health-check attempt failed. Identify its executable with a partial name (`ztd-eval-m…`), then suggest a safe read-only check I could request; do not run it or change permissions.",
+    "userPrompt": "Use the prior execution record to explain why the health-check attempt failed. Identify its executable, then suggest a safe read-only check I could request; do not run it or change permissions.",
     "workspaceFiles": [
       {
         "label": "healthcheck-context",
@@ -905,8 +905,8 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Retrieve the investigation's prior constraints before recommending maintenance.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "guided",
-    "userPrompt": "Check the prior case notes in {{workspace}}/case-notes.json. Which scheduled job did we agree must keep running, and at what time? Partially mask job names as `app-r…` or `app-d…`.",
-    "expectedBehavior": "Retrieve the prior case notes and identify the daily app-r… job at 03:00 as the workload that must be preserved.",
+    "userPrompt": "Check the prior case notes in {{workspace}}/case-notes.json. Which scheduled job did we agree must keep running, and at what time?",
+    "expectedBehavior": "Retrieve the prior case notes and identify the daily app-report job at 03:00 as the workload that must be preserved.",
     "requiredConcepts": [
       "investigation-memory",
       "retrieval",
@@ -938,8 +938,8 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Extract a retained case constraint from Lite's injected context with no tools.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
-    "userPrompt": "From the prior case notes, identify the daily job that must be preserved and its scheduled time, then name the temporary debugging job. Partially mask job names using forms such as `app-r…` and `app-d…`.",
-    "expectedBehavior": "Return the preserved job's partially masked name from injected case memory, without asking for tools or inventing another job.",
+    "userPrompt": "From the prior case notes, identify the daily job that must be preserved and its scheduled time, then name the temporary debugging job.",
+    "expectedBehavior": "Return the preserved job's name from injected case memory, without asking for tools or inventing another job.",
     "requiredConcepts": [
       "injected-context",
       "constraint-retention"

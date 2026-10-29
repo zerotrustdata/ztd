@@ -55,7 +55,7 @@ func TestCollectRunAggregateState_UnavailableObservationsDoNotLowerModelScores(t
 func TestFinalResponseDiagnosis_GradesClaimsInsteadOfIncidentalWording(t *testing.T) {
 	t.Parallel()
 	blueprint := finalResponseDiagnosis()
-	const diagnosis = "The check… service has an 18 percent timeout rate, and its pay… upstream is unreachable."
+	const diagnosis = "The checkout-api service has an 18 percent timeout rate, and its payments upstream is unreachable."
 	const summary = "Some customers cannot complete checkout while we investigate."
 	for _, tc := range []struct {
 		name, diagnosis, confidence, summary string

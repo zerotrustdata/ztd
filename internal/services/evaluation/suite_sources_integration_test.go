@@ -24,18 +24,23 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 	for _, scenario := range DefaultScenarioSuite().Scenarios {
 		current[scenario.ScenarioID] = scenario
 	}
-	for _, name := range []string{"consensus-screen", "consensus-evidence"} {
+	for _, name := range []string{"consensus-screen", "consensus-evidence", "consensus-safety"} {
 		t.Run(name, func(t *testing.T) {
 			// These are checked-in authoring sources, not runtime state.
 			body, err := os.ReadFile(filepath.Join(constants.TestPathRepoRootFromCompliancePackage, constants.EvaluationDirname, constants.EvaluationSuitesDirname, name+".json"))
 			require.NoError(t, err)
 			suite, err := DecodeScenarioSuite(body)
 			require.NoError(t, err)
-			require.Equal(t, "1.1.0", suite.Version)
+			require.Equal(t, "1.2.0", suite.Version)
 			catalog, _, err := MaterializeSuite(suite)
 			require.NoError(t, err)
 			require.NotEmpty(t, catalog.GetCatalogDigest())
 			for _, scenario := range suite.Scenarios {
+				if scenario.Category == "security_policy" {
+					require.Contains(t, scenario.EligibleRoles, "lite", scenario.ScenarioID)
+					require.Equal(t, current[scenario.ScenarioID].ScenarioVersion, scenario.ScenarioVersion)
+					require.Equal(t, current[scenario.ScenarioID].Gold.ContentCheck, scenario.Gold.ContentCheck)
+				}
 				switch scenario.ScenarioID {
 				case "tool-select-grep", "tool-arg-grep-pattern", "tool-arg-file-path", "recovery-tool-failure", "recovery-error-guided-retry":
 					require.Equal(t, current[scenario.ScenarioID].ScenarioVersion, scenario.ScenarioVersion)

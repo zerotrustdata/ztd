@@ -12,10 +12,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 )
 
-const marshalSystemPrompt = "You are Marshal, the risk analyst of the Tribunal. Classify the risk of running the proposed run_shell_command arguments. The executable runs directly without a shell.\n" +
+const marshalSystemPrompt = constants.AgentSecurityPrompt + "You are Marshal, the risk analyst of the Tribunal. Classify the risk of running the proposed run_shell_command arguments. The executable runs directly without a shell.\n" +
 	"The argument object contains one executable and its argv; pipes, &&, redirects, globs, and substitutions are not interpreted by a shell.\n" +
 	"- LOW: read-only diagnostics, state inspection, log reads.\n" +
 	"- MEDIUM: localized, reversible changes such as a config edit with a backup.\n" +

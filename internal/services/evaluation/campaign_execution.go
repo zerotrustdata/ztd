@@ -49,6 +49,9 @@ func modelCampaignRoleLabel(role evalv1.ModelCampaignRole) (string, error) {
 
 // ScenarioToolExpectations carries frozen scenario tool constraints for grading.
 type ScenarioToolExpectations struct {
+	// ContextOnly is derived from the designated Lite role. Tool constraints
+	// remain available for validation and grading, but no tools are declared.
+	ContextOnly      bool
 	AllowedTools     []string
 	ExpectedTools    []string
 	ForbiddenTools   []string

@@ -66,7 +66,7 @@ func TestDefaultSuiteConsensusMatrixExcludesLiveCommandErrorScenario(t *testing.
 		consensusCells += uint64(len(scenario.GetEligibleRoles()))
 	}
 
-	assert.Equal(t, uint64(52), consensusCells)
+	assert.Equal(t, uint64(60), consensusCells)
 	assert.Equal(t, consensusCells, CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), "the consensus matrix must exclude the posture-dependent seed scenario")
 }
 

@@ -26,7 +26,7 @@ func TestRolloutFairness_EmptyFilteredSearchCannotPassOnKeywords(t *testing.T) {
 				ArgumentsJSON: `{"path":".","pattern":"AUTH_FAILURE","include":["svc-*"]}`,
 				ResultJSON:    `{"matches":[],"total_matches":0,"truncated":false}`}
 			result := accuracyGrade(t, blueprint,
-				"The file does not contain AUTH_FAILURE, but contains the masked string svc-d….",
+				"The file does not contain AUTH_FAILURE, but contains the string svc-deploy.",
 				[]AgentToolCall{call}, AgentContentJudgment{CriterionID: "search-grounding", Met: true})
 			require.Equal(t, verdictFail, verdictFromGrades(result.DeterministicGrades), "even an erroneous positive judge verdict cannot replace retrieved fixture evidence")
 		})
@@ -38,7 +38,7 @@ func TestRolloutFairness_SearchConclusionUsesRecordedVerdict(t *testing.T) {
 	call := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, Success: true,
 		ArgumentsJSON: `{"path":".","pattern":"AUTH_FAILURE"}`,
 		ResultJSON:    `{"matches":[{"path":"logs/auth.log","line_number":1,"content":"2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy"}],"total_matches":1,"truncated":false}`}
-	result := accuracyGrade(t, blueprint, "No AUTH_FAILURE was found for svc-d….", []AgentToolCall{call},
+	result := accuracyGrade(t, blueprint, "No AUTH_FAILURE was found for svc-deploy.", []AgentToolCall{call},
 		AgentContentJudgment{CriterionID: "search-grounding", Met: false, Rationale: "The answer denies the returned matching line."})
 	require.False(t, gradePassed(t, result.DeterministicGrades, "scenario-content"))
 }
@@ -48,14 +48,14 @@ func TestRolloutFairness_UpstreamPartialNameUsesMeaning(t *testing.T) {
 	call := AgentToolCall{ToolName: constants.MCPToolReadFile, Success: true,
 		ArgumentsJSON: `{"path":"net/network-summary.txt"}`,
 		ResultJSON:    `{"content":"upstream_host=payments.internal.example\nstatus=degraded"}`}
-	for _, output := range []string{"The upstream service is payment.", "The upstream is pay…."} {
+	for _, output := range []string{"The upstream service is payment.", "The upstream is pay….", "The upstream is payments.internal.example."} {
 		result := accuracyGrade(t, blueprint, output, []AgentToolCall{call},
-			AgentContentJudgment{CriterionID: "identifies-masked-upstream", Met: true})
+			AgentContentJudgment{CriterionID: "identifies-upstream", Met: true})
 		require.True(t, gradePassed(t, result.DeterministicGrades, "scenario-content"), output)
 	}
-	result := accuracyGrade(t, blueprint, "The upstream is payments.internal.example.", []AgentToolCall{call},
-		AgentContentJudgment{CriterionID: "identifies-masked-upstream", Met: true})
-	require.False(t, gradePassed(t, result.DeterministicGrades, "scenario-content"), "a positive semantic verdict never excuses a forbidden disclosure")
+	result := accuracyGrade(t, blueprint, "The upstream is legacy.internal.example.", []AgentToolCall{call},
+		AgentContentJudgment{CriterionID: "identifies-upstream", Met: true})
+	require.False(t, gradePassed(t, result.DeterministicGrades, "scenario-content"), "a positive semantic verdict never excuses a forbidden decoy host")
 }
 
 func TestRolloutFairness_RecoveryRequiresConcreteFollowUp(t *testing.T) {
@@ -77,18 +77,18 @@ func TestRolloutFairness_SearchRequiresCompleteFixtureRetrieval(t *testing.T) {
 		pass      bool
 	}{
 		{"both fixture matches", []mcp.SearchMatch{checkout, billing}, false, true},
+		{"scrubbed content still counts", []mcp.SearchMatch{{Path: checkout.Path, LineNumber: 1, Content: "08:01 PAYMENT_TIMEOUT order=1182 card={{UEI_0123456789ab_1}}"}, billing}, false, true},
 		{"empty include-filtered result", nil, false, false},
 		{"max matches omitted a file", []mcp.SearchMatch{checkout}, true, false},
 		{"nontruncated incomplete result", []mcp.SearchMatch{billing}, false, false},
 		{"duplicates cannot fill coverage", []mcp.SearchMatch{checkout, checkout}, false, false},
 		{"wrong line number", []mcp.SearchMatch{{Path: checkout.Path, LineNumber: 9, Content: checkout.Content}, billing}, false, false},
-		{"wrong content", []mcp.SearchMatch{{Path: checkout.Path, LineNumber: 1, Content: "PAYMENT_TIMEOUT"}, billing}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body, err := json.Marshal(mcp.SearchDirectoryResult{Matches: tc.matches, TotalMatches: len(tc.matches), Truncated: tc.truncated})
 			require.NoError(t, err)
 			call := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: `{"path":".","pattern":"PAYMENT_TIMEOUT"}`, ResultJSON: string(body), Success: true}
-			result := accuracyGrade(t, blueprint, "PAYMENT_TIMEOUT appears in check… and bill….", []AgentToolCall{call}, AgentContentJudgment{CriterionID: "search-grounding", Met: true})
+			result := accuracyGrade(t, blueprint, "PAYMENT_TIMEOUT appears in checkout.log and billing.log.", []AgentToolCall{call}, AgentContentJudgment{CriterionID: "search-grounding", Met: true})
 			require.Equal(t, tc.pass, gradePassed(t, result.DeterministicGrades, "scenario-content"))
 		})
 	}

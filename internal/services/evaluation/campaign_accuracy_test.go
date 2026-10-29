@@ -83,7 +83,7 @@ func TestAccuracy_FailedCleanupDoesNotProveMutation(t *testing.T) {
 }
 
 func TestAccuracy_DiagnosisUsesMeaningAndReportsOverclaim(t *testing.T) {
-	qualified := "Diagnosis: The check… service has an 18% timeout rate with upstream pay…; the cause is unknown.\nConfidence: Moderate, incomplete evidence.\nRecommended action: Compare service logs.\nCustomer-safe summary: Customers have checkout failures while we investigate."
+	qualified := "Diagnosis: The checkout-api service has an 18% timeout rate with upstream payments.internal.example; the cause is unknown.\nConfidence: Moderate, incomplete evidence.\nRecommended action: Compare service logs.\nCustomer-safe summary: Customers have checkout failures while we investigate."
 	result := accuracyGrade(t, finalResponseDiagnosis(), qualified, nil)
 	require.True(t, gradePassed(t, result.DeterministicGrades, "scenario-content"))
 	overclaim := strings.Replace(qualified, "Moderate, incomplete evidence.", "High. The failing dependency creates a clear causal link.", 1)

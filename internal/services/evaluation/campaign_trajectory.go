@@ -229,7 +229,7 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 				}
 			}
 		}
-		if len(tools.AllowedTools) > 0 {
+		if len(tools.AllowedTools) > 0 && !tools.ContextOnly {
 			observed := false
 			for _, call := range calls {
 				if call.Success && !call.IsDenied() {

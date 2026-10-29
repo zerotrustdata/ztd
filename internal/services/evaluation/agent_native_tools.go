@@ -196,6 +196,12 @@ func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope
 			return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tool %q is not in the agent tool catalog: %w", name, constants.ErrEvaluationScenarioContractInvalid)
 		}
 	}
+	if tools.ContextOnly {
+		if len(tools.ExpectedTools) > 0 || tools.TribunalCommands {
+			return agentToolScope{}, fmt.Errorf("evaluation: context-only role cannot require tools: %w", constants.ErrEvaluationScenarioContractInvalid)
+		}
+		return agentToolScope{}, nil
+	}
 	scope := agentToolScope{
 		specs:        make(map[string]agentToolSpec, len(surface)),
 		declarations: make([]*operatorv1.InferenceToolDeclaration, 0, len(surface)),

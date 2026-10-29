@@ -90,7 +90,7 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 				Workspace:        AgentTraceWorkspace(workspace),
 				ModelCalls:       []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-retry", ResultDigest: "digest-retry"}},
 				ToolCalls:        tc.calls,
-				FinalOutput:      "logs/auth.log line 1: AUTH_FAILURE user=svc-d…",
+				FinalOutput:      "logs/auth.log line 1: AUTH_FAILURE user=svc-deploy",
 				ContentJudgments: []AgentContentJudgment{{CriterionID: "search-grounding", Met: true}},
 			}
 			grading, err := GradeHomogeneousScenario(req, trace,

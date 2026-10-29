@@ -772,13 +772,21 @@ func scenarioToolsForAssignment(catalog *evalv1.EvaluationScenarioCatalog, assig
 	}
 	for _, scenario := range catalog.GetScenarios() {
 		if scenario.GetScenarioId() == assignment.GetScenarioId() {
-			return ScenarioToolExpectations{
+			tools := ScenarioToolExpectations{
 				AllowedTools:     append([]string(nil), scenario.GetAllowedTools()...),
 				ExpectedTools:    append([]string(nil), scenario.GetExpectedTools()...),
 				ForbiddenTools:   append([]string(nil), scenario.GetForbiddenTools()...),
 				TrajectoryPolicy: scenario.GetTrajectoryPolicy(),
 				TribunalCommands: scenario.GetTribunalCommands(),
-			}, nil
+			}
+			role, err := AssignmentDesignatedRole(assignment)
+			if err != nil {
+				return ScenarioToolExpectations{}, err
+			}
+			if role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE {
+				tools.ContextOnly = true
+			}
+			return tools, nil
 		}
 	}
 	return ScenarioToolExpectations{}, fmt.Errorf("evaluation: scenario tool lookup: unknown scenario %s", assignment.GetScenarioId())

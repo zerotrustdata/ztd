@@ -35,6 +35,11 @@ func contentJudgeObjective(input ScenarioInputFixture, trace *AgentTrace, check 
 	for _, evidence := range input.InlineContext {
 		objective += "\n\nFrozen evidence (" + evidence.Label + "):\n" + evidence.Content
 	}
+	if trace.DesignatedRole == "lite" {
+		for _, file := range input.WorkspaceFiles {
+			objective += "\n\nSupplied file evidence (" + file.Label + ", " + file.RelPath + "):\n" + file.Content
+		}
+	}
 	for _, call := range trace.ToolCalls {
 		if call.ToolName == constants.MCPToolEventReceiptList && call.Success && call.Retrieval != nil {
 			objective += "\n\nRecorded history query result:\n" + call.ResultJSON

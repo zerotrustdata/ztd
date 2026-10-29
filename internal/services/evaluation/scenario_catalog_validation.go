@@ -206,10 +206,11 @@ func validateScenarioContext(blueprint ScenarioBlueprint, catalog *agentToolCata
 		return scenarioContractError(blueprint, "user prompt is empty")
 	}
 	lite := slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
-	if lite && (len(blueprint.AllowedTools)+len(blueprint.ForbiddenTools)+len(blueprint.Input.Seed.ToolCalls) > 0) {
-		return scenarioContractError(blueprint, "Lite receives injected context and cannot retrieve or seed tool calls")
+	if lite && (len(blueprint.ExpectedTools) > 0 || blueprint.TribunalCommands) {
+		return scenarioContractError(blueprint, "Lite receives injected context and cannot require tool calls")
 	}
-	if !lite && blueprint.Input.Seed.CaseMemory != nil && !slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile) {
+	responders := slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY) || slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT)
+	if responders && blueprint.Input.Seed.CaseMemory != nil && !slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile) {
 		return scenarioUnanswerableError(blueprint, "case memory requires read_file for responder retrieval")
 	}
 	for _, turn := range blueprint.Input.Seed.Turns {
@@ -319,6 +320,9 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 // refusal is otherwise unobservable and would read as "did not refuse".
 func validateJudgedCriteria(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
 	refusalRequired := slices.Contains(blueprint.Gold.RequiredEvidenceTypes, "policy_decision")
+	for _, role := range blueprint.Gold.RoleCriteria {
+		refusalRequired = refusalRequired || slices.Contains(role.RequiredEvidenceTypes, "policy_decision")
+	}
 	if check == nil {
 		if refusalRequired {
 			return scenarioContractErrorWithCause(blueprint, constants.ErrEvaluationRefusalCriterionRequired, "scenario has no content check")
@@ -525,9 +529,25 @@ func validatorsUseWorkspace(validators []ToolArgumentValidator) bool {
 }
 
 func validateRequiredEvidenceTypes(blueprint ScenarioBlueprint) error {
-	for _, evidenceType := range blueprint.Gold.RequiredEvidenceTypes {
-		if _, ok := scenarioEvidenceTypes[evidenceType]; !ok {
-			return scenarioContractError(blueprint, "required evidence type %q is not in the closed vocabulary", evidenceType)
+	if slices.Contains(blueprint.EligibleRoles, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE) {
+		for _, evidenceType := range blueprint.Gold.requiredEvidenceForRole("lite") {
+			if slices.Contains([]string{"tool_call", "tool_decision", "governed_action"}, evidenceType) {
+				return scenarioContractError(blueprint, "Lite cannot require tool evidence %s", evidenceType)
+			}
+		}
+	}
+	requirements := [][]string{blueprint.Gold.RequiredEvidenceTypes}
+	for _, role := range blueprint.Gold.RoleCriteria {
+		if slices.Contains(role.RequiredEvidenceTypes, "semantic_grade") {
+			return scenarioContractError(blueprint, "role %s requires a semantic judge, which no executor provides", role.Role)
+		}
+		requirements = append(requirements, role.RequiredEvidenceTypes)
+	}
+	for _, evidenceTypes := range requirements {
+		for _, evidenceType := range evidenceTypes {
+			if _, ok := scenarioEvidenceTypes[evidenceType]; !ok {
+				return scenarioContractError(blueprint, "required evidence type %q is not in the closed vocabulary", evidenceType)
+			}
 		}
 	}
 	return nil

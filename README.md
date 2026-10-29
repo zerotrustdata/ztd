@@ -45,7 +45,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
                                          ▼
                      ┌────────────────────────────────────────┐
                      │        ztd Gateway (PDP)               │
-                     │  - Validates L1 Doctrine (heuristics)   │
+                     │  - Validates L1 Doctrine (heuristics)  │
                      │  - Coordinates L2 Consensus (Ed25519)  │
                      │  - Enforces L3 Notary (WebAuthn)       │
                      │  - Issues signed GovernanceEnvelope    │
@@ -58,7 +58,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
                      │  - L4 Warden: Re-verifies hash & root  │
                      │  - L5 Actuator: Mint ephemeral cap     │
                      │  - Executes locally on target host     │
-                     │  - Appends signed EventReceipt to     │
+                     │  - Appends signed EventReceipt to      │
                      │    local SQLite ledger & Git history   │
                      └────────────────────────────────────────┘
 ```

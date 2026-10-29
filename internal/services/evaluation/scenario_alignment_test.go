@@ -28,8 +28,8 @@ func TestScenarioCatalog_OperationalPromptsAndRoleCapabilities(t *testing.T) {
 			assert.NotContains(t, strings.ToLower(bp.Input.UserPrompt), "synthetic")
 			for _, role := range bp.EligibleRoles {
 				if role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE {
-					assert.Empty(t, bp.AllowedTools, "Lite gets injected context, never retrieval tools")
-					assert.Empty(t, bp.ForbiddenTools)
+					assert.Empty(t, bp.ExpectedTools, "Lite gets injected context, never required tool calls")
+					assert.False(t, bp.TribunalCommands)
 				}
 				if len(bp.Gold.FileState) > 0 && bp.Gold.PolicyExpectation.ExpectedOutcome != "deny" {
 					assert.NotEqual(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, role,

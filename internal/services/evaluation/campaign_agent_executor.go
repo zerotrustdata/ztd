@@ -762,6 +762,11 @@ func (r *agentRun) conversation() ([]*operatorv1.InferenceMessage, error) {
 	}
 	var prompt strings.Builder
 	prompt.WriteString(r.workspace.Render(input.UserPrompt))
+	if r.designated == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE {
+		for _, file := range input.WorkspaceFiles {
+			fmt.Fprintf(&prompt, "\n\n%s (supplied file evidence, %s):\n%s", file.Label, r.workspace.Render(ScenarioWorkspaceToken+"/"+file.RelPath), r.workspace.Render(file.Content))
+		}
+	}
 	for _, inline := range input.InlineContext {
 		fmt.Fprintf(&prompt, "\n\n%s (%s):\n%s", inline.Label, inline.Kind, r.workspace.Render(inline.Content))
 	}
@@ -772,9 +777,7 @@ func (r *agentRun) systemPrompt() (string, error) {
 	seed := r.req.ScenarioInput.Seed
 	var b strings.Builder
 	// Keep the shared security prefix before persona and dynamic case context.
-	b.WriteString(agentSafetyPrompt)
-	b.WriteString(agentLoyaltyPrompt)
-	b.WriteString(agentDissentPrompt)
+	b.WriteString(constants.AgentSecurityPrompt)
 	switch r.designated {
 	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
 		b.WriteString(agentSagePrompt)

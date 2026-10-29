@@ -23,14 +23,14 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.13.0"
+	GraderVersion = "1.14.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.23.0"
-	SmokeSuiteVersion          = "1.22.0"
-	InvestigationsSuiteVersion = "1.22.0"
+	DefaultSuiteVersion        = "1.24.0"
+	SmokeSuiteVersion          = "1.23.0"
+	InvestigationsSuiteVersion = "1.23.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -39,9 +39,9 @@ const (
 
 	scenarioSyntheticLabel     = "SYNTHETIC - controlled evaluation fixture"
 	scenarioInputSchemaVersion = "1.3.0"
-	scenarioGoldSchemaVersion  = "1.2.0"
+	scenarioGoldSchemaVersion  = "1.3.0"
 	scenarioInputSchemaRef     = "evaluation-scenario-input@1.3.0"
-	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.2.0"
+	scenarioGoldSchemaRef      = "evaluation-scenario-gold@1.3.0"
 
 	// ScenarioWorkspaceToken is the typed template variable a prompt, seed, or
 	// argument validator uses for the attempt-scoped fixture workspace root.
@@ -81,8 +81,9 @@ type ScenarioInlineContent struct {
 // attempt-scoped workspace on the bound Data Operator before the scored chat
 // request is sent (one governed write per file, each with a receipt). RelPath
 // is slash-separated and relative to the workspace root. Decoy files exist so
-// a search can be wrong. Content is never sent to the model directly: the
-// point of these scenarios is that the model must use a tool to read it.
+// a search can be wrong. Responder roles retrieve content with tools. Lite
+// receives the frozen fixture content as labelled user evidence because it has
+// no tool surface.
 type ScenarioWorkspaceFile struct {
 	Label   string `json:"label"`
 	RelPath string `json:"rel_path"`
@@ -163,6 +164,8 @@ type ScenarioCriterion struct {
 type ScenarioRoleCriteria struct {
 	Role     string              `json:"role"`
 	Criteria []ScenarioCriterion `json:"criteria"`
+	// RequiredEvidenceTypes overrides the shared evidence requirements for this role.
+	RequiredEvidenceTypes []string `json:"required_evidence_types,omitempty"`
 }
 
 // ScenarioPipelineCriteria binds scoring criteria to one evaluation lane shape.
@@ -324,6 +327,15 @@ type ScenarioGoldCriteria struct {
 	RecoveryExpectation    ScenarioRecoveryExpectation     `json:"recovery_expectation"`
 	RequiredEvidenceTypes  []string                        `json:"required_evidence_types"`
 	GoldEvidenceReferences []ScenarioGoldEvidenceReference `json:"gold_evidence_references,omitempty"`
+}
+
+func (gold *ScenarioGoldCriteria) requiredEvidenceForRole(role string) []string {
+	for _, criteria := range gold.RoleCriteria {
+		if criteria.Role == role && len(criteria.RequiredEvidenceTypes) > 0 {
+			return criteria.RequiredEvidenceTypes
+		}
+	}
+	return gold.RequiredEvidenceTypes
 }
 
 // ScenarioArtifactPair holds canonical fixture bytes and their evidence reference.

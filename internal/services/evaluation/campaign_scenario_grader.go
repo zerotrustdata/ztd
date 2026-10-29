@@ -443,8 +443,9 @@ func (g homogeneousGrader) gradePipelineCriteria(invoked bool) []*evalv1.Determi
 }
 
 func (g homogeneousGrader) gradeRequiredEvidenceTypes(traj trajectoryResult, contentPassed bool) []*evalv1.DeterministicGrade {
-	grades := make([]*evalv1.DeterministicGrade, 0, len(g.req.ScenarioGold.RequiredEvidenceTypes))
-	for _, evidenceType := range g.req.ScenarioGold.RequiredEvidenceTypes {
+	evidenceTypes := g.req.ScenarioGold.requiredEvidenceForRole(g.view.Trace.DesignatedRole)
+	grades := make([]*evalv1.DeterministicGrade, 0, len(evidenceTypes))
+	for _, evidenceType := range evidenceTypes {
 		status, detail, score := g.requiredEvidenceGrade(evidenceType, traj, contentPassed)
 		grades = append(grades, newDeterministicGrade(g.assignmentID, "required-evidence:"+evidenceType, g.requiredEvidenceBasis(evidenceType), status, detail, score))
 	}
