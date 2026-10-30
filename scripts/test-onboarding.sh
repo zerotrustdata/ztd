@@ -585,6 +585,10 @@ case "$*" in
 		echo "Error: no Secret Service keyring available" >&2
 		exit 1
 	fi
+	if [ -e "$STATE/recoverfail" ]; then
+		echo "Error: refusing to create a master key until its recovery key is saved from a terminal, or --accept-unrecoverable is set" >&2
+		exit 1
+	fi
 	touch "$STATE/gw.on"
 	;;
 "auth context") [ -e "$STATE/authed" ] ;;
@@ -671,6 +675,24 @@ test_quickstart_surfaces_key_store_remedy() {
 	fi
 }
 
+test_quickstart_recovery_refusal_names_the_terminal() {
+	local repo="$SCRATCH/repo-recover" state="$SCRATCH/t-recover" home="$SCRATCH/home-qs-recover"
+	local out rc=0
+	make_fake_repo "$repo" "$state"
+	touch "$state/recoverfail"
+	mkdir -p "$home"
+
+	out="$SCRATCH/qs-recover.out"
+	ZTD_STUB_STATE="$state" HOME="$home" bash "$repo/scripts/quickstart.sh" >"$out" 2>&1 || rc=$?
+	[[ $rc -ne 0 ]] || { cat "$out" >&2; fail "quickstart recovery refusal: want non-zero exit"; }
+	grep -qF 'terminal' "$out" || { cat "$out" >&2; fail "quickstart recovery refusal: hint does not mention a terminal"; }
+	grep -qF -- '--accept-unrecoverable' "$out" || { cat "$out" >&2; fail "quickstart recovery refusal: hint does not name --accept-unrecoverable"; }
+	if grep -qF 'ssh-add' "$out"; then
+		cat "$out" >&2
+		fail "quickstart recovery refusal: hint tells the user to start an ssh-agent"
+	fi
+}
+
 run_test() {
 	"$1"
 	echo "ok ${1#test_}"
@@ -702,6 +724,7 @@ main() {
 	run_test test_quickstart_help_and_unknown_option
 	run_test test_quickstart_end_to_end_is_idempotent
 	run_test test_quickstart_surfaces_key_store_remedy
+	run_test test_quickstart_recovery_refusal_names_the_terminal
 	echo "all onboarding tests passed"
 }
 
