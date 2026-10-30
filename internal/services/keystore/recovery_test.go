@@ -154,3 +154,53 @@ func TestInstallRecoveryKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, stored)
 }
+
+// sealLostKeyring models the Linux ssh-agent seal after its sealing key left
+// the agent: reads fail with ErrKeyStoreSSHAgentKeyMissing until a store
+// re-seals the master key under the key the agent holds now.
+type sealLostKeyring struct {
+	simpleMemoryKeyring
+	lost bool
+}
+
+func (s *sealLostKeyring) RetrieveMasterKey() ([]byte, error) {
+	if s.lost {
+		return nil, constants.ErrKeyStoreSSHAgentKeyMissing
+	}
+	return s.simpleMemoryKeyring.RetrieveMasterKey()
+}
+
+func (s *sealLostKeyring) StoreMasterKey(key []byte) error {
+	s.lost = false
+	return s.simpleMemoryKeyring.StoreMasterKey(key)
+}
+
+func TestInstallRecoveryKeyAfterSealingKeyLost(t *testing.T) {
+	t.Parallel()
+	fileSvc, _ := setupTestFileService(t)
+	ring := &sealLostKeyring{}
+	ks, err := NewWithKeyringAndFS(testutil.NewTestLogger(), ring, fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, ks.Initialize())
+	saved, err := ring.simpleMemoryKeyring.RetrieveMasterKey()
+	require.NoError(t, err)
+	t.Cleanup(func() { vault.SecureZero(saved) })
+	require.NoError(t, ks.EncryptSecret("vault_key", "sealed-value"))
+	ring.lost = true
+
+	wrong := bytes.Repeat([]byte{0x44}, vault.KeySize)
+	t.Cleanup(func() { vault.SecureZero(wrong) })
+	fresh, err := NewWithKeyringAndFS(testutil.NewTestLogger(), ring, fileSvc)
+	require.NoError(t, err)
+	_, err = fresh.InstallRecoveryKey(wrong)
+	require.ErrorIs(t, err, constants.ErrKeyStoreRecoveryMismatch)
+	assert.True(t, ring.lost, "a wrong key must not re-seal")
+
+	stored, err := fresh.InstallRecoveryKey(saved)
+	require.NoError(t, err)
+	assert.True(t, stored)
+	assert.False(t, ring.lost)
+	got, err := fresh.DecryptSecret("vault_key")
+	require.NoError(t, err)
+	assert.Equal(t, "sealed-value", got)
+}
