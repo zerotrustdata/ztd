@@ -10,7 +10,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import type { AssignmentResult, MetricValue } from '../contract/types';
-import { scrollToAnchor } from '../utils/scroll';
+import { scrollToAnchor, scrollToAnchorOnClick } from '../utils/scroll';
 import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
 import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
@@ -49,7 +49,6 @@ import {
   assignmentOutputThroughput,
   assignmentMetricFormatter,
   assignmentSecuritySignals,
-  assignmentVerdictLabel,
   assignmentVerdictTone,
   isScenarioNotApplicableMetric,
   isNonVerdictOutcome,
@@ -169,20 +168,23 @@ function FailureDiagnosis({ assignment }: { assignment: AssignmentResult }) {
   return (
     <div className={`assignment-failure-callout assignment-failure-${tone}`} role="alert">
       <h3>Failure Diagnosis ({terminalLabel(assignment.terminal_status)})</h3>
-      {assignment.failure_reason ? <p className="failure-reason">{assignment.failure_reason}</p> : null}
-      <FailureTrajectoryMeta assignment={assignment} />
-      {assignment.failure_output ? <p className="failure-output-detail">{assignment.failure_output}</p> : null}
       {failingChips.length > 0 ? (
         <ul className="failure-criteria-list">
           {failingChips.map((chip) => (
             <li key={chip.criterion_id}>
               <strong>{chip.label}:</strong>{' '}
-              {chip.explanation ? chip.explanation.replace(/_/g, ' ') : observationLabel(chip.status)}
-              {chip.detail ? <span className="grade-detail">{chip.detail}</span> : null}
+              {chip.detail ? <span className="grade-detail">{chip.detail}</span>
+                : chip.explanation ? chip.explanation.replace(/_/g, ' ') : observationLabel(chip.status)}
             </li>
           ))}
         </ul>
       ) : null}
+      {assignment.failure_reason ? <p className="failure-reason">{assignment.failure_reason}</p> : null}
+      {assignment.model_response || assignment.role_transcripts?.some((transcript) => transcript.response) ? (
+        <a href={`#${SECTION.trail}`} onClick={scrollToAnchorOnClick(SECTION.trail)}>View model response</a>
+      ) : null}
+      <FailureTrajectoryMeta assignment={assignment} />
+      {assignment.failure_output ? <p className="failure-output-detail">{assignment.failure_output}</p> : null}
       {assignment.missingness_reason ? <p className="failure-missingness">{assignment.missingness_reason}</p> : null}
     </div>
   );
@@ -198,7 +200,7 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
   const transcripts = assignment.role_transcripts ?? [];
   const hasResponse = Boolean(assignment.model_response);
   const toolActions = hasResponse ? [] : toolActionSummaries(assignment.activity_summary);
-  const verdict = assignmentVerdictLabel(assignment.terminal_status, assignment.verification_disposition);
+  const verdict = terminalLabel(assignment.terminal_status);
 
   return (
     <PanelSection id={SECTION.trail} className="assignment-model-response" title="What the model did">
@@ -439,6 +441,8 @@ export function AssignmentDetailView() {
   const tone = assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition);
   const category = assignment.scenario_summary?.category ?? assignment.scenario_category;
   const gradeChips = assignmentGradeChips(assignment);
+  const evidenceChain = assignmentEvidenceChain(assignment);
+  const verification = evidenceChain.find((step) => step.key === 'verified');
   const publishedActivity = Boolean(assignment.activity_summary);
   const transcripts = assignment.role_transcripts ?? [];
   const hasAgentTrace = Boolean(agentTraceBinding(assignment.evidence_bindings));
@@ -492,16 +496,24 @@ export function AssignmentDetailView() {
                 <CopyButton text={assignment.assignment_id} label="assignment id" />
               </span>
         </>}
-        verdict={<div aria-label="Assignment verdict">
-            <TonePill tone={tone} className={`terminal-${assignment.terminal_status}`}>
-              {assignmentVerdictLabel(assignment.terminal_status, assignment.verification_disposition)}
-            </TonePill>
+        verdict={<>
+            <div aria-label="Assignment verdict">
+              <TonePill tone={assignmentVerdictTone(assignment.terminal_status, undefined)} className={`terminal-${assignment.terminal_status}`}>
+                {terminalLabel(assignment.terminal_status)}
+              </TonePill>
+            </div>
+            {verification ? (
+              <p className="evidence-verdict-note" aria-label="Evidence verification" title="Checks the integrity of recorded evidence.">
+                Evidence verification: <strong>{verification.value}</strong>
+              </p>
+            ) : null}
             {isNonVerdictOutcome(assignment.terminal_status) ? (
               <p className="evidence-verdict-note">{NON_VERDICT_NOTE}</p>
             ) : null}
-          </div>}
+          </>}
       >
 
+        <FailureDiagnosis assignment={assignment} />
         <MeasuredStrip groups={groups} />
         <ScenarioContextCard scenario={assignment.scenario_summary} />
         {task ? <TaskRoleCriterion task={task} role={assignment.role} /> : null}
@@ -513,12 +525,10 @@ export function AssignmentDetailView() {
           </div>
         ) : null}
 
-        <EvidenceChain steps={assignmentEvidenceChain(assignment)} targets={chainTargets} />
+        <EvidenceChain steps={evidenceChain} targets={chainTargets} />
 
         {limitation ? <p className="assignment-limitation">{limitation}</p> : null}
       </PageHero>
-
-      <FailureDiagnosis assignment={assignment} />
 
       <DetailLayout asideLabel="Proof and measurements" aside={hasAside ? <>
             {hasProof ? (

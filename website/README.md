@@ -26,7 +26,7 @@ The homepage does not link to `/buy/`. `npm run check` fails if one appears. The
 
 The build renders the commercial terms from `content/terms.md` at `/terms/` and the OEM agreement template from `../legal/oem-license-agreement.md` at `/terms/oem/`. After changing link settings in `scripts/stripe-payment-links.sh`, bump `LINK_REVISION` and rerun it, which replaces every link.
 
-`test/stripe-payment-links.test.js` runs the script offline against a fake Stripe CLI (`testdata/fake-stripe.js`). It covers creation, idempotent reruns, price changes, revision bumps, API errors, and test mode. After each deploy, `smoke/live.sh` waits until the site answers with the deployed Worker version (the `x-ztd-worker-version` header, from the `CF_VERSION_METADATA` binding), then checks that the homepage has a proofs section and no `/buy/` link, and that both terms pages are served.
+`test/stripe-payment-links.test.js` runs the script offline against a fake Stripe CLI (`testdata/fake-stripe.js`). It covers creation, idempotent reruns, price changes, revision bumps, API errors, and test mode.
 
 ## Build in Public
 
@@ -71,7 +71,7 @@ For project context and the current architecture, see the [repository overview](
 
 `wrangler.jsonc` declares both hostnames as Cloudflare Worker Custom Domains. On the first authenticated deployment, Cloudflare creates the required DNS records and manages their TLS certificates. Porkbun remains the registrar; its nameserver delegation must match the two nameservers assigned to the `zerotrustdata.io` zone in Cloudflare. The Worker also keeps its `workers.dev` hostname enabled as a deployment preview while DNS changes propagate.
 
-The GitHub Actions workflow validates website changes on pull requests and deploys changes from `main`. Both this workflow and the binary release workflow read one pair of repository-level secrets; do not add copies to the `production` or `release` environments, because an environment secret shadows the repository one and drifts from it:
+The GitHub Actions workflow validates website changes on pull requests and deploys changes from `main` with `npx wrangler deploy`. Deployment ends when Wrangler succeeds; it does not run live onboarding. Both this workflow and the binary release workflow read one pair of repository-level secrets; do not add copies to the `production` or `release` environments, because an environment secret shadows the repository one and drifts from it:
 
 - `CLOUDFLARE_ACCOUNT_API_TOKEN` — a scoped token that can deploy Workers, manage Worker routes/custom domains, read the zone, and read/write objects in the `ztd-releases` R2 bucket.
 - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID that owns the zone and Worker.

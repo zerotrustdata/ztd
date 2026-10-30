@@ -416,6 +416,32 @@ func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T)
 	assert.Empty(t, exporter.records, "a failed bind must publish nothing")
 }
 
+// Regression: a partial verification persisted by an earlier resume, before the
+// run's last assignments settled, does not block the publications that follow
+// the final assignment. They project the run as not yet verified until the
+// end-of-run verify binds a fresh report.
+func TestPublishRunAggregatesIgnoresSupersededPartialPersistedReport(t *testing.T) {
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	exporter := &recordingCampaignFeedExporter{}
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
+	run := completedTestCampaign(t, store)
+
+	report := buildBoundTestReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
+	report.VerifiedAssignmentCount--
+	report.VerifiedPopulationDigest = strings.Repeat("9", 64)
+	require.NoError(t, store.SaveCampaignVerification(context.Background(), run.GetRunId(), report))
+
+	_, err := coordinator.PublishRunAggregates(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
+	require.NoError(t, err)
+	_, err = coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
+	require.NoError(t, err)
+
+	summaries := evaluationSummaries(t, exporter.records)
+	require.NotEmpty(t, summaries)
+	assert.Equal(t, "not_run", summaries[len(summaries)-1].VerifierState)
+}
+
 // A caller-supplied report that does not apply to a settled run is rejected
 // before catch-up exports any record.
 func TestPublishRunCatchUpWithVerificationRejectsCallerReportForSettledRun(t *testing.T) {
@@ -455,7 +481,8 @@ func TestPublishRunAggregatesProjectsBoundFailure(t *testing.T) {
 }
 
 // bindRunVerification is the single rule for whether a persisted report applies
-// to a settled run: an applicable report binds, and a non-applicable or
+// to a settled run: an applicable report binds, a partial report superseded by
+// later settled assignments is not bound, and any other non-applicable or
 // malformed one fails closed with the sentinel the caller can match.
 func TestBindRunVerificationOnSettledRun(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
@@ -484,6 +511,10 @@ func TestBindRunVerificationOnSettledRun(t *testing.T) {
 		{name: "verified count mismatch fails closed", mutate: func(report *evalv1.EvaluationVerificationReport) {
 			report.VerifiedAssignmentCount++
 		}, wantErr: constants.ErrEvidenceScopeMismatch},
+		{name: "superseded partial report is not bound", mutate: func(report *evalv1.EvaluationVerificationReport) {
+			report.VerifiedAssignmentCount--
+			report.VerifiedPopulationDigest = strings.Repeat("9", 64)
+		}},
 		{name: "missing report digest is malformed", mutate: func(report *evalv1.EvaluationVerificationReport) {
 			report.ReportDigestRef = nil
 		}, wantErr: constants.ErrEvidenceArtifactMalformed},
@@ -500,10 +531,12 @@ func TestBindRunVerificationOnSettledRun(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			if tc.wantBound {
-				require.NotNil(t, bound)
-				assert.Equal(t, report.GetVerifiedPopulationDigest(), bound.GetVerifiedPopulationDigest())
+			if !tc.wantBound {
+				assert.Nil(t, bound)
+				return
 			}
+			require.NotNil(t, bound)
+			assert.Equal(t, report.GetVerifiedPopulationDigest(), bound.GetVerifiedPopulationDigest())
 		})
 	}
 }

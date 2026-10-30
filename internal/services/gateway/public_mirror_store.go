@@ -178,6 +178,10 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 		_ = store.Close()
 		return nil, err
 	}
+	if err := store.indexRecordFilters(ctx); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	logger.Info("Public mirror verification completed", "elapsed", time.Since(started))
 	return store, nil
 }
@@ -466,9 +470,8 @@ func insertPublicMirrorBatchHeader(ctx context.Context, tx *sql.Tx, batch models
 	return nil
 }
 
-// insertPublicMirrorRecords stores records and indexes their event records in
-// the caller's transaction, so a record and its index row commit or roll back
-// together.
+// insertPublicMirrorRecords stores records and indexes them in the caller's
+// transaction, so a record and its index rows commit or roll back together.
 func insertPublicMirrorRecords(ctx context.Context, tx *sql.Tx, sourceID string, records []models.PublicFeedRecord) error {
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO records (source_id, sequence, record_type, record_hash, record_bytes) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
@@ -480,7 +483,100 @@ func insertPublicMirrorRecords(ctx context.Context, tx *sql.Tx, sourceID string,
 			return fmt.Errorf("insert record %s@%d: %w", sourceID, record.Sequence, err)
 		}
 	}
+	if err := insertPublicMirrorRecordFilters(ctx, tx, sourceID, records); err != nil {
+		return err
+	}
 	return insertAssignmentEventRecords(ctx, tx, sourceID, records)
+}
+
+// publicMirrorRecordFilter returns the history filter fields of one record
+// body, read the same way the history handler reads them: an undecodable body
+// or a missing or non-string field yields the empty string.
+func publicMirrorRecordFilter(recordBytes string) (kind, datasetID string) {
+	var item models.PublicFeedObject
+	if err := json.Unmarshal([]byte(recordBytes), &item); err != nil {
+		return "", ""
+	}
+	kind, _ = item.StringField("kind")
+	datasetID, _ = item.StringField("dataset_id")
+	return kind, datasetID
+}
+
+// insertPublicMirrorRecordFilters writes one history filter row per record.
+func insertPublicMirrorRecordFilters(ctx context.Context, tx *sql.Tx, sourceID string, records []models.PublicFeedRecord) error {
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO record_filters (source_id, sequence, kind, dataset_id) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare record filter insert: %w", err)
+	}
+	defer stmt.Close()
+	for _, record := range records {
+		kind, datasetID := publicMirrorRecordFilter(record.RecordBytes)
+		if _, err := stmt.ExecContext(ctx, sourceID, record.Sequence, kind, datasetID); err != nil {
+			return fmt.Errorf("insert record filter %s@%d: %w", sourceID, record.Sequence, err)
+		}
+	}
+	return nil
+}
+
+// indexRecordFilters writes history filter rows for retained records that have
+// none, so a store whose records predate the filter index serves filtered
+// history reads from it. A fully indexed store costs two counts.
+func (s *PublicMirrorStore) indexRecordFilters(ctx context.Context) error {
+	var recordCount, filterCount int64
+	if err := s.db.QueryRowWithRetry(ctx, `SELECT (SELECT COUNT(*) FROM records), (SELECT COUNT(*) FROM record_filters)`).Scan(&recordCount, &filterCount); err != nil {
+		return fmt.Errorf("public mirror store: count record filters: %w", err)
+	}
+	if recordCount == filterCount {
+		return nil
+	}
+	started := time.Now()
+	indexed := 0
+	sourceID, after := "", int64(0)
+	for {
+		type unindexed struct {
+			sourceID string
+			record   models.PublicFeedRecord
+		}
+		page, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT r.source_id, r.sequence, r.record_bytes FROM records r
+			WHERE (r.source_id, r.sequence) > (?, ?)
+			AND NOT EXISTS (SELECT 1 FROM record_filters f WHERE f.source_id = r.source_id AND f.sequence = r.sequence)
+			ORDER BY r.source_id, r.sequence LIMIT ?`,
+			[]interface{}{sourceID, after, publicMirrorQueryChunk}, func(rows *sql.Rows) (unindexed, error) {
+				var row unindexed
+				err := rows.Scan(&row.sourceID, &row.record.Sequence, &row.record.RecordBytes)
+				return row, err
+			})
+		if err != nil {
+			return fmt.Errorf("public mirror store: read unindexed records: %w", err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		if err := s.write(ctx, "index record filters", func(tx *sql.Tx) error {
+			for start := 0; start < len(page); {
+				end := start
+				for end < len(page) && page[end].sourceID == page[start].sourceID {
+					end++
+				}
+				records := make([]models.PublicFeedRecord, 0, end-start)
+				for _, row := range page[start:end] {
+					records = append(records, row.record)
+				}
+				if err := insertPublicMirrorRecordFilters(ctx, tx, page[start].sourceID, records); err != nil {
+					return err
+				}
+				start = end
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		indexed += len(page)
+		last := page[len(page)-1]
+		sourceID, after = last.sourceID, last.record.Sequence
+	}
+	s.logger.Info("Public mirror record filters indexed", "records", indexed, "elapsed", time.Since(started))
+	return nil
 }
 
 // insertAssignmentEventRecords indexes every event record by the run and
@@ -608,6 +704,9 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 				if _, err := tx.ExecContext(ctx, `DELETE FROM assignment_event_records WHERE source_id = ? AND sequence < ?`, summary.SourceID, retainedFrom); err != nil {
 					return fmt.Errorf("prune assignment event records: %w", err)
 				}
+				if _, err := tx.ExecContext(ctx, `DELETE FROM record_filters WHERE source_id = ? AND sequence < ?`, summary.SourceID, retainedFrom); err != nil {
+					return fmt.Errorf("prune record filters: %w", err)
+				}
 				actualPrunedRecords, err := result.RowsAffected()
 				if err != nil {
 					return fmt.Errorf("count pruned records: %w", err)
@@ -692,6 +791,38 @@ func (s *PublicMirrorStore) recordsAfter(ctx context.Context, sourceID string, a
 		return nil, fmt.Errorf("public mirror store: read records: %w", err)
 	}
 	return records, nil
+}
+
+// filteredRecordsAfter returns up to limit retained records with after <
+// sequence <= through whose history filter row matches every non-empty filter,
+// oldest first.
+func (s *PublicMirrorStore) filteredRecordsAfter(ctx context.Context, sourceID string, after, through int64, kind, datasetID string, limit int) ([]models.PublicFeedRecord, error) {
+	query, args := filteredRecordsQuery(sourceID, after, through, kind, datasetID, limit)
+	records, err := sqliteutil.MaterializeRows(ctx, s.db, query, args, scanPublicMirrorRecord)
+	if err != nil {
+		return nil, fmt.Errorf("public mirror store: read filtered records: %w", err)
+	}
+	return records, nil
+}
+
+// filteredRecordsQuery seeks the history filter index and joins each matching
+// row to its record by primary key.
+func filteredRecordsQuery(sourceID string, after, through int64, kind, datasetID string, limit int) (string, []interface{}) {
+	query := `SELECT r.sequence, r.record_type, r.record_hash, r.record_bytes
+		FROM record_filters f
+		JOIN records r ON r.source_id = f.source_id AND r.sequence = f.sequence
+		WHERE f.source_id = ? AND f.sequence > ? AND f.sequence <= ?`
+	args := []interface{}{sourceID, after, through}
+	if kind != "" {
+		query += ` AND f.kind = ?`
+		args = append(args, kind)
+	}
+	if datasetID != "" {
+		query += ` AND f.dataset_id = ?`
+		args = append(args, datasetID)
+	}
+	query += ` ORDER BY f.sequence LIMIT ?`
+	return query, append(args, limit)
 }
 
 func (s *PublicMirrorStore) recordsInRange(ctx context.Context, sourceID string, first, last int64) ([]models.PublicFeedRecord, error) {

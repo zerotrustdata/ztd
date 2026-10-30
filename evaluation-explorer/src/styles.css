@@ -2354,6 +2354,7 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
   font-size: var(--fs-lede);
   font-weight: 600;
 }
+.assignment-detail .evidence-hero > .assignment-failure-callout { margin: 0; }
 
 /* Assignment reads as one column: verdict, numbers, then layers you open. */
 .assignment-detail .evidence-layout { grid-template-columns: minmax(0, 1fr); }
