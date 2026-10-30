@@ -19,7 +19,7 @@
 # nothing after reading stdin forks a process.
 
 deny() {
-  printf 'ztd: %s is blocked. This session is governed by ztd; act only through the ztd Gateway tools (mcp__plugin_ztd_ztd__*). Do not retry this tool.\n' "$1" >&2
+  printf 'ztd: %s is blocked. This session is governed by ztd; act only through the ztd Gateway tools (mcp__plugin_ztd_ztd__*). Do not retry this tool. Run /ztd:setup for setup instructions.\n' "$1" >&2
   exit 2
 }
 

@@ -223,6 +223,8 @@ The launcher defines exact tool lockdown levels across registered agents (INV-AG
 4. Proxies every request, `initialize` included, to the Gateway's `/mcp` route: the Gateway negotiates the protocol version and advertises the served tools, so the bridge answers no MCP method locally. The default endpoint is the Gateway the CLI addresses (`-e/--endpoint` and `--port`, else the ports the local Gateway bound) with `/mcp` appended; `--gateway-url` overrides it and accepts only `https`.
 5. Bounds one proxied request by `gatewayCallTimeout`, the Gateway's dispatch wait (`gateway.DispatchTimeout`) plus a margin, so a slow `tools/call` returns the Operator's signed answer rather than a bridge transport error. The L3 approval wait is separate and event-driven.
 
+With `--app <name>`, the bridge checks the local public certificate and pending-enrollment state before loading credentials. Missing, pending, and expired identities fail with the next enrollment command. `--check` reads the Gateway trust bundle and, when `--app` is supplied, checks that application identity locally, then exits without unsealing a key or contacting the Gateway. The Claude Code plugin runs this check at session start and exposes the reported next step to `/ztd:setup`.
+
 An MCP client runs the bridge as a subprocess: command `ztd`, args `["mcp", "stdio"]` (add `"--app", "<name>"` for an app identity), with the project root as working directory. `ztd mcp agent show <agent>` prints the configuration for a supported agent ([Connect apps to the Gateway](../guides/connect_apps_to_gateway.md)). The conformance suite's `MCP_STDIO` ingress drives this same bridge ([evaluation architecture](evals.md#governance-conformance-suite)).
 
 ### Five-Layer Governance Enforcement for Agents

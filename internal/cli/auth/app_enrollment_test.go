@@ -178,6 +178,53 @@ func TestLoadAppIdentity_Valid(t *testing.T) {
 	assert.True(t, HasValidAppIdentity(fileSvc, cfg, appName))
 }
 
+func TestInspectAppIdentity(t *testing.T) {
+	writeCert := func(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Config, appName string, notAfter time.Time) {
+		t.Helper()
+		certPEM, _ := generateTestCertificateWithSPIFFE(t, appName, notAfter)
+		certRel, err := fileSvc.RelFromAbs(cfg.AppCertFile(appName))
+		require.NoError(t, err)
+		require.NoError(t, fileSvc.WriteFile(context.Background(), certRel, []byte(certPEM), constants.PermFilePublic))
+	}
+
+	t.Run("absent", func(t *testing.T) {
+		fileSvc, cfg := newAuthTestEnv(t)
+		state, err := InspectAppIdentity(fileSvc, cfg, "my-agent")
+		require.NoError(t, err)
+		assert.Equal(t, AppIdentityAbsent, state)
+	})
+
+	t.Run("pending", func(t *testing.T) {
+		fileSvc, cfg := newAuthTestEnv(t)
+		require.NoError(t, fileSvc.WriteFile(context.Background(), appPendingStatePath("my-agent"), []byte("sealed"), constants.PermFilePrivate))
+		state, err := InspectAppIdentity(fileSvc, cfg, "my-agent")
+		require.NoError(t, err)
+		assert.Equal(t, AppIdentityPending, state)
+	})
+
+	t.Run("expired", func(t *testing.T) {
+		fileSvc, cfg := newAuthTestEnv(t)
+		writeCert(t, fileSvc, cfg, "my-agent", time.Now().Add(-time.Hour))
+		state, err := InspectAppIdentity(fileSvc, cfg, "my-agent")
+		require.NoError(t, err)
+		assert.Equal(t, AppIdentityExpired, state)
+	})
+
+	t.Run("enrolled without unsealing the key", func(t *testing.T) {
+		fileSvc, cfg := newAuthTestEnv(t)
+		writeCert(t, fileSvc, cfg, "my-agent", time.Now().Add(time.Hour))
+		state, err := InspectAppIdentity(fileSvc, cfg, "my-agent")
+		require.NoError(t, err)
+		assert.Equal(t, AppIdentityEnrolled, state)
+	})
+
+	t.Run("invalid name", func(t *testing.T) {
+		fileSvc, cfg := newAuthTestEnv(t)
+		_, err := InspectAppIdentity(fileSvc, cfg, "app/slash")
+		require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidAppName)
+	})
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

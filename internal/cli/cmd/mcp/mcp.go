@@ -143,7 +143,10 @@ ztd login
 ztd auth enroll app <name>
 ztd mcp agent run
 
-to obtain them.
+to obtain them. With --app, a missing, pending, or expired application identity
+fails before connecting, naming the command that moves enrollment forward.
+--check runs only that local check, plus the trust bundle read, and exits: it
+unseals no key and does not contact the Gateway.
 
 Cert and key must be supplied as a pair per tier; supplying only one half fails closed.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -155,6 +158,7 @@ Cert and key must be supplied as a pair per tier; supplying only one half fails 
 	cmd.Flags().String(constants.Flag.CABundle, "", "Path to gateway CA bundle PEM")
 	cmd.Flags().String(constants.Flag.GatewayURL, "", "Gateway MCP endpoint URL, https only (default: <the Gateway this CLI addresses>/mcp)")
 	cmd.Flags().String(constants.Flag.App, "", "Name of enrolled platform application to authenticate session")
+	cmd.Flags().Bool(constants.Flag.Check, false, "Check locally that the credentials are ready, print the result, and exit")
 	return cmd
 }
 
@@ -268,6 +272,9 @@ func isCLICredentialTier(tierName string) bool {
 func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags, loggers ...*slog.Logger) (*gatewayConn, error) {
 	var appCert, appKey string
 	if flags.App != "" {
+		if err := checkAppIdentity(fileSvc, cfg, flags.App); err != nil {
+			return nil, err
+		}
 		appCert = cfg.AppCertFile(flags.App)
 		appKey = cfg.AppKeyFile(flags.App)
 	}
@@ -382,6 +389,30 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 	return session, nil
 }
 
+// checkAppIdentity fails, before any key is unsealed, when the application
+// identity named by --app cannot authenticate yet, and names the command that
+// moves its enrollment forward.
+func checkAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appName string) error {
+	state, err := auth.InspectAppIdentity(fileSvc, cfg, appName)
+	if err != nil {
+		return err
+	}
+	switch state {
+	case auth.AppIdentityEnrolled:
+		return nil
+	case auth.AppIdentityPending:
+		return fmt.Errorf("%w: enrollment of application %q is waiting for the owner's approval\nApprove it in the Console or with:\nztd auth enroll approve\nor resume it with:\nztd auth enroll app %s", constants.ErrAppIdentityNotFound, appName, appName)
+	case auth.AppIdentityExpired:
+		return fmt.Errorf("%w: the certificate of application %q has expired\nRe-enroll it with:\nztd auth enroll app %s", constants.ErrAppIdentityExpired, appName, appName)
+	}
+	// The owner's CLI identity approves the enrollment inline, so sign in first
+	// when it is absent.
+	if creds, err := auth.LoadCredentials(fileSvc, cfg); err != nil || creds == nil {
+		return fmt.Errorf("%w: application %q is not enrolled and no CLI user is signed in\nSign in with:\nztd login\n(ztd login web under the ratify or notary posture), then enroll it with:\nztd auth enroll app %s", constants.ErrAppIdentityNotFound, appName, appName)
+	}
+	return fmt.Errorf("%w: application %q is not enrolled\nEnroll it with:\nztd auth enroll app %s", constants.ErrAppIdentityNotFound, appName, appName)
+}
+
 // readCABundle reads a CA bundle from a path, preferring fileSvc.ReadFile when the
 // path is under the .ztd/ runtime root, falling back to os.ReadFile for external paths.
 func readCABundle(fileSvc fs.RuntimeFileService, caPath string) ([]byte, error) {
@@ -417,6 +448,13 @@ func runMCPStdioProxy(cmd *cobra.Command, _ []string, fileSvcFactory func(string
 	if err != nil {
 		return err
 	}
+	check, err := cmd.Flags().GetBool(constants.Flag.Check)
+	if err != nil {
+		return fmt.Errorf("mcp: get %s flag: %w", constants.Flag.Check, err)
+	}
+	if check {
+		return checkStdioBridge(cmd.OutOrStdout(), fileSvc, cfg, credFlags)
+	}
 	return serveStdioBridge(cmd.Context(), fileSvc, cfg, credFlags, os.Stdin, os.Stdout, logger)
 }
 
@@ -429,11 +467,33 @@ func ServeStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *c
 
 // serveStdioBridge connects to the Gateway with the resolved credentials and
 // proxies every request read from in, writing each answer to out.
+// checkStdioBridge reports whether the bridge's local prerequisites are in
+// place, in setup order: the Gateway trust bundle, then the --app identity.
+func checkStdioBridge(out io.Writer, fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags) error {
+	if flags.CABundle == "" {
+		if _, err := auth.ReadTrustBundle(fileSvc, cfg); err != nil {
+			return fmt.Errorf("%w: %w\nStart the Gateway from this directory with:\nztd gw start", constants.ErrFailedToReadTrustBundle, err)
+		}
+	}
+	if flags.App != "" {
+		if err := checkAppIdentity(fileSvc, cfg, flags.App); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(out, "ready: application %q is enrolled\n", flags.App)
+		return err
+	}
+	_, err := fmt.Fprintln(out, "ready")
+	return err
+}
+
 func serveStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, credFlags stdioCredentialFlags, in io.Reader, out io.Writer, logger *slog.Logger) error {
 	// Build the mTLS gateway connection once. Identity is in the application cert's
 	// URI SANs — no session object or headers. All proxy calls reuse this connection.
 	conn, err := buildGatewayConn(fileSvc, cfg, credFlags, logger)
 	if err != nil {
+		if errors.Is(err, constants.ErrAppIdentityNotFound) || errors.Is(err, constants.ErrAppIdentityExpired) {
+			return err
+		}
 		return fmt.Errorf("%w: %w", constants.ErrGatewayNotReady, err)
 	}
 

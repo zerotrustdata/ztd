@@ -3,39 +3,14 @@ name: setup
 description: Walk the user through connecting the ztd plugin to their ztd Gateway. Use when the ztd MCP tools (mcp__plugin_ztd_ztd__*) are missing or failing to connect, or when the user asks how to set up ztd.
 ---
 
-The user runs every step below in their own terminal, not through a tool. Native shell tools are denied in this session, and enrollment must not run through the governed path it sets up. Show the steps; do not try to run them.
+The user runs setup commands in their own terminal. Native shell tools are denied in this session, and enrollment must not run through the governed path it sets up. Do not run commands.
 
-Configured ztd root: `${user_config.ztd_root}`
-Configured application identity: `${user_config.app_name}`
+Read the `Setup needed — next step:` block from the SessionStart context. Use its `App identity:` value as the app name. If the block is unavailable, use `claude`. Show only actions that remain according to that block:
 
-Give the user these steps, using the configured values above:
+- If `ztd_root` is unset, ask the user to set the plugin's `ztd_root` option in `/config` to the directory they use for ztd.
+- If the configured root directory does not exist, have the user create or choose a valid `ztd_root` in `/config`.
+- Follow the next command printed by `ztd mcp stdio --app <app> --check` in order. If it asks to start the Gateway, run `ztd gw start` from the `Configured ztd root:` in the block. If it asks for sign-in, use `ztd login` (or `ztd login web` under ratify or notary), then `ztd auth enroll app <app>`. Enrollment approves itself when the owner is signed in under doctrine or consensus. Under ratify or notary, complete approval in the Console or as directed by the enrollment command. If enrollment is pending, use the printed `ztd auth enroll approve` or resume with `ztd auth enroll app <app>`. If expired, re-enroll with `ztd auth enroll app <app>`.
+- If the block says `Ready`, skip enrollment and proceed to reconnecting the MCP server.
+- If the hook says the ztd binary is missing, have the user install it or set `ztd_binary` in `/config` before continuing.
 
-1. **Pick the ztd root.** ztd keeps its runtime state (credentials, trust bundle, audit data) in a `.ztd/` directory under the directory it runs from. Every command below runs from that same directory, and the plugin's `ztd_root` option must point at it.
-
-2. **Start the Gateway** (skip if `ztd gw status` already reports it healthy):
-
-   ```bash
-   cd <ztd_root>
-   ztd gw start --posture doctrine
-   ```
-
-   Posture is fixed for a running Gateway. `doctrine` enforces L1/L4/L5; `consensus` requires L2 quorum, `ratify` requires L3 human approval, and `notary` requires both. `ztd gw start --help` lists the current choices.
-
-3. **Enroll the human CLI identity.** The bridge uses it to receive L3 approval events.
-
-   ```bash
-   ztd auth enroll user
-   ```
-
-4. **Enroll the application identity Claude acts as**, then approve it as the owner in the ztd Console or with the command the enrollment prints:
-
-   ```bash
-   ztd auth enroll app <app_name>
-   ztd auth enroll approve <request-id> --yes
-   ```
-
-5. **Set the plugin options** if they are wrong: `/config` in Claude Code, plugin `ztd`, set `ztd_root` and, if `ztd` is not on `PATH`, `ztd_binary`.
-
-6. **Reconnect.** Run `/mcp` in Claude Code and reconnect the `plugin:ztd:ztd` server, or restart Claude Code. The server's log in `/mcp` shows the bridge's error if it still cannot connect.
-
-If the user already launches Claude with `ztd mcp agent run claude`, that launcher performs steps 2 to 4 itself. Tell them to use the launcher or the plugin, not both in the same session: the plugin denies the launcher's `mcp__ztd__*` tools.
+After the remaining setup steps, reconnect `plugin:ztd:ztd` from `/mcp` or restart Claude Code. If the user already launches Claude with `ztd mcp agent run claude`, have them use that launcher or the plugin, not both in one session: the plugin denies the launcher's `mcp__ztd__*` tools.
