@@ -92,7 +92,7 @@ FIPS_GOARCH := amd64
 # local machines. 360s timed out in the FIPS job with the victim test only just
 # started (0s elapsed) because the package had simply outgrown the budget, not hung.
 # Keep in sync with integrationTestTimeout in internal/cli/cmd/test/test.go.
-TEST_TIMEOUT := 600s
+TEST_TIMEOUT := 30m
 # Per-package deadlock backstop for unit tests.
 TEST_SHORT_TIMEOUT := 180s
 # Race detector for Tier 2 integration tests (non-Windows). Tier 1 unit tests

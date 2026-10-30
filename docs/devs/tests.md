@@ -201,6 +201,8 @@ make lint
 
 Unfiltered unit and integration commands delegate to `make test-unit` and `make test-integration`, so they share the Makefile package set and test settings. Supplying `--pkg` or `--run` invokes `go test` directly for the requested selection. `TEST_PKGS` is every Go package in the module, and `make test` and `make ci` run the same set; no package with tests is skipped locally. `COVERAGE_EXCLUDE_PKGS` in the root Makefile only removes packages from the coverage profile.
 
+Integration and coverage runs allow 30 minutes per package, including the real evaluation stacks. Individual tests should still use bounded contexts for their own operations and cleanup.
+
 ### Run Specialized Test Harnesses
 
 For the Tier 4 live-provider gate, the endpoint URL and model name are passed only through `--live-ollama-endpoint` and `--live-model`; the commands below read them from shell variables named `LIVE_OLLAMA_ENDPOINT` and `LIVE_MODEL` that you set yourself. `ztd` does not read those variables.

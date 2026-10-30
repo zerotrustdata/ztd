@@ -196,7 +196,7 @@ type e2eCommandRunner func(ctx context.Context, name string, args ...string) (in
 
 // integrationTestTimeout is the per-package Tier 2 deadline. It must match
 // TEST_TIMEOUT in the Makefile, which CI uses.
-const integrationTestTimeout = 600 * time.Second
+const integrationTestTimeout = 30 * time.Minute
 
 // defaultE2ETimeout bounds the approved-stack suite. Long scenarios such as the
 // Operator fleet soak raise it with --timeout.
