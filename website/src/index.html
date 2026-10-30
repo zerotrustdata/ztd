@@ -187,6 +187,8 @@ h3{font-size:20px;line-height:1.2}
 .link{position:relative;display:flex;align-items:center;justify-content:center}
 .link::before{content:"";position:absolute;left:4px;right:4px;top:50%;height:2px;background:repeating-linear-gradient(90deg,var(--cyan) 0 8px,transparent 8px 14px);background-size:28px 2px;animation:dash 1s linear infinite;opacity:.8}
 .link::after{content:"";position:absolute;right:2px;top:calc(50% - 5px);border:5px solid transparent;border-left:7px solid var(--cyan);border-right:0}
+.link.outbound::before{animation-direction:reverse}
+.link.outbound::after{right:auto;left:2px;border:5px solid transparent;border-right:7px solid var(--cyan);border-left:0}
 .link span{position:relative;top:-22px;font:500 9px/1.2 var(--mono);color:var(--dim);letter-spacing:.1em;text-transform:uppercase;text-align:center}
 @keyframes dash{to{background-position:28px 0}}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
@@ -363,6 +365,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   .link{height:52px}
   .link::before{left:50%;right:auto;top:4px;bottom:4px;width:2px;height:auto;background:repeating-linear-gradient(180deg,var(--cyan) 0 8px,transparent 8px 14px);background-size:2px 28px;animation:dashv 1s linear infinite}
   .link::after{right:auto;left:calc(50% - 5px);top:auto;bottom:0;border:5px solid transparent;border-top:7px solid var(--cyan);border-bottom:0}
+  .link.outbound::before{animation-direction:reverse}
+  .link.outbound::after{left:calc(50% - 5px);top:0;bottom:auto;border:5px solid transparent;border-bottom:7px solid var(--cyan);border-top:0}
   .link span{top:0;left:20px;text-align:left;position:absolute;left:calc(50% + 16px)}
   .layer{grid-template-columns:70px 1fr;gap:6px 18px}
   .layer p{grid-column:2}
@@ -541,15 +545,15 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="sec-head rv">
       <p class="eyebrow">02 / How ztd works</p>
       <h2 id="how-title">A control plane for <em>AI-driven operations</em></h2>
-      <p class="lede">A client or agent submits a typed intent. The Gateway validates policy, applies human or quorum approvals when needed, and sends the action over an outbound-only connection to a local Operator. The Operator verifies the request on its own, executes only the approved action, and writes its own signed evidence.</p>
+      <p class="lede">A client or agent submits a typed intent. The Gateway validates policy and applies human or quorum approvals when needed. The Operator opens an outbound-only mTLS connection, pulls its assigned work, verifies the request independently, executes only the approved action, and records signed evidence locally.</p>
     </div>
 
     <div class="flow rv" role="list" aria-label="Transaction path">
       <div class="node" role="listitem"><span class="lbl">Ingress</span><h3>AI client</h3><p>MCP, A2A, governed HTTP dispatch, direct envelope, or CLI.</p><span class="role">expresses intent</span></div>
       <div class="link" aria-hidden="true"><span>envelope</span></div>
-      <div class="node gw" role="listitem"><span class="lbl">Policy Decision Point</span><h3>Governance Gateway</h3><p>Authenticates over mTLS, builds a canonical GovernanceEnvelope, runs L1–L3, binds it to one Operator session.</p><span class="role">ztd gw start</span></div>
-      <div class="link" aria-hidden="true"><span>outbound<br>mTLS</span></div>
-      <div class="node op" role="listitem"><span class="lbl">Policy Execution Point</span><h3>Governed Operator</h3><p>No inbound listeners. Pulls from its session channel, re-verifies everything in L4, executes in L5.</p><span class="role">ztd operator start</span></div>
+      <div class="node gw" role="listitem"><span class="lbl">Policy Decision Point</span><h3>Governance Gateway</h3><p>Authenticates over mTLS, builds a canonical GovernanceEnvelope, runs L1–L3, and routes it to one Operator session.</p><span class="role">ztd gw start</span></div>
+      <div class="link outbound" aria-hidden="true"><span>outbound<br>mTLS</span></div>
+      <div class="node op" role="listitem"><span class="lbl">Policy Execution Point</span><h3>Governed Operator</h3><p>Opens the connection outbound; no inbound listeners. Pulls assigned work, re-verifies it at L4, and executes at L5.</p><span class="role">ztd operator start</span></div>
       <div class="link" aria-hidden="true"><span>receipt</span></div>
       <div class="node rc" role="listitem"><span class="lbl">Evidence</span><h3>Signed receipts</h3><p>EXECUTING and COMPLETED/FAILED receipts, plus a hash-chained commitment ledger on the host.</p><span class="role">local-first audit</span></div>
     </div>
