@@ -25,11 +25,11 @@ func suitesEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suites",
 		Short: "Create, inspect, edit, and delete evaluation suites",
-		Long: `A suite is a named, versioned set of scenarios a campaign scores. Three suites are
+		Long: `A suite is a named, versioned set of scenarios a campaign scores. Four suites are
 built in and read-only: default-suite (the full scenario set), smoke-suite
-(its five-scenario screening subset), and investigations (the planted-fault
-investigation scenarios). Custom suites are authored as JSON files
-and stored under the runtime data directory.
+(its ten-scenario screening subset), investigations (the planted-fault
+investigation scenarios), and quickstart (one answer-only scenario). Custom
+suites are authored as JSON files and stored under the runtime data directory.
 
 A campaign copies its suite when it is created (ztd eval campaigns create
 --suite <id>), so editing or deleting a suite never changes a campaign that

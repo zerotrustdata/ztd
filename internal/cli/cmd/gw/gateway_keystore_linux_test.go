@@ -101,6 +101,11 @@ func TestGatewayKeystoreRecovery(t *testing.T) {
 			if tc.socket == "" || errors.Is(tc.cause, constants.ErrKeyStoreSSHAgentUnavailable) {
 				assert.Contains(t, stderr.String(), `eval "$(ssh-agent -s)"`)
 			}
+			if errors.Is(tc.cause, constants.ErrKeyStoreSSHAgentKeyMissing) {
+				assert.Contains(t, stderr.String(), "gw recover")
+			} else {
+				assert.NotContains(t, stderr.String(), "gw recover")
+			}
 		})
 	}
 }

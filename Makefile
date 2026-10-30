@@ -1139,7 +1139,7 @@ up: build
 	@echo "Starting the ztd Gateway on this host..."
 	@./ztd gw start $(ZTD_ARGS) $(GW_LISTEN_ARGS) $(GW_ARGS)
 
-# Gateway whose embedded Operator carries every Operator capability.
+# Gateway with the embedded Operator. GW_CAPABILITIES defaults to data.
 # Capabilities are immutable in a running Gateway, so run `make down` first when
 # one is already running. Provenance attests model weights on this host and is
 # added only when MODEL_STORAGE_ROOT names the local model store. GW_ARGS

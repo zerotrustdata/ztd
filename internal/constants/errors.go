@@ -1486,6 +1486,7 @@ var (
 	ErrEvaluationDispatchFailed              = errors.New("evaluation: governed dispatch failed")
 	ErrEvaluationAssignmentUnresolved        = errors.New("evaluation: assignment has an unresolved running execution")
 	ErrEvaluationAssignmentExecutionFailed   = errors.New("evaluation: assignment execution failed")
+	ErrEvaluationToolCallingProbeFailed      = errors.New("evaluation: tool-calling probe failed")
 	ErrEvaluationRecoveredResultMissing      = errors.New("evaluation: recovered terminal assignment has no persisted result")
 	ErrEvaluationModelUnserved               = errors.New("evaluation: provider served no governed inference for the model")
 	ErrEvaluationRunStopped                  = errors.New("evaluation: run stopped with assignments still queued; resume it with 'ztd eval runs resume'")

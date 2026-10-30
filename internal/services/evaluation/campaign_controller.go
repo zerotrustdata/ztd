@@ -661,7 +661,10 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		// Eligibility dispatch, receipt and persistence failures stop the run.
 		// Only a verified negative probe may exclude tool-bearing cells; the
 		// ordinary cell recovery path cannot manufacture that evidence.
-		return nil, false, fmt.Errorf("evaluation: tool-calling eligibility: %w", err)
+		if !errors.Is(err, constants.ErrEvaluationToolCallingProbeFailed) {
+			err = fmt.Errorf("%w: %w", constants.ErrEvaluationToolCallingProbeFailed, err)
+		}
+		return nil, false, err
 	}
 	assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
 	assignment.StartedAt = assignmentStartedAt
