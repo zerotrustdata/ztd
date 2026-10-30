@@ -66,9 +66,9 @@ Defines release preparation, change inventory, documentation reconciliation, ver
   - [Platform claims and maintained paths](#platform-claims-and-maintained-paths)
   - [Release agent roles and surface ownership](#release-agent-roles-and-surface-ownership)
 - [Procedures](#procedures)
-  - [Multi-Agent Orchestration Architecture](#multi-agent-orchestration-architecture)
-  - [Predetermined Lite Agent Role Specifications](#predetermined-lite-agent-role-specifications)
-  - [Phased Multi-Agent Orchestration Sequence (e.g. Bumping to v1.4.2)](#phased-multi-agent-orchestration-sequence-eg-bumping-to-v142)
+  - [Release Orchestration Architecture](#release-orchestration-architecture)
+  - [Release Role Specifications](#release-role-specifications)
+  - [Phased Release Preparation Sequence (e.g. Bumping to v1.4.2)](#phased-release-preparation-sequence-eg-bumping-to-v142)
   - [Release Owner Tagging and Publication (Post-Merge)](#release-owner-tagging-and-publication-post-merge)
   - [Release Signing](#release-signing)
   - [Website Download Set and Promotion (R2)](#website-download-set-and-promotion-r2)
@@ -116,10 +116,10 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-REL-ORCH-01 | Multi-agent release preparation MUST be led by a coordinating Lead Release Orchestrator delegating strictly to specialized Lite Subagents (`flash_lite`). Subagents MUST adhere strictly to their predetermined role identity, purpose, and path scope specified in this document. Inventing ad-hoc roles or unconstrained free-form task assignments is prohibited. |
-| INV-REL-ORCH-02 | Lite Subagents MUST operate strictly within their assigned surface paths defined in [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries). Modifying files outside the assigned surface is prohibited. |
-| INV-REL-ORCH-03 | The release orchestration pipeline MUST adhere strictly to sequential phase barriers (Phase 1 through Phase 6). Downstream subagents MUST NOT be dispatched until prerequisite phase validation criteria are fully satisfied. |
-| INV-REL-ORCH-04 | Every Lite Subagent MUST return a structured completion deliverable confirming executed command exit codes, mutated files, and verification status. The Lead Orchestrator MUST verify these deliverables before advancing the pipeline. |
+| INV-REL-ORCH-01 | Release preparation may be performed directly or delegated. When delegating, the coordinator assigns clear responsibilities and path boundaries; no specific agent model is required. |
+| INV-REL-ORCH-02 | Delegated agents MUST operate strictly within their assigned surface paths defined in [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries). Modifying files outside the assigned surface is prohibited. |
+| INV-REL-ORCH-03 | Release preparation follows the phase dependencies below. Record any skipped or failed gates in the handoff and do not claim release readiness until required gates pass. |
+| INV-REL-ORCH-04 | Every delegated agent MUST return a structured completion deliverable confirming executed command exit codes, mutated files, and verification status. The Lead Orchestrator MUST verify these deliverables before advancing the pipeline. |
 
 ## Owned surfaces
 
@@ -146,23 +146,23 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | Role Name | Model Tier | Surface Key | Assigned Path Scope | Primary Deliverable |
 | :--- | :--- | :--- | :--- | :--- |
-| **Lead Release Orchestrator** | `inherit` | `surface-release-ci` | Full repository (read-only for planning, coordinates phases) | Release plan, subagent dispatch, verification synthesis, and Release Owner handoff |
-| **Release Version Synchronizer** (`rel-version-sync`) | `flash_lite` (Lite ONLY) | `surface-release-ci`, `surface-docs` | `VERSION`, `internal/tools/versionsync/`, `protocol/docs/*.md`, `*/package.json`, `*/package-lock.json`, `website/src/index.html`, `README.md`, `.github/CONTRIBUTING.md` | Synchronized `VERSION`, specs, manifests, website hero chip, and passing `make version-sync-check` |
-| **Protocol & Code Generation Auditor** (`rel-proto-codegen`) | `flash_lite` (Lite ONLY) | `surface-protocol` | `protocol/proto/ztd/`, `protocol/constants/`, `internal/constants/*_gen.go`, `console/src/generated/`, `evaluation-explorer/src/content/scenario-catalog.generated.ts`, `internal/services/gateway/docs/swagger.*` | Validated doctrine JSON, regenerated constants and OpenAPI specs, clean `make constants-check` |
-| **Frontend Embed & Web Asset Builder** (`rel-frontend-embed`) | `flash_lite` (Lite ONLY) | `surface-frontend` | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Fresh explorer and console embeds containing `VERSION`, passing `make console-embed-check`, fresh `website/dist/` |
-| **Release Notes & Documentation Auditor** (`rel-docs-notes`) | `flash_lite` (Lite ONLY) | `surface-docs` | `docs/release_notes/vX.Y.x/vX.Y.Z.md`, `CHANGELOG.md`, affected documents under `docs/`, `AGENTS.md`, `CLAUDE.md` | Authored `vX.Y.Z.md` release notes, updated `CHANGELOG.md` row, and audited documentation metadata |
-| **Release Smoke & Qualification Runner** (`rel-smoke-qual`) | `flash_lite` (Lite ONLY) | `surface-release-ci`, `surface-tests` | `bin/`, `.ztd/operators/release-smoke-*`, `test-results/` | Built candidate binary, passing `./ztd test release-smoke`, passing eval loop, and passing conformance loop |
-| **Release Rehearsal & Verification Auditor** (`rel-rehearsal-audit`) | `flash_lite` (Lite ONLY) | `surface-release-ci` | `scripts/release-*.sh`, `.github/workflows/`, repo-wide lint and unit test runners | Passing `make test-release-scripts`, `./ztd test lint`, `./ztd test unit`, and verified rehearsal runbook |
+| **Lead Release Orchestrator** | `inherit` | `surface-release-ci` | Full repository (performs or coordinates preparation) | Release plan, subagent dispatch, verification synthesis, and Release Owner handoff |
+| **Release Version Synchronizer** (`rel-version-sync`) | Available model | `surface-release-ci`, `surface-docs` | `VERSION`, `internal/tools/versionsync/`, `protocol/docs/*.md`, `*/package.json`, `*/package-lock.json`, `website/src/index.html`, `README.md`, `.github/CONTRIBUTING.md` | Synchronized `VERSION`, specs, manifests, website hero chip, and passing `make version-sync-check` |
+| **Protocol & Code Generation Auditor** (`rel-proto-codegen`) | Available model | `surface-protocol` | `protocol/proto/ztd/`, `protocol/constants/`, `internal/constants/*_gen.go`, `console/src/generated/`, `evaluation-explorer/src/content/scenario-catalog.generated.ts`, `internal/services/gateway/docs/swagger.*` | Validated doctrine JSON, regenerated constants and OpenAPI specs, clean `make constants-check` |
+| **Frontend Embed & Web Asset Builder** (`rel-frontend-embed`) | Available model | `surface-frontend` | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Fresh explorer and console embeds containing `VERSION`, passing `make console-embed-check`, fresh `website/dist/` |
+| **Release Notes & Documentation Auditor** (`rel-docs-notes`) | Available model | `surface-docs` | `docs/release_notes/vX.Y.x/vX.Y.Z.md`, `CHANGELOG.md`, affected documents under `docs/`, `AGENTS.md`, `CLAUDE.md` | Authored `vX.Y.Z.md` release notes, updated `CHANGELOG.md` row, and audited documentation metadata |
+| **Release Smoke & Qualification Runner** (`rel-smoke-qual`) | Available model | `surface-release-ci`, `surface-tests` | `bin/`, `.ztd/operators/release-smoke-*`, `test-results/` | Built candidate binary, passing `./ztd test release-smoke`, passing eval loop, and passing conformance loop |
+| **Release Rehearsal & Verification Auditor** (`rel-rehearsal-audit`) | Available model | `surface-release-ci` | `scripts/release-*.sh`, `.github/workflows/`, repo-wide lint and unit test runners | Passing `make test-release-scripts`, `./ztd test lint`, `./ztd test unit`, and verified rehearsal runbook |
 
 ## Procedures
 
-### Multi-Agent Orchestration Architecture
+### Release Orchestration Architecture
 
-To achieve rapid, error-free, and reproducible release preparation, the release process divides work between a coordinating **Lead Release Orchestrator** and a team of specialized **Lite Subagents** (`INV-REL-ORCH-01`):
+Release preparation may be performed by one agent or coordinated across agents (`INV-REL-ORCH-01`):
 
-1. **Lead Release Orchestrator (Parent Agent)**: Ingests the release target (e.g. `v1.4.2`), performs diff analysis, enforces phase barriers, dispatches predetermined tasks to specialized Lite Subagents, validates deliverables at each phase barrier, and compiles the final handoff for the human Release Owner.
-2. **Lite Subagents (`flash_lite` ONLY)**: Each subagent is invoked with `Model: flash_lite`, a dedicated role title, strict path boundaries from [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries), and an immutable instruction list. Lite models are mandatory because their focused execution avoids context window saturation, eliminates conversational drift, and prevents unauthorized edits outside their assigned boundary (`INV-REL-ORCH-02`).
-3. **Phase Barrier Synchronization**: The release sequence is organized into 6 distinct phases. Subagents in parallel phases operate on strictly disjoint surfaces. No phase may begin until all prerequisite phase validation criteria pass (`INV-REL-ORCH-03`).
+1. **Lead Release Orchestrator (Parent Agent)**: Ingests the release target (e.g. `v1.4.2`), performs diff analysis, enforces phase barriers, dispatches predetermined tasks to specialized agents, validates deliverables at each phase barrier, and compiles the final handoff for the human Release Owner.
+2. **Delegated agents**: When available and appropriate, agents may be assigned a role and path boundaries from [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries). The coordinator may perform the work directly.
+3. **Phase Barrier Synchronization**: The release sequence is organized into 6 distinct phases. Subagents in parallel phases operate on strictly disjoint surfaces. Complete prerequisite work before dependent work; report incomplete gates without claiming release readiness (`INV-REL-ORCH-03`).
 
 ```mermaid
 flowchart TD
@@ -182,16 +182,15 @@ flowchart TD
   B5 --> P6["Phase 6: Human Release Owner Handoff<br/>(Lead Orchestrator)"]
 ```
 
-### Predetermined Lite Agent Role Specifications
+### Release Role Specifications
 
-Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_lite`, the specified `Role`, and the exact task instructions defined below.
+The following roles describe work to perform directly or delegate with the listed path boundaries.
 
 ---
 
 #### Role 1: Release Version Synchronizer (`rel-version-sync`)
 
 - **Identity**: `Release Version Synchronizer`
-- **Model**: `flash_lite`
 - **Surface**: `surface-release-ci`, `surface-docs`
 - **Assigned Paths**: `VERSION`, `internal/tools/versionsync/`, `protocol/docs/*.md`, `*/package.json`, `*/package-lock.json`, `website/src/index.html`, `README.md`, `.github/CONTRIBUTING.md`
 - **Purpose**: Advance platform version, synchronize protocol doc version headers, update npm package manifests and lockfiles, and update website hero and README badges.
@@ -213,7 +212,6 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 #### Role 2: Protocol & Code Generation Auditor (`rel-proto-codegen`)
 
 - **Identity**: `Protocol & Code Generation Auditor`
-- **Model**: `flash_lite`
 - **Surface**: `surface-protocol`
 - **Assigned Paths**: `protocol/proto/ztd/`, `protocol/constants/`, `internal/constants/*_gen.go`, `console/src/generated/`, `evaluation-explorer/src/content/scenario-catalog.generated.ts`, `internal/services/gateway/docs/swagger.*`
 - **Purpose**: Ensure that Protobuf stubs, constant registries, doctrine JSON schemas, and OpenAPI specs are generated, valid, and synchronized.
@@ -233,7 +231,6 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 #### Role 3: Frontend Embed & Web Asset Builder (`rel-frontend-embed`)
 
 - **Identity**: `Frontend Embed & Web Asset Builder`
-- **Model**: `flash_lite`
 - **Surface**: `surface-frontend`
 - **Assigned Paths**: `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/`
 - **Purpose**: Compile production frontend bundles, refresh Gateway Go embed assets, ensure no stale assets remain, and validate web packages.
@@ -256,7 +253,6 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 #### Role 4: Release Notes & Documentation Auditor (`rel-docs-notes`)
 
 - **Identity**: `Release Notes & Documentation Auditor`
-- **Model**: `flash_lite`
 - **Surface**: `surface-docs`
 - **Assigned Paths**: `docs/release_notes/vX.Y.x/vX.Y.Z.md`, `CHANGELOG.md`, affected documents under `docs/`, `AGENTS.md`, `CLAUDE.md`
 - **Purpose**: Draft comprehensive release notes, update the changelog index, and audit modified documentation according to `docs/devs/docs.md` standards.
@@ -278,7 +274,6 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 #### Role 5: Release Smoke & Qualification Runner (`rel-smoke-qual`)
 
 - **Identity**: `Release Smoke & Qualification Runner`
-- **Model**: `flash_lite`
 - **Surface**: `surface-release-ci`, `surface-tests`
 - **Assigned Paths**: `bin/`, `.ztd/operators/release-smoke-*`, `test-results/`
 - **Purpose**: Build host candidate binary and execute provider-free release smoke test and cross-process qualification loops.
@@ -300,7 +295,6 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 #### Role 6: Release Rehearsal & Verification Auditor (`rel-rehearsal-audit`)
 
 - **Identity**: `Release Rehearsal & Verification Auditor`
-- **Model**: `flash_lite`
 - **Surface**: `surface-release-ci`
 - **Assigned Paths**: `scripts/release-*.sh`, `.github/workflows/`, test suites
 - **Purpose**: Execute repository verification suite, test release automation scripts, and audit CI/CD workflow configurations.
@@ -320,7 +314,7 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 
 ---
 
-### Phased Multi-Agent Orchestration Sequence (e.g. Bumping to v1.4.2)
+### Phased Release Preparation Sequence (e.g. Bumping to v1.4.2)
 
 When an AI Orchestrator receives a release directive (such as "Bump version to v1.4.2 and prepare release"), it executes this predetermined 6-phase sequence:
 
@@ -331,40 +325,40 @@ When an AI Orchestrator receives a release directive (such as "Bump version to v
 3. Formulate the release theme title `<Title>` for `INV-REL-VER-09` (e.g. `Performance Optimization and Fleet Scalability`).
 4. Establish barrier requirement: Proceed to Phase 2.
 
-#### Phase 2: Manifest & Specification Synchronization (Parallel Lite Dispatch)
+#### Phase 2: Manifest & Specification Synchronization (Preparation)
 
-Dispatch in parallel:
-- **Subagent 1**: `invoke_subagent` with `Role: "Release Version Synchronizer"`, `Model: flash_lite`.
+Perform these tasks:
+- **Task 1**: role "Release Version Synchronizer".
   - Instruct to set `v1.4.2` in `VERSION`, run `make version-sync`, verify with `make version-sync-check`, update `website/src/index.html` hero chip, update `README.md` badge, and rebuild website.
-- **Subagent 2**: `invoke_subagent` with `Role: "Protocol & Code Generation Auditor"`, `Model: flash_lite`.
+- **Task 2**: role "Protocol & Code Generation Auditor".
   - Instruct to run `make doctrines-validate`, `make constants-check`, `make explorer-catalog-check`, `make proto-generate`, and `make swagger-generate`.
 
-*Barrier Check 2*: Both subagents report zero errors. `make version-sync-check` passes.
+*Barrier Check 2*: Both tasks complete without errors. `make version-sync-check` passes.
 
-#### Phase 3: Frontends, Embeds & Release Documentation (Parallel Lite Dispatch)
+#### Phase 3: Frontends, Embeds & Release Documentation (Preparation)
 
-Dispatch in parallel:
-- **Subagent 3**: `invoke_subagent` with `Role: "Frontend Embed & Web Asset Builder"`, `Model: flash_lite`.
+Perform these tasks:
+- **Task 3**: role "Frontend Embed & Web Asset Builder".
   - Instruct to run `make explorer-embed`, verify `v1.4.2` string in bundle, run `make console-embed-check`, run `make console-lint console-test`, `make explorer-lint explorer-test`, and `make website-test website-build`.
-- **Subagent 4**: `invoke_subagent` with `Role: "Release Notes & Documentation Auditor"`, `Model: flash_lite`.
+- **Task 4**: role "Release Notes & Documentation Auditor".
   - Pass the Phase 1 change inventory and release title.
   - Instruct to draft `docs/release_notes/v1.4.x/v1.4.2.md`, add row to `CHANGELOG.md`, update affected developer documentation metadata (`last_updated: 2026-10-26`, `version: v1.4.2`), and audit `AGENTS.md` and `CLAUDE.md`.
 
 *Barrier Check 3*: Explorer bundle contains `v1.4.2`. `make console-embed-check` passes. Release notes exist.
 
-#### Phase 4: Candidate Build & Qualification Gates (Sequential Lite Dispatch)
+#### Phase 4: Candidate Build & Qualification Gates (Preparation)
 
-Dispatch sequentially:
-- **Subagent 5**: `invoke_subagent` with `Role: "Release Smoke & Qualification Runner"`, `Model: flash_lite`.
+Perform this task:
+- **Task 5**: role "Release Smoke & Qualification Runner".
   - Instruct to run `make build`, `./ztd test release-smoke`, `./ztd test eval-loop`, and `./ztd test conformance-loop`.
   - Instruct to inspect `evidence/smoke-summary.json` and verification summary CSVs for strict `PASS`.
 
 *Barrier Check 4*: Candidate binary built. Smoke summary is `PASS`. Conformance and eval loops pass.
 
-#### Phase 5: Release Rehearsal & Verification Audit (Sequential Lite Dispatch)
+#### Phase 5: Release Rehearsal & Verification Audit (Preparation)
 
-Dispatch sequentially:
-- **Subagent 6**: `invoke_subagent` with `Role: "Release Rehearsal & Verification Auditor"`, `Model: flash_lite`.
+Perform this task:
+- **Task 6**: role "Release Rehearsal & Verification Auditor".
   - Instruct to run `make test-release-scripts`, `./ztd test lint`, and `./ztd test unit`.
 
 *Barrier Check 5*: All test suites pass. Rehearsal scripts verified.
@@ -372,11 +366,11 @@ Dispatch sequentially:
 #### Phase 6: Human Release Owner Handoff (Lead Orchestrator)
 
 1. The Lead Orchestrator inspects the working tree to verify that only expected release files are modified.
-2. The Lead Orchestrator MUST NOT run git commands (`INV-REL-DUTY-01`).
+2. The Lead Orchestrator MUST NOT commit, push, create a PR, or run `make release` (`INV-REL-DUTY-01`).
 3. Compile a structured Release Preparation Summary including:
    - Target version (`vX.Y.Z`) and release notes link.
    - Core qualification and smoke summary metrics (`PASS`).
-   - Compliance evidence bundle path and verification status.
+   - Compliance evidence status, if explicitly requested.
    - Verification suite outcomes.
 4. Deliver exact, copy-paste Git commands for the human Release Owner to review and execute.
 

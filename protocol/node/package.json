@@ -1,6 +1,6 @@
 {
   "name": "@ztd/protocol-node",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "license": "BUSL-1.1",
   "type": "module",
