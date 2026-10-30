@@ -178,7 +178,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Code Map](codemap.md): Package and runtime ownership maps, assignable code surfaces, agent boundaries, and directory structure.
 - [Documentation Guide](docs.md): Documentation invariants, audit workflows, generated outputs, AI agent digestibility, context caching optimizations, and documentation catalog.
 - [Testing Guide](tests.md): Four-tier test model, execution commands, fixture lifecycles, and testing invariants.
-- [Release Process](release_process.md): Version synchronization, multi-agent orchestration roles, optional compliance reporting, smoke gates, and publication workflow.
+- [Release Process](release_process.md): Version synchronization, release smoke gate, signing, and publication workflow.
 - [Troubleshooting Guide](troubleshooting.md): Diagnostics, failure modes, and recovery procedures.
 - [Cloud VM Deployment Guide](cloud_deployment.md): Architecture, prerequisites, provisioning, firewall configuration, systemd daemonization, and DNS setup for hosting the Gateway on cloud VMs.
 
@@ -459,7 +459,7 @@ make website-test
 - [Developer Guidelines](devs.md): coding invariants and repository standards.
 - [Code Map](codemap.md): package and runtime ownership maps.
 - [Testing Guide](tests.md): test execution tiers and testing invariants.
-- [Release Process](release_process.md): versioning, compliance bundles, and release workflow.
+- [Release Process](release_process.md): versioning, signing, and release workflow.
 - [Troubleshooting Guide](troubleshooting.md): diagnostics and recovery procedures.
 - [System Architecture Overview](../architecture/overview.md): platform architecture and component boundaries.
 - [Glossary](../reference/glossary.md): canonical platform definitions and vocabulary.

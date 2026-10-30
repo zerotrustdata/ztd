@@ -8,8 +8,8 @@
 # Job order:
 #   validate  -> preflight: tag/VERSION/revision agreement, dispatch ref rules
 #   credentials -> write/read/delete a probe in the real R2 bucket with the publish
-#                credential; runs on rehearsals too, so a revoked or under-scoped
-#                Cloudflare token fails `make release-rehearse`, never a tag
+#                credential, so a revoked or under-scoped Cloudflare token fails
+#                before anything is built or published; fix it and rerun
 #   build     -> build-all, checksums, prepublication artifact verification,
 #                cosign keyless signing (.sigstore.json bundles), staged release set
 #   verify-download -> execute the real publication procedure against a temporary

@@ -473,10 +473,9 @@ The Go tools under `internal/tools/` are catalogued in [Automation Scripts](../a
 
 ### Identify and assign an agent work boundary
 
-1. When orchestrating multi-agent tasks, release preparation, or CI/CD pipelines, identify the target assignable surface from [Assignable code surfaces and agent boundaries](#assignable-code-surfaces-and-agent-boundaries).
+1. When orchestrating multi-agent tasks or CI/CD pipelines, identify the target assignable surface from [Assignable code surfaces and agent boundaries](#assignable-code-surfaces-and-agent-boundaries).
 2. Constrain the subagent's role, instructions, and workspace path boundaries strictly to that surface. Subagents MUST be instructed not to inspect or mutate files outside their assigned scope (`INV-MAP-03`).
-3. For multi-agent releases (governed by [Release Process](release_process.md)), assign tasks across distinct surfaces to run in parallel without risk of merge collision or cache invalidation.
-4. Run the surface's canonical verification command upon subagent completion before accepting deliverables into the coordinating agent's context.
+3. Run the surface's canonical verification command upon subagent completion before accepting deliverables into the coordinating agent's context.
 
 ### Confirm the Cobra inventory
 

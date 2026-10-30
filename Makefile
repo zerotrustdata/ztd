@@ -1309,11 +1309,6 @@ release:
 	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
 		echo "Error: HEAD is not origin/main. Push or pull so the release commit is on origin/main, then retry."; exit 1; \
 	fi; \
-	REHEARSALS=$$(gh run list --workflow release-binary.yml --event workflow_dispatch --commit "$$(git rev-parse HEAD)" \
-		--status success --json databaseId --jq length) || exit 1; \
-	if [ "$$REHEARSALS" = "0" ]; then \
-		echo "Error: no successful release rehearsal for $$(git rev-parse --short HEAD). Run make release-rehearse first."; exit 1; \
-	fi; \
 	\
 	go run ./internal/tools/versionsync -write || exit 1; \
 	\
@@ -1335,9 +1330,10 @@ release:
 	echo "The GitHub Actions workflows will create the release and upload assets."; \
 	echo "Monitor: gh run list --workflow release-binary.yml --branch $$TAG, then gh run watch <id> --exit-status"
 
-# Rehearse the release workflow on origin/main without publishing: preflight,
-# build-all, checksums, cosign signing, staging, and re-verification of the
-# downloaded artifact set. make release requires a successful rehearsal of HEAD.
+# Optional: rehearse the release workflow on origin/main without publishing
+# (preflight, build-all, checksums, cosign signing, staging, publication against
+# a temporary draft). Use after changing release-binary.yml or scripts/release-*.sh;
+# a failed tag run is recovered with gh run rerun <id> --failed.
 .PHONY: release-rehearse
 release-rehearse:
 	@bash scripts/release-rehearse.sh

@@ -43,6 +43,14 @@ func packageLockJSON(version string) string {
 	return fmt.Sprintf("{\n  \"name\": \"x\",\n  \"version\": \"%[1]s\",\n  \"lockfileVersion\": 3,\n  \"packages\": {\n    \"\": {\n      \"name\": \"x\",\n      \"version\": \"%[1]s\"\n    },\n    \"node_modules/dep\": {\n      \"version\": \"9.9.9\"\n    }\n  }\n}\n", version)
 }
 
+func readme(version string) string {
+	return fmt.Sprintf("# ztd\n\n[![Version](https://img.shields.io/badge/version-v%s-green.svg)](CHANGELOG.md)\n", version)
+}
+
+func heroChip(version string) string {
+	return fmt.Sprintf("<span class=\"chip\"><span class=\"dot\"></span>ztd <b>v%s</b></span>\n", version)
+}
+
 // newRepo lays out a synthetic repo with every declaration at the given version.
 // website has no top-level version, mirroring the real repo.
 func newRepo(t *testing.T, platform, declared string) string {
@@ -52,6 +60,8 @@ func newRepo(t *testing.T, platform, declared string) string {
 	for _, doc := range protocolDocs {
 		writeFile(t, root, "protocol/docs/"+doc, "# Doc\n\nVersion: v"+declared+"\n")
 	}
+	writeFile(t, root, "README.md", readme(declared))
+	writeFile(t, root, "website/src/index.html", heroChip(declared))
 	for _, pkg := range npmPackages {
 		if pkg == "website" {
 			writeFile(t, root, pkg+"/package.json", "{\n  \"name\": \"site\"\n}\n")
@@ -67,8 +77,8 @@ func TestRun_CheckPassesWhenInSync(t *testing.T) {
 	root := newRepo(t, "1.2.3", "1.2.3")
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, 0, run([]string{"-check"}, root, &stdout, &stderr), stderr.String())
-	// 4 docs + 4 packages x (package.json, lock root, lock packages[""]).
-	assert.Contains(t, stdout.String(), "Version sync OK: 1.2.3 (16 declarations)")
+	// 4 docs + 2 pages + 4 packages x (package.json, lock root, lock packages[""]).
+	assert.Contains(t, stdout.String(), "Version sync OK: 1.2.3 (18 declarations)")
 }
 
 func TestRun_CheckReportsDriftWithoutWriting(t *testing.T) {
@@ -91,6 +101,8 @@ func TestRun_WriteSyncsOnlyVersionSpans(t *testing.T) {
 	assert.Equal(t, packageLockJSON("2.0.0"), lock)
 	assert.Contains(t, lock, `"version": "9.9.9"`)
 	assert.Equal(t, "# Doc\n\nVersion: v2.0.0\n", readFile(t, root, "protocol/docs/mcp.md"))
+	assert.Equal(t, readme("2.0.0"), readFile(t, root, "README.md"))
+	assert.Equal(t, heroChip("2.0.0"), readFile(t, root, "website/src/index.html"))
 
 	stdout.Reset()
 	require.Equal(t, 0, run([]string{"-check"}, root, &stdout, &stderr))
