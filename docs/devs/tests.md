@@ -281,7 +281,9 @@ make ci
 
 `ci-onboarding`, included in `make ci`, requires a running Docker daemon. It runs `test-onboarding-docker` across Ubuntu, Debian, Fedora, and Arch for build-only setup, a fresh-terminal rerun, and quickstart. A separate Ubuntu container runs build-only setup followed by contributor setup, notice and env-file checks, governed release smoke, and the real three-Operator deployment lifecycle. GitHub Actions does not run the Docker onboarding matrix; it runs locally only. This gives setup and process tests disposable hosts without changing the contributor's toolchain or occupying their Gateway ports. Missing Docker fails the gate. Logs and evidence remain under `.local.dev/onboarding/`.
 
-The `onboarding-macos` and `onboarding-windows` jobs in `.github/workflows/build-and-test.yml` run native setup on macOS and Windows runners. Native macOS Keychain and Windows DPAPI/process behavior still require those hosts. The main workflow runs full unit and integration suites on Linux and macOS; Windows runs the full unit suite and selected integration packages. Live-provider E2E and fleet scale qualification remain explicit targets.
+Automatic CI runs the full Go unit suite once, on Linux, plus the Linux keystore integration package and a three-Operator CLI lifecycle smoke. The `onboarding-macos` and `onboarding-windows` jobs in `.github/workflows/build-and-test.yml` run native setup and smoke checks, with tests selected for macOS Keychain and Windows DPAPI/process behavior. They do not repeat the full platform suites. The FIPS workflow builds the binary, checks approved mode and enforcement, and verifies static linking; it does not repeat the unit or integration suites.
+
+Full integration and enrollment burst timing tests run locally through the existing Makefile targets. To run them in GitHub Actions, manually dispatch the `CI` workflow with `full_integration` enabled; the separate Linux job has a 90-minute budget. Pull requests and pushes do not run that job. Live-provider E2E and fleet scale qualification remain explicit targets.
 
 ### Onboarding Script Tests
 

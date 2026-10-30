@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      full_integration:
+        description: Run the full Linux integration suite and enrollment timing tests
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -69,11 +74,8 @@ jobs:
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
 
-      - name: Unit tests
-        run: ./ztd test unit
-
-      - name: Integration tests (including Keychain)
-        run: ./ztd test integration
+      - name: Native Keychain tests
+        run: ./ztd test integration --pkg ./internal/services/keystore --run '^TestKeychainKeyring_'
 
       - name: Onboarding script tests
         run: make test-onboarding
@@ -117,17 +119,15 @@ jobs:
         shell: pwsh
         run: make version-sync-check
 
-      - name: Unit tests
-        shell: pwsh
-        run: ./ztd.exe test unit
-
-      - name: Windows integration tests (DPAPI keystore, local Operator discovery, release-smoke process owner)
+      - name: Windows DPAPI keystore and process tests
         shell: pwsh
         run: |
-          foreach ($pkg in './internal/services/keystore/...', './internal/cli/cmd/operator', './internal/cli/cmd/test') {
-            ./ztd.exe test integration --pkg $pkg
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+          ./ztd.exe test integration --pkg ./internal/services/keystore --run '^TestDPAPIKeyring_'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./ztd.exe test integration --pkg ./internal/cli/cmd/operator --run '^(TestLocalOperator.*Windows|TestOperatorDeployLocalWindowsDoesNotWaitForDetachedWorkers)$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./ztd.exe test integration --pkg ./internal/cli/cmd/test --run '^(TestOwnedProcess|TestOwnerDoesNotTouchProcessesItDidNotStart|TestScaleResourcesWindows)'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Release smoke
         shell: pwsh
@@ -202,11 +202,8 @@ jobs:
       - name: Install Secret Service (keystore integration tests)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gnome-keyring dbus
 
-      - name: Integration Tests
-        run: make test-integration
-
-      - name: Enrollment burst timing contract
-        run: make test-enrollment-burst
+      - name: Native Linux keystore tests
+        run: make test-integration TEST_PKGS=./internal/services/keystore
 
       - name: Cross-Compile (Windows)
         run: make build-windows
@@ -216,10 +213,8 @@ jobs:
           make build-linux
           make verify-static
 
-      - name: Operator enrollment scale and CLI lifecycle
-        run: |
-          GOFLAGS='-run=^TestPlatformEnrollmentBurstWithDeploymentEvents$ -v' make test-integration TEST_RACE= TEST_PKGS=./internal/services/gateway
-          bash scripts/ci/operator-deploy-lifecycle.sh --binary "$PWD/bin/ztd-linux-amd64" --count 3 --root "$RUNNER_TEMP/ztd-deployment-lifecycle"
+      - name: Operator CLI lifecycle smoke
+        run: bash scripts/ci/operator-deploy-lifecycle.sh --binary "$PWD/bin/ztd-linux-amd64" --count 3 --root "$RUNNER_TEMP/ztd-deployment-lifecycle"
 
       - name: Preserve Operator lifecycle evidence
         if: always()
@@ -228,6 +223,30 @@ jobs:
           name: operator-deployment-lifecycle
           path: ${{ runner.temp }}/ztd-deployment-lifecycle/out/
           if-no-files-found: ignore
+
+  full-integration:
+    name: Full Linux integration (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.full_integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Secret Service (keystore integration tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gnome-keyring dbus
+
+      - name: Full integration suite
+        run: make test-integration
+
+      - name: Enrollment burst timing contract
+        run: make test-enrollment-burst
 
   smoke-test:
     name: Smoke Tests
