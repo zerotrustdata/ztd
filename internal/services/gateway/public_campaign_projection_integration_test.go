@@ -254,7 +254,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	assert.Equal(t, evaluationSummaryFromRecords(t, verificationRecords), history.Items[1])
 	assert.Equal(t, "not_run", history.Items[0].VerifierState)
 	summary := history.Items[1]
-	assert.Equal(t, "1.10.0", summary.SchemaVersion)
+	assert.Equal(t, constants.ExplorerViewSchemaVersion, summary.SchemaVersion)
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.Equal(t, "passed", summary.VerifierState)
 	assert.InDelta(t, 1.0, summary.HeadlineMetrics.PassRate.Value, 0)

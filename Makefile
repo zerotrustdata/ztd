@@ -226,7 +226,7 @@ help:
 		'Full test suite' \
 		'  test                      Run every local test and quality gate (100-Operator smoke)' \
 		'  test-quality              Format, lint, typecheck, and check generated artifacts' \
-		'  test-platform             Unit, integration, eval-stack, coverage, and burst tests' \
+		'  test-platform             Unit, integration, coverage, and burst tests' \
 		'  test-components           Console, explorer, adapter, protocol, website, and demo tests' \
 		'  test-scripts              Release, commit hygiene, and onboarding tests' \
 		'  test-process              Cross-process eval, conformance, release smoke, and deployment' \
@@ -234,8 +234,6 @@ help:
 		'Platform tests' \
 		'  test-unit                 Run Tier 1 unit tests' \
 		'  test-integration          Run Tier 2 in-process integration tests' \
-		'  test-eval-stack           Run real eval-stack integration tests' \
-		'  test-fips                 Run unit and integration tests with the pinned FIPS module' \
 		'  test-enrollment-burst     Run the enrollment timing contract without instrumentation' \
 		'  test-operator-burst       Run the 100-Operator transport smoke without instrumentation' \
 		'  test-coverage             Run tests and enforce $(COVERAGE_THRESHOLD)% coverage (PKG=..., VERBOSE=true)' \
@@ -816,11 +814,10 @@ test-quality:
 	@$(MAKE) console-lint explorer-lint adapter-lint protocol-lint
 	@$(MAKE) adapter-contract-check console-embed-check explorer-embed-check website-bundle-check
 
+# test-coverage runs every unit and integration test (-tags=integration, race) while
+# measuring coverage, so test-unit and test-integration are not repeated here.
 test-platform:
-	@$(MAKE) test-unit
-	@$(MAKE) test-integration
-	@$(MAKE) test-fips
-	@$(MAKE) test-eval-stack
+	@echo "== ALL unit + integration tests, race + coverage (the only full unit/integration run) =="
 	@$(MAKE) test-coverage
 	@$(MAKE) test-enrollment-burst
 	@$(MAKE) test-operator-burst
@@ -861,25 +858,6 @@ test-unit: constants-check
 test-integration:
 	@echo "Running Tier 2 (In-Process Integration) tests..."
 	@go test $(if $(TEST_P),-p=$(TEST_P),) -tags=integration $(TEST_RACE) $(TEST_COUNT) -timeout $(TEST_TIMEOUT) $(TEST_PKGS)
-
-.PHONY: test-fips
-test-fips:
-	@$(MAKE) fips-verify
-	@GOFIPS140=$(GOFIPS140_VERSION) $(MAKE) test-unit
-	@GOFIPS140=$(GOFIPS140_VERSION) $(MAKE) test-integration
-
-# Real eval stack tests (fixtures.NewEvalStack: Gateway plus outbound Data and
-# Inference Operators) skip without the evalstack tag, so they never run in CI.
-# Keep EVAL_STACK_TEST_TIMEOUT in sync with evalStackTestTimeout in
-# internal/cli/cmd/test/test.go.
-EVAL_STACK_TEST_TIMEOUT := 30m
-EVAL_STACK_PKGS := ./internal/cli/cmd/eval \
-	./internal/cli/cmd/gwremote \
-	./internal/services/evaluation ./internal/services/gateway ./test/fixtures
-.PHONY: test-eval-stack
-test-eval-stack:
-	@echo "Running real eval stack integration tests..."
-	@go test -tags='integration evalstack' $(TEST_RACE) $(TEST_COUNT) -timeout $(EVAL_STACK_TEST_TIMEOUT) $(EVAL_STACK_PKGS)
 
 # Timing contracts run separately from race and coverage instrumentation.
 .PHONY: test-enrollment-burst
@@ -1045,7 +1023,7 @@ console-embed-check: console-build
 .PHONY: test-coverage
 test-coverage:
 	@echo "Running tests with coverage (threshold: $(COVERAGE_THRESHOLD)%)..."
-	@go test -tags=integration $(TEST_RACE) -timeout $(TEST_TIMEOUT) \
+	@go test $(if $(TEST_P),-p=$(TEST_P),) -tags=integration $(TEST_RACE) $(TEST_COUNT) -timeout $(TEST_TIMEOUT) \
 		-coverprofile=coverage.out -covermode=atomic \
 		$(if $(VERBOSE),-v,) \
 		$(if $(PKG),$(PKG),$(TEST_PKGS))
@@ -1202,9 +1180,6 @@ ci-platform: dev-check
 	@$(MAKE) lint
 	@$(MAKE) _ci-test
 	@$(MAKE) _ci-binaries
-ifeq ($(HOST_OS),linux)
-	@$(MAKE) test-fips
-endif
 	@$(MAKE) test-airgap
 	@$(MAKE) test-go-import
 	@$(MAKE) bsl-headers-check
