@@ -435,7 +435,7 @@ func TestLedgerService_GetFileHistory(t *testing.T) {
 	lms.CompleteMirrorWrite(result3, operatorSessionID)
 
 	// Get file history
-	history, err := lms.GetFileHistory(testFilePath, 10, operatorSessionID)
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, 10, operatorSessionID)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(history), 2) // At least 2 commits for this file
 
@@ -459,13 +459,51 @@ func TestLedgerService_GetFileHistory_DefaultLimit(t *testing.T) {
 	lms.CompleteMirrorCreate(result, "operator_session")
 
 	// Get history with zero limit (should default to 50)
-	history, err := lms.GetFileHistory(testFilePath, 0, "operator_session")
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, 0, "operator_session")
 	// History may be empty if git operations haven't completed
 	if err != nil {
 		assert.Contains(t, err.Error(), "not found")
 	} else {
 		assert.NotNil(t, history)
 	}
+}
+
+func TestLedgerService_GetFileHistoryExcludesUnrelatedCommits(t *testing.T) {
+	lms, root := setupTestLedger(t)
+	session := "file-history-isolation"
+	wanted := filepath.Join(root, "wanted.txt")
+	other := filepath.Join(root, "other.txt")
+	write := func(path, content string) *LedgerResult {
+		t.Helper()
+		result, err := lms.LedgerFileWrite(session, openTestTarget(t, lms.fileSvc, path, root))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, []byte(content), constants.PermFilePrivate))
+		require.NoError(t, lms.CompleteMirrorWrite(result, session))
+		return result
+	}
+	first := write(wanted, "original")
+	write(other, "unrelated one")
+	second := write(wanted, "changed")
+	write(other, "unrelated two")
+	history, err := lms.GetFileHistory(t.Context(), wanted, 50, session)
+	require.NoError(t, err)
+	require.Len(t, history, 3, "history must contain changes to the requested snapshot, not every later commit")
+	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash)
+	assert.Equal(t, second.LedgerHashBefore, history[1].CommitHash)
+	assert.Equal(t, first.LedgerHashAfter, history[2].CommitHash)
+	history, err = lms.GetFileHistory(t.Context(), wanted, 1, session)
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash, "the limit applies after filtering unrelated commits")
+}
+
+func TestLedgerService_GetFileHistoryHonorsCancellation(t *testing.T) {
+	lms, root := setupTestLedger(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	history, err := lms.GetFileHistory(ctx, filepath.Join(root, "cancelled.txt"), 50, "cancelled-session")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, history)
 }
 
 func TestLedgerService_GetFileAtCommit(t *testing.T) {
@@ -543,7 +581,7 @@ func TestLedgerService_RestoreFileFromCommit_MirrorsIntoExecutingSession(t *test
 	require.NoError(t, os.WriteFile(testFilePath, []byte("Original content\n"), 0o644))
 	require.NoError(t, lms.CompleteMirrorCreate(create, sourceSessionID))
 	require.NoError(t, os.WriteFile(testFilePath, []byte("Edited content\n"), 0o644))
-	sourceHistory, err := lms.GetFileHistory(testFilePath, 10, sourceSessionID)
+	sourceHistory, err := lms.GetFileHistory(t.Context(), testFilePath, 10, sourceSessionID)
 	require.NoError(t, err)
 
 	restored, err := lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), create.LedgerHashAfter, sourceSessionID, executingSessionID)
@@ -561,7 +599,7 @@ func TestLedgerService_RestoreFileFromCommit_MirrorsIntoExecutingSession(t *test
 	assert.Contains(t, diff, "-Edited content")
 	assert.Contains(t, diff, "+Original content")
 
-	after, err := lms.GetFileHistory(testFilePath, 10, sourceSessionID)
+	after, err := lms.GetFileHistory(t.Context(), testFilePath, 10, sourceSessionID)
 	require.NoError(t, err)
 	assert.Len(t, after, len(sourceHistory), "the source session ledger must not record the restore")
 }
@@ -619,7 +657,7 @@ func TestLedgerService_CompleteWorkflow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify history
-	history, err := lms.GetFileHistory(testFilePath, 10, operatorSessionID)
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, 10, operatorSessionID)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(history), 2)
 

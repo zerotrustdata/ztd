@@ -342,7 +342,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(evaluationSummaryJSON, &evaluationSummary))
 	assert.JSONEq(t, string(expectedEvaluationSummaryBody), string(evaluationSummaryJSON))
-	assert.Equal(t, explorerViewSchemaVersion, evaluationSummary.SchemaVersion)
+	assert.Equal(t, constants.ExplorerViewSchemaVersion, evaluationSummary.SchemaVersion)
 	assert.Equal(t, "evaluation_summary", evaluationSummary.Kind)
 	assert.Equal(t, "passed", evaluationSummary.VerifierState)
 	assert.Equal(t, "ratio", evaluationSummary.HeadlineMetrics.PassRate.Unit)

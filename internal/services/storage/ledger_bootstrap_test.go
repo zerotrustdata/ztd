@@ -493,7 +493,7 @@ func TestBootstrap_GetFileHistoryEmptyRepo(t *testing.T) {
 	t.Parallel()
 	svc, _ := setupBootstrapLedger(t)
 
-	history, err := svc.GetFileHistory("/some/nonexistent/file.txt", 10, "")
+	history, err := svc.GetFileHistory(t.Context(), "/some/nonexistent/file.txt", 10, "")
 	require.NoError(t, err)
 	assert.Empty(t, history)
 }

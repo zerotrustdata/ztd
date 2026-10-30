@@ -68,6 +68,7 @@ func TestAgentEvidenceIntegration_ToolCallingProbeStaysOutsideScoredTrace(t *tes
 				return realStackReadFileReply(env, "config/retry-config.env")
 			}},
 			{Content: `{"retry_limit":3}`},
+			{Content: `{"met":true,"rationale":"The reply reports retry_limit 3 from the active configuration."}`},
 		},
 	})
 	require.Equal(t, 1, env.scheduledCount)
@@ -75,7 +76,7 @@ func TestAgentEvidenceIntegration_ToolCallingProbeStaysOutsideScoredTrace(t *tes
 
 	result := env.executeNext(t)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), result.GetInvalidEvidenceDetail())
-	assert.Equal(t, 3, env.stack.Provider.ChatCount(), "probe, scored tool call, and scored final response are separate calls")
+	assert.Equal(t, 4, env.stack.Provider.ChatCount(), "probe, scored tool call, scored final response, and content judge are separate calls")
 
 	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, result.GetAssignmentId())
 	require.NoError(t, err)

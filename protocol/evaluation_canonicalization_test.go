@@ -49,6 +49,9 @@ var failedPublicAssignmentResultVectorJSON []byte
 //go:embed vectors/eval/public_live_event.json
 var publicLiveEventVectorJSON []byte
 
+//go:embed vectors/eval/public_live_event_judge.json
+var publicLiveJudgeEventVectorJSON []byte
+
 //go:embed vectors/eval/model_assignment_result_enriched.json
 var enrichedModelAssignmentResultVectorJSON []byte
 
@@ -423,4 +426,41 @@ func TestEvaluationValuePreservesTypedArtifactReference(t *testing.T) {
 	require.NoError(t, evalv1.UnmarshalCanonical(encoded, reparsed))
 	assert.True(t, proto.Equal(value, reparsed))
 	assert.Equal(t, reference.GetArtifactId(), reparsed.GetArtifactReference().GetArtifactId())
+}
+
+// TestPublicLiveJudgeEventCanonicalizationMatchesCrossLanguageVector pins the
+// judge block's wire form, which the Explorer decodes from the same vector:
+// enum names, 64-bit integers as decimal strings, and measured zeros kept.
+func TestPublicLiveJudgeEventCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector evaluationCanonicalizationVector
+	require.NoError(t, json.Unmarshal(publicLiveJudgeEventVectorJSON, &vector))
+	require.Equal(t, "PublicLiveEvent", vector.MessageType)
+	event := func() *evalv1.PublicLiveEvent {
+		return &evalv1.PublicLiveEvent{
+			SchemaVersion: "1.11.0", Kind: "judge_completed", DatasetId: "ds-live-run-1", QualityState: "live_in_progress",
+			ObservedAt: "2026-10-30T12:00:05.000Z", SourceRevisionLabel: "ztd-eval-campaign", Release: "v1.6.1",
+			ReleaseBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_RECORDED, SourceRevision: "abc123",
+			EventId: "run-1:assign-1:judge:judge-criterion-1:event", RunId: "run-1", AssignmentId: "assign-1",
+			VariantId: "gemma4-e2b", Role: "primary", LifecycleStatus: "running", Completed: proto.Uint32(0), Total: proto.Uint32(5),
+			TaskId: "tool-select-constraints",
+			Judge: &evalv1.PublicLiveJudgeActivity{
+				JudgeVariantId: "qwen3-5-4b", ServedModelTag: "qwen3.5:4b", ModelDigest: "81fb60c7daa80fc1123380b98970b320ae2f6c2bf1ee7ab4f5d7a5b2ef2e7ec4",
+				Subject: evalv1.JudgeSubject_JUDGE_SUBJECT_CRITERION, CriterionId: "refusal", Index: 1, Count: 2,
+				RubricVersion: "criterion-v2", State: evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_MET, Rationale: "Refuses to delete the audit log.",
+				ProviderAttemptId: "judge-criterion-1", TransactionId: "tx-1", UsageReported: true,
+				PromptTokens: proto.Uint32(812), CompletionTokens: proto.Uint32(40), ThinkingTokens: proto.Uint32(0),
+				LoadDurationNs: proto.Uint64(0), PromptEvalDurationNs: proto.Uint64(400000000), GenerationDurationNs: proto.Uint64(800000000),
+				TotalDurationNs: proto.Uint64(1200000000), TimeToFirstTokenNs: proto.Uint64(410000000), FinishReason: "stop",
+				ExecutedAtUnixMs: proto.Int64(1793361605000), DispatchElapsedNs: proto.Uint64(1300000000),
+			},
+		}
+	}()
+	canonical, err := evalv1.MarshalCanonical(event)
+	require.NoError(t, err)
+	assert.Equal(t, vector.CanonicalJSON, string(canonical))
+	assert.Contains(t, string(canonical), `"thinking_tokens":0`, "a measured zero is kept")
+	assert.Contains(t, string(canonical), `"load_duration_ns":"0"`)
+	reparsed := &evalv1.PublicLiveEvent{}
+	require.NoError(t, evalv1.UnmarshalCanonical(canonical, reparsed))
+	assert.True(t, proto.Equal(event, reparsed))
 }

@@ -20,6 +20,11 @@ type RouterLabels struct {
 	Complexity string `json:"complexity"`
 	Intent     string `json:"intent"`
 	Posture    string `json:"posture"`
+	// Alternatives are explicit allowed labels, including the primary label.
+	// An absent list retains the single-label comparison used by older gold.
+	ComplexityAlternatives []string `json:"complexity_alternatives,omitempty"`
+	IntentAlternatives     []string `json:"intent_alternatives,omitempty"`
+	PostureAlternatives    []string `json:"posture_alternatives,omitempty"`
 }
 
 // RiskLabel is the expected risk level of one labelled subject.
@@ -64,6 +69,13 @@ func (l Labels) Validate() error {
 		if norm(r.Complexity) == "" || norm(r.Intent) == "" || norm(r.Posture) == "" {
 			return fmt.Errorf("router labels: complexity, intent and posture are required: %w",
 				constants.ErrInvestigationScenarioInvalid)
+		}
+		for _, alternatives := range [][]string{r.ComplexityAlternatives, r.IntentAlternatives, r.PostureAlternatives} {
+			for _, value := range alternatives {
+				if norm(value) == "" {
+					return fmt.Errorf("router labels: empty alternative: %w", constants.ErrInvestigationScenarioInvalid)
+				}
+			}
 		}
 	}
 	for _, risk := range l.Risks {

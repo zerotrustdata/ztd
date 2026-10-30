@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -30,6 +31,20 @@ type Dispatcher interface {
 
 // Subject names the SUT output a score grades.
 type Subject string
+
+// Proto is the subject's wire value.
+func (s Subject) Proto() evalv1.JudgeSubject {
+	switch s {
+	case SubjectCriterion:
+		return evalv1.JudgeSubject_JUDGE_SUBJECT_CRITERION
+	case SubjectFinalReply:
+		return evalv1.JudgeSubject_JUDGE_SUBJECT_FINAL_REPLY
+	case SubjectMemory:
+		return evalv1.JudgeSubject_JUDGE_SUBJECT_MEMORY
+	default:
+		return evalv1.JudgeSubject_JUDGE_SUBJECT_UNSPECIFIED
+	}
+}
 
 const (
 	SubjectFinalReply Subject = "final_reply"
@@ -63,6 +78,25 @@ type Config struct {
 	AssignmentID        string
 	ScenarioID          string
 	NewID               func(prefix string) string
+	// Observer, when set, is told when each dispatch starts and completes.
+	Observer Observer
+	// Clock times each dispatch for Observer; nil is time.Now.
+	Clock func() time.Time
+}
+
+// Observer receives each judgment as it happens. Started gets the score once
+// its request is built, before dispatch; Completed gets the final score and the
+// dispatch's wall time. A request that cannot be built is only Completed.
+type Observer interface {
+	Started(Score)
+	Completed(Score, time.Duration)
+}
+
+// Position is a judgment's 1-based place among the judgments of its phase:
+// the judged criteria, or the quality subjects of one trace.
+type Position struct {
+	Index int
+	Count int
 }
 
 // RubricVersion freezes the rubric version used for diagnosis quality evaluation.
@@ -88,10 +122,12 @@ type Criterion struct {
 // Criterion and Met; the other subjects carry Value.
 type Score struct {
 	Subject          Subject
-	Status           string // "SCORED" | "FAILED"
-	Value            int    // 1..5 when SCORED, zero for SubjectCriterion
-	Criterion        string // the criterion ID, SubjectCriterion only
-	Met              bool   // the verdict, SubjectCriterion only
+	Position         Position
+	Status           string              // "SCORED" | "FAILED"
+	Failure          evalv1.JudgeFailure // set when FAILED
+	Value            int                 // 1..5 when SCORED, zero for SubjectCriterion
+	Criterion        string              // the criterion ID, SubjectCriterion only
+	Met              bool                // the verdict, SubjectCriterion only
 	Rationale        string
 	JudgeModelTag    string
 	JudgeModelDigest string
@@ -175,12 +211,20 @@ func New(d Dispatcher, cfg Config) (*Judge, error) {
 // last POST_TURN MEMORY_WRITER step. It never returns an error for a judge
 // failure; that is a FAILED score.
 func (j *Judge) ScoreTrace(ctx context.Context, trace *evalv1.AgentTrace, objective string, memoryFacts []string) []Score {
-	var scores []Score
+	type job struct {
+		subject Subject
+		user    string
+	}
+	var jobs []job
 	if reply := trace.GetFinalReply(); reply != "" {
-		scores = append(scores, j.score(ctx, SubjectFinalReply, finalReplyUserMessage(objective, reply)))
+		jobs = append(jobs, job{SubjectFinalReply, finalReplyUserMessage(objective, reply)})
 	}
 	if memory, ok := lastPostTurnMemory(trace); ok {
-		scores = append(scores, j.score(ctx, SubjectMemory, memoryUserMessage(memoryFacts, memory)))
+		jobs = append(jobs, job{SubjectMemory, memoryUserMessage(memoryFacts, memory)})
+	}
+	scores := make([]Score, 0, len(jobs))
+	for i, next := range jobs {
+		scores = append(scores, j.score(ctx, next.subject, Position{Index: i + 1, Count: len(jobs)}, next.user))
 	}
 	return scores
 }
@@ -208,11 +252,11 @@ func lastPostTurnMemory(trace *evalv1.AgentTrace) (string, bool) {
 // campaign-authorized dispatch. An empty reply or an incomplete criterion is a
 // FAILED score without a dispatch, never a met verdict; a judge failure is a
 // FAILED score too. It makes no retries.
-func (j *Judge) ScoreCriterion(ctx context.Context, criterion Criterion, objective, reply string) Score {
-	result := j.newScore(SubjectCriterion, CriterionRubricVersion)
+func (j *Judge) ScoreCriterion(ctx context.Context, criterion Criterion, position Position, objective, reply string) Score {
+	result := j.newScore(SubjectCriterion, position, CriterionRubricVersion)
 	result.Criterion = criterion.ID
 	if criterion.ID == "" || criterion.Statement == "" || reply == "" {
-		return failedScore(result, fmt.Errorf("evaluation judge: score criterion: %w", constants.ErrMissingRequiredField))
+		return j.requestInvalid(result, fmt.Errorf("evaluation judge: score criterion: %w", constants.ErrMissingRequiredField))
 	}
 	return j.dispatch(ctx, result, prompt{
 		rubric:  criterionRubric,
@@ -224,11 +268,11 @@ func (j *Judge) ScoreCriterion(ctx context.Context, criterion Criterion, objecti
 
 // ScoreObjectiveCriterion is ScoreCriterion against a typed Objective, under
 // ObjectiveCriterionRubricVersion.
-func (j *Judge) ScoreObjectiveCriterion(ctx context.Context, criterion Criterion, objective Objective, reply string) Score {
-	result := j.newScore(SubjectCriterion, ObjectiveCriterionRubricVersion)
+func (j *Judge) ScoreObjectiveCriterion(ctx context.Context, criterion Criterion, position Position, objective Objective, reply string) Score {
+	result := j.newScore(SubjectCriterion, position, ObjectiveCriterionRubricVersion)
 	result.Criterion = criterion.ID
 	if criterion.ID == "" || criterion.Statement == "" || reply == "" || objective.Task == "" {
-		return failedScore(result, fmt.Errorf("evaluation judge: score objective criterion: %w", constants.ErrMissingRequiredField))
+		return j.requestInvalid(result, fmt.Errorf("evaluation judge: score objective criterion: %w", constants.ErrMissingRequiredField))
 	}
 	return j.dispatch(ctx, result, prompt{
 		rubric:  objectiveCriterionRubric,
@@ -266,9 +310,34 @@ func VerifyCriterionResult(cfg Config, providerAttemptID string, result *operato
 	return decodeCriterionVerdict(result)
 }
 
+// VerifyQualityResult is VerifyCriterionResult for a 1..5 quality judgment.
+func VerifyQualityResult(cfg Config, providerAttemptID string, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) (int, string, error) {
+	if cfg.Variant == nil || cfg.Variant.GetServedModelTag() == "" {
+		return 0, "", fmt.Errorf("evaluation judge: verify quality result: %w", constants.ErrMissingRequiredField)
+	}
+	if err := validateResult(cfg, providerAttemptID, result, receipt); err != nil {
+		return 0, "", err
+	}
+	return decodeJudgment(result)
+}
+
+// ResultFailure is the failure code of an error VerifyCriterionResult or
+// VerifyQualityResult returned: a verdict that does not decode, a result digest
+// that does not bind, or a result that answers another dispatch.
+func ResultFailure(err error) evalv1.JudgeFailure {
+	switch {
+	case errors.Is(err, constants.ErrJudgeResponseInvalid):
+		return evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID
+	case errors.Is(err, constants.ErrInferenceResultDigest):
+		return evalv1.JudgeFailure_JUDGE_FAILURE_RESULT_DIGEST
+	default:
+		return evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH
+	}
+}
+
 // score runs one 1..5 quality dispatch for one subject. It makes no retries.
-func (j *Judge) score(ctx context.Context, subject Subject, userText string) Score {
-	return j.dispatch(ctx, j.newScore(subject, RubricVersion), prompt{
+func (j *Judge) score(ctx context.Context, subject Subject, position Position, userText string) Score {
+	return j.dispatch(ctx, j.newScore(subject, position, RubricVersion), prompt{
 		rubric:  rubricFor(subject),
 		schema:  judgmentJSONSchema,
 		user:    userText,
@@ -276,9 +345,10 @@ func (j *Judge) score(ctx context.Context, subject Subject, userText string) Sco
 	})
 }
 
-func (j *Judge) newScore(subject Subject, rubricVersion string) Score {
+func (j *Judge) newScore(subject Subject, position Position, rubricVersion string) Score {
 	return Score{
 		Subject:          subject,
+		Position:         position,
 		Status:           StatusScored,
 		JudgeModelTag:    j.cfg.Variant.GetServedModelTag(),
 		JudgeModelDigest: j.cfg.Variant.GetModelDigest(),
@@ -306,10 +376,24 @@ func (p prompt) messages() []*operatorv1.InferenceMessage {
 func (j *Judge) dispatch(ctx context.Context, result Score, p prompt) Score {
 	dispatchReq, providerAttemptID, err := j.buildDispatchRequest(result.Subject, p)
 	if err != nil {
-		return failedScore(result, err)
+		return j.requestInvalid(result, err)
 	}
 	result.ProviderAttemptID = providerAttemptID
 	result.Messages = dispatchReq.GetMessages()
+	if j.cfg.Observer != nil {
+		j.cfg.Observer.Started(result)
+	}
+	started := j.now()
+	result = j.exchange(ctx, result, dispatchReq, p)
+	if j.cfg.Observer != nil {
+		j.cfg.Observer.Completed(result, j.now().Sub(started))
+	}
+	return result
+}
+
+// exchange sends a built request and resolves its response into the score;
+// each failing step names its failure code.
+func (j *Judge) exchange(ctx context.Context, result Score, dispatchReq *operatorv1.InferenceDispatchRequest, p prompt) Score {
 	resp, err := j.dispatcher.DispatchInference(ctx, dispatchReq)
 	if resp != nil {
 		result.TransactionID = resp.GetTransactionId()
@@ -317,15 +401,32 @@ func (j *Judge) dispatch(ctx context.Context, result Score, p prompt) Score {
 		result.Result = resp.GetResult()
 	}
 	if err != nil {
-		return failedScore(result, err)
+		return failedScore(result, evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED, err)
 	}
-	if err := j.validateResponse(providerAttemptID, resp); err != nil {
-		return failedScore(result, err)
+	if err := j.validateResponse(result.ProviderAttemptID, resp); err != nil {
+		return failedScore(result, ResultFailure(err), err)
 	}
 	if err := p.resolve(&result, resp.GetResult()); err != nil {
-		return failedScore(result, err)
+		return failedScore(result, evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID, err)
 	}
 	return result
+}
+
+// requestInvalid fails a judgment whose request could not be built; Observer
+// is told it completed, since it never started.
+func (j *Judge) requestInvalid(result Score, err error) Score {
+	result = failedScore(result, evalv1.JudgeFailure_JUDGE_FAILURE_REQUEST_INVALID, err)
+	if j.cfg.Observer != nil {
+		j.cfg.Observer.Completed(result, 0)
+	}
+	return result
+}
+
+func (j *Judge) now() time.Time {
+	if j.cfg.Clock != nil {
+		return j.cfg.Clock()
+	}
+	return time.Now()
 }
 
 func resolveQuality(score *Score, result *operatorv1.InferenceResult) error {
@@ -348,8 +449,9 @@ func resolveCriterion(score *Score, result *operatorv1.InferenceResult) error {
 	return nil
 }
 
-func failedScore(score Score, err error) Score {
+func failedScore(score Score, failure evalv1.JudgeFailure, err error) Score {
 	score.Status = StatusFailed
+	score.Failure = failure
 	score.Detail = err.Error()
 	return score
 }

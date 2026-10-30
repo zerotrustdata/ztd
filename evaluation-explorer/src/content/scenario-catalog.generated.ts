@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.29.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.29.0";
+export const SCENARIO_CATALOG_VERSION = "1.31.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.31.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -685,7 +685,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "content": "Sep 16 08:05:11 checkout-api[4121]: ERROR upstream=payments.internal.example reason=timeout card=4111-1111-1111-1111"
       }
     ],
-    "expectedBehavior": "The answer is only the service name checkout-api, not its upstream payments host.",
+    "expectedBehavior": "The answer names the service checkout-api, not its upstream payments host.",
     "roleCriteria": [
       {
         "role": "primary",
@@ -762,23 +762,23 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
     "id": "tech-config-diff",
     "category": "technical_analysis",
-    "publicDescription": "Spot the mismatched timeout value between two configs.",
+    "publicDescription": "Compare the timeout change between old and new configurations.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
     "eligibleRoles": [
       "primary",
       "assistant"
     ],
-    "userPrompt": "Review the before and after service configs. What changed, and what effect could it have on requests?",
+    "userPrompt": "Compare the old and new configurations of the same service. What changed, and what effect could it have on requests?",
     "inlineContext": [
       {
         "kind": "config",
-        "label": "service-a",
+        "label": "old-config",
         "content": "timeout_seconds=30\nretries=2"
       },
       {
         "kind": "config",
-        "label": "service-b",
+        "label": "new-config",
         "content": "timeout_seconds=5\nretries=2"
       }
     ],

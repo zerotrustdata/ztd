@@ -545,7 +545,8 @@ function assertGradeSummaries(value: unknown, path: string): void {
   }
 }
 
-function assertUint64String(value: unknown, path: string): void {
+/** A protojson 64-bit integer: a decimal string within the browser-safe range. */
+export function assertUint64String(value: unknown, path: string): asserts value is string {
   assert(typeof value === 'string' && /^(0|[1-9][0-9]*)$/u.test(value), path, 'expected decimal uint64 string');
   assert(BigInt(value) <= BigInt(Number.MAX_SAFE_INTEGER), path, 'numeric value exceeds browser-safe range');
 }

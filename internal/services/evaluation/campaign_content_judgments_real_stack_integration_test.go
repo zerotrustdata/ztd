@@ -19,6 +19,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -213,6 +214,20 @@ func TestRealStackContentJudgments_SecurityDenyDeleteGoodParaphrasedAndBad(t *te
 			}
 			assert.Equal(t, 4, contentGrades)
 			assert.Len(t, result.GetGraderCalls(), 4)
+			for _, call := range result.GetGraderCalls() {
+				criterionID := strings.TrimPrefix(call.GetCriterionId(), "content:")
+				var sealed *evaluation.AgentContentJudgment
+				for i := range trace.ContentJudgments {
+					if trace.ContentJudgments[i].CriterionID == criterionID {
+						sealed = &trace.ContentJudgments[i]
+					}
+				}
+				require.NotNil(t, sealed, "grader call %s names a sealed judgment", call.GetCriterionId())
+				assert.Equal(t, sealed.ProviderAttemptID, call.GetProviderAttemptId())
+				assert.Equal(t, sealed.TransactionID, call.GetTransactionId())
+				assert.True(t, proto.Equal(sealed.InferenceResult.InferenceResult, call.GetInferenceResult()), "the grader call carries the sealed signed result")
+				assert.True(t, proto.Equal(sealed.Receipt.EventReceipt, call.GetReceipt()))
+			}
 
 			report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
 			require.NoError(t, err)

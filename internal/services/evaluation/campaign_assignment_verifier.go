@@ -19,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -85,7 +86,7 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 		failures = append(failures, "result digest validation failed: "+err.Error())
 	}
 	failures = append(failures, v.verifyHomogeneousAssignment(req)...)
-	failures = append(failures, verifyAssignmentJudge(req.Binding, req.Result)...)
+	failures = append(failures, verifyAssignmentJudge(req, req.Result)...)
 	if req.ProviderObservationReader != nil && len(scoredModelInferences(req.Result)) > 0 {
 		observationFailures, _ := req.ProviderObservationReader.VerifyAssignmentProviderObservations(ctx, req.Result, req.ProviderObservationPolicy)
 		failures = append(failures, observationFailures...)
@@ -99,13 +100,17 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 
 // verifyAssignmentJudge binds every stored semantic grade and grader call to
 // the campaign's frozen judge, so a result graded by any other model, the
-// subject included, does not verify. A campaign frozen before pinned judging
-// has no judge to bind and keeps its stored attribution.
-func verifyAssignmentJudge(binding CampaignExecutionBinding, result *evalv1.EvaluationAssignmentResult) []string {
-	if binding.JudgeVariant == nil {
+// subject included, does not verify, and checks each grader call's signed
+// evidence. A judged result from a campaign without a frozen judge does not
+// verify.
+func verifyAssignmentJudge(req CampaignAssignmentVerificationRequest, result *evalv1.EvaluationAssignmentResult) []string {
+	if req.Binding.JudgeVariant == nil {
+		if len(result.GetSemanticGrades()) > 0 || len(result.GetGraderCalls()) > 0 {
+			return []string{"judged result has no frozen campaign judge"}
+		}
 		return nil
 	}
-	judgeID := binding.JudgeVariant.GetVariantId()
+	judgeID := req.Binding.JudgeVariant.GetVariantId()
 	var failures []string
 	for _, grade := range result.GetSemanticGrades() {
 		if grade.GetJudgeVariantId() != judgeID {
@@ -117,7 +122,108 @@ func verifyAssignmentJudge(binding CampaignExecutionBinding, result *evalv1.Eval
 			failures = append(failures, fmt.Sprintf("grader call %s made by %q, not the frozen judge %q", call.GetGraderCallId(), call.GetJudgeVariantId(), judgeID))
 		}
 	}
+	return append(failures, verifyGraderCalls(req, result)...)
+}
+
+// verifyGraderCalls proves each grader call is the governed judge inference
+// behind exactly one evidence-bound semantic grade: its receipt verifies
+// against the trace's pinned Inference anchors, its signed result answers the
+// recorded dispatch, and the verdict decoded from that result is the grade's.
+func verifyGraderCalls(req CampaignAssignmentVerificationRequest, result *evalv1.EvaluationAssignmentResult) []string {
+	grades := make(map[string]*evalv1.SemanticGrade)
+	for _, grade := range result.GetSemanticGrades() {
+		if grade.GetGraderCallRef() != nil {
+			grades[grade.GetCriterionId()] = grade
+		}
+	}
+	if len(result.GetGraderCalls()) == 0 && len(grades) == 0 {
+		return nil
+	}
+	if req.AgentTrace == nil {
+		return []string{"grader calls require the persisted agent trace"}
+	}
+	cfg, err := campaignJudgeConfig(AssignmentExecutionRequest{Assignment: req.Assignment, Binding: req.Binding}, nil)
+	if err != nil {
+		return []string{"judge config: " + err.Error()}
+	}
+	receipts := newJudgeReceiptCheck(req.AgentTrace)
+	var failures []string
+	seen := make(map[string]bool, len(grades))
+	for _, call := range result.GetGraderCalls() {
+		grade := grades[call.GetCriterionId()]
+		if grade == nil || seen[call.GetCriterionId()] {
+			failures = append(failures, fmt.Sprintf("grader call %s names no evidence-bound semantic grade or repeats %q", call.GetGraderCallId(), call.GetCriterionId()))
+			continue
+		}
+		seen[call.GetCriterionId()] = true
+		if err := verifyGraderCall(cfg, receipts, req.AgentTrace, call, grade); err != nil {
+			failures = append(failures, fmt.Sprintf("grader call %s: %v", call.GetGraderCallId(), err))
+		}
+	}
+	for criterionID, grade := range grades {
+		if !seen[criterionID] {
+			failures = append(failures, fmt.Sprintf("semantic grade %s cites a grader call it does not have", grade.GetGradeId()))
+		}
+	}
 	return failures
+}
+
+func verifyGraderCall(cfg judge.Config, receipts judgeReceiptCheck, trace *AgentTrace, call *evalv1.GraderModelCallRecord, grade *evalv1.SemanticGrade) error {
+	if call.GetProviderAttemptId() == "" || call.GetTransactionId() == "" || call.GetInferenceResult() == nil || call.GetReceipt() == nil {
+		return fmt.Errorf("signed judge evidence: %w", constants.ErrMissingRequiredField)
+	}
+	if err := receipts.verify(judge.Score{Status: judge.StatusScored, TransactionID: call.GetTransactionId(), Receipt: call.GetReceipt(), Result: call.GetInferenceResult()}); err != nil {
+		return err
+	}
+	if criterionID, ok := strings.CutPrefix(call.GetCriterionId(), contentCriterionPrefix); ok {
+		return verifyCriterionGraderCall(cfg, trace, criterionID, call, grade)
+	}
+	return verifyQualityGraderCall(cfg, call, grade)
+}
+
+// verifyCriterionGraderCall binds a criterion grader call to the verdict the
+// trace sealed for that criterion and to the grade read from it.
+func verifyCriterionGraderCall(cfg judge.Config, trace *AgentTrace, criterionID string, call *evalv1.GraderModelCallRecord, grade *evalv1.SemanticGrade) error {
+	judgment, ok := trace.contentJudgment(criterionID)
+	if !ok || judgment.ProviderAttemptID != call.GetProviderAttemptId() || judgment.TransactionID != call.GetTransactionId() || judgment.RubricVersion != call.GetRubricVersion() {
+		return fmt.Errorf("criterion %q is not the judgment sealed in the trace: %w", criterionID, constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	met, rationale, err := judge.VerifyCriterionResult(cfg, call.GetProviderAttemptId(), call.GetInferenceResult(), call.GetReceipt())
+	if err != nil {
+		return err
+	}
+	passed := grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+	if met != passed || rationale != grade.GetDetail() {
+		return fmt.Errorf("criterion %q verdict does not match the signed result: %w", criterionID, constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	return nil
+}
+
+// verifyQualityGraderCall checks a quality grade against the signed result: a
+// decoded score is the grade's score and verdict, and a result that does not
+// answer as the rubric requires is a failed judgment.
+func verifyQualityGraderCall(cfg judge.Config, call *evalv1.GraderModelCallRecord, grade *evalv1.SemanticGrade) error {
+	if call.GetCriterionId() != diagnosisQualityCriterionID && call.GetCriterionId() != memoryQualityCriterionID {
+		return fmt.Errorf("unknown judged criterion %q: %w", call.GetCriterionId(), constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	if call.GetRubricVersion() != judge.RubricVersion {
+		return fmt.Errorf("rubric %q is not %q: %w", call.GetRubricVersion(), judge.RubricVersion, constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	value, rationale, err := judge.VerifyQualityResult(cfg, call.GetProviderAttemptId(), call.GetInferenceResult(), call.GetReceipt())
+	status := grade.GetStatus()
+	switch {
+	case err != nil:
+		if status != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL || !strings.HasPrefix(grade.GetDetail(), "judge failed: ") {
+			return fmt.Errorf("a failed judgment is graded %s: %w", status, constants.ErrEvaluationContentJudgmentMismatch)
+		}
+	case !strings.HasPrefix(grade.GetDetail(), qualityGradeDetail(value, call.GetRubricVersion(), rationale)):
+		return fmt.Errorf("grade detail does not record the signed score: %w", constants.ErrEvaluationContentJudgmentMismatch)
+	case value < 3 && status != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
+		value >= 3 && status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
+		status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE && call.GetCriterionId() != diagnosisQualityCriterionID:
+		return fmt.Errorf("grade %s does not follow from the signed score %d: %w", status, value, constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	return nil
 }
 
 // verifyHomogeneousAssignment binds a model-role result to its persisted agent

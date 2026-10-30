@@ -27,6 +27,7 @@ import type {
   EscalationDisposition,
   EvaluationSummary,
   LiveEvent,
+  LiveJudgeActivity,
   LifecycleStatus,
   MetricValue,
   ModelRole,
@@ -319,6 +320,36 @@ export function assignmentLifecycleEvents(
     if (event.assignment_id === assignmentId && !byId.has(event.event_id)) byId.set(event.event_id, event);
   }
   return [...byId.values()].sort(compareStreamEventsOldestFirst);
+}
+
+/** One assignment's row identity in the live stream. Row-attached activity
+ *  (Tribunal votes, judge activity) joins rows by this key only, never by time. */
+export function assignmentRowKey(event: LiveEvent): string {
+  return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
+}
+
+export function isJudgeEvent(event: LiveEvent): boolean {
+  return event.judge !== undefined && (event.kind === 'judge_started' || event.kind === 'judge_completed');
+}
+
+const JUDGE_PHASE_ORDER: Record<LiveJudgeActivity['subject'], number> = { criterion: 0, final_reply: 1, memory: 1 };
+
+/** Judge activity per assignment row: one entry per judgment, its completion
+ *  over its start, ordered by phase (criteria, then quality) and position.
+ *  Events without an assignment never attach to a row. */
+export function judgeActivityByAssignment(events: LiveEvent[]): Map<string, LiveJudgeActivity[]> {
+  const rows = new Map<string, Map<string, LiveJudgeActivity>>();
+  for (const event of events) {
+    if (!event.assignment_id || !isJudgeEvent(event) || !event.judge) continue;
+    const key = assignmentRowKey(event);
+    const judgments = rows.get(key) ?? new Map<string, LiveJudgeActivity>();
+    rows.set(key, judgments);
+    const judgment = event.judge.provider_attempt_id ?? event.event_id;
+    const known = judgments.get(judgment);
+    if (!known || known.state === 'judging') judgments.set(judgment, event.judge);
+  }
+  return new Map([...rows].map(([key, judgments]) => [key, [...judgments.values()].sort((left, right) =>
+    JUDGE_PHASE_ORDER[left.subject] - JUDGE_PHASE_ORDER[right.subject] || left.index - right.index)]));
 }
 
 /** Live stream rows, newest first. Each assignment is one row showing its

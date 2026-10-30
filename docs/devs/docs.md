@@ -272,6 +272,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Commercial License and Services Terms](../../website/content/terms.md): Commercial license plans, production limits, and services terms for purchases on zerotrustdata.io, published at `/terms/`.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
+- [Criterion Judge Calibration](../../eval/judge-calibration/README.md): Recorded diagnostic cases and controlled judge comparison procedure.
 - [Evaluation Campaign README](../../eval/README.md): Evaluation campaign data layout, fixtures, and directory conventions.
 - [Frontend Adapter Contract Pack](../../ztd-adapter/contract-pack/README.md): Audited frontend adapter contract pack reference and integration guide.
 - [Frontend Contract Pack Builder Prompt](../../ztd-adapter/contract-pack/builder-prompt.md): AI prompt specification for generating conforming observe frontends.
@@ -318,6 +319,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 - [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
 - [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Trust and evidence integrity, removal of ungoverned data API writes, signed audit checkpoints, judge-scored evals, and the llama.cpp inference provider.
+- [v1.6.1 Draft Release Notes](../release_notes/v1.6.x/v1.6.1.md): Unreleased evaluation correctness and release reliability changes.
 - [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 
 ## Procedures

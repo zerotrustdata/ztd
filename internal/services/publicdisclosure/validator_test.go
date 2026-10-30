@@ -192,6 +192,58 @@ func TestValidatePublicLiveEventIsTypedAndFailsClosed(t *testing.T) {
 	}
 }
 
+func TestValidatePublicLiveJudgeEventsKeepTheirShape(t *testing.T) {
+	const row = `"schema_version":"1.11.0","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-10-30T12:00:00Z","event_id":"run-1:a-1:judge:judge-criterion-1:event","run_id":"run-1","assignment_id":"a-1","task_id":"tool-select","variant_id":"gemma4-e2b","role":"primary","lifecycle_status":"running","completed":0,"total":4`
+	const identity = `"judge_variant_id":"qwen3-5-4b","served_model_tag":"qwen3.5:4b","model_digest":"abc","rubric_version":"criterion-v2","index":1,"count":2,"provider_attempt_id":"judge-criterion-1"`
+	event := func(kind, judge string) string {
+		return `{` + row + `,"kind":"` + kind + `","judge":{` + identity + judge + `}}`
+	}
+	criterion := `,"subject":"JUDGE_SUBJECT_CRITERION","criterion_id":"refusal"`
+	reply := `,"subject":"JUDGE_SUBJECT_FINAL_REPLY"`
+	verdict := `,"transaction_id":"tx-1","usage_reported":true,"prompt_tokens":812,"completion_tokens":40,"total_duration_ns":"1200000000","executed_at_unix_ms":"1793361600000","dispatch_elapsed_ns":"1300000000"`
+	tests := []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{name: "judging a criterion", ok: true, body: event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING"`)},
+		{name: "criterion met with signed usage", ok: true, body: event("judge_completed", criterion+`,"state":"JUDGE_ACTIVITY_STATE_MET","rationale":"refuses"`+verdict)},
+		{name: "final reply scored", ok: true, body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4,"rationale":"clear"`+verdict)},
+		{name: "failed judgment names its code", ok: true, body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_FAILED","failure":"JUDGE_FAILURE_VERDICT_INVALID","transaction_id":"tx-1"`)},
+		{name: "unsent request has no attempt", ok: true, body: `{` + row + `,"kind":"judge_completed","judge":{"judge_variant_id":"j","served_model_tag":"t","model_digest":"d","rubric_version":"r","index":1,"count":1` + reply + `,"state":"JUDGE_ACTIVITY_STATE_FAILED","failure":"JUDGE_FAILURE_REQUEST_INVALID"}}`},
+		{name: "judge on another kind", body: `{` + row + `,"kind":"stage_updated","judge":{` + identity + reply + `,"state":"JUDGE_ACTIVITY_STATE_JUDGING"}}`},
+		{name: "judge kind without judge", body: `{` + row + `,"kind":"judge_started"}`},
+		{name: "metric on a judge event", body: strings.Replace(event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING"`), `"total":4`, `"total":4,"metric_delta":{"latency_ms":{"value":1}}`, 1)},
+		{name: "stage label on a judge event", body: strings.Replace(event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING"`), `"total":4`, `"total":4,"stage_label":"judge"`, 1)},
+		{name: "judge event without the subject variant", body: strings.Replace(event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING"`), `"variant_id":"gemma4-e2b",`, ``, 1)},
+		{name: "started with a verdict", body: event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_MET"`)},
+		{name: "started with usage", body: event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING","total_duration_ns":"1"`)},
+		{name: "completed still judging", body: event("judge_completed", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING"`+verdict)},
+		{name: "scored criterion", body: event("judge_completed", criterion+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4`+verdict)},
+		{name: "met quality subject", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_MET"`+verdict)},
+		{name: "score outside 1..5", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":6`+verdict)},
+		{name: "failed without a code", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_FAILED"`)},
+		{name: "verdict with a failure code", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4,"failure":"JUDGE_FAILURE_DISPATCH_FAILED"`+verdict)},
+		{name: "verdict without a transaction", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4`)},
+		{name: "tokens without usage_reported", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4,"transaction_id":"tx-1","prompt_tokens":3`)},
+		{name: "criterion_id on a quality subject", body: event("judge_started", reply+`,"criterion_id":"refusal","state":"JUDGE_ACTIVITY_STATE_JUDGING"`)},
+		{name: "index past count", body: strings.Replace(event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING"`), `"index":1`, `"index":3`, 1)},
+		{name: "long rationale is verbatim evidence", ok: true, body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4,"rationale":"`+strings.Repeat("x", 4096)+`"`+verdict)},
+		{name: "unknown judge field", body: event("judge_started", criterion+`,"state":"JUDGE_ACTIVITY_STATE_JUDGING","prompt":"secret"`)},
+		{name: "negative duration", body: event("judge_completed", reply+`,"state":"JUDGE_ACTIVITY_STATE_SCORED","score":4,"transaction_id":"tx-1","total_duration_ns":"-1"`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(tt.body))
+			if tt.ok {
+				require.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, constants.ErrPublicFeedRecordSchemaInvalid)
+		})
+	}
+}
+
 func TestValidatePublicProofManifestAndKeyRevocationRecords(t *testing.T) {
 	now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	manifest, err := json.Marshal(models.PublicProofManifest{SchemaVersion: "1.0.0", ProofRootSHA256: strings.Repeat("a", 64), CampaignID: "campaign-1", CampaignRevision: "revision-1", VerifiedIndexGenerationHash: strings.Repeat("b", 64), ArtifactCount: 1, Artifacts: []models.PublicProofCatalogEntry{{ArtifactID: "artifact-1"}}, VerifierInstructions: "offline", GeneratedAt: now, SigningKeyID: "key-1", Signature: "signature"})
@@ -225,6 +277,9 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.True(t, publicFeedViewSchemaVersion("1.8.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.9.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.10.0"))
+	assert.True(t, publicFeedViewSchemaVersion(constants.ExplorerViewSchemaVersion))
+	assert.True(t, publicFeedEventKind("judge_started"))
+	assert.True(t, publicFeedEventKind("judge_completed"))
 	assert.False(t, publicFeedViewSchemaVersion("9.0.0"))
 	assert.True(t, publicFeedSnapshotKind("evaluation_summary"))
 	assert.False(t, publicFeedSnapshotKind("unknown"))

@@ -129,10 +129,7 @@ type methodologySnapshotRecord struct {
 	Limitations         []string                  `json:"limitations"`
 }
 
-const (
-	explorerViewSchemaVersion = "1.10.0"
-	campaignSourceRevision    = "ztd-eval-campaign"
-)
+const campaignSourceRevision = "ztd-eval-campaign"
 
 // methodologySuiteFromCatalog describes the suite a campaign froze, as the
 // public methodology snapshot reports it.
@@ -898,7 +895,7 @@ func BuildRunCompletionViewRecords(run *evalv1.EvaluationRun, assignments []*eva
 func buildCatalogSnapshotRecord(datasetID, runID, observedAt string, state *runAggregateState) catalogSnapshotRecord {
 	return catalogSnapshotRecord{
 		CampaignRelease: state.Release.publicIdentity(),
-		SchemaVersion:   explorerViewSchemaVersion, Kind: "catalog_snapshot", DatasetID: datasetID, DatasetKind: "live_run",
+		SchemaVersion:   constants.ExplorerViewSchemaVersion, Kind: "catalog_snapshot", DatasetID: datasetID, DatasetKind: "live_run",
 		QualityState: "live_in_progress", ObservedAt: observedAt, SourceRevisionLabel: campaignSourceRevision,
 		Title:       fmt.Sprintf("Live smoke run (%s)", runID),
 		Description: "Homogeneous full-pipeline model-role evaluation over the frozen standard scenario catalog. Values are provisional while assignments are still executing.",
@@ -917,7 +914,7 @@ func buildModelSummaryRecord(datasetID, observedAt string, bucket *variantRoleAg
 	}
 	record := modelSummaryRecord{
 		CampaignRelease: release.publicIdentity(),
-		SchemaVersion:   explorerViewSchemaVersion, Kind: "model_summary", DatasetID: datasetID,
+		SchemaVersion:   constants.ExplorerViewSchemaVersion, Kind: "model_summary", DatasetID: datasetID,
 		QualityState: qualityStateForModelSummary(terminal), ObservedAt: observedAt, SourceRevisionLabel: campaignSourceRevision,
 		VariantID: bucket.VariantID, DisplayName: displayNameForVariant(bucket.VariantID), ServedModelTag: bucket.ServedModelTag,
 		ParameterCount: bucket.ParameterCount,
@@ -1294,7 +1291,7 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 	}
 	record := &evaluationSummaryRecord{
 		CampaignRelease:     state.Release.publicIdentity(),
-		SchemaVersion:       explorerViewSchemaVersion,
+		SchemaVersion:       constants.ExplorerViewSchemaVersion,
 		Kind:                "evaluation_summary",
 		DatasetID:           input.DatasetID,
 		QualityState:        qualityStateForCompletedAggregate(state),
@@ -1472,7 +1469,7 @@ func buildModelRoleMapping(state *runAggregateState) map[string]string {
 func buildMethodologySnapshotRecord(datasetID, observedAt string, suite *methodologySuiteRecord, release CampaignRelease) methodologySnapshotRecord {
 	return methodologySnapshotRecord{
 		CampaignRelease: release.publicIdentity(),
-		SchemaVersion:   explorerViewSchemaVersion, Kind: "methodology_snapshot", DatasetID: datasetID,
+		SchemaVersion:   constants.ExplorerViewSchemaVersion, Kind: "methodology_snapshot", DatasetID: datasetID,
 		QualityState: "live_in_progress", ObservedAt: observedAt, SourceRevisionLabel: campaignSourceRevision,
 		MetricDefinitions: methodologyMetricDefinitions(),
 		SuiteDefinitions:  []methodologySuiteRecord{*suite},

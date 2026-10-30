@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -77,7 +78,7 @@ func ProjectModelRoleInvocationEvent(signal PublicModelRoleInvocationSignal) (*e
 		stageParts = append(stageParts, signal.TaskID)
 	}
 	return &evalv1.PublicLiveEvent{
-		SchemaVersion:       explorerViewSchemaVersion,
+		SchemaVersion:       constants.ExplorerViewSchemaVersion,
 		Kind:                "stage_updated",
 		DatasetId:           CampaignDatasetID(signal.RunID),
 		QualityState:        "live_in_progress",
@@ -114,7 +115,7 @@ func ProjectMetricAvailabilityEvent(signal PublicMetricAvailabilitySignal) (*eva
 		return nil, fmt.Errorf("evaluation: project metric availability event: %w", constants.ErrEvaluationLiveEventProgressInvalid)
 	}
 	return &evalv1.PublicLiveEvent{
-		SchemaVersion:       explorerViewSchemaVersion,
+		SchemaVersion:       constants.ExplorerViewSchemaVersion,
 		Kind:                "metric_updated",
 		DatasetId:           CampaignDatasetID(signal.RunID),
 		QualityState:        "live_in_progress",
@@ -164,4 +165,143 @@ func metricAvailabilityValue(numerator, denominator int, rate *float64) *evalv1.
 		return liveMetricValue(*rate)
 	}
 	return liveMetricValue(float64(numerator) / float64(denominator))
+}
+
+// Live judge event kinds.
+const (
+	liveEventKindJudgeStarted   = "judge_started"
+	liveEventKindJudgeCompleted = "judge_completed"
+)
+
+// PublicJudgeActivitySignal is one judge inference on an assignment, placed on
+// the assignment's row: VariantID and Role are the graded subject's, never
+// the judge's.
+type PublicJudgeActivitySignal struct {
+	Release      CampaignRelease
+	RunID        string
+	AssignmentID string
+	VariantID    string
+	Role         models.ModelRole
+	TaskID       string
+	ObservedAt   string
+	EventID      string
+	Completed    int
+	Total        int
+	Activity     JudgeActivity
+}
+
+// ProjectJudgeActivityEvent maps one judge activity to a judge_started or
+// judge_completed live event. Judge prompts and raw failure text are never
+// disclosed: a failure is its closed code.
+func ProjectJudgeActivityEvent(signal PublicJudgeActivitySignal) (*evalv1.PublicLiveEvent, error) {
+	if signal.RunID == "" || signal.AssignmentID == "" || signal.VariantID == "" || signal.EventID == "" || signal.ObservedAt == "" || signal.Role == "" {
+		return nil, fmt.Errorf("evaluation: project judge activity event: %w", constants.ErrMissingRequiredField)
+	}
+	if signal.Completed < 0 || signal.Total < 0 || signal.Completed > signal.Total {
+		return nil, fmt.Errorf("evaluation: project judge activity event: %w", constants.ErrEvaluationLiveEventProgressInvalid)
+	}
+	if signal.Activity.Judge == nil {
+		return nil, fmt.Errorf("evaluation: project judge activity event: judge: %w", constants.ErrMissingRequiredField)
+	}
+	kind := liveEventKindJudgeStarted
+	if signal.Activity.Completed {
+		kind = liveEventKindJudgeCompleted
+	}
+	return &evalv1.PublicLiveEvent{
+		SchemaVersion:       constants.ExplorerViewSchemaVersion,
+		Kind:                kind,
+		DatasetId:           CampaignDatasetID(signal.RunID),
+		QualityState:        "live_in_progress",
+		ObservedAt:          signal.ObservedAt,
+		SourceRevisionLabel: campaignSourceRevision,
+		Release:             signal.Release.Release,
+		ReleaseBasis:        signal.Release.publicBasis(),
+		SourceRevision:      signal.Release.SourceRevision,
+		EventId:             signal.EventID,
+		RunId:               signal.RunID,
+		AssignmentId:        signal.AssignmentID,
+		VariantId:           signal.VariantID,
+		Role:                string(signal.Role),
+		LifecycleStatus:     "running",
+		Completed:           proto.Uint32(uint32(signal.Completed)),
+		Total:               proto.Uint32(uint32(signal.Total)),
+		TaskId:              signal.TaskID,
+		Judge:               publicJudgeActivity(signal.Activity),
+	}, nil
+}
+
+// publicJudgeActivity is the disclosure-safe judge block: the judge's
+// identity, the judgment's place and verdict, and the usage and timing of its
+// signed inference result.
+func publicJudgeActivity(activity JudgeActivity) *evalv1.PublicLiveJudgeActivity {
+	score := activity.Score
+	block := &evalv1.PublicLiveJudgeActivity{
+		JudgeVariantId:    activity.Judge.GetVariantId(),
+		ServedModelTag:    activity.Judge.GetServedModelTag(),
+		ModelDigest:       activity.Judge.GetModelDigest(),
+		Subject:           score.Subject.Proto(),
+		Index:             uint32(score.Position.Index),
+		Count:             uint32(score.Position.Count),
+		RubricVersion:     score.RubricVersion,
+		ProviderAttemptId: score.ProviderAttemptID,
+		State:             evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_JUDGING,
+	}
+	if score.Subject == judge.SubjectCriterion {
+		block.CriterionId = score.Criterion
+	}
+	if !activity.Completed {
+		return block
+	}
+	switch {
+	case score.Status == judge.StatusFailed:
+		block.State, block.Failure = evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_FAILED, score.Failure
+	case score.Subject == judge.SubjectCriterion && score.Met:
+		block.State = evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_MET
+	case score.Subject == judge.SubjectCriterion:
+		block.State = evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_NOT_MET
+	default:
+		block.State, block.Score = evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_SCORED, proto.Uint32(uint32(score.Value))
+	}
+	if score.Status != judge.StatusFailed {
+		block.Rationale = score.Rationale
+	}
+	block.TransactionId = score.TransactionID
+	if executedAt := score.Receipt.GetExecutedAtUnixMs(); executedAt > 0 {
+		block.ExecutedAtUnixMs = proto.Int64(executedAt)
+	}
+	if activity.Elapsed > 0 {
+		block.DispatchElapsedNs = proto.Uint64(uint64(activity.Elapsed))
+	}
+	if result := score.Result; result != nil {
+		block.FinishReason = result.GetFinishReason()
+		block.UsageReported = result.GetUsageReported()
+		if block.UsageReported {
+			block.PromptTokens = nonNegativeUint32(proto.Int32(result.GetPromptTokens()))
+			block.CompletionTokens = nonNegativeUint32(proto.Int32(result.GetCompletionTokens()))
+			block.ThinkingTokens = nonNegativeUint32(result.ThinkingTokens)
+			block.CacheTokens = nonNegativeUint32(result.CacheTokens)
+		}
+		block.LoadDurationNs = nonNegativeUint64(result.LoadDurationNs)
+		block.PromptEvalDurationNs = nonNegativeUint64(result.PromptEvalDurationNs)
+		block.GenerationDurationNs = nonNegativeUint64(result.GenerationDurationNs)
+		block.TotalDurationNs = nonNegativeUint64(result.TotalDurationNs)
+		block.TimeToFirstTokenNs = nonNegativeUint64(result.TimeToFirstTokenNs)
+	}
+	return block
+}
+
+// nonNegativeUint32 and nonNegativeUint64 carry a reported provider count
+// onto the public block; an absent or negative report stays absent.
+func nonNegativeUint32(value *int32) *uint32 {
+	if value == nil || *value < 0 {
+		return nil
+	}
+	return proto.Uint32(uint32(*value))
+}
+
+func nonNegativeUint64(value *int64) *uint64 {
+	if value == nil || *value < 0 {
+		return nil
+	}
+	return proto.Uint64(uint64(*value))
 }

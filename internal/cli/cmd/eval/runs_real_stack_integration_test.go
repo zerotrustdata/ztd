@@ -249,8 +249,15 @@ func newGatewayRunEnvWithOptions(t *testing.T, opts fixtures.EvalStackOptions) (
 		for i := range opts.Replies {
 			opts.Replies[i] = fixtures.OllamaReply{Content: "ERROR"}
 		}
+		opts.Replies = withScriptedJudgeVerdicts(opts.Replies)
 	}
 	run := newRealStackEnvironment(t, opts, testRunControl(control))
+	if !opts.Provenance {
+		// Non-provenance fixtures use the static frozen test identities. The
+		// default catalog now dispatches a content judge on its first cell.
+		judge := testJudgeVariant()
+		run.stack.Provider.ServeModel(judge.GetServedModelTag(), judge.GetModelDigest())
+	}
 	cmd := &cobra.Command{}
 	cmd.SetContext(run.ctx)
 	cmd.Flags().String("project-root", run.root, "")

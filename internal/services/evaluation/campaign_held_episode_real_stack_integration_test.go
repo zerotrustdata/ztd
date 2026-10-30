@@ -151,7 +151,8 @@ func TestRealStackEpisode_InterrogationUnmatchedClarification(t *testing.T) {
 	assert.Empty(t, trace.Clarifications[0].SelectedBranch)
 	assert.Empty(t, trace.Clarifications[0].UserResponse)
 	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "an unmatched clarification ends the episode after the Interrogator, without a second agent turn, and the diagnosis judge does not score an interrogation")
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, realStackGradeStatus(t, res, "scenario-content"), "a valid interrogation is graded on the protocol")
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, realStackGradeStatus(t, res, "scenario-content"), "unrelated questions do not satisfy the required diagnosis")
+	assert.Equal(t, constants.ErrEvaluationInterrogationAnswerRequired.Error(), realStackGrade(t, res, "scenario-content").GetDetail())
 	assert.Empty(t, res.GetSemanticGrades(), "an interrogation carries no diagnosis-quality judgment")
 }
 

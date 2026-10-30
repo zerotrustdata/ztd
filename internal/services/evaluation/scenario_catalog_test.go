@@ -239,6 +239,17 @@ func TestScenarioGoldRequiresRealIdentifiers(t *testing.T) {
 	assert.Empty(t, diagnosis.Gold.ContentCheck.ForbiddenTerms, "V5 does not ban full names; the scrubber protects them")
 }
 
+// TestTechLogParseAcceptsServiceNamedInSentence checks that a reply naming
+// checkout-api in a sentence passes, and naming the upstream host fails.
+func TestTechLogParseAcceptsServiceNamedInSentence(t *testing.T) {
+	check := techLogParse().Gold.ContentCheck
+	require.NotNil(t, check)
+	passed, detail := evaluateContentCheck("The service that reported the error is **checkout-api**.", *check)
+	assert.True(t, passed, detail)
+	passed, _ = evaluateContentCheck("payments.internal.example", *check)
+	assert.False(t, passed, "the upstream host must not satisfy the check")
+}
+
 // TestScenarioCatalog_PromptsDoNotRequestMasking guards the owner direction that
 // prompts never ask models to mask or partially name identifiers.
 func TestScenarioCatalog_PromptsDoNotRequestMasking(t *testing.T) {
@@ -362,6 +373,13 @@ func assertJudgedContentCriteria(t *testing.T, check ScenarioContentCheck, wantI
 }
 
 func TestConfigDiffGradesTheObservedChangeAndImpact(t *testing.T) {
+	input := defaultCatalogBlueprint(t, "tech-config-diff").Input
+	labels := make(map[string]string)
+	for _, evidence := range input.InlineContext {
+		labels[evidence.Label] = evidence.Content
+	}
+	assert.Contains(t, labels["old-config"], "timeout_seconds=30", "the old state must be identified in the supplied evidence")
+	assert.Contains(t, labels["new-config"], "timeout_seconds=5", "the new state must be identified in the supplied evidence")
 	check := defaultCatalogBlueprint(t, "tech-config-diff").Gold.ContentCheck
 	require.NotNil(t, check)
 	assertJudgedContentCriteria(t, *check, []string{"compares-timeout-change", "explains-timeout-effect"})

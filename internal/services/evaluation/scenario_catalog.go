@@ -113,7 +113,7 @@ const SmokeGateScenarioCount = 10
 // SmokeGateScenarioIDs returns the Tier 1 screening scenario IDs. A rollout
 // smoke gate passes a model whose smoke run completes and verifies, so the set
 // exercises every role, every trajectory policy, and each grading path a full
-// run depends on (exact and leading labels, JSON fields, judged criteria,
+// run depends on (leading labels, JSON fields, judged criteria,
 // history retrieval, tool arguments, guided recovery, governed denial, and
 // file state). Within that coverage it keeps the scenarios that best separated
 // models in the eval-init campaigns. It returns a fresh slice on every call, so

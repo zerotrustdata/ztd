@@ -663,7 +663,10 @@ func (s *GitLedgerService) ListCommits(sessionID string, limit int) ([]LedgerCom
 }
 
 // GetFileHistory retrieves the git history for a specific file.
-func (s *GitLedgerService) GetFileHistory(filePath string, limit int, operatorSessionID string) ([]FileHistoryEntry, error) {
+func (s *GitLedgerService) GetFileHistory(ctx context.Context, filePath string, limit int, operatorSessionID string) ([]FileHistoryEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("ledger: file history: %w", err)
+	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -683,59 +686,58 @@ func (s *GitLedgerService) GetFileHistory(filePath string, limit int, operatorSe
 		return nil, fmt.Errorf("ledger: %w", constants.ErrInternal)
 	}
 
-	// Get all commits and filter by file path
+	// Look up only this snapshot in each commit and its parents. Enumerating
+	// every file in every historical tree scales with the entire ledger and
+	// incorrectly reports unrelated commits as file changes.
+	encryptedPath := relPath + ledgerSnapshotSuffix
 	cIter, err := repo.Log(&git.LogOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("ledger: %w", constants.ErrInternal)
+		return nil, fmt.Errorf("ledger: file history log: %w", err)
 	}
 	defer cIter.Close()
 
 	var entries []FileHistoryEntry
-	count := 0
 	err = cIter.ForEach(func(c *object.Commit) error {
-		if count >= limit {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if len(entries) >= limit {
 			return storer.ErrStop
 		}
-
-		// Check if this commit modified the file
-		files, err := c.Files()
-		if err != nil {
-			//nolint:nilerr // intentional fallback: skip unreadable commit and continue history traversal
-			return nil
+		snapshot, err := c.File(encryptedPath)
+		if errors.Is(err, object.ErrFileNotFound) {
+			return nil // Only restorable snapshots belong in file history.
 		}
-
-		found := false
-		err = files.ForEach(func(file *object.File) error {
-			filePath := file.Name
-			// Normalize path for comparison (go-git may return backslashes on Windows)
-			normalizedPath := filepath.ToSlash(filePath)
-			// Only encrypted snapshots are ledger content; compare the logical path without the .enc suffix
-			if !strings.HasSuffix(normalizedPath, ledgerSnapshotSuffix) {
+		if err != nil {
+			return err
+		}
+		for i := range c.ParentHashes {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			parent, err := c.Parent(i)
+			if err != nil {
+				return err
+			}
+			previous, err := parent.File(encryptedPath)
+			if errors.Is(err, object.ErrFileNotFound) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if snapshot.Hash == previous.Hash {
 				return nil
 			}
-			if strings.TrimSuffix(normalizedPath, ledgerSnapshotSuffix) == relPath {
-				found = true
-			}
-			return nil
+		}
+		entries = append(entries, FileHistoryEntry{
+			CommitHash: c.Hash.String(), Timestamp: c.Author.When,
+			Message: strings.TrimSpace(c.Message), FilePath: filePath,
 		})
-		if err != nil {
-			//nolint:nilerr // intentional fallback: skip commit on file iteration error and continue history traversal
-			return nil
-		}
-
-		if found {
-			entries = append(entries, FileHistoryEntry{
-				CommitHash: c.Hash.String(),
-				Timestamp:  c.Author.When,
-				Message:    strings.TrimSpace(c.Message),
-				FilePath:   filePath,
-			})
-			count++
-		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ledger: %w", constants.ErrInternal)
+		return nil, fmt.Errorf("ledger: file history: %w", err)
 	}
 
 	s.logger.Debug("GetFileHistory result", "entries", len(entries))

@@ -1034,11 +1034,20 @@ message DecomposedScoreRecord {
   EvaluationMissingDataPolicy missing_data_policy = 6;
 }
 
+// GraderModelCallRecord is one governed judge inference behind a semantic
+// grade. Every token and timing value is read from the signed inference_result,
+// whose digest the signed receipt's result_summary binds.
 message GraderModelCallRecord {
   string grader_call_id = 1;
   string assignment_id = 2;
   string judge_variant_id = 3;
   ztd.compliance.v1.ComplianceEvidenceReference inference_record_ref = 4;
+  string criterion_id = 5;  // the semantic grade's criterion_id
+  string rubric_version = 6;
+  string provider_attempt_id = 7;
+  string transaction_id = 8;
+  ztd.operator.v1.InferenceResult inference_result = 9;
+  ztd.operator.v1.EventReceipt receipt = 10;
 }
 
 message PolicyDecisionRecord {
@@ -1417,6 +1426,71 @@ message PublicLiveEvent {
   string stage_label = 18;
   string task_id = 19;
   map<string, PublicLiveMetricValue> metric_delta = 20;
+  // judge is set only on judge_started and judge_completed events.
+  PublicLiveJudgeActivity judge = 21;
+}
+
+// What one judge inference grades.
+enum JudgeSubject {
+  JUDGE_SUBJECT_UNSPECIFIED = 0;
+  JUDGE_SUBJECT_CRITERION = 1;   // one binary content criterion
+  JUDGE_SUBJECT_FINAL_REPLY = 2; // diagnosis quality, 1..5
+  JUDGE_SUBJECT_MEMORY = 3;      // memory quality, 1..5
+}
+
+// The step of a judge dispatch that failed.
+enum JudgeFailure {
+  JUDGE_FAILURE_UNSPECIFIED = 0;
+  JUDGE_FAILURE_REQUEST_INVALID = 1;    // the request could not be built
+  JUDGE_FAILURE_DISPATCH_FAILED = 2;    // the governed dispatch returned an error
+  JUDGE_FAILURE_RESPONSE_MISMATCH = 3;  // the result answers another dispatch or authority
+  JUDGE_FAILURE_RESULT_DIGEST = 4;      // the result digest does not match the result and receipt
+  JUDGE_FAILURE_VERDICT_INVALID = 5;    // the reply is not the rubric's JSON shape
+  JUDGE_FAILURE_RECEIPT_UNVERIFIED = 6; // the signed receipt did not verify
+}
+
+enum JudgeActivityState {
+  JUDGE_ACTIVITY_STATE_UNSPECIFIED = 0;
+  JUDGE_ACTIVITY_STATE_JUDGING = 1;
+  JUDGE_ACTIVITY_STATE_MET = 2;     // criterion only
+  JUDGE_ACTIVITY_STATE_NOT_MET = 3; // criterion only
+  JUDGE_ACTIVITY_STATE_SCORED = 4;  // final reply and memory only; score is set
+  JUDGE_ACTIVITY_STATE_FAILED = 5;  // failure is set
+}
+
+// One pinned-judge inference on the assignment the event names. The event's
+// variant_id and role stay the graded subject's; the judge is named here.
+// Usage and timing come from the judge's signed inference result.
+// dispatch_elapsed_ns is the harness wall clock of a live dispatch and is
+// absent on events rebuilt from persisted results.
+message PublicLiveJudgeActivity {
+  string judge_variant_id = 1;
+  string served_model_tag = 2;
+  string model_digest = 3;
+  JudgeSubject subject = 4;
+  string criterion_id = 5; // criterion subject only
+  uint32 index = 6;        // 1-based position among the judgments of its phase
+  uint32 count = 7;
+  string rubric_version = 8;
+  JudgeActivityState state = 9;
+  optional uint32 score = 10;
+  string rationale = 11;
+  JudgeFailure failure = 12;
+  string provider_attempt_id = 13;
+  string transaction_id = 14;
+  bool usage_reported = 15;
+  optional uint32 prompt_tokens = 16;
+  optional uint32 completion_tokens = 17;
+  optional uint32 thinking_tokens = 18;
+  optional uint32 cache_tokens = 19;
+  optional uint64 load_duration_ns = 20;
+  optional uint64 prompt_eval_duration_ns = 21;
+  optional uint64 generation_duration_ns = 22;
+  optional uint64 total_duration_ns = 23;
+  optional uint64 time_to_first_token_ns = 24;
+  string finish_reason = 25;
+  optional int64 executed_at_unix_ms = 26;
+  optional uint64 dispatch_elapsed_ns = 27;
 }
 
 // ---- Governance conformance (suite governance-conformance) ----

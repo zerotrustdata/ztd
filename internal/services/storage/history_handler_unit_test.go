@@ -98,7 +98,7 @@ type mockLedger struct {
 	lastOperatorSessionID      string
 }
 
-func (m *mockLedger) GetFileHistory(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error) {
+func (m *mockLedger) GetFileHistory(_ context.Context, filePath string, limit int, sessionID string) ([]FileHistoryEntry, error) {
 	m.getFileHistoryCalled++
 	m.lastFilePath = filePath
 	m.lastSessionID = sessionID
@@ -572,7 +572,7 @@ func TestHandleFetchFileHistory_InvalidProtobuf(t *testing.T) {
 
 	invalidJSON := []byte("not a valid protobuf")
 
-	result, err := hh.HandleFetchFileHistory(invalidJSON)
+	result, err := hh.HandleFetchFileHistory(t.Context(), invalidJSON)
 	require.Error(t, err)
 
 	assert.False(t, result.Success)
@@ -591,7 +591,7 @@ func TestHandleFetchFileHistory_MissingFilePath(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, err := hh.HandleFetchFileHistory(requestJSON)
+	result, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 	require.Error(t, err)
 
 	assert.False(t, result.Success)
@@ -616,7 +616,7 @@ func TestHandleFetchFileHistory_DefaultLimit(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, err := hh.HandleFetchFileHistory(requestJSON)
+	result, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 	require.NoError(t, err)
 
 	assert.True(t, result.Success)
@@ -639,7 +639,7 @@ func TestHandleFetchFileHistory_GetHistoryError(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, err := hh.HandleFetchFileHistory(requestJSON)
+	result, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 	require.Error(t, err)
 
 	assert.False(t, result.Success)
@@ -676,7 +676,7 @@ func TestHandleFetchFileHistory_Success(t *testing.T) {
 	requestJSON, err := proto.Marshal(request)
 	require.NoError(t, err)
 
-	result, err := hh.HandleFetchFileHistory(requestJSON)
+	result, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 	require.NoError(t, err)
 
 	assert.True(t, result.Success)

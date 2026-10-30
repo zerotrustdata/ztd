@@ -127,7 +127,7 @@ func (hs *HistoryService) HandleFetchFileHistoryRequest(ctx context.Context, msg
 	}
 	hs.logger.Info("FETCH_FILE_HISTORY requested (LFEA, via Protobuf)", "message_id", msg.ID)
 
-	payload, err := hs.historyHandler.HandleFetchFileHistory(msg.Payload)
+	payload, err := hs.historyHandler.HandleFetchFileHistory(ctx, msg.Payload)
 	if err != nil {
 		hs.logger.Error("File history handler failed", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		return "", errors.Join(err, publishLFEAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileHistory.Failed,

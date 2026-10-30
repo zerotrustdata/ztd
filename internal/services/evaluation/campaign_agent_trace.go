@@ -527,6 +527,16 @@ func (t *AgentTrace) interrogatorAsked(text string) bool {
 	return false
 }
 
+// contentJudgment returns the verdict the trace sealed for one criterion.
+func (t *AgentTrace) contentJudgment(criterionID string) (AgentContentJudgment, bool) {
+	for _, judgment := range t.ContentJudgments {
+		if judgment.CriterionID == criterionID {
+			return judgment, true
+		}
+	}
+	return AgentContentJudgment{}, false
+}
+
 // interrogationAt returns the completed Interrogator call a turn's
 // clarification signal dispatched.
 func (t *AgentTrace) interrogationAt(loopTurn int) (AgentModelCall, bool) {

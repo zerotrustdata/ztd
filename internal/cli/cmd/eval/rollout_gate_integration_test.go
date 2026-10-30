@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -38,7 +39,7 @@ func scriptedJudgeVariant(t *testing.T) *evalv1.ModelVariant {
 }
 
 // withScriptedJudgeVerdicts consumes the scored model's replies only for agent
-// requests. Judge calls always return a verdict without advancing that sequence.
+// requests. Judge and capability-probe calls do not advance that sequence.
 func withScriptedJudgeVerdicts(replies []fixtures.OllamaReply) []fixtures.OllamaReply {
 	out := make([]fixtures.OllamaReply, len(replies))
 	var next atomic.Int64
@@ -46,6 +47,11 @@ func withScriptedJudgeVerdicts(replies []fixtures.OllamaReply) []fixtures.Ollama
 		out[i].Respond = func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
 			if request.Model == evaluation.DefaultJudgeServedModelTag {
 				return fixtures.OllamaReply{Content: `{"met": true, "rationale": "scripted verdict"}`}
+			}
+			for _, message := range request.Messages {
+				if strings.HasPrefix(message.Content, "Call probe_echo with message capability-probe-tool.") {
+					return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: "probe_echo", Arguments: json.RawMessage(`{"message":"capability-probe-tool"}`)}}}
+				}
 			}
 			return replies[int(next.Add(1))-1]
 		}
@@ -113,14 +119,23 @@ func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *te
 	assert.Positive(t, queued, "unexecuted assignments keep their real queued lifecycle")
 	requests := run.stack.Provider.ChatRequests()
 	require.Greater(t, len(requests), rolloutProviderFailureLimit, "the healthy model still receives governed inference")
-	for i, raw := range requests {
+	scoredCalls := 0
+	for _, raw := range requests {
 		var request fixtures.OllamaChatRequest
 		require.NoError(t, json.Unmarshal(raw, &request))
-		if i < rolloutProviderFailureLimit {
+		isProbe := false
+		for _, message := range request.Messages {
+			isProbe = isProbe || strings.HasPrefix(message.Content, "Call probe_echo with message capability-probe-tool.")
+		}
+		if isProbe {
+			continue
+		}
+		if scoredCalls < rolloutProviderFailureLimit {
 			assert.Equal(t, bad.ServedModelTag, request.Model)
 		} else {
 			assert.Contains(t, []string{healthy.ServedModelTag, evaluation.DefaultJudgeServedModelTag}, request.Model)
 		}
+		scoredCalls++
 	}
 	var plan rolloutRunPlanJSON
 	require.NoError(t, env.runJSON(t, &plan, "rollout", "run", "--dry-run", "--skip-verified=false"))

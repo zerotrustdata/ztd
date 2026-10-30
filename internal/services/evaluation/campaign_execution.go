@@ -10,7 +10,9 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -85,6 +87,24 @@ type AssignmentExecutionRequest struct {
 	// holds context; the homogeneous executor continues its conversation in
 	// its workspace. Nil for a cell's first repetition or a fresh campaign.
 	HeldContext *AgentTrace
+	// JudgeActivity receives each pinned-judge inference as it starts and
+	// completes. Nil when nothing observes execution.
+	JudgeActivity JudgeActivitySink
+}
+
+// JudgeActivity is one pinned-judge inference on an assignment: started, with
+// its request built, or completed with its final score and dispatch wall time.
+type JudgeActivity struct {
+	Judge     *evalv1.ModelVariant
+	Score     judge.Score
+	Completed bool
+	Elapsed   time.Duration
+}
+
+// JudgeActivitySink receives judge activity while an assignment executes. It
+// never changes a verdict: the executor grades whatever the sink does.
+type JudgeActivitySink interface {
+	JudgeActivity(ctx context.Context, activity JudgeActivity)
 }
 
 // CampaignAssignmentExecutor executes one scored assignment and returns its

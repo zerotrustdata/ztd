@@ -161,6 +161,23 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	}
 	assert.True(t, hasJudgeGraderCall, "GraderCalls should record the judge inference")
 
+	// 4a. The grader call carries the judge's signed result and receipt, so its
+	// tokens and timings are offline-verifiable.
+	var judgeCall *evalv1.GraderModelCallRecord
+	for _, gc := range res.GetGraderCalls() {
+		if gc.GetTransactionId() == judgeTx {
+			judgeCall = gc
+		}
+	}
+	require.NotNil(t, judgeCall)
+	assert.Equal(t, "diagnosis-quality", judgeCall.GetCriterionId())
+	assert.Equal(t, judge.RubricVersion, judgeCall.GetRubricVersion())
+	assert.NotEmpty(t, judgeCall.GetProviderAttemptId())
+	require.NotNil(t, judgeCall.GetInferenceResult())
+	require.NotNil(t, judgeCall.GetReceipt())
+	assert.Equal(t, judgeCall.GetInferenceResult().GetResultDigest(), judgeCall.GetReceipt().GetResultSummary())
+	assert.Equal(t, judgeCall.GetProviderAttemptId(), judgeCall.GetInferenceResult().GetProviderAttemptId())
+
 	// 5. DecomposedScores carries the diagnosis_quality value.
 	hasDiagDecomposedScore := false
 	for _, ds := range res.GetDecomposedScores() {
@@ -179,6 +196,45 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	}
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
 	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, res.GetTrajectoryOutcome())
+
+	// 7. The run verifies, and a stored judge usage or score that the signed
+	// result does not carry does not.
+	verify := func() *evalv1.EvaluationVerificationReport {
+		report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+		require.NoError(t, err)
+		return report
+	}
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, verify().GetStatus(), verify().GetFailureReasons())
+	for _, tamper := range []struct {
+		name  string
+		apply func(*evalv1.EvaluationAssignmentResult)
+	}{
+		{"inflated judge tokens", func(result *evalv1.EvaluationAssignmentResult) {
+			for _, gc := range result.GetGraderCalls() {
+				gc.GetInferenceResult().PromptTokens++
+			}
+		}},
+		{"raised judge score", func(result *evalv1.EvaluationAssignmentResult) {
+			grade := diagnosisQualityGrade(result)
+			grade.Detail = strings.Replace(grade.GetDetail(), "score: 4/5", "score: 5/5", 1)
+		}},
+		{"stripped judge evidence", func(result *evalv1.EvaluationAssignmentResult) {
+			for _, gc := range result.GetGraderCalls() {
+				gc.InferenceResult, gc.Receipt = nil, nil
+			}
+		}},
+	} {
+		t.Run(tamper.name, func(t *testing.T) {
+			tampered := proto.Clone(res).(*evalv1.EvaluationAssignmentResult)
+			tamper.apply(tampered)
+			var err error
+			tampered.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(tampered)
+			require.NoError(t, err)
+			require.NoError(t, env.store.SaveAssignmentResult(ctx, tampered))
+			t.Cleanup(func() { require.NoError(t, env.store.SaveAssignmentResult(context.WithoutCancel(ctx), res)) })
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verify().GetStatus())
+		})
+	}
 }
 
 // judgeRequestInference forwards every governed inference to the real Inference

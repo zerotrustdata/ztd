@@ -197,33 +197,15 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED:
 		return result, nil
 	}
-	semanticGrades, judgeScores, judgeErr := e.scoreWithJudge(ctx, req, run.trace)
+	quality, judgeErr := e.scoreWithJudge(ctx, req, run.trace)
 	if judgeErr != nil {
 		return nil, judgeErr
 	}
-	if len(semanticGrades) > 0 {
-		result.SemanticGrades = append(result.SemanticGrades, semanticGrades...)
-		result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
-		for _, sg := range semanticGrades {
-			if sg.GraderCallRef != nil {
-				result.GraderCalls = append(result.GraderCalls, &evalv1.GraderModelCallRecord{
-					GraderCallId:       e.newID("grader-call"),
-					AssignmentId:       assignment.GetAssignmentId(),
-					JudgeVariantId:     sg.JudgeVariantId,
-					InferenceRecordRef: sg.GraderCallRef,
-				})
-				result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
-					BindingId:         e.newID("judge-binding"),
-					AssignmentId:      assignment.GetAssignmentId(),
-					TransactionId:     strings.TrimPrefix(sg.GraderCallRef.ArtifactId, "receipt:"),
-					OperatorId:        run.trace.Inference.OperatorID,
-					OperatorSessionId: run.trace.Inference.SessionID,
-					ReceiptRef:        sg.GraderCallRef,
-					PolicyDecision:    agentPolicyDecisionAllow,
-					ActionType:        string(constants.ActionTypeInference),
-				})
-			}
-		}
+	if len(quality.grades) > 0 {
+		result.SemanticGrades = append(result.SemanticGrades, quality.grades...)
+		result.DecomposedScores = append(result.DecomposedScores, quality.scores...)
+		result.GraderCalls = append(result.GraderCalls, quality.graderCalls...)
+		result.GovernedActions = append(result.GovernedActions, quality.governedActions...)
 		digest, err := ComputeAssignmentResultDigest(result)
 		if err != nil {
 			return nil, assignmentExecutionError("evaluation: recompute assignment result digest", err)
@@ -246,24 +228,61 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 	return false
 }
 
-func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) ([]*evalv1.SemanticGrade, []*evalv1.DecomposedScoreRecord, error) {
-	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogationForGold(trace.FinalOutput, req.ScenarioGold) {
-		return nil, nil, nil
+// qualityJudgments is what the quality judge adds to a result: one semantic
+// grade per judged subject, the decomposed score of each counted grade, and the
+// grader call and governed action of each judge inference whose receipt
+// verified.
+type qualityJudgments struct {
+	grades          []*evalv1.SemanticGrade
+	scores          []*evalv1.DecomposedScoreRecord
+	graderCalls     []*evalv1.GraderModelCallRecord
+	governedActions []*evalv1.GovernedActionBinding
+}
+
+// Quality judgment criterion IDs and score dimensions.
+const (
+	diagnosisQualityCriterionID = "diagnosis-quality"
+	memoryQualityCriterionID    = "memory-quality"
+	diagnosisQualityDimension   = "diagnosis_quality"
+	memoryQualityDimension      = "memory_quality"
+)
+
+// qualityCriterionID is the semantic grade criterion of a quality subject.
+func qualityCriterionID(subject judge.Subject) string {
+	if subject == judge.SubjectMemory {
+		return memoryQualityCriterionID
 	}
-	cfg, err := campaignJudgeConfig(req, e.newID)
+	return diagnosisQualityCriterionID
+}
+
+// qualityGradeDetail is the grade detail a scored quality judgment records.
+func qualityGradeDetail(value int, rubricVersion, rationale string) string {
+	return fmt.Sprintf("score: %d/5; rubric: %s; rationale: %s", value, rubricVersion, rationale)
+}
+
+func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) (qualityJudgments, error) {
+	var out qualityJudgments
+	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogationForGold(trace.FinalOutput, req.ScenarioGold) {
+		return out, nil
+	}
+	// Judge receipts verify against the same pinned anchors as the traced model
+	// calls, so the check is built once for the whole assignment.
+	receipts := newJudgeReceiptCheck(trace)
+	cfg, err := e.executionJudgeConfig(ctx, req, receipts)
 	if err != nil {
-		return nil, nil, err
+		return out, err
 	}
 	variant := cfg.Variant
 	j, err := judge.New(e.inference, cfg)
 	if err != nil {
-		return []*evalv1.SemanticGrade{{
-			GradeId:        req.Assignment.GetAssignmentId() + ":diagnosis-quality",
-			CriterionId:    "diagnosis-quality",
+		out.grades = []*evalv1.SemanticGrade{{
+			GradeId:        req.Assignment.GetAssignmentId() + ":" + diagnosisQualityCriterionID,
+			CriterionId:    diagnosisQualityCriterionID,
 			Status:         evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
 			JudgeVariantId: variant.GetVariantId(),
 			Detail:         fmt.Sprintf("judge construction failed: %v", err),
-		}}, nil, nil
+		}}
+		return out, nil
 	}
 	objective := req.ScenarioGold.ExpectedBehavior
 	if objective == "" {
@@ -288,57 +307,58 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 			}
 		}
 	}
-	protoTrace := trace.ToProto()
-	scores := j.ScoreTrace(ctx, protoTrace, objective, memoryFacts)
-	if len(scores) == 0 {
-		return nil, nil, nil
-	}
-	// Judge receipts verify against the same pinned anchors as the traced model
-	// calls, so the anchor set is built once for the whole loop.
-	anchors, anchorsErr := agentTraceAnchorSet(trace)
+	scores := j.ScoreTrace(ctx, trace.ToProto(), objective, memoryFacts)
 	now := e.now().UTC()
-	var (
-		semanticGrades   []*evalv1.SemanticGrade
-		decomposedScores []*evalv1.DecomposedScoreRecord
-	)
+	assignmentID := req.Assignment.GetAssignmentId()
 	for _, sc := range scores {
-		criterionID := "diagnosis-quality"
-		dimension := "diagnosis_quality"
+		criterionID := qualityCriterionID(sc.Subject)
+		dimension := diagnosisQualityDimension
 		if sc.Subject == judge.SubjectMemory {
-			criterionID = "memory-quality"
-			dimension = "memory_quality"
+			dimension = memoryQualityDimension
 		}
-		gradeID := fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), criterionID)
+		receiptErr := receipts.verify(sc)
 		var graderCallRef *compliancev1.ComplianceEvidenceReference
-		var receiptErr error
-		if sc.Status == judge.StatusScored && (sc.TransactionID == "" || sc.Receipt == nil) {
-			// A scored judge whose response carries no transaction or no signed
-			// receipt has nothing to verify, so its grade cannot be attributed to
-			// a governed inference.
-			receiptErr = fmt.Errorf("judge score has no signed governed receipt: %w", constants.ErrMissingRequiredField)
-		} else if sc.TransactionID != "" {
-			receiptErr = anchorsErr
-			if receiptErr == nil {
-				receiptErr = verifyJudgeReceipt(anchors, trace.Inference, sc)
+		if receiptErr == nil && sc.TransactionID != "" {
+			graderCallRef = &compliancev1.ComplianceEvidenceReference{
+				ArtifactId:         "receipt:" + sc.TransactionID,
+				ArtifactType:       "event_receipt",
+				ProducerIdentity:   "ztd-eval-judge",
+				ProducedAt:         timestamppb.New(now),
+				ScopeId:            req.Assignment.GetCampaignId(),
+				RunId:              req.Assignment.GetRunId(),
+				ScenarioId:         req.Assignment.GetScenarioId(),
+				VerificationStatus: "verified",
+				VerifierId:         GraderID,
+				VerifierVersion:    GraderVersion,
+				VerifiedAt:         timestamppb.New(now),
 			}
-			if receiptErr == nil {
-				graderCallRef = &compliancev1.ComplianceEvidenceReference{
-					ArtifactId:         "receipt:" + sc.TransactionID,
-					ArtifactType:       "event_receipt",
-					ProducerIdentity:   "ztd-eval-judge",
-					ProducedAt:         timestamppb.New(now),
-					ScopeId:            req.Assignment.GetCampaignId(),
-					RunId:              req.Assignment.GetRunId(),
-					ScenarioId:         req.Assignment.GetScenarioId(),
-					VerificationStatus: "verified",
-					VerifierId:         GraderID,
-					VerifierVersion:    GraderVersion,
-					VerifiedAt:         timestamppb.New(now),
-				}
-			}
+			out.graderCalls = append(out.graderCalls, &evalv1.GraderModelCallRecord{
+				GraderCallId:       e.newID("grader-call"),
+				AssignmentId:       assignmentID,
+				JudgeVariantId:     variant.GetVariantId(),
+				InferenceRecordRef: graderCallRef,
+				CriterionId:        criterionID,
+				RubricVersion:      sc.RubricVersion,
+				ProviderAttemptId:  sc.ProviderAttemptID,
+				TransactionId:      sc.TransactionID,
+				InferenceResult:    proto.Clone(sc.Result).(*operatorv1.InferenceResult),
+				Receipt:            proto.Clone(sc.Receipt).(*operatorv1.EventReceipt),
+			})
+			out.governedActions = append(out.governedActions, &evalv1.GovernedActionBinding{
+				BindingId:         e.newID("judge-binding"),
+				AssignmentId:      assignmentID,
+				TransactionId:     sc.TransactionID,
+				OperatorId:        trace.Inference.OperatorID,
+				OperatorSessionId: trace.Inference.SessionID,
+				ReceiptRef:        graderCallRef,
+				PolicyDecision:    agentPolicyDecisionAllow,
+				ActionType:        string(constants.ActionTypeInference),
+			})
 		}
-		status := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
-		var detail string
+		var (
+			status evalv1.EvaluationVerdictStatus
+			detail string
+		)
 		if receiptErr != nil {
 			// An unverifiable judge receipt fails only this semantic grade. Like a
 			// judge failure, it records no decomposed score and never overrides the
@@ -349,20 +369,10 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 			status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
 			detail = fmt.Sprintf("judge failed: %s", sc.Detail)
 		} else {
-			if sc.Value < 3 {
-				status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
-			}
-			rubric := sc.RubricVersion
-			if rubric == "" {
-				rubric = judge.RubricVersion
-			}
-			detail = fmt.Sprintf("score: %d/5; rubric: %s; rationale: %s", sc.Value, rubric, sc.Rationale)
-			if sc.Subject == judge.SubjectFinalReply && sc.Value >= 3 && !diagnosisPassed {
-				status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
-				detail += "; judge assessment contradicts deterministic evidence check: " + diagnosisDetail + "; excluded from quality aggregates"
-			} else {
-				decomposedScores = append(decomposedScores, &evalv1.DecomposedScoreRecord{
-					ScoreId:           fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), dimension),
+			status, detail = qualityGradeVerdict(sc.Subject, sc.Value, sc.RubricVersion, sc.Rationale, diagnosisPassed, diagnosisDetail)
+			if status != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
+				out.scores = append(out.scores, &evalv1.DecomposedScoreRecord{
+					ScoreId:           fmt.Sprintf("%s:%s", assignmentID, dimension),
 					Dimension:         dimension,
 					Value:             float64(sc.Value),
 					Unit:              evalv1.EvaluationMetricUnit_EVALUATION_METRIC_UNIT_COUNT,
@@ -371,8 +381,8 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				})
 			}
 		}
-		semanticGrades = append(semanticGrades, &evalv1.SemanticGrade{
-			GradeId:        gradeID,
+		out.grades = append(out.grades, &evalv1.SemanticGrade{
+			GradeId:        assignmentID + ":" + criterionID,
 			CriterionId:    criterionID,
 			Status:         status,
 			JudgeVariantId: variant.GetVariantId(),
@@ -380,7 +390,23 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 			Detail:         detail,
 		})
 	}
-	return semanticGrades, decomposedScores, nil
+	return out, nil
+}
+
+// qualityGradeVerdict is the grade a decoded quality score earns: below 3/5
+// fails, and a passing diagnosis score the deterministic evidence check
+// contradicts is excluded from quality aggregates.
+func qualityGradeVerdict(subject judge.Subject, value int, rubricVersion, rationale string, diagnosisPassed bool, diagnosisDetail string) (evalv1.EvaluationVerdictStatus, string) {
+	detail := qualityGradeDetail(value, rubricVersion, rationale)
+	switch {
+	case value < 3:
+		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, detail
+	case subject == judge.SubjectFinalReply && !diagnosisPassed:
+		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE,
+			detail + "; judge assessment contradicts deterministic evidence check: " + diagnosisDetail + "; excluded from quality aggregates"
+	default:
+		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, detail
+	}
 }
 
 // judgeVariant returns the campaign's frozen judge, the same model for every

@@ -123,10 +123,11 @@ func TestCampaignAgentExecutor_JudgeFailsClosedWithoutAFrozenJudge(t *testing.T)
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE,
 		Assignment:    &evalv1.EvaluationAssignment{},
 	}
-	grades, scores, err := executor.scoreWithJudge(context.Background(), req, &AgentTrace{})
+	quality, err := executor.scoreWithJudge(context.Background(), req, &AgentTrace{})
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignJudgeInvalid)
-	assert.Nil(t, grades)
-	assert.Nil(t, scores)
+	assert.Empty(t, quality.grades)
+	assert.Empty(t, quality.scores)
+	assert.Empty(t, quality.graderCalls)
 }
 
 // heterogeneousLiteRequest is a SYSTEM-lane stack assignment whose designated

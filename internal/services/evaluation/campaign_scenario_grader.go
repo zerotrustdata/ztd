@@ -109,7 +109,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	contentPassed := true
 	contentDetail := ""
 	contentUnavailable := false
-	fileStateOnlyObjective := !triageOnly && g.req.ScenarioGold.GradingContract == ScenarioGradingContractV3 &&
+	fileStateOnlyObjective := !triageOnly && (g.req.ScenarioGold.GradingContract == ScenarioGradingContractV3 || g.req.ScenarioGold.GradingContract == ScenarioGradingContractV4) &&
 		g.req.ScenarioGold.ContentCheck == nil && len(g.req.ScenarioGold.FileState) > 0
 	if !triageOnly && !fileStateOnlyObjective && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
 		if g.req.ScenarioGold.ContentCheck != nil {
@@ -503,7 +503,7 @@ func (g homogeneousGrader) gradeRequiredEvidenceTypes(traj trajectoryResult, con
 	return grades
 }
 
-func playersToPersonaLabels(players *ScenarioPlayerExpectations) persona.Labels {
+func playersToPersonaLabels(players *ScenarioPlayerExpectations, contract ScenarioGradingContract) persona.Labels {
 	if players == nil {
 		return persona.Labels{}
 	}
@@ -526,6 +526,17 @@ func playersToPersonaLabels(players *ScenarioPlayerExpectations) persona.Labels 
 				Complexity: complexity,
 				Intent:     intent,
 				Posture:    posture,
+			}
+			if contract == ScenarioGradingContractV4 {
+				for _, value := range players.Triage.Complexity {
+					labels.Router.ComplexityAlternatives = append(labels.Router.ComplexityAlternatives, string(value))
+				}
+				for _, value := range players.Triage.Intent {
+					labels.Router.IntentAlternatives = append(labels.Router.IntentAlternatives, string(value))
+				}
+				for _, value := range players.Triage.Posture {
+					labels.Router.PostureAlternatives = append(labels.Router.PostureAlternatives, string(value))
+				}
 			}
 		}
 	}
@@ -593,7 +604,7 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 	if len(protoTrace.GetSteps()) == 0 && !g.isLiteTriageCell() {
 		return nil, nil
 	}
-	labels := playersToPersonaLabels(players)
+	labels := playersToPersonaLabels(players, g.req.ScenarioGold.GradingContract)
 	if err := labels.Validate(); err != nil {
 		return nil, fmt.Errorf("evaluation: grade player criteria: labels: %w", err)
 	}

@@ -1330,6 +1330,32 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .tribunal-outcome { grid-column: 1 / -1; grid-row: 3; font-size: 10px; }
 .tribunal-seat[data-outcome="approve"] .tribunal-outcome { color: var(--tone-ok); }
 .tribunal-seat[data-outcome="deny"] .tribunal-outcome { color: var(--tone-critical); }
+.judge-activity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.judge-summary { font-size: 11px; color: var(--fg-muted); overflow-wrap: anywhere; }
+.judge-judgments { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.judge-judgment {
+  flex: 1 1 110px; min-width: 0; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg-elev); color: var(--fg);
+}
+.judge-judgment summary {
+  display: grid; gap: 1px; padding: 4px 6px; cursor: pointer; list-style: none;
+}
+.judge-judgment summary::-webkit-details-marker { display: none; }
+.judge-judgment[open] { flex-basis: 100%; }
+.judge-judgment[data-state="judging"] { border-style: dashed; color: var(--fg-muted); }
+.judge-judgment[data-state="met"] { border-color: var(--tone-ok); }
+.judge-judgment[data-state="not_met"], .judge-judgment[data-state="failed"] { border-color: var(--tone-critical); }
+.judge-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; }
+.judge-verdict { font-size: 10px; }
+.judge-judgment[data-state="met"] .judge-verdict { color: var(--tone-ok); }
+.judge-judgment[data-state="not_met"] .judge-verdict, .judge-judgment[data-state="failed"] .judge-verdict { color: var(--tone-critical); }
+.judge-judgment dl {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; margin: 0; padding: 8px 10px;
+  border-top: 1px solid var(--border); font-size: 11px; text-align: left;
+}
+.judge-judgment dl > div { display: contents; }
+.judge-judgment dt { color: var(--fg-muted); }
+.judge-judgment dd { margin: 0; overflow-wrap: anywhere; }
 .tribunal-seat pre {
   margin: 0; padding: 8px 10px; border-top: 1px solid var(--border);
   max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word;
@@ -1356,6 +1382,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .stream-table th:first-child { width: 76px; }
 /* Task and Model share the remaining width; fixed columns keep equal cell padding. */
 .stream-table .stream-tribunal-header { width: 25%; }
+.stream-table .stream-judge-header { width: 22%; }
 .stream-table .stream-metric-header { width: 88px; }
 .stream-table th:last-child { width: 88px; }
 .stream-table .stream-metric-header, .stream-table .stream-time-header,
@@ -1541,6 +1568,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .stream-table th:first-child { width: 65px; }
   .stream-table .stream-metric-header { width: 78px; }
   .stream-table .stream-tribunal-header { width: 22%; }
+  .stream-table .stream-judge-header { width: 20%; }
   .stream-table th:last-child { width: 78px; }
   .stream-detail-cue { font-size: 0; }
   .stream-detail-cue::after { content: '→'; font-size: 14px; }
@@ -1580,6 +1608,8 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .stream-table .stream-metric-cell[data-metric="output_tokens"] { display: none; }
   .stream-table tbody .stream-tribunal-cell { grid-column: 1 / -1; grid-row: 4; text-align: left; margin-top: 6px; }
   .stream-table tbody .stream-tribunal-cell:empty { display: none; }
+  .stream-table tbody .stream-judge-cell { grid-column: 1 / -1; grid-row: 5; text-align: left; margin-top: 6px; }
+  .stream-table tbody .stream-judge-cell:empty { display: none; }
 }
 
 /* System overview */

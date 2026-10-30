@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -142,6 +143,68 @@ func campaignJudgeConfig(req AssignmentExecutionRequest, newID func(string) stri
 	}, nil
 }
 
+// judgeActivityObserver reports each judge dispatch to the request's sink. A
+// completed judgment is reported only after its receipt is checked, so the
+// verdict it reports is the one the grade records.
+type judgeActivityObserver struct {
+	ctx      context.Context
+	sink     JudgeActivitySink
+	variant  *evalv1.ModelVariant
+	receipts judgeReceiptCheck
+}
+
+func (o judgeActivityObserver) Started(score judge.Score) {
+	o.sink.JudgeActivity(o.ctx, JudgeActivity{Judge: o.variant, Score: score})
+}
+
+func (o judgeActivityObserver) Completed(score judge.Score, elapsed time.Duration) {
+	if err := o.receipts.verify(score); err != nil {
+		score.Status, score.Failure, score.Detail = judge.StatusFailed, evalv1.JudgeFailure_JUDGE_FAILURE_RECEIPT_UNVERIFIED, err.Error()
+	}
+	o.sink.JudgeActivity(o.ctx, JudgeActivity{Judge: o.variant, Score: score, Completed: true, Elapsed: elapsed})
+}
+
+// judgeReceiptCheck verifies judge receipts against the trace's pinned
+// Inference anchors, built once per assignment.
+type judgeReceiptCheck struct {
+	anchors    *oracle.AnchorSet
+	anchorsErr error
+	inference  AgentTraceRuntime
+}
+
+func newJudgeReceiptCheck(trace *AgentTrace) judgeReceiptCheck {
+	anchors, err := agentTraceAnchorSet(trace)
+	return judgeReceiptCheck{anchors: anchors, anchorsErr: err, inference: trace.Inference}
+}
+
+// verify is the one receipt rule for a judge score: a scored judgment must
+// carry a signed receipt, and any receipt it carries must verify. A failed
+// judgment the runtime never executed has nothing to verify.
+func (c judgeReceiptCheck) verify(score judge.Score) error {
+	switch {
+	case score.Status == judge.StatusScored && (score.TransactionID == "" || score.Receipt == nil):
+		return fmt.Errorf("judge score has no signed governed receipt: %w", constants.ErrMissingRequiredField)
+	case score.TransactionID == "":
+		return nil
+	case c.anchorsErr != nil:
+		return c.anchorsErr
+	default:
+		return verifyJudgeReceipt(c.anchors, c.inference, score)
+	}
+}
+
+// executionJudgeConfig is campaignJudgeConfig for a live execution: when the
+// request observes judge activity, every dispatch reports to its sink.
+func (e *CampaignAgentExecutor) executionJudgeConfig(ctx context.Context, req AssignmentExecutionRequest, receipts judgeReceiptCheck) (judge.Config, error) {
+	cfg, err := campaignJudgeConfig(req, e.newID)
+	if err != nil || req.JudgeActivity == nil {
+		return cfg, err
+	}
+	cfg.Observer = judgeActivityObserver{ctx: ctx, sink: req.JudgeActivity, variant: cfg.Variant, receipts: receipts}
+	cfg.Clock = e.now
+	return cfg, nil
+}
+
 // recordContentJudgments asks the pinned judge for one verdict per judged
 // criterion, in declaration order, and records them on the trace before it is
 // sealed. A judge that cannot decide a criterion fails the assignment as a
@@ -153,7 +216,7 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 	if e.inference == nil {
 		return fmt.Errorf("evaluation: judge content criteria: no inference dispatcher: %w", constants.ErrMissingRequiredField)
 	}
-	cfg, err := campaignJudgeConfig(req, e.newID)
+	cfg, err := e.executionJudgeConfig(ctx, req, newJudgeReceiptCheck(trace))
 	if err != nil {
 		return err
 	}
@@ -163,12 +226,14 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 	}
 	objective := contentJudgeObjective(req.ScenarioInput, trace, req.ScenarioGold.ContentCheck)
 	typed := contentJudgeTypedObjective(req, trace)
-	for _, criterion := range judgedCriteria(req) {
+	criteria := judgedCriteria(req)
+	for i, criterion := range criteria {
+		position := judge.Position{Index: i + 1, Count: len(criteria)}
 		var score judge.Score
 		if req.ScenarioGold.gradingContractV2() {
-			score = j.ScoreObjectiveCriterion(ctx, criterion, typed, trace.FinalOutput)
+			score = j.ScoreObjectiveCriterion(ctx, criterion, position, typed, trace.FinalOutput)
 		} else {
-			score = j.ScoreCriterion(ctx, criterion, objective, trace.FinalOutput)
+			score = j.ScoreCriterion(ctx, criterion, position, objective, trace.FinalOutput)
 		}
 		if score.Status != judge.StatusScored {
 			return fmt.Errorf("evaluation: judge content criterion %q: %w: %s", criterion.ID, constants.ErrEvaluationContentJudgeFailed, score.Detail)
@@ -361,6 +426,12 @@ func attachContentJudgmentEvidence(result *evalv1.EvaluationAssignmentResult, tr
 			AssignmentId:       result.GetAssignmentId(),
 			JudgeVariantId:     judgment.JudgeVariantID,
 			InferenceRecordRef: ref,
+			CriterionId:        grade.GetCriterionId(),
+			RubricVersion:      judgment.RubricVersion,
+			ProviderAttemptId:  judgment.ProviderAttemptID,
+			TransactionId:      judgment.TransactionID,
+			InferenceResult:    proto.Clone(judgment.InferenceResult.InferenceResult).(*operatorv1.InferenceResult),
+			Receipt:            proto.Clone(judgment.Receipt.EventReceipt).(*operatorv1.EventReceipt),
 		})
 		result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
 			BindingId:         judgment.ProviderAttemptID,

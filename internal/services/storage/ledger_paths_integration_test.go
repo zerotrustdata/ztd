@@ -133,7 +133,7 @@ func TestLedgerPaths_NothingOnDiskCarriesAPath(t *testing.T) {
 	assertLedgerHoldsNoMarkers(t, lms, ledgerPathMarkerDir, ledgerPathMarkerFile, ledgerContentMarkerText, tempDir)
 
 	// Reads still resolve the path through the keyed name, and nothing they return carries a path.
-	history, err := lms.GetFileHistory(hostFile, 50, sessionID)
+	history, err := lms.GetFileHistory(t.Context(), hostFile, 50, sessionID)
 	require.NoError(t, err)
 	require.NotEmpty(t, history)
 	for _, entry := range history {
@@ -162,7 +162,7 @@ func TestLedgerPaths_NothingOnDiskCarriesAPath(t *testing.T) {
 func TestLedgerPaths_HistoryFailsClosedWhileVaultLocked(t *testing.T) {
 	lms, tempDir := setupTestLedgerLocked(t)
 
-	_, err := lms.GetFileHistory(filepath.Join(tempDir, "f.txt"), 10, "")
+	_, err := lms.GetFileHistory(t.Context(), filepath.Join(tempDir, "f.txt"), 10, "")
 	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
 	_, err = lms.GetFileAtCommit(filepath.Join(tempDir, "f.txt"), strings.Repeat("a", 40), "")
 	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
@@ -279,7 +279,7 @@ func TestLedgerPaths_ReadOfUnknownSessionCreatesNothing(t *testing.T) {
 	hostFile := filepath.Join(tempDir, "unknown-session.txt")
 	const sessionID = "sess-never-written"
 
-	_, err := lms.GetFileHistory(hostFile, 10, sessionID)
+	_, err := lms.GetFileHistory(t.Context(), hostFile, 10, sessionID)
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
 	_, err = lms.GetFileAtCommit(hostFile, strings.Repeat("a", 40), sessionID)
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
@@ -291,7 +291,7 @@ func TestLedgerPaths_ReadOfUnknownSessionCreatesNothing(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
 
 	// The request-payload paths (operator_session_id comes from the caller) fail typed and create nothing.
-	history, err := hh.HandleFetchFileHistory(testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-unknown-history", hostFile, 10, sessionID))
+	history, err := hh.HandleFetchFileHistory(t.Context(), testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-unknown-history", hostFile, 10, sessionID))
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
 	assert.False(t, history.Success)
 	restore, _, restoreErr := hh.HandleRestoreFile(t.Context(), sessionID, testutil.BuildRestoreFileRequestedPayload(t, "exec-unknown", hostFile, strings.Repeat("a", 40), sessionID))

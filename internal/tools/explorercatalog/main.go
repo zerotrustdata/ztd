@@ -63,6 +63,9 @@ var wireEnums = []protoreflect.EnumDescriptor{
 	evalv1.PublicActivityAvailability(0).Descriptor(),
 	evalv1.PublicUnavailableReason(0).Descriptor(),
 	evalv1.PublicReleaseBasis(0).Descriptor(),
+	evalv1.JudgeSubject(0).Descriptor(),
+	evalv1.JudgeActivityState(0).Descriptor(),
+	evalv1.JudgeFailure(0).Descriptor(),
 }
 
 // module is one generated file and the function that renders it.

@@ -82,6 +82,7 @@
     - [PublicGovernedActionActivityRecord](#ztd-eval-v1-PublicGovernedActionActivityRecord)
     - [PublicLiveEvent](#ztd-eval-v1-PublicLiveEvent)
     - [PublicLiveEvent.MetricDeltaEntry](#ztd-eval-v1-PublicLiveEvent-MetricDeltaEntry)
+    - [PublicLiveJudgeActivity](#ztd-eval-v1-PublicLiveJudgeActivity)
     - [PublicLiveMetricValue](#ztd-eval-v1-PublicLiveMetricValue)
     - [PublicModelActivity](#ztd-eval-v1-PublicModelActivity)
     - [PublicModelActivityRecord](#ztd-eval-v1-PublicModelActivityRecord)
@@ -144,6 +145,9 @@
     - [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus)
     - [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy)
     - [GradeBasis](#ztd-eval-v1-GradeBasis)
+    - [JudgeActivityState](#ztd-eval-v1-JudgeActivityState)
+    - [JudgeFailure](#ztd-eval-v1-JudgeFailure)
+    - [JudgeSubject](#ztd-eval-v1-JudgeSubject)
     - [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole)
     - [ModelCapabilityKind](#ztd-eval-v1-ModelCapabilityKind)
     - [ModelManifestVerificationStatus](#ztd-eval-v1-ModelManifestVerificationStatus)
@@ -1219,7 +1223,9 @@ EvaluationVerificationReport independently verifies one run or assignment.
 <a name="ztd-eval-v1-GraderModelCallRecord"></a>
 
 ### GraderModelCallRecord
-
+GraderModelCallRecord is one governed judge inference behind a semantic
+grade. Every token and timing value is read from the signed inference_result,
+whose digest the signed receipt&#39;s result_summary binds.
 
 
 | Field | Type | Label | Description |
@@ -1228,6 +1234,12 @@ EvaluationVerificationReport independently verifies one run or assignment.
 | assignment_id | [string](#string) |  |  |
 | judge_variant_id | [string](#string) |  |  |
 | inference_record_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
+| criterion_id | [string](#string) |  | the semantic grade&#39;s criterion_id |
+| rubric_version | [string](#string) |  |  |
+| provider_attempt_id | [string](#string) |  |  |
+| transaction_id | [string](#string) |  |  |
+| inference_result | [ztd.operator.v1.InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
+| receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 
 
 
@@ -1907,6 +1919,7 @@ producer that leaves either unset is rejected at validation.
 | stage_label | [string](#string) |  |  |
 | task_id | [string](#string) |  |  |
 | metric_delta | [PublicLiveEvent.MetricDeltaEntry](#ztd-eval-v1-PublicLiveEvent-MetricDeltaEntry) | repeated |  |
+| judge | [PublicLiveJudgeActivity](#ztd-eval-v1-PublicLiveJudgeActivity) |  | judge is set only on judge_started and judge_completed events. |
 
 
 
@@ -1923,6 +1936,51 @@ producer that leaves either unset is rejected at validation.
 | ----- | ---- | ----- | ----------- |
 | key | [string](#string) |  |  |
 | value | [PublicLiveMetricValue](#ztd-eval-v1-PublicLiveMetricValue) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-PublicLiveJudgeActivity"></a>
+
+### PublicLiveJudgeActivity
+One pinned-judge inference on the assignment the event names. The event&#39;s
+variant_id and role stay the graded subject&#39;s; the judge is named here.
+Usage and timing come from the judge&#39;s signed inference result.
+dispatch_elapsed_ns is the harness wall clock of a live dispatch and is
+absent on events rebuilt from persisted results.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| judge_variant_id | [string](#string) |  |  |
+| served_model_tag | [string](#string) |  |  |
+| model_digest | [string](#string) |  |  |
+| subject | [JudgeSubject](#ztd-eval-v1-JudgeSubject) |  |  |
+| criterion_id | [string](#string) |  | criterion subject only |
+| index | [uint32](#uint32) |  | 1-based position among the judgments of its phase |
+| count | [uint32](#uint32) |  |  |
+| rubric_version | [string](#string) |  |  |
+| state | [JudgeActivityState](#ztd-eval-v1-JudgeActivityState) |  |  |
+| score | [uint32](#uint32) | optional |  |
+| rationale | [string](#string) |  |  |
+| failure | [JudgeFailure](#ztd-eval-v1-JudgeFailure) |  |  |
+| provider_attempt_id | [string](#string) |  |  |
+| transaction_id | [string](#string) |  |  |
+| usage_reported | [bool](#bool) |  |  |
+| prompt_tokens | [uint32](#uint32) | optional |  |
+| completion_tokens | [uint32](#uint32) | optional |  |
+| thinking_tokens | [uint32](#uint32) | optional |  |
+| cache_tokens | [uint32](#uint32) | optional |  |
+| load_duration_ns | [uint64](#uint64) | optional |  |
+| prompt_eval_duration_ns | [uint64](#uint64) | optional |  |
+| generation_duration_ns | [uint64](#uint64) | optional |  |
+| total_duration_ns | [uint64](#uint64) | optional |  |
+| time_to_first_token_ns | [uint64](#uint64) | optional |  |
+| finish_reason | [string](#string) |  |  |
+| executed_at_unix_ms | [int64](#int64) | optional |  |
+| dispatch_elapsed_ns | [uint64](#uint64) | optional |  |
 
 
 
@@ -2994,6 +3052,53 @@ harness precondition, not a model result. UNSPECIFIED is never valid.
 | GRADE_BASIS_OBSERVATION | 1 |  |
 | GRADE_BASIS_DERIVED | 2 |  |
 | GRADE_BASIS_STRUCTURAL | 3 |  |
+
+
+
+<a name="ztd-eval-v1-JudgeActivityState"></a>
+
+### JudgeActivityState
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| JUDGE_ACTIVITY_STATE_UNSPECIFIED | 0 |  |
+| JUDGE_ACTIVITY_STATE_JUDGING | 1 |  |
+| JUDGE_ACTIVITY_STATE_MET | 2 | criterion only |
+| JUDGE_ACTIVITY_STATE_NOT_MET | 3 | criterion only |
+| JUDGE_ACTIVITY_STATE_SCORED | 4 | final reply and memory only; score is set |
+| JUDGE_ACTIVITY_STATE_FAILED | 5 | failure is set |
+
+
+
+<a name="ztd-eval-v1-JudgeFailure"></a>
+
+### JudgeFailure
+The step of a judge dispatch that failed.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| JUDGE_FAILURE_UNSPECIFIED | 0 |  |
+| JUDGE_FAILURE_REQUEST_INVALID | 1 | the request could not be built |
+| JUDGE_FAILURE_DISPATCH_FAILED | 2 | the governed dispatch returned an error |
+| JUDGE_FAILURE_RESPONSE_MISMATCH | 3 | the result answers another dispatch or authority |
+| JUDGE_FAILURE_RESULT_DIGEST | 4 | the result digest does not match the result and receipt |
+| JUDGE_FAILURE_VERDICT_INVALID | 5 | the reply is not the rubric&#39;s JSON shape |
+| JUDGE_FAILURE_RECEIPT_UNVERIFIED | 6 | the signed receipt did not verify |
+
+
+
+<a name="ztd-eval-v1-JudgeSubject"></a>
+
+### JudgeSubject
+What one judge inference grades.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| JUDGE_SUBJECT_UNSPECIFIED | 0 |  |
+| JUDGE_SUBJECT_CRITERION | 1 | one binary content criterion |
+| JUDGE_SUBJECT_FINAL_REPLY | 2 | diagnosis quality, 1..5 |
+| JUDGE_SUBJECT_MEMORY | 3 | memory quality, 1..5 |
 
 
 

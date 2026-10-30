@@ -647,8 +647,24 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	} else if exists {
 		return nil, false, nil
 	}
+	// Capture the attempt's start before eligibility, but persist RUNNING only
+	// after it succeeds. Negative probes complete during the gate; failed
+	// dispatches leave the scheduled assignment untouched and resumable.
+	assignmentStartedAt := timestamppb.New(c.now().UTC())
+	execReq, err := c.frozenAssignmentRequest(ctx, campaignSpec, binding, formationStackSet, artifacts, assignment, c.newID("attempt"))
+	if err != nil {
+		return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", err)
+	}
+	var result *evalv1.EvaluationAssignmentResult
+	result, err = c.toolCallingGate(ctx, run, execReq)
+	if err != nil {
+		// Eligibility dispatch, receipt and persistence failures stop the run.
+		// Only a verified negative probe may exclude tool-bearing cells; the
+		// ordinary cell recovery path cannot manufacture that evidence.
+		return nil, false, fmt.Errorf("evaluation: tool-calling eligibility: %w", err)
+	}
 	assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
-	assignment.StartedAt = timestamppb.New(c.now().UTC())
+	assignment.StartedAt = assignmentStartedAt
 	if err := c.store.SaveAssignment(ctx, assignment); err != nil {
 		return nil, false, err
 	}
@@ -661,17 +677,26 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if startPublishErr != nil {
 		startPublishErr = fmt.Errorf("%w: assignment %s start: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), startPublishErr)
 	}
-	execReq, err := c.frozenAssignmentRequest(ctx, campaignSpec, binding, formationStackSet, artifacts, assignment, c.newID("attempt"))
-	if err != nil {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", err)
-	}
-	var result *evalv1.EvaluationAssignmentResult
-	result, err = c.toolCallingGate(ctx, run, execReq)
-	if err == nil && result == nil {
+
+	if result == nil {
 		execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
+	}
+	var judgeActivity *JudgeActivityPublisher
+	if err == nil && result == nil && c.publication != nil {
+		// Live judge events are best effort, like the start events: a publisher
+		// that cannot be prepared is reported with the terminal result.
+		var prepareErr error
+		if judgeActivity, prepareErr = c.publication.NewJudgeActivityPublisher(ctx, assignment, c.now); prepareErr != nil {
+			startPublishErr = errors.Join(startPublishErr, fmt.Errorf("%w: assignment %s judge activity: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), prepareErr))
+		} else {
+			execReq.JudgeActivity = judgeActivity
+		}
 	}
 	if err == nil && result == nil {
 		result, err = c.executor.ExecuteAssignment(ctx, execReq)
+	}
+	if judgeActivity != nil {
+		startPublishErr = errors.Join(startPublishErr, judgeActivity.Err())
 	}
 	if err != nil {
 		if !isRecoverableAssignmentExecutionError(err) {

@@ -170,14 +170,20 @@ type toolCallingGateExecutor struct {
 	t          *testing.T
 	probeCalls int
 	probeText  bool
+	probeErr   error
+	cellCalls  int
 }
 
 func (e *toolCallingGateExecutor) ExecuteAssignment(_ context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
+	e.cellCalls++
 	return &evalv1.EvaluationAssignmentResult{AssignmentId: req.Assignment.GetAssignmentId()}, nil
 }
 
 func (e *toolCallingGateExecutor) ProbeToolCalling(_ context.Context, req AssignmentExecutionRequest) (*evalv1.ModelToolCallingProbeEvidence, error) {
 	e.probeCalls++
+	if e.probeErr != nil {
+		return nil, e.probeErr
+	}
 	variant, err := assignmentToolCallingVariant(req)
 	if err != nil {
 		return nil, err
@@ -186,6 +192,48 @@ func (e *toolCallingGateExecutor) ProbeToolCalling(_ context.Context, req Assign
 		return validToolCallingProbeEvidence(e.t, variant, req.Assignment.GetRunId(), req.Assignment.GetCampaignId(), req.Assignment.GetAssignmentId()), nil
 	}
 	return signedToolCallingProbeEvidence(e.t, variant, req.Assignment.GetRunId(), req.Assignment.GetCampaignId(), req.Assignment.GetAssignmentId(), probeText(`probe_echo {"message":"capability-probe-tool"}`)), nil
+}
+
+func TestCampaignControllerProbeDispatchFailureStopsBeforeScoring(t *testing.T) {
+	ctx := context.Background()
+	store := NewStore(newCampaignMemoryFileService())
+	executor := &toolCallingGateExecutor{t: t, probeErr: assignmentExecutionError("probe dispatch", constants.ErrInferenceToolsUnsupported)}
+	controller := NewCampaignController(store, executor, nil, nil)
+	req := testCampaignInitRequest(t)
+	for _, scenario := range req.Catalog.GetScenarios() {
+		if scenario.GetScenarioId() == "tool-select-file-read" {
+			req.Catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{scenario}
+			break
+		}
+	}
+	req.Catalog.ToolCallingProbeRequired = true
+	var err error
+	req.Catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(req.Catalog)
+	require.NoError(t, err)
+	_, err = controller.InitializeCampaign(ctx, req)
+	require.NoError(t, err)
+	_, err = controller.ScheduleRun(ctx, req.RunID)
+	require.NoError(t, err)
+
+	result, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, CampaignExecutionBinding{
+		Topology: testOperatorTopology("inf-session", "data-session"), ModelRegistryDigest: req.Inventory.RegistryDigest,
+	}, req.ScenarioArtifacts)
+	require.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported, "a failed probe is a run error, not evidence of an unsupported capability")
+	assert.Nil(t, result)
+	assert.False(t, executed)
+	assert.Equal(t, 1, executor.probeCalls)
+	assert.Zero(t, executor.cellCalls)
+	assignments, err := store.ListAssignments(ctx, req.RunID)
+	require.NoError(t, err)
+	for _, assignment := range assignments {
+		assert.NotEqual(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING, assignment.GetLifecycleStatus(), "a failed preflight must remain resumable")
+		exists, err := store.AssignmentResultExists(ctx, req.RunID, assignment.GetAssignmentId())
+		require.NoError(t, err)
+		assert.False(t, exists, "no scored result may be fabricated from a failed eligibility dispatch")
+	}
+	run, err := store.LoadRun(ctx, req.RunID)
+	require.NoError(t, err)
+	assert.Empty(t, run.GetToolCallingProbes(), "a transport error supplies no signed probe evidence")
 }
 
 func TestCampaignToolCallingGateReusesOnlyRunAndVariantProbe(t *testing.T) {
