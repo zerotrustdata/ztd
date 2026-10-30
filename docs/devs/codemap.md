@@ -3,7 +3,7 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.6.0
+version: v1.7.0
 last_updated: 2026-10-30
 owners:
   - cmd/ztd/main.go
@@ -44,7 +44,7 @@ do_not_use_for:
   - Coding invariants and error contracts (docs/devs/devs.md)
   - Test selection, fixtures, race, coverage, and CI (docs/devs/tests.md)
   - Documentation audit, catalog, and generation policy (docs/devs/docs.md)
-  - Release, native evaluation acceptance, and signed evidence (docs/devs/release_process.md)
+  - Release preparation, signing, and publication (docs/devs/release_process.md)
   - Diagnostics, failure modes, and recovery procedures (docs/devs/troubleshooting.md)
   - Deployment and enrollment procedures (docs/guides/getting_started.md)
 ---
@@ -170,13 +170,13 @@ To enable deterministic multi-agent delegation, parallel execution without merge
 
 | Surface | Assigned paths | Authorized agent role | Work scope & invariants | Verification command |
 | :--- | :--- | :--- | :--- | :--- |
-| **Core Platform & CLI** (`surface-core-go`) | `cmd/ztd/`, `internal/cli/`, `internal/services/` (excluding gateway static embeds and `internal/services/evaluation/`), `internal/config/`, `internal/constants/` (excluding generated files), `internal/fileidentity/`, `internal/governance/`, `internal/infra/`, `internal/llamacpp/`, `internal/models/`, `internal/netutil/`, `internal/paths/`, `internal/pkg/`, `internal/security/`, `internal/timesvc/`, `internal/uuid/` | Core Platform Engineer / Platform Agent | Core Go execution, HTTP routing, PKI, SQLite queries/schema, storage, CLI flags, process lifecycle, runtime file service, and daemon logic. Bounded to Go backend sources. | `./ztd test unit`, `./ztd test integration --pkg <package>` |
+| **Core Platform & CLI** (`surface-core-go`) | `cmd/ztd/`, `internal/cli/`, `internal/services/` (excluding gateway static embeds and `internal/services/evaluation/`), `internal/config/`, `internal/constants/` (excluding generated files), `internal/fileidentity/`, `internal/governance/`, `internal/infra/`, `internal/llamacpp/`, `internal/models/`, `internal/netutil/`, `internal/paths/`, `internal/pkg/`, `internal/security/`, `internal/timesvc/`, `internal/uuid/` | Core Platform Engineer / Platform Agent | Core Go execution, HTTP routing, PKI, SQLite queries/schema, storage, CLI flags, process lifecycle, runtime file service, and long-running service logic. Bounded to Go backend sources. | `./ztd test unit`, `./ztd test integration --pkg <package>` |
 | **Protocol & Serialization Contracts** (`surface-protocol`) | `protocol/proto/ztd/`, `protocol/constants/`, `protocol/models/`, `protocol/schemas/`, `protocol/vectors/`, `protocol/conformance/`, `protocol/node/`, `internal/tools/constgen/`, `buf.gen.yaml`, `protocol/node/buf.gen.yaml` | Protocol & Code Generation Auditor | Canonical Protobuf schemas, JSON constant registries, generated Go and TypeScript bindings, doctrine definitions, wire models, and cross-language conformance vectors. Hand edits restricted to source `.proto` and JSON registries (`INV-GEN-01`, `INV-PROTO-01`). | `make proto-generate && make constants-check && make doctrines-validate` |
 | **Documentation, Guides & References** (`surface-docs`) | `docs/devs/`, `docs/architecture/`, `docs/core/`, `docs/guides/`, `docs/reference/`, `docs/release_notes/`, `protocol/docs/`, `README.md`, `CHANGELOG.md`, `.github/CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, `EARLY_TESTERS.md`, `THIRD_PARTY_NOTICES.md` | Release Notes & Documentation Auditor / Tech Writer Agent | Platform architecture specifications, developer guidelines, quick starts, release notes, changelog indexing, contributor guidance, and agent operational instructions. Formatting strictly governed by `docs/devs/docs.md`. | Link verification, `make doctrines-validate`, `make third-party-notices-check`, `docs/devs/docs.md` audit checklist |
-| **Frontends, Adapters & Web Distribution** (`surface-frontend`) | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Frontend Embed & Web Asset Builder | Browser SPAs (React + TypeScript + Vite), observe-frontend contract pack, Cloudflare Worker + Astro website, and Gateway-embedded production asset builds. Hand edits in frontend source trees; static embed trees refreshed exclusively via build targets (`INV-REL-VER-06`, `INV-REL-VER-07`, `INV-DOC-GEN-04`, `INV-DOC-GEN-06`). | `make console-lint console-test console-embed-check && make explorer-lint explorer-test explorer-embed && make website-test website-build` |
-| **Evaluation, Conformance & Benchmarks** (`surface-eval`) | `eval/`, `internal/services/evaluation/`, `internal/cli/cmd/eval/`, `examples/eval/` | Evaluation & Benchmark Engineer / Eval Qualification Agent | Evaluation campaign schemas, test scenarios, benchmark datasets, model tournament logic, cross-process eval loop qualification, and governance conformance runner (`INV-REL-VER-05`). | `./ztd test eval-loop`, `./ztd test conformance-loop` |
+| **Frontends, Adapters & Web Distribution** (`surface-frontend`) | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Frontend engineer | Browser SPAs (React + TypeScript + Vite), observe-frontend contract pack, Cloudflare Worker + Astro website, and Gateway-embedded production asset builds. Hand edits in frontend source trees; static embed trees refreshed exclusively via build targets (`INV-DOC-GEN-04`, `INV-DOC-GEN-06`). | `make console-lint console-test console-embed-check && make explorer-lint explorer-test explorer-embed && make website-test website-build` |
+| **Evaluation, Conformance & Benchmarks** (`surface-eval`) | `eval/`, `internal/services/evaluation/`, `internal/cli/cmd/eval/`, `examples/eval/` | Evaluation & Benchmark Engineer / Eval Qualification Agent | Evaluation campaign schemas, test scenarios, benchmark datasets, model tournament logic, cross-process eval loop qualification, and governance conformance runner. | `./ztd test eval-loop`, `./ztd test conformance-loop` |
 | **Integrations, Plugins & Examples** (`surface-examples`) | `examples/` (`examples/external-console/`, `examples/governance-envelope/`, `examples/mcp-client-configs/`, `examples/workload-identity/`), `demos/`, `claude-plugin/` | Integrations & Plugins Agent | Standalone runnable reference code, Claude Code integration hooks and skills, external client configurations, and sample application demonstrations. | `make claude-plugin-test`, targeted example execution |
-| **Release Orchestration & CI/CD** (`surface-release-ci`) | `VERSION`, `Makefile`, `.github/workflows/`, `scripts/`, `internal/tools/versionsync/`, `internal/tools/ztdbinaries/`, `internal/tools/treehash/`, `release-evidence/` | Lead Release Orchestrator / Version Synchronizer / Smoke Runner | Platform version synchronization, GitHub Actions workflow definitions, release verification and preflight scripts, and smoke test harness orchestration (`INV-REL-DUTY`, `INV-REL-VER`, `INV-REL-SMOKE`). Signed compliance bundles remain available through the standalone compliance CLI when explicitly requested. | `make version-sync-check && make test-release-scripts && ./ztd test release-smoke` |
+| **Release Orchestration & CI/CD** (`surface-release-ci`) | `VERSION`, `Makefile`, `.github/workflows/`, `scripts/`, `internal/tools/versionsync/`, `internal/tools/ztdbinaries/`, `internal/tools/treehash/`, `release-evidence/` | Release engineer | Platform version synchronization, GitHub Actions workflow definitions, release verification and preflight scripts, and smoke test harness orchestration (`INV-REL-DUTY`, `INV-REL-VER`, `INV-REL-SMOKE`). | `make version-sync-check && make test-release-scripts && ./ztd test release-smoke` |
 | **Test Suites & Fixtures** (`surface-tests`) | `test/` (`test/e2e/`, `test/fixtures/`, `test/capacity/`), `internal/tools/chaos/` | Quality & Test Engineer | Cross-package Tier 2 integration suites, Tier 3 e2e suites, test fixtures, fault injection, and chaos harnesses. | `./ztd test integration`, `./ztd test e2e`, `./ztd test chaos` |
 
 ### Process entry
@@ -203,9 +203,9 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. `gw recover` installs a saved master-key recovery key. |
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
-| `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture), `enroll app` (governed application binding), and `enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel pinned to one frozen model tag). |
+| `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture), `enroll app` (governed application binding), `enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel pinned to one frozen model tag), and `unbind`. |
 | `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
-| `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `recover`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
+| `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `recover`, `reset-identity`, `terminate`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
 | `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, `eval-loop`, and `conformance-loop`. |
@@ -216,7 +216,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `tui` | `tuicmd` | `internal/cli/cmd/tui/` | | Tactical Governance Console. |
 | `version` | `version` | `internal/cli/cmd/version/` | | Build metadata. Optional FIPS module status is `./ztd version --help`. |
 | `compliance` | `compliancecmd` | `internal/cli/cmd/compliance/` | `compliances` | `ksi`, `ksi-history`, `overlay`, `release-evidence`, `release-prepare`, `evidence`, `evidence-graph`, and `report`. |
-| `eval` | `eval` | `internal/cli/cmd/eval/` | | `models`, `campaigns`, `runs`, `rollout`, `formations`, `gates`, `conformance`, `suites`, `backup`, and `restore`. Also constructs `public restore`. |
+| `eval` | `eval` | `internal/cli/cmd/eval/` | | `models`, `campaigns`, `runs`, `rollout`, `formations`, `gates`, `conformance`, `suites`, `backup`, `restore`, and `quickstart`. Also constructs `public restore`. |
 
 Files at `internal/cli/cmd/` root are the root command, its tests, and shared file-service and config-load tests. Factory-error tests reside beside the group they cover (`factory_error_<group>_test.go`). Factory rule is `INV-FS-08`.
 
@@ -291,7 +291,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | Data and audit | Data, signer, audit |
 | Operators and dispatch | Operator, dispatch, inference dispatch, Tribunal authoring of typed `run_shell_command` arguments for governed `MCP_CALL` |
 | Streams and ingress | SSE, MCP, pub/sub |
-| Governance and admin | Governance, health, admin |
+| Governance and health | Governance, health |
 | Observation and publication | Observe, observe producer, public feed, eval campaign publication, provider observation, model provenance |
 
 | Path | Owns |
@@ -414,7 +414,7 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | Runtime path constants | `internal/constants/paths.go` | |
 | External path reference | `protocol/constants/compliance_paths.json` | |
 
-Evidence scope and signed artifacts are owned by [Release Process](release_process.md); report generation is an opt-in standalone workflow. Control-alignment prose is [Compliance Alignment](../reference/compliance-alignment.md).
+Compliance report generation is an opt-in standalone workflow (`ztd compliance`), not a release gate. Control-alignment prose is [Compliance Alignment](../reference/compliance-alignment.md).
 
 ### Other product components
 
@@ -450,12 +450,12 @@ Go module and packaging rules are governed by `INV-ENV-01` and [Developer Guidel
 
 | Target | Owns |
 | :--- | :--- |
-| `make build` | Host binary. Writes `bin/ztd-<os>-<arch>` and repo-root copy. Compiles committed explorer and console embeds without building frontends; refresh them with `make explorer-embed` and `make console-embed`. |
+| `make build` | Host binary. Writes `bin/ztd-<os>-<arch>` and repo-root copy. Depends on `console-embed` and `explorer-embed`, then runs `build-go`. `make build-go` compiles from the committed embeds without Node.js. |
 | `make proto-generate` | Go and TypeScript binding refresh: `proto-go` and `proto-node` (`INV-PROTO-01`). |
 | `make constants-generate`, `make constants-check` | `internal/tools/constgen` write and verify. |
 | `make explorer-catalog-generate`, `make explorer-catalog-check` | `evaluation-explorer/src/content/scenario-catalog.generated.ts` generation and verification via `internal/tools/explorercatalog`. |
 | `make lint` | `vulncheck`, `doctrines-validate`, a guard that rejects empty-dir `os.MkdirTemp` and `os.CreateTemp` calls under `cmd`, `internal`, and `test` (`INV-FS-11`), then `golangci-lint run`. |
-| `make test`, `make test-unit`, `make test-integration` | Platform tiers. `make test` is unit plus integration. |
+| `make test`, `make test-unit`, `make test-integration` | Platform tiers. `make test` runs `test-quality`, `test-platform`, and `test-components`. |
 | `make console-test`, `make website-test` | Console and website checks. |
 | `make fips-build`, `make fips-verify` | Pinned Linux AMD64 FIPS variant. Reference: [FIPS 140-3](../reference/fips140-3.md). |
 | `make doctrines-validate` | Doctrine JSON under `protocol/constants/doctrine/`. |
@@ -536,7 +536,7 @@ Typed decision backends live in `internal/services/inference/systemone.go` (loca
 - [Developer Guidelines](devs.md): coding invariants. CLI group placement is `INV-CLI-01`. Gateway construction is [Gateway governance construction](devs.md#gateway-governance-construction).
 - [Testing Guide](tests.md): tiers, fixtures, selection, race, coverage, and CI.
 - [Documentation Guide](docs.md): audit, catalog, style, generation, and format standards.
-- [Release Process](release_process.md): versioning, native evaluation acceptance, and signed evidence.
+- [Release Process](release_process.md): versioning, release smoke, signing, and publication.
 - [Troubleshooting Guide](troubleshooting.md): diagnostics and recovery procedures.
 - [Architecture Overview](../architecture/overview.md), [Gateway Architecture](../architecture/gateway.md), [Operator Architecture](../architecture/operator.md), [Governance Architecture](../architecture/governance.md), [Consensus Architecture](../architecture/consensus.md), [Storage Architecture](../architecture/storage.md), [Protocol Architecture](../architecture/protocol.md).
 - [AI Agents and the ztd Governance Boundary](../architecture/agents.md): ingress limits.

@@ -10,6 +10,7 @@ owners:
   - Makefile
   - CHANGELOG.md
   - .github/workflows/release-binary.yml
+  - scripts/release-preflight.sh
   - scripts/release-rehearse.sh
   - scripts/release-publish.sh
   - scripts/release-r2.sh
@@ -64,7 +65,7 @@ IDs are stable and never reused. Gaps are retired IDs.
 | INV-REL-VER-04 | Each release has `docs/release_notes/vX.Y.x/vX.Y.Z.md` and a row under `## vX.Y.x` in `CHANGELOG.md`. A new minor version creates both the section and the directory. |
 | INV-REL-VER-09 | Release notes start with `## [X.Y.Z] - YYYY-MM-DD - <Title>`, where the date is the planned tag date in UTC and the title names what the release delivers. The `CHANGELOG.md` row carries the same date. |
 | INV-REL-VER-10 | While the major version is 1, a release that breaks a CLI, wire, or evidence contract, or that requires the Gateway and Operators to upgrade together, bumps the minor version. Patch releases stay compatible within their minor series. |
-| INV-REL-SMOKE-01 | `./ztd test release-smoke` MUST pass against the candidate binary before tagging. Scenarios and evidence are described in [ux_smoke_test.md](../guides/ux_smoke_test.md). |
+| INV-REL-SMOKE-01 | `./ztd test release-smoke` MUST pass against the candidate binary before tagging. Scenarios and evidence are described in `docs/guides/ux_smoke_test.md`. |
 | INV-REL-SMOKE-03 | Smoke reports MUST read the data Operator's own populated `.ztd` stores, not Gateway state, an empty runtime, or stores combined from different roots. |
 | INV-REL-SMOKE-04 | Smoke acceptance requires non-empty receipts, commitments, and file mutations in both Operator and Gateway runtimes, and only `PASS` results for `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, `receipt_commitment_crosslink`, and every `verification_summary.csv` row. The runner enforces this. |
 
@@ -118,7 +119,7 @@ Watch it with `gh run list --workflow release-binary.yml --branch vX.Y.Z`, then 
 
 ### Release Signing
 
-CI signs each binary keylessly with `cosign sign-blob --bundle` using the workflow's GitHub OIDC identity. No long-lived signing key exists. Each binary ships with `<binary>.sha256` and `<binary>.sigstore.json`.
+CI signs each binary keylessly with `cosign sign-blob --bundle` using the workflow's GitHub OIDC identity. The release scripts and workflow reference no long-lived signing key. Each binary ships with `<binary>.sha256` and `<binary>.sigstore.json`.
 
 - Signer identity: `https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/vX.Y.Z`
 - OIDC issuer: `https://token.actions.githubusercontent.com`

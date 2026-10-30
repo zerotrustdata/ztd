@@ -3,8 +3,8 @@ doc_id: position-paper
 title: Governing Agentic Execution Without Surrendering Data Custody
 audience: researchers, security architects, compliance officers, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - protocol/
   - internal/services/governance/
@@ -136,7 +136,7 @@ flowchart LR
 
 1. **L1 Doctrine**: Checks `forbidden_patterns` regex field options (`ztd.common.v1`) on string fields, and runs deterministic MITRE ATT&CK-based detection on command, MCP argument, and A2A payloads. Enforced across all postures.
 2. **L2 Consensus**: Validates Ed25519 signatures over `<transaction_hash>|<decision>` from enrolled consensus members against the configured quorum. It gates only state-changing, non-bootstrap actions, and only under the consensus and notary postures. The vote producer is either the Gateway-hosted Tribunal or an enrolled application.
-3. **L3 Notary**: Validates transaction-bound human approval, and is required only under the ratify and notary postures. Gateway workflows require WebAuthn passkeys; outbound Operator workflows accept either a signed CLI approval proof or a passkey proof.
+3. **L3 Notary**: Validates transaction-bound human approval, and is required only under the ratify and notary postures. Gateway workflows accept exactly one of a WebAuthn passkey assertion or a signature from an enrolled CLI certificate; outbound Operator workflows accept either a signed CLI approval proof or a passkey proof.
 4. **L4 Warden**: Pre-dispatch gate executed on the target host. In order, it checks expiry, durably reserves the nonce, runs L1 Doctrine, recomputes and checks the transaction hash, verifies the state Merkle root, and verifies the posture-required L2 and L3 proofs.
 5. **L5 Actuator**: Sole execution boundary. Persists an initial signed `EXECUTING` receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final receipt and persistence attestation.
 
@@ -144,7 +144,7 @@ Posture selects which of L2 and L3 gate execution: `doctrine` requires neither, 
 
 ### 5.4 Sovereign Execution Boundary and Token Rehydration
 
-To safeguard sensitive operational data, the Operator deploys a Sovereign Execution Boundary. Bounded scrubbing transforms sensitive values in tool outputs into placeholders of the form `{{UEI_<owner>_N}}` before transmission across network boundaries. The owner segment is an optional 12-hex runtime identifier, and token mappings are held in the scrubbing service's in-memory maps. When an admitted transaction returns to the host for execution, L5 Actuator rehydrates only this runtime's own placeholders, in memory, immediately before dispatching commands to the operating system. A payload that cannot be rehydrated is not dispatched, and the receipt finalizes as `FAILED`.
+To safeguard sensitive operational data, the Operator deploys a Sovereign Execution Boundary. Bounded scrubbing transforms sensitive values in tool outputs into placeholders of the form `{{UEI_<owner>_N}}` before transmission across network boundaries. The owner segment is a 12-hex runtime identifier that every token minted by the runtime carries, and token mappings are held in the scrubbing service's in-memory maps and persisted encrypted through the vault with a 24-hour TTL. When an admitted transaction returns to the host for execution, L5 Actuator rehydrates only this runtime's own placeholders, in memory, immediately before dispatching commands to the operating system. A payload that cannot be rehydrated is not dispatched, and the receipt finalizes as `FAILED`.
 
 ### 5.5 Transaction-Bound Human Authorization
 
@@ -154,7 +154,7 @@ L3 Notary binds human approval to the specific transaction hash rather than gran
 
 L5 Actuator signs and persists an initial `EXECUTING` receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `EventReceipt` along with a `ReceiptPersistenceAttestation`. The SQLite `commitment_ledger` is created with the audit schema on every store and appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
 
-These artifacts provide signed, hash-chained evidence of what was proposed, verified, and executed on the governed path. Autonomous workflows and human operators can query signed receipts to establish exactly what was proposed, verified, and executed.
+These artifacts provide signed, hash-chained evidence of what was proposed, verified, and executed on the governed path. Autonomous workflows and human operators can query signed receipts to establish what was proposed, verified, and executed on the governed path.
 
 ### 5.7 Confidential Edge Execution and Governed Mutation
 
@@ -227,7 +227,7 @@ ztd remains agnostic to reasoning topology: it enforces deterministic policy gat
 
 Agentic computing requires an unyielding architectural boundary between generating a plan and exercising operational authority. Prompt instructions, model fine-tuning, and application-level confirmations are insufficient defenses against prompt injection, memory poisoning, and tool compromise.
 
-ztd's thesis is that the data owner must retain custody of authoritative state, execution authority, and forensic evidence, while AI systems operate as untrusted reasoning components. An agent proposal becomes an executable side effect only as a canonical, state-bound transaction that clears deterministic policy gates and is independently verified where execution occurs. Human approval binds cryptographically to the transaction, execution receives a single-use capability, and signed evidence records the governed lifecycle. Through this separation of Policy Decision Points from Policy Execution Points, ztd provides the zero-trust execution and evidence foundation for the agentic era.
+ztd's thesis is that the data owner must retain custody of authoritative state, execution authority, and forensic evidence, while AI systems operate as untrusted reasoning components. An agent proposal becomes an executable side effect only as a canonical, state-bound transaction that clears deterministic policy gates and is independently verified where execution occurs. Human approval binds cryptographically to the transaction, execution receives a single-use capability, and signed evidence records the governed lifecycle. Through this separation of Policy Decision Points from Policy Execution Points, ztd provides a zero-trust execution and evidence foundation for agentic systems.
 
 ## References
 

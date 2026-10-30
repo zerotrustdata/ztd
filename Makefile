@@ -220,8 +220,8 @@ help:
 		'  fips-verify               Build and verify the FIPS variant' \
 		'  verify-static             Check a built Linux binary is fully static (STATIC_BINARY=...)' \
 		'  version-sync              Sync version declarations to VERSION' \
-		'  release-rehearse          Run the release workflow on main without publishing' \
-		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
+		'  release-rehearse          Optional: run the release workflow on main without publishing' \
+		'  release                   Tag and push the release in VERSION' \
 		'' \
 		'Full test suite' \
 		'  test                      Run every local test and quality gate (100-Operator smoke)' \
@@ -1279,9 +1279,8 @@ endif
 # =============================================================================
 # RELEASE
 # =============================================================================
-# VERSION is the single source of truth. `make release` syncs the maintained
-# protocol specification Version: headers and first-party npm package versions
-# from VERSION (if needed; see version-sync), tags the current commit as
+# VERSION is the single source of truth. `make release` syncs every version
+# declaration from VERSION (if needed; see version-sync), tags the current commit as
 # v<VERSION>, and pushes the tag. The GitHub Actions
 # workflows create the GitHub release and upload binary assets.
 #

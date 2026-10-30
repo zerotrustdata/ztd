@@ -3,8 +3,8 @@ doc_id: encryption
 title: Encryption Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/vault/
   - internal/services/keystore/
@@ -209,7 +209,7 @@ On macOS Keychain and Linux Secret Service, one login holds one master key and e
 
 `--accept-unrecoverable` stores the key without showing it. Automated tests, scale runs, and the cloud systemd unit pass it because they have no terminal. Losing that OS key store then destroys the runtime. `gw recover` and `operator recover` read a saved key from the terminal and install it. They do not replace a different key the store can still read. An ssh-agent seal whose sealing key is not loaded is treated as empty: the saved key must decrypt every sealed secret, and the seal is rewritten under the key the agent holds now. When `.ztd/secrets/` already holds sealed secrets, the key must decrypt them or nothing is stored.
 
-A local `operator deploy` runs the ceremony in the deploying terminal before it starts workers, so the key is not written to the worker start log. A remote deploy has no terminal on the far side: the worker refuses to create a key unless the deploy passes `--accept-unrecoverable`, or an operator runs `operator start` in a terminal on that host first.
+A local `operator deploy` runs the ceremony in the deploying terminal before it starts Operators, so the key is not written to the Operator start log. A remote deploy has no terminal on the far side: the Operator refuses to create a key unless the deploy passes `--accept-unrecoverable`, or an operator runs `operator start` in a terminal on that host first.
 
 ### Secret Storage Format
 

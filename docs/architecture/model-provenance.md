@@ -3,8 +3,8 @@ doc_id: model-provenance
 title: Model Provenance Architecture
 audience: engineering, campaign operators, and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/inference/model_provenance/
   - protocol/proto/ztd/eval/v1/eval.proto
@@ -50,8 +50,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-PROV-TOPO-01 | The Provenance Operator does not run inference, sample provider hardware, manage Ollama, or authorize execution. It attests model weight integrity only. |
-| INV-PROV-TOPO-02 | The Gateway selects exactly one active Operator that advertises the `provenance` capability. Two or more matching sessions fail BEGIN, and the attempt fails, for any attempt that carries both a served model tag and a model digest. With zero matching sessions, BEGIN is skipped with a warning and the attempt proceeds without a window. FINALIZE is sent only to an attempt whose BEGIN opened a window. If that FINALIZE finds no provenance Operator, a non-campaign attempt skips it, and a campaign-bound attempt fails. The campaign's model provenance policy decides at verification whether a missing window is acceptable. |
-| INV-PROV-TOPO-03 | The Gateway selects a Provenance Operator only by its advertised `provenance` capability. Configuration does not reject a process that combines `provenance` with `inference` or `observer`, and Gateway selection does not check which process or host an Operator runs in. |
+| INV-PROV-TOPO-02 | The Gateway selects exactly one active Operator that advertises the `provenance` capability. When an embedded session advertises `provenance`, only embedded sessions are candidates. Two or more candidate sessions fail BEGIN, and the attempt fails, for any attempt that carries both a served model tag and a model digest. With zero matching sessions, BEGIN is skipped with a warning and the attempt proceeds without a window. FINALIZE is sent only to an attempt whose BEGIN opened a window. If that FINALIZE finds no provenance Operator, a non-campaign attempt skips it, and a campaign-bound attempt fails. The campaign's model provenance policy decides at verification whether a missing window is acceptable. |
+| INV-PROV-TOPO-03 | The Gateway selects a Provenance Operator only by its advertised `provenance` capability. Configuration does not reject a process that combines `provenance` with `inference` or `observer`. Gateway selection prefers embedded sessions over outbound sessions and otherwise does not check which process or host an Operator runs in. |
 | INV-PROV-TOPO-04 | The attestor reads the manifest and blobs only from the local model storage root configured for its own Operator process (`--model-storage-root`). It has no remote storage client. |
 
 ### Attestation flow (`INV-PROV-ATTEST`)
@@ -141,7 +141,7 @@ Each inference attempt that carries a served model tag and model digest triggers
 6. Publishes ModelProvenanceObservationCompleted -> Gateway stores window
                           │
                           ▼
-7. Gateway emits model.provenance.attestation.recorded (SSE, ephemeral) -> CLI reads window
+7. Gateway emits ztd.v1.inference.model.provenance.attestation.recorded (SSE, ephemeral) -> CLI reads window
 ```
 
 1. **Tag Resolution**: Under the Ollama format, resolves the served tag through `ollama.ParseName` to a manifest path under the storage root's `manifests/` directory. Under the llamacpp format, `llamacpp.ResolveModel` resolves it to the GGUF files the router loads from `--models-dir`.

@@ -3,8 +3,8 @@ doc_id: sse
 title: SSE Streaming
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/gateway/sse_controller.go
   - internal/services/gateway/sse_event_publisher.go
@@ -101,7 +101,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | SSE poll handler | `internal/services/gateway/sse_controller.go` (`handleInternalSSEEvents`) | Builds route from auth context, returns rows since cursor |
 | SSE stream handler | `internal/services/gateway/sse_controller.go` (`handleInternalSSEStream`) | `./ztd test integration --pkg ./internal/services/gateway --run HandleInternalSSEStream` |
 | SSE publisher | `internal/services/gateway/sse_event_publisher.go` | Persist-before-publish for `Publish`; live-only for `PublishEphemeral` |
-| SSE event storage | `internal/services/gateway/sse_event_service.go` | Append, list, cleanup (30s interval, >1h purge), count |
+| SSE event storage | `internal/services/gateway/sse_event_service.go` | Append, list, cleanup (30s interval, >1h purge) |
 | Live channel naming | `internal/services/pubsub/channels.go`, `internal/constants/channels.go` | `sse:cli:<id>`, `sse:web:<id>` |
 | Observe producers | `internal/services/gateway/observe_producer_controller.go` | `./ztd test integration --pkg ./internal/services/gateway --run ObserveProducer` |
 | Observe producer rejection contract | `internal/models/observe_producer_rejection.go`, `internal/tools/agent_harness/client/observe_producer.go` | Typed code, transition and stale details; client preserves the classified cause |
@@ -153,9 +153,9 @@ Persisted Event             Ephemeral Event
 | :--- | :--- | :--- | :--- |
 | `ztd.v1.platform.approvals.changed` | `ephemeral` | `approvals_events.go` | Signals pending L3 transactions or platform enrollment changes. Sent to every unexpired web session and active CLI session of the owner |
 | `ztd.v1.operator.status.updated.<state>` | `gateway.sse_store` | `operator_status_events.go` | Operator status announcements: `active` when the Operator's command-channel subscription is established (ready for commands), and the `offline`, `stopped`, and `terminated` transitions; `stale` is never stored or announced as a transition and is derived on read |
-| `ztd.v1.operator.heartbeat.received` | `ephemeral` | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at`. Sent to the owner's web sessions |
-| `ztd.v1.inference.model.provenance.attestation.recorded` | `ephemeral` | `evidence_window_publisher.go` | The Gateway stored a Provenance Operator attestation window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
-| `ztd.v1.inference.provider.boundary.observation.recorded` | `ephemeral` | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
+| `ztd.v1.operator.heartbeat.received` | `ephemeral` | `operator_status_events.go` | Real-time telemetry carrying `last_heartbeat_at` and `stale_at`. Sent to the owner's connected web and CLI sessions |
+| `ztd.v1.inference.model.provenance.attestation.recorded` | `ephemeral` | `evidence_window_publisher.go` | The Gateway stored a Provenance Operator attestation window; carries `provider_attempt_id`. Sent to the owner's connected CLI sessions |
+| `ztd.v1.inference.provider.boundary.observation.recorded` | `ephemeral` | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLI sessions |
 | `ztd.v1.app.agent.status.updated` | `gateway.sse_store` | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | `gateway.sse_store` | `observe_producer.go` | Run state emitted by registered application workloads |
 | `ztd.v1.ai.eval.*` (except `stop.requested`) | per registry entry | `observe_producer.go` (`emitLiveSSEEvent`) | Campaign progress events from the observe producer. A repeated `event_id` is rejected before emission (`ErrObserveDuplicateEventID`) |

@@ -3,8 +3,8 @@ doc_id: diagram-system-50k
 title: "Diagram: System Overview 50,000-Foot View"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - cmd/ztd/
   - internal/services/gateway/
@@ -38,7 +38,7 @@ graph TD
             Services["Core Services<br/>PKI · Auth · Registration · Passkeys"]
             Persistence["Persistence<br/>SQLite Stores · Audit · Merkle Roots"]
             Broker["Pub/Sub Broker<br/>WebSocket Fan-out · cmd:* · receipts:*"]
-            MCP["MCP / A2A Gateway<br/>/mcp · /api/v1/a2a/call (A2A when enabled)"]
+            MCP["MCP / A2A Gateway<br/>/mcp · /api/v1/a2a/call (A2A only when a downstream A2A server is configured)"]
             Gov["Governance Surface<br/>Envelope Admission · L2 Consensus (Tribunal or application provider) · Dispatch"]
             SSE["SSE Event Bridge<br/>Cursor Fetch /api/v1/sse/events · Live Stream /api/v1/sse/stream"]
         end
@@ -71,7 +71,7 @@ graph TD
         Browser["Browser · Console<br/>(WebAuthn Session)"]
     end
 
-    Agent -. "mTLS (JWT when JWKS enabled) · Streamable HTTP" .-> Surfaces
+    Agent -. "JWT when JWKS is configured, else mTLS · Streamable HTTP" .-> Surfaces
     BYO -. "mTLS · HTTPS :8443" .-> Gov
     Browser -. "HTTPS :8443 · Session Cookie" .-> Surfaces
 

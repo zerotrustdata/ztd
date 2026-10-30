@@ -3,8 +3,8 @@ doc_id: diagram-system-overview-lr
 title: "Diagram: System Overview Flowchart"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/governance/
   - internal/services/gateway/
@@ -28,7 +28,7 @@ Traces governed intent from a client through Gateway admission (L1–L3 coordina
 flowchart LR
     Client["Human · AI Client · Enrolled App"]
     Gateway["Governance Gateway (ztdg)<br/>Identity binding · Envelope admission<br/>L1 Doctrine · L2 Consensus (Tribunal or enrolled application) · L3 Notary"]
-    Operator["Executing Operator (ztdo)<br/>Embedded or Outbound"]
+    Operator["Governed Operator (ztdo)<br/>Embedded or Outbound"]
     L4Warden["L4 Warden<br/>Nonce · Hash · Expiry · State Root<br/>Local L1 · Posture-required L2/L3"]
     L5Actuator["L5 Actuator<br/>EXECUTING receipt · Commitment<br/>JIT capability · Dispatch · Final receipt"]
     EventsStore["Local-First Events Store (events) · Commitment Ledger"]
@@ -52,7 +52,7 @@ The Gateway receives governed work through distinct authenticated ingress paths:
 
 - **MCP and A2A**: Ingress requests (`tools/call`, `resources/read`, `prompts/get`, `a2a/call`) are normalized into canonical `GovernanceEnvelope` messages by the MCP gateway layer (`internal/services/mcp/gateway.go`). Under `consensus` and `notary`, the Gateway coordinates L2 consensus votes on state-change actions. Under `ratify` and `notary`, it suspends mutations for L3 human approval. Read-only and observation actions get no L2 vote round.
 - **Governed HTTP Dispatch**: Authenticated callers submit an `event_type` and serialized payload to `POST /api/v1/operators/commands` (`internal/services/gateway/dispatch_service.go`). The Gateway wraps the command into a `GovernanceEnvelope` and dispatches it to the bound Operator session.
-- **Direct Envelope Ingress**: Authorized CLI or Operator identities submit pre-formed protojson envelopes to `POST /api/v1/governance/envelopes`.
+- **Direct Envelope Ingress**: Authorized CLI or application workload identities submit pre-formed protojson envelopes to `POST /api/v1/governance/envelopes`.
 
 ## Verification and Execution
 

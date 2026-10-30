@@ -31,7 +31,7 @@ do_not_use_for:
   - Platform coding invariants and error contracts (docs/devs/devs.md)
   - Runtime and package ownership maps (docs/devs/codemap.md)
   - Test execution tiers, fixtures, and CI scope (docs/devs/tests.md)
-  - Release execution, native evaluation acceptance, and signed evidence (docs/devs/release_process.md)
+  - Release preparation, signing, and publication (docs/devs/release_process.md)
   - Diagnostics, failure modes, and recovery procedures (docs/devs/troubleshooting.md)
 ---
 
@@ -319,7 +319,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 - [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
 - [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Trust and evidence integrity, removal of ungoverned data API writes, signed audit checkpoints, judge-scored evals, and the llama.cpp inference provider.
-- [v1.7.0 Draft Release Notes](../release_notes/v1.7.x/v1.7.0.md): Unreleased evaluation evidence, correctness, and release reliability changes.
+- [v1.7.0 Release Notes](../release_notes/v1.7.x/v1.7.0.md): Signed judge evidence and live activity, evaluation correctness and model residency, enrollment diagnostics, network probe address restrictions, and release reliability.
 - [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 
 ## Procedures

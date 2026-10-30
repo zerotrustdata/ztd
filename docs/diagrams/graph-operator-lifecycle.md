@@ -3,8 +3,8 @@ doc_id: diagram-operator-lifecycle
 title: "Diagram: Operator Lifecycle State Machine"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/gateway/registration_service.go
   - internal/services/gateway/operator_controller.go
@@ -67,20 +67,20 @@ The Operator connects to `wss://<gateway-host>:8443/api/v1/pubsub/stream` over m
 
 An Operator is bound to the owner's web session for session-scoped use:
 - **Binding Command**: `POST /api/v1/operators/bind` records the `operator_session_id` against the caller's validated `web_session_id`.
-- **Identity Isolation**: `BindOperators` checks that the target Operator belongs to the authenticated user, writes the bound-sessions document, and sets `bound_web_session_id` on the Operator document. The Operator's stored status does not change.
+- **Identity Isolation**: `BindOperators` checks that the target Operator belongs to the authenticated user, writes the KV session bindings and the bound-sessions document, and sets `bound_web_session_id` on the Operator document. The Operator's stored status does not change.
 - **Unbinding**: `UnbindOperators` clears `bound_web_session_id` and removes the Operator from the bound-sessions document. Bound is a view over `bound_web_session_id`, not a status value.
 
 ### 4. Heartbeats and Dynamic Liveness
 
 - **Stamping**: The Gateway stamps `last_heartbeat_at` with its own clock when it receives a heartbeat (`handleHeartbeatPublish` in `internal/services/gateway/gateway_service.go`).
-- **Stale Window**: `stale_at` is `last_heartbeat_at` (falling back to `claimed_at`, then `created_at`) plus `constants.OperatorStaleAfter` for the declared heartbeat interval. That window is the larger of 60 seconds and twice the declared interval. The declared interval defaults to 30 seconds and is capped at 5 minutes (`internal/constants/status.go`).
+- **Stale Window**: `stale_at` is `last_heartbeat_at` (falling back to `claimed_at`, then `created_at`) plus `constants.OperatorStaleAfter` for the declared heartbeat interval. That window is the larger of 60 seconds and twice the declared interval. The declared interval defaults to 30 seconds (`internal/constants/status.go`). The platform enrollment bootstrap rejects a declared interval above 5 minutes (`internal/services/gateway/platform_enrollment_operator_bootstrap.go`), and the stale window clamps the interval to 5 minutes.
 - **Derivation**: `deriveOperatorStaleness` (`internal/services/gateway/operator_staleness.go`) sets `stale_at` and a `stale` status on read only. Nothing is written or announced when it derives staleness. Only active remote Operators are derived; embedded Operators are never stale.
 - **Effect**: A stale Operator fails checks that require `active`, such as inference dispatch selection (`internal/services/inference/dispatch/dispatch.go`) and the stop handler. A fresh heartbeat moves `last_heartbeat_at` forward and clears the reading on the next read.
 
 ### 5. Stop, Re-enrollment, and Termination
 
-- **Stop**: `POST /api/v1/operators/stop` or the browser route `POST /api/v1/operators/{id}/stop` (`handleStopOperator` in `internal/services/gateway/operator_controller.go`). The request requires a stored `active` remote Operator. The Gateway dispatches `ztd.v1.operator.shutdown.requested`, then `MarkOperatorStopped` stores `stopped`.
+- **Stop**: `POST /api/v1/operators/stop` (`handleStopOperator` in `internal/services/gateway/operator_controller.go`) or the browser route `POST /api/v1/operators/{id}/stop` (`handleBrowserStopOperator` in `internal/services/gateway/operator_browser.go`). Each request requires a stored `active` remote Operator. The Gateway dispatches `ztd.v1.operator.shutdown.requested`, then `MarkOperatorStopped` stores `stopped`.
 - **Re-enrollment**: A stopped Operator returns to `offline` when `RegisterDeviceCSR` matches its fingerprint, then becomes `active` on subscription.
-- **Termination (Gateway)**: `POST /api/v1/operators/{id}` (`handleTerminateOperator`) calls `TerminateOperator`, which stores `terminated` for any non-terminated Operator. It does not revoke the certificate.
+- **Termination (Gateway)**: `POST /api/v1/operators/{id}` (`handleTerminateOperator`) calls `TerminateOperator`, which stores `terminated` for any non-terminated remote Operator and rejects embedded Operators. It does not revoke the certificate.
 - **Termination (platform revocation)**: `HandleRevoke` in `internal/services/pubsub/platform_enrollment_handlers.go` revokes the leaf certificate serial, deactivates the Operator and CLI sessions, stores `terminated`, and disconnects the Operator and CLI identities.
 - **Fail closed**: The Gateway rejects connections from terminated identities (`internal/services/gateway/gateway_auth.go`). A terminated Operator is not re-enrolled into the same slot.

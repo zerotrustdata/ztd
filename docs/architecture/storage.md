@@ -3,8 +3,8 @@ doc_id: storage
 title: Storage Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -86,7 +86,7 @@ SQLite retry helpers take an explicit context for connection-pool waits, stateme
 
 This document does not define a general SQLite backup or recovery procedure. The supported lifecycle operations are owned by CLI commands; confirm flags and defaults with `./ztd <command> --help`.
 
-- **Reset host runtime state:** `ztd gw clean` stops services and renames `.ztd/` aside to `.ztd-<MMDDHHMM>` (nothing is deleted) after offering an evaluation-evidence backup, so the Gateway restarts with no databases, vault, or PKI. `make clean` removes build and test artifacts only and does not reset runtime state, trust, or databases.
+- **Reset host runtime state:** `ztd gw clean` stops services and renames `.ztd/` aside to `.ztd-<MMDDHHMM>` (nothing is deleted) after offering an evaluation-evidence backup, so the next Gateway start creates a runtime with no databases, vault, or PKI. `make clean` removes build and test artifacts only and does not reset runtime state, trust, or databases.
 - **Back up and restore evaluation evidence:** `ztd eval backup` and `ztd eval restore` copy and verify `.ztd/data/eval/` and `.ztd/eval/`, carrying the vault key chain that sealed the evidence so a snapshot restores into a reinitialized runtime; `ztd eval runs delete` and `ztd eval campaigns delete` purge deleted evidence from the backups too; see [Evaluation Programs](./evals.md).
 - **Verify the audit chain:** `ztd audit verify` walks the hash chain from the latest checkpoint (or genesis) and reports the head sequence and hash.
 
@@ -186,7 +186,7 @@ The SSE event buffer supports reconnection replay for authenticated WebSession a
 
 The **Local-First Events Store** (`storage.LocalFirstEventsStore`) shares `ztd.db` with canonical platform persistence. It records Operator sessions, hash-chained audit events, file-mutation references, signed event receipts, and the commitment chain. Events require an associated session, except the `ztd.v1.platform.audit.chain.checkpointed` anchor; every record path requires the referenced session to exist (INV-STOR-SESSION-01), and batch insertion commits atomically. Event, receipt, summary, and report queries take an explicit audit scope of Operator session ID, acting app ID, or both (`--app` on `ztd audit` subcommands and `acting_app_id` on the Gateway audit routes). App identity resolves through the transaction's event receipt and is never inferred from a session, and an empty scope returns events across all sessions, including events without an Operator session.
 
-Every content column of `ztd.db` is encrypted with the runtime vault on write and decrypted on read, and no content column has a plaintext branch. A locked or absent vault fails the write with `ErrLocalFirstEventsStoreVaultLocked`. The encrypted columns, per table, are:
+The audit-chain and suspended-transaction tables in `ztd.db` encrypt every content column with the runtime vault on write and decrypt it on read, and no such column has a plaintext branch. A locked or absent vault fails the write with `ErrLocalFirstEventsStoreVaultLocked`. The encrypted columns, per table, are:
 
 - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary`. The canonical protojson EventReceipt for a `ztd.v1.operator.receipt.recorded` fact is `content_text`. There is no second copy.
 - `commitment_ledger`: `target_resource`, `attestation_json`.
@@ -274,7 +274,7 @@ The runtime tree never holds the master key in plaintext. Where the master key l
 | ssh-agent seal (Linux) | `.ztd/secrets/.master_key.ssh-agent` | Ciphertext under a key derived from an SSH-agent signature; opens only with the same SSH private key in a trusted agent |
 | DPAPI (Windows) | `.ztd/secrets/.master_key.dpapi` | DPAPI ciphertext; opens only for the same Windows user on the same machine |
 
-Copying, backing up, or exfiltrating `.ztd/` therefore yields only ciphertext. The hidden `.master_key.*` names are reserved; secret names cannot be hidden, so no secret operation can touch the seals. Backend selection and sealing are owned by [Encryption Architecture](./encryption.md#master-key-and-keyring-providers). A Gateway initialized on v1.0.x with the removed master key file must be recreated; see [Upgrading a v1.0.x Gateway](./encryption.md#upgrading-a-v10x-gateway).
+Copying, backing up, or exfiltrating `.ztd/` therefore yields only ciphertext for platform secrets. The hidden `.master_key.*` names are reserved; secret names cannot be hidden, so no secret operation can touch the seals. Backend selection and sealing are owned by [Encryption Architecture](./encryption.md#master-key-and-keyring-providers). A Gateway initialized on v1.0.x with the removed master key file must be recreated; see [Upgrading a v1.0.x Gateway](./encryption.md#upgrading-a-v10x-gateway).
 
 ## Retention and Maintenance
 
@@ -307,8 +307,8 @@ Initial receipt and commitment are execution gates. Final receipt persistence oc
 - The commitment ledger serializes chain-head selection and supports independent offline verification.
 - The canonical state root binds active authoritative documents, key-value state, and blobs while excluding volatile delivery and replay data.
 - No runtime tree stores the master key in plaintext; `.ztd/secrets/` holds only ciphertext, including the DPAPI and ssh-agent master-key seals (see [Key Material at Rest](#key-material-at-rest)).
-- Field-level vault encryption protects the content columns of `ztd.db` (listed under [Hash-chained audit log](#hash-chained-audit-log)), execution output, file diffs, and scrubbing tokens. It does not encrypt complete databases or all metadata.
-- Exports (compliance, operational, and `ztd report`) carry metadata, hashes, and signatures only. No export writes decrypted content.
+- Field-level vault encryption protects the content columns of `ztd.db` (listed under [Hash-chained audit log](#hash-chained-audit-log)), execution output, file mutation diff stats, and scrubbing tokens. It does not encrypt complete databases or all metadata.
+- `ztd report` CSV exports carry metadata, hashes, and signatures only (row types in `internal/services/reporting/rows.go`). Compliance operational exports also carry signed event receipt bodies and chain facts (see [Event receipt](#event-receipt)).
 - Platform documents, approval proof fields, and SSE payloads are not vault-encrypted by the canonical store. Suspended `envelope` and `tool_arguments` are. Commitment `target_resource` and `attestation_json` are encrypted (see the `commitment_ledger` entry above).
 - Ledger snapshots are always encrypted, and their names and commit messages carry no host path (keyed names). Mirroring and path lookups fail closed while the vault is locked.
 - A remote Operator's local receipt is authoritative. Gateway receipt mirroring improves centralized visibility but is not a durability guarantee for remote evidence.

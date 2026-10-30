@@ -3,8 +3,8 @@ doc_id: compliance-evidence
 title: Proof-Backed Compliance Evidence
 audience: compliance officers, auditors, security architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - protocol/constants/compliance/
   - internal/services/compliance/
@@ -94,21 +94,21 @@ Context that cannot be captured as a content-addressed artifact (e.g. physical p
 
 ## Atomic Control Assertions
 
-The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog `ztd-control-assertions` v2.1.0, declared SHA-256 `995bf5fe2176706c7a8d329b1a3495b99a0a77fe110bb2afb47ed1e792ba22a1`) defines 13 atomic, framework-neutral assertions:
+The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog `ztd-control-assertions` v2.1.0, declared SHA-256 `46cc156b5b859269f859f36b7af65c47d3cd684f926f19ca662cbf3fba352aef`) defines 13 atomic, framework-neutral assertions:
 
 | Assertion ID | Assertion Title | Version | Component Scope | Minimum Evidence Level | Core Operational Verification |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 | Confirms that each selected permitted governed action has a valid receipt, a posture-specific deterministic chain, and an independently observed declared effect. |
-| **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that prohibited mutations fail closed at the expected layer and that the prohibited terminal state is independently observed absent. |
-| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `EventReceipt` records bound to action, identity, transaction, and state-root fields. |
-| **`ZTD-AU-PERSIST-001`** | Receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
-| **`ZTD-AU-CHAIN-001`** | Protocol Chain Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates unbroken cryptographic hash chains across sequential deterministic stage events. |
-| **`ZTD-AU-COMMIT-001`** | Commitment Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates signatures and canonical bindings, including the declared predecessor hash, for `commitment_ledger` records. |
-| **`ZTD-CM-STATE-001`** | Independently Observed State | 2.1.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies a subject-bound independent observation and deterministic measurement of the declared terminal state for governed configuration or file mutations. |
-| **`ZTD-DLP-DETECT-001`** | Sensitive Data Detection | 2.0.0 | `gateway` | L2 (Evaluated) | Measures scanner precision and recall against declared synthetic sensitive occurrences in the supported scanner population. |
-| **`ZTD-DLP-BOUNDARY-001`** | Model Boundary Leakage | 2.1.0 | `gateway`, `operator` | L2 (Evaluated) | Measures the raw occurrence rate of declared synthetic sensitive values in the structured model-boundary population; masked `{{UEI_<owner>_N}}` tokens replace them at the boundary. |
+| **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | 2.0.0 | `gateway`, `operator` | L3 | Confirms that prohibited mutations fail closed at the expected layer and that the prohibited terminal state is independently observed absent. |
+| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 | Validates Ed25519 signatures on `EventReceipt` records bound to action, identity, transaction, and state-root fields. |
+| **`ZTD-AU-PERSIST-001`** | Receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
+| **`ZTD-AU-CHAIN-001`** | Protocol Chain Integrity | 2.0.0 | `gateway`, `operator` | L2 | Validates unbroken cryptographic hash chains across sequential deterministic stage events. |
+| **`ZTD-AU-COMMIT-001`** | Commitment Integrity | 2.0.0 | `gateway`, `operator` | L2 | Validates signatures and canonical bindings, including the declared predecessor hash, for `commitment_ledger` records. |
+| **`ZTD-CM-STATE-001`** | Independently Observed State | 2.1.0 | `gateway`, `operator` | L3 | Verifies a subject-bound independent observation and deterministic measurement of the declared terminal state for governed configuration or file mutations. |
+| **`ZTD-DLP-DETECT-001`** | Sensitive-data detection | 2.0.0 | `gateway` | L2 | Measures scanner precision and recall against declared synthetic sensitive occurrences in the supported scanner population. |
+| **`ZTD-DLP-BOUNDARY-001`** | Model-boundary leakage | 2.1.0 | `gateway`, `operator` | L2 | Measures the raw occurrence rate of declared synthetic sensitive values in the structured model-boundary population; masked `{{UEI_<owner>_N}}` tokens replace them at the boundary. |
 | **`ZTD-DLP-REHYDRATE-001`** | Local Rehydration | 2.1.0 | `gateway`, `operator` | L2 | Measures exact token rehydration, which the catalog states must occur only at the declared local runtime boundary. |
-| **`ZTD-IA-MTLS-001`** | Workload mTLS | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies assessed workload identity evidence and a reproduced measurement that unauthenticated transport is rejected. The Gateway enforces TLS 1.3 with SPIFFE URI SAN identities. |
+| **`ZTD-IA-MTLS-001`** | Workload mTLS | 2.0.0 | `gateway`, `operator` | L3 | Verifies assessed workload identity evidence and a reproduced measurement that unauthenticated transport is rejected. The Gateway enforces TLS 1.3 with SPIFFE URI SAN identities. |
 | **`ZTD-IA-NOTARY-001`** | Notary Authorization | 2.0.0 | `gateway`, `operator` | L2 | Requires `deterministic_stage_chain@1.0.0` and `notary_proof@1.0.0` evidence for notary-required mutations. The Operator's L3 notary verifies either a WebAuthn assertion or a CLI approval proof against the transaction hash (`internal/services/governance/outbound_l3_notary.go`). Missing evidence records `customer_attestation_required`. |
 | **`ZTD-CRYPTO-FIPS-001`** | Declared Cryptographic Mode | 2.0.0 | `gateway`, `operator` | L2 | Requires `build_provenance@1.0.0` and `runtime_fips@1.0.0` evidence for the declared approved cryptographic module. The catalog does not name a specific module. The release flow declares `cryptographic_mode` `standard` as a scope input (`internal/constants/compliance_release.go`). |
 
@@ -131,7 +131,7 @@ A satisfied result is not kept when the achieved level is below the assertion's 
 
 ## Framework Crosswalk Mappings
 
-The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.json`, declared SHA-256 `9a3435d4b6bd84416f608889325fbcc4fd4aac91dbce9d0c8b875baba0975df9`) maps the 13 atomic assertions to external regulatory controls:
+The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.json`, declared SHA-256 `7815078f9c682e29a5b44422578ae206fd736954e33cd383e51a7e191145b013`) maps the 13 atomic assertions to external regulatory controls:
 
 | Framework | Revision | Total Controls | Mapped Controls | Unsupported Controls | Reviewed Mappings |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -228,7 +228,7 @@ ztd compliance release-prepare --new-key
 | **Framework Catalog** | `protocol/constants/compliance/framework-catalog.json` | FedRAMP 20x CR26, NIST SP 800-53 rev5 |
 | **Crosswalk Catalog** | `protocol/constants/compliance/fedramp-nist-crosswalk.json` | 60 supporting mappings |
 | **KSI Catalog** | `docs/reference/ksi-catalog.json` | 31 FedRAMP 20x KSIs |
-| **COSAiS Overlays** | `docs/reference/cosais-overlays.json` | Draft AI control overlays |
+| **COSAiS Overlays** | `docs/reference/cosais-overlays.json` | AI control overlay definitions |
 
 ### Implementation Services
 
@@ -245,7 +245,7 @@ ztd compliance release-prepare --new-key
 - [Compliance Alignment](compliance-alignment.md): High-level framework mappings, status semantics, and responsibility matrices.
 - [FIPS 140-3 Module Linkage and Scope](fips140-3.md): Cryptographic module boundary, pure-Go linkage, and runtime verification.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework and posture policies.
-- [Storage Architecture](../architecture/storage.md): Local-First Events Architecture, the Local-First Events Store, and commitment ledgers.
+- [Storage Architecture](../architecture/storage.md): Local-First Events Store and commitment ledger.
 - [Protocol Specification](../../protocol/docs/spec.md): Canonical wire contracts and protobuf schemas.
 - [Evaluation Architecture](../architecture/evals.md): Evaluation campaigns, scoring engines, and telemetry capture.
 - [Release Process](../devs/release_process.md): Release preparation, smoke tests, and compliance artifact publishing.

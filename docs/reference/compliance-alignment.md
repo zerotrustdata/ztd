@@ -3,8 +3,8 @@ doc_id: compliance-alignment
 title: Compliance Alignment
 audience: compliance officers, auditors, security architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - protocol/constants/compliance/
   - internal/services/compliance/
@@ -158,7 +158,7 @@ Catalog validation accepts five responsibility values: `platform`, `customer`, `
 - [FIPS 140-3 Module Linkage and Scope](fips140-3.md): Cryptographic module boundary, pure-Go linkage, and runtime verification.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework and posture policies.
 - [Authentication Architecture](../architecture/auth.md): Identity enrollment, mTLS, and passkey authentication.
-- [Storage Architecture](../architecture/storage.md): Local-First Events Architecture, the Local-First Events Store, and commitment ledgers.
+- [Storage Architecture](../architecture/storage.md): Audit Evidence, the Local-First Events Store, and commitment ledgers.
 - [Protocol Specification](../../protocol/docs/spec.md): Canonical wire contracts and protobuf schemas.
 - [Evaluation Architecture](../architecture/evals.md): Evaluation campaigns, scoring engines, and telemetry capture.
 - [Release Process](../devs/release_process.md): Release preparation, smoke tests, and compliance artifact publishing.

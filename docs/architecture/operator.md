@@ -3,8 +3,8 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/
@@ -158,7 +158,7 @@ Local deployment stop discovers Operator processes by executable name, startup a
 Signal atomicity is platform-specific:
 - **Linux**: discovery opens a pidfd for each candidate before it inspects identity. TERM and KILL are sent through that pidfd, which refers to the process that was identified, so a PID reused after discovery cannot receive the signal.
 - **Windows**: discovery opens a process handle for each candidate, and termination goes through that handle.
-- **Darwin**: no pidfd exists. Discovery opens a kqueue exit watch before it verifies the executable and process start time, but the signal is a `kill(2)` by PID preceded by a non-blocking exit check. The kqueue watch cannot make that check-then-signal sequence atomic, so a PID reused between the check and the signal could receive the signal. This is a documented platform limitation pending native Darwin qualification.
+- **Darwin**: no pidfd exists. Discovery opens a kqueue exit watch before it verifies the executable and process start time, but the signal is a `kill(2)` by PID preceded by a non-blocking exit check. The kqueue watch cannot make that check-then-signal sequence atomic, so a PID reused between the check and the signal could receive the signal. This is a platform limitation.
 
 ### Capabilities Model and Enforcement Boundaries
 
@@ -245,7 +245,7 @@ Startup order in `StartOperator`:
 
 `ztd operator start` executes a zero-disk credential enrollment:
 1. Generates Operator and CLI ECDSA P-256 key pairs, certificate signing requests (CSRs), and a requester token in process memory.
-2. Connects to the Gateway bootstrap WebSocket at `/ws/operator/bootstrap`: `ws://` on HTTP port 8080, or `wss://` on HTTPS port 8443 when `--trust-bundle` pins the Gateway CA.
+2. Connects to the Gateway bootstrap WebSocket at `/ws/operator/bootstrap`: `ws://` on the HTTP port (default 8080), or `wss://` when the endpoint uses `https://` (default HTTPS port 8443). `--trust-bundle` supplies the CA that a `wss://` bootstrap verifies against.
 3. Sends a `request` frame with both CSRs, token hash, system fingerprint, and runtime configuration.
 4. On the Gateway's `created` frame, sends a `complete` frame carrying both keys' signatures over the completion transcript (request ID, token hash, instance ID, CSR fingerprints) as proof of possession.
 5. Awaits owner approval. Upon approval, the Gateway sends a `decision` frame, issues the X.509 certificates, and replies with a `bundle` frame containing certificates, SPIFFE identity, CA roots, and L2 consensus signer public keys.
@@ -317,7 +317,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 ### Evidence, Scope, and Trust Limitations
 
 - **Authoritative Record**: The local SQLite database and Git ledger on the executing host are the sole authoritative evidence of execution.
-- **Isolation Scope**: The Operator governs only actions that traverse ztd ingress routes (MCP, A2A, HTTP dispatch, direct envelope). It does not sandbox the operating system or restrict ungoverned host processes.
+- **Isolation Scope**: The Operator governs only actions that traverse ztd ingress paths (MCP, A2A, HTTP dispatch, direct envelope, CLI `operator run`). It does not sandbox the operating system or restrict ungoverned host processes.
 - **Specification Parity**: Third-party implementations claiming protocol compatibility must reproduce canonical protojson parsing, hash calculation, replay tracking, L4/L5 verification, and signed receipt persistence.
 
 ## Anti-patterns

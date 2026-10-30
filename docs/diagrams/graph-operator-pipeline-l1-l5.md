@@ -3,8 +3,8 @@ doc_id: diagram-operator-pipeline-l1-l5
 title: "Diagram: Operator L1–L5 Governance Pipeline"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/governance/
   - internal/services/governance/l4_warden.go
@@ -59,10 +59,10 @@ The L4 Warden (`internal/services/governance/l4_warden.go`) orchestrates pre-dis
 1. **Vault, Expiry & Replay Prevention**: Refuses dispatch when the runtime vault is locked or absent, rejects a missing or expired `ExpiresAt`, and reserves the nonce in the replay store before any later verification. A nonce already in flight is rejected.
 2. **Structure, Action Type & Payload Decoding**: Checks the protocol version and required identifiers, validates the action type against the known action types, and decodes the typed payload. Action-specific target checks also run here.
 3. **L1 Doctrine Screening**: Evaluates doctrine over the decoded payload on the executing runtime, independent of any earlier Gateway screening. Outbound Operators construct doctrine with `NewL1Doctrine` (hardcoded detectors and proto forbidden patterns). The Gateway service constructs it with `NewL1DoctrineFromDir`, which adds file-based catalogs from its doctrine directory.
-4. **Transaction Hash Integrity**: Recomputes the canonical transaction hash and verifies exact equality with `envelope.Id`.
+4. **Transaction Hash Integrity**: Recomputes the canonical transaction hash and verifies exact equality with both `envelope.TransactionHash` and `envelope.Id`.
 5. **State Root Verification**: Requires `envelope.StateMerkleRoot` and compares it with the bound-state root. Gateway-built transactions compare against the admission snapshot carried in context. Direct submissions compare against the local state root provider.
-6. **L2 Consensus Quorum**: Under `consensus` and `notary` postures, for state-change actions only (`governance.L2Enforced`), verifies that affirmative K-of-N Ed25519 votes over `<tx_hash>|<decision>` meet the policy quorum.
-7. **L3 Notary Human Authorization**: Under `ratify` and `notary` postures, for mutations only (`governance.L3Required`), verifies the L3 proof over the transaction hash. It accepts a WebAuthn passkey approval or a CLI signature approval.
+6. **L2 Consensus Quorum**: Under `consensus` and `notary` postures, for state-change actions only, excluding bootstrap actions (`governance.L2Enforced`), verifies that affirmative K-of-N Ed25519 votes over `<tx_hash>|<decision>` meet the policy quorum.
+7. **L3 Notary Human Authorization**: Under `ratify` and `notary` postures, for mutations only, excluding actions that carry out an already committed owner decision (`governance.L3Required`), verifies the L3 proof over the transaction hash. It accepts a WebAuthn passkey approval or a CLI signature approval. A human deny (`L3.Denied`) ends the transaction in every posture.
 
 ## Governance Posture Gating
 

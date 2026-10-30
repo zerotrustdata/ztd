@@ -3,8 +3,8 @@ doc_id: events
 title: Event and Action Protocol
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - protocol/constants/events.json
   - internal/services/gateway/
@@ -60,7 +60,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-EVT-REG-01 | `protocol/constants/events.json` is the sole authoritative registry for protocol events. All Go and TypeScript mirrors (`internal/constants/events_gen.go`, `action_types_gen.go`, `console/src/generated/events.ts`) MUST be generated via `make constants-generate` and validated via `make constants-check`. Hand-editing generated outputs is prohibited. |
-| INV-EVT-REG-02 | The code generator in `internal/tools/constgen/` MUST validate every entry before generating output. It MUST reject entries missing required fields (`_go_const`, `value`, `producers`, `persistence`); unknown `kind`, `transport`, `producers`, and `persistence` values; `governance` on a non-request event; a `governance` block without the `governed` transport; an `action_type` absent from `protocol/constants/status.json`; a non-governed `request` event whose wire value does not end in `.requested` (`constants.ErrEventRequestWireValue`); stream events whose `transport` is absent or contains anything other than `sse` (`constants.ErrEventStreamTransport`); stream events without `ephemeral` persistence; outcome references to missing events; and wire values whose terminal segment violates the closed terminal grammar; and any key outside the declared shape at entry level or inside `governance` (decode-time, `constants.ErrEventRegistryUnknownField`). Rule failures wrap their sentinel with `%w` and are returned together as one aggregate that supports `errors.Is`. `protocol/models/event_registry.schema.json` is the declared shape: constgen enforces it in Go (no JSON-schema library is a dependency and the generator does not load the schema), and `TestEventRegistrySchema_PinsConstgenChecks` pins the schema's enums, required fields and patterns to constgen's checks. `transport` is not required for non-stream events. |
+| INV-EVT-REG-02 | The code generator in `internal/tools/constgen/` MUST validate every entry before generating output. It MUST reject entries missing required fields (`_go_const`, `value`, `transport`, `producers`, `persistence`); unknown `kind`, `transport`, `producers`, and `persistence` values; `governance` on a non-request event; a `governance` block without the `governed` transport; an `action_type` absent from `protocol/constants/status.json`; a non-governed `request` event whose wire value does not end in `.requested` (`constants.ErrEventRequestWireValue`); stream events whose `transport` is absent or contains anything other than `sse` (`constants.ErrEventStreamTransport`); stream events without `ephemeral` persistence; outcome references to missing events; and wire values whose terminal segment violates the closed terminal grammar; and any key outside the declared shape at entry level or inside `governance` (decode-time, `constants.ErrEventRegistryUnknownField`). Rule failures wrap their sentinel with `%w` and are returned together as one aggregate that supports `errors.Is`. `protocol/models/event_registry.schema.json` is the declared shape: constgen enforces it in Go (no JSON-schema library is a dependency and the generator does not load the schema), and `TestEventRegistrySchema_PinsConstgenChecks` pins the schema's enums, required fields and patterns to constgen's checks. |
 
 ### Event Kinds and Taxonomy (`INV-EVT-KIND`)
 
@@ -133,7 +133,7 @@ Every event in the platform is defined as a typed JSON object in `protocol/const
 ```
 
 - **Producers**: Restricted strictly to `gateway`, `operator`, `cli`, and `mcp`. `constgen` rejects unknown producer entities.
-- **Transports**: Optional array declaring the message buses that may route the event. An entry without `transport` declares none. The runtime enforces only the `governed` transport (see [Transport Ownership and Channel Routing](#transport-ownership-and-channel-routing)).
+- **Transports**: Array declaring the message buses that may route the event. `constgen` requires it on every entry. The runtime checks the `governed` declaration at request resolution and the `sse` and `pubsub` declarations at publish time (see [Transport Ownership and Channel Routing](#transport-ownership-and-channel-routing)).
 - **Persistence**: Explicit location where the message is durably recorded or marked ephemeral.
 
 ### Domain Categorization
@@ -154,9 +154,9 @@ Event wire values follow the pattern `ztd.v1.<domain>.<entity>[.<qualifier>...].
 
 | Kind | Wire Terminal | Persistence Target | Transports | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **`request`** | `.requested` | `ephemeral`, `operator.audit_log`, `gateway.docstore`, `gateway.operator_docs` | `governed`, `pubsub`, `sse`, or none | Initiates an operation. If a `governance` block is present, it MUST be wrapped in a `GovernanceEnvelope`. |
-| **`outcome`** | e.g. `.completed`, `.failed` | `ephemeral`, `gateway.sse_store`, `gateway.audit_log`, `gateway.docstore`, `gateway.operator_docs`, `operator.audit_log` | `sse`, `pubsub`, or none | Reports completion status, failure details, or incremental progress for a prior request. |
-| **`fact`** | e.g. `.created`, `.updated` | `ephemeral`, `gateway.sse_store`, `gateway.audit_log`, `operator.audit_log` | `sse`, `pubsub`, or none | Records an autonomous occurrence independent of a direct client request. |
+| **`request`** | `.requested` | `ephemeral`, `operator.audit_log`, `gateway.docstore`, `gateway.operator_docs` | `governed`, `pubsub`, or `sse` | Initiates an operation. If a `governance` block is present, it MUST be wrapped in a `GovernanceEnvelope`. |
+| **`outcome`** | e.g. `.completed`, `.failed` | `ephemeral`, `gateway.sse_store`, `gateway.audit_log`, `gateway.docstore`, `gateway.operator_docs`, `operator.audit_log` | `sse`, `pubsub`, or `local` | Reports completion status, failure details, or incremental progress for a prior request. |
+| **`fact`** | e.g. `.created`, `.updated` | `ephemeral`, `gateway.sse_store`, `gateway.audit_log`, `operator.audit_log` | `sse`, `pubsub`, or `local` | Records an autonomous occurrence independent of a direct client request. |
 | **`stream`** | Infix `.stream.`, `.chunk.`, `.delta.`, `.keepalive.`, or `.thinking.` | `ephemeral` | `sse` only | Transports ephemeral UI fragments such as SSE keepalives (`ztd.v1.platform.sse.keepalive.sent`). Never persisted. |
 
 ### Governance Envelopes and Action Type Derivation
@@ -169,7 +169,7 @@ The Gateway PDP resolves the incoming `event_type` through `constants.ValidateGo
 
 ### Transport Ownership and Channel Routing
 
-The registry declares transports per event. The runtime enforces only the `governed` transport, through `constants.ValidateGovernedRequest`. The `sse` and `pubsub` declarations are not checked at publish time.
+The registry declares transports per event. `constants.ValidateGovernedRequest` enforces the `governed` transport when it resolves a request. The SSE publish paths (`internal/services/gateway/sse_event_publisher.go`, `internal/services/gateway/observe_producer.go`) and the pub/sub publish paths (`internal/services/pubsub/pubsub_results.go`, `internal/services/pubsub/publish_helpers.go`) reject an event whose registry entry lacks the `sse` or `pubsub` transport, respectively (`constants.ErrEventTransportViolation`).
 - **`sse`**: Client delivery channel for live browser UI updates and approval challenges (`/api/v1/sse/stream`). Never serves as a persistent audit ledger.
 - **`governed`**: Dedicated channel for transactions requiring the five-layer pipeline. Requests are packaged into `GovernanceEnvelope` structures and published to OperatorSession-bound command channels (`cmd:<operator_id>:<operator_session_id>`).
 - **`pubsub`**: WebSocket messaging layer for runtime coordination between Gateway and Operators (e.g. heartbeat delivery, certificate renewal, and receipt relays).

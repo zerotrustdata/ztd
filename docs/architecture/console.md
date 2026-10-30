@@ -3,8 +3,8 @@ doc_id: console
 title: Console Architecture and Development Guide
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - console/
   - internal/services/gateway/console/
@@ -121,7 +121,7 @@ console/
 The console is an untrusted presentation layer with zero cryptographic keys or standing authority:
 
 - **Authentication**: Verified by the Gateway. WebAuthn ceremonies execute in the browser; the Gateway verifies assertions and issues an HttpOnly, Secure `ztd_web_session_cookie` with `SameSite=Lax` (`SameSite=None` when the Gateway configures `AllowedOrigins`).
-- **Authority**: Resides in the Gateway's governance pipeline (L1-L3) and executing Operators (L4-L5). Every console action is an authenticated HTTP request evaluated by the Gateway's policy gates.
+- **Authority**: Resides in the Gateway's governance pipeline (L1-L3) and executing Operators (L4-L5). State-changing console actions are authenticated HTTP requests evaluated by the Gateway's policy gates.
 
 ## Approvals and L3 Ceremony
 
@@ -130,7 +130,7 @@ The Approvals view handles human-in-the-loop decisions:
 - `#approve=<tx_hash>`: Deep link that initiates a WebAuthn assertion ceremony over the suspended transaction hash. The console reads the request options from `GET /api/v1/approvals/{tx_hash}/challenge` and posts the assertion to `POST /api/v1/approvals/{tx_hash}/verify`.
 - The verify request returns only after the approved transaction executes. The browser runs one WebAuthn ceremony at a time, so the view locks every decision only during a ceremony. Once the assertion is signed, the view marks that transaction `Executing…` and keeps the others approvable, because its execution may suspend another transaction, such as a Tribunal command's contextual review inference ([AI Agents](agents.md#production-tribunal-intent-deliberation-pipeline)).
 - **Deny** on a suspended transaction posts `{approval_id, approved: false}` to `POST /api/v1/approvals/respond`. Denial does not prompt for a fresh WebAuthn assertion, but requires an authenticated caller; under `ratify` or `notary`, a web caller must have a registered passkey and a CLI caller must use mTLS. The Gateway resubmits the denial marker to the executing Operator; L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED`, L5 signs the rejection receipt, and the Gateway returns and publishes that receipt. Approval itself requires a WebAuthn assertion through the verify route.
-- `#recovery=<token>`: Reviews an operator or CLI recovery request (`POST /api/v1/auth/cli/recovery/approve`).
+- `#recovery=<token>`: Reviews a CLI recovery request (`POST /api/v1/auth/cli/recovery/approve`).
 - `#platform-enrollment=<id>`: Owner review of pending workload enrollment requests (`POST /api/v1/auth/platform-enrollments/decision`).
 
 ## Operator Inventory and Binding
