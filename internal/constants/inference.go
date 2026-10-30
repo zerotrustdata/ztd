@@ -19,6 +19,27 @@ const EvaluationAppName = "ztd-eval"
 // no models: each governed request carries the model the user chose.
 const InferenceDefaultKeepAlive = "-1"
 
+// InferenceUnloadKeepAlive is the provider keep-alive that unloads a model
+// once its request completes. An Ollama request carrying it and no prompt
+// releases the model; a llama.cpp router accepts it as unload-after-request.
+const InferenceUnloadKeepAlive = "0"
+
+// OllamaDoneReasonUnload is the done_reason Ollama returns when it accepts a
+// keep-alive 0 release request.
+const OllamaDoneReasonUnload = "unload"
+
+// Case and investigation IDs that scope the receipts of governed provider
+// model-maintenance commands on the Inference Operator. A command dispatched
+// for a run carries the run ID as its case instead of the maintenance case.
+const (
+	ProviderModelMaintenanceCaseID        = "ollama-model-maintenance"
+	ProviderModelPullInvestigationID      = "ollama-model-pull"
+	ProviderModelCopyInvestigationID      = "ollama-model-copy"
+	ProviderModelInventoryInvestigationID = "ollama-model-inventory"
+	ProviderModelResidencyInvestigationID = "ollama-model-residency"
+	ProviderModelReleaseInvestigationID   = "ollama-model-release"
+)
+
 // Inference provider classes. The class names the provider API an Inference
 // Operator calls; it is recorded on provider inventory entries and formation
 // models. Both are local providers serving weights the deployment holds.

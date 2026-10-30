@@ -209,7 +209,7 @@ func (b *OllamaBackend) ReleaseModels(ctx context.Context, models []string) erro
 			return err
 		}
 	}
-	// Ollama acknowledges keep_alive 0 with done_reason "unload" before its
+	// Ollama acknowledges keep_alive 0 with done_reason unload before its
 	// scheduler stops the runner, so /api/ps is the completion signal.
 	return awaitModelsAbsent(ctx, b.component, b.ReadResidency, models)
 }
@@ -220,7 +220,7 @@ func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	}
 	body, err := json.Marshal(ollamaModelReleaseRequest{
 		Model:     model,
-		KeepAlive: json.RawMessage("0"),
+		KeepAlive: json.RawMessage(constants.InferenceUnloadKeepAlive),
 		Stream:    false,
 	})
 	if err != nil {
@@ -247,7 +247,7 @@ func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	if err := b.decodeResponse("release model", resp.Body, &releaseResp); err != nil {
 		return err
 	}
-	if releaseResp.Model != model || !releaseResp.Done || releaseResp.DoneReason != "unload" {
+	if releaseResp.Model != model || !releaseResp.Done || releaseResp.DoneReason != constants.OllamaDoneReasonUnload {
 		return fmt.Errorf("ollama_backend: release model: %w", constants.ErrInferenceProviderResponseInvalid)
 	}
 	return nil

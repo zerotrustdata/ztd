@@ -81,7 +81,7 @@ const (
 // the constructor's nil check rejects every missing dependency with the typed
 // sentinel before any of them is used.
 func TestCampaignAgentExecutor_RequiresLedgerSentinelToConstruct(t *testing.T) {
-	_, err := NewCampaignAgentExecutor(nil, NewCommandLane(nil, client.Persona{}), nil, nil, time.Now, func(prefix string) string { return prefix })
+	_, err := NewCampaignAgentExecutor(nil, &recordingModelResidency{}, NewCommandLane(nil, client.Persona{}), nil, nil, time.Now, func(prefix string) string { return prefix })
 
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }

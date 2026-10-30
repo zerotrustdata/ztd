@@ -212,8 +212,16 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 		cases.ExecutorOutbound: {OperatorID: dataWorkload.OperatorID, OperatorSessionID: dataWorkload.OperatorSessionID},
 	})
 	require.NoError(t, err)
+	residencyDispatcher, err := evaluation.NewGovernedOllamaModelCommandDispatcher(gateway, persona)
+	require.NoError(t, err)
+	residencySeq := 0
+	residency, err := evaluation.NewProviderModelResidency(residencyDispatcher, inferenceWorkload.OperatorSessionID, func(prefix string) string {
+		residencySeq++
+		return fmt.Sprintf("%s-residency-%d", prefix, residencySeq)
+	})
+	require.NoError(t, err)
 	executor, err := evaluation.NewCampaignAgentExecutor(
-		complianceRealInference{client: appClient, cliSessionID: persona.CLISessionID},
+		complianceRealInference{client: appClient, cliSessionID: persona.CLISessionID}, residency,
 		evaluation.NewCommandLane(gateway, persona), sentinel, store, clock, newID)
 	require.NoError(t, err)
 	controller := evaluation.NewCampaignController(store, executor, clock, newID)

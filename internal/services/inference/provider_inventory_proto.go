@@ -7,7 +7,12 @@
 
 package inference
 
-import operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+import (
+	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+)
 
 // ProviderModelInventoryEntryFromProto converts one protocol inventory entry
 // into the evaluation/inference domain shape.
@@ -71,28 +76,27 @@ func ProviderModelInventoryEntriesToProto(entries []ProviderModelInventoryEntry)
 }
 
 // ProviderResidencyFromProto converts one protocol residency result into the
-// inference domain shape.
-func ProviderResidencyFromProto(result *operatorv1.OllamaModelResidencyResult) ProviderResidency {
+// inference domain shape. A resident model without a name cannot prove
+// absence from residency, so it fails closed.
+func ProviderResidencyFromProto(result *operatorv1.OllamaModelResidencyResult) (ProviderResidency, error) {
 	if result == nil {
-		return ProviderResidency{}
+		return ProviderResidency{}, fmt.Errorf("inference: provider residency from proto: %w", constants.ErrMissingRequiredField)
 	}
-	models := make([]ProviderResidencyModel, 0, len(result.GetModels()))
+	residency := ProviderResidency{Models: make([]ProviderResidencyModel, 0, len(result.GetModels()))}
 	for _, model := range result.GetModels() {
-		if model == nil || model.GetName() == "" {
-			continue
+		if model.GetName() == "" {
+			return ProviderResidency{}, fmt.Errorf("inference: provider residency from proto: %w: model name is required", constants.ErrInferenceProviderResponseInvalid)
 		}
-		models = append(models, ProviderResidencyModel{Name: model.GetName()})
+		residency.Models = append(residency.Models, ProviderResidencyModel{Name: model.GetName()})
 	}
-	return ProviderResidency{Models: models}
+	return residency, nil
 }
 
-// ProviderResidencyToProto converts domain residency into the protocol shape.
+// ProviderResidencyToProto converts domain residency, as a provider read and
+// validated it, into the protocol shape.
 func ProviderResidencyToProto(residency ProviderResidency) *operatorv1.OllamaModelResidencyResult {
 	models := make([]*operatorv1.OllamaModelResidencyModel, 0, len(residency.Models))
 	for _, model := range residency.Models {
-		if model.Name == "" {
-			continue
-		}
 		models = append(models, &operatorv1.OllamaModelResidencyModel{Name: model.Name})
 	}
 	return &operatorv1.OllamaModelResidencyResult{Models: models}

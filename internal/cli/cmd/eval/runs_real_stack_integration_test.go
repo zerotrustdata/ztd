@@ -332,15 +332,12 @@ func TestRunsExecute_RealStack(t *testing.T) {
 	}
 }
 
-func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
+func TestProviderModelResidency_RunsNoTribunalVoteRound(t *testing.T) {
 	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{
 		Posture: constants.PostureConsensus, BindConsensus: bindRunTribunalConsensus,
 		Replies: []fixtures.OllamaReply{{Content: "ready"}},
 	}, runControlDeps{})
 
-	cmd := &cobra.Command{}
-	cmd.SetContext(run.ctx)
-	cmd.Flags().String("project-root", run.root, "")
 	authContext, err := run.deps.authLoader(run.fileSvc, run.cfg)
 	require.NoError(t, err)
 	inferenceWorkload, err := run.stack.Inference.Workload()
@@ -368,28 +365,32 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inferenceResult.GetReceipt().GetL2Status())
 	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "warm-up inference is not voted on")
 
-	// Neither the strict-run preflight residency read nor the typed release is
-	// a state change, so under consensus neither runs a Tribunal vote round.
-	require.NoError(t, releaseProviderModels(cmd, run.deps, runExecuteOptions{RunID: "tribunal-release"}, run.cfg, authContext,
-		inferenceWorkload.OperatorSessionID, "resident", nil))
+	// Neither the residency read nor the typed release is a state change, so
+	// under consensus neither runs a Tribunal vote round.
+	residency, err := newRunModelResidency(run.cfg, authContext, run.deps, inferenceWorkload.OperatorSessionID)
+	require.NoError(t, err)
+	released, err := residency.ReleaseAllExcept(run.ctx, evaluation.ModelResidencyRelease{RunID: "tribunal-release"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{testQwenVariant().GetServedModelTag()}, released)
+	assert.Equal(t, released, run.stack.Provider.ReleasedModels())
 	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "residency and release must not add Tribunal vote inferences")
 
 	provider, err := inference.NewOllamaBackend(run.stack.Provider.Endpoint(), slog.Default())
 	require.NoError(t, err)
-	residency, err := provider.ReadResidency(run.ctx)
+	resident, err := provider.ReadResidency(run.ctx)
 	require.NoError(t, err)
-	assert.Empty(t, residency.Models, "release verifies absence inside its own execution")
+	assert.Empty(t, resident.Models, "release verifies absence inside its own execution")
 
 	receipts, err := run.stack.Gateway.Service.GetLocalFirstEventsStore().ListEventReceipts(models.EventsScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
-		InvestigationID:   "ollama-model-residency",
+		InvestigationID:   constants.ProviderModelResidencyInvestigationID,
 	}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, receipts, 1, "the caller must not dispatch a second governed residency query after release")
 
 	releaseReceipts, err := run.stack.Gateway.Service.GetLocalFirstEventsStore().ListEventReceipts(models.EventsScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
-		InvestigationID:   "ollama-model-release",
+		InvestigationID:   constants.ProviderModelReleaseInvestigationID,
 	}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, releaseReceipts, 1)

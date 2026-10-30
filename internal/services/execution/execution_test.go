@@ -35,7 +35,6 @@ func TestResolveCommandBinary(t *testing.T) {
 		"ztd operator model pull qwen3:0.6b",
 		"ztd operator model copy qwen3:0.6b local/qwen3:0.6b",
 		"ztd operator model inventory",
-		"ztd operator model residency",
 	} {
 		t.Run(command, func(t *testing.T) {
 			binary, err := resolveCommandBinary(strings.Fields(command))

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,9 +67,11 @@ type AgentToolDispatcher interface {
 
 // CampaignAgentExecutor runs model-role and formation assignments through the
 // governed Inference Operator; every tool call runs as a governed action on
-// the bound Data Operator.
+// the bound Data Operator. The provider holds one phase's models at a time:
+// the assignment's models while it executes, then only the judge.
 type CampaignAgentExecutor struct {
 	inference  AgentInferenceDispatcher
+	residency  ModelResidencyReleaser
 	tools      AgentToolDispatcher
 	sentinel   cases.Sentinel
 	traceStore AgentTraceStore
@@ -79,8 +82,10 @@ type CampaignAgentExecutor struct {
 
 // NewCampaignAgentExecutor constructs the homogeneous agent executor. The
 // sentinel reads the ledger on the Data Operator before and after each attempt.
-func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
-	if inference == nil || tools == nil || sentinel == nil || traceStore == nil || newID == nil {
+// residency releases provider models on the same Inference Operator between an
+// assignment's phases.
+func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, residency ModelResidencyReleaser, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
+	if inference == nil || residency == nil || tools == nil || sentinel == nil || traceStore == nil || newID == nil {
 		return nil, fmt.Errorf("evaluation: agent executor: %w", constants.ErrMissingRequiredField)
 	}
 	catalog, err := newAgentToolCatalog()
@@ -90,7 +95,7 @@ func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, tools AgentToo
 	if now == nil {
 		now = time.Now
 	}
-	return &CampaignAgentExecutor{inference: inference, tools: tools, sentinel: sentinel, traceStore: traceStore, catalog: catalog, now: now, newID: newID}, nil
+	return &CampaignAgentExecutor{inference: inference, residency: residency, tools: tools, sentinel: sentinel, traceStore: traceStore, catalog: catalog, now: now, newID: newID}, nil
 }
 
 // agentRun is the per-assignment state of one tool loop.
@@ -122,6 +127,11 @@ type agentRun struct {
 func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
 	run, err := e.newRun(req)
 	if err != nil {
+		return nil, err
+	}
+	// Residency commands are governed actions with their own receipts, so the
+	// provider is set for this assignment before the ledger sentinel opens.
+	if err := e.releaseAllExcept(ctx, req, "assignment", run.modelTags()); err != nil {
 		return nil, err
 	}
 	assignment := req.Assignment
@@ -169,6 +179,15 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read closing ledger sentinel", err)
 	}
 	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{EventReceipt: before}, After: AgentTraceReceipt{EventReceipt: after}}
+	// The judge runs only after the closing sentinel, and the provider holds
+	// only the judge while it does. Content judgments and the quality judge
+	// run back to back, so one release serves both.
+	judgeResident := contentJudgmentsRequired(req, run.trace)
+	if judgeResident {
+		if err := e.releaseAllExceptJudge(ctx, req); err != nil {
+			return nil, err
+		}
+	}
 	if err := e.recordContentJudgments(ctx, req, run.trace); err != nil {
 		return nil, err
 	}
@@ -197,6 +216,11 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED:
 		return result, nil
 	}
+	if !judgeResident && e.qualityJudgeRequired(req, run.trace) {
+		if err := e.releaseAllExceptJudge(ctx, req); err != nil {
+			return nil, err
+		}
+	}
 	quality, judgeErr := e.scoreWithJudge(ctx, req, run.trace)
 	if judgeErr != nil {
 		return nil, judgeErr
@@ -213,6 +237,32 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 		result.ResultDigest = digest
 	}
 	return result, nil
+}
+
+// releaseAllExcept releases every provider model outside retain before the
+// named phase of an assignment dispatches. A failed release is a harness
+// failure, never graded against the model.
+func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req AssignmentExecutionRequest, phase string, retain []string) error {
+	if _, err := e.residency.ReleaseAllExcept(ctx, ModelResidencyRelease{RunID: req.Assignment.GetRunId(), Retain: retain}); err != nil {
+		return assignmentExecutionError("evaluation: release provider models before "+phase, err)
+	}
+	return nil
+}
+
+// releaseAllExceptJudge leaves only the campaign's frozen judge resident. A
+// judge that is one of the assignment's own models stays loaded.
+func (e *CampaignAgentExecutor) releaseAllExceptJudge(ctx context.Context, req AssignmentExecutionRequest) error {
+	variant, err := judgeVariant(req)
+	if err != nil {
+		return err
+	}
+	return e.releaseAllExcept(ctx, req, "judge", []string{variant.GetServedModelTag()})
+}
+
+// qualityJudgeRequired reports whether scoreWithJudge dispatches the judge for
+// this trace.
+func (e *CampaignAgentExecutor) qualityJudgeRequired(req AssignmentExecutionRequest, trace *AgentTrace) bool {
+	return e.shouldScoreWithJudge(req) && !endedInInterrogationForGold(trace.FinalOutput, req.ScenarioGold)
 }
 
 func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequest) bool {
@@ -262,7 +312,7 @@ func qualityGradeDetail(value int, rubricVersion, rationale string) string {
 
 func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) (qualityJudgments, error) {
 	var out qualityJudgments
-	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil || endedInInterrogationForGold(trace.FinalOutput, req.ScenarioGold) {
+	if !e.qualityJudgeRequired(req, trace) || e.inference == nil || req.Assignment == nil {
 		return out, nil
 	}
 	// Judge receipts verify against the same pinned anchors as the traced model
@@ -522,6 +572,18 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 
 // loop runs the scored tool loop until the model answers without a tool call,
 // the provider fails, or the turn bound is reached.
+// modelTags returns the served model tags of every role the assignment
+// resolved, sorted and without duplicates. A formation keeps all of its slots
+// resident, so its turns never reload one another's models.
+func (r *agentRun) modelTags() []string {
+	tags := make([]string, 0, len(r.variants))
+	for _, variant := range r.variants {
+		tags = append(tags, variant.GetServedModelTag())
+	}
+	slices.Sort(tags)
+	return slices.Compact(tags)
+}
+
 func (r *agentRun) loop(ctx context.Context) error {
 	opening, err := r.conversation()
 	if err != nil {

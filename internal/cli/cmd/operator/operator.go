@@ -99,7 +99,6 @@ func operatorModelCmd() *cobra.Command {
 		operatorModelPullCmd(),
 		operatorModelCopyCmd(),
 		operatorModelInventoryCmd(),
-		operatorModelResidencyCmd(),
 	)
 	return cmd
 }
@@ -193,33 +192,6 @@ func operatorModelInventoryCmd() *cobra.Command {
 			payload, err := json.Marshal(entries)
 			if err != nil {
 				return fmt.Errorf("operator: model inventory: %w", err)
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(payload))
-			return err
-		},
-	}
-}
-
-func operatorModelResidencyCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "residency",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := operatorOllamaEndpoint(cmd)
-			if err != nil {
-				return err
-			}
-			backend, err := inference.NewOllamaBackend(endpoint, slog.Default())
-			if err != nil {
-				return fmt.Errorf("operator: model residency: %w", err)
-			}
-			residency, err := backend.ReadResidency(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("operator: model residency: %w", err)
-			}
-			payload, err := json.Marshal(residency)
-			if err != nil {
-				return fmt.Errorf("operator: model residency: %w", err)
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(payload))
 			return err
